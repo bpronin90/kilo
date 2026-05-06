@@ -12,6 +12,14 @@ Start from:
 gh issue view <issue-number> --comments
 ```
 
+Every issue must be labeled before work begins.
+
+Required labels:
+- exactly one `agent:` label: `agent:codex`, `agent:claude`, or `agent:gemini`
+- at least one `area:` label: `area:parser`, `area:ui`, `area:supabase`, `area:weight`, `area:workouts`, or `area:docs`
+- exactly one `type:` label: `type:planning`, `type:implementation`, `type:review`, or `type:bug`
+- exactly one `tier:` label: `tier:default` or `tier:heavy`
+
 Read only:
 - `AGENTS.md`
 - your own agent file if present: `CODEX.md`, `CLAUDE.md`, or `GEMINI.md`
