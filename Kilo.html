@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kilo · Personal Fitness Tracker</title>
+  <style>
+    html, body, #root { height: 100%; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: #f5f5f5;
+      overflow: hidden;
+    }
+    * { box-sizing: border-box; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Frames + tweaks -->
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="android-frame.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+
+  <!-- Kilo data + parser + UI -->
+  <script type="text/babel" src="parser.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="ui.jsx"></script>
+
+  <!-- Screens -->
+  <script type="text/babel" src="screens/home.jsx"></script>
+  <script type="text/babel" src="screens/log.jsx"></script>
+  <script type="text/babel" src="screens/weight.jsx"></script>
+  <script type="text/babel" src="screens/stats.jsx"></script>
+  <script type="text/babel" src="screens/more.jsx"></script>
+
+  <!-- App orchestrator -->
+  <script type="text/babel" src="app.jsx"></script>
+
+  <!-- Root -->
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "accent": "#3b82f6",
+      "showAndroid": true,
+      "density": "comfortable",
+      "homeStyle": "focused"
+    }/*EDITMODE-END*/;
+
+    function Root() {
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // Override accent globally
+      React.useEffect(() => {
+        if (window.KILO_C) window.KILO_C.accent = tweaks.accent;
+      }, [tweaks.accent]);
+
+      return (
+        <div data-screen-label="Kilo Prototype" style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#0a0a0a' }}>
+          <DesignCanvas>
+            <DCSection id="frames" title="Kilo" subtitle="Personal fitness tracker · iOS + Android side-by-side">
+              <DCArtboard id="ios" label="iOS · iPhone 15" width={402} height={874}>
+                <IOSDevice statusBarDark={true}>
+                  <KiloApp accentOverride={tweaks.accent} />
+                </IOSDevice>
+              </DCArtboard>
+              {tweaks.showAndroid && (
+                <DCArtboard id="android" label="Android · Pixel" width={412} height={892}>
+                  <AndroidDevice statusBarDark={true}>
+                    <KiloApp accentOverride={tweaks.accent} />
+                  </AndroidDevice>
+                </DCArtboard>
+              )}
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel title="Kilo Tweaks">
+            <TweakSection label="Color">
+              <TweakColor
+                tweakKey="accent"
+                label="Accent"
+                value={tweaks.accent}
+                onChange={(v) => setTweak('accent', v)}
+                options={['#ff5b1f', '#c5ff00', '#3b82f6', '#e11d48', '#f5f5f5']}
+              />
+            </TweakSection>
+            <TweakSection label="Frames">
+              <TweakToggle
+                label="Show Android"
+                value={tweaks.showAndroid}
+                onChange={(v) => setTweak('showAndroid', v)}
+              />
+            </TweakSection>
+          </TweaksPanel>
+        </div>
+      );
+    }
+
+    // Wait for everything to load
+    function mount() {
+      if (!window.KiloApp || !window.IOSDevice || !window.AndroidDevice || !window.DesignCanvas || !window.useTweaks) {
+        setTimeout(mount, 50);
+        return;
+      }
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<Root />);
+    }
+    mount();
+  </script>
+</body>
+</html>
