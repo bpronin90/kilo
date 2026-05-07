@@ -262,6 +262,151 @@ Phase 1 flow coverage:
 - Verification target: clear pass or fail cases for each record type.
 - Stop condition: save behavior is predictable enough for parser and UI work to proceed.
 
+Validation and write-boundary contract:
+
+**Validation boundary**
+
+Validation runs after parsing and before any write to the database. A submission that fails validation is rejected entirely. No partial writes occur.
+
+**Weight entry — required fields at the boundary**
+
+| Field | Rule |
+|---|---|
+| `weight_value` | Required. Must be a positive number greater than zero. |
+| `weight_unit` | Required. Must be exactly `'kg'` or `'lb'`. No other values accepted. |
+| `logged_at` | Required. Must be a valid timestamp. If the submission omits it, the parser must supply the current time before reaching the boundary. The boundary does not default it. |
+
+Pass: `{ weight_value: 72.5, weight_unit: 'kg', logged_at: <valid timestamp> }` → write proceeds.
+
+Fail examples:
+- `weight_value` is zero, negative, or non-numeric → rejected.
+- `weight_unit` is missing, `'lbs'`, `'kilos'`, or any non-canonical string → rejected.
+- `logged_at` is missing or not a valid timestamp → rejected.
+
+**Workout entry — required fields at the boundary**
+
+Top-level:
+
+| Field | Rule |
+|---|---|
+| `workout_date` | Required. Must be a valid date. If the submission omits it, the parser must supply the current date before reaching the boundary. |
+| `items` | Required. Must contain at least one workout item. An entry with an empty item list is rejected. |
+
+Per workout item:
+
+| Field | Rule |
+|---|---|
+| `exercise_name` | Required. Must be a non-empty string after trimming whitespace. |
+| `result_kind` | Required. Must be exactly `'sets'` or `'note'`. |
+| `note_text` | Required when `result_kind = 'note'`. Must be a non-empty string. Must be null when `result_kind = 'sets'`. |
+| `sets` | Required when `result_kind = 'sets'`. Must contain at least one set. Must be absent or null when `result_kind = 'note'`. |
+| `position` | Required. Must be a positive integer unique within the parent entry. |
+
+Per workout item set (applies when `result_kind = 'sets'`):
+
+| Field | Rule |
+|---|---|
+| `set_index` | Required. Must be a positive integer unique within the parent item. |
+| `rep_count` or `duration_seconds` | At least one must be present and greater than zero. A set with neither is rejected. |
+| `weight_value` | Optional. If present, must be a positive number greater than zero. |
+| `weight_unit` | Required when `weight_value` is present. Must be `'kg'` or `'lb'`. Must be null when `weight_value` is absent. |
+| `assistance_value` | Optional. If present, must be a positive number greater than zero. |
+| `assistance_unit` | Required when `assistance_value` is present. Must be `'kg'` or `'lb'`. Must be null when `assistance_value` is absent. |
+| `note_text` | Optional. May be null or a non-empty string. Empty string is not accepted. |
+
+Pass: a workout entry with `workout_date`, at least one item with a non-empty `exercise_name`, `result_kind = 'sets'`, and at least one set with a valid `rep_count` → write proceeds.
+
+Fail examples:
+- `workout_date` is missing or not a valid date → rejected.
+- No items present → rejected.
+- Any item has an empty or whitespace-only `exercise_name` → rejected.
+- Any item has `result_kind = 'sets'` with no sets → rejected.
+- Any item has `result_kind = 'note'` with a null or empty `note_text` → rejected.
+- Any set has neither `rep_count` nor `duration_seconds` → rejected.
+- Any set has `weight_value` without a valid `weight_unit` → rejected.
+
+**Canonical save shape**
+
+When validation passes, the following shape is written to the database. Server-generated values (`id`, `saved_at`) are assigned at write time and not accepted from input.
+
+Weight entry canonical shape:
+
+```
+id            → server-generated UUID
+entry_type    → 'weight'
+weight_value  → validated numeric value from input
+weight_unit   → validated 'kg' or 'lb' from input
+logged_at     → validated timestamp from input (parser-supplied if omitted by user)
+saved_at      → server-generated write timestamp
+```
+
+Workout entry canonical shape:
+
+```
+id            → server-generated UUID
+entry_type    → 'workout'
+workout_date  → validated date from input (parser-supplied if omitted by user)
+saved_at      → server-generated write timestamp
+items:
+  id                → server-generated UUID
+  workout_entry_id  → parent entry id
+  exercise_name     → validated non-empty string
+  result_kind       → 'sets' or 'note'
+  note_text         → non-null string when result_kind = 'note'; null otherwise
+  position          → validated positive integer
+  sets (when result_kind = 'sets'):
+    id               → server-generated UUID
+    workout_item_id  → parent item id
+    set_index        → validated positive integer
+    rep_count        → validated positive integer or null
+    duration_seconds → validated positive integer or null
+    weight_value     → validated positive numeric or null
+    weight_unit      → 'kg', 'lb', or null
+    assistance_value → validated positive numeric or null
+    assistance_unit  → 'kg', 'lb', or null
+    note_text        → non-empty string or null
+```
+
+**Error categories**
+
+| Category | Condition |
+|---|---|
+| `missing_required_field` | A required field is absent or null when a value is expected. |
+| `invalid_field_value` | A field is present but fails its type or range rule (e.g., non-positive number, non-canonical unit string, invalid date). |
+| `structural_violation` | The overall shape is invalid regardless of individual field values (e.g., workout with no items, `result_kind = 'sets'` with no sets, `result_kind = 'note'` with sets present). |
+| `correction_target_not_found` | An update or delete references an entry id that does not exist. |
+
+No other error categories are required for MVP. These four cover every pass or fail case in the MVP save and correction paths.
+
+**Correction request validation**
+
+Before an update or delete is applied, the following rules are checked in order:
+
+1. The target entry `id` must exist in the relevant table. If it does not, the request fails with `correction_target_not_found`.
+2. For an update, the replacement field values must pass the same validation rules as a new submission. The same required fields, value rules, and structural constraints apply.
+3. For a delete, no field validation is required beyond confirming the target exists.
+
+No revision history is created. A deleted entry is removed immediately. An updated entry replaces its previous values in place.
+
+**Pass and fail summary**
+
+| Case | Result |
+|---|---|
+| Valid weight entry with all required fields | Pass — write proceeds |
+| Weight entry with zero or negative `weight_value` | Fail — `invalid_field_value` |
+| Weight entry with missing or non-canonical `weight_unit` | Fail — `missing_required_field` or `invalid_field_value` |
+| Weight entry with missing `logged_at` | Fail — `missing_required_field` |
+| Valid workout entry with at least one item and one set | Pass — write proceeds |
+| Workout entry with no items | Fail — `structural_violation` |
+| Workout item with empty `exercise_name` | Fail — `invalid_field_value` |
+| Workout item with `result_kind = 'sets'` and no sets | Fail — `structural_violation` |
+| Workout item set with neither `rep_count` nor `duration_seconds` | Fail — `structural_violation` |
+| Workout item set with `weight_value` but no `weight_unit` | Fail — `missing_required_field` |
+| Delete targeting an existing entry id | Pass — delete proceeds |
+| Delete targeting a nonexistent entry id | Fail — `correction_target_not_found` |
+| Update with valid replacement fields | Pass — update proceeds |
+| Update with invalid replacement fields | Fail — same category as initial save failure |
+
 #### Task 3: Verify read path for recent history
 - Session goal: confirm the minimum query or view model needed for MVP history screens.
 - Intended agent: `claude`
