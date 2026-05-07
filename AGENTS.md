@@ -9,8 +9,11 @@ The GitHub issue is the task contract.
 Start from:
 
 ```sh
-gh issue view <issue-number> --comments
+gh issue view <issue-number> --json number,title,body,labels
+gh api repos/<owner>/<repo>/issues/<issue-number>/comments
 ```
+
+Do not use `gh issue view <issue-number> --comments`. In this repo, that path currently hits deprecated GitHub Projects fields through the local `gh` query.
 
 Every issue must be labeled before work begins.
 
@@ -18,7 +21,16 @@ Required labels:
 - exactly one `agent:` label: `agent:codex`, `agent:claude`, or `agent:gemini`
 - at least one `area:` label: `area:parser`, `area:ui`, `area:supabase`, `area:weight`, `area:workouts`, or `area:docs`
 - exactly one `type:` label: `type:planning`, `type:implementation`, `type:review`, or `type:bug`
-- exactly one `tier:` label: `tier:default` or `tier:heavy`
+
+Optional sizing label:
+- at most one `effort:` label: `effort:default` or `effort:heavy`
+
+`effort:` is a sizing hint only. It does not define runtime selection and must not be used as a substitute for `model:` or `reasoning:`.
+
+Codex runtime labels:
+- if `agent:codex` is set, require exactly one `model:` label: `model:gpt-5.4`, `model:gpt-5.4-mini`, or `model:gpt-5.3-codex`
+- if `agent:codex` is set, require exactly one `reasoning:` label: `reasoning:low`, `reasoning:medium`, `reasoning:high`, or `reasoning:xhigh`
+- if `agent:claude` or `agent:gemini` is set, do not add `model:` or `reasoning:` labels unless the repo later introduces agent-specific runtime labels for them
 
 Read only:
 - `AGENTS.md`
