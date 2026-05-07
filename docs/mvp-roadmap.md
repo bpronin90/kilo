@@ -34,6 +34,46 @@ Ordered tasks:
 - Verification target: written flow list with acceptance criteria for each flow.
 - Stop condition: every MVP flow is either included now or explicitly deferred.
 
+MVP flows included for launch:
+
+1. Log a weight entry
+   - Flow: the user enters one weight entry, submits it, receives a clear save result, and can later see that saved weight entry in recent history.
+   - Acceptance criteria:
+     - A valid weight entry can move from input to saved record without requiring any manual database or admin step.
+     - An invalid weight entry is blocked before save with a clear failure result.
+     - A successful weight save is visible in the product as a recent saved entry.
+
+2. Log a workout entry
+   - Flow: the user enters one workout entry, submits it, receives a clear save result, and can later see that saved workout entry in recent history.
+   - Acceptance criteria:
+     - A valid workout entry can move from input to saved record without requiring any manual database or admin step.
+     - An invalid workout entry is blocked before save with a clear failure result.
+     - A successful workout save is visible in the product as a recent saved entry.
+
+3. Review saved recent entries
+   - Flow: after saving weight or workout data, the user can open the product and verify the most recent saved entries in a simple history view.
+   - Acceptance criteria:
+     - Recent history shows newly saved entries in a predictable order.
+     - Each recent entry exposes enough detail for the user to confirm what was saved.
+     - Review of saved entries does not depend on prototype-only tools or direct database access.
+
+4. Correct an obvious recent mistake
+   - Flow: if the user notices a clearly wrong recent weight or workout entry, the user can correct or remove that recent entry without leaving the product.
+   - Acceptance criteria:
+     - The user can fix or remove at least one obviously wrong recent entry through a product flow.
+     - The corrected result is reflected in recent history after the action completes.
+     - Correction does not require revision history, bulk editing, or direct database access.
+
+Flows explicitly deferred from MVP:
+
+- Field-level authoring conveniences such as advanced helpers, smart defaults, or guided entry composition.
+- Flexible free-form parsing beyond the constrained MVP input formats.
+- Admin or support workflows for managing user data.
+- Bulk entry, imports, exports, or wearable sync.
+- Analytics, trends, coaching, or recommendations.
+- Multi-user collaboration, sharing, or social flows.
+- Settings, customization, or other non-core account management flows.
+
 #### Task 2: Freeze MVP entities and terminology
 - Session goal: define the minimum domain objects and names the rest of the work depends on.
 - Intended agent: `codex`
