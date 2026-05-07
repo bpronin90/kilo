@@ -66,7 +66,11 @@ Enforce Big-O discipline:
 
 ## Git And Completion
 
+Create a branch for your assigned issue before committing. Treat the issue branch as the default working branch for that task.
+
 Never commit directly to `main` unless explicitly told.
+
+Merging to `main` requires explicit approval.
 
 Do not commit or push unless explicitly approved.
 
