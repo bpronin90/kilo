@@ -83,6 +83,53 @@ Flows explicitly deferred from MVP:
 - Verification target: one approved list of core entities and terms.
 - Stop condition: no unresolved naming or entity ambiguity remains for MVP sequencing.
 
+Approved MVP entities and terms:
+
+1. Entry
+   - Definition: the top-level saved record shown in recent history and targeted by correction flows.
+   - MVP rule: every saved item in MVP is an `entry`, and every entry is exactly one of two entry types: `weight entry` or `workout entry`.
+
+2. Weight entry
+   - Definition: one saved bodyweight log created from one successful weight submission.
+   - Minimum record shape:
+     - Entry identifier
+     - Entry type = weight
+     - Weight value
+     - Effective date or timestamp for when the weight was logged
+     - Saved timestamp for ordering and confirmation
+
+3. Workout entry
+   - Definition: one saved workout log created from one successful workout submission.
+   - MVP rule: a workout entry is the full unit the user saves, reviews, edits, or deletes. It is not a single set and not a cross-workout program record.
+   - Minimum record shape:
+     - Entry identifier
+     - Entry type = workout
+     - Workout date or timestamp
+     - One or more workout items
+     - Saved timestamp for ordering and confirmation
+
+4. Workout item
+   - Definition: one exercise line within a workout entry.
+   - MVP rule: workout items exist only inside a workout entry and are not shown as standalone entries in recent history.
+   - Minimum record shape:
+     - Exercise name
+     - Logged result details needed to show what was saved for that exercise line
+
+5. Recent history
+   - Definition: the simple user-visible list of recently saved entries.
+   - MVP rule: recent history is a combined view of weight entries and workout entries ordered by recency, with enough visible detail for the user to confirm what was saved.
+
+6. Correction
+   - Definition: the MVP action that lets the user fix or remove an obviously wrong recent entry.
+   - MVP rule: correction applies to an existing saved entry and results in either an updated entry or a removed entry that is no longer shown as active history.
+
+Terms explicitly not used as separate MVP entities:
+
+- `log` is a user action or a generic verb, not a persisted entity name.
+- `record` and `saved record` are generic descriptions; the canonical product term is `entry`.
+- `workout` by itself is ambiguous. Use `workout entry` for the saved top-level object and `workout item` for an exercise line inside it.
+- `history` means recent saved entries only. It does not imply analytics, trends, or audit history.
+
 #### Task 3: Define MVP acceptance gates
 - Session goal: turn the spec into release gates that later phases can satisfy.
 - Intended agent: `codex`
