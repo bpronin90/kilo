@@ -268,6 +268,8 @@ Validation and write-boundary contract:
 
 Validation runs after parsing and before any write to the database. A submission that fails validation is rejected entirely. No partial writes occur.
 
+For weight entries, a single-row write is atomic by default. For workout entries, the full write spans `workout_entries`, `workout_items`, and `workout_item_sets`. All rows for a single submission must be written in one atomic operation. If any part of the write fails, the entire submission is rolled back and no rows from that submission are persisted. The same atomicity requirement applies to workout entry updates (including item list replacement) and deletes (including cascade to child rows).
+
 **Weight entry — required fields at the boundary**
 
 | Field | Rule |
@@ -307,7 +309,7 @@ Per workout item set (applies when `result_kind = 'sets'`):
 | Field | Rule |
 |---|---|
 | `set_index` | Required. Must be a positive integer unique within the parent item. |
-| `rep_count` or `duration_seconds` | At least one must be present and greater than zero. A set with neither is rejected. |
+| `rep_count` or `duration_seconds` | Exactly one must be present and greater than zero. A set where both are present is rejected. A set where neither is present is rejected. A rep-based set has `rep_count` set and `duration_seconds` null. A time-based set has `duration_seconds` set and `rep_count` null. |
 | `weight_value` | Optional. If present, must be a positive number greater than zero. |
 | `weight_unit` | Required when `weight_value` is present. Must be `'kg'` or `'lb'`. Must be null when `weight_value` is absent. |
 | `assistance_value` | Optional. If present, must be a positive number greater than zero. |
@@ -323,6 +325,7 @@ Fail examples:
 - Any item has `result_kind = 'sets'` with no sets → rejected.
 - Any item has `result_kind = 'note'` with a null or empty `note_text` → rejected.
 - Any set has neither `rep_count` nor `duration_seconds` → rejected.
+- Any set has both `rep_count` and `duration_seconds` present → rejected.
 - Any set has `weight_value` without a valid `weight_unit` → rejected.
 
 **Canonical save shape**
@@ -401,6 +404,7 @@ No revision history is created. A deleted entry is removed immediately. An updat
 | Workout item with empty `exercise_name` | Fail — `invalid_field_value` |
 | Workout item with `result_kind = 'sets'` and no sets | Fail — `structural_violation` |
 | Workout item set with neither `rep_count` nor `duration_seconds` | Fail — `structural_violation` |
+| Workout item set with both `rep_count` and `duration_seconds` present | Fail — `structural_violation` |
 | Workout item set with `weight_value` but no `weight_unit` | Fail — `missing_required_field` |
 | Delete targeting an existing entry id | Pass — delete proceeds |
 | Delete targeting a nonexistent entry id | Fail — `correction_target_not_found` |
