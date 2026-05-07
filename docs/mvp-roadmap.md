@@ -185,6 +185,74 @@ Ordered tasks:
 - Verification target: schema proposal matches every Phase 1 MVP flow.
 - Stop condition: no MVP flow requires an undefined persisted record.
 
+Persisted record model:
+
+**weight_entries**
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key, entry identifier |
+| entry_type | TEXT | Constant value `'weight'` |
+| weight_value | NUMERIC | Numeric weight as submitted |
+| weight_unit | TEXT | `'kg'` or `'lb'` |
+| logged_at | TIMESTAMPTZ | Effective date the weight was recorded |
+| saved_at | TIMESTAMPTZ | When the record was persisted |
+
+**workout_entries**
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key, entry identifier |
+| entry_type | TEXT | Constant value `'workout'` |
+| workout_date | DATE | Effective date of the workout |
+| saved_at | TIMESTAMPTZ | When the record was persisted |
+
+**workout_items**
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| workout_entry_id | UUID | Foreign key to `workout_entries.id` |
+| exercise_name | TEXT | Name of the exercise |
+| result_kind | TEXT | `'sets'` for per-set logged results or `'note'` for note-only lines |
+| note_text | TEXT | Required when `result_kind = 'note'`; null for per-set lines |
+| position | INTEGER | Ordering within the parent workout entry |
+
+**workout_item_sets**
+
+| Field | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key |
+| workout_item_id | UUID | Foreign key to `workout_items.id` |
+| set_index | INTEGER | 1-based ordering within the workout item |
+| weight_value | NUMERIC | Logged load for the set; null for bodyweight-only sets |
+| weight_unit | TEXT | `'kg'` or `'lb'`; null for bodyweight-only sets |
+| rep_count | INTEGER | Logged reps for the set; null when the set is time-based only |
+| duration_seconds | INTEGER | Logged duration for the set; null for rep-based sets |
+| assistance_value | NUMERIC | Logged assistance amount when applicable; null otherwise |
+| assistance_unit | TEXT | Unit for assistance when applicable; null otherwise |
+| note_text | TEXT | Optional short note for unusual set results |
+
+Relationships:
+- Each `workout_entry` has one or more `workout_items`.
+- `workout_items` do not exist without a parent `workout_entry`.
+- Each `workout_item` is either a note-only line or has one or more `workout_item_sets`.
+- `workout_item_sets` do not exist without a parent `workout_item`.
+- Deleting a `workout_entry` cascades to all its `workout_items`.
+- Deleting a `workout_item` cascades to all its `workout_item_sets`.
+
+Update and delete semantics (MVP correction flows):
+- A `weight_entry` can be updated in-place (`weight_value`, `weight_unit`, `logged_at`) or hard-deleted.
+- A `workout_entry` can be hard-deleted (cascades to all child rows) or updated in-place (`workout_date`, item list replacement).
+- No revision or audit history is required for MVP.
+- No soft-delete is required for MVP; a deleted entry is removed from active recent history immediately.
+
+Phase 1 flow coverage:
+- Log a weight entry: `weight_entries` captures all required fields; `saved_at` provides confirmation ordering.
+- Log a workout entry: `workout_entries` + `workout_items` + `workout_item_sets` captures the full save, including mixed weights, uneven sets, bodyweight cases, and note-only lines; `saved_at` provides confirmation ordering.
+- Review saved recent entries: ordering by `saved_at` desc across both entry tables provides a recency-ordered history; the child rows preserve enough detail to show exactly what was saved.
+- Correct an obvious recent mistake: in-place update and hard delete are defined for both entry types with no dependency on revision history or admin access.
+
 #### Task 2: Establish validation and write boundaries
 - Session goal: define where invalid or partial data is rejected before persistence.
 - Intended agent: `claude`
