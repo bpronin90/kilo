@@ -139,6 +139,34 @@ Terms explicitly not used as separate MVP entities:
 - Verification target: short acceptance checklist covering logging, storage, retrieval, and correction.
 - Stop condition: later implementation work can be judged against a fixed MVP bar.
 
+MVP acceptance checklist:
+
+1. Logging gates
+   - A user can submit one valid weight entry and one valid workout entry through the product without manual database intervention.
+   - Invalid weight and workout submissions are blocked before save with a clear product-visible failure result.
+   - Successful saves return a clear product-visible confirmation that the entry was accepted.
+
+2. Storage gates
+   - Every successful save creates exactly one top-level `entry` persisted as either a `weight entry` or a `workout entry`.
+   - Every saved `weight entry` includes an entry identifier, entry type, weight value, effective logged date or timestamp, and saved timestamp.
+   - Every saved `workout entry` includes an entry identifier, entry type, workout date or timestamp, at least one workout item, and saved timestamp.
+   - Workout items are stored only as part of their parent workout entry and are not treated as standalone entries.
+
+3. Retrieval gates
+   - Recent history shows both weight entries and workout entries in one predictable recency-ordered view.
+   - A newly saved weight or workout entry becomes visible in recent history without direct database access or prototype-only tooling.
+   - Each visible recent entry exposes enough saved detail for the user to confirm what was logged.
+
+4. Correction gates
+   - The user can correct or remove at least one obvious recent mistake for either entry type through a product flow.
+   - A correction updates the existing entry result or removes that entry from active recent history.
+   - Correction does not depend on revision history, bulk editing, admin tooling, or direct database access.
+
+5. MVP non-goal gates
+   - MVP launch does not require coaching, recommendations, analytics, social features, collaboration, wearables, imports, exports, or broad settings.
+   - MVP launch does not require flexible free-form parsing beyond the constrained accepted input formats.
+   - MVP launch does not require account-management breadth, admin/support workflows, or prototype-only behavior outside the core logging loop.
+
 ### Phase 2: Data Foundation
 - Phase goal: establish the minimum persisted model and app plumbing needed for logging.
 - Allowed scope: Supabase schema, write/read path design, validation boundaries, environment setup needed for MVP.
