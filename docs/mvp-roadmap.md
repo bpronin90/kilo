@@ -525,6 +525,90 @@ Ordered tasks:
 - Verification target: finite list of accepted examples and explicit rejected examples.
 - Stop condition: parser scope is small enough to implement in one pass without guessing.
 
+Accepted MVP input contract:
+
+**Weight entry input**
+
+- Accepted syntax:
+  - `<weight-value>`
+- `weight-value` rules:
+  - ASCII digits with an optional single decimal point.
+  - No sign, commas, unit suffix, date, or note text.
+  - Surrounding whitespace is allowed and ignored.
+- Accepted examples:
+  - `180`
+  - `180.4`
+  - ` 167.0 `
+- Rejected examples:
+  - `180 lb`
+  - `180lbs`
+  - `180,4`
+  - `180 / felt light`
+  - `2026-05-08 180.4`
+  - `one eighty`
+  - empty input
+- Normalization expectations:
+  - Trim leading and trailing whitespace before validation.
+  - Parse the value as a numeric `weight_value`.
+  - Default `weight_unit` to `lb` for MVP; do not infer `kg` from text.
+  - `logged_at` comes from the submission context, not from text typed into the field.
+
+**Workout entry input**
+
+- A workout entry is built from per-exercise row inputs on the log screen.
+- Each non-empty row must match exactly one accepted row form.
+- Accepted row forms:
+  - `-`
+  - `<rep-group>`
+  - `<load> <rep-group>`
+  - `<load> <rep-group> <load> <rep-group>`
+  - additional `<load> <rep-group>` pairs may repeat in the same row
+- Token rules:
+  - `load` is ASCII digits with an optional single decimal point.
+  - `rep-group` is one or more positive integers separated by commas, with no trailing comma.
+  - Spaces may appear around tokens and after commas; repeated internal spaces are allowed.
+- Accepted semantics:
+  - `-` means skip this exercise for this workout entry.
+  - `<rep-group>` is for rep-only rows with no external load.
+  - Each `<load> <rep-group>` pair represents one ordered block of sets at that load.
+  - Multiple pairs in one row are allowed for drop or backoff work and are preserved in order.
+- Accepted examples:
+  - `-`
+  - `8,8,8`
+  - `80 8,8,8`
+  - `85 8 80 8,8`
+  - `17.5 12,12`
+  - ` 90   8,8,7   85  8 `
+- Rejected examples:
+  - `5 min`
+  - `7.1 for 5`
+  - `1x12-15 each arm 12.5 lbs`
+  - `80 x 8 x 8 x 8`
+  - `80lb 8,8`
+  - `80 8/8/8`
+  - `80`
+  - `8,`
+  - `? 12,12`
+  - `as55 8,8,8`
+  - `80 8,8 note`
+  - `book`
+- Normalization expectations:
+  - Trim leading and trailing whitespace and collapse repeated internal whitespace between tokens.
+  - Ignore spaces immediately after commas inside a `rep-group`.
+  - Parse `load` tokens as numeric values and rep values as positive integers.
+  - Expand each row into ordered set results while preserving the original pair order.
+  - For rep-only rows, store `weight_value = null` and `weight_unit = null` for each set.
+  - A row containing only `-` does not create a persisted workout item.
+  - Blank rows are ignored.
+  - A workout entry is invalid if, after ignoring blanks and skipped rows, no valid workout items remain.
+
+Explicit MVP parser boundary decisions:
+
+- Accept only numeric loads plus rep groups for workout logging.
+- Reject timed entries, free-form notes, inline units, mixed prose, slash notation, and sample-sheet instruction text.
+- Reject legacy or prototype shorthand from the sample files unless it already matches the accepted forms above.
+- Do not infer exercise meaning from exercise name text in order to reinterpret the row grammar.
+
 #### Task 2: Build weight-entry parse path
 - Session goal: support the simplest valid weight logging path first.
 - Intended agent: `claude`

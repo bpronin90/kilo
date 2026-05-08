@@ -83,4 +83,30 @@ Work is not complete until the agent posts a GitHub issue comment with:
 - tests not run, with reason
 - blockers or follow-up
 
+### Closing procedure
+
+If the user tells the reviewer to `carry out closing procedure`, treat that as explicit approval to perform the full closeout sequence for the current issue once the reviewer has confirmed the issue work is complete.
+
+`carry out closing procedure` has two required phases:
+
+1. Issue close readiness
+   - Verify the assigned issue task is actually complete, whether the work was done by the reviewer or another agent.
+   - Verify the required completion comment is posted on the GitHub issue and includes all required completion details.
+   - Verify there are no known blockers preventing the issue from being closed.
+   - Close the GitHub issue once the reviewer confirms it is ready.
+
+2. Repository closeout
+   - Update any relevant docs only if such docs already exist and need closure-related updates for the completed issue.
+   - Commit the completed issue work on the issue branch.
+   - Merge the issue branch to `main`.
+   - Push the resulting `main` branch to `origin`.
+   - Align the local repository with `origin/main`.
+   - Delete the no-longer-needed issue branch.
+   - Leave the repo in a clean post-merge state.
+
+What `carry out closing procedure` does not mean:
+- do not close or merge work that is not actually complete
+- do not widen scope beyond the issue except for existing closure-related docs that genuinely need updating
+- do not preserve extra local branches or a dirty worktree without a stated reason
+
 `AGENTS.md` owns shared rules only. Agent-specific behavior belongs in `CODEX.md`, `CLAUDE.md`, `GEMINI.md`, or agent-owned skills.
