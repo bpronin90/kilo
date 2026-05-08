@@ -420,6 +420,93 @@ No revision history is created. A deleted entry is removed immediately. An updat
 - Verification target: each MVP history or review flow can be served from the proposed read path.
 - Stop condition: UI work does not need to invent data access behavior later.
 
+Recent history read-path contract:
+
+**Ordering guarantee**
+
+Recent history is ordered by `saved_at` DESC. `saved_at` is the server-generated write timestamp set at persist time and is the sole ordering field. No secondary sort is required for MVP. No client-supplied ordering is accepted.
+
+**Combined view**
+
+Recent history is a single list that mixes weight entries and workout entries. Both types are fetched together and sorted by `saved_at` DESC. The UI does not issue separate per-type queries for the list view. Each row in the list exposes `entry_type` so the UI can dispatch rendering without additional lookups.
+
+**List query scope**
+
+The list query returns the N most recently saved entries across both entry types, where N is a UI-defined limit. The minimum required limit for MVP is 20. No offset-based pagination or cursor-based pagination is required for MVP. The list query does not filter by entry type, date range, or any other field.
+
+**Minimum fields returned per entry type**
+
+Weight entry row:
+
+| Field | Purpose |
+|---|---|
+| `id` | Required for correction target. |
+| `entry_type` | Always `'weight'`. Used for UI dispatch. |
+| `weight_value` | Show what was logged. |
+| `weight_unit` | Show what was logged. |
+| `logged_at` | Show the effective logged date. |
+| `saved_at` | Ordering field. |
+
+Workout entry row:
+
+| Field | Purpose |
+|---|---|
+| `id` | Required for correction target. |
+| `entry_type` | Always `'workout'`. Used for UI dispatch. |
+| `workout_date` | Show the effective workout date. |
+| `saved_at` | Ordering field. |
+
+**Workout items and sets**
+
+Workout items and sets are not included in the list query. After the list query returns, the UI issues one child query for workout items keyed on `workout_entry_id IN (<ids of workout entries in the list>)`. That query returns all `workout_items` rows for those entries ordered by `position` ASC. For items with `result_kind = 'sets'`, a second child query fetches `workout_item_sets` keyed on `workout_item_id IN (<ids of set-based items>)`, ordered by `set_index` ASC. The UI assembles the nested structure in memory before rendering.
+
+Minimum fields from `workout_items`:
+
+| Field | Purpose |
+|---|---|
+| `id` | Join key for set fetch. |
+| `workout_entry_id` | Join key for parent assembly. |
+| `exercise_name` | Show what exercise was logged. |
+| `result_kind` | Dispatch: `'sets'` or `'note'`. |
+| `note_text` | Show note when `result_kind = 'note'`. |
+| `position` | Ordering within the entry. |
+
+Minimum fields from `workout_item_sets`:
+
+| Field | Purpose |
+|---|---|
+| `workout_item_id` | Join key for parent assembly. |
+| `set_index` | Ordering within the item. |
+| `rep_count` | Show logged reps (null for time-based sets). |
+| `duration_seconds` | Show logged duration (null for rep-based sets). |
+| `weight_value` | Show load if present. |
+| `weight_unit` | Show load unit if present. |
+| `assistance_value` | Show assistance if present. |
+| `assistance_unit` | Show assistance unit if present. |
+| `note_text` | Show set note if present. |
+
+**Correction flow read requirements**
+
+Before applying a correction, the UI must have the target entry `id` in hand. The `id` is always present in the list query result. No additional read is required to initiate a correction. The correction request sends the `id` directly to the write path, which validates existence before applying the change.
+
+**Read-path constraints the UI must respect**
+
+1. The UI must not invent a secondary sort or reorder entries beyond `saved_at` DESC.
+2. The UI must not filter entries by type in the combined list view.
+3. The UI must not assume workout items or sets are available without issuing the child queries described above.
+4. The UI must use the `id` field from the read result as the correction target. It must not construct or derive entry ids from other fields.
+5. The UI must not issue per-row item queries inside a render loop. Item and set fetches are batched across all workout entries returned by the list query.
+6. The UI must not read directly from `workout_items` or `workout_item_sets` for the combined list ordering. Ordering always derives from the parent entry's `saved_at`.
+
+**Flow coverage**
+
+| MVP flow | Served by |
+|---|---|
+| Review saved recent entries | List query (both entry types, `saved_at` DESC) + child queries for workout items and sets. |
+| Confirm what was saved (weight) | `weight_value`, `weight_unit`, `logged_at` from list query row. |
+| Confirm what was saved (workout) | `workout_date` from list query row; exercise names, sets, reps, durations, loads from child queries. |
+| Correct an obvious recent mistake | `id` from list query row passed directly to write path. |
+
 ### Phase 3: Input And Parsing
 - Phase goal: make workout and weight entry creation usable enough for MVP.
 - Allowed scope: minimum parser behavior, fallback input constraints, parse error handling.
