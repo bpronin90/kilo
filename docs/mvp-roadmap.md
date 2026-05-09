@@ -636,7 +636,7 @@ Explicit MVP parser boundary decisions:
 
 Ordered tasks:
 
-#### Task 1: Add weight logging UI
+#### Task 1: Add weight logging UI [DONE]
 - Session goal: ship the minimum UI path for entering and saving weight.
 - Intended agent: `gemini`
 - Allowed scope: weight input form or surface, validation feedback, success confirmation.

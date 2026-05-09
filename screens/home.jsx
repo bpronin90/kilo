@@ -21,16 +21,63 @@ function lastSessionFor(exId) {
 
 function KiloHome({ goToTab, openSession }) {
   const today = window.KILO_TODAY;
+  const [weights, setWeights] = React.useState(() => window.KILO_WEIGHTS);
+  const [entry, setEntry] = React.useState('');
+  const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
+
+  // Clear success status after delay
+  React.useEffect(() => {
+    if (status && status.ok) {
+      const t = setTimeout(() => setStatus(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
+
   const dow = dayOfWeek(today);
   const split = window.KILO_SPLIT[dow];
   const todayStr = new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
-  const weights = window.KILO_WEIGHTS;
-  const avg7 = rollingAvg(weights, 7);
-  const avg7Prev = rollingAvg(weights.slice(0, -7), 7);
+  const getWeight = (w) => w.weight_value ?? w.weight;
+  const getDate = (w) => w.logged_at ? w.logged_at.slice(0, 10) : w.date;
+
+  const avg7 = rollingAvg(weights.map(w => ({ ...w, weight: getWeight(w) })), 7);
+  const avg7Prev = rollingAvg(weights.slice(0, -7).map(w => ({ ...w, weight: getWeight(w) })), 7);
   const wow = avg7 - avg7Prev;
   const lastWeight = weights[weights.length - 1];
-  const loggedToday = lastWeight && lastWeight.date === today;
+  const loggedToday = lastWeight && (lastWeight.logged_at ? lastWeight.logged_at.startsWith(today) : lastWeight.date === today);
+
+  function handleQuickLog() {
+    const result = window.parseWeightEntry(entry);
+    if (!result.ok) {
+      setStatus({ ok: false, error: result.error });
+      return;
+    }
+    const newEntry = {
+      id: `w_${Date.now()}`,
+      entry_type: 'weight',
+      weight_value: result.weight_value,
+      weight_unit: result.weight_unit,
+      logged_at: result.logged_at,
+      saved_at: new Date().toISOString(),
+      date: today,
+      weight: result.weight_value
+    };
+    try {
+      window.persistWeightEntry(newEntry);
+    } catch {
+      setStatus({ ok: false, error: 'Save failed — storage unavailable' });
+      return;
+    }
+    const updated = [...weights, newEntry].sort((a, b) => {
+      const da = a.logged_at ?? a.date;
+      const db = b.logged_at ?? b.date;
+      return da.localeCompare(db);
+    });
+    window.KILO_WEIGHTS = updated;
+    setWeights(updated);
+    setEntry('');
+    setStatus({ ok: true });
+  }
 
   // 1RM estimates for big three
   const big3 = ['squat', 'db_bench', 'deadlift'];
@@ -119,31 +166,74 @@ function KiloHome({ goToTab, openSession }) {
           </button>
         }>
           <div style={{ padding: '0 16px' }}>
-            <button
-              className="kilo-btn kilo-no-tap"
-              onClick={() => goToTab('weight')}
-              style={{
-                width: '100%', textAlign: 'left', background: KILO_C.surface,
-                border: `1px solid ${KILO_C.border}`, padding: '14px 16px', borderRadius: 4,
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
-                  7-day avg {!loggedToday && <span className="kilo-blink" style={{ color: KILO_C.accent, marginLeft: 6 }}>● needs entry</span>}
+            {!loggedToday ? (
+              <div style={{
+                background: KILO_C.surface, border: `1px solid ${status?.ok === false ? KILO_C.red : status?.ok ? KILO_C.green : KILO_C.border}`,
+                padding: '14px 16px', borderRadius: 4, transition: 'border-color 0.2s',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span className="kilo-mono" style={{ fontSize: 18, color: status?.ok ? KILO_C.green : KILO_C.accent, fontWeight: 600 }}>›</span>
+                    <input
+                      className="kilo-input"
+                      style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', color: status?.ok ? KILO_C.green : KILO_C.ink }}
+                      placeholder="000.0"
+                      value={entry}
+                      onChange={(e) => { setEntry(e.target.value); setStatus(null); }}
+                      onKeyDown={(e) => e.key === 'Enter' && entry && handleQuickLog()}
+                      inputMode="decimal"
+                    />
+                    <span className="kilo-mono" style={{ fontSize: 11, color: KILO_C.ink3 }}>lb</span>
+                  </div>
+                  <button
+                    className="kilo-btn"
+                    disabled={!entry || status?.ok}
+                    onClick={handleQuickLog}
+                    style={{
+                      background: !entry || status?.ok ? KILO_C.surface2 : KILO_C.accent,
+                      color: !entry || status?.ok ? KILO_C.ink4 : '#000',
+                      padding: '6px 14px', borderRadius: 3, fontWeight: 700, fontSize: 10,
+                      letterSpacing: '0.08em', textTransform: 'uppercase',
+                    }}
+                  >
+                    {status?.ok ? 'Saved' : 'Log'}
+                  </button>
                 </div>
-                <KiloNum size={28} weight={600}>{avg7.toFixed(1)}</KiloNum>
-                <span className="kilo-mono" style={{ fontSize: 11, color: KILO_C.ink3, marginLeft: 4 }}>lb</span>
+                {status && (
+                  <div className="kilo-mono" style={{ marginTop: 8, fontSize: 11, color: status.ok ? KILO_C.green : KILO_C.red }}>
+                    {status.ok ? '✓ Weight saved' : `✕ ${status.error}`}
+                  </div>
+                )}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>WoW</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                  <KiloIcon name={wow < 0 ? 'arrowD' : 'arrowU'} size={12} color={wow < 0 ? KILO_C.green : KILO_C.yellow} />
-                  <KiloNum size={14} color={wow < 0 ? KILO_C.green : KILO_C.yellow}>{(wow >= 0 ? '+' : '') + wow.toFixed(2)}</KiloNum>
+            ) : (
+              <button
+                className="kilo-btn kilo-no-tap"
+                onClick={() => goToTab('weight')}
+                style={{
+                  width: '100%', textAlign: 'left', background: KILO_C.surface,
+                  border: `1px solid ${status?.ok ? KILO_C.green : KILO_C.border}`,
+                  padding: '14px 16px', borderRadius: 4,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  transition: 'border-color 0.5s',
+                }}
+              >
+                <div>
+                  <div className="kilo-mono" style={{ fontSize: 9, color: status?.ok ? KILO_C.green : KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
+                    {status?.ok ? '✓ Saved successfully' : '7-day avg'}
+                  </div>
+                  <KiloNum size={28} weight={600} color={status?.ok ? KILO_C.green : KILO_C.ink}>{avg7.toFixed(1)}</KiloNum>
+                  <span className="kilo-mono" style={{ fontSize: 11, color: KILO_C.ink3, marginLeft: 4 }}>lb</span>
                 </div>
-                <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>streak {streak}d</div>
-              </div>
-            </button>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>WoW</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                    <KiloIcon name={wow < 0 ? 'arrowD' : 'arrowU'} size={12} color={wow < 0 ? KILO_C.green : KILO_C.yellow} />
+                    <KiloNum size={14} color={wow < 0 ? KILO_C.green : KILO_C.yellow}>{(wow >= 0 ? '+' : '') + wow.toFixed(2)}</KiloNum>
+                  </div>
+                  <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>streak {streak}d</div>
+                </div>
+              </button>
+            )}
           </div>
         </KiloSection>
 
