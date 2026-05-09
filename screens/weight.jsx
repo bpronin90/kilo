@@ -85,13 +85,34 @@ function WeightGraph({ weights, range, target }) {
   );
 }
 
+const WEIGHT_STORAGE_KEY = 'kilo_weight_entries';
+
+// Merge stored user entries into window.KILO_WEIGHTS once at load time.
+// handleLog and remounts read the global directly — no re-merge, no duplication.
+(function initStoredWeights() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(WEIGHT_STORAGE_KEY) || '[]');
+    if (stored.length) {
+      window.KILO_WEIGHTS = [...window.KILO_WEIGHTS, ...stored]
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+  } catch {}
+})();
+
+function persistWeightEntry(entry) {
+  const stored = JSON.parse(localStorage.getItem(WEIGHT_STORAGE_KEY) || '[]');
+  stored.push(entry);
+  localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(stored));
+}
+
 function KiloWeight({ goToTab }) {
   const today = window.KILO_TODAY;
-  const weights = window.KILO_WEIGHTS;
+  const [weights, setWeights] = React.useState(() => window.KILO_WEIGHTS);
   const [range, setRange] = React.useState(30);
   const [showNote, setShowNote] = React.useState(false);
   const [entry, setEntry] = React.useState('');
   const [note, setNote] = React.useState('');
+  const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
 
   const lastEntry = weights[weights.length - 1];
   const loggedToday = lastEntry && lastEntry.date === today;
@@ -103,6 +124,27 @@ function KiloWeight({ goToTab }) {
   const avg30 = avg30Series[avg30Series.length - 1];
   const avg7Prev = rollingAvgSeries(weights.slice(0, -7), 7);
   const wow = avg7 - avg7Prev[avg7Prev.length - 1];
+
+  function handleLog() {
+    const result = window.parseWeightEntry(entry);
+    if (!result.ok) {
+      setStatus({ ok: false, error: result.error });
+      return;
+    }
+    const newEntry = { date: today, weight: result.weight_value, logged_at: result.logged_at };
+    try {
+      persistWeightEntry(newEntry);
+    } catch {
+      setStatus({ ok: false, error: 'Save failed — storage unavailable' });
+      return;
+    }
+    const updated = [...weights, newEntry].sort((a, b) => a.date.localeCompare(b.date));
+    window.KILO_WEIGHTS = updated;
+    setWeights(updated);
+    setEntry('');
+    setNote('');
+    setStatus({ ok: true });
+  }
 
   const cutGoal = window.KILO_GOALS.find(g => g.type === 'body_weight' && g.active);
 
@@ -146,7 +188,7 @@ function KiloWeight({ goToTab }) {
                 style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em' }}
                 placeholder="000.0"
                 value={entry}
-                onChange={(e) => setEntry(e.target.value)}
+                onChange={(e) => { setEntry(e.target.value); setStatus(null); }}
                 inputMode="decimal"
               />
               <span className="kilo-mono" style={{ fontSize: 14, color: KILO_C.ink3 }}>lb</span>
@@ -167,6 +209,7 @@ function KiloWeight({ goToTab }) {
               <button
                 className="kilo-btn"
                 disabled={!entry}
+                onClick={handleLog}
                 style={{
                   background: entry ? KILO_C.accent : KILO_C.surface2,
                   color: entry ? '#000' : KILO_C.ink4,
@@ -177,6 +220,11 @@ function KiloWeight({ goToTab }) {
                 Log
               </button>
             </div>
+            {status && (
+              <div className="kilo-mono" style={{ marginTop: 8, fontSize: 11, color: status.ok ? KILO_C.green : KILO_C.red }}>
+                {status.ok ? '✓ saved' : status.error}
+              </div>
+            )}
           </div>
         </div>
 
