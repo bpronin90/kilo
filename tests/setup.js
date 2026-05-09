@@ -20,6 +20,18 @@ global.KILO_MONO = "'JetBrains Mono', monospace"
 global.KILO_TODAY = '2026-05-09'
 global.KILO_WEIGHTS = []
 global.KILO_GOALS = []
+global.KILO_SESSIONS = []
+global.KILO_EXERCISES = []
+// 2026-05-09 is a Saturday
+global.KILO_SPLIT = {
+  sunday:    { label: 'Rest',  sub: 'Recovery' },
+  monday:    { label: 'Lower', sub: 'Squat · Deadlift' },
+  tuesday:   { label: 'Rest',  sub: 'Recovery' },
+  wednesday: { label: 'Upper', sub: 'Bench · OHP' },
+  thursday:  { label: 'Rest',  sub: 'Recovery' },
+  friday:    { label: 'Lower', sub: 'Squat · Deadlift' },
+  saturday:  { label: 'Rest',  sub: 'Recovery' },
+}
 
 afterEach(() => {
   cleanup()

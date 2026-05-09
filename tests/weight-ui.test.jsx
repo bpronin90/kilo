@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import '../parser.jsx'
 import '../components/ui.jsx'
 import '../screens/weight.jsx'
+import '../screens/home.jsx'
 
 // Seed enough entries for rolling-avg calculations in KiloWeight to stay non-null
 function seedWeights(n = 8, baseWeight = 180) {
@@ -126,5 +127,76 @@ describe('persisted entry shape', () => {
 
     const stored = JSON.parse(localStorage.getItem('kilo_weight_entries') || '[]')
     expect(stored[0].id).toMatch(/^w_/)
+  })
+})
+
+// ── KiloHome quick-log (dashboard weight entry) ───────────────────────────────
+
+function renderHome() {
+  const Component = window.KiloHome
+  return render(React.createElement(Component, { goToTab: () => {}, openSession: () => {} }))
+}
+
+describe('KiloHome quick-log button state', () => {
+  test('disabled when entry is empty', () => {
+    renderHome()
+    // There are two "Log" buttons on the page (tab label + quick-log); the quick-log
+    // button is the <button> element, the tab label is a plain span.
+    const logBtns = screen.getAllByRole('button', { name: /^Log$/i })
+    const quickLog = logBtns[logBtns.length - 1]
+    expect(quickLog).toBeDisabled()
+  })
+
+  test('enabled once entry has a value', () => {
+    renderHome()
+    fireEvent.change(screen.getByPlaceholderText('000.0'), { target: { value: '180' } })
+    const logBtns = screen.getAllByRole('button', { name: /^Log$/i })
+    expect(logBtns[logBtns.length - 1]).not.toBeDisabled()
+  })
+})
+
+describe('KiloHome quick-log success feedback', () => {
+  // After a valid log, loggedToday flips true and the form swaps to the
+  // "already logged" stats view. Success is shown there as "✓ Saved successfully".
+  test('shows "✓ Saved successfully" in logged-today view', async () => {
+    renderHome()
+    fireEvent.change(screen.getByPlaceholderText('000.0'), { target: { value: '178' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Log$/i }).at(-1))
+    await screen.findByText('✓ Saved successfully')
+  })
+})
+
+describe('KiloHome quick-log failure feedback', () => {
+  test('unit suffix shows format error', async () => {
+    renderHome()
+    fireEvent.change(screen.getByPlaceholderText('000.0'), { target: { value: '180lbs' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Log$/i }).at(-1))
+    await screen.findByText('✕ Enter a number only (e.g. 180 or 180.4)')
+  })
+
+  test('whitespace-only entry shows required error', async () => {
+    renderHome()
+    fireEvent.change(screen.getByPlaceholderText('000.0'), { target: { value: '   ' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Log$/i }).at(-1))
+    await screen.findByText('✕ Weight is required')
+  })
+})
+
+describe('KiloHome quick-log persistence shape', () => {
+  test('writes canonical fields to localStorage', () => {
+    renderHome()
+    fireEvent.change(screen.getByPlaceholderText('000.0'), { target: { value: '179' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Log$/i }).at(-1))
+
+    const stored = JSON.parse(localStorage.getItem('kilo_weight_entries') || '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0]).toMatchObject({
+      entry_type: 'weight',
+      weight_value: 179,
+      weight_unit: 'lb',
+    })
+    expect(typeof stored[0].id).toBe('string')
+    expect(typeof stored[0].logged_at).toBe('string')
+    expect(typeof stored[0].saved_at).toBe('string')
   })
 })
