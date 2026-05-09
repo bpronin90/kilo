@@ -114,15 +114,26 @@ function KiloWeight({ goToTab }) {
   const [note, setNote] = React.useState('');
   const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
 
+  // Clear success status after delay
+  React.useEffect(() => {
+    if (status && status.ok) {
+      const t = setTimeout(() => setStatus(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
+
   const lastEntry = weights[weights.length - 1];
-  const loggedToday = lastEntry && lastEntry.date === today;
+  const loggedToday = lastEntry && (lastEntry.logged_at ? lastEntry.logged_at.startsWith(today) : lastEntry.date === today);
 
   const filtered = range === 9999 ? weights : weights.slice(-range);
-  const avg7Series = rollingAvgSeries(weights, 7);
+  const getWeight = (w) => w.weight_value ?? w.weight;
+  const getDate = (w) => w.logged_at ? w.logged_at.slice(0, 10) : w.date;
+
+  const avg7Series = rollingAvgSeries(weights.map(w => ({ ...w, weight: getWeight(w) })), 7);
   const avg7 = avg7Series[avg7Series.length - 1];
-  const avg30Series = rollingAvgSeries(weights, 30);
+  const avg30Series = rollingAvgSeries(weights.map(w => ({ ...w, weight: getWeight(w) })), 30);
   const avg30 = avg30Series[avg30Series.length - 1];
-  const avg7Prev = rollingAvgSeries(weights.slice(0, -7), 7);
+  const avg7Prev = rollingAvgSeries(weights.slice(0, -7).map(w => ({ ...w, weight: getWeight(w) })), 7);
   const wow = avg7 - avg7Prev[avg7Prev.length - 1];
 
   function handleLog() {
@@ -131,18 +142,38 @@ function KiloWeight({ goToTab }) {
       setStatus({ ok: false, error: result.error });
       return;
     }
-    const newEntry = { date: today, weight: result.weight_value, logged_at: result.logged_at };
+
+    const newEntry = {
+      id: `w_${Date.now()}`,
+      entry_type: 'weight',
+      weight_value: result.weight_value,
+      weight_unit: result.weight_unit,
+      logged_at: result.logged_at,
+      saved_at: new Date().toISOString(),
+      note_text: note.trim() || null,
+      // Legacy fields for backward compatibility with graph/list code if not fully updated
+      date: today,
+      weight: result.weight_value
+    };
+
     try {
       persistWeightEntry(newEntry);
     } catch {
       setStatus({ ok: false, error: 'Save failed — storage unavailable' });
       return;
     }
-    const updated = [...weights, newEntry].sort((a, b) => a.date.localeCompare(b.date));
+
+    const updated = [...weights, newEntry].sort((a, b) => {
+      const da = a.logged_at ?? a.date;
+      const db = b.logged_at ?? b.date;
+      return da.localeCompare(db);
+    });
+
     window.KILO_WEIGHTS = updated;
     setWeights(updated);
     setEntry('');
     setNote('');
+    setShowNote(false);
     setStatus({ ok: true });
   }
 
@@ -176,19 +207,25 @@ function KiloWeight({ goToTab }) {
       <div className="kilo-scroll">
         {/* Quick entry */}
         <div style={{ padding: '14px 16px 0' }}>
-          <div style={{ background: KILO_C.surface, border: `1px solid ${KILO_C.border}`, borderRadius: 4, padding: '14px 16px' }}>
+          <div style={{
+            background: KILO_C.surface,
+            border: `1px solid ${status?.ok ? KILO_C.green : status ? KILO_C.red : KILO_C.border}`,
+            borderRadius: 4, padding: '14px 16px',
+            transition: 'border-color 0.2s',
+          }}>
             <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>
               Today · {new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               {!loggedToday && <span className="kilo-blink" style={{ color: KILO_C.accent, marginLeft: 8 }}>● needs entry</span>}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: showNote ? 12 : 0 }}>
-              <span className="kilo-mono" style={{ fontSize: 24, color: KILO_C.accent, fontWeight: 600 }}>›</span>
+              <span className="kilo-mono" style={{ fontSize: 24, color: status?.ok ? KILO_C.green : KILO_C.accent, fontWeight: 600 }}>›</span>
               <input
                 className="kilo-input"
-                style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em' }}
+                style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em', color: status?.ok ? KILO_C.green : KILO_C.ink }}
                 placeholder="000.0"
                 value={entry}
                 onChange={(e) => { setEntry(e.target.value); setStatus(null); }}
+                onKeyDown={(e) => e.key === 'Enter' && entry && handleLog()}
                 inputMode="decimal"
               />
               <span className="kilo-mono" style={{ fontSize: 14, color: KILO_C.ink3 }}>lb</span>
@@ -208,21 +245,22 @@ function KiloWeight({ goToTab }) {
               </button>
               <button
                 className="kilo-btn"
-                disabled={!entry}
+                disabled={!entry || status?.ok}
                 onClick={handleLog}
                 style={{
-                  background: entry ? KILO_C.accent : KILO_C.surface2,
-                  color: entry ? '#000' : KILO_C.ink4,
+                  background: !entry || status?.ok ? KILO_C.surface2 : KILO_C.accent,
+                  color: !entry || status?.ok ? KILO_C.ink4 : '#000',
                   padding: '6px 16px', borderRadius: 3, fontWeight: 700, fontSize: 11,
                   letterSpacing: '0.1em', textTransform: 'uppercase',
+                  transition: 'all 0.2s',
                 }}
               >
-                Log
+                {status?.ok ? 'Saved' : 'Log'}
               </button>
             </div>
             {status && (
               <div className="kilo-mono" style={{ marginTop: 8, fontSize: 11, color: status.ok ? KILO_C.green : KILO_C.red }}>
-                {status.ok ? '✓ saved' : status.error}
+                {status.ok ? '✓ Weight saved successfully' : `✕ ${status.error}`}
               </div>
             )}
           </div>
@@ -262,7 +300,7 @@ function KiloWeight({ goToTab }) {
 
         {/* Graph */}
         <div style={{ padding: '12px 12px 0' }}>
-          <WeightGraph weights={weights} range={range === 9999 ? weights.length : range} target={cutGoal && cutGoal.target} />
+          <WeightGraph weights={weights.map(w => ({ ...w, weight: getWeight(w), date: getDate(w) }))} range={range === 9999 ? weights.length : range} target={cutGoal && cutGoal.target} />
         </div>
 
         {/* Stats grid */}
@@ -289,7 +327,7 @@ function KiloWeight({ goToTab }) {
               <div style={{ height: 4, background: KILO_C.bg2, borderRadius: 2, overflow: 'hidden', position: 'relative' }}>
                 {(() => {
                   // For cut: progress from start to target
-                  const startVal = weights[0].weight;
+                  const startVal = getWeight(weights[0]);
                   const pct = Math.min(100, Math.max(0, ((startVal - avg7) / (startVal - cutGoal.target)) * 100));
                   return <div style={{ height: '100%', width: `${pct}%`, background: KILO_C.accent }} />;
                 })()}
@@ -303,21 +341,24 @@ function KiloWeight({ goToTab }) {
           <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
             {weights.slice().reverse().slice(0, 12).map((w, i) => {
               const prev = weights[weights.length - 2 - i];
-              const delta = prev ? w.weight - prev.weight : null;
-              const d = new Date(w.date);
+              const val = getWeight(w);
+              const prevVal = prev ? getWeight(prev) : null;
+              const delta = prevVal !== null ? val - prevVal : null;
+              const d = new Date(getDate(w) + 'T12:00:00');
               return (
-                <div key={w.date} style={{ padding: '11px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div key={w.id || w.date} style={{ padding: '11px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, width: 76 }}>
                     {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
                   </div>
-                  <KiloNum size={14} weight={500}>{w.weight.toFixed(1)}</KiloNum>
+                  <KiloNum size={14} weight={500}>{val.toFixed(1)}</KiloNum>
                   {delta != null && (
                     <span className="kilo-mono" style={{ fontSize: 10, color: delta < 0 ? KILO_C.green : delta > 0 ? KILO_C.ink3 : KILO_C.ink4 }}>
                       {delta >= 0 ? '+' : ''}{delta.toFixed(1)}
                     </span>
                   )}
                   <div style={{ flex: 1 }} />
-                  <KiloIcon name="edit" size={12} color={KILO_C.ink4} />
+                  {w.note_text && <KiloIcon name="more" size={12} color={KILO_C.ink4} />}
+                  <KiloIcon name="edit" size={12} color={KILO_C.ink4} style={{ marginLeft: 8 }} />
                 </div>
               );
             })}
@@ -343,3 +384,4 @@ function StatCell({ label, val, unit, color, big }) {
 }
 
 window.KiloWeight = KiloWeight;
+window.persistWeightEntry = persistWeightEntry;
