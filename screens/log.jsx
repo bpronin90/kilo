@@ -220,14 +220,16 @@ function KiloLog({ goToTab }) {
   }, 0);
 
   function handleSave() {
-    const items = dayExercises.map(ex => ({ exerciseName: ex.name, raw: raws[ex.id] || '' }));
+    // Include warmup exercises so any entered input is validated and persisted, not silently dropped.
+    const allExercises = [...warmupExercises, ...dayExercises];
+    const items = allExercises.map(ex => ({ exerciseName: ex.name, raw: raws[ex.id] || '' }));
     const result = window.parseWorkoutEntry(items, today);
 
     if (!result.ok) {
       const errorMap = {};
       if (result.rowErrors) {
         for (const re of result.rowErrors) {
-          const ex = dayExercises.find(e => e.name === re.exerciseName);
+          const ex = allExercises.find(e => e.name === re.exerciseName);
           if (ex) errorMap[ex.id] = re.error;
         }
       }
@@ -245,7 +247,7 @@ function KiloLog({ goToTab }) {
       saved_at: new Date().toISOString(),
       day: dow,
       duration: Math.round((Date.now() - startedAt.getTime()) / 60000),
-      exercises: dayExercises
+      exercises: allExercises
         .filter(ex => raws[ex.id] && raws[ex.id].trim())
         .map(ex => ({ exerciseId: ex.id, raw: raws[ex.id].trim() })),
       items: result.items,
