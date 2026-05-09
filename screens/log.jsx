@@ -235,6 +235,8 @@ function KiloLog({ goToTab }) {
       }
       setSaveErrors(errorMap);
       setSaveStatus('error');
+      // Expand warmup section if any warmup row has an error so it's visible
+      if (warmupExercises.some(ex => errorMap[ex.id])) setShowWarmup(true);
       return;
     }
 
@@ -340,7 +342,7 @@ function KiloLog({ goToTab }) {
             lastRef={lastRefs[ex.id]}
             focused={focused === ex.id}
             setFocused={setFocused}
-            saveError={null}
+            saveError={saveErrors[ex.id] || null}
           />
         ))}
 
