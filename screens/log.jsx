@@ -236,25 +236,19 @@ function KiloLog({ goToTab }) {
       return;
     }
 
-    // Persist canonical normalized entry (MVP shape with full set structure)
-    if (!window.KILO_WORKOUT_ENTRIES) window.KILO_WORKOUT_ENTRIES = [];
-    window.KILO_WORKOUT_ENTRIES.unshift({
-      id: `we_${Date.now()}`,
-      entry_type: 'workout',
-      workout_date: result.workout_date,
-      saved_at: new Date().toISOString(),
-      items: result.items,
-    });
-
-    // Also push to KILO_SESSIONS to keep the history display consistent
+    // Persist to KILO_SESSIONS with canonical items embedded so the normalized
+    // structure is readable by all existing session queries and history screens.
     window.KILO_SESSIONS.unshift({
       id: `s_${result.workout_date}_${dow}_${Date.now()}`,
+      entry_type: 'workout',
       date: result.workout_date,
+      saved_at: new Date().toISOString(),
       day: dow,
       duration: Math.round((Date.now() - startedAt.getTime()) / 60000),
       exercises: dayExercises
         .filter(ex => raws[ex.id] && raws[ex.id].trim())
         .map(ex => ({ exerciseId: ex.id, raw: raws[ex.id].trim() })),
+      items: result.items,
     });
 
     setSaveErrors({});
