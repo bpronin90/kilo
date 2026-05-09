@@ -147,7 +147,10 @@ function UnifiedHistoryList({ entries, onDelete }) {
   return (
     <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
       {entries.map(e => {
-        const isUserEntry = e.id && (e.id.startsWith('w_17') || e.id.startsWith('s_2026') && e.id.includes('_17')); // simple heuristic for user entries
+        const isUserEntry = e.id && (
+          (e.entry_type === 'weight' && e.id.startsWith('w_') && !e.id.startsWith('w_202')) ||
+          (e.entry_type === 'workout' && e.id.split('_').length > 3)
+        );
         const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         
         if (e.entry_type === 'workout') {
