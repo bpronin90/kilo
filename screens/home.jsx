@@ -24,6 +24,11 @@ function KiloHome({ goToTab, openSession }) {
   const [weights, setWeights] = React.useState(() => window.KILO_WEIGHTS);
   const [entry, setEntry] = React.useState('');
   const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
+  const [, setTick] = React.useState(0);
+  const refresh = () => {
+    setTick(t => t + 1);
+    setWeights([...window.KILO_WEIGHTS]);
+  };
 
   // Clear success status after delay
   React.useEffect(() => {
@@ -32,6 +37,14 @@ function KiloHome({ goToTab, openSession }) {
       return () => clearTimeout(t);
     }
   }, [status]);
+
+  const handleDelete = (id, type) => {
+    if (type === 'workout') {
+      if (window.deleteWorkoutSession(id)) refresh();
+    } else {
+      if (window.deleteWeightEntry(id)) refresh();
+    }
+  };
 
   const dow = dayOfWeek(today);
   const split = window.KILO_SPLIT[dow];
@@ -286,6 +299,8 @@ function KiloHome({ goToTab, openSession }) {
               
               return history.map(e => {
                 const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const isUserEntry = e.id && (e.id.startsWith('w_17') || e.id.startsWith('s_2026') && e.id.includes('_17'));
+
                 if (e.entry_type === 'workout') {
                   const sp = window.KILO_SPLIT[e.day];
                   return (
@@ -297,6 +312,11 @@ function KiloHome({ goToTab, openSession }) {
                         <div style={{ fontSize: 14, fontWeight: 500 }}>{sp.label}</div>
                         <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>{e.exercises.length} ex · {e.duration}m</div>
                       </div>
+                      {isUserEntry && (
+                        <button className="kilo-btn" onClick={() => window.confirm('Delete this session?') && handleDelete(e.id, 'workout')} style={{ background: 'transparent', padding: 8 }}>
+                          <KiloIcon name="close" size={14} color={KILO_C.red} />
+                        </button>
+                      )}
                       <KiloIcon name="log" size={14} color={KILO_C.ink4} />
                     </div>
                   );
@@ -312,6 +332,11 @@ function KiloHome({ goToTab, openSession }) {
                           <KiloNum size={10} weight={600}>{e.weight_value.toFixed(1)}</KiloNum> lb
                         </div>
                       </div>
+                      {isUserEntry && (
+                        <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && handleDelete(e.id, 'weight')} style={{ background: 'transparent', padding: 8 }}>
+                          <KiloIcon name="close" size={14} color={KILO_C.red} />
+                        </button>
+                      )}
                       <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
                     </div>
                   );

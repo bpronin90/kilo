@@ -177,6 +177,26 @@ function KiloWeight({ goToTab }) {
     setStatus({ ok: true });
   }
 
+  function handleDelete(id) {
+    if (window.deleteWeightEntry(id)) {
+      setWeights([...window.KILO_WEIGHTS]);
+    }
+  }
+
+  function handleEdit(id, currentVal) {
+    const newVal = window.prompt('Edit weight (lbs):', currentVal);
+    if (newVal !== null) {
+      const parsed = parseFloat(newVal);
+      if (!isNaN(parsed) && parsed > 0) {
+        if (window.updateWeightEntry(id, parsed)) {
+          setWeights([...window.KILO_WEIGHTS]);
+        }
+      } else {
+        window.alert('Invalid weight value');
+      }
+    }
+  }
+
   const cutGoal = window.KILO_GOALS.find(g => g.type === 'body_weight' && g.active);
 
   // Trend alert: 7-day moving wrong direction for 10+ days?
@@ -358,7 +378,16 @@ function KiloWeight({ goToTab }) {
                   )}
                   <div style={{ flex: 1 }} />
                   {w.note_text && <KiloIcon name="more" size={12} color={KILO_C.ink4} />}
-                  <KiloIcon name="edit" size={12} color={KILO_C.ink4} style={{ marginLeft: 8 }} />
+                  {(w.id && w.id.startsWith('w_') && !w.id.startsWith('w_202')) && (
+                    <>
+                      <button className="kilo-btn" onClick={() => handleEdit(w.id, val)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                        <KiloIcon name="edit" size={12} color={KILO_C.ink4} />
+                      </button>
+                      <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && handleDelete(w.id)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                        <KiloIcon name="close" size={12} color={KILO_C.red} />
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })}

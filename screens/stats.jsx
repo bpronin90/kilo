@@ -143,13 +143,15 @@ function ExerciseHistoryView({ exId, back }) {
   );
 }
 
-function UnifiedHistoryList({ entries, onExerciseClick }) {
+function UnifiedHistoryList({ entries, onDelete }) {
   return (
     <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
       {entries.map(e => {
+        const isUserEntry = e.id && (e.id.startsWith('w_17') || e.id.startsWith('s_2026') && e.id.includes('_17')); // simple heuristic for user entries
+        const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        
         if (e.entry_type === 'workout') {
           const sp = window.KILO_SPLIT[e.day];
-          const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return (
             <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
@@ -159,12 +161,15 @@ function UnifiedHistoryList({ entries, onExerciseClick }) {
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{sp.label}</div>
                 <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>{e.exercises.length} ex · {e.duration}m</div>
               </div>
+              {isUserEntry && (
+                <button className="kilo-btn" onClick={() => window.confirm('Delete this session?') && onDelete(e.id, 'workout')} style={{ background: 'transparent', padding: 8 }}>
+                  <KiloIcon name="close" size={14} color={KILO_C.red} />
+                </button>
+              )}
               <KiloIcon name="log" size={14} color={KILO_C.ink4} />
             </div>
           );
         } else {
-          const d = new Date(e.date + 'T12:00:00');
-          const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return (
             <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
@@ -177,6 +182,11 @@ function UnifiedHistoryList({ entries, onExerciseClick }) {
                   {e.note_text && ` · ${e.note_text}`}
                 </div>
               </div>
+              {isUserEntry && (
+                <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && onDelete(e.id, 'weight')} style={{ background: 'transparent', padding: 8 }}>
+                  <KiloIcon name="close" size={14} color={KILO_C.red} />
+                </button>
+              )}
               <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
             </div>
           );
@@ -190,10 +200,20 @@ function KiloStats({ goToTab }) {
   const [view, setView] = React.useState('list'); // 'list' | exId
   const [listMode, setListMode] = React.useState('history'); // 'history' | 'exercises'
   const [filterDay, setFilterDay] = React.useState('all');
+  const [, setTick] = React.useState(0);
+  const refresh = () => setTick(t => t + 1);
 
   if (view !== 'list') {
     return <ExerciseHistoryView exId={view} back={() => setView('list')} />;
   }
+
+  const handleDelete = (id, type) => {
+    if (type === 'workout') {
+      if (window.deleteWorkoutSession(id)) refresh();
+    } else {
+      if (window.deleteWeightEntry(id)) refresh();
+    }
+  };
 
   // Unified history
   const historyEntries = (() => {
@@ -289,7 +309,7 @@ function KiloStats({ goToTab }) {
 
         {listMode === 'history' ? (
           <KiloSection title="Recent History">
-            <UnifiedHistoryList entries={historyEntries} />
+            <UnifiedHistoryList entries={historyEntries} onDelete={handleDelete} />
           </KiloSection>
         ) : (
           <>
