@@ -179,7 +179,11 @@ const SESSION_STORAGE_KEY = 'kilo_workout_sessions';
       const existingIds = new Set(window.KILO_SESSIONS.map(s => s.id));
       const uniqueNew = stored.filter(s => !existingIds.has(s.id));
       window.KILO_SESSIONS = [...uniqueNew, ...window.KILO_SESSIONS]
-        .sort((a, b) => b.date.localeCompare(a.date));
+        .sort((a, b) => {
+          const dateDiff = b.date.localeCompare(a.date);
+          if (dateDiff !== 0) return dateDiff;
+          return (b.saved_at || '').localeCompare(a.saved_at || '');
+        });
     }
   } catch {}
 })();
@@ -278,7 +282,7 @@ function KiloLog({ goToTab }) {
       persistWorkoutSession(newSession);
     } catch (e) {
       console.error('Save failed', e);
-      setSaveStatus('error');
+      setSaveStatus('storage_error');
       return;
     }
 
@@ -447,6 +451,17 @@ function KiloLog({ goToTab }) {
               border: `1px solid rgba(239,68,68,0.2)`,
             }}>
               ✕ Complete at least one exercise before saving
+            </div>
+          )}
+
+          {saveStatus === 'storage_error' && (
+            <div className="kilo-mono" style={{
+              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
+              marginBottom: 10, padding: '8px 10px',
+              background: 'rgba(239,68,68,0.08)', borderRadius: 3,
+              border: `1px solid rgba(239,68,68,0.2)`,
+            }}>
+              ✕ Save failed — storage unavailable
             </div>
           )}
 
