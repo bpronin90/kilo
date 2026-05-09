@@ -1,31 +1,44 @@
 // log.jsx — Kilo Log Session screen with live parser
 
-function ParsePreview({ raw }) {
-  const parsed = window.parseKiloInput(raw);
-  if (!raw || !raw.trim()) {
-    return <div style={{ height: 22 }} />;
+function groupSetsByWeight(sets) {
+  const groups = [];
+  let cur = null;
+  for (const s of sets) {
+    if (cur && cur.weight === s.weight_value) {
+      cur.reps.push(s.rep_count);
+    } else {
+      cur = { weight: s.weight_value, reps: [s.rep_count] };
+      groups.push(cur);
+    }
   }
-  if (parsed.skipped) {
+  return groups;
+}
+
+function ParsePreview({ raw }) {
+  const result = window.parseWorkoutRow(raw);
+  if (!raw || !raw.trim() || result.blank) return <div style={{ height: 22 }} />;
+  if (result.skipped) {
     return (
       <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-        Skipped session
+        Skipped
       </div>
     );
   }
-  if (parsed.sets.length === 0) {
+  if (!result.ok) {
     return (
       <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.yellow, letterSpacing: '0.06em' }}>
-        ⚠ unrecognized — saved as raw
+        ⚠ {result.error}
       </div>
     );
   }
-  const top = window.topSet(parsed);
-  const isDrop = parsed.sets.length > 1 && parsed.sets.some(s => s.weight !== top.weight);
-  const totalR = window.totalReps(parsed);
+  const groups = groupSetsByWeight(result.sets);
+  const maxW = Math.max(...groups.filter(g => g.weight !== null).map(g => g.weight), -Infinity);
+  const totalR = result.sets.reduce((s, x) => s + x.rep_count, 0);
+  const totalV = result.sets.reduce((s, x) => s + (x.weight_value || 0) * x.rep_count, 0);
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-      {parsed.sets.map((s, i) => {
-        const isTop = s.weight === top.weight;
+      {groups.map((g, i) => {
+        const isTop = g.weight !== null && g.weight === maxW;
         return (
           <div key={i} style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -33,29 +46,36 @@ function ParsePreview({ raw }) {
             border: `1px solid ${isTop ? 'transparent' : KILO_C.border2}`,
             padding: '3px 7px', borderRadius: 3,
           }}>
-            <KiloNum size={11} weight={600} color={isTop ? KILO_C.accent : KILO_C.ink}>{s.weight}</KiloNum>
-            <span className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3 }}>×</span>
+            {g.weight !== null && (
+              <>
+                <KiloNum size={11} weight={600} color={isTop ? KILO_C.accent : KILO_C.ink}>{g.weight}</KiloNum>
+                <span className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3 }}>×</span>
+              </>
+            )}
             <span className="kilo-mono" style={{ fontSize: 11, color: isTop ? KILO_C.accent : KILO_C.ink2, fontWeight: 500 }}>
-              {s.reps.join(',')}
+              {g.reps.join(',')}
             </span>
           </div>
         );
       })}
       <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, marginLeft: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-        {isDrop && <span style={{ color: KILO_C.blue, marginRight: 6 }}>drop</span>}
-        {totalR}r · {Math.round(window.totalVolume(parsed))}lb
+        {totalR}r{totalV > 0 ? ` · ${Math.round(totalV)}lb` : ''}
       </div>
     </div>
   );
 }
 
-function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused }) {
-  const parsed = window.parseKiloInput(raw);
-  const ok = raw.trim() && (parsed.sets.length > 0 || parsed.skipped);
+function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError }) {
+  const result = window.parseWorkoutRow(raw);
+  const ok = result.ok && !result.blank;
   const lastParsed = lastRef ? window.parseKiloInput(lastRef.raw) : null;
   const lastTop = lastParsed ? window.topSet(lastParsed) : null;
 
-  const adj = parsed.sets.length > 0 && ex.po ? window.adjusted1RM(parsed) : null;
+  // 1RM via legacy parser (read-only analytics, unchanged)
+  const legacyParsed = window.parseKiloInput(raw);
+  const adj = legacyParsed.sets.length > 0 && ex.po ? window.adjusted1RM(legacyParsed) : null;
+
+  const hasError = !!saveError;
 
   return (
     <div style={{
@@ -69,13 +89,13 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused }) {
           {ok ? (
             <div style={{
               width: 14, height: 14, borderRadius: 2,
-              background: parsed.skipped ? KILO_C.ink4 : KILO_C.accent,
+              background: result.skipped ? KILO_C.ink4 : KILO_C.accent,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              {!parsed.skipped && <KiloIcon name="check" size={11} color="#000" />}
+              {!result.skipped && <KiloIcon name="check" size={11} color="#000" />}
             </div>
           ) : (
-            <div style={{ width: 14, height: 14, borderRadius: 2, border: `1px solid ${KILO_C.border2}` }} />
+            <div style={{ width: 14, height: 14, borderRadius: 2, border: `1px solid ${hasError ? KILO_C.red : KILO_C.border2}` }} />
           )}
           <div style={{ flex: 1, fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>
             {ex.name}
@@ -95,18 +115,19 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused }) {
           )}
         </div>
 
-        {/* Input field — terminal style */}
+        {/* Input field */}
         <div
           onClick={() => setFocused(ex.id)}
           style={{
             marginLeft: 22, padding: '8px 10px',
-            background: KILO_C.bg, border: `1px solid ${focused ? KILO_C.accent : KILO_C.border2}`,
+            background: KILO_C.bg,
+            border: `1px solid ${hasError ? KILO_C.red : focused ? KILO_C.accent : KILO_C.border2}`,
             borderRadius: 3,
             display: 'flex', alignItems: 'center', gap: 6,
             transition: 'border-color 0.15s',
           }}
         >
-          <span className="kilo-mono" style={{ fontSize: 12, color: KILO_C.accent, fontWeight: 600 }}>›</span>
+          <span className="kilo-mono" style={{ fontSize: 12, color: hasError ? KILO_C.red : KILO_C.accent, fontWeight: 600 }}>›</span>
           <input
             className="kilo-input"
             style={{ fontSize: 13, fontWeight: 500 }}
@@ -120,9 +141,15 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused }) {
           />
         </div>
 
-        {/* Parse preview */}
+        {/* Parse preview or save error */}
         <div style={{ marginTop: 10, marginLeft: 22, minHeight: 22 }}>
-          <ParsePreview raw={raw} />
+          {saveError ? (
+            <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em' }}>
+              ✕ {saveError}
+            </div>
+          ) : (
+            <ParsePreview raw={raw} />
+          )}
         </div>
 
         {/* 1RM preview when PO */}
@@ -153,7 +180,6 @@ function KiloLog({ goToTab }) {
   const dayExercises = allDayExercises.filter(e => !e.isWarmup);
   const warmupExercises = allDayExercises.filter(e => e.isWarmup);
 
-  // raw inputs keyed by exercise id
   const [raws, setRaws] = React.useState(() => {
     const m = {};
     [...dayExercises, ...warmupExercises].forEach(e => { m[e.id] = ''; });
@@ -163,10 +189,15 @@ function KiloLog({ goToTab }) {
   const [showWarmup, setShowWarmup] = React.useState(false);
   const [ptDone, setPtDone] = React.useState({});
   const [startedAt] = React.useState(new Date());
+  const [saveErrors, setSaveErrors] = React.useState({});
+  const [saveStatus, setSaveStatus] = React.useState(null); // null | 'success'
 
-  const setRaw = (id, val) => setRaws(r => ({ ...r, [id]: val }));
+  const setRaw = (id, val) => {
+    setRaws(r => ({ ...r, [id]: val }));
+    if (saveErrors[id]) setSaveErrors(e => { const n = { ...e }; delete n[id]; return n; });
+    if (saveStatus === 'error') setSaveStatus(null);
+  };
 
-  // last session reference per exercise
   const lastRefs = {};
   for (const ex of [...dayExercises, ...warmupExercises]) {
     for (const s of window.KILO_SESSIONS) {
@@ -176,16 +207,81 @@ function KiloLog({ goToTab }) {
   }
 
   const completedCount = dayExercises.filter(ex => {
-    const p = window.parseKiloInput(raws[ex.id]);
-    return p.sets.length > 0 || p.skipped;
+    const r = window.parseWorkoutRow(raws[ex.id]);
+    return r.ok && !r.blank;
   }).length;
 
   const ptCompleted = Object.values(ptDone).filter(Boolean).length;
 
   const totalVolume = dayExercises.reduce((sum, ex) => {
-    const p = window.parseKiloInput(raws[ex.id]);
-    return sum + window.totalVolume(p);
+    const r = window.parseWorkoutRow(raws[ex.id]);
+    if (!r.ok || !r.sets) return sum;
+    return sum + r.sets.reduce((s, x) => s + (x.weight_value || 0) * x.rep_count, 0);
   }, 0);
+
+  function handleSave() {
+    const items = dayExercises.map(ex => ({ exerciseName: ex.name, raw: raws[ex.id] || '' }));
+    const result = window.parseWorkoutEntry(items);
+
+    if (!result.ok) {
+      const errorMap = {};
+      if (result.rowErrors) {
+        for (const re of result.rowErrors) {
+          const ex = dayExercises.find(e => e.name === re.exerciseName);
+          if (ex) errorMap[ex.id] = re.error;
+        }
+      }
+      setSaveErrors(errorMap);
+      setSaveStatus('error');
+      return;
+    }
+
+    const newSession = {
+      id: `s_${result.workout_date}_${dow}_${Date.now()}`,
+      date: result.workout_date,
+      day: dow,
+      duration: Math.round((Date.now() - startedAt.getTime()) / 60000),
+      exercises: dayExercises
+        .filter(ex => raws[ex.id] && raws[ex.id].trim())
+        .map(ex => ({ exerciseId: ex.id, raw: raws[ex.id].trim() })),
+    };
+    window.KILO_SESSIONS.unshift(newSession);
+
+    setSaveErrors({});
+    setSaveStatus('success');
+  }
+
+  if (saveStatus === 'success') {
+    return (
+      <div className="kilo-screen" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 8,
+          background: KILO_C.accent,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <KiloIcon name="check" size={28} color="#000" />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>Workout saved</div>
+          <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 6 }}>
+            {completedCount} exercise{completedCount !== 1 ? 's' : ''} · {Math.round(totalVolume).toLocaleString()} lb
+          </div>
+        </div>
+        <button
+          className="kilo-btn"
+          onClick={() => goToTab('home')}
+          style={{
+            marginTop: 8, padding: '12px 24px', borderRadius: 3,
+            background: KILO_C.surface, border: `1px solid ${KILO_C.border2}`,
+            color: KILO_C.ink, fontFamily: KILO_FONT, fontWeight: 600, fontSize: 13,
+            letterSpacing: '0.04em',
+          }}
+        >
+          Back to Home
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="kilo-screen">
@@ -205,14 +301,13 @@ function KiloLog({ goToTab }) {
             </div>
           </div>
         </div>
-        {/* progress hairline */}
         <div style={{ height: 2, background: KILO_C.bg2, position: 'relative' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${(completedCount/dayExercises.length)*100}%`, background: KILO_C.accent, transition: 'width 0.3s' }} />
         </div>
       </div>
 
       <div className="kilo-scroll">
-        {/* Warmup section - collapsible */}
+        {/* Warmup section */}
         <button
           className="kilo-btn"
           onClick={() => setShowWarmup(s => !s)}
@@ -239,6 +334,7 @@ function KiloLog({ goToTab }) {
             lastRef={lastRefs[ex.id]}
             focused={focused === ex.id}
             setFocused={setFocused}
+            saveError={null}
           />
         ))}
 
@@ -252,6 +348,7 @@ function KiloLog({ goToTab }) {
             lastRef={lastRefs[ex.id]}
             focused={focused === ex.id}
             setFocused={setFocused}
+            saveError={saveErrors[ex.id] || null}
           />
         ))}
 
@@ -301,9 +398,22 @@ function KiloLog({ goToTab }) {
             <SummaryStat label="Exercises" val={`${completedCount}/${dayExercises.length}`} />
             <SummaryStat label="PT" val={`${ptCompleted}/${window.KILO_PT.length}`} />
           </div>
+
+          {saveStatus === 'error' && Object.keys(saveErrors).length === 0 && (
+            <div className="kilo-mono" style={{
+              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
+              marginBottom: 10, padding: '8px 10px',
+              background: 'rgba(239,68,68,0.08)', borderRadius: 3,
+              border: `1px solid rgba(239,68,68,0.2)`,
+            }}>
+              ✕ Complete at least one exercise before saving
+            </div>
+          )}
+
           <button
             className="kilo-btn"
             disabled={completedCount === 0}
+            onClick={handleSave}
             style={{
               width: '100%', padding: '14px', borderRadius: 3,
               background: completedCount === 0 ? KILO_C.surface2 : KILO_C.accent,

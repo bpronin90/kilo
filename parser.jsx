@@ -117,8 +117,124 @@ function parseWeightEntry(raw) {
   return { ok: true, raw, weight_value: value, weight_unit: 'lb', logged_at: new Date().toISOString() };
 }
 
+// Workout row parse path (MVP)
+// Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
+// load = ASCII digits with optional single decimal point
+// rep-group = positive integers separated by commas, no trailing comma
+// Standalone rep-group form requires at least one comma to be unambiguous.
+function parseWorkoutRow(raw) {
+  if (!raw || raw.trim() === '') return { ok: true, blank: true };
+  const trimmed = raw.trim();
+  if (trimmed === '-') return { ok: true, skipped: true };
+
+  // Normalize spaces around/after commas, collapse repeated spaces
+  const normalized = trimmed.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+  const tokens = normalized.split(' ');
+
+  if (tokens[0].includes(',')) {
+    // Standalone rep-group form: must be exactly one token with at least one comma
+    if (tokens.length !== 1) {
+      return { ok: false, raw, error: 'Unrecognized format — use: reps,reps or weight reps,reps', category: 'invalid_field_value' };
+    }
+    if (!/^\d+(,\d+)+$/.test(tokens[0])) {
+      return { ok: false, raw, error: 'Invalid rep group — use: 8,8,8 (no trailing comma)', category: 'invalid_field_value' };
+    }
+    const reps = tokens[0].split(',').map(n => parseInt(n, 10));
+    if (reps.some(r => r <= 0)) {
+      return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
+    }
+    return {
+      ok: true, skipped: false,
+      sets: reps.map((rep_count, i) => ({
+        set_index: i + 1, rep_count,
+        weight_value: null, weight_unit: null,
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      })),
+    };
+  }
+
+  // First token has no comma
+  if (tokens.length === 1) {
+    // Single number with no comma: ambiguous between load and single-rep rep-group — reject
+    return { ok: false, raw, error: 'Enter reps as reps,reps or weight reps,reps', category: 'invalid_field_value' };
+  }
+
+  // Parse as alternating <load> <rep-group> pairs
+  const LOAD_RE = /^\d+(\.\d+)?$/;
+  const REP_RE = /^\d+(,\d+)*$/;
+  const sets = [];
+  let set_index = 1;
+  let i = 0;
+  while (i < tokens.length) {
+    const load_tok = tokens[i];
+    if (!LOAD_RE.test(load_tok)) {
+      return { ok: false, raw, error: `Unrecognized input "${load_tok}" — use: weight reps,reps`, category: 'invalid_field_value' };
+    }
+    const weight = parseFloat(load_tok);
+    if (weight <= 0) {
+      return { ok: false, raw, error: 'Weight must be greater than zero', category: 'invalid_field_value' };
+    }
+    i++;
+    if (i >= tokens.length) {
+      return { ok: false, raw, error: `Missing reps after weight ${weight}`, category: 'structural_violation' };
+    }
+    const rep_tok = tokens[i];
+    if (!REP_RE.test(rep_tok)) {
+      return { ok: false, raw, error: `Invalid reps "${rep_tok}" — use: 8 or 8,8,8`, category: 'invalid_field_value' };
+    }
+    const reps = rep_tok.split(',').map(n => parseInt(n, 10));
+    if (reps.some(r => r <= 0)) {
+      return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
+    }
+    i++;
+    for (const rep_count of reps) {
+      sets.push({
+        set_index: set_index++, rep_count,
+        weight_value: weight, weight_unit: 'lb',
+        duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
+      });
+    }
+  }
+  return { ok: true, skipped: false, sets };
+}
+
+// Workout entry parse path (MVP)
+// items: array of { exerciseName: string, raw: string }
+// Returns canonical workout entry shape or error with per-row details.
+function parseWorkoutEntry(items) {
+  const workout_date = new Date().toISOString().slice(0, 10);
+  const parsedItems = [];
+  const rowErrors = [];
+
+  for (const { exerciseName, raw } of items) {
+    const row = parseWorkoutRow(raw);
+    if (row.blank || row.skipped) continue;
+    if (!row.ok) {
+      rowErrors.push({ exerciseName, error: row.error, category: row.category });
+      continue;
+    }
+    parsedItems.push({
+      exercise_name: exerciseName,
+      result_kind: 'sets',
+      note_text: null,
+      position: parsedItems.length + 1,
+      sets: row.sets,
+    });
+  }
+
+  if (rowErrors.length > 0) {
+    return { ok: false, error: rowErrors[0].error, category: rowErrors[0].category, rowErrors };
+  }
+  if (parsedItems.length === 0) {
+    return { ok: false, error: 'Workout must include at least one completed exercise', category: 'structural_violation' };
+  }
+  return { ok: true, workout_date, items: parsedItems };
+}
+
 window.parseKiloInput = parseKiloInput;
 window.parseWeightEntry = parseWeightEntry;
+window.parseWorkoutRow = parseWorkoutRow;
+window.parseWorkoutEntry = parseWorkoutEntry;
 window.formatParsed = formatParsed;
 window.totalVolume = totalVolume;
 window.totalReps = totalReps;
