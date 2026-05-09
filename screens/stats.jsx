@@ -143,13 +143,64 @@ function ExerciseHistoryView({ exId, back }) {
   );
 }
 
+function UnifiedHistoryList({ entries, onExerciseClick }) {
+  return (
+    <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
+      {entries.map(e => {
+        if (e.entry_type === 'workout') {
+          const sp = window.KILO_SPLIT[e.day];
+          const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return (
+            <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
+                {date}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{sp.label}</div>
+                <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>{e.exercises.length} ex · {e.duration}m</div>
+              </div>
+              <KiloIcon name="log" size={14} color={KILO_C.ink4} />
+            </div>
+          );
+        } else {
+          const d = new Date(e.date + 'T12:00:00');
+          const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return (
+            <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
+                {date}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Weight</div>
+                <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>
+                  <KiloNum size={10} weight={600}>{e.weight_value.toFixed(1)}</KiloNum> lb
+                  {e.note_text && ` · ${e.note_text}`}
+                </div>
+              </div>
+              <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
+            </div>
+          );
+        }
+      })}
+    </div>
+  );
+}
+
 function KiloStats({ goToTab }) {
   const [view, setView] = React.useState('list'); // 'list' | exId
+  const [listMode, setListMode] = React.useState('history'); // 'history' | 'exercises'
   const [filterDay, setFilterDay] = React.useState('all');
 
   if (view !== 'list') {
     return <ExerciseHistoryView exId={view} back={() => setView('list')} />;
   }
+
+  // Unified history
+  const historyEntries = (() => {
+    const sessions = (window.KILO_SESSIONS || []).map(s => ({ ...s, sortDate: s.saved_at || s.date + 'T23:59:59Z' }));
+    const weights = (window.KILO_WEIGHTS || []).map(w => ({ ...w, sortDate: w.saved_at || (w.logged_at ?? w.date + 'T08:00:00Z') }));
+    return [...sessions, ...weights].sort((a, b) => b.sortDate.localeCompare(a.sortDate)).slice(0, 30);
+  })();
 
   // Compute big-3 1RMs for header
   const big3 = ['squat', 'db_bench', 'deadlift'];
@@ -206,61 +257,99 @@ function KiloStats({ goToTab }) {
           </div>
         </div>
 
-        {/* Day filter */}
-        <div style={{ marginTop: 20, padding: '0 16px', display: 'flex', gap: 4, overflowX: 'auto' }}>
-          {days.map(d => (
-            <button
-              key={d}
-              onClick={() => setFilterDay(d)}
-              className="kilo-btn"
-              style={{
-                padding: '6px 10px', borderRadius: 3,
-                background: filterDay === d ? KILO_C.accentDim : 'transparent',
-                color: filterDay === d ? KILO_C.accent : KILO_C.ink3,
-                border: `1px solid ${filterDay === d ? 'transparent' : KILO_C.border2}`,
-                fontFamily: KILO_MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {d === 'all' ? 'All' : d.slice(0, 3)}
-            </button>
-          ))}
+        {/* List mode toggle */}
+        <div style={{ padding: '20px 16px 0', display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setListMode('history')}
+            className="kilo-btn"
+            style={{
+              flex: 1, padding: '10px', borderRadius: 3,
+              background: listMode === 'history' ? KILO_C.surface : 'transparent',
+              color: listMode === 'history' ? KILO_C.accent : KILO_C.ink3,
+              border: `1px solid ${listMode === 'history' ? KILO_C.border : 'transparent'}`,
+              fontFamily: KILO_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
+            }}
+          >
+            History
+          </button>
+          <button
+            onClick={() => setListMode('exercises')}
+            className="kilo-btn"
+            style={{
+              flex: 1, padding: '10px', borderRadius: 3,
+              background: listMode === 'exercises' ? KILO_C.surface : 'transparent',
+              color: listMode === 'exercises' ? KILO_C.accent : KILO_C.ink3,
+              border: `1px solid ${listMode === 'exercises' ? KILO_C.border : 'transparent'}`,
+              fontFamily: KILO_MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
+            }}
+          >
+            Exercises
+          </button>
         </div>
 
-        {/* Exercise list */}
-        <KiloSection title={`Exercises · ${exercises.length}`}>
-          <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
-            {exercises.map(ex => {
-              // get last 1RM
-              const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === ex.id));
-              const e = last && last.exercises.find(x => x.exerciseId === ex.id);
-              const adj = e ? window.adjusted1RM(window.parseKiloInput(e.raw)) : null;
-              return (
+        {listMode === 'history' ? (
+          <KiloSection title="Recent History">
+            <UnifiedHistoryList entries={historyEntries} />
+          </KiloSection>
+        ) : (
+          <>
+            {/* Day filter */}
+            <div style={{ marginTop: 20, padding: '0 16px', display: 'flex', gap: 4, overflowX: 'auto' }}>
+              {days.map(d => (
                 <button
-                  key={ex.id}
-                  onClick={() => setView(ex.id)}
+                  key={d}
+                  onClick={() => setFilterDay(d)}
                   className="kilo-btn"
-                  style={{ width: '100%', textAlign: 'left', background: 'transparent', padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, color: KILO_C.ink, display: 'flex', alignItems: 'center', gap: 12 }}
+                  style={{
+                    padding: '6px 10px', borderRadius: 3,
+                    background: filterDay === d ? KILO_C.accentDim : 'transparent',
+                    color: filterDay === d ? KILO_C.accent : KILO_C.ink3,
+                    border: `1px solid ${filterDay === d ? 'transparent' : KILO_C.border2}`,
+                    fontFamily: KILO_MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                  }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 3 }}>{ex.name}</div>
-                    <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.04em' }}>
-                      {ex.day.slice(0,3).toUpperCase()} · {ex.sets}×{ex.repMin}–{ex.repMax}
-                      {!ex.po && ' · ∗'}
-                    </div>
-                  </div>
-                  {adj && (
-                    <div style={{ textAlign: 'right' }}>
-                      <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj.adjusted)}</KiloNum>
-                      <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em', textTransform: 'uppercase' }}>1RM</div>
-                    </div>
-                  )}
-                  <KiloIcon name="arrow" size={14} color={KILO_C.ink4} />
+                  {d === 'all' ? 'All' : d.slice(0, 3)}
                 </button>
-              );
-            })}
-          </div>
-        </KiloSection>
+              ))}
+            </div>
+
+            {/* Exercise list */}
+            <KiloSection title={`Exercises · ${exercises.length}`}>
+              <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
+                {exercises.map(ex => {
+                  // get last 1RM
+                  const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === ex.id));
+                  const e = last && last.exercises.find(x => x.exerciseId === ex.id);
+                  const adj = e ? window.adjusted1RM(window.parseKiloInput(e.raw)) : null;
+                  return (
+                    <button
+                      key={ex.id}
+                      onClick={() => setView(ex.id)}
+                      className="kilo-btn"
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, color: KILO_C.ink, display: 'flex', alignItems: 'center', gap: 12 }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 3 }}>{ex.name}</div>
+                        <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.04em' }}>
+                          {ex.day.slice(0,3).toUpperCase()} · {ex.sets}×{ex.repMin}–{ex.repMax}
+                          {!ex.po && ' · ∗'}
+                        </div>
+                      </div>
+                      {adj && (
+                        <div style={{ textAlign: 'right' }}>
+                          <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj.adjusted)}</KiloNum>
+                          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em', textTransform: 'uppercase' }}>1RM</div>
+                        </div>
+                      )}
+                      <KiloIcon name="arrow" size={14} color={KILO_C.ink4} />
+                    </button>
+                  );
+                })}
+              </div>
+            </KiloSection>
+          </>
+        )}
 
         <div style={{ height: 24 }} />
       </div>
