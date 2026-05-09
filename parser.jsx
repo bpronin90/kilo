@@ -200,10 +200,10 @@ function parseWorkoutRow(raw) {
 
 // Workout entry parse path (MVP)
 // items: array of { exerciseName: string, raw: string }
-// workout_date: caller-supplied date string (YYYY-MM-DD); required to avoid UTC offset errors.
+// workout_date: optional YYYY-MM-DD; defaults to window.KILO_TODAY if available, else current UTC date.
 // Returns canonical workout entry shape or error with per-row details.
 function parseWorkoutEntry(items, workout_date) {
-  if (!workout_date) throw new Error('workout_date is required');
+  const date = workout_date || (typeof window !== 'undefined' && window.KILO_TODAY) || new Date().toISOString().slice(0, 10);
   const parsedItems = [];
   const rowErrors = [];
 
@@ -229,7 +229,7 @@ function parseWorkoutEntry(items, workout_date) {
   if (parsedItems.length === 0) {
     return { ok: false, error: 'Workout must include at least one completed exercise', category: 'structural_violation' };
   }
-  return { ok: true, workout_date, items: parsedItems };
+  return { ok: true, workout_date: date, items: parsedItems };
 }
 
 window.parseKiloInput = parseKiloInput;
