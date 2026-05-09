@@ -200,9 +200,10 @@ function parseWorkoutRow(raw) {
 
 // Workout entry parse path (MVP)
 // items: array of { exerciseName: string, raw: string }
+// workout_date: caller-supplied date string (YYYY-MM-DD); required to avoid UTC offset errors.
 // Returns canonical workout entry shape or error with per-row details.
-function parseWorkoutEntry(items) {
-  const workout_date = new Date().toISOString().slice(0, 10);
+function parseWorkoutEntry(items, workout_date) {
+  if (!workout_date) throw new Error('workout_date is required');
   const parsedItems = [];
   const rowErrors = [];
 

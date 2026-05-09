@@ -221,7 +221,7 @@ function KiloLog({ goToTab }) {
 
   function handleSave() {
     const items = dayExercises.map(ex => ({ exerciseName: ex.name, raw: raws[ex.id] || '' }));
-    const result = window.parseWorkoutEntry(items);
+    const result = window.parseWorkoutEntry(items, today);
 
     if (!result.ok) {
       const errorMap = {};
@@ -236,7 +236,18 @@ function KiloLog({ goToTab }) {
       return;
     }
 
-    const newSession = {
+    // Persist canonical normalized entry (MVP shape with full set structure)
+    if (!window.KILO_WORKOUT_ENTRIES) window.KILO_WORKOUT_ENTRIES = [];
+    window.KILO_WORKOUT_ENTRIES.unshift({
+      id: `we_${Date.now()}`,
+      entry_type: 'workout',
+      workout_date: result.workout_date,
+      saved_at: new Date().toISOString(),
+      items: result.items,
+    });
+
+    // Also push to KILO_SESSIONS to keep the history display consistent
+    window.KILO_SESSIONS.unshift({
       id: `s_${result.workout_date}_${dow}_${Date.now()}`,
       date: result.workout_date,
       day: dow,
@@ -244,8 +255,7 @@ function KiloLog({ goToTab }) {
       exercises: dayExercises
         .filter(ex => raws[ex.id] && raws[ex.id].trim())
         .map(ex => ({ exerciseId: ex.id, raw: raws[ex.id].trim() })),
-    };
-    window.KILO_SESSIONS.unshift(newSession);
+    });
 
     setSaveErrors({});
     setSaveStatus('success');
