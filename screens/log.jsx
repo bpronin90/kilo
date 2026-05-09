@@ -169,6 +169,27 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError 
   );
 }
 
+const SESSION_STORAGE_KEY = 'kilo_workout_sessions';
+
+// Merge stored user sessions into window.KILO_SESSIONS once at load time.
+(function initStoredSessions() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || '[]');
+    if (stored.length) {
+      const existingIds = new Set(window.KILO_SESSIONS.map(s => s.id));
+      const uniqueNew = stored.filter(s => !existingIds.has(s.id));
+      window.KILO_SESSIONS = [...uniqueNew, ...window.KILO_SESSIONS]
+        .sort((a, b) => b.date.localeCompare(a.date));
+    }
+  } catch {}
+})();
+
+function persistWorkoutSession(session) {
+  const stored = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || '[]');
+  stored.push(session);
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stored));
+}
+
 function KiloLog({ goToTab }) {
   const today = window.KILO_TODAY;
   const dow = window.dayOfWeek ? window.dayOfWeek(today) : (() => {
@@ -190,7 +211,7 @@ function KiloLog({ goToTab }) {
   const [ptDone, setPtDone] = React.useState({});
   const [startedAt] = React.useState(new Date());
   const [saveErrors, setSaveErrors] = React.useState({});
-  const [saveStatus, setSaveStatus] = React.useState(null); // null | 'success'
+  const [saveStatus, setSaveStatus] = React.useState(null); // null | 'success' | 'error'
 
   const setRaw = (id, val) => {
     setRaws(r => ({ ...r, [id]: val }));
@@ -240,9 +261,7 @@ function KiloLog({ goToTab }) {
       return;
     }
 
-    // Persist to KILO_SESSIONS with canonical items embedded so the normalized
-    // structure is readable by all existing session queries and history screens.
-    window.KILO_SESSIONS.unshift({
+    const newSession = {
       id: `s_${result.workout_date}_${dow}_${Date.now()}`,
       entry_type: 'workout',
       date: result.workout_date,
@@ -253,11 +272,24 @@ function KiloLog({ goToTab }) {
         .filter(ex => raws[ex.id] && raws[ex.id].trim())
         .map(ex => ({ exerciseId: ex.id, raw: raws[ex.id].trim() })),
       items: result.items,
-    });
+    };
+
+    try {
+      persistWorkoutSession(newSession);
+    } catch (e) {
+      console.error('Save failed', e);
+      setSaveStatus('error');
+      return;
+    }
+
+    // Persist to KILO_SESSIONS with canonical items embedded so the normalized
+    // structure is readable by all existing session queries and history screens.
+    window.KILO_SESSIONS.unshift(newSession);
 
     setSaveErrors({});
     setSaveStatus('success');
   }
+
 
   if (saveStatus === 'success') {
     return (
@@ -454,3 +486,4 @@ function SummaryStat({ label, val }) {
 }
 
 window.KiloLog = KiloLog;
+window.persistWorkoutSession = persistWorkoutSession;
