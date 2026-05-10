@@ -9,7 +9,7 @@ browser using CDN React and Babel transpilation.
 then loads each source file as a `<script type="text/babel">` tag in order:
 
 1. `parser.jsx` — pure parse functions; no React
-2. `data.jsx` — seeds globals; depends on `parser.jsx` (none called at seed time)
+2. `data.jsx` — seeds globals; depends on `parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
 3. `components/ui.jsx` — shared primitives; depends on globals from `data.jsx`
 4. `screens/home.jsx`, `screens/log.jsx`, `screens/weight.jsx`, `screens/stats.jsx`
 5. `app.jsx` — root component; references all screen components
@@ -108,8 +108,11 @@ merges user entries into the in-memory global:
   `id`, then sorts newest-first by `(date, saved_at)`.
 - `weight.jsx` merges user entries into `window.KILO_WEIGHTS`, sorts by `date`.
 
-Merge runs once per page load. After merge, all screens read from the in-memory
-global directly — no further localStorage reads.
+Merge runs once per page load. After merge, no further re-merge reads occur
+during rendering — screens read the in-memory global directly. However,
+save/edit/delete operations continue to read and write localStorage via
+`persistWorkoutSession`, `persistWeightEntry`, and the correction helpers
+(`deleteWeightEntry`, `updateWeightEntry`, `deleteWorkoutSession`).
 
 ## Entry Shapes
 
@@ -126,7 +129,7 @@ global directly — no further localStorage reads.
   logged_at: '2026-04-15T08:00:00Z',
   saved_at: '2026-04-15T08:00:05Z',
   isUserEntry: true,           // only on user-created entries
-  note: '',                    // only on entries logged with a note
+  note_text: null,             // string or null; only present on entries logged with a note
 }
 ```
 
