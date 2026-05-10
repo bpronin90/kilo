@@ -24,7 +24,7 @@ The app has five tabs: Home, Log, Weight, Stats, More.
 
 ## MVP Surface — What Is Implemented
 
-### Parser (`parser.jsx`)
+### Parser (`src/parser.jsx`)
 
 The MVP canonical parse path is fully implemented and tested.
 
@@ -41,7 +41,7 @@ The MVP canonical parse path is fully implemented and tested.
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.
 
-### Weight Logging (`screens/weight.jsx`)
+### Weight Logging (`src/screens/weight.jsx`)
 
 - `KiloWeight` renders an entry field and Log button.
 - The Log button is disabled when the field is empty.
@@ -55,7 +55,7 @@ exists for read-only display of seeded history. It is not used on any save path.
   Edit re-runs `parseWeightEntry` on the new value and rejects invalid input.
   Delete prompts for confirmation before removing the entry.
 
-### Home Quick-Log (`screens/home.jsx`)
+### Home Quick-Log (`src/screens/home.jsx`)
 
 - A weight quick-log field and button are present on the Home tab when
   `loggedToday` is false.
@@ -63,12 +63,13 @@ exists for read-only display of seeded history. It is not used on any save path.
   used as on the Weight tab.
 
 **Prototype limitation:** in the current seeded prototype, `window.KILO_TODAY`
-is hardcoded to `'2026-05-05'` and `data.jsx` always seeds a weight entry for
-that date. This means `loggedToday` is always true and the Home quick-log input
-is always hidden in normal browser use. This path is covered by automated tests
-but cannot be reached by a manual tester without modifying the prototype source.
+is hardcoded to `'2026-05-05'` and `src/data.jsx` always seeds a weight entry
+for that date. This means `loggedToday` is always true and the Home quick-log
+input is always hidden in normal browser use. This path is covered by automated
+tests but cannot be reached by a manual tester without modifying the prototype
+source.
 
-### Workout Logging (`screens/log.jsx`)
+### Workout Logging (`src/screens/log.jsx`)
 
 - `KiloLog` renders the exercise list for today's day-of-week split.
 - Each `ExerciseRow` runs `parseWorkoutRow` live on every keystroke and renders
@@ -80,7 +81,7 @@ but cannot be reached by a manual tester without modifying the prototype source.
 - Saved sessions are written to `localStorage` (`kilo_workout_sessions`) and
   merged into `window.KILO_SESSIONS`.
 
-### Recent History (`screens/home.jsx`)
+### Recent History (`src/screens/home.jsx`)
 
 - The Home tab shows a "Recent history" section combining weight entries and
   workout sessions, sorted by `saved_at` DESC.
@@ -89,7 +90,7 @@ but cannot be reached by a manual tester without modifying the prototype source.
 - Entries persist across page reloads via `localStorage`.
 - Seeded entries appear but do not show delete icons (`isUserEntry` is false).
 
-### Correction Flows (`data.jsx`)
+### Correction Flows (`src/data.jsx`)
 
 Three correction helpers are implemented via `window.*` globals:
 
@@ -106,22 +107,20 @@ contract). Seeded entries are not correctable.
 
 ## What Issue #17 Validated
 
-Issue #17 is the manual launch validation task. It is currently **on hold**. It
-has not been executed. The Pre-Launch Repo Readiness Sequence (defined in
-`docs/mvp-roadmap.md`) must complete before #17 resumes.
+Issue #17 is the manual launch validation task. It has not been executed yet.
+The Pre-Launch Repo Readiness Sequence (defined in `docs/mvp-roadmap.md`) is
+now complete. Issue #17 is no longer blocked on repo-orientation uncertainty
+and can proceed to manual smoke testing.
 
 Required readiness artifacts and their current status:
 
 | Artifact | Status |
 |---|---|
-| `README.md` | Exists but empty — contains only `# kilo` |
+| `README.md` | Complete |
 | `docs/current-state.md` | Complete |
 | `docs/architecture.md` | Complete |
 | `docs/testing-and-qa.md` | Complete |
-| `docs/repo-structure.md` | Does not exist yet |
-
-Issue #17 cannot be unblocked until all five artifacts exist and are internally
-consistent.
+| `docs/repo-structure.md` | Complete |
 
 ---
 
@@ -133,8 +132,9 @@ The following MVP behaviors have no automated test coverage:
 
 - `KiloLog` render, save path (success and error), per-row error highlighting,
   `ParsePreview` live preview, PT checklist toggle, `persistWorkoutSession`
-- Weight entry delete and edit from `KiloWeight`
-- Workout session delete from `KiloHome`
+  (`src/screens/log.jsx`)
+- Weight entry delete and edit from `KiloWeight` (`src/screens/weight.jsx`)
+- Workout session delete from `KiloHome` (`src/screens/home.jsx`)
 - Weight entry delete from `KiloHome`
 - Combined weight + workout sort in recent history
 - Workout and weight card rendering in `KiloHome`
@@ -174,17 +174,6 @@ Any code path that reads `session.items` must guard against missing `items`. The
 Stats screen and Log screen `lastRef` display use the legacy `parseKiloInput`
 path to handle these gracefully.
 
-### README is empty
-
-`README.md` contains only the repo name. A reviewer landing on the repo has no
-entry point, no instructions for starting the app, and no orientation to the
-deeper docs. This must be written before issue #17 can proceed.
-
-### `docs/repo-structure.md` does not exist
-
-This is the final required readiness artifact and a hard dependency for
-unblocking issue #17.
-
 ---
 
 ## Launch Prerequisite Checklist
@@ -192,16 +181,16 @@ unblocking issue #17.
 All items below must be true before manual launch validation (issue #17) begins.
 
 **Docs**
-- [ ] `README.md` explains where the app lives, how to start it, and which docs
+- [x] `README.md` explains where the app lives, how to start it, and which docs
       matter for launch review
-- [ ] `docs/current-state.md` exists and is internally consistent with the other
+- [x] `docs/current-state.md` exists and is internally consistent with the other
       docs (this document)
-- [ ] `docs/architecture.md` is current and accurate *(complete)*
-- [ ] `docs/testing-and-qa.md` is current and accurate *(complete)*
-- [ ] `docs/repo-structure.md` exists and maps MVP-relevant repo areas
+- [x] `docs/architecture.md` is current and accurate
+- [x] `docs/testing-and-qa.md` is current and accurate
+- [x] `docs/repo-structure.md` exists and maps MVP-relevant repo areas
 
 **Automated tests**
-- [ ] `npm test` passes with zero failures
+- [x] `npm test` passes with zero failures
 
 **Manual smoke test**
 - [ ] A human tester has executed the full Manual Smoke Checklist in
