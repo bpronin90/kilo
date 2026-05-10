@@ -64,6 +64,22 @@ Enforce Big-O discipline:
 - avoid repeated filesystem, API, or DB calls inside loops
 - flag and justify any `O(n^2)` or worse approach before implementing
 
+## Versioning And Changelog
+
+Canonical repo version lives in `package.json`.
+
+Pre-1.0 versioning policy:
+- `0.1.0` is the initial documented MVP baseline.
+- `0.1.x` is for bug fixes, docs/process changes, and small updates that do not materially change MVP behavior or flows.
+- `0.x.0` is for a new MVP-visible capability or a meaningful behavior change.
+- `1.0.0` is the launch-ready stable MVP.
+
+Update `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version.
+
+Changelog format:
+- use a version heading with the release date
+- list issue-based bullets under each version
+
 ## Git And Completion
 
 Create a branch for your assigned issue before committing. Treat the issue branch as the default working branch for that task.
