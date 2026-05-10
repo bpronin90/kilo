@@ -96,7 +96,7 @@ Three correction helpers are implemented via `window.*` globals:
 | Function | Behavior |
 |---|---|
 | `window.deleteWeightEntry(id)` | Removes from `KILO_WEIGHTS` and `localStorage` |
-| `window.updateWeightEntry(id, value)` | Updates weight in-place; runs `parseWeightEntry` |
+| `window.updateWeightEntry(id, value)` | Updates weight value in-place in `KILO_WEIGHTS` and `localStorage`; does not parse — the caller (`KiloWeight`) runs `parseWeightEntry` before invoking this helper |
 | `window.deleteWorkoutSession(id)` | Removes from `KILO_SESSIONS` and `localStorage` |
 
 Workout entries can only be deleted, not edited (within the MVP correction
@@ -115,7 +115,7 @@ Required readiness artifacts and their current status:
 | Artifact | Status |
 |---|---|
 | `README.md` | Exists but empty — contains only `# kilo` |
-| `docs/current-state.md` | This document — in progress |
+| `docs/current-state.md` | Complete |
 | `docs/architecture.md` | Complete |
 | `docs/testing-and-qa.md` | Complete |
 | `docs/repo-structure.md` | Does not exist yet |
