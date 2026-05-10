@@ -8,12 +8,12 @@ browser using CDN React and Babel transpilation.
 `Kilo.html` is the entry point. It loads React, ReactDOM, and Babel from CDN,
 then loads source files as `<script type="text/babel">` tags in this order:
 
-1. `components/ios-frame.jsx`, `components/android-frame.jsx`, `components/design-canvas.jsx`, `components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
-2. `parser.jsx` — pure parse functions; no React
-3. `data.jsx` — seeds globals; depends on `parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
-4. `components/ui.jsx` — shared primitives; depends on globals from `data.jsx`
-5. `screens/home.jsx`, `screens/log.jsx`, `screens/weight.jsx`, `screens/stats.jsx`, `screens/more.jsx`
-6. `app.jsx` — root component; references all screen components
+1. `src/components/ios-frame.jsx`, `src/components/android-frame.jsx`, `src/components/design-canvas.jsx`, `src/components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
+2. `src/parser.jsx` — pure parse functions; no React
+3. `src/data.jsx` — seeds globals; depends on `src/parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
+4. `src/components/ui.jsx` — shared primitives; depends on globals from `src/data.jsx`
+5. `src/screens/home.jsx`, `src/screens/log.jsx`, `src/screens/weight.jsx`, `src/screens/stats.jsx`, `src/screens/more.jsx`
+6. `src/app.jsx` — root component; references all screen components
 
 Because there is no bundler, every exported symbol must be attached to `window`.
 Imports between files are implicit — scripts execute in the order they appear in
@@ -21,10 +21,11 @@ the HTML `<head>`.
 
 ## Screen Routing
 
-`KiloApp` owns a single `tab` state string initialized to `'home'`. A `switch`
-statement in the render body maps it to the active screen component. The tab bar
-(`KiloTabBar`) calls `setTab` directly. Screens receive `goToTab` as a prop for
-cross-screen navigation (e.g. Home → Log via `openSession`).
+`KiloApp` (in `src/app.jsx`) owns a single `tab` state string initialized to
+`'home'`. A `switch` statement in the render body maps it to the active screen
+component. The tab bar (`KiloTabBar`) calls `setTab` directly. Screens receive
+`goToTab` as a prop for cross-screen navigation (e.g. Home → Log via
+`openSession`).
 
 ```
 tab: 'home' | 'log' | 'weight' | 'stats' | 'more'
@@ -35,8 +36,8 @@ the URL.
 
 ## Parser Responsibilities
 
-`parser.jsx` exports all parse functions via `window.*`. The file contains two
-distinct parse paths:
+`src/parser.jsx` exports all parse functions via `window.*`. The file contains
+two distinct parse paths:
 
 ### Legacy freeform path (read-only analytics)
 
@@ -105,9 +106,10 @@ User types in weight input
 Each screen module runs an IIFE on load that reads its localStorage key and
 merges user entries into the in-memory global:
 
-- `log.jsx` merges user sessions into `window.KILO_SESSIONS`, deduplicates by
-  `id`, then sorts newest-first by `(date, saved_at)`.
-- `weight.jsx` merges user entries into `window.KILO_WEIGHTS`, sorts by `date`.
+- `src/screens/log.jsx` merges user sessions into `window.KILO_SESSIONS`,
+  deduplicates by `id`, then sorts newest-first by `(date, saved_at)`.
+- `src/screens/weight.jsx` merges user entries into `window.KILO_WEIGHTS`,
+  sorts by `date`.
 
 Merge runs once per page load. After merge, no further re-merge reads occur
 during rendering — screens read the in-memory global directly. However,
@@ -228,10 +230,10 @@ directly — there is no state manager.
 
 ## Recent History and Correction Flow
 
-`KiloLog` builds a `lastRefs` map on each render by scanning `KILO_SESSIONS` for
-the most-recent entry for each exercise id. This `lastRef` is passed to each
-`ExerciseRow`, which displays the top-set weight and reps from the prior session
-as input placeholder and a "last" reference line.
+`KiloLog` (`src/screens/log.jsx`) builds a `lastRefs` map on each render by
+scanning `KILO_SESSIONS` for the most-recent entry for each exercise id. This
+`lastRef` is passed to each `ExerciseRow`, which displays the top-set weight
+and reps from the prior session as input placeholder and a "last" reference line.
 
 The legacy `parseKiloInput` path is used to parse the `lastRef.raw` for display
 only. The MVP `parseWorkoutRow` path is used for the live input being entered.
@@ -251,9 +253,9 @@ only. The MVP `parseWorkoutRow` path is used for the live input being entered.
 
 ## Testing Shape
 
-Vitest runs in `jsdom`. Tests import source files via module path. Runtime
-globals used by the prototype are recreated in `tests/setup.js`. Current
-automated coverage focuses on parser correctness (`tests/parser.test.jsx`) and
-weight-log UI save behavior, validation states, persistence shape, and Home
-quick-log behavior (`tests/weight-ui.test.jsx`). Edit/delete UI flows are not
-currently covered by automated tests.
+Vitest runs in `jsdom`. Tests import source files via module path (e.g.
+`../src/parser.jsx`). Runtime globals used by the prototype are recreated in
+`tests/setup.js`. Current automated coverage focuses on parser correctness
+(`tests/parser.test.jsx`) and weight-log UI save behavior, validation states,
+persistence shape, and Home quick-log behavior (`tests/weight-ui.test.jsx`).
+Edit/delete UI flows are not currently covered by automated tests.

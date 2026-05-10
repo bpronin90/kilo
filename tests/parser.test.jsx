@@ -1,4 +1,4 @@
-import '../parser.jsx'
+import '../src/parser.jsx'
 
 const { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry } = window
 

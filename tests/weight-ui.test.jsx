@@ -1,9 +1,9 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { waitFor } from '@testing-library/react'
-import '../parser.jsx'
-import '../components/ui.jsx'
-import '../screens/weight.jsx'
-import '../screens/home.jsx'
+import '../src/parser.jsx'
+import '../src/components/ui.jsx'
+import '../src/screens/weight.jsx'
+import '../src/screens/home.jsx'
 
 const { parseWeightEntry } = window
 
