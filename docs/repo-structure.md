@@ -7,14 +7,23 @@ reviewer or agent performing launch validation.
 
 ## Entry Point
 
-`Kilo.html` — the only file a browser needs to open. It loads React, ReactDOM,
-and Babel from CDN, then loads all source files as `<script type="text/babel">`
-tags. No build step. Start a local server and open this file:
+`Kilo.html` — the source browser entry point. It loads React, ReactDOM, and
+Babel from CDN, then loads all source files as `<script type="text/babel">`
+tags. For direct browser use, start a local server and open this file:
 
 ```sh
 python3 -m http.server 8000
 # open http://localhost:8000/Kilo.html
 ```
+
+For mobile packaging or a stable staged web artifact, run:
+
+```sh
+npm run build
+```
+
+That produces `www/index.html` plus `www/src/` by copying `Kilo.html` and the
+current `src/` tree without changing runtime behavior.
 
 ---
 
@@ -27,6 +36,7 @@ AGENTS.md              ← shared repo protocol
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 package.json
 vitest.config.js
+www/                   ← generated build output from `npm run build` (not committed)
 
 src/                   ← all application source
   app.jsx
