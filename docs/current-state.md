@@ -107,9 +107,10 @@ contract). Seeded entries are not correctable.
 
 ## What Issue #17 Validated
 
-Issue #17 is the manual launch validation task. It is currently **on hold**. It
-has not been executed. The Pre-Launch Repo Readiness Sequence (defined in
-`docs/mvp-roadmap.md`) must complete before #17 resumes.
+Issue #17 is the manual launch validation task. It has not been executed yet.
+The Pre-Launch Repo Readiness Sequence (defined in `docs/mvp-roadmap.md`) is
+now complete. Issue #17 is no longer blocked on repo-orientation uncertainty
+and can proceed to manual smoke testing.
 
 Required readiness artifacts and their current status:
 
@@ -120,9 +121,6 @@ Required readiness artifacts and their current status:
 | `docs/architecture.md` | Complete |
 | `docs/testing-and-qa.md` | Complete |
 | `docs/repo-structure.md` | Complete |
-
-Issue #17 cannot be unblocked until all five artifacts exist and are internally
-consistent.
 
 ---
 
@@ -187,12 +185,12 @@ All items below must be true before manual launch validation (issue #17) begins.
       matter for launch review
 - [x] `docs/current-state.md` exists and is internally consistent with the other
       docs (this document)
-- [ ] `docs/architecture.md` is current and accurate *(complete)*
-- [ ] `docs/testing-and-qa.md` is current and accurate *(complete)*
+- [x] `docs/architecture.md` is current and accurate
+- [x] `docs/testing-and-qa.md` is current and accurate
 - [x] `docs/repo-structure.md` exists and maps MVP-relevant repo areas
 
 **Automated tests**
-- [ ] `npm test` passes with zero failures
+- [x] `npm test` passes with zero failures
 
 **Manual smoke test**
 - [ ] A human tester has executed the full Manual Smoke Checklist in
