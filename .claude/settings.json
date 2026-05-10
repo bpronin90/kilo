@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh api repos/bpronin90/kilo/issues/*/comments)"
+      "Bash(gh *)",
+      "Bash(npm test*)",
+      "Bash(node --check *)"
     ]
   }
 }
