@@ -484,6 +484,7 @@ window.KILO_GOALS = KILO_GOALS;
 window.KILO_SESSIONS = buildSessions();
 window.KILO_WEIGHTS = buildWeightLog();
 window.KILO_TODAY = '2026-05-05';
+window.KILO_VERSION = '0.1.0';
 window.dayOfWeek = function(iso) {
   const d = new Date(iso + 'T12:00:00');
   return ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][d.getDay()];
