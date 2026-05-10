@@ -21,6 +21,7 @@ const KILO_C = {
 };
 
 const KILO_FONT = "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
+const KILO_BRAND_FONT = "'Anybody', sans-serif";
 const KILO_MONO = "'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace";
 
 // Inject styles once
@@ -28,8 +29,9 @@ if (typeof document !== 'undefined' && !document.getElementById('kilo-styles')) 
   const s = document.createElement('style');
   s.id = 'kilo-styles';
   s.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Anybody:ital,wght@0,100..900;1,100..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
     .kilo-screen { font-family: ${KILO_FONT}; color: ${KILO_C.ink}; background: ${KILO_C.bg}; height: 100%; overflow: hidden; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+    .kilo-brand { font-family: ${KILO_BRAND_FONT}; font-weight: 800; text-transform: uppercase; letter-spacing: -0.04em; }
     .kilo-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
     .kilo-scroll::-webkit-scrollbar { display: none; }
     .kilo-mono { font-family: ${KILO_MONO}; font-feature-settings: "tnum" on, "zero" on; }
@@ -48,14 +50,56 @@ if (typeof document !== 'undefined' && !document.getElementById('kilo-styles')) 
   document.head.appendChild(s);
 }
 
+// Logo mark (Direction 3: Technical Precision - exact approved asset)
+function KiloLogo({ size = 32 }) {
+  return (
+    <img 
+      src="src/assets/brand/logo.png" 
+      alt="Kilo Logo" 
+      style={{ 
+        width: size, 
+        height: size, 
+        objectFit: 'contain', 
+        filter: 'invert(1) hue-rotate(180deg)',
+        mixBlendMode: 'screen' 
+      }} 
+    />
+  );
+}
+
 // Top status header — fine rule, label rows
-function KiloHeader({ title, sub, right, day }) {
+function KiloHeader({ title, sub, right, isBrand = false }) {
+  const isKiloBrand = isBrand || title === 'Kilo';
   return (
     <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${KILO_C.border}`, background: KILO_C.bg, position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          {sub && <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 4 }}>{sub}</div>}
-          <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isKiloBrand ? (
+            <>
+              <KiloLogo size={42} />
+              <div style={{ display: 'flex', flexDirection: 'column', marginTop: 2 }}>
+                {sub && <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 2 }}>{sub}</div>}
+                <img 
+                  src="src/assets/brand/wordmark.png" 
+                  alt="Kilo" 
+                  style={{ 
+                    height: 52, 
+                    width: 'auto', 
+                    objectFit: 'contain', 
+                    filter: 'invert(1) hue-rotate(180deg)',
+                    mixBlendMode: 'screen',
+                    marginLeft: -6,
+                    marginTop: -2
+                  }} 
+                />
+              </div>
+            </>
+          ) : (
+            <div style={{ minWidth: 0 }}>
+              {sub && <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 4 }}>{sub}</div>}
+              <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{title}</div>
+            </div>
+          )}
         </div>
         {right}
       </div>

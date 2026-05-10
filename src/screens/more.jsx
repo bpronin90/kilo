@@ -314,9 +314,13 @@ function KiloMore({ goToTab }) {
         ))}
 
         {/* Footer brand line */}
-        <div style={{ padding: '40px 16px 16px', textAlign: 'center' }}>
-          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.3em', textTransform: 'uppercase' }}>Kilo · v{window.KILO_VERSION}</div>
-          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em', marginTop: 4 }}>built for one</div>
+        <div style={{ padding: '40px 16px 32px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.5 }}>
+            <KiloLogo size={16} color={KILO_C.ink4} />
+            <span className="kilo-brand" style={{ fontSize: 14, color: KILO_C.ink4, letterSpacing: '0.05em' }}>Kilo</span>
+          </div>
+          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.3em', textTransform: 'uppercase' }}>v{window.KILO_VERSION}</div>
+          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em' }}>built for one</div>
         </div>
       </div>
     </div>
