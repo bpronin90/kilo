@@ -1,5 +1,45 @@
 # Testing And QA
 
+## Device Preview Workflow
+
+This workflow rebuilds the web app, syncs it into the Android shell, and relaunches on a connected device or emulator. Run it after any change to `Kilo.html` or `src/`.
+
+**Prerequisites (first time only):**
+
+- Android Studio installed and on `$PATH` (`studio`)
+- One connected device (USB debugging enabled) or a running Android emulator
+- `npm install` run at the repo root
+
+**Full loop (rebuild → sync → run):**
+
+```sh
+npm run preview
+```
+
+This runs three steps in sequence:
+
+1. `npm run build` — assembles `www/index.html` and `www/src/` from `Kilo.html` and `src/`
+2. `npm run cap:sync` — copies `www/` into `android/app/src/main/assets/public/` and updates plugins
+3. `npm run cap:run` — builds the APK and launches it on the connected device
+
+**Step-by-step alternative (open Android Studio instead of CLI run):**
+
+```sh
+npm run build
+npm run cap:sync
+npm run cap:open   # opens the android/ project in Android Studio
+```
+
+Use `cap:open` when you need to inspect logs, change build variants, or the CLI run fails to detect the device.
+
+**Troubleshooting:**
+
+- If `cap` is not found: run `npx cap <command>` instead, or `npm install` to restore dev dependencies.
+- If no device is detected by `cap:run`: confirm `adb devices` shows your device, or start an emulator first.
+- Changes to native plugins require `npm run cap:sync` before running; changes to web files only also require `cap:sync` (or the `preview` script).
+
+---
+
 ## Running Automated Tests
 
 Install dependencies (first time only):
