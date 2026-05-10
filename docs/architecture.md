@@ -1,7 +1,8 @@
 # Architecture
 
-Kilo is a client-only React prototype with no build step. All code runs in the
-browser using CDN React and Babel transpilation.
+Kilo is a client-only React prototype. The source app runs in the browser using
+CDN React and Babel transpilation, and the repo now includes a minimal Android
+Capacitor shell that stages that same web app into a WebView for device install.
 
 ## Runtime Shape
 
@@ -18,6 +19,17 @@ then loads source files as `<script type="text/babel">` tags in this order:
 Because there is no bundler, every exported symbol must be attached to `window`.
 Imports between files are implicit — scripts execute in the order they appear in
 the HTML `<head>`.
+
+## Packaging Path
+
+For browser use, `Kilo.html` remains the source entry point. For device
+packaging, `npm run build` copies `Kilo.html` to `www/index.html` and copies
+`src/` to `www/src/`. Capacitor then syncs `www/` into
+`android/app/src/main/assets/public/`.
+
+The current native target is Android only. `capacitor.config.json` points
+Capacitor at `webDir: "www"` and the generated `android/` project hosts the
+staged web app without changing product logic or data flow.
 
 ## Screen Routing
 
