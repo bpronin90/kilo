@@ -176,8 +176,9 @@ const SESSION_STORAGE_KEY = 'kilo_workout_sessions';
   try {
     const stored = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || '[]');
     if (stored.length) {
+      const userSessions = stored.map(s => ({ ...s, isUserEntry: true }));
       const existingIds = new Set(window.KILO_SESSIONS.map(s => s.id));
-      const uniqueNew = stored.filter(s => !existingIds.has(s.id));
+      const uniqueNew = userSessions.filter(s => !existingIds.has(s.id));
       window.KILO_SESSIONS = [...uniqueNew, ...window.KILO_SESSIONS]
         .sort((a, b) => b.date.localeCompare(a.date));
     }
@@ -185,8 +186,9 @@ const SESSION_STORAGE_KEY = 'kilo_workout_sessions';
 })();
 
 function persistWorkoutSession(session) {
+  const sessionToStore = { ...session, isUserEntry: true };
   const stored = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || '[]');
-  stored.push(session);
+  stored.push(sessionToStore);
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stored));
 }
 
@@ -264,6 +266,7 @@ function KiloLog({ goToTab }) {
     const newSession = {
       id: `s_${result.workout_date}_${dow}_${Date.now()}`,
       entry_type: 'workout',
+      isUserEntry: true,
       date: result.workout_date,
       saved_at: new Date().toISOString(),
       day: dow,
