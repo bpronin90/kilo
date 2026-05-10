@@ -1,0 +1,259 @@
+# Architecture
+
+Kilo is a client-only React prototype with no build step. All code runs in the
+browser using CDN React and Babel transpilation.
+
+## Runtime Shape
+
+`Kilo.html` is the entry point. It loads React, ReactDOM, and Babel from CDN,
+then loads source files as `<script type="text/babel">` tags in this order:
+
+1. `components/ios-frame.jsx`, `components/android-frame.jsx`, `components/design-canvas.jsx`, `components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
+2. `parser.jsx` — pure parse functions; no React
+3. `data.jsx` — seeds globals; depends on `parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
+4. `components/ui.jsx` — shared primitives; depends on globals from `data.jsx`
+5. `screens/home.jsx`, `screens/log.jsx`, `screens/weight.jsx`, `screens/stats.jsx`, `screens/more.jsx`
+6. `app.jsx` — root component; references all screen components
+
+Because there is no bundler, every exported symbol must be attached to `window`.
+Imports between files are implicit — scripts execute in the order they appear in
+the HTML `<head>`.
+
+## Screen Routing
+
+`KiloApp` owns a single `tab` state string initialized to `'home'`. A `switch`
+statement in the render body maps it to the active screen component. The tab bar
+(`KiloTabBar`) calls `setTab` directly. Screens receive `goToTab` as a prop for
+cross-screen navigation (e.g. Home → Log via `openSession`).
+
+```
+tab: 'home' | 'log' | 'weight' | 'stats' | 'more'
+```
+
+There is no router library. Navigation is in-memory state and does not affect
+the URL.
+
+## Parser Responsibilities
+
+`parser.jsx` exports all parse functions via `window.*`. The file contains two
+distinct parse paths:
+
+### Legacy freeform path (read-only analytics)
+
+- `parseKiloInput(raw)` — tokenizes `weight rep-group` pairs; lenient; returns
+  `{ sets: [{weight, reps[]}], skipped, warnings }`
+- `formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM` — analytics
+  helpers that consume the legacy shape
+
+The legacy path is used only for read-only display (1RM preview in `log.jsx`,
+historical stats). It is not used when saving.
+
+### MVP canonical path (save and validate)
+
+- `parseWeightEntry(raw)` — accepts `\d+(\.\d+)?` only; returns
+  `{ ok, weight_value, weight_unit, logged_at }` or `{ ok: false, error, category }`
+- `parseWorkoutRow(raw)` — parses one exercise row; returns
+  `{ ok, sets: [{set_index, rep_count, weight_value, weight_unit, ...}] }` or error
+- `parseWorkoutEntry(items, workout_date)` — calls `parseWorkoutRow` for each
+  item; returns a canonical workout entry or collects per-row errors
+
+`parseWorkoutRow` accepted forms:
+- `'-'` → `{ ok: true, skipped: true }`
+- `8,8,8` (comma-separated ints, ≥1 comma) → bodyweight sets, `weight_value: null`
+- `135 5,5,5` or `135 5 120 8,8` → weighted sets, one load per rep-group pair
+- Single integer alone (e.g. `80`) → rejected as ambiguous
+
+## Parse-to-Persistence Flow (Workout)
+
+```
+User types in ExerciseRow input
+  → parseWorkoutRow(raw)  [live, on every keystroke]
+  → ParsePreview renders result or error inline
+
+User taps Save
+  → handleSave() in KiloLog
+  → parseWorkoutEntry(items, today)  [validates all rows together]
+  → on error: setSaveErrors per exercise; display inline
+  → on ok: build newSession object
+  → persistWorkoutSession(newSession)  [writes to localStorage]
+  → window.KILO_SESSIONS.unshift(newSession)  [updates in-memory global]
+  → setSaveStatus('success')
+```
+
+## Parse-to-Persistence Flow (Weight)
+
+```
+User types in weight input
+  → parseWeightEntry(raw)  [on submit]
+  → on error: setStatus({ ok: false, error })
+  → on ok: build entry object
+  → persistWeightEntry(entry)  [writes to localStorage]
+  → window.KILO_WEIGHTS updated in-place + state sync
+```
+
+## Persistence Model
+
+### localStorage keys
+
+| Key | Contents |
+|-----|----------|
+| `kilo_workout_sessions` | JSON array of user-created workout sessions |
+| `kilo_weight_entries` | JSON array of user-created weight entries |
+
+### Merge on load
+
+Each screen module runs an IIFE on load that reads its localStorage key and
+merges user entries into the in-memory global:
+
+- `log.jsx` merges user sessions into `window.KILO_SESSIONS`, deduplicates by
+  `id`, then sorts newest-first by `(date, saved_at)`.
+- `weight.jsx` merges user entries into `window.KILO_WEIGHTS`, sorts by `date`.
+
+Merge runs once per page load. After merge, no further re-merge reads occur
+during rendering — screens read the in-memory global directly. However,
+save/edit/delete operations continue to read and write localStorage via
+`persistWorkoutSession`, `persistWeightEntry`, and the correction helpers
+(`deleteWeightEntry`, `updateWeightEntry`, `deleteWorkoutSession`).
+
+## Entry Shapes
+
+### Weight entry
+
+```js
+{
+  id: 'w_2026-04-15',          // seeded: w_${iso}; user: generated by weight.jsx
+  entry_type: 'weight',
+  date: '2026-04-15',
+  weight: 192.3,               // legacy field; kept for read compat
+  weight_value: 192.3,         // canonical field used by MVP path
+  weight_unit: 'lb',
+  logged_at: '2026-04-15T08:00:00Z',
+  saved_at: '2026-04-15T08:00:05Z',
+  isUserEntry: true,           // only on user-created entries
+  note_text: null,             // string or null; only present on entries logged with a note
+}
+```
+
+### Workout session (seeded)
+
+```js
+{
+  id: 's_2026-04-28_monday',
+  entry_type: 'workout',
+  date: '2026-04-28',
+  saved_at: '2026-04-28T23:00:00Z',
+  day: 'monday',
+  duration: 62,                // minutes
+  exercises: [
+    { exerciseId: 'db_bench', raw: '95 7,7,7,7' },
+    // ...
+  ],
+  // no `items` field — seeded sessions retain only the raw strings
+}
+```
+
+### Workout session (user-created)
+
+Same shape as seeded, plus:
+
+```js
+{
+  // ...all seeded fields...
+  isUserEntry: true,
+  items: [                     // canonical parse output embedded at save time
+    {
+      exercise_name: 'DB Bench Press',
+      result_kind: 'sets',
+      note_text: null,
+      position: 1,
+      sets: [
+        {
+          set_index: 1, rep_count: 7,
+          weight_value: 95, weight_unit: 'lb',
+          duration_seconds: null,
+          assistance_value: null, assistance_unit: null,
+          note_text: null,
+        },
+        // ...
+      ],
+    },
+  ],
+}
+```
+
+## Global State
+
+`data.jsx` seeds all globals on page load. Screens read and mutate them
+directly — there is no state manager.
+
+| Global | Type | Description |
+|--------|------|-------------|
+| `window.KILO_TODAY` | `string` | Hardcoded date `'2026-05-05'`; used as today by all screens |
+| `window.KILO_SPLIT` | `object` | `{ monday: { label, sub }, ... }` for Mon–Fri |
+| `window.KILO_EXERCISES` | `array` | Normalized exercise list (see shape below) |
+| `window.KILO_SESSIONS` | `array` | All workout sessions, newest-first; seeded + user-merged |
+| `window.KILO_WEIGHTS` | `array` | All weight entries, oldest-first; seeded + user-merged |
+| `window.KILO_GOALS` | `array` | Goal objects: `{ id, type, label, target, current, ... }` |
+| `window.KILO_PT` | `array` | PT checklist items: `{ id, name }` |
+| `window.KILO_C` | `object` | Color/token map used by all components |
+
+### KILO_EXERCISES entry shape
+
+```js
+{
+  id: 'db_bench',
+  name: 'DB Bench Press',
+  day: 'monday',
+  cat: 'primary_compound',     // 'warmup' | 'core' | 'primary_compound' | 'secondary_compound' | 'accessory'
+  po: true,                    // progressive overload tracked → shows 1RM preview
+  repMin: 6, repMax: 8, sets: 4,
+  target: '4×6–8',
+  isWarmup: false,             // true when cat === 'warmup' || cat === 'core'
+}
+```
+
+### Global mutation functions (data.jsx)
+
+| Function | Effect |
+|----------|--------|
+| `window.deleteWeightEntry(id)` | Removes from `KILO_WEIGHTS` and from localStorage |
+| `window.updateWeightEntry(id, value)` | Updates weight in `KILO_WEIGHTS` and localStorage |
+| `window.deleteWorkoutSession(id)` | Removes from `KILO_SESSIONS` and from localStorage |
+| `window.dayOfWeek(iso)` | Returns lowercase weekday string for an ISO date |
+
+### Global parse functions (parser.jsx)
+
+`parseKiloInput`, `parseWeightEntry`, `parseWorkoutRow`, `parseWorkoutEntry`,
+`formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM`
+
+## Recent History and Correction Flow
+
+`KiloLog` builds a `lastRefs` map on each render by scanning `KILO_SESSIONS` for
+the most-recent entry for each exercise id. This `lastRef` is passed to each
+`ExerciseRow`, which displays the top-set weight and reps from the prior session
+as input placeholder and a "last" reference line.
+
+The legacy `parseKiloInput` path is used to parse the `lastRef.raw` for display
+only. The MVP `parseWorkoutRow` path is used for the live input being entered.
+
+## Runtime Assumptions Future Work Must Respect or Remove
+
+1. `window.KILO_TODAY` is hardcoded. Any feature depending on the real date must
+   replace this or derive from it explicitly.
+2. Seeded sessions do not carry `items` (canonical sets). Code that needs
+   normalized set data must handle missing `items` gracefully.
+3. `KILO_WEIGHTS` entries use both `weight` (legacy) and `weight_value`
+   (canonical). Readers should prefer `weight_value ?? weight`.
+4. Module load order is implicit. Reordering `<script>` tags in `Kilo.html`
+   will break globals that depend on earlier files.
+5. There is no Supabase or backend connection in the current prototype. All
+   persistence is `localStorage` in the current browser profile.
+
+## Testing Shape
+
+Vitest runs in `jsdom`. Tests import source files via module path. Runtime
+globals used by the prototype are recreated in `tests/setup.js`. Current
+automated coverage focuses on parser correctness (`tests/parser.test.jsx`) and
+weight-log UI save behavior, validation states, persistence shape, and Home
+quick-log behavior (`tests/weight-ui.test.jsx`). Edit/delete UI flows are not
+currently covered by automated tests.
