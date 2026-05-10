@@ -25,19 +25,6 @@ npm run build
 That produces `www/index.html` plus `www/src/` by copying `Kilo.html` and the
 current `src/` tree without changing runtime behavior.
 
-To install on a physical Android device (requires Android Studio on the host):
-
-```sh
-npm run build        # stage web assets into www/
-npm run cap:sync     # copy www/ into android/app/src/main/assets/public
-npm run cap:open     # open android/ in Android Studio; build and run to device
-```
-
-`capacitor.config.json` is the Capacitor configuration root (appId
-`com.benpronin.kilo`, webDir `www`). The `android/` project is committed and
-includes its own `.gitignore` that excludes the synced web assets and Gradle
-build output.
-
 ---
 
 ## Directory Layout
@@ -48,10 +35,8 @@ README.md
 AGENTS.md              ← shared repo protocol
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 package.json
-capacitor.config.json  ← Capacitor config: appId com.benpronin.kilo, webDir www
 vitest.config.js
 www/                   ← generated build output from `npm run build` (not committed)
-android/               ← Capacitor Android native shell (committed; web assets synced at build time)
 
 src/                   ← all application source
   app.jsx
