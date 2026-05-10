@@ -6,13 +6,14 @@ browser using CDN React and Babel transpilation.
 ## Runtime Shape
 
 `Kilo.html` is the entry point. It loads React, ReactDOM, and Babel from CDN,
-then loads each source file as a `<script type="text/babel">` tag in order:
+then loads source files as `<script type="text/babel">` tags in this order:
 
-1. `parser.jsx` — pure parse functions; no React
-2. `data.jsx` — seeds globals; depends on `parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
-3. `components/ui.jsx` — shared primitives; depends on globals from `data.jsx`
-4. `screens/home.jsx`, `screens/log.jsx`, `screens/weight.jsx`, `screens/stats.jsx`
-5. `app.jsx` — root component; references all screen components
+1. `components/ios-frame.jsx`, `components/android-frame.jsx`, `components/design-canvas.jsx`, `components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
+2. `parser.jsx` — pure parse functions; no React
+3. `data.jsx` — seeds globals; depends on `parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
+4. `components/ui.jsx` — shared primitives; depends on globals from `data.jsx`
+5. `screens/home.jsx`, `screens/log.jsx`, `screens/weight.jsx`, `screens/stats.jsx`, `screens/more.jsx`
+6. `app.jsx` — root component; references all screen components
 
 Because there is no bundler, every exported symbol must be attached to `window`.
 Imports between files are implicit — scripts execute in the order they appear in
@@ -253,4 +254,6 @@ only. The MVP `parseWorkoutRow` path is used for the live input being entered.
 Vitest runs in `jsdom`. Tests import source files via module path. Runtime
 globals used by the prototype are recreated in `tests/setup.js`. Current
 automated coverage focuses on parser correctness (`tests/parser.test.jsx`) and
-the weight-log UI save/edit/delete workflow (`tests/weight-ui.test.jsx`).
+weight-log UI save behavior, validation states, persistence shape, and Home
+quick-log behavior (`tests/weight-ui.test.jsx`). Edit/delete UI flows are not
+currently covered by automated tests.
