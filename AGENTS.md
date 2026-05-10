@@ -80,8 +80,27 @@ Work is not complete until the agent posts a GitHub issue comment with:
 - files changed
 - what was done
 - verification performed
+- Docs reviewed: ...
+- Docs updated: ... or `none`
+- Changelog updated: `yes`/`no`
+- Version bump: `old -> new` or `none`
 - tests not run, with reason
 - blockers or follow-up
+
+## Living Doc Review Map
+
+Use issue scope plus changed files to decide which living docs need review. Do not reread every doc by default.
+
+- `docs/current-state.md`
+  Review when issue scope changes shipped status, current behavior, or known gaps for a user-visible feature; or when changed files affect active product flows.
+- `docs/repo-structure.md`
+  Review when changed files add, remove, move, or repurpose top-level directories, app surfaces, shared modules, or operational entrypoints.
+- `docs/testing-and-qa.md`
+  Review when issue scope changes test strategy, required verification steps, quality gates, or the meaning of existing test coverage; or when changed files add or remove test suites, helpers, or CI-facing verification paths.
+- `docs/architecture.md`
+  Review when issue scope changes system boundaries, data flow, integration contracts, or runtime responsibilities; or when changed files alter cross-module coordination, persistence, auth, or external service usage.
+- `docs/mvp-roadmap.md`
+  Review when issue scope changes MVP scope, sequencing, dependency order, milestone readiness, or completion status for roadmap work.
 
 ### Closing procedure
 
@@ -96,7 +115,8 @@ If the user tells the reviewer to `carry out closing procedure`, treat that as e
    - Close the GitHub issue once the reviewer confirms it is ready.
 
 2. Repository closeout
-   - Update any relevant docs only if such docs already exist and need closure-related updates for the completed issue.
+   - Review only the living docs whose trigger conditions were hit by the issue scope or changed files.
+   - Update reviewed docs only when the issue actually changed the documented state.
    - Commit the completed issue work on the issue branch.
    - Merge the issue branch to `main`.
    - Push the resulting `main` branch to `origin`.
@@ -106,7 +126,7 @@ If the user tells the reviewer to `carry out closing procedure`, treat that as e
 
 What `carry out closing procedure` does not mean:
 - do not close or merge work that is not actually complete
-- do not widen scope beyond the issue except for existing closure-related docs that genuinely need updating
+- do not widen scope beyond the issue except for living docs whose trigger conditions were hit and genuinely need updates
 - do not preserve extra local branches or a dirty worktree without a stated reason
 
 `AGENTS.md` owns shared rules only. Agent-specific behavior belongs in `CODEX.md`, `CLAUDE.md`, `GEMINI.md`, or agent-owned skills.
