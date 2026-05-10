@@ -699,6 +699,60 @@ Ordered tasks:
 - Verification target: explicit pass or fail against every Phase 1 acceptance gate.
 - Stop condition: MVP is either ready or reduced to a short blocker list.
 
+### Pre-Launch Repo Readiness Sequence
+- Sequence goal: gate manual launch validation behind the minimum repo-readiness artifacts needed for a fast final review.
+- Scope: sequencing only. This section defines the required order, dependencies, and exit criteria. It does not replace the follow-up issues that create or update the listed docs.
+- Hold statement: issue `#17` remains on hold for launch signoff after code-and-test acceptance until this sequence is complete. Manual launch validation must not begin early.
+
+Ordered readiness sequence:
+
+1. Establish launch review entry points
+   - Target artifacts: `README.md` and `docs/current-state.md`
+   - Why first: launch review needs one obvious repo entry point and one current snapshot before deeper technical review is efficient.
+   - Completion criteria:
+     - `README.md` tells a reviewer where the MVP app lives, how to start it, and which deeper docs matter for launch review.
+     - `docs/current-state.md` summarizes the actual MVP surface, known constraints, and any important review caveats in current repo terms.
+   - Dependency: none.
+
+2. Freeze the minimum architecture note
+   - Target artifact: `docs/architecture.md`
+   - Why second: launch validation should happen against a stable explanation of the MVP request path, persistence path, and correction path.
+   - Completion criteria:
+     - The doc explains the minimum end-to-end path for workout logging, weight logging, save behavior, recent history, and correction.
+     - Any dependency on Supabase or other required services is explicit enough that a manual reviewer knows what must be running.
+   - Dependency: step 1 complete.
+
+3. Freeze the manual validation checklist
+   - Target artifact: `docs/testing-and-qa.md`
+   - Why third: the launch smoke test must be driven by a short checklist tied to the accepted MVP gates rather than ad hoc clicking.
+   - Completion criteria:
+     - The doc defines the exact manual launch validation flow for logging, save confirmation, recent-history verification, and obvious-mistake correction.
+     - The doc states what counts as a blocker versus a non-blocking follow-up during manual validation.
+   - Dependency: steps 1 and 2 complete.
+
+4. Freeze repo-structure orientation
+   - Target artifact: `docs/repo-structure.md`
+   - Why fourth: this is the last readiness artifact because it supports reviewer speed, but it depends on the launch entry points and architecture notes already being stable.
+   - Completion criteria:
+     - The doc maps the MVP-relevant repo areas a reviewer may need during launch validation.
+     - The doc points to the product entry points, data-touching code, and any test or QA surfaces that the manual reviewer may cross-check.
+   - Dependency: steps 1 through 3 complete.
+
+5. Return to issue `#17` for manual launch validation
+   - Trigger: use issue `#17` again only after the four readiness artifacts above exist and their scope is complete enough to support reviewer orientation and manual execution.
+   - Manual-validation exit criterion:
+     - `README.md`, `docs/current-state.md`, `docs/architecture.md`, `docs/testing-and-qa.md`, and `docs/repo-structure.md` all exist.
+     - The docs are internally consistent about the MVP logging loop, correction flow, and required runtime dependencies.
+     - No open readiness issue still blocks a reviewer from locating the app, understanding the architecture, or following the manual smoke-test steps.
+     - At that point, issue `#17` can move from hold status back into the final manual launch smoke test and launch signoff pass.
+
+Dependency summary:
+- `README.md` and `docs/current-state.md` are the foundation.
+- `docs/architecture.md` depends on the foundation docs being current.
+- `docs/testing-and-qa.md` depends on the architecture note so the smoke test matches the real MVP flow.
+- `docs/repo-structure.md` comes last because it should describe the repo after the review entry points and review workflow are already fixed.
+- If the repo tracks these as separate readiness issues, they should close in this same order before issue `#17` resumes.
+
 ## Open Questions / Blockers
 None for this prompt-only roadmap.
 
