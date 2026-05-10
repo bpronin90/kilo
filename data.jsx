@@ -503,3 +503,55 @@ window.dayOfWeek = function(iso) {
   }
   KILO_GOALS[0].current = Math.round(total);
 })();
+
+// Minimum correction flow helpers (Phase 5, Task 1)
+window.deleteWeightEntry = function(id) {
+  const STORAGE_KEY = 'kilo_weight_entries';
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const filtered = stored.filter(e => e.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    window.KILO_WEIGHTS = window.KILO_WEIGHTS.filter(e => e.id !== id);
+    return true;
+  } catch (e) {
+    console.error('Delete weight failed', e);
+    return false;
+  }
+};
+
+window.updateWeightEntry = function(id, weightValue) {
+  const STORAGE_KEY = 'kilo_weight_entries';
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const entry = stored.find(e => e.id === id);
+    if (entry) {
+      entry.weight_value = weightValue;
+      entry.weight = weightValue; // legacy compatibility
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      const gEntry = window.KILO_WEIGHTS.find(e => e.id === id);
+      if (gEntry) {
+        gEntry.weight_value = weightValue;
+        gEntry.weight = weightValue;
+      }
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('Update weight failed', e);
+    return false;
+  }
+};
+
+window.deleteWorkoutSession = function(id) {
+  const STORAGE_KEY = 'kilo_workout_sessions';
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const filtered = stored.filter(e => e.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    window.KILO_SESSIONS = window.KILO_SESSIONS.filter(e => e.id !== id);
+    return true;
+  } catch (e) {
+    console.error('Delete workout failed', e);
+    return false;
+  }
+};

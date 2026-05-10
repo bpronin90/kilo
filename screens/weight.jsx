@@ -89,19 +89,22 @@ const WEIGHT_STORAGE_KEY = 'kilo_weight_entries';
 
 // Merge stored user entries into window.KILO_WEIGHTS once at load time.
 // handleLog and remounts read the global directly — no re-merge, no duplication.
-(function initStoredWeights() {
+// Rehydrate weights from localStorage on module load
+(function() {
   try {
     const stored = JSON.parse(localStorage.getItem(WEIGHT_STORAGE_KEY) || '[]');
     if (stored.length) {
-      window.KILO_WEIGHTS = [...window.KILO_WEIGHTS, ...stored]
+      const userEntries = stored.map(e => ({ ...e, isUserEntry: true }));
+      window.KILO_WEIGHTS = [...window.KILO_WEIGHTS, ...userEntries]
         .sort((a, b) => a.date.localeCompare(b.date));
     }
   } catch {}
 })();
 
 function persistWeightEntry(entry) {
+  const entryToStore = { ...entry, isUserEntry: true };
   const stored = JSON.parse(localStorage.getItem(WEIGHT_STORAGE_KEY) || '[]');
-  stored.push(entry);
+  stored.push(entryToStore);
   localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(stored));
 }
 
@@ -146,6 +149,7 @@ function KiloWeight({ goToTab }) {
     const newEntry = {
       id: `w_${Date.now()}`,
       entry_type: 'weight',
+      isUserEntry: true,
       weight_value: result.weight_value,
       weight_unit: result.weight_unit,
       logged_at: result.logged_at,
@@ -175,6 +179,26 @@ function KiloWeight({ goToTab }) {
     setNote('');
     setShowNote(false);
     setStatus({ ok: true });
+  }
+
+  function handleDelete(id) {
+    if (window.deleteWeightEntry(id)) {
+      setWeights([...window.KILO_WEIGHTS]);
+    }
+  }
+
+  function handleEdit(id, currentVal) {
+    const newVal = window.prompt('Edit weight (lbs):', currentVal);
+    if (newVal !== null) {
+      const result = window.parseWeightEntry(newVal);
+      if (result.ok) {
+        if (window.updateWeightEntry(id, result.weight_value)) {
+          setWeights([...window.KILO_WEIGHTS]);
+        }
+      } else {
+        window.alert(result.error);
+      }
+    }
   }
 
   const cutGoal = window.KILO_GOALS.find(g => g.type === 'body_weight' && g.active);
@@ -358,7 +382,16 @@ function KiloWeight({ goToTab }) {
                   )}
                   <div style={{ flex: 1 }} />
                   {w.note_text && <KiloIcon name="more" size={12} color={KILO_C.ink4} />}
-                  <KiloIcon name="edit" size={12} color={KILO_C.ink4} style={{ marginLeft: 8 }} />
+                  {w.isUserEntry && (
+                    <>
+                      <button className="kilo-btn" onClick={() => handleEdit(w.id, val)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                        <KiloIcon name="edit" size={12} color={KILO_C.ink4} />
+                      </button>
+                      <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && handleDelete(w.id)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                        <KiloIcon name="close" size={12} color={KILO_C.red} />
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })}
