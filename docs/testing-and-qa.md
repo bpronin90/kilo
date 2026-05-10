@@ -206,134 +206,18 @@ The following MVP behaviors have no automated test coverage:
 
 ---
 
-## Manual Smoke Checklist
+## Installable Preview Smoke Checklist
 
-Before declaring the MVP launch-ready, a human tester must pass every step below. Each step is a concrete pass/fail action. Steps marked **[BLOCKER]** must pass before launch. Failures on non-blocker steps should be noted but do not block.
+Before declaring the packaged preview ready, a human tester must pass every step below on a physical phone. This is the minimum real-device check for installability, launch, update/relaunch, loading behavior, and basic touch interaction. It is not full product QA.
 
-### Setup
-
-1. From the repo root, start a local server:
+1. Build, sync, and launch the packaged preview on a connected phone.
    ```sh
-   python3 -m http.server 8000
+   npm run preview
    ```
-2. Open `http://localhost:8000/Kilo.html` in a browser.
-3. Open the browser developer console and confirm no script-load errors appear on the initial load.  **[BLOCKER]**
-4. Verify that all five tabs are visible and tappable: Home, Log, Weight, Stats, More.  **[BLOCKER]**
-
----
-
-### Flow 1 — Log a weight entry
-
-#### Via the Weight tab
-
-5. Tap the **Weight** tab.
-6. Confirm the entry field and **Log** button are visible.
-7. Leave the entry field empty. Confirm the **Log** button is disabled.  **[BLOCKER]**
-8. Type `185` in the entry field. Confirm **Log** becomes enabled.  **[BLOCKER]**
-9. Tap **Log**.
-10. Confirm "✓ Weight saved successfully" appears below the field.  **[BLOCKER]**
-11. Confirm the button changes to "Saved" and is disabled.  **[BLOCKER]**
-12. Confirm the new entry appears in the Entries list below the graph.  **[BLOCKER]**
-
-#### Error cases on Weight tab
-
-13. Clear the field. Type `185lbs`. Tap **Log**.
-14. Confirm "✕ Enter a number only (e.g. 180 or 180.4)" appears.  **[BLOCKER]**
-15. Clear the field. Type `   ` (spaces only). Tap **Log**.
-16. Confirm "✕ Weight is required" appears.  **[BLOCKER]**
-
-#### Via the Home quick-log
-
-> **Prototype limitation — not manually reachable.** The Home quick-log input is hidden whenever `loggedToday` is true (`screens/home.jsx:60`). In the current prototype, `data.jsx` hardcodes `window.KILO_TODAY = '2026-05-05'` and `buildWeightLog()` always seeds a weight entry for that date (`data.jsx:441-486`). Clearing `localStorage` does not help because the seeded entry lives in the `window.KILO_WEIGHTS` global, not in `localStorage`. This path cannot be reached via normal browser interaction without modifying the prototype source.
->
-> The `KiloHome` quick-log button state, success feedback, failure feedback, and persistence shape are all covered by automated tests in `tests/weight-ui.test.jsx` (see Coverage Inventory above). No manual smoke step is required here; pass or fail on this path is determined by the test suite.
-
-17. Run `npm test` and confirm all tests pass, including the `KiloHome quick-log` suites.  **[BLOCKER]**
-
----
-
-### Flow 2 — Log a workout entry
-
-18. Tap the **Log** tab.
-19. Confirm exercises are listed for today's day-of-week split.
-20. Confirm the **Save Session** button is disabled when no exercises have valid input.  **[BLOCKER]**
-21. Type `135 5,5,5` in the first exercise's input field.
-22. Confirm the parse preview immediately shows the rep groups below the field (e.g., a chip showing `135 × 5,5,5`).  (non-blocker for launch gate, but expected behavior)
-23. Leave all remaining exercises empty.
-24. Tap **Save Session**.
-25. Confirm the "Workout saved" confirmation screen appears with a checkmark.  **[BLOCKER]**
-26. Tap **Back to Home**.
-
-#### Skip and error cases
-
-27. Tap the **Log** tab.
-28. Type `-` in an exercise field. Confirm "Skipped" appears in the preview.
-29. Type `bad input` in a different exercise field.
-30. Confirm the parse preview shows a `⚠` error message below that field.
-31. Type `135 5` in at least one exercise field to make the submit valid.
-32. Tap **Save Session**. Confirm a row with `bad input` shows a red error inline (not the success screen).  **[BLOCKER]**
-33. Correct `bad input` to `135 5`. Tap **Save Session**. Confirm the "Workout saved" screen appears.  **[BLOCKER]**
-34. Return to the **Log** tab with all exercise fields cleared.
-35. Confirm the **Save Session** button is disabled when all fields are empty (no save attempt is possible in this state).  **[BLOCKER]**
-36. Type `-` in every exercise field. Confirm the **Save Session** button becomes enabled (skipped rows are parsed as `ok` and count toward the enabled state).
-37. Tap **Save Session**. Confirm "✕ Complete at least one exercise before saving" appears — the parser drops all skipped rows and returns a structural violation.  **[BLOCKER]**
-
----
-
-### Flow 3 — Review saved recent entries
-
-38. Tap the **Home** tab.
-39. Scroll to the "Recent history" section.
-40. Confirm the workout entry just saved appears in the list with the exercise name(s) and logged values visible.  **[BLOCKER]**
-41. Confirm any weight entry logged during this session also appears in the list.  **[BLOCKER]**
-42. Confirm the most recently saved entry appears first.  **[BLOCKER]**
-43. Reload the page (`Cmd+R` / `F5`).
-44. Navigate back to Home → Recent history.
-45. Confirm the user-saved entries are still present (they persist via `localStorage`).  **[BLOCKER]**
-46. Tap the **Weight** tab and confirm the logged weight entry is still listed in the Entries section.  **[BLOCKER]**
-
----
-
-### Flow 4 — Correct an obvious recent mistake
-
-#### Delete a weight entry from the Weight tab
-
-47. Tap the **Weight** tab.
-48. In the Entries list, find a user-created entry (identified by the edit and delete icons on the right).
-49. Tap the **×** (delete) icon on that entry.
-50. Confirm a browser confirmation dialog appears ("Delete this entry?").
-51. Confirm deletion. Confirm the entry is removed from the Entries list.  **[BLOCKER]**
-
-#### Edit a weight entry from the Weight tab
-
-52. In the Entries list, find a remaining user-created entry.
-53. Tap the **edit** (pencil) icon.
-54. Confirm a browser prompt appears pre-filled with the current value.
-55. Enter `190`. Confirm. Confirm the entry value updates in the list.  **[BLOCKER]**
-56. Tap the edit icon again. Enter `bad`. Confirm. Confirm an error alert appears and the entry is unchanged.  **[BLOCKER]**
-
-#### Delete a workout session from Home
-
-57. Tap the **Home** tab.
-58. In the Recent history section, find a user-saved workout entry (identified by the **×** delete icon).
-59. Tap **×**. Confirm the browser confirmation dialog appears.
-60. Confirm deletion. Confirm the workout entry is removed from Recent history.  **[BLOCKER]**
-
-#### Delete a weight entry from Home
-
-61. In the Recent history section, find a user-saved weight entry.
-62. Tap **×**. Confirm the browser confirmation dialog appears.
-63. Confirm deletion. Confirm the weight entry is removed from Recent history.  **[BLOCKER]**
-
----
-
-### Post-checklist notes
-
-The following behaviors are expected limitations of the current prototype and are **not launch blockers**:
-
-- PT checklist items in the Log screen are toggle-only and not persisted across reloads.
-- The Stats screen shows seed history and user sessions but has no correction or delete flows.
-- The design canvas and device frame overlays are prototype chrome and are not part of the MVP logging loop.
-- The More screen is visible but not required for the core MVP flows.
-- Workout entries in the recent history cannot be edited — only deleted. This is within the MVP correction contract.
-- Seeded workout sessions in recent history do not show delete buttons (they are not `isUserEntry`). This is expected.
+2. Open the app from the phone launcher and confirm it starts without a crash, blank screen, or script-load error.  **[BLOCKER]**
+3. Confirm all five tabs are visible and respond to taps: Home, Log, Weight, Stats, More.  **[BLOCKER]**
+4. On **Weight**, confirm the entry field and **Log** button load, the button is disabled when the field is empty, and a valid value such as `185` saves successfully and updates the Entries list.  **[BLOCKER]**
+5. Change the visible version text in the packaged app footer from `0.1.0` to `0.1.0-test`, rebuild and redeploy the preview to the same phone, then relaunch it from the launcher. Confirm the app opens normally after the update, the footer now shows `0.1.0-test`, and the saved weight entry is still present.  **[BLOCKER]**
+6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, **Save Session** becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
+7. Return to **Home** and confirm the new workout appears in Recent history with the most recent entry first.  **[BLOCKER]**
+8. Do one basic touch pass on the device: scroll Recent history, switch tabs a few times, and confirm taps register cleanly without missed or stuck interactions.  **[BLOCKER]**
