@@ -28,6 +28,10 @@ For physical-device packaging, the current supported path is Android only:
 3. `npm run cap:open`
 4. Build and run from Android Studio to a connected device
 
+The shipped prototype branding now uses the approved Direction 3 Kilo mark and
+wordmark treatment in the main Home header and the More screen footer instead of
+plain text-only product naming.
+
 ---
 
 ## MVP Surface — What Is Implemented
