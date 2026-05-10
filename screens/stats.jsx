@@ -151,27 +151,40 @@ function UnifiedHistoryList({ entries, onExerciseClick }) {
           const sp = window.KILO_SPLIT[e.day];
           const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return (
-            <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
+            <div key={e.id} style={{ padding: '14px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80, paddingTop: 3 }}>
                 {date}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{sp.label}</div>
-                <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>{e.exercises.length} ex · {e.duration}m</div>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{sp.label}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {e.exercises.map((ex, i) => {
+                    const exerciseDef = window.KILO_EXERCISES.find(d => d.id === ex.exerciseId);
+                    const parsed = window.parseKiloInput(ex.raw);
+                    return (
+                      <div key={i} className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink2, lineHeight: 1.4 }}>
+                        <span style={{ color: KILO_C.ink3 }}>{exerciseDef ? exerciseDef.name : 'Unknown'}</span> · {window.formatParsed(parsed)}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {e.duration}m duration
+                </div>
               </div>
-              <KiloIcon name="log" size={14} color={KILO_C.ink4} />
+              <KiloIcon name="log" size={14} color={KILO_C.ink4} style={{ marginTop: 3 }} />
             </div>
           );
         } else {
           const d = new Date(e.date + 'T12:00:00');
           const date = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
           return (
-            <div key={e.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div key={e.id} style={{ padding: '14px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
               <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase', width: 80 }}>
                 {date}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>Weight</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Weight</div>
                 <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>
                   <KiloNum size={10} weight={600}>{e.weight_value.toFixed(1)}</KiloNum> lb
                   {e.note_text && ` · ${e.note_text}`}
