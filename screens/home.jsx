@@ -296,7 +296,7 @@ function KiloHome({ goToTab, openSession }) {
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{sp.label}</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {e.exercises.slice(0, 3).map((ex, i) => {
+                          {e.exercises.map((ex, i) => {
                             const exerciseDef = window.KILO_EXERCISES.find(d => d.id === ex.exerciseId);
                             const parsed = window.parseKiloInput(ex.raw);
                             return (
@@ -305,11 +305,6 @@ function KiloHome({ goToTab, openSession }) {
                               </div>
                             );
                           })}
-                          {e.exercises.length > 3 && (
-                            <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, fontStyle: 'italic' }}>
-                              + {e.exercises.length - 3} more exercises
-                            </div>
-                          )}
                         </div>
                       </div>
                       <KiloIcon name="log" size={14} color={KILO_C.ink4} style={{ marginTop: 3 }} />
