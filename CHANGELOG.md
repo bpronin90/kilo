@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 - 2026-05-10
+
+- Issue #30: Added `cap:run` and `preview` npm scripts for a repeatable device sync and relaunch loop. Documented the full rebuild → sync → run workflow in `docs/testing-and-qa.md`.
+
 ## 0.1.1 - 2026-05-10
 
 - Issue #28: Replaced the plain `Kilo` text treatment with the approved Direction 3 brand lockup in the app header and More screen footer, and added shipped brand assets for the prototype UI.
