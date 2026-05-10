@@ -1,8 +1,9 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
+    "build": "rm -rf www && mkdir -p www && cp Kilo.html www/index.html && cp -r src www/src",
     "test": "vitest run",
     "test:watch": "vitest"
   },
