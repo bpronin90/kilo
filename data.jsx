@@ -423,7 +423,9 @@ function buildSessions() {
       if (sessionExercises.length === 0) continue;
       sessions.push({
         id: `s_${iso}_${day}`,
+        entry_type: 'workout',
         date: iso,
+        saved_at: iso + 'T23:00:00Z',
         day,
         duration: 50 + Math.floor(Math.random() * 20),
         exercises: sessionExercises,
@@ -453,7 +455,16 @@ function buildWeightLog() {
     const spike = (daysBack === 18 || daysBack === 19) ? 2.1 : 0;
     const w = trend + bump + noise + spike;
     if (daysBack === 28 || daysBack === 14) continue; // missed days
-    out.push({ date: iso, weight: Math.round(w * 10) / 10 });
+    out.push({
+      id: `w_${iso}`,
+      entry_type: 'weight',
+      date: iso,
+      weight: Math.round(w * 10) / 10,
+      weight_value: Math.round(w * 10) / 10,
+      weight_unit: 'lb',
+      logged_at: iso + 'T08:00:00Z',
+      saved_at: iso + 'T08:00:05Z'
+    });
   }
   return out;
 }
