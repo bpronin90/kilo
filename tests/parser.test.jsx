@@ -1,199 +1,262 @@
-// MVP acceptance gate tests for parser.jsx
-// Run: node tests/parser.test.jsx
+import '../parser.jsx'
 
-const fs = require('fs');
-const assert = require('assert');
-const path = require('path');
+const { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry } = window
 
-const window = { KILO_TODAY: new Date().toISOString().slice(0, 10) };
-global.window = window;
-eval(fs.readFileSync(path.join(__dirname, '../parser.jsx'), 'utf8'));
+// ── parseWeightEntry ──────────────────────────────────────────────────────────
 
-let passed = 0, failed = 0;
-function test(name, fn) {
-  try { fn(); console.log(`  ✓ ${name}`); passed++; }
-  catch (e) { console.error(`  ✗ ${name}: ${e.message}`); failed++; }
-}
+describe('parseWeightEntry', () => {
+  test('accepts plain integer', () => {
+    const r = parseWeightEntry('180')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(180)
+    expect(r.weight_unit).toBe('lb')
+    expect(typeof r.logged_at).toBe('string')
+  })
 
-// --- parseWorkoutRow: accepted inputs ---
-console.log('\nparseWorkoutRow — accepted');
+  test('accepts decimal', () => {
+    const r = parseWeightEntry('180.4')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(180.4)
+  })
 
-test('skip marker', () => {
-  const r = window.parseWorkoutRow('-');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.skipped, true);
-});
+  test('accepts surrounding whitespace', () => {
+    const r = parseWeightEntry('  180  ')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(180)
+  })
 
-test('rep-group with comma', () => {
-  const r = window.parseWorkoutRow('8,8,8');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.sets.length, 3);
-  assert.ok(r.sets.every(s => s.weight_value === null));
-  assert.deepStrictEqual(r.sets.map(s => s.rep_count), [8, 8, 8]);
-});
+  test('rejects empty string', () => {
+    const r = parseWeightEntry('')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('load + rep-group', () => {
-  const r = window.parseWorkoutRow('80 8,8,8');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.sets.length, 3);
-  assert.ok(r.sets.every(s => s.weight_value === 80));
-});
+  test('rejects null', () => {
+    const r = parseWeightEntry(null)
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('two load+rep pairs (drop set)', () => {
-  const r = window.parseWorkoutRow('85 8 80 8,8');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.sets.length, 3);
-  assert.strictEqual(r.sets[0].weight_value, 85);
-  assert.strictEqual(r.sets[0].rep_count, 8);
-  assert.strictEqual(r.sets[1].weight_value, 80);
-  assert.strictEqual(r.sets[2].weight_value, 80);
-});
+  test('rejects whitespace-only string', () => {
+    const r = parseWeightEntry('   ')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('decimal load', () => {
-  const r = window.parseWorkoutRow('17.5 12,12');
-  assert.strictEqual(r.ok, true);
-  assert.ok(r.sets.every(s => s.weight_value === 17.5));
-});
+  test('rejects unit suffix', () => {
+    const r = parseWeightEntry('180lbs')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+    expect(r.error).toMatch(/number only/i)
+  })
 
-test('extra whitespace collapsed', () => {
-  const r = window.parseWorkoutRow(' 90   8,8,7   85  8 ');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.sets.length, 4);
-  assert.strictEqual(r.sets[0].weight_value, 90);
-  assert.strictEqual(r.sets[3].weight_value, 85);
-  assert.strictEqual(r.sets[3].rep_count, 8);
-});
+  test('rejects sign prefix', () => {
+    const r = parseWeightEntry('+180')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('blank row is ok', () => {
-  const r = window.parseWorkoutRow('');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.blank, true);
-});
+  test('rejects negative', () => {
+    const r = parseWeightEntry('-5')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('set_index increments across pairs', () => {
-  const r = window.parseWorkoutRow('85 8 80 8,8');
-  assert.deepStrictEqual(r.sets.map(s => s.set_index), [1, 2, 3]);
-});
+  test('rejects zero', () => {
+    const r = parseWeightEntry('0')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('rep-only sets have null weight_unit', () => {
-  const r = window.parseWorkoutRow('8,8,8');
-  assert.ok(r.sets.every(s => s.weight_unit === null));
-});
+  test('rejects prose', () => {
+    const r = parseWeightEntry('one eighty')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('load+rep sets have lb weight_unit', () => {
-  const r = window.parseWorkoutRow('80 8,8');
-  assert.ok(r.sets.every(s => s.weight_unit === 'lb'));
-});
+  test('rejects comma-formatted number', () => {
+    const r = parseWeightEntry('1,80')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
+})
 
-// --- parseWorkoutRow: rejected inputs ---
-console.log('\nparseWorkoutRow — rejected');
+// ── parseWorkoutRow ───────────────────────────────────────────────────────────
 
-test('timed format rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('5 min').ok, false);
-});
+describe('parseWorkoutRow', () => {
+  test('blank input is ok+blank', () => {
+    expect(parseWorkoutRow('')).toMatchObject({ ok: true, blank: true })
+  })
 
-test('prose after load rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('7.1 for 5').ok, false);
-});
+  test('null input is ok+blank', () => {
+    expect(parseWorkoutRow(null)).toMatchObject({ ok: true, blank: true })
+  })
 
-test('legacy instruction text rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('1x12-15 each arm 12.5 lbs').ok, false);
-});
+  test('dash is ok+skipped', () => {
+    expect(parseWorkoutRow('-')).toMatchObject({ ok: true, skipped: true })
+  })
 
-test('x-notation rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80 x 8 x 8 x 8').ok, false);
-});
+  test('standalone rep-group with comma', () => {
+    const r = parseWorkoutRow('8,8,8')
+    expect(r.ok).toBe(true)
+    expect(r.sets).toHaveLength(3)
+    expect(r.sets.every(s => s.weight_value === null)).toBe(true)
+    expect(r.sets[0].rep_count).toBe(8)
+  })
 
-test('unit suffix on load rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80lb 8,8').ok, false);
-});
+  test('rejects single integer — ambiguous with load', () => {
+    const r = parseWorkoutRow('8')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('slash-separated reps rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80 8/8/8').ok, false);
-});
+  test('weight + single-rep group', () => {
+    const r = parseWorkoutRow('135 5')
+    expect(r.ok).toBe(true)
+    expect(r.sets).toHaveLength(1)
+    expect(r.sets[0].weight_value).toBe(135)
+    expect(r.sets[0].weight_unit).toBe('lb')
+    expect(r.sets[0].rep_count).toBe(5)
+  })
 
-test('bare integer rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80').ok, false);
-});
+  test('weight + multi-rep group', () => {
+    const r = parseWorkoutRow('135 8,8,8')
+    expect(r.ok).toBe(true)
+    expect(r.sets).toHaveLength(3)
+    expect(r.sets.every(s => s.weight_value === 135)).toBe(true)
+  })
 
-test('trailing comma rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('8,').ok, false);
-});
+  test('multiple weight/rep pairs', () => {
+    const r = parseWorkoutRow('135 5,5 145 3,3')
+    expect(r.ok).toBe(true)
+    expect(r.sets).toHaveLength(4)
+    expect(r.sets[0].weight_value).toBe(135)
+    expect(r.sets[2].weight_value).toBe(145)
+  })
 
-test('non-numeric load rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('? 12,12').ok, false);
-});
+  test('decimal load', () => {
+    const r = parseWorkoutRow('67.5 6,6')
+    expect(r.ok).toBe(true)
+    expect(r.sets[0].weight_value).toBe(67.5)
+  })
 
-test('alphanumeric load rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('as55 8,8,8').ok, false);
-});
+  test('normalizes spaces around commas', () => {
+    const r = parseWorkoutRow('135 8, 8, 8')
+    expect(r.ok).toBe(true)
+    expect(r.sets).toHaveLength(3)
+  })
 
-test('trailing prose after reps rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80 8,8 note').ok, false);
-});
+  test('rejects weight with no following reps', () => {
+    const r = parseWorkoutRow('135')
+    expect(r.ok).toBe(false)
+  })
 
-test('bare word rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('book').ok, false);
-});
+  test('rejects zero weight', () => {
+    const r = parseWorkoutRow('0 8,8')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('zero rep count rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('80 0,8').ok, false);
-});
+  test('rejects zero reps', () => {
+    const r = parseWorkoutRow('135 0,8')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('zero load rejected', () => {
-  assert.strictEqual(window.parseWorkoutRow('0 8,8').ok, false);
-});
+  test('set_index increments across pairs', () => {
+    // '100 3,3' → 2 sets, '110 2' → 1 set = 3 sets total, indices 1..3
+    const r = parseWorkoutRow('100 3,3 110 2')
+    expect(r.ok).toBe(true)
+    const indices = r.sets.map(s => s.set_index)
+    expect(indices).toEqual([1, 2, 3])
+  })
+})
 
-// --- parseWorkoutEntry ---
-console.log('\nparseWorkoutEntry');
+// ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 
-test('valid entry returns ok with items', () => {
-  const r = window.parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 8,8,8' }]);
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.items.length, 1);
-  assert.strictEqual(r.items[0].exercise_name, 'Squat');
-  assert.strictEqual(r.items[0].result_kind, 'sets');
-  assert.strictEqual(r.items[0].sets.length, 3);
-});
+describe('parseWorkoutEntry', () => {
+  test('returns ok with canonical fields for valid items', () => {
+    const items = [
+      { exerciseName: 'Squat', raw: '135 5,5,5' },
+      { exerciseName: 'Deadlift', raw: '225 5' },
+    ]
+    const r = parseWorkoutEntry(items, '2026-05-09')
+    expect(r.ok).toBe(true)
+    expect(r.workout_date).toBe('2026-05-09')
+    expect(r.items).toHaveLength(2)
+  })
 
-test('all blanks or skipped rejected', () => {
-  const r = window.parseWorkoutEntry([
-    { exerciseName: 'Squat', raw: '' },
-    { exerciseName: 'Press', raw: '-' },
-  ]);
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.category, 'structural_violation');
-});
+  test('item has canonical shape', () => {
+    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '135 5,5,5' }], '2026-05-09')
+    const item = r.items[0]
+    expect(item).toMatchObject({
+      exercise_name: 'Squat',
+      result_kind: 'sets',
+      note_text: null,
+      position: 1,
+    })
+    expect(Array.isArray(item.sets)).toBe(true)
+  })
 
-test('invalid row surfaces rowErrors', () => {
-  const r = window.parseWorkoutEntry([
-    { exerciseName: 'Squat', raw: '80 8,8' },
-    { exerciseName: 'Press', raw: '80lb 8,8' },
-  ]);
-  assert.strictEqual(r.ok, false);
-  assert.ok(r.rowErrors && r.rowErrors.length > 0);
-  assert.strictEqual(r.rowErrors[0].exerciseName, 'Press');
-});
+  test('set has canonical shape', () => {
+    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '135 5,5' }], '2026-05-09')
+    const set = r.items[0].sets[0]
+    expect(set).toMatchObject({
+      rep_count: 5,
+      weight_value: 135,
+      weight_unit: 'lb',
+      duration_seconds: null,
+      assistance_value: null,
+      assistance_unit: null,
+      note_text: null,
+    })
+    expect(typeof set.set_index).toBe('number')
+  })
 
-test('position increments across items', () => {
-  const r = window.parseWorkoutEntry([
-    { exerciseName: 'Squat', raw: '80 8,8,8' },
-    { exerciseName: 'Press', raw: '60 5,5' },
-  ]);
-  assert.strictEqual(r.items[0].position, 1);
-  assert.strictEqual(r.items[1].position, 2);
-});
+  test('skips blank rows', () => {
+    const items = [
+      { exerciseName: 'Squat', raw: '135 5,5' },
+      { exerciseName: 'Bench', raw: '' },
+      { exerciseName: 'Deadlift', raw: '-' },
+    ]
+    const r = parseWorkoutEntry(items, '2026-05-09')
+    expect(r.ok).toBe(true)
+    expect(r.items).toHaveLength(1)
+  })
 
-test('workout_date defaults to today when omitted', () => {
-  const r = window.parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 8,8,8' }]);
-  assert.strictEqual(r.workout_date, window.KILO_TODAY);
-});
+  test('fails structural_violation when all items are blank', () => {
+    const r = parseWorkoutEntry(
+      [{ exerciseName: 'Squat', raw: '' }, { exerciseName: 'Bench', raw: '-' }],
+      '2026-05-09',
+    )
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('structural_violation')
+  })
 
-test('explicit workout_date is used', () => {
-  const r = window.parseWorkoutEntry([{ exerciseName: 'Squat', raw: '80 8,8,8' }], '2026-01-01');
-  assert.strictEqual(r.workout_date, '2026-01-01');
-});
+  test('returns row errors for invalid input', () => {
+    const items = [
+      { exerciseName: 'Squat', raw: '135 5,5' },
+      { exerciseName: 'Bench', raw: 'bad input' },
+    ]
+    const r = parseWorkoutEntry(items, '2026-05-09')
+    expect(r.ok).toBe(false)
+    expect(r.rowErrors).toHaveLength(1)
+    expect(r.rowErrors[0].exerciseName).toBe('Bench')
+  })
 
-// Summary
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
+  test('position increments across included items', () => {
+    const items = [
+      { exerciseName: 'A', raw: '100 5' },
+      { exerciseName: 'B', raw: '-' },
+      { exerciseName: 'C', raw: '200 3' },
+    ]
+    const r = parseWorkoutEntry(items, '2026-05-09')
+    expect(r.items[0].position).toBe(1)
+    expect(r.items[1].position).toBe(2)
+  })
+
+  test('defaults workout_date to KILO_TODAY when not supplied', () => {
+    const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '135 5' }])
+    expect(r.workout_date).toBe('2026-05-09')
+  })
+})

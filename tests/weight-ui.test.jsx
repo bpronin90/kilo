@@ -1,120 +1,135 @@
-// MVP weight entry validation tests (UI path: log and edit)
-// Run: node tests/weight-ui.test.jsx
+import '../parser.jsx'
 
-const fs = require('fs');
-const assert = require('assert');
-const path = require('path');
+// parseWeightEntry tests for the weight screen log and edit paths.
+// The edit path was previously bypassing parseWeightEntry (used raw parseFloat);
+// these tests lock the requirement that both paths use the same validation.
 
-const window = { KILO_TODAY: new Date().toISOString().slice(0, 10) };
-global.window = window;
-eval(fs.readFileSync(path.join(__dirname, '../parser.jsx'), 'utf8'));
+const { parseWeightEntry } = window
 
-let passed = 0, failed = 0;
-function test(name, fn) {
-  try { fn(); console.log(`  ✓ ${name}`); passed++; }
-  catch (e) { console.error(`  ✗ ${name}: ${e.message}`); failed++; }
-}
+// ── Accepted inputs (log and edit path) ───────────────────────────────────────
 
-// --- Log path: accepted inputs ---
-console.log('\nparseWeightEntry — accepted (log and edit path)');
+describe('parseWeightEntry — accepted', () => {
+  test('integer', () => {
+    const r = parseWeightEntry('180')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(180)
+    expect(r.weight_unit).toBe('lb')
+  })
 
-test('integer weight', () => {
-  const r = window.parseWeightEntry('180');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.weight_value, 180);
-  assert.strictEqual(r.weight_unit, 'lb');
-});
+  test('decimal', () => {
+    const r = parseWeightEntry('180.4')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(180.4)
+  })
 
-test('decimal weight', () => {
-  const r = window.parseWeightEntry('180.4');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.weight_value, 180.4);
-});
+  test('trailing-zero decimal', () => {
+    const r = parseWeightEntry('167.0')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(167.0)
+  })
 
-test('trailing zero decimal', () => {
-  const r = window.parseWeightEntry('167.0');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.weight_value, 167.0);
-});
+  test('surrounding whitespace trimmed', () => {
+    const r = parseWeightEntry(' 167.0 ')
+    expect(r.ok).toBe(true)
+    expect(r.weight_value).toBe(167.0)
+  })
 
-test('surrounding whitespace trimmed', () => {
-  const r = window.parseWeightEntry(' 167.0 ');
-  assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.weight_value, 167.0);
-});
+  test('logged_at is a valid ISO timestamp', () => {
+    const r = parseWeightEntry('180')
+    expect(r.ok).toBe(true)
+    expect(typeof r.logged_at).toBe('string')
+    expect(isNaN(Date.parse(r.logged_at))).toBe(false)
+  })
+})
 
-test('logged_at is an ISO timestamp', () => {
-  const r = window.parseWeightEntry('180');
-  assert.strictEqual(r.ok, true);
-  assert.ok(r.logged_at && !isNaN(Date.parse(r.logged_at)));
-});
+// ── Rejected inputs — must fail in both log and edit paths ────────────────────
 
-// --- Log and edit path: rejected inputs ---
-console.log('\nparseWeightEntry — rejected (log and edit path)');
+describe('parseWeightEntry — rejected', () => {
+  test('empty string → missing_required_field', () => {
+    const r = parseWeightEntry('')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('empty string rejected', () => {
-  const r = window.parseWeightEntry('');
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.category, 'missing_required_field');
-});
+  test('null → missing_required_field', () => {
+    const r = parseWeightEntry(null)
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('null rejected', () => {
-  const r = window.parseWeightEntry(null);
-  assert.strictEqual(r.ok, false);
-});
+  test('whitespace-only → missing_required_field', () => {
+    const r = parseWeightEntry('   ')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
 
-test('unit suffix rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('180 lb').ok, false);
-  assert.strictEqual(window.parseWeightEntry('180lbs').ok, false);
-});
+  test('unit suffix "180 lb" → invalid_field_value', () => {
+    const r = parseWeightEntry('180 lb')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('comma decimal rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('180,4').ok, false);
-});
+  test('unit suffix "180lbs" → invalid_field_value', () => {
+    const r = parseWeightEntry('180lbs')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('inline note rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('180 / felt light').ok, false);
-});
+  test('comma decimal "180,4" → invalid_field_value', () => {
+    const r = parseWeightEntry('180,4')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('date prefix rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('2026-05-08 180.4').ok, false);
-});
+  test('inline note "180 / felt light" → invalid_field_value', () => {
+    const r = parseWeightEntry('180 / felt light')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('prose rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('one eighty').ok, false);
-});
+  test('date prefix "2026-05-08 180.4" → invalid_field_value', () => {
+    const r = parseWeightEntry('2026-05-08 180.4')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('zero rejected', () => {
-  const r = window.parseWeightEntry('0');
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.category, 'invalid_field_value');
-});
+  test('prose "one eighty" → invalid_field_value', () => {
+    const r = parseWeightEntry('one eighty')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-test('negative rejected', () => {
-  assert.strictEqual(window.parseWeightEntry('-5').ok, false);
-});
+  test('zero → invalid_field_value', () => {
+    const r = parseWeightEntry('0')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
 
-// --- Edit path: same rules apply ---
-// The edit path in weight.jsx now calls parseWeightEntry instead of parseFloat,
-// so these inputs must be rejected (previously parseFloat would silently coerce them).
-console.log('\nparseWeightEntry — edit-path bypass cases now blocked');
+  test('negative "-5" → invalid_field_value', () => {
+    const r = parseWeightEntry('-5')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('invalid_field_value')
+  })
+})
 
-test('edit: "180lbs" blocked', () => {
-  assert.strictEqual(window.parseWeightEntry('180lbs').ok, false);
-});
+// ── Edit-path bypass: cases previously accepted by parseFloat, now blocked ────
 
-test('edit: "0" blocked', () => {
-  assert.strictEqual(window.parseWeightEntry('0').ok, false);
-});
+describe('parseWeightEntry — edit-path cases now blocked', () => {
+  test('"180lbs" blocked — parseFloat would have returned 180', () => {
+    expect(parseWeightEntry('180lbs').ok).toBe(false)
+  })
 
-test('edit: "-5" blocked', () => {
-  assert.strictEqual(window.parseWeightEntry('-5').ok, false);
-});
+  test('"0" blocked — parseFloat > 0 check would allow NaN edge cases', () => {
+    expect(parseWeightEntry('0').ok).toBe(false)
+  })
 
-test('edit: whitespace-only blocked', () => {
-  assert.strictEqual(window.parseWeightEntry('   ').ok, false);
-});
+  test('"-5" blocked — was rejected by parseFloat sign check but now via parser', () => {
+    expect(parseWeightEntry('-5').ok).toBe(false)
+  })
 
-// Summary
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
+  test('"   " blocked — parseFloat returns NaN, parser returns missing_required_field', () => {
+    const r = parseWeightEntry('   ')
+    expect(r.ok).toBe(false)
+    expect(r.category).toBe('missing_required_field')
+  })
+})
