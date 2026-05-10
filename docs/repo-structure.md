@@ -25,6 +25,17 @@ npm run build
 That produces `www/index.html` plus `www/src/` by copying `Kilo.html` and the
 current `src/` tree without changing runtime behavior.
 
+To package that staged web app into the current device target:
+
+```sh
+npm run cap:sync
+npm run cap:open
+```
+
+`cap:sync` copies `www/` into `android/app/src/main/assets/public/` and updates
+generated Capacitor config assets. `cap:open` opens the Android project in
+Android Studio for device install and launch.
+
 ---
 
 ## Directory Layout
@@ -35,8 +46,10 @@ README.md
 AGENTS.md              ← shared repo protocol
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 package.json
+capacitor.config.json    ← Capacitor app id/name + staged webDir
 vitest.config.js
 www/                   ← generated build output from `npm run build` (not committed)
+android/               ← generated Android Capacitor shell; synced from `www/`
 
 src/                   ← all application source
   app.jsx

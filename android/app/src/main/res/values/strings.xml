@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kilo</string>
+    <string name="title_activity_main">Kilo</string>
+    <string name="package_name">com.benpronin.kilo</string>
+    <string name="custom_url_scheme">com.benpronin.kilo</string>
+</resources>

@@ -8,10 +8,11 @@ can be manually launch-validated.
 
 ## What Kilo Is Right Now
 
-Kilo is a client-only React prototype with no build step. It runs directly in a
-browser via CDN React and Babel. Entry point is `Kilo.html`. There is no server,
-no backend, and no Supabase connection. All persistence is `localStorage` in the
-current browser profile.
+Kilo is a client-only React prototype. The source app still runs directly in a
+browser via CDN React and Babel from `Kilo.html`, and there is now a minimal
+Android Capacitor shell that stages that same web app into `www/` for device
+install. There is no server, no backend, and no Supabase connection. All
+persistence is `localStorage` in the current browser profile.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -19,6 +20,13 @@ entries are layered on top of this seed via `localStorage` merge on each page
 load.
 
 The app has five tabs: Home, Log, Weight, Stats, More.
+
+For physical-device packaging, the current supported path is Android only:
+
+1. `npm run build`
+2. `npm run cap:sync`
+3. `npm run cap:open`
+4. Build and run from Android Studio to a connected device
 
 ---
 
@@ -158,6 +166,14 @@ implemented or wired up.
 Launch validation must treat `localStorage` as the persistence layer. Any
 evaluation of the app against the Supabase-based data model described in
 `docs/mvp-roadmap.md` Phase 2 is premature.
+
+### Android shell is packaging-only
+
+The Capacitor shell is intentionally minimal. It wraps the existing staged web
+app in an Android WebView and does not add native product features, offline
+bundling, or platform-specific business logic. Because `Kilo.html` still loads
+React and Babel from CDN, the installed app currently requires internet access
+to render successfully on device.
 
 ### `KILO_TODAY` is hardcoded
 
