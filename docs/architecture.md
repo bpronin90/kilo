@@ -191,6 +191,7 @@ directly — there is no state manager.
 | Global | Type | Description |
 |--------|------|-------------|
 | `window.KILO_TODAY` | `string` | Hardcoded date `'2026-05-05'`; used as today by all screens |
+| `window.KILO_VERSION` | `string` | Tracked app version (e.g. `'0.1.0'`) |
 | `window.KILO_SPLIT` | `object` | `{ monday: { label, sub }, ... }` for Mon–Fri |
 | `window.KILO_EXERCISES` | `array` | Normalized exercise list (see shape below) |
 | `window.KILO_SESSIONS` | `array` | All workout sessions, newest-first; seeded + user-merged |
