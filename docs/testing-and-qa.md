@@ -204,57 +204,53 @@ Before declaring the MVP launch-ready, a human tester must pass every step below
 
 #### Via the Home quick-log
 
-The Home quick-log input is only shown when no weight has been logged for `KILO_TODAY`. If weight was already logged in steps 8-11 above, the input will be hidden and cannot be reached by reloading (the saved entry rehydrates from `localStorage`). Clear the stored state first:
+> **Prototype limitation — not manually reachable.** The Home quick-log input is hidden whenever `loggedToday` is true (`screens/home.jsx:60`). In the current prototype, `data.jsx` hardcodes `window.KILO_TODAY = '2026-05-05'` and `buildWeightLog()` always seeds a weight entry for that date (`data.jsx:441-486`). Clearing `localStorage` does not help because the seeded entry lives in the `window.KILO_WEIGHTS` global, not in `localStorage`. This path cannot be reached via normal browser interaction without modifying the prototype source.
+>
+> The `KiloHome` quick-log button state, success feedback, failure feedback, and persistence shape are all covered by automated tests in `tests/weight-ui.test.jsx` (see Coverage Inventory above). No manual smoke step is required here; pass or fail on this path is determined by the test suite.
 
-17. Open the browser DevTools console and run:
-    ```js
-    localStorage.clear(); location.reload();
-    ```
-18. Tap the **Home** tab. Confirm the quick-log weight input and Log button are visible.  **[BLOCKER]**
-19. Type `184.5` in the Home weight field. Confirm the Log button enables.  **[BLOCKER]**
-20. Tap the Log button. Confirm a success message appears.  **[BLOCKER]**
+17. Run `npm test` and confirm all tests pass, including the `KiloHome quick-log` suites.  **[BLOCKER]**
 
 ---
 
 ### Flow 2 — Log a workout entry
 
-21. Tap the **Log** tab.
-22. Confirm exercises are listed for today's day-of-week split.
-23. Confirm the **Save Session** button is disabled when no exercises have valid input.  **[BLOCKER]**
-24. Type `135 5,5,5` in the first exercise's input field.
-25. Confirm the parse preview immediately shows the rep groups below the field (e.g., a chip showing `135 × 5,5,5`).  (non-blocker for launch gate, but expected behavior)
-26. Leave all remaining exercises empty.
-27. Tap **Save Session**.
-28. Confirm the "Workout saved" confirmation screen appears with a checkmark.  **[BLOCKER]**
-29. Tap **Back to Home**.
+18. Tap the **Log** tab.
+19. Confirm exercises are listed for today's day-of-week split.
+20. Confirm the **Save Session** button is disabled when no exercises have valid input.  **[BLOCKER]**
+21. Type `135 5,5,5` in the first exercise's input field.
+22. Confirm the parse preview immediately shows the rep groups below the field (e.g., a chip showing `135 × 5,5,5`).  (non-blocker for launch gate, but expected behavior)
+23. Leave all remaining exercises empty.
+24. Tap **Save Session**.
+25. Confirm the "Workout saved" confirmation screen appears with a checkmark.  **[BLOCKER]**
+26. Tap **Back to Home**.
 
 #### Skip and error cases
 
-30. Tap the **Log** tab.
-31. Type `-` in an exercise field. Confirm "Skipped" appears in the preview.
-32. Type `bad input` in a different exercise field.
-33. Confirm the parse preview shows a `⚠` error message below that field.
-34. Type `135 5` in at least one exercise field to make the submit valid.
-35. Tap **Save Session**. Confirm a row with `bad input` shows a red error inline (not the success screen).  **[BLOCKER]**
-36. Correct `bad input` to `135 5`. Tap **Save Session**. Confirm the "Workout saved" screen appears.  **[BLOCKER]**
-37. Return to the **Log** tab with all exercise fields cleared.
-38. Confirm the **Save Session** button is disabled when all fields are empty (no save attempt is possible in this state).  **[BLOCKER]**
-39. Type `-` in every exercise field. Confirm the **Save Session** button becomes enabled (skipped rows are parsed as `ok` and count toward the enabled state).
-40. Tap **Save Session**. Confirm "✕ Complete at least one exercise before saving" appears — the parser drops all skipped rows and returns a structural violation.  **[BLOCKER]**
+27. Tap the **Log** tab.
+28. Type `-` in an exercise field. Confirm "Skipped" appears in the preview.
+29. Type `bad input` in a different exercise field.
+30. Confirm the parse preview shows a `⚠` error message below that field.
+31. Type `135 5` in at least one exercise field to make the submit valid.
+32. Tap **Save Session**. Confirm a row with `bad input` shows a red error inline (not the success screen).  **[BLOCKER]**
+33. Correct `bad input` to `135 5`. Tap **Save Session**. Confirm the "Workout saved" screen appears.  **[BLOCKER]**
+34. Return to the **Log** tab with all exercise fields cleared.
+35. Confirm the **Save Session** button is disabled when all fields are empty (no save attempt is possible in this state).  **[BLOCKER]**
+36. Type `-` in every exercise field. Confirm the **Save Session** button becomes enabled (skipped rows are parsed as `ok` and count toward the enabled state).
+37. Tap **Save Session**. Confirm "✕ Complete at least one exercise before saving" appears — the parser drops all skipped rows and returns a structural violation.  **[BLOCKER]**
 
 ---
 
 ### Flow 3 — Review saved recent entries
 
-41. Tap the **Home** tab.
-42. Scroll to the "Recent history" section.
-43. Confirm the workout entry just saved appears in the list with the exercise name(s) and logged values visible.  **[BLOCKER]**
-44. Confirm any weight entry logged during this session also appears in the list.  **[BLOCKER]**
-45. Confirm the most recently saved entry appears first.  **[BLOCKER]**
-46. Reload the page (`Cmd+R` / `F5`).
-47. Navigate back to Home → Recent history.
-48. Confirm the user-saved entries are still present (they persist via `localStorage`).  **[BLOCKER]**
-49. Tap the **Weight** tab and confirm the logged weight entry is still listed in the Entries section.  **[BLOCKER]**
+38. Tap the **Home** tab.
+39. Scroll to the "Recent history" section.
+40. Confirm the workout entry just saved appears in the list with the exercise name(s) and logged values visible.  **[BLOCKER]**
+41. Confirm any weight entry logged during this session also appears in the list.  **[BLOCKER]**
+42. Confirm the most recently saved entry appears first.  **[BLOCKER]**
+43. Reload the page (`Cmd+R` / `F5`).
+44. Navigate back to Home → Recent history.
+45. Confirm the user-saved entries are still present (they persist via `localStorage`).  **[BLOCKER]**
+46. Tap the **Weight** tab and confirm the logged weight entry is still listed in the Entries section.  **[BLOCKER]**
 
 ---
 
@@ -262,32 +258,32 @@ The Home quick-log input is only shown when no weight has been logged for `KILO_
 
 #### Delete a weight entry from the Weight tab
 
-50. Tap the **Weight** tab.
-51. In the Entries list, find a user-created entry (identified by the edit and delete icons on the right).
-52. Tap the **×** (delete) icon on that entry.
-53. Confirm a browser confirmation dialog appears ("Delete this entry?").
-54. Confirm deletion. Confirm the entry is removed from the Entries list.  **[BLOCKER]**
+47. Tap the **Weight** tab.
+48. In the Entries list, find a user-created entry (identified by the edit and delete icons on the right).
+49. Tap the **×** (delete) icon on that entry.
+50. Confirm a browser confirmation dialog appears ("Delete this entry?").
+51. Confirm deletion. Confirm the entry is removed from the Entries list.  **[BLOCKER]**
 
 #### Edit a weight entry from the Weight tab
 
-55. In the Entries list, find a remaining user-created entry.
-56. Tap the **edit** (pencil) icon.
-57. Confirm a browser prompt appears pre-filled with the current value.
-58. Enter `190`. Confirm. Confirm the entry value updates in the list.  **[BLOCKER]**
-59. Tap the edit icon again. Enter `bad`. Confirm. Confirm an error alert appears and the entry is unchanged.  **[BLOCKER]**
+52. In the Entries list, find a remaining user-created entry.
+53. Tap the **edit** (pencil) icon.
+54. Confirm a browser prompt appears pre-filled with the current value.
+55. Enter `190`. Confirm. Confirm the entry value updates in the list.  **[BLOCKER]**
+56. Tap the edit icon again. Enter `bad`. Confirm. Confirm an error alert appears and the entry is unchanged.  **[BLOCKER]**
 
 #### Delete a workout session from Home
 
-60. Tap the **Home** tab.
-61. In the Recent history section, find a user-saved workout entry (identified by the **×** delete icon).
-62. Tap **×**. Confirm the browser confirmation dialog appears.
-63. Confirm deletion. Confirm the workout entry is removed from Recent history.  **[BLOCKER]**
+57. Tap the **Home** tab.
+58. In the Recent history section, find a user-saved workout entry (identified by the **×** delete icon).
+59. Tap **×**. Confirm the browser confirmation dialog appears.
+60. Confirm deletion. Confirm the workout entry is removed from Recent history.  **[BLOCKER]**
 
 #### Delete a weight entry from Home
 
-64. In the Recent history section, find a user-saved weight entry.
-65. Tap **×**. Confirm the browser confirmation dialog appears.
-66. Confirm deletion. Confirm the weight entry is removed from Recent history.  **[BLOCKER]**
+61. In the Recent history section, find a user-saved weight entry.
+62. Tap **×**. Confirm the browser confirmation dialog appears.
+63. Confirm deletion. Confirm the weight entry is removed from Recent history.  **[BLOCKER]**
 
 ---
 
