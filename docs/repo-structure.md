@@ -152,7 +152,10 @@ These implicit dependencies exist because there is no bundler. Load order in
 - `src/data.jsx` calls `window.parseKiloInput` and `window.adjusted1RM` — both
   must be set by `src/parser.jsx` before `src/data.jsx` runs.
 - `src/screens/home.jsx` calls `window.persistWeightEntry` — set by
-  `src/screens/weight.jsx`; load order must put `weight.jsx` before `home.jsx`.
+  `src/screens/weight.jsx`. This is a runtime dependency only: `persistWeightEntry`
+  is invoked during user interaction (after all scripts have loaded), not at
+  parse time. `Kilo.html` loads `home.jsx` before `weight.jsx` and the app
+  works correctly; no reordering is required.
 - All screens call `window.KILO_C`, `window.KiloHeader`, etc. — set by
   `src/components/ui.jsx`; must load before any screen.
 - All screens read `window.KILO_TODAY`, `window.KILO_SPLIT`, etc. — set by

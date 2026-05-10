@@ -115,7 +115,7 @@ Required readiness artifacts and their current status:
 
 | Artifact | Status |
 |---|---|
-| `README.md` | Exists but empty — contains only `# kilo` |
+| `README.md` | Complete |
 | `docs/current-state.md` | Complete |
 | `docs/architecture.md` | Complete |
 | `docs/testing-and-qa.md` | Complete |
@@ -176,17 +176,6 @@ Any code path that reads `session.items` must guard against missing `items`. The
 Stats screen and Log screen `lastRef` display use the legacy `parseKiloInput`
 path to handle these gracefully.
 
-### README is empty
-
-`README.md` contains only the repo name. A reviewer landing on the repo has no
-entry point, no instructions for starting the app, and no orientation to the
-deeper docs. This must be written before issue #17 can proceed.
-
-### `docs/repo-structure.md` does not exist
-
-This is the final required readiness artifact and a hard dependency for
-unblocking issue #17.
-
 ---
 
 ## Launch Prerequisite Checklist
@@ -194,9 +183,9 @@ unblocking issue #17.
 All items below must be true before manual launch validation (issue #17) begins.
 
 **Docs**
-- [ ] `README.md` explains where the app lives, how to start it, and which docs
+- [x] `README.md` explains where the app lives, how to start it, and which docs
       matter for launch review
-- [ ] `docs/current-state.md` exists and is internally consistent with the other
+- [x] `docs/current-state.md` exists and is internally consistent with the other
       docs (this document)
 - [ ] `docs/architecture.md` is current and accurate *(complete)*
 - [ ] `docs/testing-and-qa.md` is current and accurate *(complete)*
