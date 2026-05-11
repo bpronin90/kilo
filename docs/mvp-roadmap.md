@@ -16,6 +16,54 @@ MVP non-goals:
 
 ## Ordered MVP Roadmap
 
+### Native Migration Contract
+- Phase goal: move from prototype-wrapper ambiguity to an explicit native-app
+  implementation path without changing the locked MVP product scope.
+- Allowed scope: migration boundary, first-slice ownership, milestone
+  definition, and acceptance criteria for the first native-app checkpoint.
+- Explicit out of scope: backend wiring, broad redesign, parser expansion, or
+  deleting the legacy prototype path.
+- Dependency: current prototype behavior remains the reference source until the
+  native path has matching MVP loop coverage.
+- Completion condition: implementation agents can proceed in `mobile/` without
+  guessing whether the prototype-wrapper or native path is the real app.
+
+Ordered tasks:
+
+#### Task 1: Define the active app path
+- Session goal: remove ambiguity about which runtime is the future app.
+- Intended agent: `codex`
+- Allowed scope: document the role of `mobile/` versus the legacy prototype
+  path.
+- Explicit out of scope: implementation.
+- Dependency: none.
+- Verification target: one clear statement that `mobile/` is the active app
+  path and the repo root remains temporary reference/runtime only.
+- Stop condition: later issues do not need to guess where app work belongs.
+
+#### Task 2: Split first implementation ownership
+- Session goal: isolate UI work from parser/storage work for the first native
+  migration slices.
+- Intended agent: `codex`
+- Allowed scope: issue boundaries, ownership, acceptance criteria.
+- Explicit out of scope: coding.
+- Dependency: Define the active app path.
+- Verification target: one UI implementation slice and one data implementation
+  slice with non-overlapping responsibilities.
+- Stop condition: implementation can proceed without cross-agent ownership
+  confusion.
+
+#### Task 3: Define the first native MVP milestone
+- Session goal: create a concrete checkpoint for native MVP progress before any
+  broader launch claim.
+- Intended agent: `codex`
+- Allowed scope: milestone acceptance criteria tied to the locked MVP loop.
+- Explicit out of scope: backend or post-MVP capability.
+- Dependency: Split first implementation ownership.
+- Verification target: milestone covers native Home, Log, Weight, Stats, local
+  save/retrieve loop, and explicit UI/data module boundaries.
+- Stop condition: the first native checkpoint can be reviewed as pass/fail.
+
 ### Phase 1: Lock The MVP Contract
 - Phase goal: turn the current spec into a strict implementation contract for MVP only.
 - Allowed scope: product spec cleanup, acceptance criteria, terminology, and explicit MVP boundaries.

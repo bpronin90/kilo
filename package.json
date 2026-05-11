@@ -1,12 +1,16 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "scripts": {
     "build": "rm -rf www && mkdir -p www && cp Kilo.html www/index.html && cp -r src www/src",
     "cap:sync": "cap sync android",
     "cap:run": "cap run android",
     "cap:open": "cap open android",
+    "mobile:start": "npm --prefix mobile start",
+    "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
     "preview": "npm run build && npm run cap:sync && npm run cap:run",
     "test": "vitest run",
     "test:watch": "vitest"

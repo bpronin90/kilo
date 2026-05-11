@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 - 2026-05-10
+
+- Issue #35: Declared `mobile/` the active native-app path, documented the migration boundary versus the legacy prototype-wrapper path, defined the first native MVP milestone, and split first implementation ownership between UI migration and parser/storage migration.
+
 ## 0.1.2 - 2026-05-10
 
 - Issue #30: Added `cap:run` and `preview` npm scripts for a repeatable device sync and relaunch loop. Documented the full rebuild → sync → run workflow in `docs/testing-and-qa.md`.

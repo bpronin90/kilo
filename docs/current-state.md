@@ -8,11 +8,17 @@ can be manually launch-validated.
 
 ## What Kilo Is Right Now
 
-Kilo is a client-only React prototype. The source app still runs directly in a
-browser via CDN React and Babel from `Kilo.html`, and there is now a minimal
-Android Capacitor shell that stages that same web app into `www/` for device
-install. There is no server, no backend, and no Supabase connection. All
-persistence is `localStorage` in the current browser profile.
+Kilo currently has two app paths with different roles:
+
+- `mobile/` is now the active native-app path. It is an Expo/React Native
+  scaffold with a Kilo-specific shell that runs as a real native app surface.
+- The repo root remains the legacy prototype path. It runs directly in a
+  browser via CDN React and Babel from `Kilo.html`, and there is also a minimal
+  Android Capacitor shell that stages that same web app into `www/` for device
+  install.
+
+There is still no server, no backend, and no Supabase connection. Persistence
+remains local-only in the current implementation paths.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -21,7 +27,7 @@ load.
 
 The app has five tabs: Home, Log, Weight, Stats, More.
 
-For physical-device packaging, the current supported path is Android only:
+For physical-device packaging, the legacy prototype path is still Android only:
 
 1. `npm run build`
 2. `npm run cap:sync`
@@ -31,6 +37,49 @@ For physical-device packaging, the current supported path is Android only:
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
 plain text-only product naming.
+
+The native app path is not yet a feature-complete port. It currently proves that
+Kilo can run as a real React Native app with native screens and state instead of
+a WebView wrapper, but parser, persistence, and history behavior still need to
+move into `mobile/`.
+
+---
+
+## Native Migration Contract
+
+Issue #35 establishes the migration boundary from prototype-wrapper to native
+app:
+
+- `mobile/` is the only path that should receive forward-looking app
+  architecture work.
+- The repo-root prototype path stays in place temporarily as a reference and
+  behavior source during migration.
+- No new product behavior should depend on embedding the prototype inside the
+  native app.
+- The first implementation split is:
+  - UI migration in issue #36
+  - Parser and local data-model migration in issue #37
+
+The current `mobile/` scaffold is intentionally narrow. It is a branch-off base
+for implementation agents, not a claim that the native MVP is already complete.
+
+## First Native MVP Milestone
+
+The first native MVP milestone is reached when all of the following are true in
+`mobile/`:
+
+1. The app has real native Home, Log, Weight, and Stats surfaces.
+2. Weight entries can be created locally, stored locally, and shown again in a
+   recent-history view.
+3. Workout entries can be created locally, stored locally, and shown again in a
+   recent-history view.
+4. Parser and storage code used by the MVP loop live in `mobile/`, not in the
+   legacy browser-runtime path.
+5. The native UI consumes parser/storage behavior through explicit local module
+   boundaries instead of screen-local ad hoc state.
+
+This milestone does not require Supabase, sync, account work, or deletion of the
+legacy prototype path.
 
 ---
 
@@ -119,10 +168,11 @@ contract). Seeded entries are not correctable.
 
 ## What Issue #17 Validated
 
-Issue #17 is the manual launch validation task. It has not been executed yet.
-The Pre-Launch Repo Readiness Sequence (defined in `docs/mvp-roadmap.md`) is
-now complete. Issue #17 is no longer blocked on repo-orientation uncertainty
-and can proceed to manual smoke testing.
+Issue #17 is still the legacy prototype launch-validation task. It is no longer
+blocked on repo-orientation uncertainty, but it should not be mistaken for
+native-app readiness. The native migration contract established in issue #35
+creates a separate path of work before any native-app launch claim would be
+credible.
 
 Required readiness artifacts and their current status:
 
@@ -179,6 +229,12 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
+### Native app path is scaffold-only
+
+`mobile/` is now the active app path, but it is still only a scaffold plus a
+starter Kilo shell. It does not yet own the parser, local persistence, recent
+history, or correction flows required by the locked MVP contract.
+
 ### `KILO_TODAY` is hardcoded
 
 `window.KILO_TODAY` is set to `'2026-05-05'` by `data.jsx`. All screens use
@@ -224,3 +280,15 @@ All items below must be true before manual launch validation (issue #17) begins.
 - Home quick-log is not manually reachable in the seeded prototype state (covered
   by automated tests)
 - Supabase is not wired up; `localStorage` is the persistence layer for MVP validation
+
+## Ownership Split For Native Migration
+
+Issue #35 fixes the first implementation ownership split as follows:
+
+- Issue #36 (`agent:gemini`): native screen structure, navigation, reusable UI
+  components, and MVP surface composition in `mobile/`
+- Issue #37 (`agent:claude`): parser port, entry model, local persistence,
+  recent-history retrieval, and native-side data access boundaries in `mobile/`
+
+Codex stays responsible for contract definition, sequencing, and review rather
+than owning the implementation slices directly.
