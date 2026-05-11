@@ -1,8 +1,40 @@
 # Architecture
 
-Kilo is a client-only React prototype. The source app runs in the browser using
-CDN React and Babel transpilation, and the repo now includes a minimal Android
-Capacitor shell that stages that same web app into a WebView for device install.
+Kilo currently has a split architecture:
+
+- The repo root is the legacy prototype runtime. It is client-only React loaded
+  through CDN scripts in `Kilo.html`, plus a minimal Android Capacitor shell
+  that stages that same web app into a WebView for device install.
+- `mobile/` is the active native-app path. It is an Expo/React Native app and
+  should receive forward-looking app architecture work.
+
+Issue #35 defines the migration contract between these paths: the prototype path
+remains the behavior reference during migration, but the native path is the
+target runtime for future MVP implementation.
+
+## Native Migration Boundary
+
+The migration boundary is intentionally narrow:
+
+1. `mobile/` becomes the real app surface.
+2. The prototype path remains temporarily for reference, manual comparison, and
+   source behavior lookup.
+3. No new architecture work should rely on embedding `Kilo.html` or the
+   Capacitor WebView path inside the native app.
+4. The first implementation split is:
+   - UI and screen structure in issue #36
+   - Parser, entry model, and local persistence in issue #37
+
+## Target Native Runtime Shape
+
+The first native milestone does not require backend work. It does require a
+clear separation between UI and data responsibilities inside `mobile/`:
+
+- Screen and component layers render Home, Log, Weight, and Stats surfaces.
+- Parser and persistence modules own entry validation, canonical save shapes,
+  local writes, and recent-history reads.
+- Screen components consume explicit module boundaries instead of directly
+  re-creating parser or storage rules inline.
 
 ## Runtime Shape
 
@@ -30,6 +62,9 @@ packaging, `npm run build` copies `Kilo.html` to `www/index.html` and copies
 The current native target is Android only. `capacitor.config.json` points
 Capacitor at `webDir: "www"` and the generated `android/` project hosts the
 staged web app without changing product logic or data flow.
+
+This packaging path remains valid only for the legacy prototype runtime. It is
+not the target architecture for the native app path in `mobile/`.
 
 ## Screen Routing
 
