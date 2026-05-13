@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-05-12
+
+- Issue #37: Ported the Kilo parser, native entry model, local AsyncStorage persistence, and React hooks into `mobile/lib/`, `mobile/storage/`, and `mobile/hooks/`. Added native-side parser and storage test suites (43 tests, all passing). The native app path can now create, store, and retrieve MVP weight and workout entries without depending on the prototype path.
+
 ## 0.1.3 - 2026-05-10
 
 - Issue #35: Declared `mobile/` the active native-app path, documented the migration boundary versus the legacy prototype-wrapper path, defined the first native MVP milestone, and split first implementation ownership between UI migration and parser/storage migration.
