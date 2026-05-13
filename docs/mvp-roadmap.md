@@ -14,6 +14,19 @@ MVP non-goals:
 - Broad settings or customization
 - Prototype-only work that does not directly support the logging loop
 
+## Current Migration Status
+
+The repo now has a real native app scaffold under `mobile/`.
+
+- Issue #35 defined `mobile/` as the active native-app path and split the
+  migration into UI work and parser/storage work.
+- Issue #36 completed the native UI shell for Home, Log, Weight, and Stats.
+- Issue #37 is the remaining migration task for parser, local data model, and
+  persistence behavior in the native path.
+
+Until issue #37 lands, the browser prototype remains the only path with the full
+save, validation, and reload loop wired through canonical parser behavior.
+
 ## Ordered MVP Roadmap
 
 ### Native Migration Contract

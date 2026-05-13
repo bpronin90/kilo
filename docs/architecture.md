@@ -66,6 +66,20 @@ staged web app without changing product logic or data flow.
 This packaging path remains valid only for the legacy prototype runtime. It is
 not the target architecture for the native app path in `mobile/`.
 
+## Native Runtime Shape
+
+The `mobile/` app is a separate runtime from the browser prototype. `mobile/index.js`
+registers `mobile/App.js` with Expo. The current native architecture is narrow:
+
+- `mobile/App.js` owns tab state and temporary entry state
+- `mobile/components/` holds reusable shell and UI primitives
+- `mobile/screens/` holds one component per visible MVP surface
+- `mobile/theme/colors.js` centralizes native design tokens
+- `mobile/lib/format.js` contains a small shared timestamp formatter
+
+The native path does not currently import parser logic from `src/`, does not
+persist data, and does not coordinate with the Capacitor packaging path.
+
 ## Screen Routing
 
 `KiloApp` (in `src/app.jsx`) owns a single `tab` state string initialized to
@@ -80,6 +94,20 @@ tab: 'home' | 'log' | 'weight' | 'stats' | 'more'
 
 There is no router library. Navigation is in-memory state and does not affect
 the URL.
+
+## Native Screen Routing
+
+`mobile/App.js` owns a separate `activeTab` state string initialized to
+`'Home'`. A `switch` statement maps it to one of four native screens:
+
+```
+activeTab: 'Home' | 'Log' | 'Weight' | 'Stats'
+```
+
+`mobile/components/TabBar.js` calls `setActiveTab` directly. The save handlers
+for weight and workout entries update local React state and then send the user
+back to Home. There is no router library, deep linking, or persisted navigation
+state in the native path yet.
 
 ## Parser Responsibilities
 

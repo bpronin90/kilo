@@ -18,14 +18,17 @@ Kilo currently has two app paths with different roles:
   install.
 
 There is still no server, no backend, and no Supabase connection. Persistence
-remains local-only in the current implementation paths.
+remains local-only in the current implementation paths: the browser prototype
+persists via `localStorage`, while the native app currently uses temporary
+in-memory React state only.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
 entries are layered on top of this seed via `localStorage` merge on each page
 load.
 
-The app has five tabs: Home, Log, Weight, Stats, More.
+The browser prototype has five tabs: Home, Log, Weight, Stats, More. The native
+Expo app currently exposes four tabs: Home, Log, Weight, and Stats.
 
 For physical-device packaging, the legacy prototype path is still Android only:
 
@@ -36,7 +39,9 @@ For physical-device packaging, the legacy prototype path is still Android only:
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
-plain text-only product naming.
+plain text-only product naming. The native Expo path currently uses simple
+native text treatment and shared color tokens rather than the full prototype
+branding stack.
 
 The native app path is not yet a feature-complete port. It currently proves that
 Kilo can run as a real React Native app with native screens and state instead of
@@ -84,6 +89,25 @@ legacy prototype path.
 ---
 
 ## MVP Surface — What Is Implemented
+
+### Native UI shell (`mobile/`)
+
+The real native app path now has a modular React Native shell:
+
+- `mobile/App.js` owns tab state plus temporary in-memory entry state
+- `mobile/screens/HomeScreen.js` renders recent seeded activity and a native
+  overview card
+- `mobile/screens/LogScreen.js` renders native workout title/detail inputs and a
+  save action
+- `mobile/screens/WeightScreen.js` renders native weight/note inputs and a save
+  action
+- `mobile/screens/StatsScreen.js` renders a small native summary card grid
+- `mobile/components/` contains shared shell, tab bar, and UI primitives
+- `mobile/theme/colors.js` centralizes the native color system
+
+This path is intentionally UI-only today. Save actions update local React state
+inside `mobile/App.js` and return the user to Home, but they do not yet call the
+prototype parser or persist entries across app restarts.
 
 ### Parser (`src/parser.jsx`)
 
@@ -188,6 +212,14 @@ Required readiness artifacts and their current status:
 
 ## Known Gaps That Affect Launch Confidence
 
+### Native app path is UI-only so far
+
+The `mobile/` Expo app now renders the MVP surfaces natively, but it still uses
+temporary local React state and seeded entries from `mobile/App.js`. The native
+path does not yet parse canonical weight/workout input, persist data locally, or
+reload saved entries across restarts. Issue #37 exists to migrate parser and
+local data behavior into `mobile/`.
+
 ### No automated tests for workout logging, corrections, or recent history
 
 The following MVP behaviors have no automated test coverage:
@@ -229,11 +261,11 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
-### Native app path is scaffold-only
+### Native UI runtime is not yet validated end-to-end
 
-`mobile/` is now the active app path, but it is still only a scaffold plus a
-starter Kilo shell. It does not yet own the parser, local persistence, recent
-history, or correction flows required by the locked MVP contract.
+Issue #36 review approved the native UI structure, but the approval was based on
+static inspection of the `mobile/**` diff. The Expo app has not yet been
+validated end-to-end on a device or emulator as part of the issue closeout.
 
 ### `KILO_TODAY` is hardcoded
 
