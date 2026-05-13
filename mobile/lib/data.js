@@ -79,7 +79,7 @@ export function exercisesForDay(day) {
 }
 
 // Factory for a new weight entry
-export function makeWeightEntry({ weight_value, logged_at }) {
+export function makeWeightEntry({ weight_value, logged_at, note }) {
   const ts = logged_at || new Date().toISOString();
   return {
     id: `w_${ts.slice(0, 10)}_${Date.now()}`,
@@ -87,6 +87,7 @@ export function makeWeightEntry({ weight_value, logged_at }) {
     date: ts.slice(0, 10),
     weight_value,
     weight_unit: 'lb',
+    note: note || null,
     logged_at: ts,
     saved_at: new Date().toISOString(),
   };
