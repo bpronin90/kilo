@@ -629,6 +629,7 @@ Explicit MVP parser boundary decisions:
 
 ### Phase 4: Core UI For Logging
 - Phase goal: expose the MVP logging loop in the product UI.
+- **Native Transition Note**: Kilo is transitioning from a web prototype to a real native app shell in `mobile/`. Phase 4 tasks now target the native app surface as the primary MVP delivery target.
 - Allowed scope: primary entry surfaces, success or failure feedback, recent-history visibility.
 - Explicit out of scope: advanced navigation, visual polish beyond usability, settings, onboarding expansion.
 - Dependency: Phase 3 complete.

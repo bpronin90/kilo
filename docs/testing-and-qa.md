@@ -221,3 +221,36 @@ Before declaring the packaged preview ready, a human tester must pass every step
 6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, **Save Session** becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
 7. Return to **Home** and confirm the new workout appears in Recent history with the most recent entry first.  **[BLOCKER]**
 8. Do one basic touch pass on the device: scroll Recent history, switch tabs a few times, and confirm taps register cleanly without missed or stuck interactions.  **[BLOCKER]**
+
+---
+
+## Native App Smoke Checklist (mobile/)
+
+Before declaring the native app ready, a human tester must pass every step below
+on a physical phone (via Expo Go) or a stable emulator.
+
+1. Start the Expo development server and launch the app on a device or emulator.
+   ```sh
+   cd mobile
+   npm start
+   ```
+2. Confirm the app launches to the **Home** screen without errors. **[BLOCKER]**
+3. Verify the **Home** screen shows the placeholder seed entries ("Push Day" and
+   "186.4 lb"). **[BLOCKER]**
+4. Switch through all four tabs: **Home**, **Log**, **Weight**, **Stats**. Confirm
+   the header titles update correctly and the tab bar highlights the active tab. **[BLOCKER]**
+5. On the **Weight** tab:
+   - Enter `190` in the weight field and a note.
+   - Tap **Save weigh-in**.
+   - Confirm you are redirected to the **Home** tab and the new entry appears
+     at the top of the "Recent activity" list. **[BLOCKER]**
+6. On the **Log** tab:
+   - Enter a workout name and some details.
+   - Tap **Save workout**.
+   - Confirm you are redirected to the **Home** tab and the new workout appears
+     at the top of the activity list. **[BLOCKER]**
+7. On the **Stats** tab:
+   - Verify the "Latest weight" and entry counts reflect the data you just
+     logged. **[BLOCKER]**
+8. Confirm the app handles basic interactions (scrolling, text input, keyboard
+   dismissal) smoothly and predictably. **[BLOCKER]**

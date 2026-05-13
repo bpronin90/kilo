@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 - 2026-05-12
+
+- Issue #36: Ported the Kilo MVP UI into the React Native scaffold in `mobile/`. Established a native screen structure (Home, Log, Weight, Stats) and reusable native component architecture. Replaced the starter shell with intentional native screens and UI flows that match the MVP loop.
+
 ## 0.1.2 - 2026-05-10
 
 - Issue #30: Added `cap:run` and `preview` npm scripts for a repeatable device sync and relaunch loop. Documented the full rebuild → sync → run workflow in `docs/testing-and-qa.md`.
