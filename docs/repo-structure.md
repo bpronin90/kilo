@@ -41,24 +41,17 @@ Android Studio for device install and launch.
 ## Directory Layout
 
 ```
-Kilo.html              ← browser prototype entry point
+Kilo.html              ← browser entry point
 README.md
 AGENTS.md              ← shared repo protocol
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 package.json
-capacitor.config.json    ← legacy Capacitor config
+capacitor.config.json    ← Capacitor app id/name + staged webDir
 vitest.config.js
 www/                   ← generated build output from `npm run build` (not committed)
-android/               ← legacy Android Capacitor shell; synced from `www/`
+android/               ← generated Android Capacitor shell; synced from `www/`
 
-mobile/                ← NEW React Native / Expo app scaffold (native MVP shell)
-  App.js               ← app root and state orchestration
-  components/          ← reusable native UI components
-  screens/             ← Home, Log, Weight, Stats screens
-  theme/               ← design tokens and color palette
-  lib/                 ← shared native helpers
-
-src/                   ← web application source (prototype-wrapper)
+src/                   ← all application source
   app.jsx
   data.jsx
   parser.jsx
@@ -125,30 +118,7 @@ for code review and manual validation.
 | `src/screens/home.jsx` | Home / dashboard. Quick-log weight entry; recent history combined feed; featured goal; today's split. |
 | `src/screens/stats.jsx` | Stats screen. 1RM display per exercise; unified history list; exercise drilldown. Read-only; no save or correction flows. |
 | `src/screens/more.jsx` | More screen. Goals list and PT info. Read-only at MVP. |
-| src/app.jsx | Root. Tab routing via `React.useState`. Renders active screen and `KiloTabBar`. |
-
----
-
-## Native App Surface (mobile/)
-
-The `mobile/` directory contains the modern React Native (Expo) implementation
-of the Kilo MVP. This is the long-term supported app surface, replacing the
-`Kilo.html` + Capacitor prototype-wrapper loop.
-
-| File/Dir | Role |
-|------|------|
-| `mobile/App.js` | Root component. Manages active tab state and shared logging state (entries). |
-| `mobile/screens/` | Native screen implementations (HomeScreen, LogScreen, WeightScreen, StatsScreen). |
-| `mobile/components/` | Reusable UI components (ScreenShell, Card, Button, StatCard, Chip, TabBar). |
-| `mobile/theme/` | Centralized design tokens (Colors). |
-| `mobile/lib/` | Shared helpers (formatTimestamp). |
-
-To start the native app:
-
-```sh
-cd mobile
-npm start
-```
+| `src/app.jsx` | Root. Tab routing via `React.useState`. Renders active screen and `KiloTabBar`. |
 
 ---
 

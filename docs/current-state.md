@@ -8,30 +8,29 @@ can be manually launch-validated.
 
 ## What Kilo Is Right Now
 
-Kilo is transitioning from a browser-centric prototype to a real native mobile
-application.
+Kilo is a client-only React prototype. The source app still runs directly in a
+browser via CDN React and Babel from `Kilo.html`, and there is now a minimal
+Android Capacitor shell that stages that same web app into `www/` for device
+install. There is no server, no backend, and no Supabase connection. All
+persistence is `localStorage` in the current browser profile.
 
-The **native app surface** is a React Native / Expo implementation located in
-the `mobile/` directory. It ports the Home, Log, Weight, and Stats screens into
-intentional native components and screen flows. This is the long-term supported
-path for the Kilo MVP.
+The prototype is a seeded fitness-logging app with approximately 221 synthetic
+workout sessions and bodyweight entries used as history scaffolding. User-created
+entries are layered on top of this seed via `localStorage` merge on each page
+load.
 
-The **legacy prototype surface** remains at the repo root in `Kilo.html`. It
-runs directly in a browser via CDN React and Babel. A Capacitor shell also exists
-to stage this web app into `android/` for legacy device install, but this path
-is now considered a "prototype-wrapper" and is superseded by the `mobile/` app.
+The app has five tabs: Home, Log, Weight, Stats, More.
 
-There is no server, no backend, and no Supabase connection in either surface yet.
-The native app currently uses in-memory state for its MVP loop, while the web
-prototype uses `localStorage`. All persistence and synchronization logic remains
-a known Phase 2 roadmap item.
+For physical-device packaging, the current supported path is Android only:
 
-The app has four primary tabs in the native shell: Home, Log, Weight, Stats.
+1. `npm run build`
+2. `npm run cap:sync`
+3. `npm run cap:open`
+4. Build and run from Android Studio to a connected device
 
-To run the native app:
-1. `cd mobile`
-2. `npm start`
-3. Use the Expo Go app or an emulator to launch the project.
+The shipped prototype branding now uses the approved Direction 3 Kilo mark and
+wordmark treatment in the main Home header and the More screen footer instead of
+plain text-only product naming.
 
 ---
 
@@ -172,19 +171,13 @@ Launch validation must treat `localStorage` as the persistence layer. Any
 evaluation of the app against the Supabase-based data model described in
 `docs/mvp-roadmap.md` Phase 2 is premature.
 
-### Android shell is now two-tier
+### Android shell is packaging-only
 
-The repository contains two Android paths:
-1. **Legacy Capacitor Shell**: Wraps the staged `Kilo.html` web app in a WebView.
-   Requires internet access due to CDN dependencies and does not offer native
-   performance or components.
-2. **New Native App (`mobile/`)**: A real React Native / Expo application. It
-   offers native components, offline-ready UI, and a structural foundation for
-   further development. This is the recommended path for validation and future
-   work.
-
-The native app currently lacks the legacy history seeds and `localStorage`
-persistence of the web prototype. Persistence migration is the next major step.
+The Capacitor shell is intentionally minimal. It wraps the existing staged web
+app in an Android WebView and does not add native product features, offline
+bundling, or platform-specific business logic. Because `Kilo.html` still loads
+React and Babel from CDN, the installed app currently requires internet access
+to render successfully on device.
 
 ### `KILO_TODAY` is hardcoded
 
