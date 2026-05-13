@@ -57,11 +57,11 @@ npm run mobile:android
 
 Current limitation:
 
-- No native automated test suite exists yet for `mobile/**`.
-- Issue #36 review verified the native UI structurally, not by running a full
-  device/emulator pass.
-- Parser, persistence, and reload behavior in the native path remain future work
-  for issue #37.
+- Native parser and storage modules now have Jest coverage under `mobile/tests/`.
+- No automated native test covers rendered React Native screens, tab routing, or
+  an Expo device/emulator pass yet.
+- The current native workout form is narrower than the browser prototype UI even
+  though the native save/reload loop now persists canonical entries locally.
 
 ---
 
@@ -87,6 +87,12 @@ npm run test:watch
 
 The suite uses Vitest + jsdom. All tests run in a simulated DOM with the global
 runtime contract from `tests/setup.js`. No browser or server is required.
+
+Run the native Jest suite:
+
+```sh
+cd mobile && npx jest
+```
 
 ---
 
@@ -189,6 +195,20 @@ Provides the global runtime contract required by the prototype:
 - `global.KILO_SPLIT` with a full week schedule
 - `afterEach` cleanup: calls `@testing-library/react` cleanup, resets `KILO_WEIGHTS`, and clears `localStorage`
 
+### `mobile/tests/parser.test.js`
+
+- parser parity coverage for `mobile/lib/parser.js`
+- validates canonical native `parseWeightEntry`, `parseWorkoutRow`, and
+  `parseWorkoutEntry` behavior against the same constrained MVP forms used in
+  the browser parser tests
+
+### `mobile/tests/storage.test.js`
+
+- AsyncStorage-backed load/save/delete/update coverage for
+  `mobile/storage/entries.js`
+- verifies empty-load behavior, newest-first sorting, update misses, and basic
+  weight/workout persistence semantics
+
 ---
 
 ## Coverage Gaps
@@ -229,7 +249,8 @@ The following MVP behaviors have no automated test coverage:
 - No automated browser test covers script load order or `window.*` global wiring
 - No automated test covers `localStorage` rehydration on fresh load (`initStoredSessions`, `KILO_WEIGHTS` merge)
 - No automated native test covers `mobile/App.js`, native tab routing, native
-  forms, or native layout/runtime behavior
+  forms, native validation/success UI feedback, or native layout/runtime
+  behavior
 
 ---
 

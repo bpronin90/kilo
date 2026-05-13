@@ -19,8 +19,8 @@ Kilo currently has two app paths with different roles:
 
 There is still no server, no backend, and no Supabase connection. Persistence
 remains local-only in the current implementation paths: the browser prototype
-persists via `localStorage`, while the native app currently uses temporary
-in-memory React state only.
+persists via `localStorage`, while the native app now persists user-created
+entries via AsyncStorage-backed modules under `mobile/storage/`.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -43,10 +43,10 @@ plain text-only product naming. The native Expo path currently uses simple
 native text treatment and shared color tokens rather than the full prototype
 branding stack.
 
-The native app path is not yet a feature-complete port. It currently proves that
-Kilo can run as a real React Native app with native screens and state instead of
-a WebView wrapper, but parser, persistence, and history behavior still need to
-move into `mobile/`.
+The native app path is not yet a feature-complete port. It now proves that Kilo
+can run as a real React Native app with native screens, native parser/data
+modules, and local persistence instead of a WebView wrapper, but it still does
+not match the full browser prototype surface or analytics behavior.
 
 ---
 
@@ -94,9 +94,10 @@ legacy prototype path.
 
 The real native app path now has a modular React Native shell:
 
-- `mobile/App.js` owns tab state plus temporary in-memory entry state
-- `mobile/screens/HomeScreen.js` renders recent seeded activity and a native
-  overview card
+- `mobile/App.js` owns tab state and adapts persisted weight/workout entries for
+  the Home and Stats surfaces
+- `mobile/screens/HomeScreen.js` renders recent activity and a native overview
+  card
 - `mobile/screens/LogScreen.js` renders native workout title/detail inputs and a
   save action
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs and a save
@@ -104,10 +105,16 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/StatsScreen.js` renders a small native summary card grid
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/theme/colors.js` centralizes the native color system
+- `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
+  modules
+- `mobile/lib/data.js` defines the native exercise catalog and entry factories
+- `mobile/hooks/useEntries.js` exposes the native read/write API used by the UI
+- `mobile/storage/entries.js` persists weight entries and workout sessions via
+  AsyncStorage
 
-This path is intentionally UI-only today. Save actions update local React state
-inside `mobile/App.js` and return the user to Home, but they do not yet call the
-prototype parser or persist entries across app restarts.
+This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
+and workout saves run through `parseWorkoutEntry()` before persistence. Saved
+native entries reload across app restarts through the hook/storage layer.
 
 ### Parser (`src/parser.jsx`)
 
@@ -212,13 +219,13 @@ Required readiness artifacts and their current status:
 
 ## Known Gaps That Affect Launch Confidence
 
-### Native app path is UI-only so far
+### Native app path still has partial UI parity only
 
-The `mobile/` Expo app now renders the MVP surfaces natively, but it still uses
-temporary local React state and seeded entries from `mobile/App.js`. The native
-path does not yet parse canonical weight/workout input, persist data locally, or
-reload saved entries across restarts. Issue #37 exists to migrate parser and
-local data behavior into `mobile/`.
+The `mobile/` Expo app now covers the native MVP create/store/retrieve loop for
+weight and workout entries, but it still exposes a narrower UI than the browser
+prototype. The native app has only four tabs, a simplified workout form, and no
+native equivalents yet for the prototype More screen, correction flows, seeded
+history analytics, or live per-row parse previews.
 
 ### No automated tests for workout logging, corrections, or recent history
 
@@ -236,6 +243,8 @@ The following MVP behaviors have no automated test coverage:
 - `KiloStats`, `KiloMore`, `KiloApp` tab routing
 - Script load order and `window.*` global wiring
 - `localStorage` rehydration on fresh load
+- Native App.js hook wiring, native save handlers, and AsyncStorage-backed
+  native reload behavior
 
 These gaps mean the automated suite passing does not confirm that the workout
 logging loop or correction flows work correctly. Manual smoke testing (per
@@ -319,8 +328,9 @@ Issue #35 fixes the first implementation ownership split as follows:
 
 - Issue #36 (`agent:gemini`): native screen structure, navigation, reusable UI
   components, and MVP surface composition in `mobile/`
-- Issue #37 (`agent:claude`): parser port, entry model, local persistence,
-  recent-history retrieval, and native-side data access boundaries in `mobile/`
+- Issue #37 (`agent:claude`): completed parser port, entry model, local
+  persistence, recent-history retrieval, and native-side data access boundaries
+  in `mobile/`
 
 Codex stays responsible for contract definition, sequencing, and review rather
 than owning the implementation slices directly.

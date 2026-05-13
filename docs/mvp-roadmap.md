@@ -21,11 +21,13 @@ The repo now has a real native app scaffold under `mobile/`.
 - Issue #35 defined `mobile/` as the active native-app path and split the
   migration into UI work and parser/storage work.
 - Issue #36 completed the native UI shell for Home, Log, Weight, and Stats.
-- Issue #37 is the remaining migration task for parser, local data model, and
-  persistence behavior in the native path.
+- Issue #37 completed the native parser port, local data model, AsyncStorage
+  persistence layer, and native save/reload loop for weight and workout
+  entries.
 
-Until issue #37 lands, the browser prototype remains the only path with the full
-save, validation, and reload loop wired through canonical parser behavior.
+The browser prototype still remains the broader behavior reference for
+prototype-only screens and analytics, but `mobile/` now covers the first native
+MVP create/store/retrieve milestone locally.
 
 ## Ordered MVP Roadmap
 
