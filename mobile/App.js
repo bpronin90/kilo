@@ -11,7 +11,7 @@ import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
 
 import { useWeightEntries, useWorkoutSessions } from './hooks/useEntries';
-import { parseWeightEntry } from './lib/parser';
+import { parseWeightEntry, parseWorkoutEntry } from './lib/parser';
 import { makeWeightEntry, makeWorkoutSession } from './lib/data';
 
 const TABS = ['Home', 'Log', 'Weight', 'Stats'];
@@ -37,13 +37,22 @@ export default function App() {
       note: e.note || 'No note',
       createdAt: new Date(e.logged_at).getTime(),
     }));
-    const workoutEntries = workoutHook.sessions.map(s => ({
-      id: s.id,
-      type: 'workout',
-      title: s.items[0]?.exercise_name || 'Workout',
-      detail: s.items[0]?.note_text || '',
-      createdAt: new Date(s.saved_at).getTime(),
-    }));
+    const workoutEntries = workoutHook.sessions.map(s => {
+      const item = s.items[0];
+      let detail = '';
+      if (item?.result_kind === 'sets' && item.sets?.length) {
+        const totalSets = item.sets.length;
+        const volume = item.sets.reduce((sum, set) => sum + (set.weight_value || 0) * set.rep_count, 0);
+        detail = `${totalSets} set${totalSets !== 1 ? 's' : ''} · ${volume} lb total`;
+      }
+      return {
+        id: s.id,
+        type: 'workout',
+        title: item?.exercise_name || 'Workout',
+        detail,
+        createdAt: new Date(s.saved_at).getTime(),
+      };
+    });
     return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
   }, [weightHook.entries, workoutHook.sessions]);
 
@@ -62,18 +71,14 @@ export default function App() {
   }
 
   async function saveWorkout() {
-    if (!workoutTitle.trim()) return;
+    if (!workoutTitle.trim() || !workoutDetail.trim()) return;
     const today = new Date().toISOString().slice(0, 10);
-    const session = makeWorkoutSession({
-      workout_date: today,
-      items: [{
-        exercise_name: workoutTitle.trim(),
-        result_kind: 'note',
-        note_text: workoutDetail.trim() || null,
-        position: 1,
-        sets: [],
-      }],
-    });
+    const parsed = parseWorkoutEntry(
+      [{ exerciseName: workoutTitle.trim(), raw: workoutDetail.trim() }],
+      today,
+    );
+    if (!parsed.ok) return;
+    const session = makeWorkoutSession({ workout_date: parsed.workout_date, items: parsed.items });
     await workoutHook.add(session);
     setWorkoutTitle('');
     setWorkoutDetail('');
