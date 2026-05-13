@@ -71,14 +71,22 @@ not the target architecture for the native app path in `mobile/`.
 The `mobile/` app is a separate runtime from the browser prototype. `mobile/index.js`
 registers `mobile/App.js` with Expo. The current native architecture is narrow:
 
-- `mobile/App.js` owns tab state and temporary entry state
+- `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
+- `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
+  and workout sessions
+- `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
+  modules
+- `mobile/lib/data.js` owns native entry factories and the exercise catalog
+- `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
+  data
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
 
-The native path does not currently import parser logic from `src/`, does not
-persist data, and does not coordinate with the Capacitor packaging path.
+The native path now uses its own parser/data/storage modules rather than
+importing browser globals from `src/`. It still does not coordinate with the
+Capacitor packaging path.
 
 ## Screen Routing
 
@@ -105,9 +113,22 @@ activeTab: 'Home' | 'Log' | 'Weight' | 'Stats'
 ```
 
 `mobile/components/TabBar.js` calls `setActiveTab` directly. The save handlers
-for weight and workout entries update local React state and then send the user
-back to Home. There is no router library, deep linking, or persisted navigation
-state in the native path yet.
+for weight and workout entries validate input, persist via the hook/storage
+layer, and then send the user back to Home. There is no router library, deep
+linking, or persisted navigation state in the native path yet.
+
+## Native Parse-to-Persistence Flow
+
+```
+User types in native Weight or Log form
+  → App.js save handler calls native parser (`parseWeightEntry` or `parseWorkoutEntry`)
+  → on error: save is blocked in the handler
+  → on ok: App.js builds a canonical entry/session via `makeWeightEntry` or `makeWorkoutSession`
+  → `useWeightEntries` / `useWorkoutSessions` writes through `mobile/storage/entries.js`
+  → AsyncStorage persists the list
+  → hook state updates
+  → Home / Stats receive the re-derived recent-history view
+```
 
 ## Parser Responsibilities
 

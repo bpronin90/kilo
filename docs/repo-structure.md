@@ -97,7 +97,7 @@ docs/
     samples/           ← raw workout log files used during parser development
 
 mobile/
-  App.js               ← native root; tab state + temporary in-memory entry state
+  App.js               ← native root; tab state + native save/reload wiring
   index.js             ← Expo root registration
   app.json             ← Expo app metadata
   package.json
@@ -107,7 +107,11 @@ mobile/
     TabBar.js          ← native tab bar
     UI.js              ← shared native UI primitives
   lib/
+    data.js            ← native entry factories + exercise catalog
     format.js          ← native timestamp formatter
+    parser.js          ← native MVP parser port
+  hooks/
+    useEntries.js      ← native read/write hooks for weight/workout entries
   screens/
     HomeScreen.js
     LogScreen.js
@@ -115,6 +119,11 @@ mobile/
     StatsScreen.js
   theme/
     colors.js          ← shared native color tokens
+  storage/
+    entries.js         ← AsyncStorage CRUD for weight/workout entries
+  tests/
+    parser.test.js     ← native parser parity tests
+    storage.test.js    ← native AsyncStorage tests
 ```
 
 ---
@@ -155,19 +164,21 @@ for code review and manual validation.
 
 ## Native App Files
 
-These files define the current real native UI path. They do not yet own parser
-or persistence behavior.
+These files define the current real native app path.
 
 | File | Role |
 |------|------|
-| `mobile/App.js` | Root native app shell. Owns four-tab routing (`Home`, `Log`, `Weight`, `Stats`), temporary entry state, and save handlers that update in-memory React state only. |
+| `mobile/App.js` | Root native app shell. Owns four-tab routing (`Home`, `Log`, `Weight`, `Stats`), calls native parser/save hooks, and adapts persisted entries for the Home and Stats screens. |
 | `mobile/components/ScreenShell.js` | Shared native screen wrapper with title/subtitle header and scroll container. |
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
+| `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries and workout sessions. |
+| `mobile/lib/data.js` | Native exercise catalog plus `makeWeightEntry` / `makeWorkoutSession` factories. |
 | `mobile/screens/HomeScreen.js` | Native recent-activity surface and overview card. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/StatsScreen.js` | Native summary metrics UI. |
+| `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries and workout sessions. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
 
@@ -194,6 +205,8 @@ part of the MVP logging loop. A launch reviewer can ignore them.
 | `tests/setup.js` | Global runtime contract for jsdom. Sets `global.React`, `global.KILO_C`, `global.KILO_TODAY`, empty arrays for `KILO_WEIGHTS` / `KILO_SESSIONS` / etc. Runs `cleanup()` and `localStorage.clear()` after each test. |
 | `tests/parser.test.jsx` | Parser unit tests: `parseWeightEntry`, `parseWorkoutRow`, `parseWorkoutEntry`. |
 | `tests/weight-ui.test.jsx` | Weight-log UI tests: `KiloWeight` and `KiloHome` button states, success/failure feedback, `localStorage` write shape, `parseWeightEntry` acceptance/rejection cases. |
+| `mobile/tests/parser.test.js` | Native parser parity tests for `mobile/lib/parser.js`. |
+| `mobile/tests/storage.test.js` | Native storage tests for `mobile/storage/entries.js` using the AsyncStorage Jest mock. |
 | `vitest.config.js` | Vitest config. `jsdom` environment, `globals: true`, `esbuild` JSX factory set for React without imports. |
 
 Run the suite:

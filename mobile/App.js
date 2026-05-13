@@ -10,76 +10,76 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
 
-const TABS = ['Home', 'Log', 'Weight', 'Stats'];
+import { useWeightEntries, useWorkoutSessions } from './hooks/useEntries';
+import { parseWeightEntry, parseWorkoutEntry } from './lib/parser';
+import { makeWeightEntry, makeWorkoutSession } from './lib/data';
 
-function createSeedEntries() {
-  const now = Date.now();
-  return [
-    {
-      id: 'weight-seed-1',
-      type: 'weight',
-      value: '186.4',
-      unit: 'lb',
-      note: 'Morning weigh-in',
-      createdAt: now - 1000 * 60 * 60 * 18,
-    },
-    {
-      id: 'workout-seed-1',
-      type: 'workout',
-      title: 'Push Day',
-      detail: 'Bench 3x5, incline DB 3x8, dips 3x10',
-      createdAt: now - 1000 * 60 * 60 * 42,
-    },
-  ];
-}
+const TABS = ['Home', 'Log', 'Weight', 'Stats'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
-  const [entries, setEntries] = useState(createSeedEntries);
-  
-  // Input states
+
+  const weightHook = useWeightEntries();
+  const workoutHook = useWorkoutSessions();
+
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutTitle, setWorkoutTitle] = useState('');
   const [workoutDetail, setWorkoutDetail] = useState('');
 
-  const sortedEntries = useMemo(
-    () => [...entries].sort((left, right) => right.createdAt - left.createdAt),
-    [entries]
-  );
+  // Adapt persistent store entries to the shape screens expect
+  const entries = useMemo(() => {
+    const weightEntries = weightHook.entries.map(e => ({
+      id: e.id,
+      type: 'weight',
+      value: String(e.weight_value),
+      unit: e.weight_unit,
+      note: e.note || 'No note',
+      createdAt: new Date(e.logged_at).getTime(),
+    }));
+    const workoutEntries = workoutHook.sessions.map(s => {
+      const item = s.items[0];
+      let detail = '';
+      if (item?.result_kind === 'sets' && item.sets?.length) {
+        const totalSets = item.sets.length;
+        const volume = item.sets.reduce((sum, set) => sum + (set.weight_value || 0) * set.rep_count, 0);
+        detail = `${totalSets} set${totalSets !== 1 ? 's' : ''} · ${volume} lb total`;
+      }
+      return {
+        id: s.id,
+        type: 'workout',
+        title: item?.exercise_name || 'Workout',
+        detail,
+        createdAt: new Date(s.saved_at).getTime(),
+      };
+    });
+    return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
+  }, [weightHook.entries, workoutHook.sessions]);
 
-  function saveWeight() {
-    if (!weightValue.trim()) return;
-
-    setEntries((current) => [
-      {
-        id: `weight-${Date.now()}`,
-        type: 'weight',
-        value: weightValue.trim(),
-        unit: 'lb',
-        note: weightNote.trim() || 'No note',
-        createdAt: Date.now(),
-      },
-      ...current,
-    ]);
+  async function saveWeight() {
+    const parsed = parseWeightEntry(weightValue);
+    if (!parsed.ok) return;
+    const entry = makeWeightEntry({
+      weight_value: parsed.weight_value,
+      logged_at: parsed.logged_at,
+      note: weightNote.trim() || undefined,
+    });
+    await weightHook.add(entry);
     setWeightValue('');
     setWeightNote('');
     setActiveTab('Home');
   }
 
-  function saveWorkout() {
+  async function saveWorkout() {
     if (!workoutTitle.trim() || !workoutDetail.trim()) return;
-
-    setEntries((current) => [
-      {
-        id: `workout-${Date.now()}`,
-        type: 'workout',
-        title: workoutTitle.trim(),
-        detail: workoutDetail.trim(),
-        createdAt: Date.now(),
-      },
-      ...current,
-    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const parsed = parseWorkoutEntry(
+      [{ exerciseName: workoutTitle.trim(), raw: workoutDetail.trim() }],
+      today,
+    );
+    if (!parsed.ok) return;
+    const session = makeWorkoutSession({ workout_date: parsed.workout_date, items: parsed.items });
+    await workoutHook.add(session);
     setWorkoutTitle('');
     setWorkoutDetail('');
     setActiveTab('Home');
@@ -88,7 +88,7 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen entries={sortedEntries} />;
+        return <HomeScreen entries={entries} />;
       case 'Log':
         return (
           <LogScreen
@@ -110,7 +110,7 @@ export default function App() {
           />
         );
       case 'Stats':
-        return <StatsScreen entries={sortedEntries} />;
+        return <StatsScreen entries={entries} />;
       default:
         return null;
     }
