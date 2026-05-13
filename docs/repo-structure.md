@@ -36,6 +36,18 @@ npm run cap:open
 generated Capacitor config assets. `cap:open` opens the Android project in
 Android Studio for device install and launch.
 
+For the real native app path, run the Expo scaffold in `mobile/`:
+
+```sh
+npm run mobile:start
+```
+
+Open Expo Go or an emulator from that dev server, or use:
+
+```sh
+npm run mobile:android
+```
+
 ---
 
 ## Directory Layout
@@ -50,6 +62,7 @@ capacitor.config.json    ← Capacitor app id/name + staged webDir
 vitest.config.js
 www/                   ← generated build output from `npm run build` (not committed)
 android/               ← generated Android Capacitor shell; synced from `www/`
+mobile/                ← active Expo / React Native app path
 
 src/                   ← all application source
   app.jsx
@@ -82,6 +95,26 @@ docs/
   archive/
     original-spec.md   ← original product spec; superseded by docs/ above
     samples/           ← raw workout log files used during parser development
+
+mobile/
+  App.js               ← native root; tab state + temporary in-memory entry state
+  index.js             ← Expo root registration
+  app.json             ← Expo app metadata
+  package.json
+  assets/
+  components/
+    ScreenShell.js     ← native screen wrapper
+    TabBar.js          ← native tab bar
+    UI.js              ← shared native UI primitives
+  lib/
+    format.js          ← native timestamp formatter
+  screens/
+    HomeScreen.js
+    LogScreen.js
+    WeightScreen.js
+    StatsScreen.js
+  theme/
+    colors.js          ← shared native color tokens
 ```
 
 ---
@@ -119,6 +152,24 @@ for code review and manual validation.
 | `src/screens/stats.jsx` | Stats screen. 1RM display per exercise; unified history list; exercise drilldown. Read-only; no save or correction flows. |
 | `src/screens/more.jsx` | More screen. Goals list and PT info. Read-only at MVP. |
 | `src/app.jsx` | Root. Tab routing via `React.useState`. Renders active screen and `KiloTabBar`. |
+
+## Native App Files
+
+These files define the current real native UI path. They do not yet own parser
+or persistence behavior.
+
+| File | Role |
+|------|------|
+| `mobile/App.js` | Root native app shell. Owns four-tab routing (`Home`, `Log`, `Weight`, `Stats`), temporary entry state, and save handlers that update in-memory React state only. |
+| `mobile/components/ScreenShell.js` | Shared native screen wrapper with title/subtitle header and scroll container. |
+| `mobile/components/TabBar.js` | Shared native bottom tab bar. |
+| `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
+| `mobile/screens/HomeScreen.js` | Native recent-activity surface and overview card. |
+| `mobile/screens/LogScreen.js` | Native workout logging form UI. |
+| `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
+| `mobile/screens/StatsScreen.js` | Native summary metrics UI. |
+| `mobile/theme/colors.js` | Shared native color tokens. |
+| `mobile/lib/format.js` | Shared native timestamp formatting helper. |
 
 ---
 

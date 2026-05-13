@@ -8,20 +8,31 @@ can be manually launch-validated.
 
 ## What Kilo Is Right Now
 
-Kilo is a client-only React prototype. The source app still runs directly in a
-browser via CDN React and Babel from `Kilo.html`, and there is now a minimal
-Android Capacitor shell that stages that same web app into `www/` for device
-install. There is no server, no backend, and no Supabase connection. All
-persistence is `localStorage` in the current browser profile.
+Kilo now has two active local app paths:
+
+- the original client-only React prototype in `Kilo.html`, which still runs in
+  the browser via CDN React and Babel and remains the only path with the full
+  parser and `localStorage` save loop wired up
+- a real Expo/React Native app scaffold in `mobile/`, which now has native UI
+  screens for Home, Log, Weight, and Stats but does not yet own parser or
+  persistence behavior
+
+The repo still includes the minimal Android Capacitor shell that stages the web
+prototype into `www/` for installable preview testing. There is no server, no
+backend, and no Supabase connection. The browser prototype persists to
+`localStorage`; the native app path currently uses local in-memory seed state
+only.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
 entries are layered on top of this seed via `localStorage` merge on each page
 load.
 
-The app has five tabs: Home, Log, Weight, Stats, More.
+The browser prototype has five tabs: Home, Log, Weight, Stats, More. The native
+Expo app currently exposes four tabs: Home, Log, Weight, and Stats.
 
-For physical-device packaging, the current supported path is Android only:
+For physical-device packaging of the staged web prototype, the current
+supported Capacitor path is Android only:
 
 1. `npm run build`
 2. `npm run cap:sync`
@@ -30,11 +41,32 @@ For physical-device packaging, the current supported path is Android only:
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
-plain text-only product naming.
+plain text-only product naming. The native Expo path currently uses simple
+native text treatment and shared color tokens rather than the full prototype
+branding stack.
 
 ---
 
 ## MVP Surface — What Is Implemented
+
+### Native UI shell (`mobile/`)
+
+The real native app path now has a modular React Native shell:
+
+- `mobile/App.js` owns tab state plus temporary in-memory entry state
+- `mobile/screens/HomeScreen.js` renders recent seeded activity and a native
+  overview card
+- `mobile/screens/LogScreen.js` renders native workout title/detail inputs and a
+  save action
+- `mobile/screens/WeightScreen.js` renders native weight/note inputs and a save
+  action
+- `mobile/screens/StatsScreen.js` renders a small native summary card grid
+- `mobile/components/` contains shared shell, tab bar, and UI primitives
+- `mobile/theme/colors.js` centralizes the native color system
+
+This path is intentionally UI-only today. Save actions update local React state
+inside `mobile/App.js` and return the user to Home, but they do not yet call the
+prototype parser or persist entries across app restarts.
 
 ### Parser (`src/parser.jsx`)
 
@@ -138,6 +170,14 @@ Required readiness artifacts and their current status:
 
 ## Known Gaps That Affect Launch Confidence
 
+### Native app path is UI-only so far
+
+The `mobile/` Expo app now renders the MVP surfaces natively, but it still uses
+temporary local React state and seeded entries from `mobile/App.js`. The native
+path does not yet parse canonical weight/workout input, persist data locally, or
+reload saved entries across restarts. Issue #37 exists to migrate parser and
+local data behavior into `mobile/`.
+
 ### No automated tests for workout logging, corrections, or recent history
 
 The following MVP behaviors have no automated test coverage:
@@ -178,6 +218,12 @@ app in an Android WebView and does not add native product features, offline
 bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
+
+### Native UI runtime is not yet validated end-to-end
+
+Issue #36 review approved the native UI structure, but the approval was based on
+static inspection of the `mobile/**` diff. The Expo app has not yet been
+validated end-to-end on a device or emulator as part of the issue closeout.
 
 ### `KILO_TODAY` is hardcoded
 

@@ -38,6 +38,31 @@ Use `cap:open` when you need to inspect logs, change build variants, or the CLI 
 - If no device is detected by `cap:run`: confirm `adb devices` shows your device, or start an emulator first.
 - Changes to native plugins require `npm run cap:sync` before running; changes to web files only also require `cap:sync` (or the `preview` script).
 
+## Native Expo Workflow
+
+Issue #36 introduced a real native UI path under `mobile/`. That path is
+separate from the Capacitor-packaged web preview above.
+
+Start the Expo app:
+
+```sh
+npm run mobile:start
+```
+
+Open the QR code in Expo Go, or launch Android directly:
+
+```sh
+npm run mobile:android
+```
+
+Current limitation:
+
+- No native automated test suite exists yet for `mobile/**`.
+- Issue #36 review verified the native UI structurally, not by running a full
+  device/emulator pass.
+- Parser, persistence, and reload behavior in the native path remain future work
+  for issue #37.
+
 ---
 
 ## Running Automated Tests
@@ -203,6 +228,8 @@ The following MVP behaviors have no automated test coverage:
 **End-to-end**
 - No automated browser test covers script load order or `window.*` global wiring
 - No automated test covers `localStorage` rehydration on fresh load (`initStoredSessions`, `KILO_WEIGHTS` merge)
+- No automated native test covers `mobile/App.js`, native tab routing, native
+  forms, or native layout/runtime behavior
 
 ---
 
