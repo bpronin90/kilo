@@ -46,7 +46,11 @@ If the issue lacks needed context, stop and report the missing context instead o
 
 Only edit files listed in the issue's `Allowed Files`.
 
+`Allowed Files` is the hard edit boundary for all work, including `CHANGELOG.md`, `package.json`, and any living docs.
+
 If required work falls outside `Allowed Files`, stop and report the mismatch.
+
+If changelog, version, or doc updates seem required by another rule but those files are not listed in `Allowed Files`, stop and report the mismatch instead of editing them.
 
 No adjacent refactors, opportunistic cleanup, broad rewrites, placeholder code, or speculative future-proofing.
 
@@ -74,7 +78,7 @@ Pre-1.0 versioning policy:
 - `0.x.0` is for a new MVP-visible capability or a meaningful behavior change.
 - `1.0.0` is the launch-ready stable MVP.
 
-Update `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version.
+Update `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version, but only when `CHANGELOG.md` is included in `Allowed Files`. Otherwise, stop and report the mismatch.
 
 Changelog format:
 - use a version heading with the release date
@@ -106,6 +110,8 @@ Work is not complete until the agent posts a GitHub issue comment with:
 ## Living Doc Review Map
 
 Use issue scope plus changed files to decide which living docs need review. Do not reread every doc by default.
+
+Review requirements in this section do not authorize edits outside `Allowed Files`. If a living doc needs an update but is not listed, stop and report the mismatch.
 
 - `docs/current-state.md`
   Review when issue scope changes shipped status, current behavior, or known gaps for a user-visible feature; or when changed files affect active product flows.
