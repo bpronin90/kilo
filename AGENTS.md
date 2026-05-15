@@ -48,9 +48,14 @@ Only edit files listed in the issue's `Allowed Files`.
 
 `Allowed Files` is the hard edit boundary for all work, including `CHANGELOG.md`, `package.json`, and any living docs.
 
-If required work falls outside `Allowed Files`, stop and report the mismatch.
+Reviewer exception:
+- During review and closing procedure, Codex may update living docs, `CHANGELOG.md`, and `package.json` when those updates are required to accurately close out completed issue work.
+- This exception exists to keep implementers focused on the assigned product change while reserving final documentation and versioning alignment for the reviewer.
+- This exception does not authorize unrelated product edits outside the issue scope.
 
-If changelog, version, or doc updates seem required by another rule but those files are not listed in `Allowed Files`, stop and report the mismatch instead of editing them.
+If required implementation work falls outside `Allowed Files`, stop and report the mismatch.
+
+If changelog, version, or doc updates seem required by another rule but those files are not listed in `Allowed Files`, stop and report the mismatch instead of editing them, unless you are the reviewer performing closing procedure under the reviewer exception above.
 
 No adjacent refactors, opportunistic cleanup, broad rewrites, placeholder code, or speculative future-proofing.
 
@@ -78,7 +83,9 @@ Pre-1.0 versioning policy:
 - `0.x.0` is for a new MVP-visible capability or a meaningful behavior change.
 - `1.0.0` is the launch-ready stable MVP.
 
-Update `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version, but only when `CHANGELOG.md` is included in `Allowed Files`. Otherwise, stop and report the mismatch.
+Implementation agents do not update `CHANGELOG.md` unless it is explicitly listed in `Allowed Files`.
+
+During closing procedure, the reviewer updates `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version, even if `CHANGELOG.md` was not part of the implementation `Allowed Files`.
 
 Changelog format:
 - use a version heading with the release date
@@ -111,7 +118,7 @@ Work is not complete until the agent posts a GitHub issue comment with:
 
 Use issue scope plus changed files to decide which living docs need review. Do not reread every doc by default.
 
-Review requirements in this section do not authorize edits outside `Allowed Files`. If a living doc needs an update but is not listed, stop and report the mismatch.
+For implementation agents, review requirements in this section do not authorize edits outside `Allowed Files`. During closing procedure, the reviewer may update the triggered living docs even when they were not part of the implementation `Allowed Files`.
 
 - `docs/current-state.md`
   Review when issue scope changes shipped status, current behavior, or known gaps for a user-visible feature; or when changed files affect active product flows.
@@ -139,6 +146,8 @@ If the user tells the reviewer to `carry out closing procedure`, treat that as e
 2. Repository closeout
    - Review only the living docs whose trigger conditions were hit by the issue scope or changed files.
    - Update reviewed docs only when the issue actually changed the documented state.
+   - Update `CHANGELOG.md` for qualifying issue work.
+   - Bump `package.json` version according to the versioning policy when the completed issue warrants it.
    - Commit the completed issue work on the issue branch.
    - Merge the issue branch to `main`.
    - Push the resulting `main` branch to `origin`.
