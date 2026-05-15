@@ -24,7 +24,6 @@ function KiloHome({ goToTab, openSession }) {
   const [weights, setWeights] = React.useState(() => window.KILO_WEIGHTS);
   const [entry, setEntry] = React.useState('');
   const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
-  const [pendingDelete, setPendingDelete] = React.useState(null);
   const [, setTick] = React.useState(0);
   const refresh = () => {
     setTick(t => t + 1);
@@ -38,14 +37,6 @@ function KiloHome({ goToTab, openSession }) {
       return () => clearTimeout(t);
     }
   }, [status]);
-
-  const handleDelete = (id, type) => {
-    if (type === 'workout') {
-      if (window.deleteWorkoutSession(id)) refresh();
-    } else {
-      if (window.deleteWeightEntry(id)) refresh();
-    }
-  };
 
   const dow = dayOfWeek(today);
   const split = window.KILO_SPLIT[dow];
@@ -300,7 +291,6 @@ function KiloHome({ goToTab, openSession }) {
               
               return history.map(e => {
                 const date = new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                const isUserEntry = !!e.isUserEntry;
 
                 if (e.entry_type === 'workout') {
                   const sp = window.KILO_SPLIT[e.day];
@@ -323,18 +313,6 @@ function KiloHome({ goToTab, openSession }) {
                           })}
                         </div>
                       </div>
-                      {isUserEntry && (
-                        pendingDelete === e.id ? (
-                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            <button className="kilo-btn" onClick={() => { handleDelete(e.id, 'workout'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
-                            <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
-                          </div>
-                        ) : (
-                          <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
-                            <KiloIcon name="close" size={14} color={KILO_C.red} />
-                          </button>
-                        )
-                      )}
                       <KiloIcon name="log" size={14} color={KILO_C.ink4} style={{ marginTop: 3 }} />
                     </div>
                   );
@@ -350,18 +328,6 @@ function KiloHome({ goToTab, openSession }) {
                           <KiloNum size={10} weight={600}>{e.weight_value.toFixed(1)}</KiloNum> lb
                         </div>
                       </div>
-                      {isUserEntry && (
-                        pendingDelete === e.id ? (
-                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            <button className="kilo-btn" onClick={() => { handleDelete(e.id, 'weight'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
-                            <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
-                          </div>
-                        ) : (
-                          <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
-                            <KiloIcon name="close" size={14} color={KILO_C.red} />
-                          </button>
-                        )
-                      )}
                       <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
                     </div>
                   );
