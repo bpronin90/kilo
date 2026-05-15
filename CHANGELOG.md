@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-05-14
+
+- Issue #41: Added a duplicate-session informational banner on the Log screen when today's split was already logged, and expanded the save-success state to offer both `View Stats` and `Back to Home`.
+
 ## 0.2.1 - 2026-05-14
 
 - Issue #39: Moved the Log screen's primary save control into the header so it stays reachable without footer scrolling, while keeping footer summary stats in place and rendering generic save failures near the header action.

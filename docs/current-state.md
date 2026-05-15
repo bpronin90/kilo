@@ -168,10 +168,13 @@ source.
   a `ParsePreview` chip (or `⚠` error) inline.
 - The primary Save button lives in the Log header, stays reachable without
   footer scrolling, and is disabled when no rows have valid parseable input.
+- If today's split has already been logged, the header area shows an
+  informational duplicate-session banner. Duplicate saves remain allowed.
 - On save, `parseWorkoutEntry` validates all rows together.
   - Rows with errors are highlighted inline; no success screen appears.
   - Non-inline save failures render directly below the header progress area.
-  - On success, a "Workout saved" confirmation screen is shown with a back button.
+  - On success, a "Workout saved" confirmation screen is shown with both
+    `View Stats` and `Back to Home` actions.
 - Saved sessions are written to `localStorage` (`kilo_workout_sessions`) and
   merged into `window.KILO_SESSIONS`.
 
