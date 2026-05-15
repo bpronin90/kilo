@@ -258,3 +258,33 @@ describe('parseWorkoutEntry', () => {
     expect(r.workout_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
+
+// ── UI Error Message Verification ─────────────────────────────────────────────
+
+describe('UI Error Message Verification', () => {
+  test('WeightScreen: empty input error', () => {
+    const r = parseWeightEntry('');
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Weight is required');
+  });
+
+  test('WeightScreen: invalid number error', () => {
+    const r = parseWeightEntry('abc');
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Enter a number only/);
+  });
+
+  test('LogScreen: invalid workout row error', () => {
+    const items = [{ exerciseName: 'Squat', raw: '135 x 5' }];
+    const r = parseWorkoutEntry(items);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Invalid reps "x"/);
+  });
+
+  test('LogScreen: missing reps error', () => {
+    const items = [{ exerciseName: 'Squat', raw: '135' }];
+    const r = parseWorkoutEntry(items);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe('Enter reps as reps,reps or weight reps,reps');
+  });
+});
