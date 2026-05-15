@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Keyboard, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -29,12 +29,15 @@ export default function App() {
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [workoutSaving, setWorkoutSaving] = useState(false);
 
-  const handleTabPress = (tab) => {
+  const handleTabPress = useCallback((tab) => {
+    Keyboard.dismiss();
     setSaveError('');
     setSaveSuccess('');
     setActiveTab(tab);
-  };
+  }, []);
 
   // Adapt persistent store entries to the shape screens expect
   const entries = useMemo(() => {
@@ -65,7 +68,9 @@ export default function App() {
     return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
   }, [weightHook.entries, workoutHook.sessions]);
 
-  async function saveWeight() {
+  const saveWeight = useCallback(async () => {
+    if (weightSaving) return;
+    Keyboard.dismiss();
     setSaveError('');
     const parsed = parseWeightEntry(weightValue);
     if (!parsed.ok) {
@@ -77,14 +82,21 @@ export default function App() {
       logged_at: parsed.logged_at,
       note: weightNote.trim() || undefined,
     });
-    await weightHook.add(entry);
-    setWeightValue('');
-    setWeightNote('');
-    setSaveSuccess('Weight entry saved!');
-    setActiveTab('Home');
-  }
+    setWeightSaving(true);
+    try {
+      await weightHook.add(entry);
+      setWeightValue('');
+      setWeightNote('');
+      setSaveSuccess('Weight entry saved!');
+      setActiveTab('Home');
+    } finally {
+      setWeightSaving(false);
+    }
+  }, [weightSaving, weightValue, weightNote, weightHook]);
 
-  async function saveWorkout() {
+  const saveWorkout = useCallback(async () => {
+    if (workoutSaving) return;
+    Keyboard.dismiss();
     setSaveError('');
     if (!workoutTitle.trim()) {
       setSaveError('Workout name is required');
@@ -104,12 +116,17 @@ export default function App() {
       return;
     }
     const session = makeWorkoutSession({ workout_date: parsed.workout_date, items: parsed.items });
-    await workoutHook.add(session);
-    setWorkoutTitle('');
-    setWorkoutDetail('');
-    setSaveSuccess('Workout session saved!');
-    setActiveTab('Home');
-  }
+    setWorkoutSaving(true);
+    try {
+      await workoutHook.add(session);
+      setWorkoutTitle('');
+      setWorkoutDetail('');
+      setSaveSuccess('Workout session saved!');
+      setActiveTab('Home');
+    } finally {
+      setWorkoutSaving(false);
+    }
+  }, [workoutSaving, workoutTitle, workoutDetail, workoutHook]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -124,6 +141,7 @@ export default function App() {
             setWorkoutDetail={setWorkoutDetail}
             onSaveWorkout={saveWorkout}
             errorMessage={saveError}
+            saving={workoutSaving}
           />
         );
       case 'Weight':
@@ -135,6 +153,7 @@ export default function App() {
             setWeightNote={setWeightNote}
             onSaveWeight={saveWeight}
             errorMessage={saveError}
+            saving={weightSaving}
           />
         );
       case 'Stats':

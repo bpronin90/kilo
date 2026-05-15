@@ -8,7 +8,7 @@ export function TabBar({ tabs, activeTab, onTabPress }) {
       {tabs.map((tab) => (
         <Pressable
           key={tab}
-          onPress={() => onTabPress(tab)}
+          onPressIn={() => onTabPress(tab)}
           style={[styles.tab, activeTab === tab ? styles.tabActive : null]}
         >
           <Text style={[styles.tabText, activeTab === tab ? styles.tabTextActive : null]}>

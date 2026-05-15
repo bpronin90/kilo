@@ -18,10 +18,13 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-export function Button({ onPress, title, style }) {
+export function Button({ onPress, title, style, disabled = false }) {
   return (
-    <Pressable onPress={onPress} style={[styles.button, style]}>
-      <Text style={styles.buttonText}>{title}</Text>
+    <Pressable
+      onPress={disabled ? null : onPress}
+      style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
+    >
+      <Text style={styles.buttonText}>{disabled ? 'Saving…' : title}</Text>
     </Pressable>
   );
 }
@@ -68,6 +71,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   buttonText: {
     color: Colors.textLight,
