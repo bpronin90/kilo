@@ -266,6 +266,6 @@ Before declaring the packaged preview ready, a human tester must pass every step
 3. Confirm all five tabs are visible and respond to taps: Home, Log, Weight, Stats, More.  **[BLOCKER]**
 4. On **Weight**, confirm the entry field and **Log** button load, the button is disabled when the field is empty, and a valid value such as `185` saves successfully and updates the Entries list.  **[BLOCKER]**
 5. Change the visible version text in the packaged app footer from `0.1.0` to `0.1.0-test`, rebuild and redeploy the preview to the same phone, then relaunch it from the launcher. Confirm the app opens normally after the update, the footer now shows `0.1.0-test`, and the saved weight entry is still present.  **[BLOCKER]**
-6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, **Save Session** becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
+6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, the header **Save** action becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
 7. Return to **Home** and confirm the new workout appears in Recent history with the most recent entry first.  **[BLOCKER]**
 8. Do one basic touch pass on the device: scroll Recent history, switch tabs a few times, and confirm taps register cleanly without missed or stuck interactions.  **[BLOCKER]**

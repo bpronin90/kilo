@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-05-14
+
+- Issue #39: Moved the Log screen's primary save control into the header so it stays reachable without footer scrolling, while keeping footer summary stats in place and rendering generic save failures near the header action.
+
 ## 0.1.3 - 2026-05-10
 
 - Issue #35: Declared `mobile/` the active native-app path, documented the migration boundary versus the legacy prototype-wrapper path, defined the first native MVP milestone, and split first implementation ownership between UI migration and parser/storage migration.
