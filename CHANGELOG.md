@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 - 2026-05-14
+
+- Issue #40: Replaced native browser confirm, prompt, and alert flows on Home, Stats, and Weight with app-native inline delete confirmation and inline weight editing errors while preserving the underlying correction actions.
+
 ## 0.2.2 - 2026-05-14
 
 - Issue #41: Added a duplicate-session informational banner on the Log screen when today's split was already logged, and expanded the save-success state to offer both `View Stats` and `Back to Home`.

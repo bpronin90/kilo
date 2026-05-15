@@ -144,8 +144,10 @@ exists for read-only display of seeded history. It is not used on any save path.
   merged into `window.KILO_WEIGHTS`.
 - The Entries list below the graph shows the 12 most recent entries.
 - Edit (pencil icon) and delete (× icon) are present for user-created entries.
-  Edit re-runs `parseWeightEntry` on the new value and rejects invalid input.
-  Delete prompts for confirmation before removing the entry.
+  Edit opens an inline row editor with Save and cancel controls, re-runs
+  `parseWeightEntry` on the new value, and shows invalid edits as inline error
+  text.
+  Delete uses an inline confirm state (`DEL` / `×`) before removing the entry.
 
 ### Home Quick-Log (`src/screens/home.jsx`)
 
@@ -178,12 +180,12 @@ source.
 - Saved sessions are written to `localStorage` (`kilo_workout_sessions`) and
   merged into `window.KILO_SESSIONS`.
 
-### Recent History (`src/screens/home.jsx`)
+### Recent History (`src/screens/home.jsx`, `src/screens/stats.jsx`)
 
-- The Home tab shows a "Recent history" section combining weight entries and
-  workout sessions, sorted by `saved_at` DESC.
-- User-created weight entries show a delete icon (× icon).
-- User-created workout sessions show a delete icon.
+- The Home tab and Stats history list both combine weight entries and workout
+  sessions, sorted by `saved_at` DESC.
+- User-created weight entries and workout sessions show a delete icon that
+  expands into an inline confirm state before deletion.
 - Entries persist across page reloads via `localStorage`.
 - Seeded entries appear but do not show delete icons (`isUserEntry` is false).
 

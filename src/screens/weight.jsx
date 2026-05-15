@@ -116,6 +116,10 @@ function KiloWeight({ goToTab }) {
   const [entry, setEntry] = React.useState('');
   const [note, setNote] = React.useState('');
   const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
+  const [editingId, setEditingId] = React.useState(null);
+  const [editingVal, setEditingVal] = React.useState('');
+  const [editError, setEditError] = React.useState(null);
+  const [pendingDelete, setPendingDelete] = React.useState(null);
 
   // Clear success status after delay
   React.useEffect(() => {
@@ -188,17 +192,24 @@ function KiloWeight({ goToTab }) {
   }
 
   function handleEdit(id, currentVal) {
-    const newVal = window.prompt('Edit weight (lbs):', currentVal);
-    if (newVal !== null) {
-      const result = window.parseWeightEntry(newVal);
-      if (result.ok) {
-        if (window.updateWeightEntry(id, result.weight_value)) {
-          setWeights([...window.KILO_WEIGHTS]);
-        }
-      } else {
-        window.alert(result.error);
-      }
+    setEditingId(id);
+    setEditingVal(String(currentVal));
+    setEditError(null);
+    setPendingDelete(null);
+  }
+
+  function handleEditSave() {
+    const result = window.parseWeightEntry(editingVal);
+    if (!result.ok) {
+      setEditError(result.error);
+      return;
     }
+    if (window.updateWeightEntry(editingId, result.weight_value)) {
+      setWeights([...window.KILO_WEIGHTS]);
+    }
+    setEditingId(null);
+    setEditingVal('');
+    setEditError(null);
   }
 
   const cutGoal = window.KILO_GOALS.find(g => g.type === 'body_weight' && g.active);
@@ -371,25 +382,53 @@ function KiloWeight({ goToTab }) {
               const d = new Date(getDate(w) + 'T12:00:00');
               return (
                 <div key={w.id || w.date} style={{ padding: '11px 16px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, width: 76 }}>
+                  <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, width: 76, flexShrink: 0 }}>
                     {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
                   </div>
-                  <KiloNum size={14} weight={500}>{val.toFixed(1)}</KiloNum>
-                  {delta != null && (
-                    <span className="kilo-mono" style={{ fontSize: 10, color: delta < 0 ? KILO_C.green : delta > 0 ? KILO_C.ink3 : KILO_C.ink4 }}>
-                      {delta >= 0 ? '+' : ''}{delta.toFixed(1)}
-                    </span>
-                  )}
-                  <div style={{ flex: 1 }} />
-                  {w.note_text && <KiloIcon name="more" size={12} color={KILO_C.ink4} />}
-                  {w.isUserEntry && (
+                  {editingId === w.id ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          className="kilo-input"
+                          style={{ fontSize: 14, fontWeight: 500, flex: 1 }}
+                          value={editingVal}
+                          onChange={e => { setEditingVal(e.target.value); setEditError(null); }}
+                          onKeyDown={e => { if (e.key === 'Enter') handleEditSave(); if (e.key === 'Escape') setEditingId(null); }}
+                          autoFocus
+                          inputMode="decimal"
+                        />
+                        <button className="kilo-btn" onClick={handleEditSave} style={{ background: KILO_C.accent, color: '#000', padding: '3px 8px', borderRadius: 3, fontSize: 10, fontFamily: KILO_MONO, fontWeight: 700, letterSpacing: '0.08em' }}>Save</button>
+                        <button className="kilo-btn" onClick={() => setEditingId(null)} style={{ background: 'transparent', color: KILO_C.ink3, padding: '3px 4px', fontSize: 14 }}>×</button>
+                      </div>
+                      {editError && <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.red }}>{editError}</div>}
+                    </div>
+                  ) : (
                     <>
-                      <button className="kilo-btn" onClick={() => handleEdit(w.id, val)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
-                        <KiloIcon name="edit" size={12} color={KILO_C.ink4} />
-                      </button>
-                      <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && handleDelete(w.id)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
-                        <KiloIcon name="close" size={12} color={KILO_C.red} />
-                      </button>
+                      <KiloNum size={14} weight={500}>{val.toFixed(1)}</KiloNum>
+                      {delta != null && (
+                        <span className="kilo-mono" style={{ fontSize: 10, color: delta < 0 ? KILO_C.green : delta > 0 ? KILO_C.ink3 : KILO_C.ink4 }}>
+                          {delta >= 0 ? '+' : ''}{delta.toFixed(1)}
+                        </span>
+                      )}
+                      <div style={{ flex: 1 }} />
+                      {w.note_text && <KiloIcon name="more" size={12} color={KILO_C.ink4} />}
+                      {w.isUserEntry && (
+                        pendingDelete === w.id ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button className="kilo-btn" onClick={() => { handleDelete(w.id); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
+                            <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button className="kilo-btn" onClick={() => handleEdit(w.id, val)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                              <KiloIcon name="edit" size={12} color={KILO_C.ink4} />
+                            </button>
+                            <button className="kilo-btn" onClick={() => setPendingDelete(w.id)} style={{ background: 'transparent', padding: 0, marginLeft: 8 }}>
+                              <KiloIcon name="close" size={12} color={KILO_C.red} />
+                            </button>
+                          </>
+                        )
+                      )}
                     </>
                   )}
                 </div>
