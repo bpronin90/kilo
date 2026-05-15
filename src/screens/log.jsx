@@ -370,6 +370,30 @@ function KiloLog({ goToTab }) {
         <div style={{ height: 2, background: KILO_C.bg2, position: 'relative' }}>
           <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${(completedCount/dayExercises.length)*100}%`, background: KILO_C.accent, transition: 'width 0.3s' }} />
         </div>
+
+        {saveStatus === 'error' && Object.keys(saveErrors).length === 0 && (
+          <div style={{ padding: '10px 16px 8px', borderTop: `1px solid ${KILO_C.border}` }}>
+            <div className="kilo-mono" style={{
+              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
+              padding: '8px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 3,
+              border: `1px solid rgba(239,68,68,0.2)`,
+            }}>
+              ✕ Complete at least one exercise before saving
+            </div>
+          </div>
+        )}
+
+        {saveStatus === 'storage_error' && (
+          <div style={{ padding: '10px 16px 8px', borderTop: `1px solid ${KILO_C.border}` }}>
+            <div className="kilo-mono" style={{
+              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
+              padding: '8px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 3,
+              border: `1px solid rgba(239,68,68,0.2)`,
+            }}>
+              ✕ Save failed — storage unavailable
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="kilo-scroll">
@@ -464,28 +488,6 @@ function KiloLog({ goToTab }) {
             <SummaryStat label="Exercises" val={`${completedCount}/${dayExercises.length}`} />
             <SummaryStat label="PT" val={`${ptCompleted}/${window.KILO_PT.length}`} />
           </div>
-
-          {saveStatus === 'error' && Object.keys(saveErrors).length === 0 && (
-            <div className="kilo-mono" style={{
-              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
-              marginBottom: 16, padding: '8px 10px',
-              background: 'rgba(239,68,68,0.08)', borderRadius: 3,
-              border: `1px solid rgba(239,68,68,0.2)`,
-            }}>
-              ✕ Complete at least one exercise before saving
-            </div>
-          )}
-
-          {saveStatus === 'storage_error' && (
-            <div className="kilo-mono" style={{
-              fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
-              marginBottom: 16, padding: '8px 10px',
-              background: 'rgba(239,68,68,0.08)', borderRadius: 3,
-              border: `1px solid rgba(239,68,68,0.2)`,
-            }}>
-              ✕ Save failed — storage unavailable
-            </div>
-          )}
 
           <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, textAlign: 'center', letterSpacing: '0.1em' }}>
             ENTER `−` TO SKIP AN EXERCISE
