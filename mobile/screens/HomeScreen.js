@@ -5,15 +5,20 @@ import { Card, SectionTitle, Chip } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
 
-export function HomeScreen({ entries }) {
+export function HomeScreen({ entries, successMessage }) {
   return (
     <ScreenShell
       title="Kilo"
       subtitle="Native MVP. Recent activity and quick overview."
     >
+      {successMessage ? (
+        <Card style={styles.successCard}>
+          <Text style={styles.successText}>{successMessage}</Text>
+        </Card>
+      ) : null}
       <Card>
         <Text style={styles.callout}>
-          Your training data is now in a native shell. Parser and storage integration coming soon.
+          Your training data is synced to local storage. Use the Log and Weight tabs to add new entries.
         </Text>
       </Card>
 
@@ -37,6 +42,17 @@ export function HomeScreen({ entries }) {
 }
 
 const styles = StyleSheet.create({
+  successCard: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+    marginBottom: 12,
+  },
+  successText: {
+    color: Colors.textLight,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   callout: {
     fontSize: 16,
     lineHeight: 24,
