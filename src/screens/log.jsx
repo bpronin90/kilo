@@ -332,19 +332,38 @@ function KiloLog({ goToTab }) {
 
   return (
     <div className="kilo-screen">
-      {/* Header with progress bar */}
+      {/* Header with progress bar and save action */}
       <div style={{ background: KILO_C.bg, borderBottom: `1px solid ${KILO_C.border}` }}>
         <div style={{ padding: '14px 16px 10px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>
                 {dow.toUpperCase().slice(0,3)} · LOG SESSION
               </div>
               <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1 }}>{split.label}</div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <KiloNum size={20} weight={600} color={KILO_C.accent}>{completedCount}<span style={{ color: KILO_C.ink3, fontWeight: 400 }}>/{dayExercises.length}</span></KiloNum>
-              <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 2 }}>done</div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ textAlign: 'right' }}>
+                <KiloNum size={18} weight={600} color={KILO_C.accent}>{completedCount}<span style={{ color: KILO_C.ink3, fontWeight: 400 }}>/{dayExercises.length}</span></KiloNum>
+                <div className="kilo-mono" style={{ fontSize: 8, color: KILO_C.ink3, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 1 }}>done</div>
+              </div>
+              <button
+                className="kilo-btn"
+                disabled={completedCount === 0}
+                onClick={handleSave}
+                style={{
+                  padding: '8px 14px', borderRadius: 3,
+                  background: completedCount === 0 ? KILO_C.surface2 : KILO_C.accent,
+                  color: completedCount === 0 ? KILO_C.ink4 : '#000',
+                  fontFamily: KILO_FONT, fontWeight: 700, fontSize: 11,
+                  letterSpacing: '0.04em', textTransform: 'uppercase',
+                  border: 'none', opacity: completedCount === 0 ? 0.5 : 1,
+                  transition: 'opacity 0.15s, background 0.15s',
+                }}
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -438,9 +457,9 @@ function KiloLog({ goToTab }) {
           </div>
         </KiloSection>
 
-        {/* Footer summary + save */}
+        {/* Footer summary + instructions */}
         <div style={{ padding: 16, marginTop: 8 }}>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             <SummaryStat label="Volume" val={`${Math.round(totalVolume).toLocaleString()} lb`} />
             <SummaryStat label="Exercises" val={`${completedCount}/${dayExercises.length}`} />
             <SummaryStat label="PT" val={`${ptCompleted}/${window.KILO_PT.length}`} />
@@ -449,7 +468,7 @@ function KiloLog({ goToTab }) {
           {saveStatus === 'error' && Object.keys(saveErrors).length === 0 && (
             <div className="kilo-mono" style={{
               fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
-              marginBottom: 10, padding: '8px 10px',
+              marginBottom: 16, padding: '8px 10px',
               background: 'rgba(239,68,68,0.08)', borderRadius: 3,
               border: `1px solid rgba(239,68,68,0.2)`,
             }}>
@@ -460,7 +479,7 @@ function KiloLog({ goToTab }) {
           {saveStatus === 'storage_error' && (
             <div className="kilo-mono" style={{
               fontSize: 10, color: KILO_C.red, letterSpacing: '0.06em',
-              marginBottom: 10, padding: '8px 10px',
+              marginBottom: 16, padding: '8px 10px',
               background: 'rgba(239,68,68,0.08)', borderRadius: 3,
               border: `1px solid rgba(239,68,68,0.2)`,
             }}>
@@ -468,22 +487,7 @@ function KiloLog({ goToTab }) {
             </div>
           )}
 
-          <button
-            className="kilo-btn"
-            disabled={completedCount === 0}
-            onClick={handleSave}
-            style={{
-              width: '100%', padding: '14px', borderRadius: 3,
-              background: completedCount === 0 ? KILO_C.surface2 : KILO_C.accent,
-              color: completedCount === 0 ? KILO_C.ink4 : '#000',
-              fontFamily: KILO_FONT, fontWeight: 700, fontSize: 13,
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-              border: 'none', opacity: completedCount === 0 ? 0.5 : 1,
-            }}
-          >
-            Save Session
-          </button>
-          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, textAlign: 'center', marginTop: 8, letterSpacing: '0.1em' }}>
+          <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, textAlign: 'center', letterSpacing: '0.1em' }}>
             ENTER `−` TO SKIP AN EXERCISE
           </div>
         </div>
