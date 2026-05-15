@@ -24,6 +24,7 @@ function KiloHome({ goToTab, openSession }) {
   const [weights, setWeights] = React.useState(() => window.KILO_WEIGHTS);
   const [entry, setEntry] = React.useState('');
   const [status, setStatus] = React.useState(null); // null | { ok: true } | { ok: false, error }
+  const [pendingDelete, setPendingDelete] = React.useState(null);
   const [, setTick] = React.useState(0);
   const refresh = () => {
     setTick(t => t + 1);
@@ -323,9 +324,16 @@ function KiloHome({ goToTab, openSession }) {
                         </div>
                       </div>
                       {isUserEntry && (
-                        <button className="kilo-btn" onClick={() => window.confirm('Delete this session?') && handleDelete(e.id, 'workout')} style={{ background: 'transparent', padding: 8 }}>
-                          <KiloIcon name="close" size={14} color={KILO_C.red} />
-                        </button>
+                        pendingDelete === e.id ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button className="kilo-btn" onClick={() => { handleDelete(e.id, 'workout'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
+                            <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
+                          </div>
+                        ) : (
+                          <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
+                            <KiloIcon name="close" size={14} color={KILO_C.red} />
+                          </button>
+                        )
                       )}
                       <KiloIcon name="log" size={14} color={KILO_C.ink4} style={{ marginTop: 3 }} />
                     </div>
@@ -343,9 +351,16 @@ function KiloHome({ goToTab, openSession }) {
                         </div>
                       </div>
                       {isUserEntry && (
-                        <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && handleDelete(e.id, 'weight')} style={{ background: 'transparent', padding: 8 }}>
-                          <KiloIcon name="close" size={14} color={KILO_C.red} />
-                        </button>
+                        pendingDelete === e.id ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <button className="kilo-btn" onClick={() => { handleDelete(e.id, 'weight'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
+                            <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
+                          </div>
+                        ) : (
+                          <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
+                            <KiloIcon name="close" size={14} color={KILO_C.red} />
+                          </button>
+                        )
                       )}
                       <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
                     </div>

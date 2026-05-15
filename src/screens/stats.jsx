@@ -144,6 +144,7 @@ function ExerciseHistoryView({ exId, back }) {
 }
 
 function UnifiedHistoryList({ entries, onDelete }) {
+  const [pendingDelete, setPendingDelete] = React.useState(null);
   return (
     <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
       {entries.map(e => {
@@ -175,9 +176,16 @@ function UnifiedHistoryList({ entries, onDelete }) {
                 </div>
               </div>
               {isUserEntry && (
-                <button className="kilo-btn" onClick={() => window.confirm('Delete this session?') && onDelete(e.id, 'workout')} style={{ background: 'transparent', padding: 8 }}>
-                  <KiloIcon name="close" size={14} color={KILO_C.red} />
-                </button>
+                pendingDelete === e.id ? (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <button className="kilo-btn" onClick={() => { onDelete(e.id, 'workout'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
+                    <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
+                  </div>
+                ) : (
+                  <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
+                    <KiloIcon name="close" size={14} color={KILO_C.red} />
+                  </button>
+                )
               )}
               <KiloIcon name="log" size={14} color={KILO_C.ink4} style={{ marginTop: 3 }} />
             </div>
@@ -196,9 +204,16 @@ function UnifiedHistoryList({ entries, onDelete }) {
                 </div>
               </div>
               {isUserEntry && (
-                <button className="kilo-btn" onClick={() => window.confirm('Delete this entry?') && onDelete(e.id, 'weight')} style={{ background: 'transparent', padding: 8 }}>
-                  <KiloIcon name="close" size={14} color={KILO_C.red} />
-                </button>
+                pendingDelete === e.id ? (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <button className="kilo-btn" onClick={() => { onDelete(e.id, 'weight'); setPendingDelete(null); }} style={{ background: 'transparent', padding: '2px 6px', color: KILO_C.red, fontFamily: KILO_MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>DEL</button>
+                    <button className="kilo-btn" onClick={() => setPendingDelete(null)} style={{ background: 'transparent', padding: '2px 4px', color: KILO_C.ink3, fontSize: 14 }}>×</button>
+                  </div>
+                ) : (
+                  <button className="kilo-btn" onClick={() => setPendingDelete(e.id)} style={{ background: 'transparent', padding: 8 }}>
+                    <KiloIcon name="close" size={14} color={KILO_C.red} />
+                  </button>
+                )
               )}
               <KiloIcon name="weight" size={14} color={KILO_C.ink4} />
             </div>
