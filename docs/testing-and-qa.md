@@ -184,6 +184,20 @@ cd mobile && npx jest
 **`parseWeightEntry` — edit-path cases**
 - confirms that previously lenient paths (`180lbs`, `0`, `-5`, `   `) are now blocked by the parser
 
+### `tests/log-ui.test.jsx`
+
+**Duplicate-session banner**
+- shows `↻ {split.label} already logged today` when a session for the current date and split already exists
+- does not show the banner when no session exists for today
+- does not show the banner when a same-date session exists for a different split day
+
+**Save-success state**
+- shows `Workout saved` after a valid save
+- shows `View Stats` after save
+- shows `Back to Home` after save
+- `View Stats` calls `goToTab('stats')`
+- `Back to Home` calls `goToTab('home')`
+
 ### `tests/setup.js`
 
 Provides the global runtime contract required by the prototype:
@@ -216,8 +230,6 @@ Provides the global runtime contract required by the prototype:
 The following MVP behaviors have no automated test coverage:
 
 **Workout logging UI (`screens/log.jsx`)**
-- `KiloLog` render
-- `handleSave` success path (valid rows → "Workout saved" screen)
 - `handleSave` error path (no valid rows → "✕ Complete at least one exercise before saving")
 - Per-row parse error highlighting on save attempt
 - `ParsePreview` live preview rendering

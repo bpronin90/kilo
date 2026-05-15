@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6 - 2026-05-15
+
+- Issue #45: Added automated Log screen UI coverage for the duplicate-session continuity banner and the save-success state actions, without changing duplicate logging behavior.
+
 ## 0.2.5 - 2026-05-15
 
 - Issue #44: Removed the Home screen's recent-history delete affordances for workout and weight rows so Home stays a display-only summary surface while Stats continues to own history deletion.
