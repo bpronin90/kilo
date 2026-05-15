@@ -187,10 +187,12 @@ source.
 
 - The Home tab and Stats history list both combine weight entries and workout
   sessions, sorted by `saved_at` DESC.
-- User-created weight entries and workout sessions show a delete icon that
-  expands into an inline confirm state before deletion.
+- The Home tab is display-only for recent history rows and does not expose
+  per-row correction actions.
+- Stats continues to own recent-history correction actions for user-created
+  entries.
 - Entries persist across page reloads via `localStorage`.
-- Seeded entries appear but do not show delete icons (`isUserEntry` is false).
+- Seeded entries appear without correction actions (`isUserEntry` is false).
 
 ### Correction Flows (`src/data.jsx`)
 
@@ -245,8 +247,6 @@ The following MVP behaviors have no automated test coverage:
   `ParsePreview` live preview, PT checklist toggle, `persistWorkoutSession`
   (`src/screens/log.jsx`)
 - Weight entry delete and edit from `KiloWeight` (`src/screens/weight.jsx`)
-- Workout session delete from `KiloHome` (`src/screens/home.jsx`)
-- Weight entry delete from `KiloHome`
 - Combined weight + workout sort in recent history
 - Workout and weight card rendering in `KiloHome`
 - `KiloWeight` entry list, delta calculation, graph, range tabs
