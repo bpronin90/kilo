@@ -166,9 +166,11 @@ source.
 - `KiloLog` renders the exercise list for today's day-of-week split.
 - Each `ExerciseRow` runs `parseWorkoutRow` live on every keystroke and renders
   a `ParsePreview` chip (or `⚠` error) inline.
-- The Save Session button is disabled when no rows have valid parseable input.
+- The primary Save button lives in the Log header, stays reachable without
+  footer scrolling, and is disabled when no rows have valid parseable input.
 - On save, `parseWorkoutEntry` validates all rows together.
   - Rows with errors are highlighted inline; no success screen appears.
+  - Non-inline save failures render directly below the header progress area.
   - On success, a "Workout saved" confirmation screen is shown with a back button.
 - Saved sessions are written to `localStorage` (`kilo_workout_sessions`) and
   merged into `window.KILO_SESSIONS`.
