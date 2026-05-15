@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5 - 2026-05-15
+
+- Issue #44: Removed the Home screen's recent-history delete affordances for workout and weight rows so Home stays a display-only summary surface while Stats continues to own history deletion.
+
 ## 0.2.4 - 2026-05-15
 
 - Issue #43: Fixed the native Expo app's first-tap reliability by making weight and workout saves register with the keyboard open, preventing duplicate in-flight saves, and keeping the tab bar reachable above the iOS keyboard without changing completed-tap semantics.
