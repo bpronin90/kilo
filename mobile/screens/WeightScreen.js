@@ -1,15 +1,18 @@
 import React from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { ScreenShell } from '../components/ScreenShell';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
 
-export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage }) {
+export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   return (
-    <ScreenShell
-      title="Weight log"
-      subtitle="Track your body weight over time."
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
     >
+      <View style={styles.header}>
+        <Text style={styles.title}>Weight log</Text>
+        <Text style={styles.subtitle}>Track your body weight over time.</Text>
+      </View>
       <Card>
         {errorMessage ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -31,13 +34,33 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           placeholderTextColor={Colors.textMuted}
           style={styles.input}
         />
-        <Button onPress={onSaveWeight} title="Save weigh-in" />
+        <Button onPress={onSaveWeight} title="Save weigh-in" disabled={saving} />
       </Card>
-    </ScreenShell>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    padding: 20,
+    paddingBottom: 120,
+    gap: 16,
+  },
+  header: {
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.textMuted,
+  },
   errorText: {
     color: Colors.error,
     fontSize: 14,
