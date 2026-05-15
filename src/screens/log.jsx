@@ -218,6 +218,9 @@ function KiloLog({ goToTab }) {
   const [startedAt] = React.useState(new Date());
   const [saveErrors, setSaveErrors] = React.useState({});
   const [saveStatus, setSaveStatus] = React.useState(null); // null | 'success' | 'error'
+  const [existingTodaySession] = React.useState(() =>
+    window.KILO_SESSIONS.find(s => s.date === today && s.day === dow) || null
+  );
 
   const setRaw = (id, val) => {
     setRaws(r => ({ ...r, [id]: val }));
@@ -314,18 +317,32 @@ function KiloLog({ goToTab }) {
             {completedCount} exercise{completedCount !== 1 ? 's' : ''} · {Math.round(totalVolume).toLocaleString()} lb
           </div>
         </div>
-        <button
-          className="kilo-btn"
-          onClick={() => goToTab('home')}
-          style={{
-            marginTop: 8, padding: '12px 24px', borderRadius: 3,
-            background: KILO_C.surface, border: `1px solid ${KILO_C.border2}`,
-            color: KILO_C.ink, fontFamily: KILO_FONT, fontWeight: 600, fontSize: 13,
-            letterSpacing: '0.04em',
-          }}
-        >
-          Back to Home
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, width: '100%', maxWidth: 240 }}>
+          <button
+            className="kilo-btn"
+            onClick={() => goToTab('stats')}
+            style={{
+              padding: '12px 24px', borderRadius: 3,
+              background: KILO_C.accent, border: 'none',
+              color: '#000', fontFamily: KILO_FONT, fontWeight: 700, fontSize: 13,
+              letterSpacing: '0.04em',
+            }}
+          >
+            View Stats
+          </button>
+          <button
+            className="kilo-btn"
+            onClick={() => goToTab('home')}
+            style={{
+              padding: '12px 24px', borderRadius: 3,
+              background: KILO_C.surface, border: `1px solid ${KILO_C.border2}`,
+              color: KILO_C.ink, fontFamily: KILO_FONT, fontWeight: 600, fontSize: 13,
+              letterSpacing: '0.04em',
+            }}
+          >
+            Back to Home
+          </button>
+        </div>
       </div>
     );
   }
@@ -391,6 +408,18 @@ function KiloLog({ goToTab }) {
               border: `1px solid rgba(239,68,68,0.2)`,
             }}>
               ✕ Save failed — storage unavailable
+            </div>
+          </div>
+        )}
+
+        {existingTodaySession && !saveStatus && (
+          <div style={{ padding: '10px 16px 8px', borderTop: `1px solid ${KILO_C.border}` }}>
+            <div className="kilo-mono" style={{
+              fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.06em',
+              padding: '8px 10px', background: KILO_C.surface, borderRadius: 3,
+              border: `1px solid ${KILO_C.border}`,
+            }}>
+              ↻ {split.label} already logged today
             </div>
           </div>
         )}
