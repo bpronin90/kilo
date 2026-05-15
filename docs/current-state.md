@@ -115,6 +115,9 @@ The real native app path now has a modular React Native shell:
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 and workout saves run through `parseWorkoutEntry()` before persistence. Saved
 native entries reload across app restarts through the hook/storage layer.
+The native Log and Weight flows now keep save actions responsive on the first
+tap even with the keyboard visible, guard against duplicate in-flight saves,
+and keep the bottom tab bar reachable above the iOS keyboard.
 
 ### Parser (`src/parser.jsx`)
 

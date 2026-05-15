@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 - 2026-05-15
+
+- Issue #43: Fixed the native Expo app's first-tap reliability by making weight and workout saves register with the keyboard open, preventing duplicate in-flight saves, and keeping the tab bar reachable above the iOS keyboard without changing completed-tap semantics.
+
 ## 0.2.3 - 2026-05-14
 
 - Issue #40: Replaced native browser confirm, prompt, and alert flows on Home, Stats, and Weight with app-native inline delete confirmation and inline weight editing errors while preserving the underlying correction actions.
