@@ -4,13 +4,16 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
 
-export function LogScreen({ workoutTitle, setWorkoutTitle, workoutDetail, setWorkoutDetail, onSaveWorkout }) {
+export function LogScreen({ workoutTitle, setWorkoutTitle, workoutDetail, setWorkoutDetail, onSaveWorkout, errorMessage }) {
   return (
     <ScreenShell
       title="Workout log"
       subtitle="Direct entry for your training sessions."
     >
       <Card>
+        {errorMessage ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
         <Text style={styles.inputLabel}>Workout name</Text>
         <TextInput
           value={workoutTitle}
@@ -35,6 +38,12 @@ export function LogScreen({ workoutTitle, setWorkoutTitle, workoutDetail, setWor
 }
 
 const styles = StyleSheet.create({
+  errorText: {
+    color: Colors.error,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',

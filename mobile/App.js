@@ -27,6 +27,15 @@ export default function App() {
   const [workoutTitle, setWorkoutTitle] = useState('');
   const [workoutDetail, setWorkoutDetail] = useState('');
 
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState('');
+
+  const handleTabPress = (tab) => {
+    setSaveError('');
+    setSaveSuccess('');
+    setActiveTab(tab);
+  };
+
   // Adapt persistent store entries to the shape screens expect
   const entries = useMemo(() => {
     const weightEntries = weightHook.entries.map(e => ({
@@ -57,8 +66,12 @@ export default function App() {
   }, [weightHook.entries, workoutHook.sessions]);
 
   async function saveWeight() {
+    setSaveError('');
     const parsed = parseWeightEntry(weightValue);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      setSaveError(parsed.error);
+      return;
+    }
     const entry = makeWeightEntry({
       weight_value: parsed.weight_value,
       logged_at: parsed.logged_at,
@@ -67,28 +80,41 @@ export default function App() {
     await weightHook.add(entry);
     setWeightValue('');
     setWeightNote('');
+    setSaveSuccess('Weight entry saved!');
     setActiveTab('Home');
   }
 
   async function saveWorkout() {
-    if (!workoutTitle.trim() || !workoutDetail.trim()) return;
+    setSaveError('');
+    if (!workoutTitle.trim()) {
+      setSaveError('Workout name is required');
+      return;
+    }
+    if (!workoutDetail.trim()) {
+      setSaveError('Session details are required');
+      return;
+    }
     const today = new Date().toISOString().slice(0, 10);
     const parsed = parseWorkoutEntry(
       [{ exerciseName: workoutTitle.trim(), raw: workoutDetail.trim() }],
       today,
     );
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      setSaveError(parsed.error);
+      return;
+    }
     const session = makeWorkoutSession({ workout_date: parsed.workout_date, items: parsed.items });
     await workoutHook.add(session);
     setWorkoutTitle('');
     setWorkoutDetail('');
+    setSaveSuccess('Workout session saved!');
     setActiveTab('Home');
   }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen entries={entries} />;
+        return <HomeScreen entries={entries} successMessage={saveSuccess} />;
       case 'Log':
         return (
           <LogScreen
@@ -97,6 +123,7 @@ export default function App() {
             workoutDetail={workoutDetail}
             setWorkoutDetail={setWorkoutDetail}
             onSaveWorkout={saveWorkout}
+            errorMessage={saveError}
           />
         );
       case 'Weight':
@@ -107,6 +134,7 @@ export default function App() {
             weightNote={weightNote}
             setWeightNote={setWeightNote}
             onSaveWeight={saveWeight}
+            errorMessage={saveError}
           />
         );
       case 'Stats':
@@ -124,7 +152,7 @@ export default function App() {
         <TabBar
           tabs={TABS}
           activeTab={activeTab}
-          onTabPress={setActiveTab}
+          onTabPress={handleTabPress}
         />
       </View>
     </SafeAreaView>
