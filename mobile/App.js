@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Keyboard, SafeAreaView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -166,14 +166,17 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'height' : undefined}
+      >
         <View style={styles.content}>{renderContent()}</View>
         <TabBar
           tabs={TABS}
           activeTab={activeTab}
           onTabPress={handleTabPress}
         />
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
