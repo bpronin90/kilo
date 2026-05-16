@@ -227,6 +227,9 @@ Provides the global runtime contract required by the prototype:
   preservation, multi-occurrence exercise merging, stable
   `set_prs[].occurrence_index` linkage, and propagation of non-weight
   `unparsed_rows` into the derived analytics contract
+- covers `deriveTrackedPRs` caller-order behavior and `derive1kTotal`
+  aggregation behavior, including missing-lift null totals, mixed-weight rows,
+  changing tracked selections, and best-set selection across multiple days
 
 ### `mobile/tests/storage.test.js`
 

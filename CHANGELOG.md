@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 - 2026-05-16
+
+- Issue #57: Added local native 1k-total derivation from the user-selected
+  bench, squat, and deadlift estimated PRs, including immediate recompute
+  behavior when note content or tracked-lift selection changes and focused
+  parser-suite coverage for mixed-weight and multi-day note cases.
+
 ## 0.8.0 - 2026-05-16
 
 - Issue #52: Added native 7-day and 30-day derived weight averages plus fast
