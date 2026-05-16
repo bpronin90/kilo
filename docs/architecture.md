@@ -74,12 +74,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
-  and workout sessions
+  and workout data, including canonical workout-note migration plumbing
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
-  data
+  data plus the canonical workout routine note and its legacy-session migration
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -196,6 +196,18 @@ User types in weight input
 |-----|----------|
 | `kilo_workout_sessions` | JSON array of user-created workout sessions |
 | `kilo_weight_entries` | JSON array of user-created weight entries |
+
+### Native AsyncStorage keys
+
+| Key | Contents |
+|-----|----------|
+| `kilo_weight_entries` | JSON array of native weight entries |
+| `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions |
+| `kilo_workout_note` | Single canonical native workout routine note document |
+
+When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
+storage layer now synthesizes one from any legacy `kilo_workout_sessions`
+content and saves the migrated note before returning it.
 
 ### Merge on load
 

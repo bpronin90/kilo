@@ -58,3 +58,30 @@ export function useWorkoutSessions() {
 
   return { sessions, loading, error, add, remove };
 }
+
+export function useWorkoutNote() {
+  const [note, setNote] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    Storage.loadWorkoutNote()
+      .then(n => n ?? Storage.migrateWorkoutNote())
+      .then(setNote)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = useCallback(async (raw_text) => {
+    const saved = await Storage.saveWorkoutNote(raw_text);
+    setNote(saved);
+    return saved;
+  }, []);
+
+  const clear = useCallback(async () => {
+    await Storage.clearWorkoutNote();
+    setNote(null);
+  }, []);
+
+  return { note, loading, error, save, clear };
+}
