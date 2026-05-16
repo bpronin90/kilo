@@ -100,8 +100,10 @@ The real native app path now has a modular React Native shell:
   workout sessions for the Home and Stats surfaces
 - `mobile/screens/HomeScreen.js` renders recent activity and a native overview
   card
-- `mobile/screens/LogScreen.js` renders a native freeform workout-note editor
-  and save action
+- `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
+  with read/edit modes, a formatted mirror of the canonical note, and
+  attempt-scoped save handling that only leaves edit mode after a successful
+  save result
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` renders a small native summary card grid
@@ -132,15 +134,16 @@ keyboard. The native Weight screen now also lets the user reopen saved entries
 from history, correct them in place, delete mistakes, and immediately refresh
 the shared weight views after AsyncStorage updates.
 The v2 parser groundwork for one long workout note now exists alongside the
-raw-note editor and a stable derived analytics input model so later PR, 1k, and
-repeatability work can consume parsed note output without rebuilding the parser
-contract. It now also includes a tracked-exercise estimated-PR engine that
-computes Epley values per parseable set, keeps each tracked exercise's best
-current estimate, and deduplicates tracked names before emitting analytics
-rows. Recent history in the native app still reflects persisted workout
-sessions rather than live workout-note revisions, so the note-first authoring
-shift is complete before the downstream read and analytics surfaces are
-updated.
+raw-note editor, a formatted read-mode mirror that preserves headings,
+exercise blocks, mixed-weight rows, and unparsed history lines, and a stable
+derived analytics input model so later PR, 1k, and repeatability work can
+consume parsed note output without rebuilding the parser contract. It now also
+includes a tracked-exercise estimated-PR engine that computes Epley values per
+parseable set, keeps each tracked exercise's best current estimate, and
+deduplicates tracked names before emitting analytics rows. Recent history in
+the native app still reflects persisted workout sessions rather than live
+workout-note revisions, so the note-first authoring shift is complete before
+the downstream read and analytics surfaces are updated.
 
 ### Parser (`src/parser.jsx`)
 

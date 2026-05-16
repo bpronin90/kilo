@@ -101,21 +101,17 @@ export default function App() {
   }, [weightSaving, weightValue, weightNote, weightHook]);
 
   const saveWorkout = useCallback(async () => {
-    if (workoutSaving) return;
+    if (workoutSaving) return { ok: false, error: 'Save already in progress' };
     Keyboard.dismiss();
-    setSaveError('');
     if (!workoutNoteText.trim()) {
-      setSaveError('Workout note is required');
-      return;
+      return { ok: false, error: 'Workout note is required' };
     }
-    
     setWorkoutSaving(true);
     try {
       await noteHook.save(workoutNoteText.trim());
-      setSaveSuccess('Workout note saved!');
-      setActiveTab('Home');
+      return { ok: true };
     } catch (e) {
-      setSaveError('Failed to save workout note');
+      return { ok: false, error: 'Failed to save workout note' };
     } finally {
       setWorkoutSaving(false);
     }
@@ -131,8 +127,6 @@ export default function App() {
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
             onSaveWorkout={saveWorkout}
-            errorMessage={saveError}
-            saving={workoutSaving}
           />
         );
       case 'Weight':
