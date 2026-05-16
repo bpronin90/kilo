@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 - 2026-05-16
+
+- Issue #50: Added a formatted read/edit workout-note flow in the native Log
+  screen, including a faithful rendered mirror of the canonical note,
+  mixed-weight row display, and attempt-scoped save handling that only exits
+  edit mode after a successful workout-note save.
+
 ## 0.5.0 - 2026-05-16
 
 - Issue #51: Added native weight-entry correction flows so saved weigh-ins can
