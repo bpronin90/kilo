@@ -115,9 +115,14 @@ export function makeWorkoutSession({ workout_date, items }) {
 // referenceDate defaults to today; pass a fixed date for tests.
 export function computeWeightTrends(entries, referenceDate = new Date()) {
   const MS_DAY = 86400000;
-  const refStr = referenceDate.toISOString().slice(0, 10);
-  const cut7  = new Date(referenceDate - 7  * MS_DAY).toISOString().slice(0, 10);
-  const cut30 = new Date(referenceDate - 30 * MS_DAY).toISOString().slice(0, 10);
+  // Use local calendar date to avoid UTC-offset mismatches for non-UTC users.
+  const pad = (n) => String(n).padStart(2, '0');
+  const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const refStr = localStr(referenceDate);
+  // Subtract 6 / 29 days so the inclusive range spans exactly 7 / 30 calendar days.
+  const cut7  = localStr(new Date(referenceDate - 6  * MS_DAY));
+  const cut30 = localStr(new Date(referenceDate - 29 * MS_DAY));
 
   const w7  = entries.filter(e => e.date >= cut7  && e.date <= refStr);
   const w30 = entries.filter(e => e.date >= cut30 && e.date <= refStr);
