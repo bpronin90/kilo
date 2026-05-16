@@ -1230,6 +1230,27 @@ describe('deriveProgressionSignals — progression status', () => {
     expect(sig.progression_status).toBeNull();
     expect(sig.latest_pr).toBeNull();
   });
+
+  test('non-comparable latest occurrence — walks back to most recent comparable', () => {
+    // Monday has a weighted set; Wednesday has only rep-only rows (no weight → PR null).
+    // latest comparable = Monday → first_session, not null.
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('first_session');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.prior_pr).toBeNull();
+  });
+
+  test('non-comparable latest with two prior weighted occurrences returns correct status', () => {
+    // Monday 80 8, Wednesday 90 8, Friday 8,8 (rep-only) → latest comparable = Wednesday → improved
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8\nFriday\n-Bench\n8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(80, 8));
+  });
 });
 
 describe('deriveProgressionSignals — repeatability score', () => {

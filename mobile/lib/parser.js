@@ -386,24 +386,27 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const occs = ex.occurrences;
       if (occs.length === 0) return absent;
 
-      const latestOcc = occs[occs.length - 1];
+      // Walk backward to find the two most recent occurrences with computable PRs.
+      let latestIdx = -1;
+      let priorIdx = -1;
+      for (let i = occs.length - 1; i >= 0; i--) {
+        if (_occurrencePR(occs[i]) !== null) {
+          if (latestIdx === -1) latestIdx = i;
+          else { priorIdx = i; break; }
+        }
+      }
+
+      if (latestIdx === -1) return absent;
+
+      const latestOcc = occs[latestIdx];
       const latest_pr = _occurrencePR(latestOcc);
       const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
 
-      if (occs.length === 1) {
-        return { name, progression_status: latest_pr !== null ? 'first_session' : null, latest_pr, prior_pr: null, repeatability_score };
+      if (priorIdx === -1) {
+        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, repeatability_score };
       }
 
-      let prior_pr = null;
-      for (let i = occs.length - 2; i >= 0; i--) {
-        const pr = _occurrencePR(occs[i]);
-        if (pr !== null) { prior_pr = pr; break; }
-      }
-
-      if (latest_pr === null || prior_pr === null) {
-        return { name, progression_status: null, latest_pr, prior_pr, repeatability_score };
-      }
-
+      const prior_pr = _occurrencePR(occs[priorIdx]);
       const progression_status = latest_pr > prior_pr ? 'improved'
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
