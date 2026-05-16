@@ -104,3 +104,13 @@ export function makeWorkoutSession({ workout_date, items }) {
     items,
   };
 }
+
+// Factory for the canonical workout routine note
+export function makeWorkoutNote({ raw_text }) {
+  const now = new Date().toISOString();
+  return {
+    raw_text,
+    saved_at: now,
+    updated_at: now,
+  };
+}

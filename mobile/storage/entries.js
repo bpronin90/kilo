@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WEIGHT_KEY = 'kilo_weight_entries';
 const WORKOUT_KEY = 'kilo_workout_sessions';
+const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 
 async function readList(key) {
   try {
@@ -59,4 +60,31 @@ export async function saveWorkoutSession(session) {
 export async function deleteWorkoutSession(id) {
   const list = await readList(WORKOUT_KEY);
   await writeList(WORKOUT_KEY, list.filter(e => e.id !== id));
+}
+
+// Workout routine note (single canonical document)
+
+export async function loadWorkoutNote() {
+  try {
+    const raw = await AsyncStorage.getItem(WORKOUT_NOTE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWorkoutNote(raw_text) {
+  const now = new Date().toISOString();
+  const existing = await loadWorkoutNote();
+  const note = {
+    raw_text,
+    saved_at: existing ? existing.saved_at : now,
+    updated_at: now,
+  };
+  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
+  return note;
+}
+
+export async function clearWorkoutNote() {
+  await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
 }

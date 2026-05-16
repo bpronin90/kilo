@@ -7,6 +7,9 @@ import {
   loadWorkoutSessions,
   saveWorkoutSession,
   deleteWorkoutSession,
+  loadWorkoutNote,
+  saveWorkoutNote,
+  clearWorkoutNote,
 } from '../storage/entries';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
@@ -89,5 +92,57 @@ describe('workout session storage', () => {
     await deleteWorkoutSession(S1.id);
     const sessions = await loadWorkoutSessions();
     expect(sessions).toEqual([]);
+  });
+});
+
+// ── workout routine note ──────────────────────────────────────────────────────
+
+describe('workout note storage', () => {
+  test('returns null when no note has been saved', async () => {
+    const note = await loadWorkoutNote();
+    expect(note).toBeNull();
+  });
+
+  test('saves and retrieves raw text without modification', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5\nRDL 185 8,8');
+    const note = await loadWorkoutNote();
+    expect(note.raw_text).toBe('Squat 225 5,5,5\nRDL 185 8,8');
+  });
+
+  test('overwrites previous note on save, not appends', async () => {
+    await saveWorkoutNote('first note');
+    await saveWorkoutNote('second note');
+    const note = await loadWorkoutNote();
+    expect(note.raw_text).toBe('second note');
+  });
+
+  test('preserves original saved_at across overwrites', async () => {
+    await saveWorkoutNote('first note');
+    const first = await loadWorkoutNote();
+    await saveWorkoutNote('second note');
+    const second = await loadWorkoutNote();
+    expect(second.saved_at).toBe(first.saved_at);
+  });
+
+  test('returned note includes saved_at and updated_at timestamps', async () => {
+    const saved = await saveWorkoutNote('some note');
+    expect(saved.saved_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(saved.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  test('clear removes the note', async () => {
+    await saveWorkoutNote('some content');
+    await clearWorkoutNote();
+    const note = await loadWorkoutNote();
+    expect(note).toBeNull();
+  });
+
+  test('weight entries are unaffected by workout note operations', async () => {
+    await saveWeightEntry(W1);
+    await saveWorkoutNote('Deadlift 315 4,4,4');
+    await clearWorkoutNote();
+    const entries = await loadWeightEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe(W1.id);
   });
 });
