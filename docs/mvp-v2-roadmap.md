@@ -130,6 +130,7 @@ Ordered tasks:
 #### Task 2: Build tolerant workout-note parsing for sample-style shorthand
 - Session goal: support headings, exercise declarations, inline notes, partial
   lines, repeated sets, mixed weights, and non-weight-based movements.
+- Status: complete.
 - Intended agent: `claude`
 - Allowed scope: parser and parser tests.
 - Explicit out of scope: UI.

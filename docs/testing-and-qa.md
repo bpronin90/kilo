@@ -215,6 +215,10 @@ Provides the global runtime contract required by the prototype:
 - validates canonical native `parseWeightEntry`, `parseWorkoutRow`, and
   `parseWorkoutEntry` behavior against the same constrained MVP forms used in
   the browser parser tests
+- covers `parseWorkoutNote` for sample-style shorthand workout notes, including
+  day and section headings, mixed-weight rows, deload summaries, graceful
+  degradation of ambiguous fragments, and the non-weight cardio regression from
+  the archived treadmill sample
 
 ### `mobile/tests/storage.test.js`
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-05-16
+
+- Issue #47: Added tolerant native parsing for sample-style workout-note
+  shorthand, including day and section headings, mixed-weight set rows, deload
+  summaries, and graceful degradation for ambiguous or non-weight note
+  fragments without failing the canonical note parse.
+
 ## 0.3.0 - 2026-05-15
 
 - Issue #46: Added native AsyncStorage support for one canonical workout
