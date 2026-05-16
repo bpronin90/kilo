@@ -118,3 +118,53 @@ npm audit fix --force
 ```
 
 for this workflow. It can rewrite Expo/Jest versions and break the repo's intended dependency set without fixing the WSL phone-connectivity problem.
+
+---
+
+# Standalone Android Build via EAS
+
+Use this when you need an APK that runs on a phone without the dev machine being on.
+
+## Prerequisites
+
+- Expo account: `npx expo login`
+- EAS CLI: `npm install -g eas-cli`
+
+## One-time setup
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build:configure
+```
+
+This verifies `eas.json` and links the project to your Expo account. Skip if already configured.
+
+## Build APK
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform android --profile preview
+```
+
+- Uses the `preview` profile in `mobile/eas.json`, which produces a plain `.apk`.
+- Build runs on EAS cloud servers — the laptop does not need to stay on.
+- When the build finishes, EAS prints a download URL.
+
+## Install on phone
+
+1. Download the `.apk` from the EAS build URL (browser or `curl`).
+2. Transfer to the phone (USB, Google Drive, email, etc.).
+3. On the phone, open the `.apk` file and tap **Install**.
+   - Enable "Install from unknown sources" in Android settings if prompted.
+
+## Checking build status
+
+```bash
+eas build:list --platform android --limit 5
+```
+
+## Notes
+
+- The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
+- Subsequent builds reuse the same EAS project — no re-configuration needed.
+- The `preview` profile intentionally omits signing setup, which is sufficient for local sideloading.
