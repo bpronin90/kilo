@@ -4,10 +4,10 @@ import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 
-export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, errorMessage, saving }) {
+export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
-  // 'idle' | 'pending' (triggered, waiting for parent saving=true) | 'active' (saving in progress)
-  const [savePhase, setSavePhase] = useState('idle');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
@@ -15,22 +15,20 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
 
   const hasContent = workoutNoteText.trim().length > 0;
 
-  // Phase machine: pending → active (saving=true) → idle (saving=false).
-  // Exit pending early if parent surfaces errorMessage without ever setting saving=true.
-  React.useEffect(() => {
-    if (savePhase === 'pending') {
-      if (saving) {
-        setSavePhase('active');
-      } else if (errorMessage) {
-        setSavePhase('idle');
-      }
-    } else if (savePhase === 'active' && !saving) {
-      setSavePhase('idle');
-      if (!errorMessage) {
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const result = await onSaveWorkout();
+      if (result.ok) {
         setMode('read');
+      } else {
+        setSaveError(result.error || 'Save failed');
       }
+    } finally {
+      setIsSaving(false);
     }
-  }, [saving, errorMessage, savePhase]);
+  };
 
   return (
     <ScrollView
@@ -54,9 +52,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
         <Text style={styles.subtitle}>Your active training routine. Update it as you go.</Text>
       </View>
 
-      {errorMessage ? (
+      {saveError ? (
         <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+          <Text style={styles.errorText}>{saveError}</Text>
         </Card>
       ) : null}
 
@@ -99,12 +97,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
             style={[styles.input, styles.editorInput]}
           />
           <Button 
-            onPress={() => {
-              onSaveWorkout();
-              setSavePhase('pending');
-            }}
+            onPress={handleSave}
             title="Save note"
-            disabled={saving || savePhase !== 'idle'}
+            disabled={isSaving}
             style={styles.saveButton} 
           />
         </Card>
