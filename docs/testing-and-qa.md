@@ -219,6 +219,10 @@ Provides the global runtime contract required by the prototype:
   day and section headings, mixed-weight rows, deload summaries, graceful
   degradation of ambiguous fragments, and the non-weight cardio regression from
   the archived treadmill sample
+- covers `epleyPR` and `deriveWorkoutAnalytics`, including grouped-row
+  preservation, multi-occurrence exercise merging, stable
+  `set_prs[].occurrence_index` linkage, and propagation of non-weight
+  `unparsed_rows` into the derived analytics contract
 
 ### `mobile/tests/storage.test.js`
 

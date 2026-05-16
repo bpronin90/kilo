@@ -259,6 +259,66 @@ export function parseWorkoutNote(noteText) {
   return { ok: true, sections };
 }
 
+// ── Derived analytics ────────────────────────────────────────────────────────
+// epleyPR: estimated 1-rep max using Epley formula (weight * (1 + reps / 30))
+// Returns null when weight or reps are absent or non-positive.
+export function epleyPR(weight, reps) {
+  if (!weight || !reps || weight <= 0 || reps <= 0) return null;
+  return weight * (1 + reps / 30);
+}
+
+// deriveWorkoutAnalytics: aggregates parseWorkoutNote sections into
+// per-exercise analytics records.
+//
+// Input: sections array from parseWorkoutNote (sections[].exercises[].rows/sets)
+// Output: { exercises: DerivedExercise[] }
+//
+// DerivedExercise: {
+//   name,
+//   occurrences: [{ heading, subheading, kind, rows, sets, unparsed_rows }],
+//   sets: Set[],               — all sets flattened across occurrences
+//   rows: Row[],               — all rows flattened (line-level context for repeatability)
+//   unparsed_rows: string[],   — all unparsed lines flattened (non-weight/cardio context)
+//   set_prs: [{ set, epley_pr, occurrence_index }],
+//   estimated_pr: number | null  — best eligible Epley across all sets
+// }
+export function deriveWorkoutAnalytics(sections) {
+  const byName = new Map();
+
+  for (const section of sections) {
+    const { heading, subheading, kind, exercises } = section;
+    for (const ex of exercises) {
+      if (!byName.has(ex.name)) {
+        byName.set(ex.name, { name: ex.name, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
+      }
+      const derived = byName.get(ex.name);
+      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows });
+      for (const s of ex.sets) derived.sets.push(s);
+      for (const r of ex.rows) derived.rows.push(r);
+      for (const u of ex.unparsed_rows) derived.unparsed_rows.push(u);
+    }
+  }
+
+  const exercises = [];
+  for (const derived of byName.values()) {
+    const set_prs = [];
+    for (let oi = 0; oi < derived.occurrences.length; oi++) {
+      for (const set of derived.occurrences[oi].sets) {
+        set_prs.push({ set, epley_pr: epleyPR(set.weight_value, set.rep_count), occurrence_index: oi });
+      }
+    }
+    let estimated_pr = null;
+    for (const { epley_pr } of set_prs) {
+      if (epley_pr !== null && (estimated_pr === null || epley_pr > estimated_pr)) {
+        estimated_pr = epley_pr;
+      }
+    }
+    exercises.push({ name: derived.name, occurrences: derived.occurrences, sets: derived.sets, rows: derived.rows, unparsed_rows: derived.unparsed_rows, set_prs, estimated_pr });
+  }
+
+  return { exercises };
+}
+
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 // items: array of { exerciseName: string, raw: string }
 // workout_date: YYYY-MM-DD; defaults to today's UTC date if omitted
