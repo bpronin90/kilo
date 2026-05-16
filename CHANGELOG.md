@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-05-16
+
+- Issue #49: Replaced the native Log screen's rigid workout title and session
+  detail form with a single freeform workout-note editor, and rewired the app
+  shell to save the workout tab through canonical workout-note persistence
+  instead of structured workout sessions.
+
 ## 0.3.3 - 2026-05-16
 
 - Issue #53: Added a native tracked-exercise estimated-PR engine that computes

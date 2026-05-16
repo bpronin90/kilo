@@ -167,6 +167,7 @@ Ordered tasks:
 #### Task 1: Replace rigid workout entry UI with raw note editing
 - Session goal: make workout logging a plain editable note instead of a strict
   structured entry form.
+- Status: complete.
 - Intended agent: `gemini`
 - Allowed scope: workout logging screen, editor interaction, and local
   validation behavior.

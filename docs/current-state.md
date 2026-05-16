@@ -94,12 +94,14 @@ legacy prototype path.
 
 The real native app path now has a modular React Native shell:
 
-- `mobile/App.js` owns tab state and adapts persisted weight/workout entries for
-  the Home and Stats surfaces
+- `mobile/App.js` owns tab state, routes weight saves through the canonical
+  parser path, and now routes workout saves through the canonical workout-note
+  persistence path while still adapting persisted weight entries and legacy
+  workout sessions for the Home and Stats surfaces
 - `mobile/screens/HomeScreen.js` renders recent activity and a native overview
   card
-- `mobile/screens/LogScreen.js` renders native workout title/detail inputs and a
-  save action
+- `mobile/screens/LogScreen.js` renders a native freeform workout-note editor
+  and save action
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs and a save
   action
 - `mobile/screens/StatsScreen.js` renders a small native summary card grid
@@ -119,19 +121,24 @@ The real native app path now has a modular React Native shell:
   one-time migration bridge from legacy structured sessions
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
-and workout saves run through `parseWorkoutEntry()` before persistence. Saved
-native entries reload across app restarts through the hook/storage layer.
-The native Log and Weight flows now keep save actions responsive on the first
-tap even with the keyboard visible, guard against duplicate in-flight saves,
-and keep the bottom tab bar reachable above the iOS keyboard.
-The v2 parser groundwork for one long workout note now also exists in native
-code, but the primary workout authoring flow is still the narrower structured
-form rather than the planned raw-note editor. That groundwork now includes a
-stable derived analytics input model so later PR, 1k, and repeatability work
-can consume parsed note output without rebuilding the parser contract. It now
-also includes a tracked-exercise estimated-PR engine that computes Epley values
-per parseable set, keeps each tracked exercise's best current estimate, and
-deduplicates tracked names before emitting analytics rows.
+before persistence, and the native Log flow now saves one canonical workout
+note document through the hook and storage layer instead of requiring a
+structured title-and-detail workout entry form. Saved native weight entries and
+the saved workout note both reload across app restarts through the native
+hook/storage layer. The native Log and Weight flows now keep save actions
+responsive on the first tap even with the keyboard visible, guard against
+duplicate in-flight saves, and keep the bottom tab bar reachable above the iOS
+keyboard.
+The v2 parser groundwork for one long workout note now exists alongside the
+raw-note editor and a stable derived analytics input model so later PR, 1k, and
+repeatability work can consume parsed note output without rebuilding the parser
+contract. It now also includes a tracked-exercise estimated-PR engine that
+computes Epley values per parseable set, keeps each tracked exercise's best
+current estimate, and deduplicates tracked names before emitting analytics
+rows. Recent history in the native app still reflects persisted workout
+sessions rather than live workout-note revisions, so the note-first authoring
+shift is complete before the downstream read and analytics surfaces are
+updated.
 
 ### Parser (`src/parser.jsx`)
 
