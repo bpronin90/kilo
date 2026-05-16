@@ -88,6 +88,169 @@ export function parseWorkoutRow(raw) {
   return { ok: true, skipped: false, sets };
 }
 
+// ── parseWorkoutNote ──────────────────────────────────────────────────────────
+// Parses a long freeform workout note (multi-session, multi-day) into stable
+// exercise blocks. Never fails — ambiguous lines degrade to unparsed_rows.
+//
+// Returns:
+//   { ok: true, sections: Section[] }
+//   Section: { heading, subheading, kind, exercises: Exercise[] }
+//   Exercise: { name, raw_header, rows: Row[], sets: Set[], unparsed_rows: string[] }
+//   Row: { raw, sets: Set[] }
+//   Set: canonical set shape (set_index, rep_count, weight_value, weight_unit, ...)
+
+const _DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i;
+const _EXERCISE_DASH_RE = /^-([^-\s].*)/;
+const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
+const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
+// Deload format: "Name: weight lbs NxM"
+const _DELOAD_RE = /^([^:+\d-][^:]*?):\s+(\d+(?:\.\d+)?)\s+lbs?\s+(\d+)x(\d+)\s*$/i;
+
+function _normalizeExerciseName(raw) {
+  let name = raw
+    .replace(/\s*\|.*$/, '')                         // drop "| rest notes"
+    .replace(/\s+@\d[\d.]*\S*.*$/, '')               // drop "@weight ..."
+    .replace(/\s*:\s*\d+[xX×][\d\s\-–]+.*$/, '')    // drop ": 3x6-8 ..."
+    .replace(/\s+\*.*$/, '')                         // drop "* annotation"
+    .replace(/\s+\d+[xX×][\d][\d\-–]*\S*$/, '')     // drop trailing "4x6-8"
+    .replace(/\s+\d+\s+\d+[-–]\d+$/, '')             // drop trailing "2 8-10"
+    .replace(/:\s*$/, '')                             // drop trailing colon
+    .trim();
+  return name || raw.trim();
+}
+
+function _makeSet(setIndex, repCount, weightValue, weightUnit) {
+  return {
+    set_index: setIndex,
+    rep_count: repCount,
+    weight_value: weightValue,
+    weight_unit: weightUnit,
+    duration_seconds: null,
+    assistance_value: null,
+    assistance_unit: null,
+    note_text: null,
+  };
+}
+
+export function parseWorkoutNote(noteText) {
+  if (!noteText || noteText.trim() === '') return { ok: true, sections: [] };
+
+  const sections = [];
+  let currentDay = null;
+  let currentSection = null;
+  let currentExercise = null;
+
+  function flushExercise() {
+    if (currentExercise && currentSection) {
+      currentExercise.sets = currentExercise.rows.flatMap(r => r.sets);
+      currentSection.exercises.push(currentExercise);
+      currentExercise = null;
+    }
+  }
+
+  function flushSection() {
+    flushExercise();
+    if (currentSection) {
+      sections.push(currentSection);
+      currentSection = null;
+    }
+  }
+
+  function ensureSection() {
+    if (!currentSection) {
+      currentSection = { heading: currentDay, subheading: null, kind: 'general', exercises: [] };
+    }
+  }
+
+  function startExercise(name, rawHeader) {
+    flushExercise();
+    ensureSection();
+    currentExercise = { name, raw_header: rawHeader, rows: [], unparsed_rows: [] };
+  }
+
+  for (const rawLine of noteText.split('\n')) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    if (/^-\s*$/.test(trimmed)) continue;
+
+    if (_DAY_RE.test(trimmed)) {
+      flushSection();
+      currentDay = trimmed;
+      continue;
+    }
+
+    if (trimmed.startsWith('+')) {
+      flushSection();
+      const subheading = trimmed.slice(1).trim();
+      const kind = /warmup/i.test(subheading) ? 'warmup'
+                 : /lift/i.test(subheading) ? 'lifting'
+                 : 'general';
+      currentSection = { heading: currentDay, subheading, kind, exercises: [] };
+      continue;
+    }
+
+    if (trimmed.startsWith('--')) {
+      if (currentExercise) currentExercise.unparsed_rows.push(trimmed);
+      continue;
+    }
+
+    const dashMatch = _EXERCISE_DASH_RE.exec(trimmed);
+    if (dashMatch) {
+      startExercise(_normalizeExerciseName(dashMatch[1].trim()), trimmed);
+      continue;
+    }
+
+    const numberedMatch = _EXERCISE_NUMBERED_RE.exec(trimmed);
+    if (numberedMatch) {
+      startExercise(_normalizeExerciseName(numberedMatch[2].trim()), trimmed);
+      continue;
+    }
+
+    const coreMatch = _EXERCISE_CORE_RE.exec(trimmed);
+    if (coreMatch) {
+      startExercise(_normalizeExerciseName('Core: ' + coreMatch[1].trim()), trimmed);
+      continue;
+    }
+
+    const deloadMatch = _DELOAD_RE.exec(trimmed);
+    if (deloadMatch) {
+      flushExercise();
+      ensureSection();
+      const dlName = deloadMatch[1].trim();
+      const dlWeight = parseFloat(deloadMatch[2]);
+      const dlNumSets = parseInt(deloadMatch[3], 10);
+      const dlReps = parseInt(deloadMatch[4], 10);
+      const dlSets = [];
+      for (let si = 0; si < dlNumSets; si++) {
+        dlSets.push(_makeSet(si + 1, dlReps, dlWeight, 'lb'));
+      }
+      currentSection.exercises.push({
+        name: dlName,
+        raw_header: trimmed,
+        rows: [{ raw: trimmed, sets: dlSets }],
+        sets: dlSets,
+        unparsed_rows: [],
+      });
+      continue;
+    }
+
+    if (currentExercise) {
+      const rowResult = parseWorkoutRow(trimmed);
+      if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
+        const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
+        const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
+        currentExercise.rows.push({ raw: trimmed, sets: reindexed });
+      } else if (!rowResult.blank && !rowResult.skipped) {
+        currentExercise.unparsed_rows.push(trimmed);
+      }
+    }
+  }
+
+  flushSection();
+  return { ok: true, sections };
+}
+
+// ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 // items: array of { exerciseName: string, raw: string }
 // workout_date: YYYY-MM-DD; defaults to today's UTC date if omitted
 export function parseWorkoutEntry(items, workout_date) {
