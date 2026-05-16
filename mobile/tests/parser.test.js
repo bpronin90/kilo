@@ -663,6 +663,50 @@ describe('parseWorkoutNote — sample file patterns', () => {
     expect(days).toContain('Wednesday — Pull');
   });
 
+  test('treadmill rows do not produce weighted sets', () => {
+    const r = parseWorkoutNote('0. Treadmill\n7.2 5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.name).toBe('Treadmill');
+    expect(ex.sets).toHaveLength(0);
+    expect(ex.unparsed_rows).toContain('7.2 5');
+  });
+
+  test('previous_workout treadmill block degrades fully to unparsed_rows', () => {
+    const note = [
+      'Monday – Upper Push',
+      '0. Treadmill',
+      '7.1 for 5',
+      '7.2 5',
+      '7.3 5',
+      '7.4 5',
+      '7.5 5',
+      '7.6 3, 7.5 2',
+      '7.7 3, 7.6 2',
+      '77 5',
+      '7.8 3, 7.7 2',
+      '7.8 5',
+      '1. DB Bench Press: 3x6-8 @80 lb | Controlled descent | Rest 90 sec',
+      '80 8,8,8',
+      '85 8,8,6',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    expect(r.ok).toBe(true);
+
+    const treadmill = r.sections[0].exercises.find(e => e.name === 'Treadmill');
+    expect(treadmill).toBeDefined();
+    expect(treadmill.sets).toHaveLength(0);
+    expect(treadmill.unparsed_rows.length).toBeGreaterThan(0);
+    // no treadmill speed should appear as a weight_value on any set across the note
+    const allSets = r.sections.flatMap(s => s.exercises.flatMap(e => e.sets));
+    const treadmillSpeeds = allSets.filter(s => s.weight_value !== null && s.weight_value < 10);
+    expect(treadmillSpeeds).toHaveLength(0);
+
+    const bench = r.sections[0].exercises.find(e => e.name === 'DB Bench Press');
+    expect(bench).toBeDefined();
+    expect(bench.sets).toHaveLength(6);
+  });
+
   test('Core: exercise with rep-only rows', () => {
     const note = [
       '-Squat 4x6-8',

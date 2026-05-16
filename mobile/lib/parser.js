@@ -105,6 +105,8 @@ const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
 const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
 // Deload format: "Name: weight lbs NxM"
 const _DELOAD_RE = /^([^:+\d-][^:]*?):\s+(\d+(?:\.\d+)?)\s+lbs?\s+(\d+)x(\d+)\s*$/i;
+// Non-weight cardio exercises — rows degrade to unparsed_rows instead of fake weighted sets
+const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|swim|cardio|rowing machine|ski erg)\b/i;
 
 function _normalizeExerciseName(raw) {
   let name = raw
@@ -139,12 +141,14 @@ export function parseWorkoutNote(noteText) {
   let currentDay = null;
   let currentSection = null;
   let currentExercise = null;
+  let currentExerciseNonWeight = false;
 
   function flushExercise() {
     if (currentExercise && currentSection) {
       currentExercise.sets = currentExercise.rows.flatMap(r => r.sets);
       currentSection.exercises.push(currentExercise);
       currentExercise = null;
+      currentExerciseNonWeight = false;
     }
   }
 
@@ -166,6 +170,7 @@ export function parseWorkoutNote(noteText) {
     flushExercise();
     ensureSection();
     currentExercise = { name, raw_header: rawHeader, rows: [], unparsed_rows: [] };
+    currentExerciseNonWeight = _NON_WEIGHT_RE.test(name);
   }
 
   for (const rawLine of noteText.split('\n')) {
@@ -235,13 +240,17 @@ export function parseWorkoutNote(noteText) {
     }
 
     if (currentExercise) {
-      const rowResult = parseWorkoutRow(trimmed);
-      if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
-        const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
-        const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
-        currentExercise.rows.push({ raw: trimmed, sets: reindexed });
-      } else if (!rowResult.blank && !rowResult.skipped) {
+      if (currentExerciseNonWeight) {
         currentExercise.unparsed_rows.push(trimmed);
+      } else {
+        const rowResult = parseWorkoutRow(trimmed);
+        if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
+          const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
+          const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
+          currentExercise.rows.push({ raw: trimmed, sets: reindexed });
+        } else if (!rowResult.blank && !rowResult.skipped) {
+          currentExercise.unparsed_rows.push(trimmed);
+        }
       }
     }
   }
