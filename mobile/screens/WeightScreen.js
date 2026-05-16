@@ -1,9 +1,56 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Card, Button } from '../components/UI';
+import React, { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
+import { useWeightEntries } from '../hooks/useEntries';
+import { formatTimestamp } from '../lib/format';
 
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
+  const { entries, remove, update } = useWeightEntries();
+  const [editingId, setEditingId] = useState(null);
+
+  const handleEditEntry = (entry) => {
+    setEditingId(entry.id);
+    setWeightValue(String(entry.weight_value));
+    setWeightNote(entry.note || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setWeightValue('');
+    setWeightNote('');
+  };
+
+  const handleDelete = () => {
+    if (!editingId) return;
+    Alert.alert(
+      'Delete Entry',
+      'Are you sure you want to delete this weight entry?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            await remove(editingId);
+            cancelEdit();
+          } 
+        },
+      ]
+    );
+  };
+
+  const handleSubmit = async () => {
+    if (editingId) {
+      const val = parseFloat(weightValue);
+      if (isNaN(val)) return;
+      await update(editingId, val, weightNote.trim() || undefined);
+      cancelEdit();
+    } else {
+      onSaveWeight();
+    }
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -13,7 +60,15 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         <Text style={styles.title}>Weight log</Text>
         <Text style={styles.subtitle}>Track your body weight over time.</Text>
       </View>
-      <Card>
+      <Card style={editingId ? styles.editingCard : null}>
+        {editingId ? (
+          <View style={styles.editingHeader}>
+            <Text style={styles.editingTitle}>Editing entry</Text>
+            <Pressable onPress={cancelEdit}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {errorMessage ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
         ) : null}
@@ -34,8 +89,42 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           placeholderTextColor={Colors.textMuted}
           style={styles.input}
         />
-        <Button onPress={onSaveWeight} title="Save weigh-in" disabled={saving} />
+        <Button 
+          onPress={handleSubmit} 
+          title={editingId ? "Update entry" : "Save weigh-in"} 
+          disabled={saving} 
+        />
+        {editingId ? (
+          <Button 
+            onPress={handleDelete} 
+            title="Delete entry" 
+            style={styles.deleteButton}
+            textStyle={styles.deleteButtonText}
+          />
+        ) : null}
       </Card>
+
+      <SectionTitle>History</SectionTitle>
+      <View style={styles.historyList}>
+        {entries.map((entry) => (
+          <Pressable key={entry.id} onPress={() => handleEditEntry(entry)}>
+            <Card style={editingId === entry.id ? styles.activeEntryCard : null}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.entryTitle}>
+                  {entry.weight_value} {entry.weight_unit || 'lb'}
+                </Text>
+                <Text style={styles.entryMeta}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
+              </View>
+              <Text style={styles.entryBody}>
+                {entry.note || 'No note'}
+              </Text>
+            </Card>
+          </Pressable>
+        ))}
+        {entries.length === 0 ? (
+          <Text style={styles.emptyText}>No weight entries yet.</Text>
+        ) : null}
+      </View>
     </ScrollView>
   );
 }
@@ -81,5 +170,70 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.text,
+  },
+  editingCard: {
+    borderColor: Colors.accent,
+    borderWidth: 2,
+  },
+  editingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  editingTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+  },
+  cancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    padding: 4,
+  },
+  deleteButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.error,
+    marginTop: 8,
+  },
+  deleteButtonText: {
+    color: Colors.error,
+  },
+  historyList: {
+    gap: 12,
+  },
+  activeEntryCard: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.chipBackground,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  entryTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  entryMeta: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  entryBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.textMuted,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: Colors.textMuted,
+    marginTop: 20,
+    fontSize: 15,
   },
 });

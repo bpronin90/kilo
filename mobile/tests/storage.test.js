@@ -76,12 +76,13 @@ describe('weight entry storage', () => {
     expect(entries[0].id).toBe(W2.id);
   });
 
-  test('updates weight_value for an existing entry', async () => {
+  test('updates weight_value and note for an existing entry', async () => {
     await saveWeightEntry(W1);
-    const ok = await updateWeightEntry(W1.id, 190.0);
+    const ok = await updateWeightEntry(W1.id, 190.0, 'Updated note');
     expect(ok).toBe(true);
     const entries = await loadWeightEntries();
     expect(entries[0].weight_value).toBe(190.0);
+    expect(entries[0].note).toBe('Updated note');
   });
 
   test('returns false when updating a non-existent entry', async () => {
