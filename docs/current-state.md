@@ -1,8 +1,8 @@
 # Current State
 
 This document is the single source of truth for what Kilo currently is, what is
-implemented for MVP, what remains uncertain, and what must happen before the app
-can be manually launch-validated.
+implemented for MVP, what remains uncertain, and what manual validation status
+has been reached for the current launch-review path.
 
 ---
 
@@ -211,11 +211,11 @@ contract). Seeded entries are not correctable.
 
 ## What Issue #17 Validated
 
-Issue #17 is still the legacy prototype launch-validation task. It is no longer
-blocked on repo-orientation uncertainty, but it should not be mistaken for
-native-app readiness. The native migration contract established in issue #35
-creates a separate path of work before any native-app launch claim would be
-credible.
+Issue #17 completed the legacy prototype MVP acceptance review and the final
+launch hold was cleared by user-confirmed on-phone validation. This closeout
+should not be mistaken for native-app readiness. The native migration contract
+established in issue #35 creates a separate path of work before any native-app
+launch claim would be credible.
 
 Required readiness artifacts and their current status:
 
@@ -305,7 +305,7 @@ path to handle these gracefully.
 
 ## Launch Prerequisite Checklist
 
-All items below must be true before manual launch validation (issue #17) begins.
+These were the prerequisites for manual launch validation on issue #17.
 
 **Docs**
 - [x] `README.md` explains where the app lives, how to start it, and which docs
@@ -320,8 +320,8 @@ All items below must be true before manual launch validation (issue #17) begins.
 - [x] `npm test` passes with zero failures
 
 **Manual smoke test**
-- [ ] A human tester has executed the full Manual Smoke Checklist in
-      `docs/testing-and-qa.md` and all **[BLOCKER]** steps pass
+- [x] Final launch-signoff validation was completed for issue #17 with
+      user-confirmed on-phone verification before closeout
 
 **Known non-blockers for launch** (acceptable prototype limitations)
 - PT checklist items are toggle-only; not persisted across reloads

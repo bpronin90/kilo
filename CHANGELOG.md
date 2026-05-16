@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7 - 2026-05-15
+
+- Issue #17: Closed the legacy MVP acceptance review after the repo-readiness
+  stack was completed and the final launch hold was cleared by user-confirmed
+  on-phone verification. Updated current-state readiness status to reflect the
+  completed review.
+
 ## 0.2.6 - 2026-05-15
 
 - Issue #45: Added automated Log screen UI coverage for the duplicate-session continuity banner and the save-success state actions, without changing duplicate logging behavior.
