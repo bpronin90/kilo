@@ -110,6 +110,40 @@ export function makeWorkoutSession({ workout_date, items }) {
   };
 }
 
+// Compute 7-day and 30-day rolling weight averages and a pace flag.
+// entries must be sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }.
+// referenceDate defaults to today; pass a fixed date for tests.
+export function computeWeightTrends(entries, referenceDate = new Date()) {
+  const MS_DAY = 86400000;
+  const refStr = referenceDate.toISOString().slice(0, 10);
+  const cut7  = new Date(referenceDate - 7  * MS_DAY).toISOString().slice(0, 10);
+  const cut30 = new Date(referenceDate - 30 * MS_DAY).toISOString().slice(0, 10);
+
+  const w7  = entries.filter(e => e.date >= cut7  && e.date <= refStr);
+  const w30 = entries.filter(e => e.date >= cut30 && e.date <= refStr);
+
+  const mean = (arr) =>
+    arr.length === 0 ? null : arr.reduce((s, e) => s + e.weight_value, 0) / arr.length;
+
+  const avg7  = mean(w7);
+  const avg30 = mean(w30);
+
+  let paceFlag = null;
+  const win = w7.length >= 2 ? w7 : w30.length >= 2 ? w30 : null;
+  if (win) {
+    const newest = win[0];
+    const oldest = win[win.length - 1];
+    const days = (new Date(newest.date) - new Date(oldest.date)) / MS_DAY;
+    if (days > 0) {
+      const rate = (newest.weight_value - oldest.weight_value) / (days / 7);
+      if (rate >  0.5) paceFlag = 'gain';
+      else if (rate < -0.5) paceFlag = 'loss';
+    }
+  }
+
+  return { avg7, avg30, paceFlag };
+}
+
 // Factory for the canonical workout routine note
 export function makeWorkoutNote({ raw_text }) {
   const now = new Date().toISOString();
