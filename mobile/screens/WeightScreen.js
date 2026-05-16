@@ -4,18 +4,22 @@ import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries } from '../hooks/useEntries';
 import { formatTimestamp } from '../lib/format';
+import { parseWeightEntry } from '../lib/parser';
 
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   const { entries, remove, update } = useWeightEntries();
   const [editingId, setEditingId] = useState(null);
+  const [localError, setLocalError] = useState('');
 
   const handleEditEntry = (entry) => {
+    setLocalError('');
     setEditingId(entry.id);
     setWeightValue(String(entry.weight_value));
     setWeightNote(entry.note || '');
   };
 
   const cancelEdit = () => {
+    setLocalError('');
     setEditingId(null);
     setWeightValue('');
     setWeightNote('');
@@ -41,15 +45,21 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   };
 
   const handleSubmit = async () => {
+    setLocalError('');
     if (editingId) {
-      const val = parseFloat(weightValue);
-      if (isNaN(val)) return;
-      await update(editingId, val, weightNote.trim() || undefined);
+      const parsed = parseWeightEntry(weightValue);
+      if (!parsed.ok) {
+        setLocalError(parsed.error);
+        return;
+      }
+      await update(editingId, parsed.weight_value, weightNote.trim() || undefined);
       cancelEdit();
     } else {
       onSaveWeight();
     }
   };
+
+  const displayError = localError || errorMessage;
 
   return (
     <ScrollView
@@ -69,8 +79,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             </Pressable>
           </View>
         ) : null}
-        {errorMessage ? (
-          <Text style={styles.errorText}>{errorMessage}</Text>
+        {displayError ? (
+          <Text style={styles.errorText}>{displayError}</Text>
         ) : null}
         <Text style={styles.inputLabel}>Weight (lb)</Text>
         <TextInput
