@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote } from '../lib/parser';
 
 // ── parseWeightEntry ──────────────────────────────────────────────────────────
 
@@ -286,5 +286,441 @@ describe('UI Error Message Verification', () => {
     const r = parseWorkoutEntry(items);
     expect(r.ok).toBe(false);
     expect(r.error).toBe('Enter reps as reps,reps or weight reps,reps');
+  });
+});
+
+// ── parseWorkoutNote ──────────────────────────────────────────────────────────
+
+describe('parseWorkoutNote — basics', () => {
+  test('empty string returns ok with no sections', () => {
+    const r = parseWorkoutNote('');
+    expect(r.ok).toBe(true);
+    expect(r.sections).toHaveLength(0);
+  });
+
+  test('null returns ok with no sections', () => {
+    const r = parseWorkoutNote(null);
+    expect(r.ok).toBe(true);
+    expect(r.sections).toHaveLength(0);
+  });
+
+  test('whitespace-only returns ok with no sections', () => {
+    expect(parseWorkoutNote('   \n  \n')).toMatchObject({ ok: true, sections: [] });
+  });
+
+  test('always returns ok:true regardless of content', () => {
+    const r = parseWorkoutNote('gibberish line\nmore garbage ???\n!@#$%');
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('parseWorkoutNote — day headings', () => {
+  test('detects weekday heading', () => {
+    const r = parseWorkoutNote('Monday\n-Squat 4x6-8\n135 5,5');
+    expect(r.sections[0].heading).toBe('Monday');
+  });
+
+  test('detects weekday with description (em-dash)', () => {
+    const r = parseWorkoutNote('Monday — Push\n-Bench 3x8\n135 8,8,8');
+    expect(r.sections[0].heading).toBe('Monday — Push');
+  });
+
+  test('detects weekday with description (en-dash)', () => {
+    const r = parseWorkoutNote('Tuesday – Lower Squat Focus\n-Squat 3x8\n205 8,8,8');
+    expect(r.sections[0].heading).toBe('Tuesday – Lower Squat Focus');
+  });
+
+  test('all-caps weekday detected', () => {
+    const r = parseWorkoutNote('WEDNESDAY — Pull / Back\n-Row 3x8\n80 8,8,8');
+    expect(r.sections[0].heading).toMatch(/^WEDNESDAY/);
+  });
+
+  test('multiple day headings produce separate sections', () => {
+    const note = 'Monday\n-Bench 3x8\n135 8,8,8\nTuesday\n-Squat 3x8\n205 8,8,8';
+    const r = parseWorkoutNote(note);
+    const headings = r.sections.map(s => s.heading);
+    expect(headings).toContain('Monday');
+    expect(headings).toContain('Tuesday');
+  });
+});
+
+describe('parseWorkoutNote — section headings', () => {
+  test('+ prefix creates subheading', () => {
+    const r = parseWorkoutNote('+WARMUP EXERCISE\n-Bike\n5 min 9');
+    expect(r.sections[0].subheading).toBe('WARMUP EXERCISE');
+  });
+
+  test('warmup section gets kind=warmup', () => {
+    const r = parseWorkoutNote('+WARMUP EXERCISE\n-Bike');
+    expect(r.sections[0].kind).toBe('warmup');
+  });
+
+  test('lifting section gets kind=lifting', () => {
+    const r = parseWorkoutNote('+LIFTING (~30 min) EXERCISE\n-Bench 3x8\n135 8,8,8');
+    expect(r.sections[0].kind).toBe('lifting');
+  });
+
+  test('unknown section heading gets kind=general', () => {
+    const r = parseWorkoutNote('+COOLDOWN\n-Stretch');
+    expect(r.sections[0].kind).toBe('general');
+  });
+
+  test('day + section heading combo', () => {
+    const r = parseWorkoutNote('Monday\n+WARMUP EXERCISE\n-Bike\n5 min 9');
+    expect(r.sections[0].heading).toBe('Monday');
+    expect(r.sections[0].subheading).toBe('WARMUP EXERCISE');
+    expect(r.sections[0].kind).toBe('warmup');
+  });
+});
+
+describe('parseWorkoutNote — exercise declarations', () => {
+  test('dash-prefix exercise is detected', () => {
+    const r = parseWorkoutNote('-DB Bench Press 4x6-8\n80 8,8,8,8');
+    expect(r.sections[0].exercises[0].name).toBe('DB Bench Press');
+  });
+
+  test('dash-prefix exercise raw_header preserved', () => {
+    const r = parseWorkoutNote('-DB Bench Press 4x6-8\n80 8,8,8,8');
+    expect(r.sections[0].exercises[0].raw_header).toBe('-DB Bench Press 4x6-8');
+  });
+
+  test('numbered exercise (integer) is detected', () => {
+    const r = parseWorkoutNote('1. DB Bench Press: 3x6-8 @80 lb | Rest 90 sec\n80 8,8,8');
+    expect(r.sections[0].exercises[0].name).toBe('DB Bench Press');
+  });
+
+  test('numbered exercise with letter suffix (e.g. 2a) is detected', () => {
+    const r = parseWorkoutNote('2a. Angled Leg Press: 2x10-12 @200 lb | Controlled\n200 12,12');
+    expect(r.sections[0].exercises[0].name).toBe('Angled Leg Press');
+  });
+
+  test('Core: prefix exercise is detected', () => {
+    const r = parseWorkoutNote('Core: In-and-outs on bench * 2x10-12\n12,12,12');
+    expect(r.sections[0].exercises[0].name).toBe('Core: In-and-outs on bench');
+  });
+
+  test('Core: exercise has correct raw_header', () => {
+    const r = parseWorkoutNote('Core: Plank * 2x30-45 sec\n30,30');
+    expect(r.sections[0].exercises[0].raw_header).toBe('Core: Plank * 2x30-45 sec');
+  });
+
+  test('exercise with * annotation stripped from name', () => {
+    const r = parseWorkoutNote('-Low-to-High Cable Fly * no PO needed 2x12\n12.5 12,12');
+    expect(r.sections[0].exercises[0].name).toBe('Low-to-High Cable Fly');
+  });
+
+  test('exercise with "N sets repRange" spec stripped', () => {
+    const r = parseWorkoutNote('-Hammer Curl 2 8-10\n25 10,10');
+    expect(r.sections[0].exercises[0].name).toBe('Hammer Curl');
+  });
+
+  test('exercise with @weight suffix stripped', () => {
+    const r = parseWorkoutNote('1. Lateral Raise: 3x12-15 @15 lb | notes\n15 12,12,12');
+    expect(r.sections[0].exercises[0].name).toBe('Lateral Raise');
+  });
+
+  test('multiple exercises within one section', () => {
+    const note = '-Bench 3x8\n80 8,8,8\n-Fly 2x12\n12.5 12,12';
+    const r = parseWorkoutNote(note);
+    expect(r.sections[0].exercises).toHaveLength(2);
+    expect(r.sections[0].exercises[0].name).toBe('Bench');
+    expect(r.sections[0].exercises[1].name).toBe('Fly');
+  });
+});
+
+describe('parseWorkoutNote — deload format', () => {
+  test('deload exercise parsed into correct sets', () => {
+    const r = parseWorkoutNote('DB Bench: 60 lbs 3x8');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.name).toBe('DB Bench');
+    expect(ex.sets).toHaveLength(3);
+    expect(ex.sets[0]).toMatchObject({ weight_value: 60, weight_unit: 'lb', rep_count: 8 });
+  });
+
+  test('deload set_index increments', () => {
+    const r = parseWorkoutNote('Squat: 155 lbs 3x8');
+    const sets = r.sections[0].exercises[0].sets;
+    expect(sets.map(s => s.set_index)).toEqual([1, 2, 3]);
+  });
+
+  test('deload exercise has one row entry', () => {
+    const r = parseWorkoutNote('Deadlift: 205 lbs 3x4');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(1);
+  });
+
+  test('multiple deload exercises in sequence', () => {
+    const note = 'Monday — Push\nDB Bench: 60 lbs 3x8\nCable Fly: 12.5 lbs 2x12\nLateral Raise: 15 lbs 2x12';
+    const r = parseWorkoutNote(note);
+    expect(r.sections[0].exercises).toHaveLength(3);
+    expect(r.sections[0].exercises[1].name).toBe('Cable Fly');
+  });
+
+  test('deload sets have canonical shape', () => {
+    const r = parseWorkoutNote('Squat: 155 lbs 3x8');
+    const set = r.sections[0].exercises[0].sets[0];
+    expect(set).toMatchObject({
+      set_index: 1,
+      rep_count: 8,
+      weight_value: 155,
+      weight_unit: 'lb',
+      duration_seconds: null,
+      assistance_value: null,
+      assistance_unit: null,
+      note_text: null,
+    });
+  });
+});
+
+describe('parseWorkoutNote — set row parsing', () => {
+  test('standard weight+reps row parses into sets', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8,8');
+    expect(r.sections[0].exercises[0].sets).toHaveLength(4);
+    expect(r.sections[0].exercises[0].sets[0]).toMatchObject({ weight_value: 80, rep_count: 8 });
+  });
+
+  test('multi-weight row (backoff sets) parses all sets', () => {
+    const r = parseWorkoutNote('-Bench\n85 8 80 8,8,8');
+    const sets = r.sections[0].exercises[0].sets;
+    expect(sets).toHaveLength(4);
+    expect(sets[0]).toMatchObject({ weight_value: 85, rep_count: 8 });
+    expect(sets[1]).toMatchObject({ weight_value: 80, rep_count: 8 });
+  });
+
+  test('rep-only row (no weight) parses correctly', () => {
+    const r = parseWorkoutNote('Core: Plank 2x30\n30,30,30');
+    const sets = r.sections[0].exercises[0].sets;
+    expect(sets).toHaveLength(3);
+    expect(sets[0].weight_value).toBeNull();
+    expect(sets[0].rep_count).toBe(30);
+  });
+
+  test('each row becomes a separate entry in rows[]', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8\n85 8,8,8\n90 8,8,8');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(3);
+  });
+
+  test('set_index increments continuously across rows', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8\n85 8,8');
+    const sets = r.sections[0].exercises[0].sets;
+    expect(sets.map(s => s.set_index)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('sets flat array equals union of all row sets', () => {
+    const r = parseWorkoutNote('-Squat\n205 8,8,8\n215 8,8,8');
+    const ex = r.sections[0].exercises[0];
+    const fromRows = ex.rows.flatMap(row => row.sets);
+    expect(ex.sets).toEqual(fromRows);
+  });
+
+  test('blank lines within exercise context are ignored', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8\n\n85 8,8,8');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(2);
+  });
+
+  test('skip marker (-) within exercise context is ignored', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8\n-\n85 8,8,8');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(2);
+  });
+
+  test('decimal weight parses correctly', () => {
+    const r = parseWorkoutNote('-Fly\n12.5 12,12');
+    expect(r.sections[0].exercises[0].sets[0].weight_value).toBe(12.5);
+  });
+});
+
+describe('parseWorkoutNote — graceful degradation', () => {
+  test('unparseable row goes to unparsed_rows, not sets', () => {
+    const r = parseWorkoutNote('-Bike\n5 min 9');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.sets).toHaveLength(0);
+    expect(ex.unparsed_rows).toContain('5 min 9');
+  });
+
+  test('assisted pull-up notation goes to unparsed_rows', () => {
+    const r = parseWorkoutNote('-Pull-Up\nas55 8,8,8');
+    expect(r.sections[0].exercises[0].unparsed_rows).toContain('as55 8,8,8');
+  });
+
+  test('double-dash lines go to unparsed_rows', () => {
+    const r = parseWorkoutNote('-Core: Plank\n30,30\n-- crunch machine 50 12');
+    expect(r.sections[0].exercises[0].unparsed_rows).toContain('-- crunch machine 50 12');
+  });
+
+  test('prose note in exercise context goes to unparsed_rows', () => {
+    const r = parseWorkoutNote('-Leg Press\n260 12,12\nCalf raises at end of each set');
+    // "Calf raises at end of each set" has no dash prefix - it's ambient text in exercise context
+    // Actually it would hit unparsed_rows since parseWorkoutRow fails on it
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows.some(l => l.includes('Calf raises'))).toBe(true);
+  });
+
+  test('mixed parseable and unparseable rows accumulate correctly', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8\nas90 8,8,8\n90 8,8,8');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.sets).toHaveLength(6); // two parseable rows × 3 sets each
+    expect(ex.unparsed_rows).toContain('as90 8,8,8');
+  });
+
+  test('ambient text before any exercise is silently dropped', () => {
+    const r = parseWorkoutNote('Some preamble text\nAnother line\n-Bench\n80 8,8,8');
+    expect(r.sections[0].exercises[0].name).toBe('Bench');
+    expect(r.sections[0].exercises[0].sets).toHaveLength(3);
+  });
+
+  test('exercise with only unparseable rows still appears in exercises list', () => {
+    const r = parseWorkoutNote('-Bike\n5 min 9\n10\n6\n7');
+    expect(r.sections[0].exercises).toHaveLength(1);
+    expect(r.sections[0].exercises[0].sets).toHaveLength(0);
+    expect(r.sections[0].exercises[0].unparsed_rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe('parseWorkoutNote — sample file patterns', () => {
+  test('current_workout style: day + section + dash exercises', () => {
+    const note = [
+      'Monday',
+      '+WARMUP EXERCISE',
+      '-Bike',
+      '5 min 9',
+      '10',
+      '+LIFTING  (~30 min) EXERCISE',
+      '-DB Bench Press 4x6-8',
+      '80 8,8,8,8',
+      '85 8 80 8,8,8',
+      '-Low-to-High Cable Fly * no PO needed 2x12',
+      '12.5 12,12',
+      '12.5 12,12',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    expect(r.ok).toBe(true);
+
+    const headings = r.sections.map(s => s.heading);
+    expect(headings.every(h => h === 'Monday')).toBe(true);
+
+    const warmup = r.sections.find(s => s.kind === 'warmup');
+    expect(warmup.exercises[0].name).toBe('Bike');
+
+    const lifting = r.sections.find(s => s.kind === 'lifting');
+    expect(lifting.exercises[0].name).toBe('DB Bench Press');
+    expect(lifting.exercises[0].sets).toHaveLength(8); // 4 sets + (1+3) sets from two rows
+    expect(lifting.exercises[1].name).toBe('Low-to-High Cable Fly');
+  });
+
+  test('previous_workout style: numbered exercises', () => {
+    const note = [
+      'Monday – Upper Push',
+      '1. DB Bench Press: 3x6-8 @80 lb | Controlled descent | Rest 90 sec',
+      '80 8,8,8',
+      '85 8,8,7',
+      '2. Low-to-High Cable Fly: 3x10-12 @20 lb | TUT focus | Rest 60 sec',
+      '12.5 10,10,10',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].heading).toBe('Monday – Upper Push');
+    expect(r.sections[0].exercises[0].name).toBe('DB Bench Press');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(2);
+    expect(r.sections[0].exercises[0].sets).toHaveLength(6);
+    expect(r.sections[0].exercises[1].name).toBe('Low-to-High Cable Fly');
+  });
+
+  test('latest_deload style: single-line exercise summaries', () => {
+    const note = [
+      'Monday — Push',
+      'DB Bench: 60 lbs 3x8',
+      'Cable Fly: 12.5 lbs 2x12',
+      'Lateral Raise: 15 lbs 2x12',
+      'Hammer Curl: 25 lbs 2x10',
+      'Single-Arm Pushdown: 15.5 lbs 2x10',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    expect(r.ok).toBe(true);
+    expect(r.sections[0].heading).toBe('Monday — Push');
+    expect(r.sections[0].exercises).toHaveLength(5);
+    expect(r.sections[0].exercises[0].name).toBe('DB Bench');
+    expect(r.sections[0].exercises[0].sets).toHaveLength(3);
+    expect(r.sections[0].exercises[2].name).toBe('Lateral Raise');
+    expect(r.sections[0].exercises[2].sets).toHaveLength(2);
+  });
+
+  test('multi-day note splits into per-day sections', () => {
+    const note = [
+      'Monday — Push',
+      'DB Bench: 60 lbs 3x8',
+      'Tuesday — Squat',
+      'Squat: 155 lbs 3x8',
+      'Wednesday — Pull',
+      'Hammer Strength Row: 70 lbs 3x8',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    const days = [...new Set(r.sections.map(s => s.heading))];
+    expect(days).toContain('Monday — Push');
+    expect(days).toContain('Tuesday — Squat');
+    expect(days).toContain('Wednesday — Pull');
+  });
+
+  test('treadmill rows do not produce weighted sets', () => {
+    const r = parseWorkoutNote('0. Treadmill\n7.2 5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.name).toBe('Treadmill');
+    expect(ex.sets).toHaveLength(0);
+    expect(ex.unparsed_rows).toContain('7.2 5');
+  });
+
+  test('previous_workout treadmill block degrades fully to unparsed_rows', () => {
+    const note = [
+      'Monday – Upper Push',
+      '0. Treadmill',
+      '7.1 for 5',
+      '7.2 5',
+      '7.3 5',
+      '7.4 5',
+      '7.5 5',
+      '7.6 3, 7.5 2',
+      '7.7 3, 7.6 2',
+      '77 5',
+      '7.8 3, 7.7 2',
+      '7.8 5',
+      '1. DB Bench Press: 3x6-8 @80 lb | Controlled descent | Rest 90 sec',
+      '80 8,8,8',
+      '85 8,8,6',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    expect(r.ok).toBe(true);
+
+    const treadmill = r.sections[0].exercises.find(e => e.name === 'Treadmill');
+    expect(treadmill).toBeDefined();
+    expect(treadmill.sets).toHaveLength(0);
+    expect(treadmill.unparsed_rows.length).toBeGreaterThan(0);
+    // no treadmill speed should appear as a weight_value on any set across the note
+    const allSets = r.sections.flatMap(s => s.exercises.flatMap(e => e.sets));
+    const treadmillSpeeds = allSets.filter(s => s.weight_value !== null && s.weight_value < 10);
+    expect(treadmillSpeeds).toHaveLength(0);
+
+    const bench = r.sections[0].exercises.find(e => e.name === 'DB Bench Press');
+    expect(bench).toBeDefined();
+    expect(bench.sets).toHaveLength(6);
+  });
+
+  test('Core: exercise with rep-only rows', () => {
+    const note = [
+      '-Squat 4x6-8',
+      '205 8,8,8,8',
+      'Core: Plank * 2x30-45 sec',
+      '30,30',
+      '32,32',
+    ].join('\n');
+
+    const r = parseWorkoutNote(note);
+    const plank = r.sections[0].exercises.find(e => e.name === 'Core: Plank');
+    expect(plank).toBeDefined();
+    expect(plank.sets).toHaveLength(4);
+    expect(plank.sets[0].weight_value).toBeNull();
+    expect(plank.sets[0].rep_count).toBe(30);
   });
 });

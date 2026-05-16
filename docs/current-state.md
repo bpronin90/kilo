@@ -106,7 +106,8 @@ The real native app path now has a modular React Native shell:
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/theme/colors.js` centralizes the native color system
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
-  modules
+  modules and now also includes tolerant workout-note parsing for the archived
+  sample-style shorthand logs used by the v2 note-based workflow
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including workout-note migration plumbing
@@ -120,6 +121,9 @@ native entries reload across app restarts through the hook/storage layer.
 The native Log and Weight flows now keep save actions responsive on the first
 tap even with the keyboard visible, guard against duplicate in-flight saves,
 and keep the bottom tab bar reachable above the iOS keyboard.
+The v2 parser groundwork for one long workout note now also exists in native
+code, but the primary workout authoring flow is still the narrower structured
+form rather than the planned raw-note editor.
 
 ### Parser (`src/parser.jsx`)
 
@@ -134,6 +138,10 @@ The MVP canonical parse path is fully implemented and tested.
 - `parseWorkoutEntry(items, workout_date)` — calls `parseWorkoutRow` per row;
   collects per-row errors; returns a canonical workout entry or a structural
   violation when no valid items remain.
+- `parseWorkoutNote(noteText)` — parses multi-day shorthand workout notes into
+  stable sections and exercise blocks, preserves parseable set rows for
+  downstream analytics, and degrades ambiguous or non-weight note fragments
+  into `unparsed_rows` instead of rejecting the note.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.
