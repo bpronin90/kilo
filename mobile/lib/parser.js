@@ -319,6 +319,22 @@ export function deriveWorkoutAnalytics(sections) {
   return { exercises };
 }
 
+// deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
+// list of tracked exercise names. Exercises absent from the note return null.
+//
+// Input: sections from parseWorkoutNote, trackedNames string[]
+// Output: { exercises: [{ name, estimated_pr }] } in trackedNames order
+export function deriveTrackedPRs(sections, trackedNames) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byName = new Map(exercises.map(e => [e.name, e]));
+  return {
+    exercises: trackedNames.map(name => ({
+      name,
+      estimated_pr: byName.has(name) ? byName.get(name).estimated_pr : null,
+    })),
+  };
+}
+
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 // items: array of { exerciseName: string, raw: string }
 // workout_date: YYYY-MM-DD; defaults to today's UTC date if omitted

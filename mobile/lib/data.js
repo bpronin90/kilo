@@ -78,6 +78,11 @@ export function exercisesForDay(day) {
   return KILO_EXERCISES.filter(e => e.day === day);
 }
 
+// Return the default set of tracked exercise names (those with po: true)
+export function getDefaultTrackedNames() {
+  return KILO_EXERCISES.filter(e => e.po).map(e => e.name);
+}
+
 // Factory for a new weight entry
 export function makeWeightEntry({ weight_value, logged_at, note }) {
   const ts = logged_at || new Date().toISOString();

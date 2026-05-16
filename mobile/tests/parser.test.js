@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs } from '../lib/parser';
 
 // ── epleyPR ───────────────────────────────────────────────────────────────────
 
@@ -216,6 +216,80 @@ describe('deriveWorkoutAnalytics — sample workout shapes', () => {
       const ex = result.exercises.find(e => e.name === name);
       expect(ex.estimated_pr).not.toBeNull();
     }
+  });
+});
+
+// ── deriveTrackedPRs ──────────────────────────────────────────────────────────
+
+describe('deriveTrackedPRs', () => {
+  test('returns one entry per tracked name in order', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8\n-Squat\n205 5,5');
+    const result = deriveTrackedPRs(sections, ['Bench', 'Squat']);
+    expect(result.exercises.map(e => e.name)).toEqual(['Bench', 'Squat']);
+  });
+
+  test('single-weight exercise surfaces correct estimated_pr', () => {
+    const { sections } = parseWorkoutNote('-Bench\n100 5');
+    const result = deriveTrackedPRs(sections, ['Bench']);
+    expect(result.exercises[0].estimated_pr).toBeCloseTo(epleyPR(100, 5));
+  });
+
+  test('mixed-weight exercise: heavier low-rep set wins when it yields higher PR', () => {
+    // 90x5 vs 80x8 — determine which is higher
+    const { sections } = parseWorkoutNote('-Bench\n80 8 90 5');
+    const result = deriveTrackedPRs(sections, ['Bench']);
+    const expected = Math.max(epleyPR(80, 8), epleyPR(90, 5));
+    expect(result.exercises[0].estimated_pr).toBeCloseTo(expected);
+  });
+
+  test('mixed-weight exercise: high-rep moderate-weight set wins when it yields higher PR', () => {
+    // 225x10 vs 275x1 — 225x10 Epley = 300, 275x1 = ~284
+    const { sections } = parseWorkoutNote('-Bench\n225 10 275 1');
+    const result = deriveTrackedPRs(sections, ['Bench']);
+    const expected = Math.max(epleyPR(225, 10), epleyPR(275, 1));
+    expect(result.exercises[0].estimated_pr).toBeCloseTo(expected);
+  });
+
+  test('tracked exercise absent from note returns null estimated_pr', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    const result = deriveTrackedPRs(sections, ['Bench', 'Squat']);
+    const squat = result.exercises.find(e => e.name === 'Squat');
+    expect(squat.estimated_pr).toBeNull();
+  });
+
+  test('exercise in note but not in trackedNames is excluded', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n-Squat\n205 5');
+    const result = deriveTrackedPRs(sections, ['Bench']);
+    expect(result.exercises).toHaveLength(1);
+    expect(result.exercises[0].name).toBe('Bench');
+  });
+
+  test('empty trackedNames returns empty exercises array', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    const result = deriveTrackedPRs(sections, []);
+    expect(result.exercises).toHaveLength(0);
+  });
+
+  test('empty sections returns null PR for all tracked names', () => {
+    const result = deriveTrackedPRs([], ['Bench', 'Squat', 'Deadlift']);
+    expect(result.exercises.every(e => e.estimated_pr === null)).toBe(true);
+  });
+
+  test('changing trackedNames immediately changes output', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n-Squat\n205 5');
+    const r1 = deriveTrackedPRs(sections, ['Bench']);
+    const r2 = deriveTrackedPRs(sections, ['Squat']);
+    expect(r1.exercises[0].name).toBe('Bench');
+    expect(r2.exercises[0].name).toBe('Squat');
+    expect(r1.exercises[0].estimated_pr).not.toBeCloseTo(r2.exercises[0].estimated_pr);
+  });
+
+  test('multi-day note: exercise PR reflects best set across all days', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 5';
+    const { sections } = parseWorkoutNote(note);
+    const result = deriveTrackedPRs(sections, ['Bench']);
+    const expected = Math.max(epleyPR(80, 8), epleyPR(90, 5));
+    expect(result.exercises[0].estimated_pr).toBeCloseTo(expected);
   });
 });
 
