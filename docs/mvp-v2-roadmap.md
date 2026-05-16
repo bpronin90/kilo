@@ -266,6 +266,7 @@ Ordered tasks:
 #### Task 2: Build 1k tracking from selected lifts
 - Session goal: sum the user-selected bench, squat, and deadlift PR estimates
   toward the 1,000 lb goal.
+- Status: complete.
 - Intended agent: `claude`
 - Allowed scope: tracked-lift aggregation and tests.
 - Explicit out of scope: generic recommendations.

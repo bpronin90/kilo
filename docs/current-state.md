@@ -150,7 +150,10 @@ derived analytics input model so later PR, 1k, and repeatability work can
 consume parsed note output without rebuilding the parser contract. It now also
 includes a tracked-exercise estimated-PR engine that computes Epley values per
 parseable set, keeps each tracked exercise's best current estimate, and
-deduplicates tracked names before emitting analytics rows. Recent history in
+deduplicates tracked names before emitting analytics rows. It now also derives
+the tracked 1k total locally from the user-selected bench, squat, and
+deadlift exercises, recomputing immediately when note content or tracked-lift
+selection changes. Recent history in
 the native app still reflects persisted workout sessions rather than live
 workout-note revisions, so the note-first authoring shift is complete before
 the downstream read and analytics surfaces are updated. The native Log read
@@ -182,6 +185,9 @@ The MVP canonical parse path is fully implemented and tested.
 - `deriveTrackedPRs(sections, trackedNames)` — filters derived analytics down
   to one row per unique tracked exercise name, preserving caller order while
   surfacing each exercise's best current `estimated_pr` or `null` when absent.
+- `derive1kTotal(sections, selections)` — sums the estimated PR values for the
+  selected bench, squat, and deadlift exercises and returns `total: null`
+  until all three tracked lifts are present in the note.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.

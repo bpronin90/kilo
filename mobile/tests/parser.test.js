@@ -1,5 +1,5 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs } from '../lib/parser';
-import { getDefaultTrackedNames } from '../lib/data';
+import { getDefaultTrackedNames, derive1kTotal } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -324,6 +324,89 @@ describe('deriveTrackedPRs', () => {
     const { sections } = parseWorkoutNote('-Hammer Curl\n30 10');
     const result = deriveTrackedPRs(sections, ['Hammer Curl', 'Hammer Curl']);
     expect(result.exercises[0].estimated_pr).toBeCloseTo(epleyPR(30, 10));
+  });
+});
+
+// ── derive1kTotal ─────────────────────────────────────────────────────────────
+
+describe('derive1kTotal', () => {
+  const SEL = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
+
+  test('returns total as sum of the three estimated PRs when all lifts present', () => {
+    const note = '-Bench\n225 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    const expected = epleyPR(225, 5) + epleyPR(315, 3) + epleyPR(405, 1);
+    expect(result.total).toBeCloseTo(expected);
+  });
+
+  test('returns individual PRs for each slot', () => {
+    const note = '-Bench\n225 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(225, 5));
+    expect(result.squat).toBeCloseTo(epleyPR(315, 3));
+    expect(result.deadlift).toBeCloseTo(epleyPR(405, 1));
+  });
+
+  test('total is null when one lift is absent from the note', () => {
+    const note = '-Bench\n225 5\n-Squat\n315 3';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.total).toBeNull();
+    expect(result.deadlift).toBeNull();
+    expect(result.bench).not.toBeNull();
+    expect(result.squat).not.toBeNull();
+  });
+
+  test('total is null when all three lifts are absent', () => {
+    const { sections } = parseWorkoutNote('-Bike\n5 min');
+    const result = derive1kTotal(sections, SEL);
+    expect(result.total).toBeNull();
+    expect(result.bench).toBeNull();
+    expect(result.squat).toBeNull();
+    expect(result.deadlift).toBeNull();
+  });
+
+  test('total is null for empty sections', () => {
+    const result = derive1kTotal([], SEL);
+    expect(result.total).toBeNull();
+  });
+
+  test('mixed-weight row: best Epley PR is used for each lift', () => {
+    // 80x8 vs 90x5 — whichever yields higher Epley wins
+    const note = '-Bench\n80 8 90 5\n-Squat\n205 8\n-Deadlift\n315 5';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    const expectedBench = Math.max(epleyPR(80, 8), epleyPR(90, 5));
+    expect(result.bench).toBeCloseTo(expectedBench);
+    expect(result.total).toBeCloseTo(expectedBench + epleyPR(205, 8) + epleyPR(315, 5));
+  });
+
+  test('deload-format note produces correct total', () => {
+    const note = 'Bench: 225 lbs 3x5\nSquat: 315 lbs 3x3\nDeadlift: 405 lbs 1x1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    const expected = epleyPR(225, 5) + epleyPR(315, 3) + epleyPR(405, 1);
+    expect(result.total).toBeCloseTo(expected);
+  });
+
+  test('changing selections immediately reflects the new exercises', () => {
+    const note = '-Bench\n225 5\n-Incline DB Press\n185 8\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const r1 = derive1kTotal(sections, SEL);
+    const r2 = derive1kTotal(sections, { bench: 'Incline DB Press', squat: 'Squat', deadlift: 'Deadlift' });
+    expect(r1.bench).toBeCloseTo(epleyPR(225, 5));
+    expect(r2.bench).toBeCloseTo(epleyPR(185, 8));
+    expect(r1.total).not.toBeCloseTo(r2.total);
+  });
+
+  test('multi-day note: best set across days is used per lift', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    const expectedBench = Math.max(epleyPR(80, 8), epleyPR(90, 5));
+    expect(result.bench).toBeCloseTo(expectedBench);
   });
 });
 

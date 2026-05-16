@@ -1,4 +1,5 @@
 // Native entry model factories and exercise catalog
+import { deriveTrackedPRs } from './parser.js';
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -147,6 +148,23 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   }
 
   return { avg7, avg30, paceFlag };
+}
+
+// derive1kTotal: sum estimated PRs for the selected bench, squat, and deadlift exercises.
+// sections: output of parseWorkoutNote(noteText).sections
+// selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
+// Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
+// total is null when any selected exercise has no estimated PR in the note.
+export function derive1kTotal(sections, { bench, squat, deadlift }) {
+  const { exercises } = deriveTrackedPRs(sections, [bench, squat, deadlift]);
+  const byName = new Map(exercises.map(e => [e.name, e.estimated_pr]));
+  const benchPR = byName.get(bench) ?? null;
+  const squatPR = byName.get(squat) ?? null;
+  const deadliftPR = byName.get(deadlift) ?? null;
+  const total = (benchPR !== null && squatPR !== null && deadliftPR !== null)
+    ? benchPR + squatPR + deadliftPR
+    : null;
+  return { total, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
 }
 
 // Factory for the canonical workout routine note
