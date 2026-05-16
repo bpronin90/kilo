@@ -275,10 +275,11 @@ export function epleyPR(weight, reps) {
 //
 // DerivedExercise: {
 //   name,
-//   occurrences: [{ heading, subheading, kind, rows, sets }],
-//   sets: Set[],          — all sets flattened across occurrences
-//   rows: Row[],          — all rows flattened (line-level context for repeatability)
-//   set_prs: [{ set, epley_pr }],
+//   occurrences: [{ heading, subheading, kind, rows, sets, unparsed_rows }],
+//   sets: Set[],               — all sets flattened across occurrences
+//   rows: Row[],               — all rows flattened (line-level context for repeatability)
+//   unparsed_rows: string[],   — all unparsed lines flattened (non-weight/cardio context)
+//   set_prs: [{ set, epley_pr, occurrence_index }],
 //   estimated_pr: number | null  — best eligible Epley across all sets
 // }
 export function deriveWorkoutAnalytics(sections) {
@@ -288,28 +289,31 @@ export function deriveWorkoutAnalytics(sections) {
     const { heading, subheading, kind, exercises } = section;
     for (const ex of exercises) {
       if (!byName.has(ex.name)) {
-        byName.set(ex.name, { name: ex.name, occurrences: [], sets: [], rows: [] });
+        byName.set(ex.name, { name: ex.name, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
       const derived = byName.get(ex.name);
-      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets });
+      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
+      for (const u of ex.unparsed_rows) derived.unparsed_rows.push(u);
     }
   }
 
   const exercises = [];
   for (const derived of byName.values()) {
-    const set_prs = derived.sets.map(set => ({
-      set,
-      epley_pr: epleyPR(set.weight_value, set.rep_count),
-    }));
+    const set_prs = [];
+    for (let oi = 0; oi < derived.occurrences.length; oi++) {
+      for (const set of derived.occurrences[oi].sets) {
+        set_prs.push({ set, epley_pr: epleyPR(set.weight_value, set.rep_count), occurrence_index: oi });
+      }
+    }
     let estimated_pr = null;
     for (const { epley_pr } of set_prs) {
       if (epley_pr !== null && (estimated_pr === null || epley_pr > estimated_pr)) {
         estimated_pr = epley_pr;
       }
     }
-    exercises.push({ name: derived.name, occurrences: derived.occurrences, sets: derived.sets, rows: derived.rows, set_prs, estimated_pr });
+    exercises.push({ name: derived.name, occurrences: derived.occurrences, sets: derived.sets, rows: derived.rows, unparsed_rows: derived.unparsed_rows, set_prs, estimated_pr });
   }
 
   return { exercises };

@@ -59,11 +59,26 @@ describe('deriveWorkoutAnalytics — output shape', () => {
     expect(Array.isArray(occ.sets)).toBe(true);
   });
 
-  test('set_prs entries have set and epley_pr fields', () => {
+  test('set_prs entries have set, epley_pr, and occurrence_index fields', () => {
     const { sections } = parseWorkoutNote('-Bench\n80 8');
     const sp = deriveWorkoutAnalytics(sections).exercises[0].set_prs[0];
     expect(sp).toHaveProperty('set');
     expect(sp).toHaveProperty('epley_pr');
+    expect(sp).toHaveProperty('occurrence_index');
+  });
+
+  test('derived exercise has unparsed_rows field', () => {
+    const { sections } = parseWorkoutNote('-Bike\n5 min 9');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex).toHaveProperty('unparsed_rows');
+    expect(Array.isArray(ex.unparsed_rows)).toBe(true);
+  });
+
+  test('occurrence has unparsed_rows field', () => {
+    const { sections } = parseWorkoutNote('-Bike\n5 min 9');
+    const occ = deriveWorkoutAnalytics(sections).exercises[0].occurrences[0];
+    expect(occ).toHaveProperty('unparsed_rows');
+    expect(Array.isArray(occ.unparsed_rows)).toBe(true);
   });
 
   test('empty sections produces empty exercises array', () => {
@@ -150,11 +165,26 @@ describe('deriveWorkoutAnalytics — multi-day and repeatability context', () =>
     expect(names).toContain('Squat');
   });
 
-  test('non-weight exercise rows preserved in occurrence rows', () => {
-    const note = '-Bike\n5 min 9';
+  test('non-weight exercise unparsed_rows flow through to occurrence and exercise', () => {
+    const note = '-Bike\n5 min 9\n10\n6';
     const { sections } = parseWorkoutNote(note);
     const ex = deriveWorkoutAnalytics(sections).exercises[0];
     expect(ex.occurrences[0].sets).toHaveLength(0);
+    expect(ex.occurrences[0].unparsed_rows).toContain('5 min 9');
+    expect(ex.unparsed_rows).toContain('5 min 9');
+  });
+
+  test('occurrence_index links set_pr back to the correct occurrence', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 5';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    // occurrence 0 = Monday (80lb set), occurrence 1 = Wednesday (90lb set)
+    const pr0 = ex.set_prs.find(sp => sp.set.weight_value === 80);
+    const pr1 = ex.set_prs.find(sp => sp.set.weight_value === 90);
+    expect(pr0.occurrence_index).toBe(0);
+    expect(pr1.occurrence_index).toBe(1);
+    expect(ex.occurrences[pr0.occurrence_index].heading).toBe('Monday');
+    expect(ex.occurrences[pr1.occurrence_index].heading).toBe('Wednesday');
   });
 });
 
