@@ -75,7 +75,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   and workout data, including canonical workout-note migration plumbing plus a
-  lightweight listener fanout for native weight-entry refreshes
+  lightweight listener fanout for native weight-entry refreshes and
+  cross-consumer workout-note refreshes
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
@@ -219,11 +220,13 @@ User types in weight input
 |-----|----------|
 | `kilo_weight_entries` | JSON array of native weight entries |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions |
-| `kilo_workout_note` | Single canonical native workout routine note document |
+| `kilo_workout_note` | Single canonical native workout routine note document, including persisted `tracked_exercises` selection |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
 storage layer now synthesizes one from any legacy `kilo_workout_sessions`
-content and saves the migrated note before returning it.
+content and saves the migrated note before returning it. Subsequent tracked
+exercise toggles update the same note document so parsed exercise selection and
+raw workout text stay in one persisted source of truth.
 
 ### Merge on load
 

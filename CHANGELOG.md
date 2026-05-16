@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-05-16
+
+- Issue #56: Added parsed-exercise tracking controls to the native workout-note
+  read view, persisted tracked exercise selections on the canonical note
+  document, and expanded native storage coverage for tracked-exercise
+  persistence.
+
 ## 0.6.0 - 2026-05-16
 
 - Issue #50: Added a formatted read/edit workout-note flow in the native Log

@@ -57,7 +57,8 @@ npm run mobile:android
 
 Current limitation:
 
-- Native parser and storage modules now have Jest coverage under `mobile/tests/`.
+- Native parser and storage modules now have Jest coverage under `mobile/tests/`,
+  including tracked-exercise persistence on the canonical workout note.
 - No automated native test covers rendered React Native screens, tab routing, or
   an Expo device/emulator pass yet.
 - The current native workout form is narrower than the browser prototype UI even
@@ -229,8 +230,9 @@ Provides the global runtime contract required by the prototype:
 - AsyncStorage-backed load/save/delete/update/migrate coverage for
   `mobile/storage/entries.js`
 - verifies empty-load behavior, newest-first sorting, update misses, workout
-  note save/overwrite/clear behavior, and migration of legacy structured
-  sessions into the canonical workout-note document
+  note save/overwrite/clear behavior, tracked-exercise persistence across note
+  edits, and migration of legacy structured sessions into the canonical
+  workout-note document
 
 ---
 

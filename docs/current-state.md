@@ -101,9 +101,9 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/HomeScreen.js` renders recent activity and a native overview
   card
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
-  with read/edit modes, a formatted mirror of the canonical note, and
-  attempt-scoped save handling that only leaves edit mode after a successful
-  save result
+  with read/edit modes, a formatted mirror of the canonical note, parsed
+  exercise tracking toggles in read mode, and attempt-scoped save handling that
+  only leaves edit mode after a successful save result
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` renders a small native summary card grid
@@ -117,10 +117,12 @@ The real native app path now has a modular React Native shell:
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
   including the default tracked-exercise name selection used by analytics
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
-  UI, including workout-note migration plumbing
+  UI, including workout-note migration plumbing and cross-consumer note refresh
+  fanout
 - `mobile/storage/entries.js` persists weight entries and workout sessions via
   AsyncStorage and now also supports one canonical workout routine note with a
-  one-time migration bridge from legacy structured sessions
+  persisted `tracked_exercises` selection and a one-time migration bridge from
+  legacy structured sessions
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves one canonical workout
@@ -143,7 +145,10 @@ parseable set, keeps each tracked exercise's best current estimate, and
 deduplicates tracked names before emitting analytics rows. Recent history in
 the native app still reflects persisted workout sessions rather than live
 workout-note revisions, so the note-first authoring shift is complete before
-the downstream read and analytics surfaces are updated.
+the downstream read and analytics surfaces are updated. The native Log read
+view now also lets the user explicitly mark parsed exercises as tracked or not
+tracked without editing note syntax, and that selection persists on the
+canonical workout-note document.
 
 ### Parser (`src/parser.jsx`)
 
