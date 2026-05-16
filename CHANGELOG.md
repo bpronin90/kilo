@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 - 2026-05-16
+
+- Issue #58: Added the minimum Expo EAS Android build configuration for the
+  real `mobile/` app, documented the standalone APK build/install flow, and
+  clarified the one-time project-linking step needed to commit the EAS
+  `projectId` for reproducible builds.
+
 ## 0.7.0 - 2026-05-16
 
 - Issue #56: Added parsed-exercise tracking controls to the native workout-note
