@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 - 2026-05-16
+
+- Issue #48: Added a native derived workout analytics contract on top of
+  parsed workout notes, including per-exercise rollups, grouped-row
+  preservation, stable occurrence linkage for set-level PR inputs, and
+  retention of non-weight `unparsed_rows` for later note-based UI and
+  analytics work.
+
 ## 0.3.1 - 2026-05-16
 
 - Issue #47: Added tolerant native parsing for sample-style workout-note

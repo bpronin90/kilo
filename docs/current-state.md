@@ -107,7 +107,8 @@ The real native app path now has a modular React Native shell:
 - `mobile/theme/colors.js` centralizes the native color system
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
   modules and now also includes tolerant workout-note parsing for the archived
-  sample-style shorthand logs used by the v2 note-based workflow
+  sample-style shorthand logs used by the v2 note-based workflow plus a
+  derived analytics contract for later note-based UI and analytics work
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including workout-note migration plumbing
@@ -123,7 +124,9 @@ tap even with the keyboard visible, guard against duplicate in-flight saves,
 and keep the bottom tab bar reachable above the iOS keyboard.
 The v2 parser groundwork for one long workout note now also exists in native
 code, but the primary workout authoring flow is still the narrower structured
-form rather than the planned raw-note editor.
+form rather than the planned raw-note editor. That groundwork now includes a
+stable derived analytics input model so later PR, 1k, and repeatability work
+can consume parsed note output without rebuilding the parser contract.
 
 ### Parser (`src/parser.jsx`)
 
@@ -142,6 +145,10 @@ The MVP canonical parse path is fully implemented and tested.
   stable sections and exercise blocks, preserves parseable set rows for
   downstream analytics, and degrades ambiguous or non-weight note fragments
   into `unparsed_rows` instead of rejecting the note.
+- `deriveWorkoutAnalytics(sections)` — converts parsed note sections into a
+  per-exercise analytics input contract with flattened sets, grouped rows,
+  per-occurrence context, preserved `unparsed_rows`, per-set Epley estimates,
+  and a best-set `estimated_pr` summary.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.

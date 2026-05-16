@@ -76,7 +76,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   and workout data, including canonical workout-note migration plumbing
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
-  modules
+  modules and now also exposes the note-derived analytics contract used by
+  downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the canonical workout routine note and its legacy-session migration
@@ -153,6 +154,13 @@ historical stats). It is not used when saving.
   `{ ok, sets: [{set_index, rep_count, weight_value, weight_unit, ...}] }` or error
 - `parseWorkoutEntry(items, workout_date)` — calls `parseWorkoutRow` for each
   item; returns a canonical workout entry or collects per-row errors
+- `parseWorkoutNote(noteText)` — parses multi-day shorthand workout notes into
+  sections, exercise blocks, grouped rows, canonical sets, and `unparsed_rows`
+  for ambiguous or non-weight lines
+- `deriveWorkoutAnalytics(sections)` — rolls parsed workout-note sections into
+  a stable per-exercise contract with flattened sets, grouped rows,
+  occurrence-level session context, preserved `unparsed_rows`, and Epley-based
+  PR inputs for later analytics consumers
 
 `parseWorkoutRow` accepted forms:
 - `'-'` → `{ ok: true, skipped: true }`
