@@ -165,6 +165,23 @@ eas build --platform android --profile preview
 3. On the phone, open the `.apk` file and tap **Install**.
    - Enable "Install from unknown sources" in Android settings if prompted.
 
+## Updating the app later
+
+When the app changes, build a new APK and install it over the existing app:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform android --profile preview
+```
+
+- Download the new `.apk` from the latest EAS build URL.
+- Install it on the phone again. Android should treat this as an update as long
+  as the package name stays the same and the signing is compatible.
+- This flow does not provide automatic OTA updates. New shipped app changes
+  require a new build and reinstall.
+- Existing local app data will usually survive an in-place update, but that
+  should still be verified when the change matters.
+
 ## Checking build status
 
 ```bash

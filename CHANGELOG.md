@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-05-16
+
+- Issue #52: Added native 7-day and 30-day derived weight averages plus fast
+  gain/loss pace flags on the Weight and Stats screens, and covered the local
+  calendar-date boundary behavior for those trend calculations in mobile
+  storage tests.
+
 ## 0.7.1 - 2026-05-16
 
 - Issue #58: Added the minimum Expo EAS Android build configuration for the

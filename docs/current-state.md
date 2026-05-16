@@ -140,7 +140,9 @@ responsive on the first tap even with the keyboard visible, guard against
 duplicate in-flight saves, and keep the bottom tab bar reachable above the iOS
 keyboard. The native Weight screen now also lets the user reopen saved entries
 from history, correct them in place, delete mistakes, and immediately refresh
-the shared weight views after AsyncStorage updates.
+the shared weight views after AsyncStorage updates. It also now derives 7-day
+and 30-day rolling averages plus fast gain/loss pace flags from saved entries,
+and shows that trend feedback on both the Weight and Stats screens.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor, a formatted read-mode mirror that preserves headings,
 exercise blocks, mixed-weight rows, and unparsed history lines, and a stable
