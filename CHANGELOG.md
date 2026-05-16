@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 - 2026-05-16
+
+- Issue #54: Added local native progression-over-time and repeatability
+  signals for tracked exercises, comparing the latest comparable weighted
+  result against the prior comparable result while preserving separate
+  estimated-PR math and covering mixed weighted or rep-only history cases in
+  the parser suite.
+
 ## 0.9.0 - 2026-05-16
 
 - Issue #57: Added local native 1k-total derivation from the user-selected

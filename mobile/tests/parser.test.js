@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -1132,5 +1132,161 @@ describe('parseWorkoutNote — sample file patterns', () => {
     expect(plank.sets).toHaveLength(4);
     expect(plank.sets[0].weight_value).toBeNull();
     expect(plank.sets[0].rep_count).toBe(30);
+  });
+});
+
+// ── deriveProgressionSignals ──────────────────────────────────────────────────
+
+describe('deriveProgressionSignals — output shape', () => {
+  test('returns exercises array', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const result = deriveProgressionSignals(sections, ['Bench']);
+    expect(Array.isArray(result.exercises)).toBe(true);
+  });
+
+  test('each entry has required fields', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig).toHaveProperty('name', 'Bench');
+    expect(sig).toHaveProperty('progression_status');
+    expect(sig).toHaveProperty('latest_pr');
+    expect(sig).toHaveProperty('prior_pr');
+    expect(sig).toHaveProperty('repeatability_score');
+  });
+
+  test('returns one entry per unique tracked name in order', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8\n-Squat\n205 5');
+    const result = deriveProgressionSignals(sections, ['Bench', 'Squat']);
+    expect(result.exercises.map(e => e.name)).toEqual(['Bench', 'Squat']);
+  });
+
+  test('absent exercise returns null status and nulls', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Squat']).exercises[0];
+    expect(sig.progression_status).toBeNull();
+    expect(sig.latest_pr).toBeNull();
+    expect(sig.prior_pr).toBeNull();
+    expect(sig.repeatability_score).toBeNull();
+  });
+
+  test('empty trackedNames returns empty exercises array', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    expect(deriveProgressionSignals(sections, []).exercises).toHaveLength(0);
+  });
+
+  test('empty sections returns null status for all names', () => {
+    const result = deriveProgressionSignals([], ['Bench', 'Squat']);
+    expect(result.exercises.every(e => e.progression_status === null)).toBe(true);
+  });
+});
+
+describe('deriveProgressionSignals — progression status', () => {
+  test('first_session when exercise has only one occurrence', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('first_session');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.prior_pr).toBeNull();
+  });
+
+  test('improved when latest occurrence PR exceeds prior', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(80, 8));
+  });
+
+  test('regressed when latest occurrence PR is below prior', () => {
+    const note = 'Monday\n-Bench\n90 8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('regressed');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(90, 8));
+  });
+
+  test('held when latest and prior PRs are equal', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('held');
+    expect(sig.latest_pr).toBeCloseTo(sig.prior_pr);
+  });
+
+  test('compares latest two occurrences, not total best', () => {
+    // PR peaked on Wednesday, then regressed Friday — status should be regressed
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n100 8\nFriday\n-Bench\n90 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('regressed');
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(100, 8));
+  });
+
+  test('null progression_status when no-weight exercise has only bodyweight sets', () => {
+    const { sections } = parseWorkoutNote('Core: Plank\n30,30');
+    const sig = deriveProgressionSignals(sections, ['Core: Plank']).exercises[0];
+    expect(sig.progression_status).toBeNull();
+    expect(sig.latest_pr).toBeNull();
+  });
+
+  test('non-comparable latest occurrence — walks back to most recent comparable', () => {
+    // Monday has a weighted set; Wednesday has only rep-only rows (no weight → PR null).
+    // latest comparable = Monday → first_session, not null.
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('first_session');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.prior_pr).toBeNull();
+  });
+
+  test('non-comparable latest with two prior weighted occurrences returns correct status', () => {
+    // Monday 80 8, Wednesday 90 8, Friday 8,8 (rep-only) → latest comparable = Wednesday → improved
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8\nFriday\n-Bench\n8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(80, 8));
+  });
+});
+
+describe('deriveProgressionSignals — repeatability score', () => {
+  test('305 6,6,4 295 6 scores higher than lone 305 6', () => {
+    const multiSig = deriveProgressionSignals(
+      parseWorkoutNote('-Bench\n305 6,6,4 295 6').sections, ['Bench']
+    ).exercises[0];
+    const singleSig = deriveProgressionSignals(
+      parseWorkoutNote('-Bench\n305 6').sections, ['Bench']
+    ).exercises[0];
+    expect(multiSig.repeatability_score).toBeGreaterThan(singleSig.repeatability_score);
+  });
+
+  test('repeatability_score counts sets at max weight — 3 sets at 305', () => {
+    const { sections } = parseWorkoutNote('-Bench\n305 6,6,4 295 6');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.repeatability_score).toBe(3);
+  });
+
+  test('lone heavy set has repeatability_score of 1', () => {
+    const { sections } = parseWorkoutNote('-Bench\n305 6');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.repeatability_score).toBe(1);
+  });
+
+  test('null repeatability_score for no-weight exercise', () => {
+    const { sections } = parseWorkoutNote('Core: Plank\n30,30');
+    const sig = deriveProgressionSignals(sections, ['Core: Plank']).exercises[0];
+    expect(sig.repeatability_score).toBeNull();
+  });
+
+  test('repeatability_score reflects latest occurrence only', () => {
+    // Monday: 305 6,6,4 (score 3), Wednesday: 315 5 (score 1) — latest score is 1
+    const note = 'Monday\n-Bench\n305 6,6,4\nWednesday\n-Bench\n315 5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.repeatability_score).toBe(1);
   });
 });

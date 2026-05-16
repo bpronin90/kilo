@@ -336,6 +336,86 @@ export function deriveTrackedPRs(sections, trackedNames) {
   };
 }
 
+// ── Progression and repeatability signals ────────────────────────────────────
+
+// Best Epley PR for one occurrence.
+function _occurrencePR(occurrence) {
+  let best = null;
+  for (const s of occurrence.sets) {
+    const pr = epleyPR(s.weight_value, s.rep_count);
+    if (pr !== null && (best === null || pr > best)) best = pr;
+  }
+  return best;
+}
+
+// Count of sets at the maximum weight in one occurrence.
+// Returns null when the occurrence has no weighted sets.
+function _occurrenceRepeatabilityScore(occurrence) {
+  const weighted = occurrence.sets.filter(s => s.weight_value !== null && s.weight_value > 0);
+  if (weighted.length === 0) return null;
+  const maxWeight = Math.max(...weighted.map(s => s.weight_value));
+  return weighted.filter(s => s.weight_value === maxWeight).length;
+}
+
+// deriveProgressionSignals: progression status and repeatability context for tracked exercises.
+//
+// Compares the latest occurrence against the most recent prior occurrence with a computable PR.
+// Also surfaces how many sets were at the top weight in the latest session (repeatability_score),
+// so a line like "305 6,6,4 295 6" registers stronger evidence than a lone "305 6".
+//
+// Input: sections from parseWorkoutNote, trackedNames string[]
+// Output: { exercises: ProgressionSignal[] }
+//
+// ProgressionSignal: {
+//   name: string,
+//   progression_status: 'improved' | 'held' | 'regressed' | 'first_session' | null,
+//   latest_pr: number | null,
+//   prior_pr: number | null,
+//   repeatability_score: number | null,
+// }
+export function deriveProgressionSignals(sections, trackedNames) {
+  const uniqueNames = [...new Set(trackedNames)];
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byName = new Map(exercises.map(e => [e.name, e]));
+
+  return {
+    exercises: uniqueNames.map(name => {
+      const absent = { name, progression_status: null, latest_pr: null, prior_pr: null, repeatability_score: null };
+      if (!byName.has(name)) return absent;
+      const ex = byName.get(name);
+      const occs = ex.occurrences;
+      if (occs.length === 0) return absent;
+
+      // Walk backward to find the two most recent occurrences with computable PRs.
+      let latestIdx = -1;
+      let priorIdx = -1;
+      for (let i = occs.length - 1; i >= 0; i--) {
+        if (_occurrencePR(occs[i]) !== null) {
+          if (latestIdx === -1) latestIdx = i;
+          else { priorIdx = i; break; }
+        }
+      }
+
+      if (latestIdx === -1) return absent;
+
+      const latestOcc = occs[latestIdx];
+      const latest_pr = _occurrencePR(latestOcc);
+      const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
+
+      if (priorIdx === -1) {
+        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, repeatability_score };
+      }
+
+      const prior_pr = _occurrencePR(occs[priorIdx]);
+      const progression_status = latest_pr > prior_pr ? 'improved'
+                                : latest_pr < prior_pr ? 'regressed'
+                                : 'held';
+
+      return { name, progression_status, latest_pr, prior_pr, repeatability_score };
+    }),
+  };
+}
+
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 // items: array of { exerciseName: string, raw: string }
 // workout_date: YYYY-MM-DD; defaults to today's UTC date if omitted

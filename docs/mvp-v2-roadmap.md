@@ -279,6 +279,7 @@ Ordered tasks:
 - Session goal: show whether a tracked exercise improved, held, or regressed
   relative to its previous comparable result while also reflecting repeated
   heavy-set context.
+- Status: complete.
 - Intended agent: `claude`
 - Allowed scope: progression logic and tests.
 - Explicit out of scope: coaching language.
