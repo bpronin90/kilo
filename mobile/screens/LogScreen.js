@@ -3,38 +3,29 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
 
-export function LogScreen({ workoutTitle, setWorkoutTitle, workoutDetail, setWorkoutDetail, onSaveWorkout, errorMessage, saving }) {
+export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, errorMessage, saving }) {
   return (
     <ScrollView
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Workout log</Text>
-        <Text style={styles.subtitle}>Direct entry for your training sessions.</Text>
+        <Text style={styles.title}>Workout note</Text>
+        <Text style={styles.subtitle}>Your active training routine. Update it as you go.</Text>
       </View>
       <Card>
         {errorMessage ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
         ) : null}
-        <Text style={styles.inputLabel}>Workout name</Text>
         <TextInput
-          value={workoutTitle}
-          onChangeText={setWorkoutTitle}
-          placeholder="e.g. Push Day"
-          placeholderTextColor={Colors.textMuted}
-          style={styles.input}
-        />
-        <Text style={styles.inputLabel}>Session details</Text>
-        <TextInput
-          value={workoutDetail}
-          onChangeText={setWorkoutDetail}
-          placeholder="e.g. Bench 3x5, Rows 3x8"
+          value={workoutNoteText}
+          onChangeText={setWorkoutNoteText}
+          placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
           placeholderTextColor={Colors.textMuted}
           multiline
-          style={[styles.input, styles.multilineInput]}
+          style={[styles.input, styles.editorInput]}
         />
-        <Button onPress={onSaveWorkout} title="Save workout" disabled={saving} />
+        <Button onPress={onSaveWorkout} title="Save note" disabled={saving} style={styles.saveButton} />
       </Card>
     </ScrollView>
   );
@@ -67,11 +58,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
   input: {
     backgroundColor: Colors.inputBackground,
     borderRadius: 16,
@@ -82,8 +68,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.text,
   },
-  multilineInput: {
-    minHeight: 120,
+  editorInput: {
+    minHeight: 250,
     textAlignVertical: 'top',
+  },
+  saveButton: {
+    marginTop: 12,
   },
 });

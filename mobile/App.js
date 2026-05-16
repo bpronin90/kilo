@@ -10,9 +10,9 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
 
-import { useWeightEntries, useWorkoutSessions } from './hooks/useEntries';
-import { parseWeightEntry, parseWorkoutEntry } from './lib/parser';
-import { makeWeightEntry, makeWorkoutSession } from './lib/data';
+import { useWeightEntries, useWorkoutSessions, useWorkoutNote } from './hooks/useEntries';
+import { parseWeightEntry } from './lib/parser';
+import { makeWeightEntry } from './lib/data';
 
 const TABS = ['Home', 'Log', 'Weight', 'Stats'];
 
@@ -21,11 +21,17 @@ export default function App() {
 
   const weightHook = useWeightEntries();
   const workoutHook = useWorkoutSessions();
+  const noteHook = useWorkoutNote();
 
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
-  const [workoutTitle, setWorkoutTitle] = useState('');
-  const [workoutDetail, setWorkoutDetail] = useState('');
+  const [workoutNoteText, setWorkoutNoteText] = useState('');
+
+  React.useEffect(() => {
+    if (noteHook.note && !workoutNoteText) {
+      setWorkoutNoteText(noteHook.note.raw_text);
+    }
+  }, [noteHook.note]);
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -98,35 +104,22 @@ export default function App() {
     if (workoutSaving) return;
     Keyboard.dismiss();
     setSaveError('');
-    if (!workoutTitle.trim()) {
-      setSaveError('Workout name is required');
+    if (!workoutNoteText.trim()) {
+      setSaveError('Workout note is required');
       return;
     }
-    if (!workoutDetail.trim()) {
-      setSaveError('Session details are required');
-      return;
-    }
-    const today = new Date().toISOString().slice(0, 10);
-    const parsed = parseWorkoutEntry(
-      [{ exerciseName: workoutTitle.trim(), raw: workoutDetail.trim() }],
-      today,
-    );
-    if (!parsed.ok) {
-      setSaveError(parsed.error);
-      return;
-    }
-    const session = makeWorkoutSession({ workout_date: parsed.workout_date, items: parsed.items });
+    
     setWorkoutSaving(true);
     try {
-      await workoutHook.add(session);
-      setWorkoutTitle('');
-      setWorkoutDetail('');
-      setSaveSuccess('Workout session saved!');
+      await noteHook.save(workoutNoteText.trim());
+      setSaveSuccess('Workout note saved!');
       setActiveTab('Home');
+    } catch (e) {
+      setSaveError('Failed to save workout note');
     } finally {
       setWorkoutSaving(false);
     }
-  }, [workoutSaving, workoutTitle, workoutDetail, workoutHook]);
+  }, [workoutSaving, workoutNoteText, noteHook]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -135,10 +128,8 @@ export default function App() {
       case 'Log':
         return (
           <LogScreen
-            workoutTitle={workoutTitle}
-            setWorkoutTitle={setWorkoutTitle}
-            workoutDetail={workoutDetail}
-            setWorkoutDetail={setWorkoutDetail}
+            workoutNoteText={workoutNoteText}
+            setWorkoutNoteText={setWorkoutNoteText}
             onSaveWorkout={saveWorkout}
             errorMessage={saveError}
             saving={workoutSaving}
