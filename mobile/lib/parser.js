@@ -325,10 +325,11 @@ export function deriveWorkoutAnalytics(sections) {
 // Input: sections from parseWorkoutNote, trackedNames string[]
 // Output: { exercises: [{ name, estimated_pr }] } in trackedNames order
 export function deriveTrackedPRs(sections, trackedNames) {
+  const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
   const byName = new Map(exercises.map(e => [e.name, e]));
   return {
-    exercises: trackedNames.map(name => ({
+    exercises: uniqueNames.map(name => ({
       name,
       estimated_pr: byName.has(name) ? byName.get(name).estimated_pr : null,
     })),

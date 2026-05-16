@@ -80,7 +80,7 @@ export function exercisesForDay(day) {
 
 // Return the default set of tracked exercise names (those with po: true)
 export function getDefaultTrackedNames() {
-  return KILO_EXERCISES.filter(e => e.po).map(e => e.name);
+  return [...new Set(KILO_EXERCISES.filter(e => e.po).map(e => e.name))];
 }
 
 // Factory for a new weight entry

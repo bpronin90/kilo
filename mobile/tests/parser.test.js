@@ -1,4 +1,25 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs } from '../lib/parser';
+import { getDefaultTrackedNames } from '../lib/data';
+
+// ── getDefaultTrackedNames ────────────────────────────────────────────────────
+
+describe('getDefaultTrackedNames', () => {
+  test('returns an array of strings', () => {
+    const names = getDefaultTrackedNames();
+    expect(Array.isArray(names)).toBe(true);
+    expect(names.every(n => typeof n === 'string')).toBe(true);
+  });
+
+  test('contains no duplicate names', () => {
+    const names = getDefaultTrackedNames();
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test('does not include Hammer Curl twice despite appearing on two days', () => {
+    const names = getDefaultTrackedNames();
+    expect(names.filter(n => n === 'Hammer Curl')).toHaveLength(1);
+  });
+});
 
 // ── epleyPR ───────────────────────────────────────────────────────────────────
 
@@ -290,6 +311,19 @@ describe('deriveTrackedPRs', () => {
     const result = deriveTrackedPRs(sections, ['Bench']);
     const expected = Math.max(epleyPR(80, 8), epleyPR(90, 5));
     expect(result.exercises[0].estimated_pr).toBeCloseTo(expected);
+  });
+
+  test('duplicate names in trackedNames produce one row per unique name', () => {
+    const { sections } = parseWorkoutNote('-Hammer Curl\n30 10');
+    const result = deriveTrackedPRs(sections, ['Hammer Curl', 'Hammer Curl']);
+    expect(result.exercises).toHaveLength(1);
+    expect(result.exercises[0].name).toBe('Hammer Curl');
+  });
+
+  test('duplicate names do not double the estimated_pr value', () => {
+    const { sections } = parseWorkoutNote('-Hammer Curl\n30 10');
+    const result = deriveTrackedPRs(sections, ['Hammer Curl', 'Hammer Curl']);
+    expect(result.exercises[0].estimated_pr).toBeCloseTo(epleyPR(30, 10));
   });
 });
 
