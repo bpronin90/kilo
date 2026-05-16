@@ -229,6 +229,7 @@ Ordered tasks:
 #### Task 2: Add rolling averages and rate-of-change flags
 - Session goal: show 7-day and 30-day averages plus alerts for gain or loss
   faster than 0.5 lb per week.
+- Status: complete.
 - Intended agent: `claude`
 - Allowed scope: calculations, derived trend model, and supporting tests.
 - Explicit out of scope: broad visual redesign.

@@ -13,6 +13,7 @@ import {
   clearWorkoutNote,
   migrateWorkoutNote,
 } from '../storage/entries';
+import { computeWeightTrends } from '../lib/data';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -181,6 +182,111 @@ describe('workout note storage', () => {
     await saveWorkoutNote('Squat 225 5,5,5\nBench 135 5,5,5');
     const note = await loadWorkoutNote();
     expect(note.tracked_exercises).toEqual(['Squat']);
+  });
+});
+
+// ── weight trends ─────────────────────────────────────────────────────────────
+
+describe('computeWeightTrends', () => {
+  // Use local-time constructor (year, month-0, day) to avoid UTC-midnight shift in tests.
+  // REF = 2026-05-16. 7-day window: May 10–16 inclusive. 30-day window: Apr 17–May 16.
+  const REF = new Date(2026, 4, 16);
+
+  test('returns nulls for empty entries', () => {
+    expect(computeWeightTrends([], REF)).toEqual({ avg7: null, avg30: null, paceFlag: null });
+  });
+
+  test('computes 7-day average from entries within 7 days', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 192 },
+      { date: '2026-05-13', weight_value: 190 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg7).toBeCloseTo(191);
+  });
+
+  test('includes entry on the 7-day boundary date', () => {
+    const entries = [{ date: '2026-05-10', weight_value: 191 }];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg7).toBeCloseTo(191);
+  });
+
+  test('excludes entry one day before the 7-day boundary', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 192 },
+      { date: '2026-05-09', weight_value: 180 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg7).toBeCloseTo(192);
+  });
+
+  test('computes 30-day average including entries beyond 7 days', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 192 },
+      { date: '2026-04-20', weight_value: 188 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg30).toBeCloseTo(190);
+    expect(result.avg7).toBeCloseTo(192);
+  });
+
+  test('includes entry on the 30-day boundary date', () => {
+    const entries = [{ date: '2026-04-17', weight_value: 190 }];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg30).toBeCloseTo(190);
+    expect(result.avg7).toBeNull();
+  });
+
+  test('excludes entry one day before the 30-day boundary', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 192 },
+      { date: '2026-04-16', weight_value: 180 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.avg30).toBeCloseTo(192);
+  });
+
+  test('flags gain pace above 0.5 lb per week from 7-day window', () => {
+    // Both entries within 7-day window (May 10–16): 2 lb gain over 4 days ≈ 3.5 lb/week
+    const entries = [
+      { date: '2026-05-15', weight_value: 194 },
+      { date: '2026-05-11', weight_value: 192 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBe('gain');
+  });
+
+  test('flags loss pace above 0.5 lb per week from 7-day window', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 190 },
+      { date: '2026-05-11', weight_value: 192 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBe('loss');
+  });
+
+  test('returns null paceFlag for change below 0.5 lb per week', () => {
+    const entries = [
+      { date: '2026-05-15', weight_value: 192.2 },
+      { date: '2026-05-11', weight_value: 192.0 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBeNull();
+  });
+
+  test('returns null paceFlag with a single entry', () => {
+    const entries = [{ date: '2026-05-15', weight_value: 192 }];
+    expect(computeWeightTrends(entries, REF).paceFlag).toBeNull();
+  });
+
+  test('falls back to 30-day window for pace when 7-day has only one entry', () => {
+    // May 15 in 7-day window, Apr 20 only in 30-day; pace computed from 30-day
+    const entries = [
+      { date: '2026-05-15', weight_value: 194 },
+      { date: '2026-04-20', weight_value: 187 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBe('gain');
   });
 });
 

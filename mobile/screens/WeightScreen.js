@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries } from '../hooks/useEntries';
 import { formatTimestamp } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
+import { computeWeightTrends } from '../lib/data';
 
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   const { entries, remove, update } = useWeightEntries();
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
+  const trends = useMemo(() => computeWeightTrends(entries), [entries]);
 
   const handleEditEntry = (entry) => {
     setLocalError('');
@@ -113,6 +115,34 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           />
         ) : null}
       </Card>
+
+      {(trends.avg7 !== null || trends.avg30 !== null) ? (
+        <Card style={styles.trendsCard}>
+          <Text style={styles.trendsTitle}>Trends</Text>
+          <View style={styles.trendsRow}>
+            {trends.avg7 !== null ? (
+              <View style={styles.trendItem}>
+                <Text style={styles.trendValue}>{trends.avg7.toFixed(1)} lb</Text>
+                <Text style={styles.trendLabel}>7-day avg</Text>
+              </View>
+            ) : null}
+            {trends.avg30 !== null ? (
+              <View style={styles.trendItem}>
+                <Text style={styles.trendValue}>{trends.avg30.toFixed(1)} lb</Text>
+                <Text style={styles.trendLabel}>30-day avg</Text>
+              </View>
+            ) : null}
+            {trends.paceFlag ? (
+              <View style={styles.trendItem}>
+                <Text style={[styles.trendValue, trends.paceFlag === 'gain' ? styles.paceGain : styles.paceLoss]}>
+                  {trends.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+                </Text>
+                <Text style={styles.trendLabel}>pace flag</Text>
+              </View>
+            ) : null}
+          </View>
+        </Card>
+      ) : null}
 
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
@@ -245,5 +275,37 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  trendsCard: {
+    gap: 10,
+  },
+  trendsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  trendsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 20,
+  },
+  trendItem: {
+    gap: 2,
+  },
+  trendValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  trendLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  paceGain: {
+    color: Colors.error,
+  },
+  paceLoss: {
+    color: Colors.accent,
   },
 });
