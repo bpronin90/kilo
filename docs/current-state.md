@@ -108,8 +108,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
   modules and now also includes tolerant workout-note parsing for the archived
   sample-style shorthand logs used by the v2 note-based workflow plus a
-  derived analytics contract for later note-based UI and analytics work
-- `mobile/lib/data.js` defines the native exercise catalog and entry factories
+  derived analytics contract for later note-based UI and analytics work,
+  including tracked-exercise estimated-PR derivation from parsed sets
+- `mobile/lib/data.js` defines the native exercise catalog and entry factories,
+  including the default tracked-exercise name selection used by analytics
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including workout-note migration plumbing
 - `mobile/storage/entries.js` persists weight entries and workout sessions via
@@ -126,7 +128,10 @@ The v2 parser groundwork for one long workout note now also exists in native
 code, but the primary workout authoring flow is still the narrower structured
 form rather than the planned raw-note editor. That groundwork now includes a
 stable derived analytics input model so later PR, 1k, and repeatability work
-can consume parsed note output without rebuilding the parser contract.
+can consume parsed note output without rebuilding the parser contract. It now
+also includes a tracked-exercise estimated-PR engine that computes Epley values
+per parseable set, keeps each tracked exercise's best current estimate, and
+deduplicates tracked names before emitting analytics rows.
 
 ### Parser (`src/parser.jsx`)
 
@@ -149,6 +154,9 @@ The MVP canonical parse path is fully implemented and tested.
   per-exercise analytics input contract with flattened sets, grouped rows,
   per-occurrence context, preserved `unparsed_rows`, per-set Epley estimates,
   and a best-set `estimated_pr` summary.
+- `deriveTrackedPRs(sections, trackedNames)` — filters derived analytics down
+  to one row per unique tracked exercise name, preserving caller order while
+  surfacing each exercise's best current `estimated_pr` or `null` when absent.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.
