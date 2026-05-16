@@ -55,6 +55,9 @@ Open the QR code in Expo Go, or launch Android directly:
 npm run mobile:android
 ```
 
+For a standalone installable Android APK that does not depend on a running dev
+machine, use the EAS build flow documented in `docs/phone-runbook.md`.
+
 Current limitation:
 
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,

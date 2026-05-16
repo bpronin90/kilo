@@ -25,12 +25,21 @@ Required labels:
 Optional sizing label:
 - at most one `effort:` label: `effort:default` or `effort:heavy`
 
-`effort:` is a sizing hint only. It does not define runtime selection and must not be used as a substitute for `model:` or `reasoning:`.
+`effort:` describes task scale only. It is a sizing hint for the work itself, not the runtime setting for the assigned agent, and must not be used as a substitute for `model:` or `reasoning:`.
+- `effort:default` means normal scoped work with ordinary implementation and verification burden
+- `effort:heavy` means materially larger, riskier, or more coordination-heavy work, such as multiple moving parts, higher verification burden, or a greater chance of hidden edge cases
 
-Codex runtime labels:
+Reasoning label policy:
+- when an agent/runtime supports an explicit reasoning control, prefer `reasoning:medium`
+- use `reasoning:high` only when the task is unusually complex and that complexity is visible in the issue itself
+- `reasoning:low` and `reasoning:xhigh` should be rare and require explicit justification in the issue body or comments
+- shape issues to avoid needing more than `reasoning:high` when practical
+
+Agent runtime labels:
 - if `agent:codex` is set, require exactly one `model:` label: `model:gpt-5.4`, `model:gpt-5.4-mini`, or `model:gpt-5.3-codex`
 - if `agent:codex` is set, require exactly one `reasoning:` label: `reasoning:low`, `reasoning:medium`, `reasoning:high`, or `reasoning:xhigh`
-- if `agent:claude` or `agent:gemini` is set, do not add `model:` or `reasoning:` labels unless the repo later introduces agent-specific runtime labels for them
+- if `agent:claude` or `agent:gemini` is set, do not add `model:` labels unless the repo later introduces agent-specific runtime labels for them
+- if `agent:claude` or `agent:gemini` is set, do not require `reasoning:` unless that agent path later supports an explicit reasoning control and the repo adopts labels for it
 
 Read only:
 - `AGENTS.md`

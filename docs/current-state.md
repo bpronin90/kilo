@@ -30,12 +30,18 @@ load.
 The browser prototype has five tabs: Home, Log, Weight, Stats, More. The native
 Expo app currently exposes four tabs: Home, Log, Weight, and Stats.
 
-For physical-device packaging, the legacy prototype path is still Android only:
+For physical-device packaging, the repo now has two Android paths with different
+constraints:
 
-1. `npm run build`
-2. `npm run cap:sync`
-3. `npm run cap:open`
-4. Build and run from Android Studio to a connected device
+1. Legacy prototype shell:
+   - `npm run build`
+   - `npm run cap:sync`
+   - `npm run cap:open`
+   - Build and run from Android Studio to a connected device
+2. Native Expo app:
+   - `cd mobile`
+   - `eas build --platform android --profile preview`
+   - Install the resulting APK on the phone
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
@@ -321,6 +327,15 @@ app in an Android WebView and does not add native product features, offline
 bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
+
+### Native Expo app now has a standalone Android build path
+
+The `mobile/` Expo app now has a checked-in EAS build profile for Android APK
+output plus the required Android package identifier. That gives the native app
+an installable path that does not depend on the developer machine staying on or
+serving a local Expo session. The one-time Expo account linking step still must
+write a real `extra.eas.projectId` into `mobile/app.json`, and the repo
+documents that contributors should commit that linked project ID once it exists.
 
 ### Native UI runtime is not yet validated end-to-end
 
