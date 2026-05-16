@@ -4,6 +4,9 @@ import * as Storage from '../storage/entries';
 let weightListeners = [];
 const notifyWeight = () => weightListeners.forEach(l => l());
 
+let noteListeners = [];
+const notifyNote = () => noteListeners.forEach(l => l());
+
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +78,7 @@ export function useWorkoutNote() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     Storage.loadWorkoutNote()
       .then(n => n ?? Storage.migrateWorkoutNote())
       .then(setNote)
@@ -83,16 +86,33 @@ export function useWorkoutNote() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    refresh();
+    noteListeners.push(refresh);
+    return () => {
+      noteListeners = noteListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
   const save = useCallback(async (raw_text) => {
     const saved = await Storage.saveWorkoutNote(raw_text);
     setNote(saved);
+    notifyNote();
+    return saved;
+  }, []);
+
+  const saveTracked = useCallback(async (tracked) => {
+    const saved = await Storage.saveTrackedExercises(tracked);
+    setNote(saved);
+    notifyNote();
     return saved;
   }, []);
 
   const clear = useCallback(async () => {
     await Storage.clearWorkoutNote();
     setNote(null);
+    notifyNote();
   }, []);
 
-  return { note, loading, error, save, clear };
+  return { note, loading, error, save, saveTracked, clear };
 }

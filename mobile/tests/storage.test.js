@@ -9,6 +9,7 @@ import {
   deleteWorkoutSession,
   loadWorkoutNote,
   saveWorkoutNote,
+  saveTrackedExercises,
   clearWorkoutNote,
   migrateWorkoutNote,
 } from '../storage/entries';
@@ -164,6 +165,22 @@ describe('workout note storage', () => {
     const entries = await loadWeightEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe(W1.id);
+  });
+
+  test('saves and retrieves tracked exercises', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5');
+    await saveTrackedExercises(['Squat']);
+    const note = await loadWorkoutNote();
+    expect(note.tracked_exercises).toEqual(['Squat']);
+    expect(note.raw_text).toBe('Squat 225 5,5,5');
+  });
+
+  test('preserves tracked exercises when updating raw text', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5');
+    await saveTrackedExercises(['Squat']);
+    await saveWorkoutNote('Squat 225 5,5,5\nBench 135 5,5,5');
+    const note = await loadWorkoutNote();
+    expect(note.tracked_exercises).toEqual(['Squat']);
   });
 });
 

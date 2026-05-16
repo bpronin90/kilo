@@ -3,15 +3,31 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
+import { useWorkoutNote } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  const { note, saveTracked } = useWorkoutNote();
+
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
   }, [workoutNoteText]);
+
+  const trackedExercises = note?.tracked_exercises || [];
+
+  const handleToggleTrack = (exerciseName) => {
+    const isTracked = trackedExercises.includes(exerciseName);
+    let nextTracked;
+    if (isTracked) {
+      nextTracked = trackedExercises.filter(name => name !== exerciseName);
+    } else {
+      nextTracked = [...trackedExercises, exerciseName];
+    }
+    saveTracked(nextTracked);
+  };
 
   const hasContent = workoutNoteText.trim().length > 0;
 
@@ -65,7 +81,12 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
               {section.heading && <WorkoutHeading>{section.heading}</WorkoutHeading>}
               {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
               {section.exercises.map((ex, ei) => (
-                <ExerciseBlock key={`ex-${si}-${ei}`} name={ex.name}>
+                <ExerciseBlock 
+                  key={`ex-${si}-${ei}`} 
+                  name={ex.name}
+                  isTracked={trackedExercises.includes(ex.name)}
+                  onToggleTrack={() => handleToggleTrack(ex.name)}
+                >
                   {ex.rows.map((row, ri) => (
                     <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />
                   ))}

@@ -193,6 +193,7 @@ Ordered tasks:
 #### Task 3: Add exercise tracking controls from parsed workout content
 - Session goal: let the user click exercises to include or remove them from
   analytics tracking.
+- Status: complete.
 - Intended agent: `gemini`
 - Allowed scope: workout read view interaction and tracked-exercise selection
   UI.
