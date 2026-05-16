@@ -102,8 +102,8 @@ The real native app path now has a modular React Native shell:
   card
 - `mobile/screens/LogScreen.js` renders a native freeform workout-note editor
   and save action
-- `mobile/screens/WeightScreen.js` renders native weight/note inputs and a save
-  action
+- `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
+  direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` renders a small native summary card grid
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/theme/colors.js` centralizes the native color system
@@ -128,7 +128,9 @@ the saved workout note both reload across app restarts through the native
 hook/storage layer. The native Log and Weight flows now keep save actions
 responsive on the first tap even with the keyboard visible, guard against
 duplicate in-flight saves, and keep the bottom tab bar reachable above the iOS
-keyboard.
+keyboard. The native Weight screen now also lets the user reopen saved entries
+from history, correct them in place, delete mistakes, and immediately refresh
+the shared weight views after AsyncStorage updates.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor and a stable derived analytics input model so later PR, 1k, and
 repeatability work can consume parsed note output without rebuilding the parser

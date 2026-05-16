@@ -214,6 +214,7 @@ Ordered tasks:
 
 #### Task 1: Add durable weight edit and delete flows
 - Session goal: fix the current inability to correct mistaken weight entries.
+- Status: complete.
 - Intended agent: `gemini`
 - Allowed scope: weight history UI, edit interaction, delete interaction, and
   any minimal plumbing required to support those flows.

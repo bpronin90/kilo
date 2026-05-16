@@ -74,7 +74,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
-  and workout data, including canonical workout-note migration plumbing
+  and workout data, including canonical workout-note migration plumbing plus a
+  lightweight listener fanout for native weight-entry refreshes
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
@@ -117,6 +118,13 @@ activeTab: 'Home' | 'Log' | 'Weight' | 'Stats'
 for weight and workout entries validate input, persist via the hook/storage
 layer, and then send the user back to Home. There is no router library, deep
 linking, or persisted navigation state in the native path yet.
+
+`mobile/screens/WeightScreen.js` also renders saved weight history as a direct
+correction surface. Tapping a row reloads that entry into the shared form
+state, edit submissions rerun `parseWeightEntry()` before
+`updateWeightEntry()`, delete submissions remove the selected entry in place,
+and the hook-level listener fanout reloads other weight consumers so Home,
+Stats, and the Weight history stay in sync after edits or deletes.
 
 ## Native Parse-to-Persistence Flow
 

@@ -18,13 +18,13 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-export function Button({ onPress, title, style, disabled = false }) {
+export function Button({ onPress, title, style, textStyle, disabled = false }) {
   return (
     <Pressable
       onPress={disabled ? null : onPress}
       style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
     >
-      <Text style={styles.buttonText}>{disabled ? 'Saving…' : title}</Text>
+      <Text style={[styles.buttonText, textStyle]}>{disabled ? 'Saving…' : title}</Text>
     </Pressable>
   );
 }

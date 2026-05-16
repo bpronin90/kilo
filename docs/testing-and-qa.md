@@ -246,8 +246,10 @@ The following MVP behaviors have no automated test coverage:
 - `persistWorkoutSession` write to `localStorage`
 
 **Correction flows**
-- Weight entry delete from `KiloWeight` (calls `deleteWeightEntry`, re-renders list)
-- Weight entry edit from `KiloWeight` (calls `updateWeightEntry` via `window.prompt`, re-renders list)
+- Native Weight screen delete flow (`WeightScreen`, confirmation prompt,
+  `deleteWeightEntry`, re-renders history)
+- Native Weight screen edit flow (`WeightScreen`, inline validation via
+  `parseWeightEntry`, `updateWeightEntry`, re-renders history)
 - Workout session delete from `KiloHome` recent history (calls `deleteWorkoutSession`, re-renders list)
 - Weight entry delete from `KiloHome` recent history
 

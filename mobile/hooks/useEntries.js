@@ -1,32 +1,43 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 
+let weightListeners = [];
+const notifyWeight = () => weightListeners.forEach(l => l());
+
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     Storage.loadWeightEntries()
       .then(setEntries)
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    refresh();
+    weightListeners.push(refresh);
+    return () => {
+      weightListeners = weightListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
   const add = useCallback(async (entry) => {
     await Storage.saveWeightEntry(entry);
-    setEntries(prev => [entry, ...prev]);
+    notifyWeight();
   }, []);
 
   const remove = useCallback(async (id) => {
     await Storage.deleteWeightEntry(id);
-    setEntries(prev => prev.filter(e => e.id !== id));
+    notifyWeight();
   }, []);
 
-  const update = useCallback(async (id, weight_value) => {
-    const ok = await Storage.updateWeightEntry(id, weight_value);
+  const update = useCallback(async (id, weight_value, note) => {
+    const ok = await Storage.updateWeightEntry(id, weight_value, note);
     if (ok) {
-      setEntries(prev => prev.map(e => e.id === id ? { ...e, weight_value } : e));
+      notifyWeight();
     }
     return ok;
   }, []);

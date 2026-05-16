@@ -35,11 +35,12 @@ export async function deleteWeightEntry(id) {
   await writeList(WEIGHT_KEY, list.filter(e => e.id !== id));
 }
 
-export async function updateWeightEntry(id, weight_value) {
+export async function updateWeightEntry(id, weight_value, note) {
   const list = await readList(WEIGHT_KEY);
   const entry = list.find(e => e.id === id);
   if (!entry) return false;
   entry.weight_value = weight_value;
+  entry.note = note;
   await writeList(WEIGHT_KEY, list);
   return true;
 }

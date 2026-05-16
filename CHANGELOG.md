@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-05-16
+
+- Issue #51: Added native weight-entry correction flows so saved weigh-ins can
+  be reopened from history, edited or deleted in place, validated inline, and
+  reflected immediately across shared native weight views.
+
 ## 0.4.0 - 2026-05-16
 
 - Issue #49: Replaced the native Log screen's rigid workout title and session
