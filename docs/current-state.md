@@ -153,7 +153,9 @@ parseable set, keeps each tracked exercise's best current estimate, and
 deduplicates tracked names before emitting analytics rows. It now also derives
 the tracked 1k total locally from the user-selected bench, squat, and
 deadlift exercises, recomputing immediately when note content or tracked-lift
-selection changes. Recent history in
+selection changes, plus progression-over-time and repeatability signals that
+compare the latest comparable weighted result against the prior comparable
+result without changing the formal estimated-PR formula. Recent history in
 the native app still reflects persisted workout sessions rather than live
 workout-note revisions, so the note-first authoring shift is complete before
 the downstream read and analytics surfaces are updated. The native Log read
@@ -188,6 +190,11 @@ The MVP canonical parse path is fully implemented and tested.
 - `derive1kTotal(sections, selections)` — sums the estimated PR values for the
   selected bench, squat, and deadlift exercises and returns `total: null`
   until all three tracked lifts are present in the note.
+- `deriveProgressionSignals(sections, trackedNames)` — walks backward through
+  tracked exercise occurrences to compare the latest comparable weighted result
+  to the prior comparable result, returning improved, held, regressed, or
+  first-session progression status plus a same-session top-weight
+  `repeatability_score`.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
 exists for read-only display of seeded history. It is not used on any save path.
