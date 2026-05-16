@@ -104,10 +104,19 @@ export async function migrateWorkoutNote() {
       for (const item of (session.items || [])) {
         const setStr = (item.sets || [])
           .map(s => {
-            if (s.weight_value != null && s.rep_count != null) return `${s.weight_value} ${s.rep_count}`;
-            if (s.rep_count != null) return String(s.rep_count);
-            if (s.duration_seconds != null) return `${s.duration_seconds}s`;
-            return '';
+            const parts = [];
+            if (s.weight_value != null) {
+              parts.push(s.weight_unit ? `${s.weight_value} ${s.weight_unit}` : String(s.weight_value));
+            }
+            if (s.assistance_value != null) {
+              parts.push(s.assistance_unit
+                ? `assist:${s.assistance_value} ${s.assistance_unit}`
+                : `assist:${s.assistance_value}`);
+            }
+            if (s.rep_count != null) parts.push(`×${s.rep_count}`);
+            if (s.duration_seconds != null) parts.push(`${s.duration_seconds}s`);
+            if (s.note_text) parts.push(`[${s.note_text}]`);
+            return parts.join(' ');
           })
           .filter(Boolean)
           .join(', ');

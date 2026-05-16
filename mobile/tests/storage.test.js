@@ -21,6 +21,24 @@ const S1 = {
   items: [{ exercise_name: 'Squat', result_kind: 'sets', note_text: null, position: 1, sets: [{ set_index: 1, rep_count: 5, weight_value: 225, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] }],
 };
 
+// Fixture with all optional set fields populated to verify migration fidelity
+const S2 = {
+  id: 's_2026-05-02_1', entry_type: 'workout', date: '2026-05-02', saved_at: '2026-05-02T23:00:00.000Z',
+  items: [
+    {
+      exercise_name: 'Assisted Pull-up', result_kind: 'sets', note_text: 'grip neutral', position: 1,
+      sets: [
+        { set_index: 1, rep_count: 8, weight_value: null, weight_unit: null, duration_seconds: null, assistance_value: 20, assistance_unit: 'lb', note_text: 'slow' },
+        { set_index: 2, rep_count: 6, weight_value: null, weight_unit: null, duration_seconds: null, assistance_value: 20, assistance_unit: 'lb', note_text: null },
+      ],
+    },
+    {
+      exercise_name: 'Plank', result_kind: 'duration', note_text: null, position: 2,
+      sets: [{ set_index: 1, rep_count: null, weight_value: null, weight_unit: null, duration_seconds: 45, assistance_value: null, assistance_unit: null, note_text: null }],
+    },
+  ],
+};
+
 beforeEach(() => {
   AsyncStorage.clear();
 });
@@ -178,5 +196,29 @@ describe('migrateWorkoutNote', () => {
     const note = await loadWorkoutNote();
     expect(note).not.toBeNull();
     expect(note.raw_text).toContain('Squat');
+  });
+
+  test('preserves assistance_value and assistance_unit in migrated text', async () => {
+    await saveWorkoutSession(S2);
+    const result = await migrateWorkoutNote();
+    expect(result.raw_text).toContain('assist:20 lb');
+  });
+
+  test('preserves set-level note_text in migrated text', async () => {
+    await saveWorkoutSession(S2);
+    const result = await migrateWorkoutNote();
+    expect(result.raw_text).toContain('[slow]');
+  });
+
+  test('preserves item-level note_text in migrated text', async () => {
+    await saveWorkoutSession(S2);
+    const result = await migrateWorkoutNote();
+    expect(result.raw_text).toContain('grip neutral');
+  });
+
+  test('preserves duration_seconds in migrated text', async () => {
+    await saveWorkoutSession(S2);
+    const result = await migrateWorkoutNote();
+    expect(result.raw_text).toContain('45s');
   });
 });
