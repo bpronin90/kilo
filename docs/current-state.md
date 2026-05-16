@@ -108,9 +108,11 @@ The real native app path now has a modular React Native shell:
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
   modules
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories
-- `mobile/hooks/useEntries.js` exposes the native read/write API used by the UI
+- `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
+  UI, including workout-note migration plumbing
 - `mobile/storage/entries.js` persists weight entries and workout sessions via
-  AsyncStorage
+  AsyncStorage and now also supports one canonical workout routine note with a
+  one-time migration bridge from legacy structured sessions
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 and workout saves run through `parseWorkoutEntry()` before persistence. Saved

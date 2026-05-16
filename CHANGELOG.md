@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-05-15
+
+- Issue #46: Added native AsyncStorage support for one canonical workout
+  routine note, including save/load/overwrite/clear behavior, a one-time
+  migration bridge from legacy structured workout sessions, and expanded mobile
+  storage coverage for the workout-note path.
+
 ## 0.2.7 - 2026-05-15
 
 - Issue #17: Closed the legacy MVP acceptance review after the repo-readiness

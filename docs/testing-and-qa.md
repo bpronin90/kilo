@@ -91,7 +91,7 @@ runtime contract from `tests/setup.js`. No browser or server is required.
 Run the native Jest suite:
 
 ```sh
-cd mobile && npx jest
+npm --prefix mobile test
 ```
 
 ---
@@ -218,10 +218,11 @@ Provides the global runtime contract required by the prototype:
 
 ### `mobile/tests/storage.test.js`
 
-- AsyncStorage-backed load/save/delete/update coverage for
+- AsyncStorage-backed load/save/delete/update/migrate coverage for
   `mobile/storage/entries.js`
-- verifies empty-load behavior, newest-first sorting, update misses, and basic
-  weight/workout persistence semantics
+- verifies empty-load behavior, newest-first sorting, update misses, workout
+  note save/overwrite/clear behavior, and migration of legacy structured
+  sessions into the canonical workout-note document
 
 ---
 
