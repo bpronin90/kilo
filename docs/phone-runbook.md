@@ -130,14 +130,22 @@ Use this when you need an APK that runs on a phone without the dev machine being
 - Expo account: `npx expo login`
 - EAS CLI: `npm install -g eas-cli`
 
-## One-time setup
+## One-time project linking (per account)
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
 eas build:configure
 ```
 
-This verifies `eas.json` and links the project to your Expo account. Skip if already configured.
+This links the project to your Expo account and writes `extra.eas.projectId` into `mobile/app.json`.
+**After running, commit the updated `app.json`** so the linked project ID is checked in and the build path is reproducible for all contributors:
+
+```bash
+git add mobile/app.json
+git commit -m "chore(mobile): add EAS projectId from eas build:configure"
+```
+
+Skip this step if `extra.eas.projectId` is already present in `mobile/app.json`.
 
 ## Build APK
 
