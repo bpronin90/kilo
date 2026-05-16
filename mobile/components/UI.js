@@ -73,14 +73,25 @@ export function ExerciseBlock({ name, children }) {
 export function SetLine({ sets }) {
   if (!sets || sets.length === 0) return null;
   
-  // Group sets by weight for cleaner display: "135 x 5, 5, 5"
-  const weight = sets[0].weight_value;
-  const reps = sets.map(s => s.rep_count).join(', ');
+  const groups = [];
+  let currentGroup = null;
+
+  for (const set of sets) {
+    if (!currentGroup || currentGroup.weight !== set.weight_value) {
+      currentGroup = { weight: set.weight_value, reps: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.reps.push(set.rep_count);
+  }
   
   return (
     <View style={styles.setLine}>
-      <Text style={styles.setWeight}>{weight ? `${weight} lb` : 'Bodyweight'}</Text>
-      <Text style={styles.setReps}>{reps}</Text>
+      {groups.map((group, i) => (
+        <View key={i} style={styles.setGroup}>
+          <Text style={styles.setWeight}>{group.weight ? `${group.weight} lb` : 'BW'}</Text>
+          <Text style={styles.setReps}>{group.reps.join(', ')}</Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -191,6 +202,11 @@ const styles = StyleSheet.create({
   },
   setLine: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  setGroup: {
+    flexDirection: 'row',
     alignItems: 'baseline',
     gap: 8,
   },
@@ -198,7 +214,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: Colors.textMuted,
-    width: 65,
   },
   setReps: {
     fontSize: 16,

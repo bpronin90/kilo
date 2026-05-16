@@ -9,8 +9,20 @@ export function formatTimestamp(value) {
 
 export function formatWorkoutSets(sets) {
   if (!sets || sets.length === 0) return '';
-  const weight = sets[0].weight_value;
-  const reps = sets.map(s => s.rep_count).join(', ');
-  const weightStr = weight ? `${weight} lb` : 'Bodyweight';
-  return `${weightStr} ${reps}`;
+  
+  const groups = [];
+  let currentGroup = null;
+
+  for (const set of sets) {
+    if (!currentGroup || currentGroup.weight !== set.weight_value) {
+      currentGroup = { weight: set.weight_value, reps: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.reps.push(set.rep_count);
+  }
+
+  return groups.map(group => {
+    const weightStr = group.weight ? `${group.weight} lb` : 'BW';
+    return `${weightStr} ${group.reps.join(', ')}`;
+  }).join('; ');
 }

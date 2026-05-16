@@ -6,12 +6,23 @@ import { parseWorkoutNote } from '../lib/parser';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, errorMessage, saving }) {
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
+  const [isSaving, setIsSaving] = useState(false);
 
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
   }, [workoutNoteText]);
 
   const hasContent = workoutNoteText.trim().length > 0;
+
+  // Handle save completion
+  React.useEffect(() => {
+    if (isSaving && !saving) {
+      setIsSaving(false);
+      if (!errorMessage) {
+        setMode('read');
+      }
+    }
+  }, [saving, errorMessage, isSaving]);
 
   return (
     <ScrollView
@@ -34,6 +45,12 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
         </View>
         <Text style={styles.subtitle}>Your active training routine. Update it as you go.</Text>
       </View>
+
+      {errorMessage ? (
+        <Card style={styles.errorCard}>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        </Card>
+      ) : null}
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
@@ -64,9 +81,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
         </View>
       ) : (
         <Card>
-          {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          ) : null}
           <TextInput
             value={workoutNoteText}
             onChangeText={setWorkoutNoteText}
@@ -79,7 +93,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
           <Button 
             onPress={() => {
               onSaveWorkout();
-              if (!errorMessage) setMode('read');
+              setIsSaving(true);
             }} 
             title="Save note" 
             disabled={saving} 
@@ -132,6 +146,11 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: 14,
     fontWeight: '600',
+  },
+  errorCard: {
+    borderColor: Colors.error,
+    backgroundColor: '#fff0f0', // Slight red tint
+    padding: 12,
     marginBottom: 8,
   },
   input: {
