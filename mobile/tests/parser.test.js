@@ -1,4 +1,193 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics } from '../lib/parser';
+
+// ── epleyPR ───────────────────────────────────────────────────────────────────
+
+describe('epleyPR', () => {
+  test('computes Epley formula: weight * (1 + reps/30)', () => {
+    expect(epleyPR(100, 10)).toBeCloseTo(100 * (1 + 10 / 30));
+  });
+
+  test('returns null when weight is null', () => {
+    expect(epleyPR(null, 8)).toBeNull();
+  });
+
+  test('returns null when reps is null', () => {
+    expect(epleyPR(135, null)).toBeNull();
+  });
+
+  test('returns null when weight is zero', () => {
+    expect(epleyPR(0, 8)).toBeNull();
+  });
+
+  test('returns null when reps is zero', () => {
+    expect(epleyPR(135, 0)).toBeNull();
+  });
+
+  test('single-rep set returns weight (1 + 1/30)', () => {
+    const pr = epleyPR(305, 1);
+    expect(pr).toBeCloseTo(305 * (1 + 1 / 30));
+  });
+});
+
+// ── deriveWorkoutAnalytics ────────────────────────────────────────────────────
+
+describe('deriveWorkoutAnalytics — output shape', () => {
+  test('returns exercises array', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8,8');
+    const result = deriveWorkoutAnalytics(sections);
+    expect(Array.isArray(result.exercises)).toBe(true);
+  });
+
+  test('derived exercise has required fields', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8,8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex).toHaveProperty('name');
+    expect(ex).toHaveProperty('occurrences');
+    expect(ex).toHaveProperty('sets');
+    expect(ex).toHaveProperty('rows');
+    expect(ex).toHaveProperty('set_prs');
+    expect(ex).toHaveProperty('estimated_pr');
+  });
+
+  test('occurrence has heading, subheading, kind, rows, sets', () => {
+    const { sections } = parseWorkoutNote('Monday\n+LIFTING\n-Bench\n80 8,8,8');
+    const occ = deriveWorkoutAnalytics(sections).exercises[0].occurrences[0];
+    expect(occ).toHaveProperty('heading', 'Monday');
+    expect(occ).toHaveProperty('subheading', 'LIFTING');
+    expect(occ).toHaveProperty('kind');
+    expect(Array.isArray(occ.rows)).toBe(true);
+    expect(Array.isArray(occ.sets)).toBe(true);
+  });
+
+  test('set_prs entries have set and epley_pr fields', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    const sp = deriveWorkoutAnalytics(sections).exercises[0].set_prs[0];
+    expect(sp).toHaveProperty('set');
+    expect(sp).toHaveProperty('epley_pr');
+  });
+
+  test('empty sections produces empty exercises array', () => {
+    const result = deriveWorkoutAnalytics([]);
+    expect(result.exercises).toHaveLength(0);
+  });
+});
+
+describe('deriveWorkoutAnalytics — sets and PRs', () => {
+  test('sets are flattened across all rows', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8,8\n85 8,8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.sets).toHaveLength(5);
+  });
+
+  test('rows array preserves line-level grouping', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8,8\n85 8,8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.rows).toHaveLength(2);
+  });
+
+  test('estimated_pr is the highest epley across all sets', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n90 5');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    const pr80x8 = epleyPR(80, 8);
+    const pr90x5 = epleyPR(90, 5);
+    expect(ex.estimated_pr).toBeCloseTo(Math.max(pr80x8, pr90x5));
+  });
+
+  test('estimated_pr is null for bodyweight/core exercises with no weight', () => {
+    const { sections } = parseWorkoutNote('Core: Plank\n30,30');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.estimated_pr).toBeNull();
+  });
+
+  test('set_prs count matches sets count', () => {
+    const { sections } = parseWorkoutNote('-Squat\n205 8,8,8');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.set_prs).toHaveLength(ex.sets.length);
+  });
+
+  test('set_pr.epley_pr is null for sets with no weight', () => {
+    const { sections } = parseWorkoutNote('Core: Plank\n30,30');
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.set_prs.every(sp => sp.epley_pr === null)).toBe(true);
+  });
+});
+
+describe('deriveWorkoutAnalytics — multi-day and repeatability context', () => {
+  test('same exercise across multiple days is merged into one entry', () => {
+    const note = 'Monday\n-Bench\n80 8,8\nTuesday\n-Bench\n85 6,6';
+    const { sections } = parseWorkoutNote(note);
+    const result = deriveWorkoutAnalytics(sections);
+    const benches = result.exercises.filter(e => e.name === 'Bench');
+    expect(benches).toHaveLength(1);
+    expect(benches[0].sets).toHaveLength(4);
+    expect(benches[0].occurrences).toHaveLength(2);
+  });
+
+  test('each occurrence preserves its day heading', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n85 6';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    const headings = ex.occurrences.map(o => o.heading);
+    expect(headings).toContain('Monday');
+    expect(headings).toContain('Wednesday');
+  });
+
+  test('rows from a single occurrence keep sets grouped for repeatability', () => {
+    // "305 6,6,4" is one row with 3 sets — stronger signal than three separate rows
+    const note = '-Bench\n305 6,6,4\n295 6';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.rows[0].sets).toHaveLength(3); // 6,6,4
+    expect(ex.rows[1].sets).toHaveLength(1); // 6
+  });
+
+  test('multiple exercises in same note produce separate derived entries', () => {
+    const note = '-Bench\n80 8,8,8\n-Squat\n205 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    const result = deriveWorkoutAnalytics(sections);
+    const names = result.exercises.map(e => e.name);
+    expect(names).toContain('Bench');
+    expect(names).toContain('Squat');
+  });
+
+  test('non-weight exercise rows preserved in occurrence rows', () => {
+    const note = '-Bike\n5 min 9';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.occurrences[0].sets).toHaveLength(0);
+  });
+});
+
+describe('deriveWorkoutAnalytics — sample workout shapes', () => {
+  test('deload-format note produces correct PR estimates', () => {
+    const note = 'Monday — Push\nDB Bench: 80 lbs 3x8';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.estimated_pr).toBeCloseTo(epleyPR(80, 8));
+  });
+
+  test('multi-weight row: best set wins for estimated_pr', () => {
+    // 85 8 80 8,8,8 — 85x8 should yield the highest PR
+    const note = '-Bench\n85 8 80 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    const ex = deriveWorkoutAnalytics(sections).exercises[0];
+    expect(ex.estimated_pr).toBeCloseTo(epleyPR(85, 8));
+  });
+
+  test('1k-relevant exercises each surface an estimated_pr', () => {
+    const note = [
+      '-Bench\n225 5',
+      '-Squat\n315 3',
+      '-Deadlift\n405 1',
+    ].join('\n');
+    const { sections } = parseWorkoutNote(note);
+    const result = deriveWorkoutAnalytics(sections);
+    for (const name of ['Bench', 'Squat', 'Deadlift']) {
+      const ex = result.exercises.find(e => e.name === name);
+      expect(ex.estimated_pr).not.toBeNull();
+    }
+  });
+});
 
 // ── parseWeightEntry ──────────────────────────────────────────────────────────
 
