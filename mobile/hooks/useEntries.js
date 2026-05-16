@@ -66,6 +66,7 @@ export function useWorkoutNote() {
 
   useEffect(() => {
     Storage.loadWorkoutNote()
+      .then(n => n ?? Storage.migrateWorkoutNote())
       .then(setNote)
       .catch(e => setError(e))
       .finally(() => setLoading(false));

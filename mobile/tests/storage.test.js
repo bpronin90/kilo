@@ -10,6 +10,7 @@ import {
   loadWorkoutNote,
   saveWorkoutNote,
   clearWorkoutNote,
+  migrateWorkoutNote,
 } from '../storage/entries';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
@@ -144,5 +145,38 @@ describe('workout note storage', () => {
     const entries = await loadWeightEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe(W1.id);
+  });
+});
+
+// ── workout note migration ────────────────────────────────────────────────────
+
+describe('migrateWorkoutNote', () => {
+  test('returns null when both stores are empty', async () => {
+    const result = await migrateWorkoutNote();
+    expect(result).toBeNull();
+  });
+
+  test('synthesizes a note from existing sessions and saves it', async () => {
+    await saveWorkoutSession(S1);
+    const result = await migrateWorkoutNote();
+    expect(result).not.toBeNull();
+    expect(result.raw_text).toContain('2026-05-01');
+    expect(result.raw_text).toContain('Squat');
+    expect(result.raw_text).toContain('225');
+  });
+
+  test('is a no-op when a note already exists', async () => {
+    await saveWorkoutNote('existing note');
+    await saveWorkoutSession(S1);
+    const result = await migrateWorkoutNote();
+    expect(result.raw_text).toBe('existing note');
+  });
+
+  test('migrated note is then loadable via loadWorkoutNote', async () => {
+    await saveWorkoutSession(S1);
+    await migrateWorkoutNote();
+    const note = await loadWorkoutNote();
+    expect(note).not.toBeNull();
+    expect(note.raw_text).toContain('Squat');
   });
 });

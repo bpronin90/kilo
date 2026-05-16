@@ -88,3 +88,34 @@ export async function saveWorkoutNote(raw_text) {
 export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
 }
+
+// One-time migration: synthesize a raw note from legacy structured sessions.
+// No-op if the note already exists or there are no sessions to migrate.
+export async function migrateWorkoutNote() {
+  const existing = await loadWorkoutNote();
+  if (existing) return existing;
+  const sessions = await readList(WORKOUT_KEY);
+  if (!sessions.length) return null;
+  const raw_text = sessions
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(session => {
+      const lines = [`=== ${session.date} ===`];
+      for (const item of (session.items || [])) {
+        const setStr = (item.sets || [])
+          .map(s => {
+            if (s.weight_value != null && s.rep_count != null) return `${s.weight_value} ${s.rep_count}`;
+            if (s.rep_count != null) return String(s.rep_count);
+            if (s.duration_seconds != null) return `${s.duration_seconds}s`;
+            return '';
+          })
+          .filter(Boolean)
+          .join(', ');
+        lines.push(setStr ? `${item.exercise_name} ${setStr}` : item.exercise_name);
+        if (item.note_text) lines.push(`  ${item.note_text}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n\n');
+  return saveWorkoutNote(raw_text);
+}
