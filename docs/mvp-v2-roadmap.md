@@ -240,8 +240,7 @@ Ordered tasks:
 - Allowed scope: estimated PR math, 1k tracking, PO or repeatability logic,
   and analytics tab presentation.
 - Explicit out of scope: coaching or recommendations.
-- Dependency: Phase 2 Task 3 complete, plus each task's specific prerequisites
-  below.
+- Dependency: Phases 2 and 3 complete.
 - Completion condition: the analytics tab gives immediate value for tracked
   lifts, 1k progress, and workout progression.
 
