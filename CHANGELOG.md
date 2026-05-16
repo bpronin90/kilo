@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 - 2026-05-16
+
+- Issue #53: Added a native tracked-exercise estimated-PR engine that computes
+  Epley values per parseable set, surfaces the best current estimate per
+  tracked exercise, and deduplicates default and caller-supplied tracked names
+  before emitting analytics rows.
+
 ## 0.3.2 - 2026-05-16
 
 - Issue #48: Added a native derived workout analytics contract on top of

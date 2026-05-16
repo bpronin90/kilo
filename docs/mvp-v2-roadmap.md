@@ -250,6 +250,7 @@ Ordered tasks:
 #### Task 1: Build the estimated PR engine
 - Session goal: calculate exercise PRs from parsed sets using Epley at the
   individual-set level.
+- Status: complete.
 - Intended agent: `claude`
 - Allowed scope: calculations, parser integration, and tests.
 - Explicit out of scope: analytics tab visuals.
