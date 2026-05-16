@@ -78,8 +78,22 @@ export async function saveWorkoutNote(raw_text) {
   const now = new Date().toISOString();
   const existing = await loadWorkoutNote();
   const note = {
+    ...existing,
     raw_text,
     saved_at: existing ? existing.saved_at : now,
+    updated_at: now,
+    tracked_exercises: existing?.tracked_exercises || [],
+  };
+  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
+  return note;
+}
+
+export async function saveTrackedExercises(tracked_exercises) {
+  const now = new Date().toISOString();
+  const existing = await loadWorkoutNote();
+  const note = {
+    ...existing,
+    tracked_exercises,
     updated_at: now,
   };
   await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
