@@ -15,11 +15,15 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
 
   const hasContent = workoutNoteText.trim().length > 0;
 
-  // Phase machine: pending → active (when saving flips true) → idle (when saving flips false).
-  // Only switch to read mode after going through the active phase to prevent a pre-start close.
+  // Phase machine: pending → active (saving=true) → idle (saving=false).
+  // Exit pending early if parent surfaces errorMessage without ever setting saving=true.
   React.useEffect(() => {
-    if (savePhase === 'pending' && saving) {
-      setSavePhase('active');
+    if (savePhase === 'pending') {
+      if (saving) {
+        setSavePhase('active');
+      } else if (errorMessage) {
+        setSavePhase('idle');
+      }
     } else if (savePhase === 'active' && !saving) {
       setSavePhase('idle');
       if (!errorMessage) {
