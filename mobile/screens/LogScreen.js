@@ -6,7 +6,8 @@ import { parseWorkoutNote } from '../lib/parser';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, errorMessage, saving }) {
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
-  const [isSaving, setIsSaving] = useState(false);
+  // 'idle' | 'pending' (triggered, waiting for parent saving=true) | 'active' (saving in progress)
+  const [savePhase, setSavePhase] = useState('idle');
 
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
@@ -14,15 +15,18 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
 
   const hasContent = workoutNoteText.trim().length > 0;
 
-  // Handle save completion
+  // Phase machine: pending → active (when saving flips true) → idle (when saving flips false).
+  // Only switch to read mode after going through the active phase to prevent a pre-start close.
   React.useEffect(() => {
-    if (isSaving && !saving) {
-      setIsSaving(false);
+    if (savePhase === 'pending' && saving) {
+      setSavePhase('active');
+    } else if (savePhase === 'active' && !saving) {
+      setSavePhase('idle');
       if (!errorMessage) {
         setMode('read');
       }
     }
-  }, [saving, errorMessage, isSaving]);
+  }, [saving, errorMessage, savePhase]);
 
   return (
     <ScrollView
@@ -93,10 +97,10 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout, 
           <Button 
             onPress={() => {
               onSaveWorkout();
-              setIsSaving(true);
-            }} 
-            title="Save note" 
-            disabled={saving} 
+              setSavePhase('pending');
+            }}
+            title="Save note"
+            disabled={saving || savePhase !== 'idle'}
             style={styles.saveButton} 
           />
         </Card>
