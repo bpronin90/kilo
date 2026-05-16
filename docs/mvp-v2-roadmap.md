@@ -180,6 +180,7 @@ Ordered tasks:
 #### Task 2: Add a formatted mirror of the workout note
 - Session goal: preserve aesthetics without changing the underlying note
   model.
+- Status: complete.
 - Intended agent: `gemini`
 - Allowed scope: workout tab presentation only.
 - Explicit out of scope: parser internals or analytics math.

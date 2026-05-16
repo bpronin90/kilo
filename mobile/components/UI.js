@@ -46,6 +46,45 @@ export function Chip({ children }) {
   );
 }
 
+export function WorkoutHeading({ children }) {
+  return <Text style={styles.workoutHeading}>{children}</Text>;
+}
+
+export function WorkoutSubheading({ children }) {
+  return (
+    <View style={styles.subheadingContainer}>
+      <Text style={styles.workoutSubheading}>{children}</Text>
+      <View style={styles.subheadingLine} />
+    </View>
+  );
+}
+
+export function ExerciseBlock({ name, children }) {
+  return (
+    <View style={styles.exerciseBlock}>
+      <Text style={styles.exerciseName}>{name}</Text>
+      <View style={styles.exerciseContent}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+export function SetLine({ sets }) {
+  if (!sets || sets.length === 0) return null;
+  
+  // Group sets by weight for cleaner display: "135 x 5, 5, 5"
+  const weight = sets[0].weight_value;
+  const reps = sets.map(s => s.rep_count).join(', ');
+  
+  return (
+    <View style={styles.setLine}>
+      <Text style={styles.setWeight}>{weight ? `${weight} lb` : 'Bodyweight'}</Text>
+      <Text style={styles.setReps}>{reps}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
@@ -108,5 +147,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: Colors.chipText,
+  },
+  workoutHeading: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
+    marginTop: 24,
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  subheadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  workoutSubheading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  subheadingLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    opacity: 0.5,
+  },
+  exerciseBlock: {
+    marginBottom: 20,
+    gap: 6,
+  },
+  exerciseName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  exerciseContent: {
+    paddingLeft: 4,
+    gap: 4,
+  },
+  setLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  setWeight: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    width: 65,
+  },
+  setReps: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: Colors.text,
   },
 });
