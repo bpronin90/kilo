@@ -42,6 +42,12 @@ constraints:
    - `cd mobile`
    - `eas build --platform android --profile preview`
    - Install the resulting APK on the phone
+   - After a compatible Android build is installed, publish OTA-safe JS and
+     asset updates with `npm --prefix mobile run publish:android -- --message
+     "describe the change"`
+   - Native-affecting changes still require a new Android build because the
+     Expo runtime boundary is now enforced with
+     `runtimeVersion.policy: "fingerprint"`
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of

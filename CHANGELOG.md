@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 - 2026-05-17
+
+- Issue #62: Enabled Android EAS OTA updates for the native Expo app by
+  configuring `expo-updates`, explicit Android update channels, channel-based
+  publish scripts, and a fingerprint-based runtime boundary so JS and asset
+  changes can ship without a rebuild while native-affecting changes still
+  require a new build.
+
 ## 0.12.0 - 2026-05-17
 
 - Issue #64: Replaced the native Home tab with a dashboard that shows recent
