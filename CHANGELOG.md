@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0 - 2026-05-17
+
+- Issue #55: Replaced the native Stats summary grid with a minimal analytics
+  surface that combines tracked-lift estimated PRs, 1k progress,
+  progression/repeatability signals, weight-trend cards, and shared
+  workout-session refresh behavior in the Expo app.
+
 ## 0.10.0 - 2026-05-16
 
 - Issue #54: Added local native progression-over-time and repeatability

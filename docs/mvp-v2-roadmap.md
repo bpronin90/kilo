@@ -293,6 +293,7 @@ Ordered tasks:
 #### Task 4: Build the analytics tab UI
 - Session goal: present tracked lifts, estimated PRs, 1k progress, PO, and
   weight trends in one clean analytics surface.
+- Status: complete.
 - Intended agent: `gemini`
 - Allowed scope: analytics tab presentation and user interaction.
 - Explicit out of scope: analytics formula design.
