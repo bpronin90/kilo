@@ -179,9 +179,9 @@ export function parseWorkoutNote(noteText) {
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
 
-    // Bare dash: session skip slot in exercise context, silently dropped otherwise
+    // Bare dash: session skip slot in exercise context (including non-weight), silently dropped otherwise
     if (trimmed === '-') {
-      if (currentExercise && !currentExerciseNonWeight) {
+      if (currentExercise) {
         currentExercise.session_entries.push({ skipped: true, raw: '-', sets: [] });
       }
       continue;
@@ -243,6 +243,7 @@ export function parseWorkoutNote(noteText) {
         raw_header: trimmed,
         rows: [{ raw: trimmed, sets: dlSets }],
         sets: dlSets,
+        session_entries: [],
         unparsed_rows: [],
       });
       continue;

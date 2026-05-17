@@ -88,39 +88,70 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
-          {sessionInfo.sessions.length > 0 && (
-            <Text style={styles.sessionCount}>
-              {sessionInfo.sessions.length} {sessionInfo.sessions.length === 1 ? 'session' : 'sessions'} detected
-            </Text>
-          )}
-          {parsed.sections.map((section, si) => (
-            <View key={`section-${si}`}>
-              {section.heading && <WorkoutHeading>{section.heading}</WorkoutHeading>}
-              {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-              {section.exercises.map((ex, ei) => (
-                <ExerciseBlock 
-                  key={`ex-${si}-${ei}`} 
-                  name={ex.name}
-                  isTracked={trackedExercises.includes(ex.name)}
-                  onToggleTrack={() => handleToggleTrack(ex.name)}
-                >
-                  {ex.rows.map((row, ri) => (
-                    <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />
+          {sessionInfo.sessions.length > 0 ? (
+            // Session-aligned view: one editable block per detected session
+            sessionInfo.sessions.map((session) => (
+              <View key={`session-${session.session_index}`} style={styles.sessionBlock}>
+                <View style={styles.sessionHeader}>
+                  <Text style={styles.sessionLabel}>Session {session.session_index}</Text>
+                  <Pressable
+                    onPress={() => setMode('edit')}
+                    style={styles.sessionEditLink}
+                  >
+                    <Text style={styles.sessionEditLinkText}>Edit</Text>
+                  </Pressable>
+                </View>
+                {session.entries.map((e, ei) => (
+                  <ExerciseBlock
+                    key={`se-${session.session_index}-${ei}`}
+                    name={e.exercise_name}
+                    isTracked={trackedExercises.includes(e.exercise_name)}
+                    onToggleTrack={() => handleToggleTrack(e.exercise_name)}
+                  >
+                    {e.entry.skipped ? (
+                      <Text style={styles.skippedEntry}>— skipped</Text>
+                    ) : e.entry.unparsed ? (
+                      <Text style={styles.unparsedRow}>{e.entry.raw}</Text>
+                    ) : (
+                      <SetLine sets={e.entry.sets} />
+                    )}
+                  </ExerciseBlock>
+                ))}
+              </View>
+            ))
+          ) : (
+            // Plain section view for notes without positional session entries
+            <>
+              {parsed.sections.map((section, si) => (
+                <View key={`section-${si}`}>
+                  {section.heading && <WorkoutHeading>{section.heading}</WorkoutHeading>}
+                  {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                  {section.exercises.map((ex, ei) => (
+                    <ExerciseBlock
+                      key={`ex-${si}-${ei}`}
+                      name={ex.name}
+                      isTracked={trackedExercises.includes(ex.name)}
+                      onToggleTrack={() => handleToggleTrack(ex.name)}
+                    >
+                      {ex.rows.map((row, ri) => (
+                        <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />
+                      ))}
+                      {ex.unparsed_rows.map((u, ui) => (
+                        <Text key={`u-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                      ))}
+                    </ExerciseBlock>
                   ))}
-                  {ex.unparsed_rows.map((u, ui) => (
-                    <Text key={`u-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                  ))}
-                </ExerciseBlock>
+                </View>
               ))}
-            </View>
-          ))}
-          {!parsed.sections.length && (
-            <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+              {!parsed.sections.length && (
+                <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+              )}
+            </>
           )}
-          <Button 
-            onPress={() => setMode('edit')} 
-            title="Edit note" 
-            style={styles.editButton} 
+          <Button
+            onPress={() => setMode('edit')}
+            title="Edit note"
+            style={styles.editButton}
           />
         </View>
       ) : (
@@ -244,9 +275,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  sessionCount: {
+  sessionBlock: {
+    marginBottom: 24,
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
+  sessionLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  sessionEditLink: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: Colors.chipBackground,
+  },
+  sessionEditLinkText: {
     fontSize: 13,
+    fontWeight: '700',
+    color: Colors.accent,
+  },
+  skippedEntry: {
+    fontSize: 14,
     color: Colors.textMuted,
-    marginBottom: 12,
+    fontStyle: 'italic',
   },
 });

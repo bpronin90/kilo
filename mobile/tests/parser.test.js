@@ -1309,6 +1309,19 @@ describe('parseWorkoutNote — session_entries', () => {
     expect(r.sections[0].exercises[0].session_entries).toHaveLength(1);
   });
 
+  test('deload exercise has session_entries field', () => {
+    const r = parseWorkoutNote('Squat: 155 lbs 3x8');
+    expect(r.sections[0].exercises[0]).toHaveProperty('session_entries');
+    expect(r.sections[0].exercises[0].session_entries).toHaveLength(0);
+  });
+
+  test('bare dash in non-weight exercise context records a skip slot', () => {
+    const r = parseWorkoutNote('-Bike\n-\n- 5 min');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(2);
+    expect(ex.session_entries[0].skipped).toBe(true);
+  });
+
   test('warmup section and lifting section exercises both get session_entries', () => {
     const note = '+WARMUP\n-Bike\n- 5 min\n+LIFTING\n-Bench\n- 125 4,4,4';
     const r = parseWorkoutNote(note);
@@ -1329,6 +1342,37 @@ describe('parseWorkoutNote — session_entries', () => {
 });
 
 // ── buildSessionsFromNote ─────────────────────────────────────────────────────
+
+describe('buildSessionsFromNote — deload and non-weight exercises', () => {
+  test('mixed deload + session entries does not throw', () => {
+    const note = 'Squat: 155 lbs 3x8\n-Bench\n- 125 4,4,4';
+    expect(() => buildSessionsFromNote(note)).not.toThrow();
+  });
+
+  test('deload exercise is excluded from session building (no session_entries)', () => {
+    const note = 'Squat: 155 lbs 3x8\n-Bench\n- 125 4,4,4';
+    const r = buildSessionsFromNote(note);
+    const names = r.sessions[0].entries.map(e => e.exercise_name);
+    expect(names).not.toContain('Squat');
+    expect(names).toContain('Bench');
+  });
+
+  test('non-weight exercise bare dash preserves session slot for cross-exercise alignment', () => {
+    const note = '-Bike\n-\n- 5 min\n-Bench\n- 125 4,4,4\n- 125 5,5,5';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(2);
+    const bike1 = r.sessions[0].entries.find(e => e.exercise_name === 'Bike');
+    expect(bike1.entry.skipped).toBe(true);
+    const bike2 = r.sessions[1].entries.find(e => e.exercise_name === 'Bike');
+    expect(bike2.entry.skipped).toBe(false);
+  });
+
+  test('non-weight exercise with correct slot count does not produce a false warning', () => {
+    const note = '-Bike\n-\n- 5 min\n-Bench\n- 125 4,4,4\n- 125 5,5,5';
+    const r = buildSessionsFromNote(note);
+    expect(r.warnings).toHaveLength(0);
+  });
+});
 
 describe('buildSessionsFromNote — basics', () => {
   test('empty note returns no sessions and no warnings', () => {
