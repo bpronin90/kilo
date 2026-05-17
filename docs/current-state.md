@@ -112,7 +112,9 @@ The real native app path now has a modular React Native shell:
   only leaves edit mode after a successful save result
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
-- `mobile/screens/StatsScreen.js` renders a small native summary card grid
+- `mobile/screens/StatsScreen.js` now renders a native analytics surface for
+  weight trends, tracked-lift PRs, 1k progress, progression status, and
+  repeatability context
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/theme/colors.js` centralizes the native color system
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
@@ -161,7 +163,11 @@ workout-note revisions, so the note-first authoring shift is complete before
 the downstream read and analytics surfaces are updated. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection persists on the
-canonical workout-note document.
+canonical workout-note document. The native Stats tab now consumes those
+derived analytics directly, combining weight trends with tracked-lift
+estimated PRs, 1k progress, progression status, and repeatability signals in
+one minimal analytics view while keeping totals in sync with shared
+workout-session refreshes.
 
 ### Parser (`src/parser.jsx`)
 
