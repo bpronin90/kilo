@@ -7,6 +7,17 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "ios-simulator": {
+      "ios": {
+        "simulator": true
+      }
+    },
+    "ios-device": {
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
     }
   }
 }

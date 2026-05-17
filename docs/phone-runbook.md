@@ -193,3 +193,102 @@ eas build:list --platform android --limit 5
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
 - The `preview` profile intentionally omits signing setup, which is sufficient for local sideloading.
+
+---
+
+# Standalone iOS Build via EAS
+
+Use this when you need an iOS build from the `mobile/` Expo app.
+
+Two profiles are available:
+
+- `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required. **macOS required to use the artifact** — the EAS remote build runs without a Mac, but running the Simulator and `xcrun simctl` requires macOS with Xcode installed. Windows and Linux contributors can trigger the build but cannot use the resulting artifact locally.
+- `ios-device` — builds an internal-distribution `.ipa` for direct real-device install; requires an Apple Developer account and device UDIDs registered in the Apple Developer portal.
+
+## Prerequisites
+
+- Expo account: `npx expo login`
+- EAS CLI: `npm install -g eas-cli`
+- For `ios-simulator`: macOS with Xcode installed to run the Simulator locally (EAS cloud handles the build itself on any OS).
+- For `ios-device`: Apple Developer Program membership; target device UDIDs registered at [developer.apple.com/account/resources/devices](https://developer.apple.com/account/resources/devices); EAS will manage the ad hoc provisioning profile automatically.
+
+## Build for iOS Simulator
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-simulator
+```
+
+- Build runs on EAS cloud servers and can be triggered from any OS.
+- When the build finishes, EAS prints a download URL for the `.app` archive.
+- **macOS only from here:** unzip the archive and drag the `.app` into an open Simulator window, or use:
+
+```bash
+xcrun simctl install booted <path-to-app>
+xcrun simctl launch booted com.benpronin.kilo
+```
+
+These commands require macOS with Xcode. They are not available on Windows or Linux.
+
+## Build for Real Device (internal distribution)
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-device
+```
+
+- Uses `distribution: internal`, which produces an ad hoc `.ipa` installable directly from the EAS build URL — no App Store Connect or TestFlight submission required.
+- EAS will prompt for Apple Developer credentials on the first run and store managed credentials in the EAS dashboard.
+- The device must have its UDID registered in your Apple Developer portal before the build starts; EAS includes registered UDIDs in the ad hoc provisioning profile automatically.
+- When the build finishes, EAS prints a direct download URL for the `.ipa`.
+- **iOS 16+ Developer Mode required.** Internally distributed builds are treated as developer builds on iOS 16 and later. Before the `.ipa` will launch, go to **Settings → Privacy & Security → Developer Mode** on the device and enable it. The device will restart.
+
+## Install on iPhone or iPad
+
+1. Open the finished build from the EAS build URL in a desktop browser or run:
+
+```bash
+eas build:list --platform ios --limit 5
+```
+
+2. Open the latest `ios-device` build details page and use its install link.
+3. On the target iPhone or iPad, open the install link from Safari.
+4. Tap the install prompt and allow iOS to download the app.
+5. If iOS 16+ Developer Mode is not already enabled, try launching the app once, accept the prompt, then go to **Settings → Privacy & Security → Developer Mode** and turn it on. The device will restart.
+6. After the restart, unlock the device, confirm **Turn On** for Developer Mode, enter the passcode if prompted, and launch the app again.
+
+Alternative install paths:
+
+- Connect the device to a Mac and install the `.ipa` with Apple Configurator 2.
+- Connect the device to a Mac and install the `.ipa` from Xcode's **Devices and Simulators** window.
+
+If the install link fails, re-check that the device UDID was registered before the build started. If it was added afterward, create a new `ios-device` build.
+
+## Updating the app later
+
+When the app changes, build a new internal-distribution `.ipa` and install it on the device again:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-device
+```
+
+- Open the latest build's install link from Safari on the same device and install the new build over the old one.
+- If a new device needs access, register its UDID first and then create a fresh build. Existing `.ipa` files do not gain access to newly added devices.
+- This flow does not provide automatic OTA updates. New shipped app changes require a new build and reinstall.
+- Existing local app data will usually survive an in-place update, but that should still be verified when the change matters.
+
+## Checking build status
+
+```bash
+eas build:list --platform ios --limit 5
+```
+
+## Known blockers
+
+- **Apple Developer account required for device builds.** The `ios-device` profile cannot produce a signed `.ipa` without valid credentials. Without an account, use `ios-simulator` only.
+- **Device UDID must be registered before building.** Internal distribution ties the provisioning profile to specific registered UDIDs. A device not registered at the time of the build cannot install that `.ipa`.
+- **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
+- **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
+- **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
+- **No OTA update path.** New app changes require a new EAS build and reinstall, same as the Android path.

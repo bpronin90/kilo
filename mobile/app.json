@@ -13,7 +13,8 @@
       "backgroundColor": "#f4efe5"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.benpronin.kilo"
     },
     "android": {
       "package": "com.benpronin.kilo",
