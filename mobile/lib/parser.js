@@ -101,6 +101,8 @@ export function parseWorkoutRow(raw) {
 
 const _DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i;
 const _EXERCISE_DASH_RE = /^-([^-\s].*)/;
+// Session entry line: "- data" (dash-space-content within an exercise block)
+const _SESSION_ENTRY_RE = /^-\s+(.+)/;
 const _EXERCISE_NUMBERED_RE = /^(\d+[a-z]?)\.\s+(.+)/i;
 const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
 // Deload format: "Name: weight lbs NxM"
@@ -169,14 +171,21 @@ export function parseWorkoutNote(noteText) {
   function startExercise(name, rawHeader) {
     flushExercise();
     ensureSection();
-    currentExercise = { name, raw_header: rawHeader, rows: [], unparsed_rows: [] };
+    currentExercise = { name, raw_header: rawHeader, rows: [], session_entries: [], unparsed_rows: [] };
     currentExerciseNonWeight = _NON_WEIGHT_RE.test(name);
   }
 
   for (const rawLine of noteText.split('\n')) {
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
-    if (/^-\s*$/.test(trimmed)) continue;
+
+    // Bare dash: session skip slot in exercise context (including non-weight), silently dropped otherwise
+    if (trimmed === '-') {
+      if (currentExercise) {
+        currentExercise.session_entries.push({ skipped: true, raw: '-', sets: [] });
+      }
+      continue;
+    }
 
     if (_DAY_RE.test(trimmed)) {
       flushSection();
@@ -234,14 +243,34 @@ export function parseWorkoutNote(noteText) {
         raw_header: trimmed,
         rows: [{ raw: trimmed, sets: dlSets }],
         sets: dlSets,
+        session_entries: [],
         unparsed_rows: [],
       });
       continue;
     }
 
     if (currentExercise) {
+      const sessionEntryMatch = _SESSION_ENTRY_RE.exec(trimmed);
+
       if (currentExerciseNonWeight) {
         currentExercise.unparsed_rows.push(trimmed);
+        if (sessionEntryMatch) {
+          currentExercise.session_entries.push({ skipped: false, raw: sessionEntryMatch[1].trim(), sets: [], unparsed: true });
+        }
+      } else if (sessionEntryMatch) {
+        const entryRaw = sessionEntryMatch[1].trim();
+        const rowResult = parseWorkoutRow(entryRaw);
+        if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
+          const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
+          const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
+          currentExercise.rows.push({ raw: entryRaw, sets: reindexed });
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed });
+        } else if (rowResult.skipped) {
+          currentExercise.session_entries.push({ skipped: true, raw: entryRaw, sets: [] });
+        } else if (!rowResult.blank) {
+          currentExercise.unparsed_rows.push(entryRaw);
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true });
+        }
       } else {
         const rowResult = parseWorkoutRow(trimmed);
         if (rowResult.ok && !rowResult.blank && !rowResult.skipped) {
@@ -257,6 +286,51 @@ export function parseWorkoutNote(noteText) {
 
   flushSection();
   return { ok: true, sections };
+}
+
+// ── buildSessionsFromNote ─────────────────────────────────────────────────────
+// Aligns exercise session_entries by position across the whole note.
+// Section/day boundaries and warmup/lift distinctions are ignored for session
+// construction — only the positional order of `- entry` lines matters.
+//
+// Returns:
+//   { sessions: Session[], warnings: string[] }
+//   Session: { session_index: number, entries: SessionEntry[] }
+//   SessionEntry: { exercise_name: string, entry: { raw, sets, skipped, unparsed? } }
+export function buildSessionsFromNote(noteText) {
+  const { sections } = parseWorkoutNote(noteText || '');
+
+  // Collect all exercises across all sections, preserving declaration order
+  const allExercises = sections.flatMap(s => s.exercises);
+
+  // Only exercises that have at least one explicit session entry participate
+  const withEntries = allExercises.filter(e => e.session_entries.length > 0);
+
+  if (withEntries.length === 0) return { sessions: [], warnings: [] };
+
+  const counts = withEntries.map(e => e.session_entries.length);
+  const maxCount = Math.max(...counts);
+  const minCount = Math.min(...counts);
+
+  const warnings = [];
+  if (minCount !== maxCount) {
+    const details = withEntries.map(e => `${e.name} (${e.session_entries.length})`).join(', ');
+    warnings.push(
+      `Uneven entry counts — ${details}. Check your note for missing or extra entries and correct before logging.`
+    );
+  }
+
+  const sessions = Array.from({ length: maxCount }, (_, i) => ({
+    session_index: i + 1,
+    entries: withEntries.map(ex => ({
+      exercise_name: ex.name,
+      entry: i < ex.session_entries.length
+        ? ex.session_entries[i]
+        : { skipped: true, raw: null, sets: [] },
+    })),
+  }));
+
+  return { sessions, warnings };
 }
 
 // ── Derived analytics ────────────────────────────────────────────────────────
