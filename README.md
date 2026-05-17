@@ -1,15 +1,30 @@
 # Kilo
 
-Kilo is a client-only React fitness-logging prototype for two core MVP loops:
+Kilo currently has two client-only app paths:
 
-- logging workout rows through a constrained freeform parser
-- logging body-weight entries and reviewing recent saved history
+- `mobile/` is the active native app path. It is an Expo/React Native app with
+  local-only persistence.
+- The repo root is the legacy browser prototype path. It still runs directly in
+  the browser from `Kilo.html` and remains useful as a reference surface during
+  the native migration.
 
-There is no build step, backend, or Supabase wiring in the current app. The
-prototype runs directly in the browser and persists user-created entries in
-`localStorage`.
+There is still no backend or Supabase wiring in either path. The browser
+prototype persists user-created entries in `localStorage`, while the native app
+persists them locally in AsyncStorage-backed modules under `mobile/`.
 
-## Start The App
+## Run The Native App
+
+From `mobile/`, use the Expo app workflow for local development.
+
+For physical-device Android packaging, the currently documented native build
+path is:
+
+```sh
+cd mobile
+eas build --platform android --profile preview
+```
+
+## Run The Legacy Prototype
 
 From the repo root:
 
@@ -20,8 +35,8 @@ python3 -m http.server 8000
 Open [http://localhost:8000/Kilo.html](http://localhost:8000/Kilo.html) in a
 browser.
 
-The browser entry point is `Kilo.html`. It loads React, ReactDOM, and Babel
-from CDN and then loads the app source from `src/`.
+The legacy browser entry point is `Kilo.html`. It loads React, ReactDOM, and
+Babel from CDN and then loads the app source from `src/`.
 
 ## Run Tests
 
@@ -50,7 +65,8 @@ test suite.
 
 | Path | What it is |
 |------|------------|
-| `Kilo.html` | Browser entry point for the prototype |
+| `mobile/` | Active Expo/React Native app path |
+| `Kilo.html` | Browser entry point for the legacy prototype |
 | `src/app.jsx` | Top-level tab routing across Home, Log, Weight, Stats, and More |
 | `src/parser.jsx` | Workout and weight parse/validation logic |
 | `src/data.jsx` | Seeded exercises, sessions, weights, goals, and global runtime state |
@@ -70,4 +86,5 @@ test suite.
 | [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) | Broader MVP scope and the pre-launch readiness sequence |
 
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
-what is implemented and what still gates launch validation.
+what is implemented, which app path is current, and what still gates launch
+validation.
