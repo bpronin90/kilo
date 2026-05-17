@@ -202,13 +202,14 @@ Use this when you need an iOS build from the `mobile/` Expo app.
 
 Two profiles are available:
 
-- `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required.
+- `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required. **macOS required to use the artifact** — the EAS remote build runs without a Mac, but running the Simulator and `xcrun simctl` requires macOS with Xcode installed. Windows and Linux contributors can trigger the build but cannot use the resulting artifact locally.
 - `ios-device` — builds an internal-distribution `.ipa` for direct real-device install; requires an Apple Developer account and device UDIDs registered in the Apple Developer portal.
 
 ## Prerequisites
 
 - Expo account: `npx expo login`
 - EAS CLI: `npm install -g eas-cli`
+- For `ios-simulator`: macOS with Xcode installed to run the Simulator locally (EAS cloud handles the build itself on any OS).
 - For `ios-device`: Apple Developer Program membership; target device UDIDs registered at [developer.apple.com/account/resources/devices](https://developer.apple.com/account/resources/devices); EAS will manage the ad hoc provisioning profile automatically.
 
 ## Build for iOS Simulator
@@ -218,14 +219,16 @@ cd /home/benpronin/projects/kilo/mobile
 eas build --platform ios --profile ios-simulator
 ```
 
-- Build runs on EAS cloud servers.
+- Build runs on EAS cloud servers and can be triggered from any OS.
 - When the build finishes, EAS prints a download URL for the `.app` archive.
-- Unzip the archive and drag the `.app` into an open Simulator window, or use:
+- **macOS only from here:** unzip the archive and drag the `.app` into an open Simulator window, or use:
 
 ```bash
 xcrun simctl install booted <path-to-app>
 xcrun simctl launch booted com.benpronin.kilo
 ```
+
+These commands require macOS with Xcode. They are not available on Windows or Linux.
 
 ## Build for Real Device (internal distribution)
 
@@ -238,6 +241,7 @@ eas build --platform ios --profile ios-device
 - EAS will prompt for Apple Developer credentials on the first run and store managed credentials in the EAS dashboard.
 - The device must have its UDID registered in your Apple Developer portal before the build starts; EAS includes registered UDIDs in the ad hoc provisioning profile automatically.
 - When the build finishes, EAS prints a direct download URL for the `.ipa`. Install using the EAS link on the device browser, Apple Configurator 2, or the Xcode Devices window.
+- **iOS 16+ Developer Mode required.** Internally distributed builds are treated as developer builds on iOS 16 and later. Before the `.ipa` will launch, go to **Settings → Privacy & Security → Developer Mode** on the device and enable it. The device will restart.
 
 ## Checking build status
 
@@ -249,6 +253,7 @@ eas build:list --platform ios --limit 5
 
 - **Apple Developer account required for device builds.** The `ios-device` profile cannot produce a signed `.ipa` without valid credentials. Without an account, use `ios-simulator` only.
 - **Device UDID must be registered before building.** Internal distribution ties the provisioning profile to specific registered UDIDs. A device not registered at the time of the build cannot install that `.ipa`.
+- **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
+- **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
 - **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
 - **No OTA update path.** New app changes require a new EAS build and reinstall, same as the Android path.
-- **Mac not required.** EAS remote builds handle the Xcode toolchain on Apple silicon build workers; a local Mac is not needed.
