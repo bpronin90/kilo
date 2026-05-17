@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.2 - 2026-05-17
+
+- Issue #66: Fixed the native workout-note editor polish so the bottom Log
+  read-view action now shows visible `Edit note` text and saving a note keeps
+  the user in the editor near the same cursor and scroll context instead of
+  jumping them back to a different read-view position.
+
 ## 0.13.1 - 2026-05-17
 
 - Issue #65: Fixed long-note workout session alignment in the native app so
