@@ -39,7 +39,8 @@ Agent runtime labels:
 - if `agent:codex` is set, require exactly one `model:` label: `model:gpt-5.4`, `model:gpt-5.4-mini`, or `model:gpt-5.3-codex`
 - if `agent:codex` is set, require exactly one `reasoning:` label: `reasoning:low`, `reasoning:medium`, `reasoning:high`, or `reasoning:xhigh`
 - if `agent:claude` or `agent:gemini` is set, do not add `model:` labels unless the repo later introduces agent-specific runtime labels for them
-- if `agent:claude` or `agent:gemini` is set, do not require `reasoning:` unless that agent path later supports an explicit reasoning control and the repo adopts labels for it
+- if `agent:claude` is set, require exactly one `reasoning:` label: `reasoning:low`, `reasoning:medium`, `reasoning:high`, or `reasoning:xhigh`
+- if `agent:gemini` is set, do not require `reasoning:` unless that agent path later supports an explicit reasoning control and the repo adopts labels for it
 
 Read only:
 - `AGENTS.md`
