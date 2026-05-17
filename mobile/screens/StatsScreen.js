@@ -16,11 +16,13 @@ export function StatsScreen() {
     const trends = computeWeightTrends(weightEntries);
     const latest = weightEntries[0];
     
+    const unit = latest?.weight_unit || 'lb';
+    
     return {
-      latestWeight: latest ? `${latest.weight_value} ${latest.weight_unit || 'lb'}` : '—',
+      latestWeight: latest ? `${latest.weight_value} ${unit}` : '—',
       weightCount: String(weightEntries.length),
-      avg7:  trends.avg7  !== null ? `${trends.avg7.toFixed(1)} lb`  : '—',
-      avg30: trends.avg30 !== null ? `${trends.avg30.toFixed(1)} lb` : '—',
+      avg7:  trends.avg7  !== null ? `${trends.avg7.toFixed(1)} ${unit}`  : '—',
+      avg30: trends.avg30 !== null ? `${trends.avg30.toFixed(1)} ${unit}` : '—',
       paceFlag: trends.paceFlag,
     };
   }, [weightEntries]);
