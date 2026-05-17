@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.1 - 2026-05-17
+
+- Issue #65: Fixed long-note workout session alignment in the native app so
+  positional `- ...` exercise entries now build shared sessions across warmup
+  and lifting blocks, bare `-` skip slots preserve cross-exercise alignment,
+  uneven entry counts surface a visible warning, and the Log read view exposes
+  one editable block per detected session instead of reporting sessions that
+  were not separately surfaced.
+
 ## 0.13.0 - 2026-05-17
 
 - Issue #62: Enabled Android EAS OTA updates for the native Expo app by
