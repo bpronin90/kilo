@@ -102,7 +102,7 @@ export default function App() {
 
   const saveWorkout = useCallback(async () => {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
-    Keyboard.dismiss();
+
     if (!workoutNoteText.trim()) {
       return { ok: false, error: 'Workout note is required' };
     }

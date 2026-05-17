@@ -116,9 +116,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   with read/edit modes, a formatted mirror of the canonical note, parsed
   exercise tracking toggles in read mode, session-aligned read blocks for notes
-  that use positional `- ...` entry history, visible uneven-entry warnings, and
-  attempt-scoped save handling that only leaves edit mode after a successful
-  save result
+  that use positional `- ...` entry history, visible uneven-entry warnings, a
+  labeled bottom `Edit note` action in the read view, and attempt-scoped save
+  handling that preserves the editor's current context instead of bouncing back
+  to the top-level read view after a successful save
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for

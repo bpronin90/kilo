@@ -41,7 +41,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     try {
       const result = await onSaveWorkout();
       if (result.ok) {
-        setMode('read');
+        // Stay in edit mode to preserve cursor/scroll context as requested in #66
       } else {
         setSaveError(result.error || 'Save failed');
       }
@@ -152,6 +152,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             onPress={() => setMode('edit')}
             title="Edit note"
             style={styles.editButton}
+            textStyle={styles.editButtonText}
           />
         </View>
       ) : (
@@ -263,6 +264,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: Colors.cardBorder,
+  },
+  editButtonText: {
+    color: Colors.accent,
   },
   warningCard: {
     borderColor: '#c9820a',
