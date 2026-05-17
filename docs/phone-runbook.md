@@ -240,8 +240,43 @@ eas build --platform ios --profile ios-device
 - Uses `distribution: internal`, which produces an ad hoc `.ipa` installable directly from the EAS build URL — no App Store Connect or TestFlight submission required.
 - EAS will prompt for Apple Developer credentials on the first run and store managed credentials in the EAS dashboard.
 - The device must have its UDID registered in your Apple Developer portal before the build starts; EAS includes registered UDIDs in the ad hoc provisioning profile automatically.
-- When the build finishes, EAS prints a direct download URL for the `.ipa`. Install using the EAS link on the device browser, Apple Configurator 2, or the Xcode Devices window.
+- When the build finishes, EAS prints a direct download URL for the `.ipa`.
 - **iOS 16+ Developer Mode required.** Internally distributed builds are treated as developer builds on iOS 16 and later. Before the `.ipa` will launch, go to **Settings → Privacy & Security → Developer Mode** on the device and enable it. The device will restart.
+
+## Install on iPhone or iPad
+
+1. Open the finished build from the EAS build URL in a desktop browser or run:
+
+```bash
+eas build:list --platform ios --limit 5
+```
+
+2. Open the latest `ios-device` build details page and use its install link.
+3. On the target iPhone or iPad, open the install link from Safari.
+4. Tap the install prompt and allow iOS to download the app.
+5. If iOS 16+ Developer Mode is not already enabled, try launching the app once, accept the prompt, then go to **Settings → Privacy & Security → Developer Mode** and turn it on. The device will restart.
+6. After the restart, unlock the device, confirm **Turn On** for Developer Mode, enter the passcode if prompted, and launch the app again.
+
+Alternative install paths:
+
+- Connect the device to a Mac and install the `.ipa` with Apple Configurator 2.
+- Connect the device to a Mac and install the `.ipa` from Xcode's **Devices and Simulators** window.
+
+If the install link fails, re-check that the device UDID was registered before the build started. If it was added afterward, create a new `ios-device` build.
+
+## Updating the app later
+
+When the app changes, build a new internal-distribution `.ipa` and install it on the device again:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-device
+```
+
+- Open the latest build's install link from Safari on the same device and install the new build over the old one.
+- If a new device needs access, register its UDID first and then create a fresh build. Existing `.ipa` files do not gain access to newly added devices.
+- This flow does not provide automatic OTA updates. New shipped app changes require a new build and reinstall.
+- Existing local app data will usually survive an in-place update, but that should still be verified when the change matters.
 
 ## Checking build status
 

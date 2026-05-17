@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3 - 2026-05-17
+
+- Issue #61: Added the first documented iOS EAS build path for the real
+  `mobile/` Expo app, including checked-in simulator and internal-device
+  profiles, the required iOS bundle identifier, explicit iPhone/iPad install
+  and update steps, and the remaining Apple account, UDID, Developer Mode, and
+  simulator-platform blockers.
+
 ## 0.11.2 - 2026-05-17
 
 - Issue #60: Reconciled the top-level README with the living current-state
