@@ -357,6 +357,9 @@ an installable path that does not depend on the developer machine staying on or
 serving a local Expo session. The one-time Expo account linking step still must
 write a real `extra.eas.projectId` into `mobile/app.json`, and the repo
 documents that contributors should commit that linked project ID once it exists.
+The shipped native Android launcher, adaptive icon, splash icon, and web
+favicon assets now use Kilo-branded PNG files instead of the default Expo
+placeholder artwork.
 
 ### Native UI runtime is not yet validated end-to-end
 

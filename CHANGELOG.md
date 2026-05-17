@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.1 - 2026-05-17
+
+- Issue #59: Replaced the native Expo app's default placeholder launcher,
+  adaptive-icon, splash, and favicon assets with shipped Kilo-branded PNG
+  assets, and aligned the Android adaptive-icon and splash background colors to
+  the branded native identity.
+
 ## 0.11.0 - 2026-05-17
 
 - Issue #55: Replaced the native Stats summary grid with a minimal analytics
