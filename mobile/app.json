@@ -34,7 +34,7 @@
       "checkAutomatically": "ON_LOAD"
     },
     "runtimeVersion": {
-      "policy": "sdkVersion"
+      "policy": "fingerprint"
     },
     "extra": {
       "eas": {
