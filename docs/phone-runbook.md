@@ -203,13 +203,13 @@ Use this when you need an iOS build from the `mobile/` Expo app.
 Two profiles are available:
 
 - `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required.
-- `ios-device` — builds a release `.ipa` for real-device install; requires an Apple Developer account and active signing credentials.
+- `ios-device` — builds an internal-distribution `.ipa` for direct real-device install; requires an Apple Developer account and device UDIDs registered in the Apple Developer portal.
 
 ## Prerequisites
 
 - Expo account: `npx expo login`
 - EAS CLI: `npm install -g eas-cli`
-- For `ios-device`: Apple Developer Program membership and EAS-managed credentials or your own provisioning profile and certificate.
+- For `ios-device`: Apple Developer Program membership; target device UDIDs registered at [developer.apple.com/account/resources/devices](https://developer.apple.com/account/resources/devices); EAS will manage the ad hoc provisioning profile automatically.
 
 ## Build for iOS Simulator
 
@@ -227,16 +227,17 @@ xcrun simctl install booted <path-to-app>
 xcrun simctl launch booted com.benpronin.kilo
 ```
 
-## Build for Real Device
+## Build for Real Device (internal distribution)
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
 eas build --platform ios --profile ios-device
 ```
 
+- Uses `distribution: internal`, which produces an ad hoc `.ipa` installable directly from the EAS build URL — no App Store Connect or TestFlight submission required.
 - EAS will prompt for Apple Developer credentials on the first run and store managed credentials in the EAS dashboard.
-- When the build finishes, EAS prints a download URL for the `.ipa`.
-- Install via TestFlight, Apple Configurator 2, or Xcode Devices window.
+- The device must have its UDID registered in your Apple Developer portal before the build starts; EAS includes registered UDIDs in the ad hoc provisioning profile automatically.
+- When the build finishes, EAS prints a direct download URL for the `.ipa`. Install using the EAS link on the device browser, Apple Configurator 2, or the Xcode Devices window.
 
 ## Checking build status
 
@@ -247,6 +248,7 @@ eas build:list --platform ios --limit 5
 ## Known blockers
 
 - **Apple Developer account required for device builds.** The `ios-device` profile cannot produce a signed `.ipa` without valid credentials. Without an account, use `ios-simulator` only.
-- **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is an x86_64/arm64 simulator binary, not a signed device build.
+- **Device UDID must be registered before building.** Internal distribution ties the provisioning profile to specific registered UDIDs. A device not registered at the time of the build cannot install that `.ipa`.
+- **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
 - **No OTA update path.** New app changes require a new EAS build and reinstall, same as the Android path.
 - **Mac not required.** EAS remote builds handle the Xcode toolchain on Apple silicon build workers; a local Mac is not needed.

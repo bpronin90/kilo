@@ -362,8 +362,9 @@ Android: the `preview` profile produces a plain `.apk` for sideloading.
 iOS: two profiles are available:
 - `ios-simulator` — builds a Simulator `.app` bundle; no Apple Developer account
   required.
-- `ios-device` — builds a release `.ipa` for real-device install; requires an
-  Apple Developer Program membership and valid signing credentials.
+- `ios-device` — builds an internal-distribution `.ipa` for direct real-device
+  install via ad hoc provisioning; requires an Apple Developer Program membership
+  and the target device UDID registered in the Apple Developer portal.
 
 The one-time Expo account linking step still must write a real
 `extra.eas.projectId` into `mobile/app.json`, and the repo documents that
@@ -373,11 +374,11 @@ The shipped native Android launcher, adaptive icon, splash icon, and web
 favicon assets now use Kilo-branded PNG files instead of the default Expo
 placeholder artwork.
 
-**iOS signing blocker:** the `ios-device` profile requires an Apple Developer
-account and EAS-managed (or locally supplied) provisioning credentials before a
-real-device `.ipa` can be produced. The `ios-simulator` profile has no such
-requirement. See `docs/phone-runbook.md` for the full iOS build command path and
-known blockers.
+**iOS device build blockers:** the `ios-device` profile uses internal
+(ad hoc) distribution, which requires an Apple Developer account and the target
+device UDID registered in the Apple Developer portal before the build starts. The
+`ios-simulator` profile has no such requirement. See `docs/phone-runbook.md` for
+the full iOS build command path and known blockers.
 
 ### Native UI runtime is not yet validated end-to-end
 
