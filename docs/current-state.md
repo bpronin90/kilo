@@ -28,7 +28,7 @@ entries are layered on top of this seed via `localStorage` merge on each page
 load.
 
 The browser prototype has five tabs: Home, Log, Weight, Stats, More. The native
-Expo app currently exposes four tabs: Home, Log, Weight, and Stats.
+Expo app now also exposes five tabs: Home, Log, Weight, Analytics, and More.
 
 For physical-device packaging, the repo now has two Android paths with different
 constraints:
@@ -45,9 +45,9 @@ constraints:
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
-plain text-only product naming. The native Expo path currently uses simple
-native text treatment and shared color tokens rather than the full prototype
-branding stack.
+plain text-only product naming. The native Expo path now also uses bundled Kilo
+logo and wordmark assets in its shared screen header, alongside an alpha
+version badge derived from `mobile/package.json`.
 
 The native app path is not yet a feature-complete port. It now proves that Kilo
 can run as a real React Native app with native screens, native parser/data
@@ -101,11 +101,12 @@ legacy prototype path.
 The real native app path now has a modular React Native shell:
 
 - `mobile/App.js` owns tab state, routes weight saves through the canonical
-  parser path, and now routes workout saves through the canonical workout-note
-  persistence path while still adapting persisted weight entries and legacy
-  workout sessions for the Home and Stats surfaces
-- `mobile/screens/HomeScreen.js` renders recent activity and a native overview
-  card
+  parser path, routes workout saves through the canonical workout-note
+  persistence path, adapts persisted entries for the Home and Analytics
+  surfaces, and now exposes a separate More tab for Help and About
+- `mobile/screens/HomeScreen.js` renders a native dashboard with summary cards,
+  workout-volume and weight-trend graphs, recent activity, and the exported
+  More/Help/About surfaces used by the More tab
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   with read/edit modes, a formatted mirror of the canonical note, parsed
   exercise tracking toggles in read mode, and attempt-scoped save handling that
@@ -113,9 +114,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
-  weight trends, tracked-lift PRs, 1k progress, progression status, and
-  repeatability context
+  weight trends, tracked-lift estimated-max values, 1k progress, progression
+  status, and set-count context
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
+- `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
   modules and now also includes tolerant workout-note parsing for the archived
@@ -160,14 +162,19 @@ compare the latest comparable weighted result against the prior comparable
 result without changing the formal estimated-PR formula. Recent history in
 the native app still reflects persisted workout sessions rather than live
 workout-note revisions, so the note-first authoring shift is complete before
-the downstream read and analytics surfaces are updated. The native Log read
+the downstream read and analytics surfaces are updated. The native Home tab is
+now a dashboard rather than a static blurb, showing recent activity plus simple
+workout-volume and bodyweight trend graphs as the default landing view. The
+native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection persists on the
-canonical workout-note document. The native Stats tab now consumes those
+canonical workout-note document. The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
-estimated PRs, 1k progress, progression status, and repeatability signals in
-one minimal analytics view while keeping totals in sync with shared
-workout-session refreshes.
+estimated-max values, 1k progress, progression status, and set-count context
+in one minimal analytics view while keeping totals in sync with shared
+workout-session refreshes. A separate native More tab now exposes Help and
+About surfaces, including plain-language terminology guidance, attribution,
+displayed version, and copyright notice.
 
 ### Parser (`src/parser.jsx`)
 

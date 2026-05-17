@@ -88,3 +88,7 @@ test suite.
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
 what is implemented, which app path is current, and what still gates launch
 validation.
+
+## Copyright
+
+Copyright © Benjamin Pronin. All rights reserved.
