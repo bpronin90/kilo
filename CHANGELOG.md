@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.0 - 2026-05-17
+
+- Issue #64: Replaced the native Home tab with a dashboard that shows recent
+  activity plus workout-volume and bodyweight trend graphs, renamed the native
+  Stats tab to Analytics with clearer tracked-lift terminology, added distinct
+  Help and About surfaces under More, shipped native logo/wordmark header
+  branding with an alpha version badge sourced from `mobile/package.json`, and
+  aligned the repo docs with the updated native UI surface.
+
 ## 0.11.3 - 2026-05-17
 
 - Issue #61: Added the first documented iOS EAS build path for the real

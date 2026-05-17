@@ -109,14 +109,14 @@ export function StatsScreen() {
               </View>
               <View style={styles.signalMeta}>
                 <View>
-                  <Text style={styles.signalLabel}>Est. PR</Text>
+                  <Text style={styles.signalLabel}>Est. Max</Text>
                   <Text style={styles.signalValue}>
                     {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
                   </Text>
                 </View>
                 {sig.repeatability_score > 1 && (
                   <View>
-                    <Text style={styles.signalLabel}>Repeatability</Text>
+                    <Text style={styles.signalLabel}>Sets</Text>
                     <Text style={styles.signalValue}>{sig.repeatability_score} sets</Text>
                   </View>
                 )}

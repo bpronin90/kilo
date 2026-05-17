@@ -102,6 +102,9 @@ mobile/
   app.json             ← Expo app metadata
   package.json
   assets/
+    brand/
+      logo.png
+      wordmark.png
   components/
     ScreenShell.js     ← native screen wrapper
     TabBar.js          ← native tab bar
@@ -168,16 +171,16 @@ These files define the current real native app path.
 
 | File | Role |
 |------|------|
-| `mobile/App.js` | Root native app shell. Owns four-tab routing (`Home`, `Log`, `Weight`, `Stats`), calls native parser/save hooks, and adapts persisted entries for the Home and Stats screens. |
-| `mobile/components/ScreenShell.js` | Shared native screen wrapper with title/subtitle header and scroll container. |
+| `mobile/App.js` | Root native app shell. Owns five-tab routing (`Home`, `Log`, `Weight`, `Analytics`, `More`), calls native parser/save hooks, and adapts persisted entries for the Home and Analytics screens. |
+| `mobile/components/ScreenShell.js` | Shared native screen wrapper with bundled logo/wordmark branding, alpha version badge, and scroll container. |
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
 | `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries and workout sessions. |
 | `mobile/lib/data.js` | Native exercise catalog plus `makeWeightEntry` / `makeWorkoutSession` factories. |
-| `mobile/screens/HomeScreen.js` | Native recent-activity surface and overview card. |
+| `mobile/screens/HomeScreen.js` | Native dashboard plus the exported More / Help / About surfaces used by the More tab. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
-| `mobile/screens/StatsScreen.js` | Native summary metrics UI. |
+| `mobile/screens/StatsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
 | `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries and workout sessions. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |

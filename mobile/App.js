@@ -5,7 +5,7 @@ import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Vie
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
 
-import { HomeScreen } from './screens/HomeScreen';
+import { HomeScreen, MoreScreen } from './screens/HomeScreen';
 import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
@@ -14,7 +14,7 @@ import { useWeightEntries, useWorkoutSessions, useWorkoutNote } from './hooks/us
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
 
-const TABS = ['Home', 'Log', 'Weight', 'Stats'];
+const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
@@ -120,7 +120,14 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'Home':
-        return <HomeScreen entries={entries} successMessage={saveSuccess} />;
+        return (
+          <HomeScreen 
+            entries={entries} 
+            weightEntries={weightHook.entries}
+            workoutSessions={workoutHook.sessions}
+            successMessage={saveSuccess} 
+          />
+        );
       case 'Log':
         return (
           <LogScreen
@@ -141,8 +148,10 @@ export default function App() {
             saving={weightSaving}
           />
         );
-      case 'Stats':
+      case 'Analytics':
         return <StatsScreen entries={entries} />;
+      case 'More':
+        return <MoreScreen onNavigate={handleTabPress} />;
       default:
         return null;
     }
