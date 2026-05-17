@@ -167,18 +167,51 @@ eas build --platform android --profile preview
 
 ## Updating the app later
 
-When the app changes, build a new APK and install it over the existing app:
+Use one of these two paths depending on what changed.
+
+### OTA-safe update: JavaScript or assets only
+
+If the installed Android build is already compatible and the change is limited
+to JavaScript, styling, or bundled assets, publish an OTA update instead of
+rebuilding:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+npm run publish:android -- --message "describe the change"
+```
+
+For the preview channel:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+npm run publish:android:preview -- --message "describe the change"
+```
+
+- `publish:android` targets the `production` EAS Update channel.
+- `publish:android:preview` targets the `preview` EAS Update channel.
+- After publishing, fully close and reopen the installed app to let
+  `expo-updates` fetch the new update on launch.
+
+### Rebuild required: native-affecting change
+
+If the change touches native runtime compatibility, build a new APK and install
+it over the existing app:
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
 eas build --platform android --profile preview
 ```
 
+- Rebuild-required examples:
+  - adding or upgrading a native module
+  - changing Android native project files
+  - changing `app.json` fields that affect native config, such as package,
+    permissions, splash, or icons
+- The app now uses `runtimeVersion.policy: "fingerprint"`, so native-affecting
+  changes produce a new runtime and cannot ship as OTA updates to older builds.
 - Download the new `.apk` from the latest EAS build URL.
 - Install it on the phone again. Android should treat this as an update as long
   as the package name stays the same and the signing is compatible.
-- This flow does not provide automatic OTA updates. New shipped app changes
-  require a new build and reinstall.
 - Existing local app data will usually survive an in-place update, but that
   should still be verified when the change matters.
 

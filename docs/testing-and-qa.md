@@ -58,6 +58,19 @@ npm run mobile:android
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
 
+For Android release-style update verification after a compatible build is
+installed, publish to the configured EAS Update channels from `mobile/`:
+
+```sh
+npm --prefix mobile run publish:android -- --message "describe the change"
+npm --prefix mobile run publish:android:preview -- --message "describe the change"
+```
+
+Use OTA publish only for JavaScript and asset changes. Any native-affecting
+change still requires a fresh Android build because `mobile/app.json` uses
+`runtimeVersion.policy: "fingerprint"` to block incompatible updates from
+reaching existing installs.
+
 Current limitation:
 
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
