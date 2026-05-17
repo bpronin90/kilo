@@ -193,3 +193,60 @@ eas build:list --platform android --limit 5
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
 - The `preview` profile intentionally omits signing setup, which is sufficient for local sideloading.
+
+---
+
+# Standalone iOS Build via EAS
+
+Use this when you need an iOS build from the `mobile/` Expo app.
+
+Two profiles are available:
+
+- `ios-simulator` — builds a `.app` bundle for the iOS Simulator; no Apple Developer account required.
+- `ios-device` — builds a release `.ipa` for real-device install; requires an Apple Developer account and active signing credentials.
+
+## Prerequisites
+
+- Expo account: `npx expo login`
+- EAS CLI: `npm install -g eas-cli`
+- For `ios-device`: Apple Developer Program membership and EAS-managed credentials or your own provisioning profile and certificate.
+
+## Build for iOS Simulator
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-simulator
+```
+
+- Build runs on EAS cloud servers.
+- When the build finishes, EAS prints a download URL for the `.app` archive.
+- Unzip the archive and drag the `.app` into an open Simulator window, or use:
+
+```bash
+xcrun simctl install booted <path-to-app>
+xcrun simctl launch booted com.benpronin.kilo
+```
+
+## Build for Real Device
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform ios --profile ios-device
+```
+
+- EAS will prompt for Apple Developer credentials on the first run and store managed credentials in the EAS dashboard.
+- When the build finishes, EAS prints a download URL for the `.ipa`.
+- Install via TestFlight, Apple Configurator 2, or Xcode Devices window.
+
+## Checking build status
+
+```bash
+eas build:list --platform ios --limit 5
+```
+
+## Known blockers
+
+- **Apple Developer account required for device builds.** The `ios-device` profile cannot produce a signed `.ipa` without valid credentials. Without an account, use `ios-simulator` only.
+- **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is an x86_64/arm64 simulator binary, not a signed device build.
+- **No OTA update path.** New app changes require a new EAS build and reinstall, same as the Android path.
+- **Mac not required.** EAS remote builds handle the Xcode toolchain on Apple silicon build workers; a local Mac is not needed.

@@ -349,17 +349,35 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
-### Native Expo app now has a standalone Android build path
+### Native Expo app has standalone Android and iOS build paths
 
-The `mobile/` Expo app now has a checked-in EAS build profile for Android APK
-output plus the required Android package identifier. That gives the native app
-an installable path that does not depend on the developer machine staying on or
-serving a local Expo session. The one-time Expo account linking step still must
-write a real `extra.eas.projectId` into `mobile/app.json`, and the repo
-documents that contributors should commit that linked project ID once it exists.
+The `mobile/` Expo app now has checked-in EAS build profiles for both Android
+and iOS output, plus the required platform identifiers (`android.package` and
+`ios.bundleIdentifier` are both `com.benpronin.kilo`). That gives the native app
+installable paths that do not depend on the developer machine staying on or
+serving a local Expo session.
+
+Android: the `preview` profile produces a plain `.apk` for sideloading.
+
+iOS: two profiles are available:
+- `ios-simulator` — builds a Simulator `.app` bundle; no Apple Developer account
+  required.
+- `ios-device` — builds a release `.ipa` for real-device install; requires an
+  Apple Developer Program membership and valid signing credentials.
+
+The one-time Expo account linking step still must write a real
+`extra.eas.projectId` into `mobile/app.json`, and the repo documents that
+contributors should commit that linked project ID once it exists.
+
 The shipped native Android launcher, adaptive icon, splash icon, and web
 favicon assets now use Kilo-branded PNG files instead of the default Expo
 placeholder artwork.
+
+**iOS signing blocker:** the `ios-device` profile requires an Apple Developer
+account and EAS-managed (or locally supplied) provisioning credentials before a
+real-device `.ipa` can be produced. The `ios-simulator` profile has no such
+requirement. See `docs/phone-runbook.md` for the full iOS build command path and
+known blockers.
 
 ### Native UI runtime is not yet validated end-to-end
 
