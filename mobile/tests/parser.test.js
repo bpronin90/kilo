@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -927,9 +927,15 @@ describe('parseWorkoutNote — set row parsing', () => {
     expect(r.sections[0].exercises[0].rows).toHaveLength(2);
   });
 
-  test('skip marker (-) within exercise context is ignored', () => {
+  test('bare dash within exercise context does not add to rows', () => {
     const r = parseWorkoutNote('-Bench\n80 8,8,8\n-\n85 8,8,8');
     expect(r.sections[0].exercises[0].rows).toHaveLength(2);
+  });
+
+  test('bare dash within exercise context adds a skip slot to session_entries', () => {
+    const r = parseWorkoutNote('-Bench\n80 8,8,8\n-\n85 8,8,8');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries.some(e => e.skipped)).toBe(true);
   });
 
   test('decimal weight parses correctly', () => {
@@ -1250,6 +1256,198 @@ describe('deriveProgressionSignals — progression status', () => {
     expect(sig.progression_status).toBe('improved');
     expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
     expect(sig.prior_pr).toBeCloseTo(epleyPR(80, 8));
+  });
+});
+
+// ── parseWorkoutNote — session_entries ────────────────────────────────────────
+
+describe('parseWorkoutNote — session_entries', () => {
+  test('exercise has session_entries field', () => {
+    const r = parseWorkoutNote('-Bench\n125 4,4,4');
+    expect(r.sections[0].exercises[0]).toHaveProperty('session_entries');
+    expect(Array.isArray(r.sections[0].exercises[0].session_entries)).toBe(true);
+  });
+
+  test('plain data rows do not create session_entries', () => {
+    const r = parseWorkoutNote('-Bench\n125 4,4,4\n125 5,5,5');
+    expect(r.sections[0].exercises[0].session_entries).toHaveLength(0);
+  });
+
+  test('dash-space entry creates a session_entry with correct sets', () => {
+    const r = parseWorkoutNote('-Bench\n- 125 4,4,4');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(1);
+    expect(ex.session_entries[0].skipped).toBe(false);
+    expect(ex.session_entries[0].sets).toHaveLength(3);
+    expect(ex.session_entries[0].sets[0].weight_value).toBe(125);
+    expect(ex.session_entries[0].sets[0].rep_count).toBe(4);
+  });
+
+  test('dash-space entry also goes into rows for backwards compat', () => {
+    const r = parseWorkoutNote('-Bench\n- 125 4,4,4');
+    expect(r.sections[0].exercises[0].rows).toHaveLength(1);
+  });
+
+  test('multiple dash-space entries produce aligned session_entries', () => {
+    const r = parseWorkoutNote('-Bench\n- 125 4,4,4\n- 125 5,5,5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(2);
+    expect(ex.session_entries[0].sets[0].rep_count).toBe(4);
+    expect(ex.session_entries[1].sets[0].rep_count).toBe(5);
+  });
+
+  test('bare dash creates a skipped session_entry', () => {
+    const r = parseWorkoutNote('-Bench\n- 125 4,4,4\n-\n- 125 6,6,6');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(3);
+    expect(ex.session_entries[1].skipped).toBe(true);
+    expect(ex.session_entries[1].raw).toBe('-');
+  });
+
+  test('bare dash outside exercise context is silently dropped', () => {
+    const r = parseWorkoutNote('-\n-Bench\n- 125 4,4,4');
+    expect(r.sections[0].exercises[0].session_entries).toHaveLength(1);
+  });
+
+  test('warmup section and lifting section exercises both get session_entries', () => {
+    const note = '+WARMUP\n-Bike\n- 5 min\n+LIFTING\n-Bench\n- 125 4,4,4';
+    const r = parseWorkoutNote(note);
+    const allExercises = r.sections.flatMap(s => s.exercises);
+    const bench = allExercises.find(e => e.name === 'Bench');
+    expect(bench.session_entries).toHaveLength(1);
+  });
+
+  test('day label does not reset session_entries on subsequent exercises', () => {
+    const note = 'Monday\n-Bench\n- 125 4,4,4\n- 125 5,5,5\nFriday\n-Deadlift\n- 225 3,3,3\n- 225 4,4,4';
+    const r = parseWorkoutNote(note);
+    const sections = r.sections;
+    const bench = sections[0].exercises.find(e => e.name === 'Bench');
+    const deadlift = sections[1].exercises.find(e => e.name === 'Deadlift');
+    expect(bench.session_entries).toHaveLength(2);
+    expect(deadlift.session_entries).toHaveLength(2);
+  });
+});
+
+// ── buildSessionsFromNote ─────────────────────────────────────────────────────
+
+describe('buildSessionsFromNote — basics', () => {
+  test('empty note returns no sessions and no warnings', () => {
+    const r = buildSessionsFromNote('');
+    expect(r.sessions).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  test('null returns no sessions', () => {
+    const r = buildSessionsFromNote(null);
+    expect(r.sessions).toHaveLength(0);
+  });
+
+  test('note with only plain rows returns no sessions', () => {
+    const r = buildSessionsFromNote('-Bench\n125 4,4,4\n125 5,5,5');
+    expect(r.sessions).toHaveLength(0);
+  });
+
+  test('returns ok sessions array and warnings array', () => {
+    const r = buildSessionsFromNote('-Bench\n- 125 4,4,4');
+    expect(Array.isArray(r.sessions)).toBe(true);
+    expect(Array.isArray(r.warnings)).toBe(true);
+  });
+});
+
+describe('buildSessionsFromNote — session construction', () => {
+  test('two exercises with two entries each produce two sessions', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(2);
+  });
+
+  test('session_index starts at 1', () => {
+    const r = buildSessionsFromNote('-Bench\n- 125 4,4,4');
+    expect(r.sessions[0].session_index).toBe(1);
+  });
+
+  test('each session entry includes exercise_name and entry', () => {
+    const r = buildSessionsFromNote('-Bench\n- 125 4,4,4\n-Deadlift\n- 225 3,3');
+    const entry = r.sessions[0].entries[0];
+    expect(entry).toHaveProperty('exercise_name');
+    expect(entry).toHaveProperty('entry');
+  });
+
+  test('first session maps to first dash-space entries across exercises', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const r = buildSessionsFromNote(note);
+    const s1 = r.sessions[0];
+    const bench = s1.entries.find(e => e.exercise_name === 'Bench');
+    expect(bench.entry.sets[0].rep_count).toBe(4);
+    const dl = s1.entries.find(e => e.exercise_name === 'Deadlift');
+    expect(dl.entry.sets[0].weight_value).toBe(225);
+  });
+
+  test('second session maps to second dash-space entries', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const r = buildSessionsFromNote(note);
+    const bench2 = r.sessions[1].entries.find(e => e.exercise_name === 'Bench');
+    expect(bench2.entry.sets[0].rep_count).toBe(5);
+  });
+
+  test('bare dash preserves session slot as skipped', () => {
+    const note = '-Bench\n- 125 4,4,4\n-\n- 125 6,6,6\n-Deadlift\n- 225 3,3\n- 225 4,4\n- 225 5,5';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(3);
+    const bench2 = r.sessions[1].entries.find(e => e.exercise_name === 'Bench');
+    expect(bench2.entry.skipped).toBe(true);
+  });
+
+  test('warmup exercises and lifting exercises are in the same sessions', () => {
+    const note = '+WARMUP\n-Bike\n- 5 min\n+LIFTING\n-Bench\n- 125 4,4,4';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(1);
+    const names = r.sessions[0].entries.map(e => e.exercise_name);
+    expect(names).toContain('Bench');
+  });
+
+  test('day labels do not split sessions', () => {
+    const note = 'Monday\n-Bench\n- 125 4,4,4\n- 125 5,5,5\nFriday\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(2);
+    const s1Names = r.sessions[0].entries.map(e => e.exercise_name);
+    expect(s1Names).toContain('Bench');
+    expect(s1Names).toContain('Deadlift');
+  });
+});
+
+describe('buildSessionsFromNote — uneven count warnings', () => {
+  test('no warning when all exercises have equal entry counts', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n- 225 4,4';
+    const r = buildSessionsFromNote(note);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  test('warning when exercises have uneven entry counts', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
+    const r = buildSessionsFromNote(note);
+    expect(r.warnings.length).toBeGreaterThan(0);
+    expect(r.warnings[0]).toMatch(/uneven/i);
+  });
+
+  test('warning names all exercises with their counts', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
+    const r = buildSessionsFromNote(note);
+    expect(r.warnings[0]).toMatch(/Bench/);
+    expect(r.warnings[0]).toMatch(/Deadlift/);
+  });
+
+  test('sessions still built from max count when uneven', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
+    const r = buildSessionsFromNote(note);
+    expect(r.sessions).toHaveLength(2);
+  });
+
+  test('missing exercise slot is filled with a skipped entry', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3';
+    const r = buildSessionsFromNote(note);
+    const dl2 = r.sessions[1].entries.find(e => e.exercise_name === 'Deadlift');
+    expect(dl2.entry.skipped).toBe(true);
   });
 });
 

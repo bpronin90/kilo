@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 import { useWorkoutNote } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
@@ -14,6 +14,10 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
+  }, [workoutNoteText]);
+
+  const sessionInfo = useMemo(() => {
+    return buildSessionsFromNote(workoutNoteText);
   }, [workoutNoteText]);
 
   const trackedExercises = note?.tracked_exercises || [];
@@ -74,8 +78,21 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
         </Card>
       ) : null}
 
+      {sessionInfo.warnings.length > 0 && mode === 'read' ? (
+        <Card style={styles.warningCard}>
+          {sessionInfo.warnings.map((w, i) => (
+            <Text key={i} style={styles.warningText}>{w}</Text>
+          ))}
+        </Card>
+      ) : null}
+
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
+          {sessionInfo.sessions.length > 0 && (
+            <Text style={styles.sessionCount}>
+              {sessionInfo.sessions.length} {sessionInfo.sessions.length === 1 ? 'session' : 'sessions'} detected
+            </Text>
+          )}
           {parsed.sections.map((section, si) => (
             <View key={`section-${si}`}>
               {section.heading && <WorkoutHeading>{section.heading}</WorkoutHeading>}
@@ -215,5 +232,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: Colors.cardBorder,
+  },
+  warningCard: {
+    borderColor: '#c9820a',
+    backgroundColor: '#fff8ed',
+    padding: 12,
+    marginBottom: 8,
+  },
+  warningText: {
+    color: '#7a4f00',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sessionCount: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginBottom: 12,
   },
 });
