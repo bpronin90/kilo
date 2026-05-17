@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.2 - 2026-05-17
+
+- Issue #60: Reconciled the top-level README with the living current-state
+  doc so repo-facing docs consistently describe `mobile/` as the active app
+  path, the browser prototype as the legacy reference path, and Expo EAS
+  Android packaging as the documented native build flow.
+
 ## 0.11.1 - 2026-05-17
 
 - Issue #59: Replaced the native Expo app's default placeholder launcher,
