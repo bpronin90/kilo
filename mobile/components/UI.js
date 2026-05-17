@@ -7,6 +7,9 @@ export function Card({ children, style, tone = 'default' }) {
     <View style={[
       styles.card, 
       tone === 'accent' ? styles.cardAccent : null,
+      tone === 'success' ? styles.cardSuccess : null,
+      tone === 'error' ? styles.cardError : null,
+      tone === 'warn' ? styles.cardWarn : null,
       style
     ]}>
       {children}
@@ -30,11 +33,23 @@ export function Button({ onPress, title, style, textStyle, disabled = false }) {
 }
 
 export function StatCard({ label, value, tone = 'default' }) {
+  const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
     <Card tone={tone} style={styles.statCard}>
-      <Text style={[styles.statLabel, tone === 'accent' ? styles.textLight : null]}>{label}</Text>
-      <Text style={[styles.statValue, tone === 'accent' ? styles.textLight : null]}>{value}</Text>
+      <Text style={[styles.statLabel, isDarkTone ? styles.textLight : null]}>{label}</Text>
+      <Text style={[styles.statValue, isDarkTone ? styles.textLight : null]}>{value}</Text>
     </Card>
+  );
+}
+
+export function Badge({ children, status = 'default' }) {
+  const isDarkStatus = ['improved', 'regressed', 'held'].includes(status);
+  return (
+    <View style={[styles.badge, styles[`badge_${status}`]]}>
+      <Text style={[styles.badgeText, isDarkStatus ? styles.textLight : null]}>
+        {children}
+      </Text>
+    </View>
   );
 }
 
@@ -127,6 +142,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     borderColor: Colors.accent,
   },
+  cardSuccess: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  cardError: {
+    backgroundColor: Colors.error,
+    borderColor: Colors.error,
+  },
+  cardWarn: {
+    backgroundColor: Colors.accent, // Using accent as a warning color for now
+    borderColor: Colors.accent,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -164,6 +191,30 @@ const styles = StyleSheet.create({
   },
   textLight: {
     color: Colors.textLight,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: Colors.chipBackground,
+  },
+  badge_improved: {
+    backgroundColor: Colors.success,
+  },
+  badge_regressed: {
+    backgroundColor: Colors.error,
+  },
+  badge_held: {
+    backgroundColor: Colors.accent,
+  },
+  badge_first_session: {
+    backgroundColor: Colors.chipBackground,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.chipText,
+    textTransform: 'uppercase',
   },
   chip: {
     alignSelf: 'flex-start',
