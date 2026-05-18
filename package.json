@@ -1,7 +1,7 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.17.0",
+  "version": "0.17.1",
   "scripts": {
     "build": "rm -rf www && mkdir -p www && cp Kilo.html www/index.html && cp -r src www/src",
     "cap:sync": "cap sync android",

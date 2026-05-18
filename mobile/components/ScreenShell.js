@@ -4,8 +4,8 @@ import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
 export function ScreenShell({ title, subtitle, children }) {
-  const logoSource = require('../assets/brand/logo.png');
-  const wordmarkSource = require('../assets/brand/wordmark.png');
+  const logoSource = require('../assets/brand/logo.jpg');
+  const wordmarkSource = require('../assets/brand/wordmark.jpg');
   const version = `alpha-${pkg.version}`;
 
   return (
