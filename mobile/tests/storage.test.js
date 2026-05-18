@@ -349,6 +349,18 @@ describe('unified persistence — note as canonical source', () => {
     expect(squatSets.length).toBeGreaterThan(0);
   });
 
+  test('migrated non-weight exercise produces unparsed session entry, not a skip', async () => {
+    await saveWorkoutSession(S2);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBeGreaterThan(0);
+    const assistedEntry = sessions[0].entries.find(e => e.exercise_name === 'Assisted Pull-up');
+    expect(assistedEntry).toBeDefined();
+    expect(assistedEntry.entry.skipped).toBe(false);
+    expect(assistedEntry.entry.unparsed).toBe(true);
+    expect(assistedEntry.entry.raw).toContain('assist:20 lb');
+  });
+
   test('migrated note session count matches original legacy session count — single session', async () => {
     await saveWorkoutSession(S1);
     const migrated = await migrateWorkoutNote();

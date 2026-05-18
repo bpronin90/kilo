@@ -152,16 +152,19 @@ export async function migrateWorkoutNote() {
     }
   }
 
-  // Build a keyed lookup: exerciseName → per-session entry descriptors.
-  // Each descriptor is { skip: true, comments: [] } or { skip: false, row, comments }.
+  // For each exercise, build one entry descriptor per session.
+  // kind='weight'    → parseable "- weight reps,..." session entry
+  // kind='nonweight' → unparseable but non-skip "- text" entry (assistance/duration/notes)
+  // kind='skip'      → exercise absent from that session or truly empty
   const entriesByExercise = new Map();
   for (const name of exerciseOrder) {
     entriesByExercise.set(name, sorted.map(session => {
       const item = (session.items || []).find(i => i.exercise_name === name);
-      if (!item) return { skip: true, comments: [] };
+      if (!item) return { kind: 'skip' };
 
       const weightGroups = [];
-      const comments = [];
+      const nonWeightParts = [];
+
       for (const s of (item.sets || [])) {
         if (s.weight_value != null && s.rep_count != null) {
           const prev = weightGroups[weightGroups.length - 1];
@@ -180,16 +183,21 @@ export async function migrateWorkoutNote() {
           if (s.rep_count != null) parts.push(`×${s.rep_count}`);
           if (s.duration_seconds != null) parts.push(`${s.duration_seconds}s`);
           if (s.note_text) parts.push(`[${s.note_text}]`);
-          if (parts.length) comments.push(`-- ${parts.join(' ')}`);
+          if (parts.length) nonWeightParts.push(parts.join(' '));
         }
       }
-      if (item.note_text) comments.push(`-- ${item.note_text}`);
+      if (item.note_text) nonWeightParts.push(item.note_text);
 
-      if (weightGroups.length === 0) return { skip: true, comments };
-      const row = weightGroups
-        .map(({ weight, reps }) => `${weight} ${reps.join(',')}`)
-        .join(' ');
-      return { skip: false, row, comments };
+      if (weightGroups.length > 0) {
+        const row = weightGroups
+          .map(({ weight, reps }) => `${weight} ${reps.join(',')}`)
+          .join(' ');
+        return { kind: 'weight', row };
+      }
+      if (nonWeightParts.length > 0) {
+        return { kind: 'nonweight', text: nonWeightParts.join(', ') };
+      }
+      return { kind: 'skip' };
     }));
   }
 
@@ -197,8 +205,9 @@ export async function migrateWorkoutNote() {
   for (const name of exerciseOrder) {
     lines.push(`-${name}`);
     for (const entry of entriesByExercise.get(name)) {
-      for (const c of entry.comments) lines.push(c);
-      lines.push(entry.skip ? '-' : `- ${entry.row}`);
+      if (entry.kind === 'weight') lines.push(`- ${entry.row}`);
+      else if (entry.kind === 'nonweight') lines.push(`- ${entry.text}`);
+      else lines.push('-');
     }
   }
 
