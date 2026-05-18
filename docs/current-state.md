@@ -139,10 +139,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including workout-note migration plumbing and cross-consumer note refresh
   fanout
-- `mobile/storage/entries.js` persists weight entries and workout sessions via
-  AsyncStorage and now also supports one canonical workout routine note with a
-  persisted `tracked_exercises` selection, persisted `one_k_exercises`
-  selection, and a one-time migration bridge from legacy structured sessions
+- `mobile/storage/entries.js` persists weight entries plus one canonical
+  workout routine note via AsyncStorage, including persisted
+  `tracked_exercises` and `one_k_exercises` selections, while retaining the
+  legacy structured workout-session key only as a one-time migration source
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves one canonical workout
@@ -173,10 +173,12 @@ note document, and resolves a conservative set of deterministic exercise-name
 aliases so obvious note variants such as `DB Bench` still count toward the
 intended lift without fuzzy matching. Progression-over-time and repeatability
 signals compare the latest comparable weighted result against the prior
-comparable result without changing the formal estimated-PR formula. Recent history in
-the native app still reflects persisted workout sessions rather than live
-workout-note revisions, so the note-first authoring shift is complete before
-the downstream read and analytics surfaces are updated. The native Home tab is
+comparable result without changing the formal estimated-PR formula. The native
+Home and Analytics tabs now derive workout activity consistently from the same
+canonical workout-note document used by the Log screen, including a one-time
+legacy-session migration path that preserves session count, weighted history,
+non-weight history, tracked selections, and mixed-entry note metadata during
+the transition away from the older structured session store. The native Home tab is
 now a dashboard rather than a static blurb, showing recent activity plus simple
 workout-volume and bodyweight trend graphs as the default landing view. The
 native Log read
@@ -189,8 +191,8 @@ session slots, and shows a visible warning when exercise entry counts drift out
 of alignment. The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, 1k progress, progression status, and set-count context
-in one minimal analytics view while keeping totals in sync with shared
-workout-session refreshes. A separate native More tab now exposes Help and
+in one minimal analytics view while keeping totals in sync with canonical
+workout-note refreshes. A separate native More tab now exposes Help and
 About surfaces, including plain-language terminology guidance, attribution,
 displayed version, and copyright notice.
 

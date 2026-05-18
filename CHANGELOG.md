@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.8 - 2026-05-18
+
+- Issue #79: Unified the native app around the canonical workout-note
+  persistence model, removed downstream dependence on the legacy structured
+  workout-session path for current Home/Log/Analytics behavior, and added a
+  contract-driven migration flow plus test coverage so legacy installs retain
+  session counts, weighted history, non-weight history, and mixed-entry note
+  metadata when their older session data is folded into the workout note.
+
 ## 0.14.7 - 2026-05-18
 
 - Issue #75: Hardened the legacy `Kilo.html` runtime CDN dependencies with
