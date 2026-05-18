@@ -205,7 +205,9 @@ estimated-max values, 1k progress, progression status, and set-count context
 in one minimal analytics view while keeping totals in sync with canonical
 workout-note refreshes. A separate native More tab now exposes Help and
 About surfaces, including plain-language terminology guidance, attribution,
-displayed version, and copyright notice.
+displayed version, copyright notice, and an OTA Diagnostics panel that
+surfaces the EAS channel, runtime version, current bundle (embedded vs.
+applied update), update-available/pending state, and a manual update check.
 
 ### Parser (`src/parser.jsx`)
 
