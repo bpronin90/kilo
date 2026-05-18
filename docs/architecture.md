@@ -8,6 +8,39 @@ Kilo currently has a split architecture:
 - `mobile/` is the active native-app path. It is an Expo/React Native app and
   should receive forward-looking app architecture work.
 
+## Architecture Overview
+
+```mermaid
+graph TD
+    subgraph browser["Browser Prototype (legacy — reference only)"]
+        CDN["CDN\nReact / ReactDOM / Babel"]
+        KiloHtml["Kilo.html\n(entry point)"]
+        BrowserSrc["src/\nparser.jsx · data.jsx · ui.jsx\nhome · log · weight · stats · more · app.jsx"]
+        LS[("localStorage\nkilo_workout_sessions\nkilo_weight_entries")]
+    end
+
+    subgraph expo["Native Expo App (active)"]
+        ExpoEntry["mobile/index.js\n(Expo entry)"]
+        AppJs["mobile/App.js\ntab state · save wiring"]
+        NativeScreens["mobile/screens/\nHome · Log · Weight · Stats · More"]
+        NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
+        NativeHooks["mobile/hooks/useEntries.js"]
+        NativeStorage["mobile/storage/entries.js"]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_workout_sessions\nkilo_workout_note")]
+    end
+
+    CDN -->|"loads at runtime"| KiloHtml
+    KiloHtml -->|"script tag order"| BrowserSrc
+    BrowserSrc <-->|"r/w globals + localStorage"| LS
+
+    ExpoEntry --> AppJs
+    AppJs --> NativeScreens
+    NativeScreens --> NativeLib
+    NativeScreens --> NativeHooks
+    NativeHooks --> NativeStorage
+    NativeStorage <--> AS
+```
+
 Issue #35 defines the migration contract between these paths: the prototype path
 remains the behavior reference during migration, but the native path is the
 target runtime for future MVP implementation.
@@ -109,15 +142,16 @@ the URL.
 ## Native Screen Routing
 
 `mobile/App.js` owns a separate `activeTab` state string initialized to
-`'Home'`. A `switch` statement maps it to one of four native screens:
+`'Home'`. A `switch` statement maps it to one of five native screens:
 
 ```
-activeTab: 'Home' | 'Log' | 'Weight' | 'Stats'
+activeTab: 'Home' | 'Log' | 'Weight' | 'Analytics' | 'More'
 ```
 
-`mobile/components/TabBar.js` calls `setActiveTab` directly. The save handlers
-for weight and workout entries validate input, persist via the hook/storage
-layer, and then send the user back to Home. There is no router library, deep
+`mobile/components/TabBar.js` calls `setActiveTab` directly. The workout save
+handler validates input, persists via the hook/storage layer, and then
+navigates the user back to Home. The weight save handler validates and persists
+but keeps the user on the Weight screen. There is no router library, deep
 linking, or persisted navigation state in the native path yet.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
