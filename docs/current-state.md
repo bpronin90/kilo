@@ -110,10 +110,11 @@ The real native app path now has a modular React Native shell:
 - `mobile/App.js` owns tab state, routes weight saves through the canonical
   parser path, routes workout saves through the canonical workout-note
   persistence path, adapts persisted entries for the Home and Analytics
-  surfaces, and now exposes a separate More tab for Help and About
+  surfaces, and now exposes a separate More tab for Help, About, and a
+  local Data & Backup export/import/recovery surface
 - `mobile/screens/HomeScreen.js` renders a native dashboard with summary cards,
   workout-volume and weight-trend graphs, recent activity, and the exported
-  More/Help/About surfaces used by the More tab
+  More/Help/About/Data & Backup surfaces used by the More tab
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   with read/edit modes, a formatted mirror of the canonical note, parsed
   exercise tracking toggles in read mode, session-aligned read blocks for notes
@@ -143,7 +144,11 @@ The real native app path now has a modular React Native shell:
 - `mobile/storage/entries.js` persists weight entries plus one canonical
   workout routine note via AsyncStorage, including persisted
   `tracked_exercises` and `one_k_exercises` selections, while retaining the
-  legacy structured workout-session key only as a one-time migration source
+  legacy structured workout-session key only as a one-time migration source,
+  and now exposes a local-only versioned export/import/recovery path
+  (`exportBackup`/`importBackup`) that validates a v1 backup before any write,
+  restores weight entries and the workout note via a batched AsyncStorage
+  write, and leaves the legacy workout-session key untouched on restore
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves one canonical workout

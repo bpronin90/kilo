@@ -197,6 +197,12 @@ User types in native Weight or Log form
   → Home / Analytics re-derive recent activity, session alignment, and analytics from the same canonical workout note
 ```
 
+`mobile/storage/entries.js` also exposes a local-only recovery path:
+`exportBackup()` serializes a versioned v1 snapshot (weight entries plus the
+canonical workout note), and `importBackup(payload, 'replace')` validates the
+payload before any write, then restores via a batched AsyncStorage write
+without mutating the legacy workout-session key. No remote sync is involved.
+
 ## Parser Responsibilities
 
 `src/parser.jsx` exports all parse functions via `window.*`. The file contains
