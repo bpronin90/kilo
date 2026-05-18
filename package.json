@@ -1,7 +1,7 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.14.4",
+  "version": "0.14.5",
   "scripts": {
     "build": "rm -rf www && mkdir -p www && cp Kilo.html www/index.html && cp -r src www/src",
     "cap:sync": "cap sync android",
@@ -13,7 +13,8 @@
     "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
     "preview": "npm run build && npm run cap:sync && npm run cap:run",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.3",
