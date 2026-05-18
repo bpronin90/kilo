@@ -4,7 +4,9 @@ Kilo currently has a split architecture:
 
 - The repo root is the legacy prototype runtime. It is client-only React loaded
   through CDN scripts in `Kilo.html`, plus a minimal Android Capacitor shell
-  that stages that same web app into a WebView for device install.
+  that stages that same web app into a WebView for device install. All CDN
+  scripts in `Kilo.html` use Subresource Integrity (SRI) with `integrity` and
+  `crossorigin` attributes to mitigate supply-chain risks.
 - `mobile/` is the active native-app path. It is an Expo/React Native app and
   should receive forward-looking app architecture work.
 
