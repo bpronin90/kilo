@@ -1,6 +1,10 @@
 import '../src/parser.jsx'
 
-const { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry } = window
+const {
+  parseWeightEntry, parseWorkoutRow, parseWorkoutEntry,
+  parseWorkoutNote, buildSessionsFromNote,
+  epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals,
+} = window
 
 // ── parseWeightEntry ──────────────────────────────────────────────────────────
 
@@ -258,5 +262,157 @@ describe('parseWorkoutEntry', () => {
   test('defaults workout_date to KILO_TODAY when not supplied', () => {
     const r = parseWorkoutEntry([{ exerciseName: 'Squat', raw: '135 5' }])
     expect(r.workout_date).toBe('2026-05-09')
+  })
+})
+
+// ── Shared analytics — regression coverage (web extraction) ───────────────────
+// These functions were previously mobile-only. Verify identical behavior on web.
+
+describe('epleyPR — web', () => {
+  test('computes Epley: weight * (1 + reps/30)', () => {
+    expect(epleyPR(100, 10)).toBeCloseTo(100 * (1 + 10 / 30))
+  })
+
+  test('returns null for zero weight', () => {
+    expect(epleyPR(0, 8)).toBeNull()
+  })
+
+  test('returns null for zero reps', () => {
+    expect(epleyPR(135, 0)).toBeNull()
+  })
+
+  test('returns null for null inputs', () => {
+    expect(epleyPR(null, 8)).toBeNull()
+    expect(epleyPR(135, null)).toBeNull()
+  })
+})
+
+describe('parseWorkoutNote — web', () => {
+  test('empty string returns ok with no sections', () => {
+    const r = parseWorkoutNote('')
+    expect(r.ok).toBe(true)
+    expect(r.sections).toHaveLength(0)
+  })
+
+  test('dash-prefix exercise is detected', () => {
+    const r = parseWorkoutNote('-Bench 3x8\n80 8,8,8')
+    expect(r.sections[0].exercises[0].name).toBe('Bench')
+  })
+
+  test('sets are parsed from rows', () => {
+    const r = parseWorkoutNote('-Squat\n205 8,8,8,8')
+    expect(r.sections[0].exercises[0].sets).toHaveLength(4)
+  })
+
+  test('deload format produces correct sets', () => {
+    const r = parseWorkoutNote('DB Bench: 80 lbs 3x8')
+    const ex = r.sections[0].exercises[0]
+    expect(ex.name).toBe('DB Bench')
+    expect(ex.sets).toHaveLength(3)
+    expect(ex.sets[0]).toMatchObject({ weight_value: 80, rep_count: 8 })
+  })
+
+  test('non-weight exercise rows degrade to unparsed_rows', () => {
+    const r = parseWorkoutNote('-Bike\n5 min 9')
+    const ex = r.sections[0].exercises[0]
+    expect(ex.sets).toHaveLength(0)
+    expect(ex.unparsed_rows).toContain('5 min 9')
+  })
+
+  test('day headings produce correct section headings', () => {
+    const r = parseWorkoutNote('Monday\n-Bench\n80 8,8,8')
+    expect(r.sections[0].heading).toBe('Monday')
+  })
+})
+
+describe('deriveWorkoutAnalytics — web', () => {
+  test('returns exercises array', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8,8,8')
+    expect(Array.isArray(deriveWorkoutAnalytics(sections).exercises)).toBe(true)
+  })
+
+  test('estimated_pr uses Epley formula', () => {
+    const { sections } = parseWorkoutNote('-Bench\n100 5')
+    const ex = deriveWorkoutAnalytics(sections).exercises[0]
+    expect(ex.estimated_pr).toBeCloseTo(epleyPR(100, 5))
+  })
+
+  test('same exercise across days merges into one entry', () => {
+    const note = 'Monday\n-Bench\n80 8,8\nWednesday\n-Bench\n85 6,6'
+    const { sections } = parseWorkoutNote(note)
+    const result = deriveWorkoutAnalytics(sections)
+    expect(result.exercises.filter(e => e.name === 'Bench')).toHaveLength(1)
+  })
+
+  test('alias "DB Bench" resolves to canonical "DB Bench Press"', () => {
+    const { sections } = parseWorkoutNote('-DB Bench\n80 8,8,8')
+    const result = deriveWorkoutAnalytics(sections)
+    expect(result.exercises[0].name).toBe('DB Bench Press')
+  })
+})
+
+describe('deriveTrackedPRs — web', () => {
+  test('returns one entry per tracked name', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n-Squat\n205 5')
+    const result = deriveTrackedPRs(sections, ['Bench', 'Squat'])
+    expect(result.exercises.map(e => e.name)).toEqual(['Bench', 'Squat'])
+  })
+
+  test('absent exercise returns null estimated_pr', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8')
+    const result = deriveTrackedPRs(sections, ['Squat'])
+    expect(result.exercises[0].estimated_pr).toBeNull()
+  })
+
+  test('alias "DB Bench" matches slot "DB Bench Press"', () => {
+    const { sections } = parseWorkoutNote('-DB Bench\n80 8,8,8')
+    const result = deriveTrackedPRs(sections, ['DB Bench Press'])
+    expect(result.exercises[0].estimated_pr).not.toBeNull()
+  })
+})
+
+describe('buildSessionsFromNote — web', () => {
+  test('two exercises with two entries each produce two sessions', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3\n- 225 4,4'
+    const r = buildSessionsFromNote(note)
+    expect(r.sessions).toHaveLength(2)
+    expect(r.warnings).toHaveLength(0)
+  })
+
+  test('empty note returns no sessions', () => {
+    expect(buildSessionsFromNote('').sessions).toHaveLength(0)
+  })
+
+  test('uneven entry counts produce a warning', () => {
+    const note = '-Bench\n- 125 4,4,4\n- 125 5,5,5\n-Deadlift\n- 225 3,3'
+    const r = buildSessionsFromNote(note)
+    expect(r.warnings.length).toBeGreaterThan(0)
+  })
+})
+
+describe('deriveProgressionSignals — web', () => {
+  test('first_session when only one occurrence', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8')
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0]
+    expect(sig.progression_status).toBe('first_session')
+  })
+
+  test('improved when latest PR exceeds prior', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8'
+    const { sections } = parseWorkoutNote(note)
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0]
+    expect(sig.progression_status).toBe('improved')
+  })
+
+  test('absent exercise returns null status', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8')
+    const sig = deriveProgressionSignals(sections, ['Squat']).exercises[0]
+    expect(sig.progression_status).toBeNull()
+  })
+
+  test('repeatability_score counts sets at max weight', () => {
+    const { sections } = parseWorkoutNote('-Bench\n305 6,6,4 295 6')
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0]
+    expect(sig.repeatability_score).toBe(3)
   })
 })
