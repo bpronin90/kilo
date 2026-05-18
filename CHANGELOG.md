@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.7 - 2026-05-18
+
+- Issue #75: Hardened the legacy `Kilo.html` runtime CDN dependencies with
+  verified SRI hashes and `crossorigin="anonymous"` attributes, switched React
+  and ReactDOM to production-minified CDN assets, and updated the architecture
+  and current-state docs to document the browser and Capacitor shell
+  supply-chain protection posture.
+
 ## 0.14.6 - 2026-05-18
 
 - Issue #78: Made the Android Capacitor shell's backup behavior explicit by
