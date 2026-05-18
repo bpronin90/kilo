@@ -379,6 +379,22 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
+### OTA update code signing is configured (not yet active on installed builds)
+
+`mobile/app.json` is now configured for Expo OTA code signing via
+`updates.codeSigningCertificate` and `updates.codeSigningMetadata`. The public
+X.509 certificate is committed at `mobile/certs/certificate.crt`. The matching
+private key is not in the repo; see `mobile/certs/KEYS.md` for storage
+guidance and the signed-publish command.
+
+**On-device enforcement requires a new native build.** The certificate is
+embedded in the app binary at build time. Builds produced before this config
+change do not contain the certificate and will not verify OTA signatures.
+Once a binary built after this change is installed, `expo-updates` will reject
+any OTA update whose manifest signature does not verify against the embedded
+certificate. Published OTA updates must be signed via `--private-key-path`
+passed to `eas update`.
+
 ### Native Expo app has standalone Android and iOS build paths
 
 The `mobile/` Expo app now has checked-in EAS build profiles for both Android

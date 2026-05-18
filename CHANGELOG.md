@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.4 - 2026-05-18
+
+- Issue #76: Enabled Expo OTA update code signing for the native app by adding
+  the client-side certificate and manifest-signing configuration, documenting
+  private-key handling and signed publish requirements, and clarifying that
+  on-device enforcement begins only after installing a native build produced
+  with the embedded certificate.
+
 ## 0.14.3 - 2026-05-18
 
 - Issue #74: Updated `docs/repo-structure.md` so the tracked repo inventory
