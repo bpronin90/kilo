@@ -379,6 +379,12 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
+**Supply-chain hardening:** all runtime CDN dependencies in `Kilo.html` (React,
+ReactDOM, and Babel) are hardened with Subresource Integrity (SRI) using stable
+versioned URLs, `integrity` hashes, and `crossorigin="anonymous"`. This ensures
+that a compromise of the CDN provider cannot be used to inject malicious
+JavaScript into the packaged Android app or the browser prototype.
+
 **Android backup policy:** `android:allowBackup="true"` is set intentionally.
 User workout and weight entries stored in WebView `localStorage` are included in
 Android backup and device-to-device transfer. SharedPreferences, which contain
