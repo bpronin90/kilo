@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) backup policy for Kilo.
+
+    Policy: back up user workout/weight data; exclude SharedPreferences which
+    may contain Supabase auth session tokens that should not be restored
+    cross-device. Applies to both cloud backup and device-to-device transfer.
+-->
+<data-extraction-rules xmlns:android="http://schemas.android.com/apk/res/android">
+    <cloud-backup>
+        <exclude domain="sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>
