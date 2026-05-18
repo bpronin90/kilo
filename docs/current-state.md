@@ -43,11 +43,16 @@ constraints:
    - `eas build --platform android --profile preview`
    - Install the resulting APK on the phone
    - After a compatible Android build is installed, publish OTA-safe JS and
-     asset updates with `npm --prefix mobile run publish:android -- --message
-     "describe the change"`
-   - Native-affecting changes still require a new Android build because the
-     Expo runtime boundary is now enforced with
-     `runtimeVersion.policy: "fingerprint"`
+     asset updates with `npm --prefix mobile run publish:android:preview --
+     --message "describe the change"`
+   - The runtime boundary is enforced via `runtimeVersion.policy: "appVersion"`
+     (runtime version = `version` in `app.json`). OTA updates apply to any
+     installed build with the same version. A new Android build is required
+     when: a native module changes, a native `app.json` field changes, the
+     `version` is bumped, or any APK built under the old `"fingerprint"` policy
+     is still installed (those builds carry a fingerprint hash runtime version
+     and will never receive `appVersion`-keyed OTA updates — install a fresh
+     APK first).
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
@@ -200,7 +205,9 @@ estimated-max values, 1k progress, progression status, and set-count context
 in one minimal analytics view while keeping totals in sync with canonical
 workout-note refreshes. A separate native More tab now exposes Help and
 About surfaces, including plain-language terminology guidance, attribution,
-displayed version, and copyright notice.
+displayed version, copyright notice, and an OTA Diagnostics panel that
+surfaces the EAS channel, runtime version, current bundle (embedded vs.
+applied update), update-available/pending state, and a manual update check.
 
 ### Parser (`src/parser.jsx`)
 

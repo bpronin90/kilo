@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0 - 2026-05-18
+
+- Issue #82: Fixed Android preview OTA update visibility. Switched
+  `runtimeVersion.policy` from `fingerprint` to `appVersion` so valid
+  JS/asset OTA updates apply to installed builds sharing the app version,
+  and added an OTA Diagnostics panel to the About screen (channel, runtime
+  version, embedded-vs-applied bundle, update-available/pending state, and a
+  manual update check). Documented the exact cases requiring a fresh Android
+  build — including the one-time rebuild needed to migrate off legacy
+  `fingerprint` APKs — in `docs/phone-runbook.md` and `docs/current-state.md`.
+
 ## 0.16.0 - 2026-05-18
 
 - Issue #80: Added a local-only mobile export/import and recovery flow for user

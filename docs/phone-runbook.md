@@ -202,13 +202,22 @@ cd /home/benpronin/projects/kilo/mobile
 eas build --platform android --profile preview
 ```
 
-- Rebuild-required examples:
+- Rebuild-required cases:
   - adding or upgrading a native module
   - changing Android native project files
   - changing `app.json` fields that affect native config, such as package,
     permissions, splash, or icons
-- The app now uses `runtimeVersion.policy: "fingerprint"`, so native-affecting
-  changes produce a new runtime and cannot ship as OTA updates to older builds.
+  - bumping the `version` field in `app.json` (runtime version = app version
+    under `runtimeVersion.policy: "appVersion"`, so a version bump creates a
+    new runtime boundary that OTA updates cannot cross)
+  - **one-time migration rebuild**: any APK that was built while
+    `runtimeVersion.policy` was set to `"fingerprint"` carries a fingerprint
+    hash as its runtime version. That hash will never match new OTA publishes
+    that use the `appVersion` policy. Install a fresh preview APK (built after
+    this policy change) before expecting OTA updates to land.
+- The app uses `runtimeVersion.policy: "appVersion"`. Runtime version equals
+  the `version` in `app.json` (`1.0.0`). OTA updates apply to any installed
+  build sharing that version; a rebuild is only required for the cases above.
 - Download the new `.apk` from the latest EAS build URL.
 - Install it on the phone again. Android should treat this as an update as long
   as the package name stays the same and the signing is compatible.
