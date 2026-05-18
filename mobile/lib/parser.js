@@ -362,10 +362,11 @@ export function deriveWorkoutAnalytics(sections) {
   for (const section of sections) {
     const { heading, subheading, kind, exercises } = section;
     for (const ex of exercises) {
-      if (!byName.has(ex.name)) {
-        byName.set(ex.name, { name: ex.name, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
+      const key = _canonicalizeName(ex.name);
+      if (!byName.has(key)) {
+        byName.set(key, { name: key, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
-      const derived = byName.get(ex.name);
+      const derived = byName.get(key);
       derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
@@ -394,12 +395,13 @@ export function deriveWorkoutAnalytics(sections) {
 }
 
 // ── Exercise alias resolution ─────────────────────────────────────────────────
-// Deterministic table mapping canonical exercise names to known note-text variants.
-// Used so a note entry like "DB Bench" can match a slot configured for "DB Bench Press".
-// All alias values are lowercase for case-insensitive comparison.
+// Deterministic table: canonical name → lowercase alias variants.
+// Canonicalization happens at grouping time in deriveWorkoutAnalytics so that
+// mixed-name history (e.g. "DB Bench Press" one week, "DB Bench" the next) is
+// merged into one bucket and never splits progression or 1k calculations.
 const _EXERCISE_ALIASES = new Map([
   ['DB Bench Press',           ['db bench', 'dumbbell bench press', 'dumbbell bench', 'db bench press']],
-  ['Bench Press',              ['bb bench press', 'barbell bench press', 'barbell bench', 'bench']],
+  ['Bench Press',              ['bb bench press', 'barbell bench press', 'barbell bench']],
   ['Incline DB Press',         ['incline dumbbell press', 'incline db', 'incline press', 'incline db bench', 'incline bench']],
   ['Squat',                    ['back squat', 'barbell squat', 'bb squat', 'low bar squat', 'high bar squat', 'low-bar squat', 'high-bar squat']],
   ['Deadlift',                 ['deadlifts', 'dl', 'conventional deadlift', 'barbell deadlift', 'bb deadlift', 'conv deadlift', 'conv. deadlift']],
@@ -408,28 +410,23 @@ const _EXERCISE_ALIASES = new Map([
   ['Lat Pulldown',             ['lat pd', 'lat pulldowns', 'pulldowns']],
 ]);
 
-// Returns true when noteName (from the note) is equivalent to selectedName (the slot target).
-// Checks exact match first, then the alias table. Case-insensitive.
-function _exercisesMatch(noteName, selectedName) {
-  if (noteName === selectedName) return true;
-  const noteNorm = noteName.toLowerCase().trim();
-  const selNorm = selectedName.toLowerCase().trim();
-  if (noteNorm === selNorm) return true;
-  const aliases = _EXERCISE_ALIASES.get(selectedName);
-  if (aliases && aliases.includes(noteNorm)) return true;
-  // Also check if selectedName is itself an alias of some canonical and noteName matches that canonical
-  for (const [canonical, aliasList] of _EXERCISE_ALIASES) {
-    if (aliasList.includes(selNorm) && (canonical.toLowerCase() === noteNorm || aliasList.includes(noteNorm))) return true;
+// Resolves a raw exercise name to its canonical alias key.
+// If the name is already a canonical key or has no alias entry, returns it unchanged.
+function _canonicalizeName(name) {
+  const lower = name.toLowerCase().trim();
+  for (const [canonical, aliases] of _EXERCISE_ALIASES) {
+    if (canonical.toLowerCase() === lower) return canonical;
+    if (aliases.includes(lower)) return canonical;
   }
-  return false;
+  return name;
 }
 
-// Finds the best matching exercise from an analytics exercises array for a given target name.
-// Returns the analytics exercise object or null.
+// Looks up a target name in an analytics exercises array using canonical keys.
+// Since deriveWorkoutAnalytics stores exercises under canonical names, this is an exact lookup
+// after canonicalizing the target.
 function _findExercise(exercises, targetName) {
-  const exact = exercises.find(e => e.name === targetName);
-  if (exact) return exact;
-  return exercises.find(e => _exercisesMatch(e.name, targetName)) || null;
+  const canonical = _canonicalizeName(targetName);
+  return exercises.find(e => e.name === canonical) || null;
 }
 
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied

@@ -1555,6 +1555,25 @@ describe('deriveProgressionSignals — alias matching', () => {
     const sig = deriveProgressionSignals(sections, ['DB Bench Press']).exercises[0];
     expect(sig.progression_status).toBeNull();
   });
+
+  test('mixed canonical and alias name in same note merges into one history — reviewer repro', () => {
+    // Monday uses canonical, Wednesday uses alias — both should count as the same lift
+    const note = 'Monday\n-DB Bench Press\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['DB Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeGreaterThan(sig.prior_pr);
+  });
+
+  test('1k total uses best PR across mixed-name occurrences', () => {
+    // Monday canonical at 80, Wednesday alias at 85 — 1k should use the higher 85
+    const note = 'Monday\n-DB Bench Press\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8\n-Squat\n225 5,5\n-Deadlift\n315 5,5';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' });
+    const expectedBenchPR = 85 * (1 + 8 / 30);
+    expect(result.bench).toBeCloseTo(expectedBenchPR, 1);
+    expect(result.total).not.toBeNull();
+  });
 });
 
 describe('derive1kTotal — alias matching', () => {
