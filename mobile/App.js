@@ -94,7 +94,6 @@ export default function App() {
       setWeightValue('');
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
-      setActiveTab('Home');
     } finally {
       setWeightSaving(false);
     }

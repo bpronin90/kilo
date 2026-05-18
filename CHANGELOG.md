@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.3 - 2026-05-18
+
+- Issue #67: Fixed the native Weight flow so saving a weigh-in keeps the user on
+  Weight history, replaced the oversized bubble-card history treatment with a
+  denser scannable row layout, and added inline per-row deletion without
+  interfering with tap-to-edit behavior.
+
 ## 0.13.2 - 2026-05-17
 
 - Issue #66: Fixed the native workout-note editor polish so the bottom Log

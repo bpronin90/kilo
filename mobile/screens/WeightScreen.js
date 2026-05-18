@@ -27,8 +27,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     setWeightNote('');
   };
 
-  const handleDelete = () => {
-    if (!editingId) return;
+  const handleDelete = (id) => {
     Alert.alert(
       'Delete Entry',
       'Are you sure you want to delete this weight entry?',
@@ -38,8 +37,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           text: 'Delete', 
           style: 'destructive', 
           onPress: async () => {
-            await remove(editingId);
-            cancelEdit();
+            await remove(id);
+            if (id === editingId) cancelEdit();
           } 
         },
       ]
@@ -106,14 +105,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           title={editingId ? "Update entry" : "Save weigh-in"} 
           disabled={saving} 
         />
-        {editingId ? (
-          <Button 
-            onPress={handleDelete} 
-            title="Delete entry" 
-            style={styles.deleteButton}
-            textStyle={styles.deleteButtonText}
-          />
-        ) : null}
       </Card>
 
       {(trends.avg7 !== null || trends.avg30 !== null) ? (
@@ -146,20 +137,45 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
-        {entries.map((entry) => (
-          <Pressable key={entry.id} onPress={() => handleEditEntry(entry)}>
-            <Card style={editingId === entry.id ? styles.activeEntryCard : null}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.entryTitle}>
+        {entries.map((entry, index) => (
+          <View 
+            key={entry.id} 
+            style={[
+              styles.historyRowContainer,
+              editingId === entry.id && styles.activeEntryRow,
+              index === entries.length - 1 && styles.lastHistoryRow
+            ]}
+          >
+            <Pressable 
+              onPress={() => handleEditEntry(entry)}
+              style={({ pressed }) => [
+                styles.rowMain,
+                pressed && styles.historyRowPressed
+              ]}
+            >
+              <View style={styles.rowTop}>
+                <Text style={styles.rowWeight}>
                   {entry.weight_value} {entry.weight_unit || 'lb'}
                 </Text>
-                <Text style={styles.entryMeta}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
+                <Text style={styles.rowDate}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
               </View>
-              <Text style={styles.entryBody}>
-                {entry.note || 'No note'}
-              </Text>
-            </Card>
-          </Pressable>
+              {entry.note ? (
+                <Text style={styles.rowNote} numberOfLines={1}>
+                  {entry.note}
+                </Text>
+              ) : null}
+            </Pressable>
+            <Pressable 
+              onPress={() => handleDelete(entry.id)} 
+              style={({ pressed }) => [
+                styles.deleteAffordance,
+                pressed && styles.deleteAffordancePressed
+              ]}
+              hitSlop={12}
+            >
+              <Text style={styles.deleteAffordanceText}>✕</Text>
+            </Pressable>
+          </View>
         ))}
         {entries.length === 0 ? (
           <Text style={styles.emptyText}>No weight entries yet.</Text>
@@ -233,47 +249,71 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     padding: 4,
   },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.error,
-    marginTop: 8,
-  },
-  deleteButtonText: {
-    color: Colors.error,
-  },
   historyList: {
-    gap: 12,
+    backgroundColor: Colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
   },
-  activeEntryCard: {
-    borderColor: Colors.accent,
+  historyRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  historyRowPressed: {
+    backgroundColor: Colors.chipBackground,
+    opacity: 0.8,
+  },
+  activeEntryRow: {
     backgroundColor: Colors.chipBackground,
   },
-  rowBetween: {
+  lastHistoryRow: {
+    borderBottomWidth: 0,
+  },
+  rowMain: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 2,
+  },
+  rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
+    alignItems: 'baseline',
   },
-  entryTitle: {
-    flex: 1,
-    fontSize: 18,
+  rowWeight: {
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.text,
   },
-  entryMeta: {
+  rowDate: {
     fontSize: 12,
     color: Colors.textMuted,
   },
-  entryBody: {
-    fontSize: 15,
-    lineHeight: 22,
+  rowNote: {
+    fontSize: 14,
     color: Colors.textMuted,
+  },
+  deleteAffordance: {
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteAffordancePressed: {
+    backgroundColor: Colors.chipBackground,
+    opacity: 0.8,
+  },
+  deleteAffordanceText: {
+    fontSize: 18,
+    color: Colors.textMuted,
+    opacity: 0.5,
   },
   emptyText: {
     textAlign: 'center',
     color: Colors.textMuted,
-    marginTop: 20,
+    paddingVertical: 32,
     fontSize: 15,
   },
   trendsCard: {
