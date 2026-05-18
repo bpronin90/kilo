@@ -379,6 +379,14 @@ bundling, or platform-specific business logic. Because `Kilo.html` still loads
 React and Babel from CDN, the installed app currently requires internet access
 to render successfully on device.
 
+**Android backup policy:** `android:allowBackup="true"` is set intentionally.
+User workout and weight entries stored in WebView `localStorage` are included in
+Android backup and device-to-device transfer. SharedPreferences, which contain
+Capacitor framework internals (device IDs, cached paths), are excluded via
+`backup_content.xml` (API ≤30) and `backup_rules.xml` (API 31+). There is no
+backend or auth layer in this path; the only user data worth preserving is the
+`localStorage`-backed entry history.
+
 ### OTA update code signing is configured (not yet active on installed builds)
 
 `mobile/app.json` is now configured for Expo OTA code signing via
