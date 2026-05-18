@@ -116,6 +116,75 @@ export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
 }
 
+// ── backup / restore ──────────────────────────────────────────────────────────
+
+const BACKUP_VERSION = '1';
+
+export async function exportBackup() {
+  const weight_entries = await readList(WEIGHT_KEY);
+  const workout_note = await loadWorkoutNote();
+  return {
+    version: BACKUP_VERSION,
+    exported_at: new Date().toISOString(),
+    weight_entries,
+    workout_note,
+  };
+}
+
+function validateBackup(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+    return { ok: false, error: 'Invalid backup: not an object' };
+  if (payload.version !== BACKUP_VERSION)
+    return { ok: false, error: `Unsupported backup version: ${payload.version}` };
+  if (!Array.isArray(payload.weight_entries))
+    return { ok: false, error: 'Invalid backup: weight_entries must be an array' };
+  for (const e of payload.weight_entries) {
+    if (!e || typeof e !== 'object')
+      return { ok: false, error: 'Invalid backup: weight entry is not an object' };
+    if (typeof e.id !== 'string')
+      return { ok: false, error: 'Invalid backup: weight entry missing id' };
+    if (e.entry_type !== 'weight')
+      return { ok: false, error: 'Invalid backup: weight entry has wrong entry_type' };
+    if (typeof e.date !== 'string')
+      return { ok: false, error: 'Invalid backup: weight entry missing date' };
+    if (typeof e.weight_value !== 'number')
+      return { ok: false, error: 'Invalid backup: weight entry missing weight_value' };
+    if (typeof e.logged_at !== 'string')
+      return { ok: false, error: 'Invalid backup: weight entry missing logged_at' };
+  }
+  if (payload.workout_note != null) {
+    const n = payload.workout_note;
+    if (typeof n !== 'object' || Array.isArray(n))
+      return { ok: false, error: 'Invalid backup: workout_note must be an object or null' };
+    if (typeof n.raw_text !== 'string')
+      return { ok: false, error: 'Invalid backup: workout_note missing raw_text' };
+  }
+  return { ok: true };
+}
+
+// Restores a backup. strategy 'replace' overwrites all local data atomically.
+// Returns { ok: true } or { ok: false, error: string }.
+// Validation runs before any write; storage is not mutated on failure.
+export async function importBackup(payload, strategy = 'replace') {
+  const check = validateBackup(payload);
+  if (!check.ok) return check;
+
+  if (strategy === 'replace') {
+    // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
+    const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
+    if (payload.workout_note != null) {
+      pairs.push([WORKOUT_NOTE_KEY, JSON.stringify(payload.workout_note)]);
+      await AsyncStorage.multiSet(pairs);
+    } else {
+      // Write weights first; then remove the note so the larger write is committed first.
+      await AsyncStorage.multiSet(pairs);
+      await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
+    }
+  }
+
+  return { ok: true };
+}
+
 // One-time migration: synthesize a raw note from legacy structured sessions.
 // No-op if the note already exists or there are no sessions to migrate.
 //

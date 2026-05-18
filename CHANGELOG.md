@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.0 - 2026-05-18
+
+- Issue #80: Added a local-only mobile export/import and recovery flow for user
+  data. Introduced a versioned v1 backup format plus `exportBackup`,
+  `validateBackup`, and `importBackup` in the native storage layer, with
+  validation before any write, a batched atomic-as-possible replace restore,
+  and a Data & Backup surface in the More tab for export/share and paste-to-
+  import with clear success/error handling. Restore leaves the legacy
+  workout-session key untouched and no remote sync is introduced. Aligned the
+  architecture and current-state living docs with the new recovery path.
+
 ## 0.15.0 - 2026-05-18
 
 - Issue #81: Extracted the shared workout parsing and derived-analytics domain
