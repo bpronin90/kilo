@@ -48,42 +48,6 @@ export function useWeightEntries() {
   return { entries, loading, error, add, remove, update };
 }
 
-let sessionListeners = [];
-const notifySession = () => sessionListeners.forEach(l => l());
-
-export function useWorkoutSessions() {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refresh = useCallback(() => {
-    Storage.loadWorkoutSessions()
-      .then(setSessions)
-      .catch(e => setError(e))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    sessionListeners.push(refresh);
-    return () => {
-      sessionListeners = sessionListeners.filter(l => l !== refresh);
-    };
-  }, [refresh]);
-
-  const add = useCallback(async (session) => {
-    await Storage.saveWorkoutSession(session);
-    notifySession();
-  }, []);
-
-  const remove = useCallback(async (id) => {
-    await Storage.deleteWorkoutSession(id);
-    notifySession();
-  }, []);
-
-  return { sessions, loading, error, add, remove, refresh };
-}
-
 export function useWorkoutNote() {
   const [note, setNote] = useState(null);
   const [loading, setLoading] = useState(true);

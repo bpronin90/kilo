@@ -14,6 +14,7 @@ import {
   migrateWorkoutNote,
 } from '../storage/entries';
 import { computeWeightTrends } from '../lib/data';
+import { parseWorkoutNote } from '../lib/parser';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -287,6 +288,64 @@ describe('computeWeightTrends', () => {
     ];
     const result = computeWeightTrends(entries, REF);
     expect(result.paceFlag).toBe('gain');
+  });
+});
+
+// ── unified persistence ───────────────────────────────────────────────────────
+
+describe('unified persistence — note as canonical source', () => {
+  test('saved note raw_text is parseable into exercise sections', async () => {
+    const raw = 'Monday\n-Squat\n225 5,5,5\n-Bench\n135 8,8,8';
+    await saveWorkoutNote(raw);
+    const note = await loadWorkoutNote();
+    const { sections } = parseWorkoutNote(note.raw_text);
+    expect(sections.length).toBeGreaterThan(0);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+    expect(names).toContain('Bench');
+  });
+
+  test('editing note raw_text changes parsed exercise output consistently', async () => {
+    await saveWorkoutNote('Monday\n-Squat\n225 5,5,5');
+    await saveWorkoutNote('Monday\n-Squat\n225 5,5,5\n-Deadlift\n315 3,3,3');
+    const note = await loadWorkoutNote();
+    const { sections } = parseWorkoutNote(note.raw_text);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+    expect(names).toContain('Deadlift');
+  });
+
+  test('tracked exercises survive a note text update', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5');
+    await saveTrackedExercises(['Squat', 'Bench']);
+    await saveWorkoutNote('Squat 225 5,5,5\nBench 135 8,8,8');
+    const note = await loadWorkoutNote();
+    expect(note.tracked_exercises).toEqual(['Squat', 'Bench']);
+    expect(note.raw_text).toContain('Bench');
+  });
+
+  test('legacy sessions-only install migrates to a non-empty, persistently loadable note', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    const reloaded = await loadWorkoutNote();
+    expect(reloaded).not.toBeNull();
+    expect(reloaded.raw_text).toBe(migrated.raw_text);
+    expect(reloaded.raw_text.length).toBeGreaterThan(0);
+  });
+
+  test('migration is idempotent — second call with existing note returns same raw_text', async () => {
+    await saveWorkoutSession(S1);
+    const first = await migrateWorkoutNote();
+    const second = await migrateWorkoutNote();
+    expect(second.raw_text).toBe(first.raw_text);
+    expect(second.saved_at).toBe(first.saved_at);
+  });
+
+  test('migrated note raw_text preserves exercise names and weights from sessions', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    expect(migrated.raw_text).toContain('Squat');
+    expect(migrated.raw_text).toContain('225');
   });
 });
 

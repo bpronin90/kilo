@@ -3,14 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { StatCard, Card, SectionTitle, Badge } from '../components/UI';
 import { computeWeightTrends, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
-import { useWorkoutNote, useWeightEntries, useWorkoutSessions } from '../hooks/useEntries';
+import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen() {
   const { note, saveOneK } = useWorkoutNote();
   const { entries: weightEntries } = useWeightEntries();
-  const { sessions: workoutSessions } = useWorkoutSessions();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
 
@@ -45,12 +44,13 @@ export function StatsScreen() {
     const trackedNames = note.tracked_exercises || [];
     const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
     const oneK = derive1kTotal(sections, oneKSelections);
-    return { signals, oneK, sectionsCount: sections.length };
+    const workoutDayCount = new Set(sections.map(s => s.heading || '')).size;
+    return { signals, oneK, workoutDayCount };
   }, [note, oneKSelections]);
 
   const workoutCount = useMemo(() => {
-    return String(analytics?.sectionsCount || workoutSessions.length);
-  }, [analytics, workoutSessions]);
+    return String(analytics?.workoutDayCount ?? 0);
+  }, [analytics]);
 
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));

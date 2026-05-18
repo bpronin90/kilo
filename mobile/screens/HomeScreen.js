@@ -4,28 +4,37 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
+import { parseWorkoutNote } from '../lib/parser';
 import pkg from '../package.json';
 
-export function HomeScreen({ entries, weightEntries, workoutSessions, successMessage }) {
+export function HomeScreen({ entries, weightEntries, workoutNote, successMessage }) {
   const dashboardData = useMemo(() => {
-    // 1. Training Volume (sets per session for last 7 sessions)
-    const volumeData = workoutSessions
-      .slice(0, 7)
-      .reverse()
-      .map(s => s.items.reduce((sum, item) => sum + (item.sets?.length || 0), 0));
-    
-    // 2. Weight Trend (last 7 entries)
+    let volumeData = [];
+    let totalWorkouts = 0;
+
+    if (workoutNote?.raw_text) {
+      const { sections } = parseWorkoutNote(workoutNote.raw_text);
+      // Group sections by day heading, accumulating set counts per day
+      const dayMap = new Map();
+      for (const section of sections) {
+        const key = section.heading || '';
+        if (!dayMap.has(key)) dayMap.set(key, 0);
+        const sectionSets = section.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+        dayMap.set(key, dayMap.get(key) + sectionSets);
+      }
+      volumeData = [...dayMap.values()].slice(-7);
+      totalWorkouts = dayMap.size;
+    }
+
     const weightTrend = weightEntries
       .slice(0, 7)
       .reverse()
       .map(e => e.weight_value);
 
-    // Latest stats for quick overview
     const latestWeight = weightEntries[0]?.weight_value;
-    const totalWorkouts = workoutSessions.length;
 
     return { volumeData, weightTrend, latestWeight, totalWorkouts };
-  }, [weightEntries, workoutSessions]);
+  }, [weightEntries, workoutNote]);
 
   return (
     <ScreenShell
