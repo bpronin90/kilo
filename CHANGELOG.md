@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 - 2026-05-18
+
+- Issue #81: Extracted the shared workout parsing and derived-analytics domain
+  layer across the web and native app paths, migrated the browser consumers to
+  the canonical row/note parser plus shared Epley-based analytics helpers, and
+  aligned the living docs with the now-shared analytics behavior.
+
 ## 0.14.8 - 2026-05-18
 
 - Issue #79: Unified the native app around the canonical workout-note

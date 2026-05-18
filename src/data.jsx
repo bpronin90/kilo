@@ -499,8 +499,14 @@ window.dayOfWeek = function(iso) {
     if (!sess) continue;
     const e = sess.exercises.find(x => x.exerciseId === id);
     if (!e || e.raw === '-') continue;
-    const adj = window.adjusted1RM(window.parseKiloInput(e.raw));
-    if (adj) total += adj.adjusted;
+    const row = window.parseWorkoutRow(e.raw);
+    if (!row.ok || !row.sets) continue;
+    let bestPR = null;
+    for (const s of row.sets) {
+      const pr = window.epleyPR(s.weight_value, s.rep_count);
+      if (pr !== null && (bestPR === null || pr > bestPR)) bestPR = pr;
+    }
+    if (bestPR !== null) total += bestPR;
   }
   KILO_GOALS[0].current = Math.round(total);
 })();

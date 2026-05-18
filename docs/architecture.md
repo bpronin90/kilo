@@ -98,7 +98,7 @@ then loads source files as `<script type="text/babel">` tags in this order:
 
 1. `src/components/ios-frame.jsx`, `src/components/android-frame.jsx`, `src/components/design-canvas.jsx`, `src/components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
 2. `src/parser.jsx` — pure parse functions; no React
-3. `src/data.jsx` — seeds globals; depends on `src/parser.jsx`; calls `parseKiloInput` and `adjusted1RM` during initialization via `computeTotal()` to populate the 1000 lb club goal
+3. `src/data.jsx` — seeds globals; depends on `src/parser.jsx`; calls `parseWorkoutRow` and `epleyPR` during initialization via `computeTotal()` to populate the 1000 lb club goal
 4. `src/components/ui.jsx` — shared primitives; depends on globals from `src/data.jsx`
 5. `src/screens/home.jsx`, `src/screens/log.jsx`, `src/screens/weight.jsx`, `src/screens/stats.jsx`, `src/screens/more.jsx`
 6. `src/app.jsx` — root component; references all screen components
@@ -202,15 +202,17 @@ User types in native Weight or Log form
 `src/parser.jsx` exports all parse functions via `window.*`. The file contains
 two distinct parse paths:
 
-### Legacy freeform path (read-only analytics)
+### Legacy freeform path (read-only formatting compatibility)
 
 - `parseKiloInput(raw)` — tokenizes `weight rep-group` pairs; lenient; returns
   `{ sets: [{weight, reps[]}], skipped, warnings }`
-- `formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM` — analytics
+- `formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM` — legacy
   helpers that consume the legacy shape
 
-The legacy path is used only for read-only display (1RM preview in `log.jsx`,
-historical stats). It is not used when saving.
+The legacy path is retained for compatibility with seeded history formatting and
+other browser-runtime helpers. It is not used when saving, and the active web
+and native analytics consumers now route through `parseWorkoutRow`,
+`parseWorkoutNote`, and the shared Epley-based derived-analytics helpers.
 
 ### MVP canonical path (save and validate)
 
@@ -412,6 +414,8 @@ directly — there is no state manager.
 ### Global parse functions (parser.jsx)
 
 `parseKiloInput`, `parseWeightEntry`, `parseWorkoutRow`, `parseWorkoutEntry`,
+`parseWorkoutNote`, `buildSessionsFromNote`, `epleyPR`,
+`deriveWorkoutAnalytics`, `deriveTrackedPRs`, `deriveProgressionSignals`,
 `formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM`
 
 ## Recent History and Correction Flow
@@ -421,8 +425,9 @@ scanning `KILO_SESSIONS` for the most-recent entry for each exercise id. This
 `lastRef` is passed to each `ExerciseRow`, which displays the top-set weight
 and reps from the prior session as input placeholder and a "last" reference line.
 
-The legacy `parseKiloInput` path is used to parse the `lastRef.raw` for display
-only. The MVP `parseWorkoutRow` path is used for the live input being entered.
+`lastRef.raw` and live input rows are both parsed through `parseWorkoutRow`.
+The prior-session display still shows a simplified top-weight summary derived
+from the canonical set shape rather than the legacy parser output.
 
 ## Runtime Assumptions Future Work Must Respect or Remove
 

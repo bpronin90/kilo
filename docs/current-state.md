@@ -57,8 +57,9 @@ version badge derived from `mobile/package.json`.
 
 The native app path is not yet a feature-complete port. It now proves that Kilo
 can run as a real React Native app with native screens, native parser/data
-modules, and local persistence instead of a WebView wrapper, but it still does
-not match the full browser prototype surface or analytics behavior.
+modules, and local persistence instead of a WebView wrapper. The two app paths
+still differ in surface area, but their active parsing and derived-analytics
+rules now come from the same shared domain logic.
 
 ---
 
@@ -234,8 +235,11 @@ The MVP canonical parse path is fully implemented and tested.
   first-session progression status plus a same-session top-weight
   `repeatability_score`.
 
-A legacy freeform path (`parseKiloInput`, `formatParsed`, analytics helpers)
-exists for read-only display of seeded history. It is not used on any save path.
+A legacy freeform path (`parseKiloInput`, `formatParsed`, legacy helpers)
+still exists for seeded-history compatibility and other browser-runtime
+formatting helpers. It is not used on any save path, and the active web/native
+analytics consumers now route through the canonical row/note parser plus the
+shared Epley-based derived-analytics helpers.
 
 ### Weight Logging (`src/screens/weight.jsx`)
 
@@ -336,9 +340,9 @@ Required readiness artifacts and their current status:
 
 The `mobile/` Expo app now covers the native MVP create/store/retrieve loop for
 weight and workout entries, but it still exposes a narrower UI than the browser
-prototype. The native app has only four tabs, a simplified workout form, and no
-native equivalents yet for the prototype More screen, correction flows, seeded
-history analytics, or live per-row parse previews.
+prototype. The native app has five tabs, its own note-first Log flow rather than
+the prototype exercise-row form, and it still lacks full parity for seeded
+history presentation and the prototype's live per-row parse preview treatment.
 
 ### No automated tests for workout logging, corrections, or recent history
 
@@ -460,8 +464,9 @@ depends on this fixed value.
 
 Seeded workout sessions expose only `raw` strings per exercise, not parsed `items`.
 Any code path that reads `session.items` must guard against missing `items`. The
-Stats screen and Log screen `lastRef` display use the legacy `parseKiloInput`
-path to handle these gracefully.
+Stats screen and Log screen `lastRef` display now derive from
+`parseWorkoutRow()`, so seeded raw strings continue to work without depending on
+the legacy parser path.
 
 ---
 

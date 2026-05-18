@@ -1,5 +1,28 @@
 // stats.jsx — Exercise History + 1RM Calculator (combined Stats tab)
 
+function _groupSetsByWeight(sets) {
+  const groups = [];
+  let cur = null;
+  for (const s of sets) {
+    if (cur && cur.weight === s.weight_value) {
+      cur.reps.push(s.rep_count);
+    } else {
+      cur = { weight: s.weight_value, reps: [s.rep_count] };
+      groups.push(cur);
+    }
+  }
+  return groups;
+}
+
+function _bestEpley(sets) {
+  let best = null;
+  for (const s of sets) {
+    const pr = window.epleyPR(s.weight_value, s.rep_count);
+    if (pr !== null && (best === null || pr > best)) best = pr;
+  }
+  return best;
+}
+
 function OneRMTrendGraph({ exId }) {
   const W = 320, H = 110;
   const PAD = 10, PAD_B = 14;
@@ -9,9 +32,10 @@ function OneRMTrendGraph({ exId }) {
     const s = window.KILO_SESSIONS[i];
     const e = s.exercises.find(x => x.exerciseId === exId);
     if (!e) continue;
-    const p = window.parseKiloInput(e.raw);
-    const adj = window.adjusted1RM(p);
-    if (adj) series.push({ date: s.date, value: adj.adjusted });
+    const row = window.parseWorkoutRow(e.raw);
+    if (!row.ok || !row.sets) continue;
+    const pr = _bestEpley(row.sets);
+    if (pr !== null) series.push({ date: s.date, value: pr });
   }
   if (series.length < 2) return <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink4, padding: 12 }}>not enough data</div>;
   const minY = Math.min(...series.map(s => s.value)) - 5;
@@ -71,9 +95,12 @@ function ExerciseHistoryView({ exId, back }) {
   // best ever set
   let best = null;
   for (const { e } of sessions) {
-    const p = window.parseKiloInput(e.raw);
-    const top = window.topSet(p);
-    if (top && (!best || top.weight > best.weight)) best = { ...top, raw: e.raw };
+    const row = window.parseWorkoutRow(e.raw);
+    if (!row.ok || !row.sets || row.blank || row.skipped) continue;
+    const maxW = Math.max(...row.sets.map(s => s.weight_value || 0));
+    if (maxW > 0 && (!best || maxW > best.weight)) {
+      best = { weight: maxW, reps: row.sets.filter(s => s.weight_value === maxW).map(s => s.rep_count), raw: e.raw };
+    }
   }
 
   return (
@@ -115,17 +142,16 @@ function ExerciseHistoryView({ exId, back }) {
         <KiloSection title={`History · ${sessions.length} sessions`}>
           <div style={{ borderTop: `1px solid ${KILO_C.border}` }}>
             {sessions.slice(0, 14).map(({ s, e }, i) => {
-              const p = window.parseKiloInput(e.raw);
-              const top = window.topSet(p);
-              const adj = window.adjusted1RM(p);
+              const row = window.parseWorkoutRow(e.raw);
+              const adj = (row.ok && row.sets) ? _bestEpley(row.sets) : null;
               return (
                 <div key={s.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${KILO_C.border}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                     <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                       {new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                     </div>
-                    {adj && (
-                      <KiloNum size={11} color={KILO_C.accent}>1RM {Math.round(adj.adjusted)}</KiloNum>
+                    {adj !== null && (
+                      <KiloNum size={11} color={KILO_C.accent}>1RM {Math.round(adj)}</KiloNum>
                     )}
                   </div>
                   <div className="kilo-mono" style={{ fontSize: 12, color: KILO_C.ink, fontWeight: 500 }}>
@@ -163,10 +189,13 @@ function UnifiedHistoryList({ entries, onDelete }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {e.exercises.map((ex, i) => {
                     const exerciseDef = window.KILO_EXERCISES.find(d => d.id === ex.exerciseId);
-                    const parsed = window.parseKiloInput(ex.raw);
+                    const row = window.parseWorkoutRow(ex.raw);
+                    const rowStr = (row.ok && row.sets && row.sets.length > 0)
+                      ? _groupSetsByWeight(row.sets).map(g => `${g.weight}×${g.reps.join(',')}`).join(' · ')
+                      : (row.skipped ? 'skipped' : '—');
                     return (
                       <div key={i} className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink2, lineHeight: 1.4 }}>
-                        <span style={{ color: KILO_C.ink3 }}>{exerciseDef ? exerciseDef.name : 'Unknown'}</span> · {window.formatParsed(parsed)}
+                        <span style={{ color: KILO_C.ink3 }}>{exerciseDef ? exerciseDef.name : 'Unknown'}</span> · {rowStr}
                       </div>
                     );
                   })}
@@ -256,8 +285,9 @@ function KiloStats({ goToTab }) {
     const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === id));
     if (!last) return { id, value: null };
     const e = last.exercises.find(x => x.exerciseId === id);
-    const adj = window.adjusted1RM(window.parseKiloInput(e.raw));
-    return { id, value: adj ? Math.round(adj.adjusted) : null };
+    const row = window.parseWorkoutRow(e.raw);
+    const pr = (row.ok && row.sets) ? _bestEpley(row.sets) : null;
+    return { id, value: pr !== null ? Math.round(pr) : null };
   });
   const total = oneRMs.reduce((s, x) => s + (x.value || 0), 0);
 
@@ -369,7 +399,8 @@ function KiloStats({ goToTab }) {
                   // get last 1RM
                   const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === ex.id));
                   const e = last && last.exercises.find(x => x.exerciseId === ex.id);
-                  const adj = e ? window.adjusted1RM(window.parseKiloInput(e.raw)) : null;
+                  const row = e ? window.parseWorkoutRow(e.raw) : null;
+                  const adj = (row && row.ok && row.sets) ? _bestEpley(row.sets) : null;
                   return (
                     <button
                       key={ex.id}
@@ -384,9 +415,9 @@ function KiloStats({ goToTab }) {
                           {!ex.po && ' · ∗'}
                         </div>
                       </div>
-                      {adj && (
+                      {adj !== null && (
                         <div style={{ textAlign: 'right' }}>
-                          <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj.adjusted)}</KiloNum>
+                          <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj)}</KiloNum>
                           <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em', textTransform: 'uppercase' }}>1RM</div>
                         </div>
                       )}
