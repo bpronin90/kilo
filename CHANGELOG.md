@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.2 - 2026-05-18
+
+- Issue #73: Added a root `.gitignore` covering generated and local-only
+  artifacts, made the `.claude/` runtime boundary explicit at the repo root,
+  and removed the previously tracked `.claude/napkin.md` and
+  `.claude/settings.json` files from version control.
+
 ## 0.14.1 - 2026-05-18
 
 - Issue #69: Added a Mermaid current-state architecture diagram to

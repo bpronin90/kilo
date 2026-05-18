@@ -57,6 +57,7 @@ Kilo.html              ← browser entry point
 README.md
 AGENTS.md              ← shared repo protocol
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
+.gitignore             ← root ignore policy for generated output and local-only runtime state
 package.json
 capacitor.config.json    ← Capacitor app id/name + staged webDir
 vitest.config.js
