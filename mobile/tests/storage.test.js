@@ -10,6 +10,7 @@ import {
   loadWorkoutNote,
   saveWorkoutNote,
   saveTrackedExercises,
+  saveOneKExercises,
   clearWorkoutNote,
   migrateWorkoutNote,
   exportBackup,
@@ -540,6 +541,15 @@ describe('importBackup — valid restore', () => {
     expect(loaded).toBeNull();
   });
 
+  test('import does not touch legacy workout sessions', async () => {
+    await saveWorkoutSession(S1);
+    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: null };
+    await importBackup(backup);
+    const sessions = await loadWorkoutSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].id).toBe(S1.id);
+  });
+
   test('replace strategy overwrites existing weight entries with backup data', async () => {
     await saveWeightEntry(W1);
     const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [W2], workout_note: null };
@@ -572,6 +582,18 @@ describe('importBackup — valid restore', () => {
     const note = await loadWorkoutNote();
     expect(note.raw_text).toBe('Squat 225 5,5,5\nBench 185 8,8');
     expect(note.tracked_exercises).toEqual(['Squat', 'Bench']);
+  });
+
+  test('round-trip: export then import restores one_k_exercises', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5');
+    await saveOneKExercises({ bench: 'Incline DB Press', squat: 'Squat', deadlift: 'RDL' });
+    const backup = await exportBackup();
+
+    AsyncStorage.clear();
+
+    await importBackup(backup);
+    const note = await loadWorkoutNote();
+    expect(note.one_k_exercises).toEqual({ bench: 'Incline DB Press', squat: 'Squat', deadlift: 'RDL' });
   });
 });
 

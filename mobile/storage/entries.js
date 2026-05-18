@@ -170,16 +170,16 @@ export async function importBackup(payload, strategy = 'replace') {
   if (!check.ok) return check;
 
   if (strategy === 'replace') {
-    const pairs = [
-      [WEIGHT_KEY, JSON.stringify(payload.weight_entries)],
-      [WORKOUT_KEY, JSON.stringify([])],
-    ];
+    // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
+    const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
     if (payload.workout_note != null) {
       pairs.push([WORKOUT_NOTE_KEY, JSON.stringify(payload.workout_note)]);
+      await AsyncStorage.multiSet(pairs);
     } else {
+      // Write weights first; then remove the note so the larger write is committed first.
+      await AsyncStorage.multiSet(pairs);
       await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
     }
-    await AsyncStorage.multiSet(pairs);
   }
 
   return { ok: true };
