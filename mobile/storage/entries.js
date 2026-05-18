@@ -163,7 +163,7 @@ export async function migrateWorkoutNote() {
       if (!item) return { kind: 'skip' };
 
       const weightGroups = [];
-      const nonWeightParts = [];
+      const extraParts = [];
 
       for (const s of (item.sets || [])) {
         if (s.weight_value != null && s.rep_count != null) {
@@ -173,6 +173,7 @@ export async function migrateWorkoutNote() {
           } else {
             weightGroups.push({ weight: s.weight_value, reps: [s.rep_count] });
           }
+          if (s.note_text) extraParts.push(`[${s.note_text}]`);
         } else {
           const parts = [];
           if (s.assistance_value != null) {
@@ -183,19 +184,20 @@ export async function migrateWorkoutNote() {
           if (s.rep_count != null) parts.push(`×${s.rep_count}`);
           if (s.duration_seconds != null) parts.push(`${s.duration_seconds}s`);
           if (s.note_text) parts.push(`[${s.note_text}]`);
-          if (parts.length) nonWeightParts.push(parts.join(' '));
+          if (parts.length) extraParts.push(parts.join(' '));
         }
       }
-      if (item.note_text) nonWeightParts.push(item.note_text);
+      if (item.note_text) extraParts.push(item.note_text);
 
       if (weightGroups.length > 0) {
         const row = weightGroups
           .map(({ weight, reps }) => `${weight} ${reps.join(',')}`)
           .join(' ');
-        return { kind: 'weight', row };
+        const comments = extraParts.length > 0 ? [`-- ${extraParts.join(', ')}`] : [];
+        return { kind: 'weight', row, comments };
       }
-      if (nonWeightParts.length > 0) {
-        return { kind: 'nonweight', text: nonWeightParts.join(', ') };
+      if (extraParts.length > 0) {
+        return { kind: 'nonweight', text: extraParts.join(', ') };
       }
       return { kind: 'skip' };
     }));
@@ -205,9 +207,14 @@ export async function migrateWorkoutNote() {
   for (const name of exerciseOrder) {
     lines.push(`-${name}`);
     for (const entry of entriesByExercise.get(name)) {
-      if (entry.kind === 'weight') lines.push(`- ${entry.row}`);
-      else if (entry.kind === 'nonweight') lines.push(`- ${entry.text}`);
-      else lines.push('-');
+      if (entry.kind === 'weight') {
+        lines.push(`- ${entry.row}`);
+        for (const c of entry.comments) lines.push(c);
+      } else if (entry.kind === 'nonweight') {
+        lines.push(`- ${entry.text}`);
+      } else {
+        lines.push('-');
+      }
     }
   }
 
