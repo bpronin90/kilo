@@ -301,6 +301,21 @@ The following MVP behaviors have no automated test coverage:
 
 ---
 
+## Dependency Audit Gate
+
+A CI workflow (`.github/workflows/audit.yml`) runs `npm audit --audit-level=high` against both the root and `mobile/` package trees on every push to `main` and on every pull request. The job fails if any high-severity or critical vulnerability is found.
+
+Run the same check locally:
+
+```sh
+npm run audit               # root package tree
+npm --prefix mobile audit   # or: cd mobile && npm run audit
+```
+
+The gate catches advisories in `package-lock.json` and `mobile/package-lock.json`. It does not perform dependency upgrades; remediation is handled separately.
+
+---
+
 ## Installable Preview Smoke Checklist
 
 Before declaring the packaged preview ready, a human tester must pass every step below on a physical phone. This is the minimum real-device check for installability, launch, update/relaunch, loading behavior, and basic touch interaction. It is not full product QA.

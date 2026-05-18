@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "test": "jest",
     "publish:android": "eas update --platform android --channel production",
-    "publish:android:preview": "eas update --platform android --channel preview"
+    "publish:android:preview": "eas update --platform android --channel preview",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.2",

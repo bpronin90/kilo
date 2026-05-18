@@ -13,7 +13,8 @@
     "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
     "preview": "npm run build && npm run cap:sync && npm run cap:run",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.3",
