@@ -393,20 +393,59 @@ export function deriveWorkoutAnalytics(sections) {
   return { exercises };
 }
 
+// ── Exercise alias resolution ─────────────────────────────────────────────────
+// Deterministic table mapping canonical exercise names to known note-text variants.
+// Used so a note entry like "DB Bench" can match a slot configured for "DB Bench Press".
+// All alias values are lowercase for case-insensitive comparison.
+const _EXERCISE_ALIASES = new Map([
+  ['DB Bench Press',           ['db bench', 'dumbbell bench press', 'dumbbell bench', 'db bench press']],
+  ['Bench Press',              ['bb bench press', 'barbell bench press', 'barbell bench', 'bench']],
+  ['Incline DB Press',         ['incline dumbbell press', 'incline db', 'incline press', 'incline db bench', 'incline bench']],
+  ['Squat',                    ['back squat', 'barbell squat', 'bb squat', 'low bar squat', 'high bar squat', 'low-bar squat', 'high-bar squat']],
+  ['Deadlift',                 ['deadlifts', 'dl', 'conventional deadlift', 'barbell deadlift', 'bb deadlift', 'conv deadlift', 'conv. deadlift']],
+  ['RDL',                      ['romanian deadlift', 'romanian dl', 'rdls']],
+  ['Hammer Strength Iso Row',  ['hs iso row', 'iso row', 'hs row']],
+  ['Lat Pulldown',             ['lat pd', 'lat pulldowns', 'pulldowns']],
+]);
+
+// Returns true when noteName (from the note) is equivalent to selectedName (the slot target).
+// Checks exact match first, then the alias table. Case-insensitive.
+function _exercisesMatch(noteName, selectedName) {
+  if (noteName === selectedName) return true;
+  const noteNorm = noteName.toLowerCase().trim();
+  const selNorm = selectedName.toLowerCase().trim();
+  if (noteNorm === selNorm) return true;
+  const aliases = _EXERCISE_ALIASES.get(selectedName);
+  if (aliases && aliases.includes(noteNorm)) return true;
+  // Also check if selectedName is itself an alias of some canonical and noteName matches that canonical
+  for (const [canonical, aliasList] of _EXERCISE_ALIASES) {
+    if (aliasList.includes(selNorm) && (canonical.toLowerCase() === noteNorm || aliasList.includes(noteNorm))) return true;
+  }
+  return false;
+}
+
+// Finds the best matching exercise from an analytics exercises array for a given target name.
+// Returns the analytics exercise object or null.
+function _findExercise(exercises, targetName) {
+  const exact = exercises.find(e => e.name === targetName);
+  if (exact) return exact;
+  return exercises.find(e => _exercisesMatch(e.name, targetName)) || null;
+}
+
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
 // list of tracked exercise names. Exercises absent from the note return null.
+// Supports alias matching so note variants like "DB Bench" resolve to "DB Bench Press".
 //
 // Input: sections from parseWorkoutNote, trackedNames string[]
 // Output: { exercises: [{ name, estimated_pr }] } in trackedNames order
 export function deriveTrackedPRs(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
-  const byName = new Map(exercises.map(e => [e.name, e]));
   return {
-    exercises: uniqueNames.map(name => ({
-      name,
-      estimated_pr: byName.has(name) ? byName.get(name).estimated_pr : null,
-    })),
+    exercises: uniqueNames.map(name => {
+      const match = _findExercise(exercises, name);
+      return { name, estimated_pr: match ? match.estimated_pr : null };
+    }),
   };
 }
 
@@ -450,13 +489,12 @@ function _occurrenceRepeatabilityScore(occurrence) {
 export function deriveProgressionSignals(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
-  const byName = new Map(exercises.map(e => [e.name, e]));
 
   return {
     exercises: uniqueNames.map(name => {
       const absent = { name, progression_status: null, latest_pr: null, prior_pr: null, repeatability_score: null };
-      if (!byName.has(name)) return absent;
-      const ex = byName.get(name);
+      const ex = _findExercise(exercises, name);
+      if (!ex) return absent;
       const occs = ex.occurrences;
       if (occs.length === 0) return absent;
 

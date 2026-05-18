@@ -100,6 +100,18 @@ export async function saveTrackedExercises(tracked_exercises) {
   return note;
 }
 
+export async function saveOneKExercises(one_k_exercises) {
+  const now = new Date().toISOString();
+  const existing = await loadWorkoutNote();
+  const note = {
+    ...existing,
+    one_k_exercises,
+    updated_at: now,
+  };
+  await AsyncStorage.setItem(WORKOUT_NOTE_KEY, JSON.stringify(note));
+  return note;
+}
+
 export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
 }

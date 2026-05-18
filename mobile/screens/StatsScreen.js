@@ -1,23 +1,23 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { StatCard, Card, SectionTitle, Badge } from '../components/UI';
-import { computeWeightTrends, derive1kTotal } from '../lib/data';
+import { computeWeightTrends, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useWorkoutNote, useWeightEntries, useWorkoutSessions } from '../hooks/useEntries';
 import { parseWorkoutNote, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen() {
-  const { note } = useWorkoutNote();
+  const { note, saveOneK } = useWorkoutNote();
   const { entries: weightEntries } = useWeightEntries();
   const { sessions: workoutSessions } = useWorkoutSessions();
+
+  const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
 
   const weightSummary = useMemo(() => {
     const trends = computeWeightTrends(weightEntries);
     const latest = weightEntries[0];
-    
     const unit = latest?.weight_unit || 'lb';
-    
     return {
       latestWeight: latest ? `${latest.weight_value} ${unit}` : '—',
       weightCount: String(weightEntries.length),
@@ -27,27 +27,42 @@ export function StatsScreen() {
     };
   }, [weightEntries]);
 
+  const oneKSelections = useMemo(() => ({
+    ...DEFAULT_1K_EXERCISES,
+    ...(note?.one_k_exercises || {}),
+  }), [note]);
+
+  const noteExerciseNames = useMemo(() => {
+    if (!note?.raw_text) return [];
+    const { sections } = parseWorkoutNote(note.raw_text);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    return [...new Set(names)];
+  }, [note]);
+
   const analytics = useMemo(() => {
     if (!note?.raw_text) return null;
     const { sections } = parseWorkoutNote(note.raw_text);
     const trackedNames = note.tracked_exercises || [];
-    
     const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
-    
-    // Attempt 1k total with common names as fallback for "user-selected"
-    const oneK = derive1kTotal(sections, {
-      bench: 'Bench Press',
-      squat: 'Squat',
-      deadlift: 'Deadlift'
-    });
-
+    const oneK = derive1kTotal(sections, oneKSelections);
     return { signals, oneK, sectionsCount: sections.length };
-  }, [note]);
+  }, [note, oneKSelections]);
 
   const workoutCount = useMemo(() => {
-    // Show count of sections (sessions) in the note as the primary metric
     return String(analytics?.sectionsCount || workoutSessions.length);
   }, [analytics, workoutSessions]);
+
+  function handleSlotTap(slot) {
+    setActiveSlot(prev => (prev === slot ? null : slot));
+  }
+
+  function handleSelectExercise(slot, exerciseName) {
+    const next = { ...oneKSelections, [slot]: exerciseName };
+    saveOneK(next);
+    setActiveSlot(null);
+  }
+
+  const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
   return (
     <ScreenShell
@@ -91,10 +106,46 @@ export function StatsScreen() {
       ) : (
         <Card style={styles.infoCard}>
           <Text style={styles.infoText}>
-            Track "Squat", "Bench Press", and "Deadlift" in your note to see 1k progress.
+            Choose your squat, bench, and deadlift exercises below to track 1k progress.
           </Text>
         </Card>
       )}
+
+      <Card style={styles.slotCard}>
+        <Text style={styles.slotCardTitle}>1k exercise slots</Text>
+        {(['bench', 'squat', 'deadlift']).map(slot => (
+          <View key={slot}>
+            <Pressable
+              style={styles.slotRow}
+              onPress={() => handleSlotTap(slot)}
+            >
+              <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
+              <View style={styles.slotValueRow}>
+                <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
+                <Text style={styles.slotChevron}>{activeSlot === slot ? '▲' : '▼'}</Text>
+              </View>
+            </Pressable>
+            {activeSlot === slot && noteExerciseNames.length > 0 && (
+              <View style={styles.slotPicker}>
+                {noteExerciseNames.map(name => (
+                  <Pressable
+                    key={name}
+                    style={[styles.slotOption, oneKSelections[slot] === name && styles.slotOptionSelected]}
+                    onPress={() => handleSelectExercise(slot, name)}
+                  >
+                    <Text style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}>
+                      {name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {activeSlot === slot && noteExerciseNames.length === 0 && (
+              <Text style={styles.slotEmpty}>Add exercises to your note first.</Text>
+            )}
+          </View>
+        ))}
+      </Card>
 
       <SectionTitle>Tracked Lifts</SectionTitle>
       <View style={styles.list}>
@@ -124,7 +175,9 @@ export function StatsScreen() {
             </Card>
           ))
         ) : (
-          <Text style={styles.emptyText}>No exercises tracked for analytics yet.</Text>
+          <Text style={styles.emptyText}>
+            Tap the bookmark on any exercise in your note to track it here.
+          </Text>
         )}
       </View>
 
@@ -206,6 +259,78 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  slotCard: {
+    gap: 4,
+    padding: 16,
+  },
+  slotCardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  slotRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+  },
+  slotLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    width: 72,
+  },
+  slotValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  slotValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    textAlign: 'right',
+  },
+  slotChevron: {
+    fontSize: 10,
+    color: Colors.textMuted,
+  },
+  slotPicker: {
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 10,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  slotOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  slotOptionSelected: {
+    backgroundColor: Colors.chipBackground,
+  },
+  slotOptionText: {
+    fontSize: 14,
+    color: Colors.text,
+  },
+  slotOptionTextSelected: {
+    fontWeight: '700',
+    color: Colors.accent,
+  },
+  slotEmpty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   signalCard: {
     gap: 12,
