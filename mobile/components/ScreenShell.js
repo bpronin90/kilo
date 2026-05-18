@@ -4,8 +4,8 @@ import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
 export function ScreenShell({ title, subtitle, children }) {
-  const logoSource = require('../assets/brand/logo.jpg');
-  const wordmarkSource = require('../assets/brand/wordmark.jpg');
+  const logoSource = require('../assets/brand/logo.png');
+  const wordmarkSource = require('../assets/brand/wordmark.png');
   const version = `alpha-${pkg.version}`;
 
   return (
@@ -46,8 +46,8 @@ const styles = StyleSheet.create({
     height: 32,
   },
   wordmark: {
-    width: 80,
-    height: 24,
+    width: 91,
+    height: 32,
   },
   versionBadge: {
     backgroundColor: Colors.chipBackground,

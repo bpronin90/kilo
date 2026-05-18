@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.2 - 2026-05-18
+
+- Issue #85: Replaced the opaque-background brand assets with true RGBA
+  transparent PNGs (`logo.png`/`wordmark.png` in both `mobile/assets/brand/`
+  and `src/assets/brand/`) and switched `ScreenShell` `require()` paths off
+  the `.jpg` files. Re-cropped the wordmark from a 512×512 square canvas to
+  its true 303×106 text bounding box and set the `ScreenShell` wordmark
+  display size to `91×32` with `resizeMode="contain"`, fixing the squashed
+  wordmark and the white box on the cream native background. Legacy `.jpg`
+  files left in place; no code references them.
+- Issue #33: UX scoping pass on Kilo theme and color. Captured concrete
+  contrast/readability findings against shipped screens (KiloHeader filter
+  hack, `ink4` AA failure, faint `accentDim`, marginal small-size labels)
+  and a tighter follow-up implementation scope. Scoping only; no product
+  code change. Spawned issue #85.
+
 ## 0.17.1 - 2026-05-18
 
 - Issue #83: Synced `mobile/package-lock.json` with the declared
