@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.3 - 2026-05-18
+
+- Issue #74: Updated `docs/repo-structure.md` so the tracked repo inventory
+  includes `docs/mvp-v2-roadmap.md`, `docs/phone-runbook.md`, and
+  `tests/log-ui.test.jsx`, and clarified that `android/` is intentionally
+  tracked Capacitor shell source while generated artifacts remain excluded by
+  `android/.gitignore`.
+
 ## 0.14.2 - 2026-05-18
 
 - Issue #73: Added a root `.gitignore` covering generated and local-only
