@@ -68,12 +68,23 @@ function ParsePreview({ raw }) {
 function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError }) {
   const result = window.parseWorkoutRow(raw);
   const ok = result.ok && !result.blank;
-  const lastParsed = lastRef ? window.parseKiloInput(lastRef.raw) : null;
-  const lastTop = lastParsed ? window.topSet(lastParsed) : null;
+  const lastRow = lastRef ? window.parseWorkoutRow(lastRef.raw) : null;
+  let lastTop = null;
+  if (lastRow && lastRow.ok && lastRow.sets && lastRow.sets.length > 0) {
+    const maxW = Math.max(...lastRow.sets.map(s => s.weight_value || 0));
+    if (maxW > 0) {
+      lastTop = { weight: maxW, repsStr: lastRow.sets.filter(s => s.weight_value === maxW).map(s => s.rep_count).join(',') };
+    }
+  }
 
-  // 1RM via legacy parser (read-only analytics, unchanged)
-  const legacyParsed = window.parseKiloInput(raw);
-  const adj = legacyParsed.sets.length > 0 && ex.po ? window.adjusted1RM(legacyParsed) : null;
+  // 1RM via shared epleyPR
+  let adj = null;
+  if (result.ok && result.sets && result.sets.length > 0 && ex.po) {
+    for (const s of result.sets) {
+      const pr = window.epleyPR(s.weight_value, s.rep_count);
+      if (pr !== null && (adj === null || pr > adj)) adj = pr;
+    }
+  }
 
   const hasError = !!saveError;
 
@@ -110,7 +121,7 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError 
           {lastTop && (
             <span style={{ marginLeft: 12 }}>
               <span style={{ color: KILO_C.ink4 }}>last</span>{' '}
-              <span style={{ color: KILO_C.ink2 }}>{lastTop.weight}×{lastParsed.sets[0].reps.join(',')}</span>
+              <span style={{ color: KILO_C.ink2 }}>{lastTop.weight}×{lastTop.repsStr}</span>
             </span>
           )}
         </div>
@@ -134,7 +145,7 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError 
             value={raw}
             onChange={(e) => setRaw(ex.id, e.target.value)}
             onFocus={() => setFocused(ex.id)}
-            placeholder={lastTop ? `${lastTop.weight} ${lastParsed.sets[0].reps.join(',')}` : 'weight reps,reps,reps'}
+            placeholder={lastTop ? `${lastTop.weight} ${lastTop.repsStr}` : 'weight reps,reps,reps'}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
@@ -153,15 +164,12 @@ function ExerciseRow({ ex, raw, setRaw, lastRef, focused, setFocused, saveError 
         </div>
 
         {/* 1RM preview when PO */}
-        {adj && (
+        {adj !== null && (
           <div style={{ marginTop: 8, marginLeft: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink3, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
               est 1RM
             </span>
-            <KiloNum size={12} weight={600} color={KILO_C.accent}>{adj.adjusted}</KiloNum>
-            <span className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4 }}>
-              raw {adj.raw} · +{adj.fatigueAdd} fatigue
-            </span>
+            <KiloNum size={12} weight={600} color={KILO_C.accent}>{Math.round(adj)}</KiloNum>
           </div>
         )}
       </div>
