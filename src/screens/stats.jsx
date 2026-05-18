@@ -285,8 +285,9 @@ function KiloStats({ goToTab }) {
     const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === id));
     if (!last) return { id, value: null };
     const e = last.exercises.find(x => x.exerciseId === id);
-    const adj = window.adjusted1RM(window.parseKiloInput(e.raw));
-    return { id, value: adj ? Math.round(adj.adjusted) : null };
+    const row = window.parseWorkoutRow(e.raw);
+    const pr = (row.ok && row.sets) ? _bestEpley(row.sets) : null;
+    return { id, value: pr !== null ? Math.round(pr) : null };
   });
   const total = oneRMs.reduce((s, x) => s + (x.value || 0), 0);
 
@@ -398,7 +399,8 @@ function KiloStats({ goToTab }) {
                   // get last 1RM
                   const last = window.KILO_SESSIONS.find(s => s.exercises.find(x => x.exerciseId === ex.id));
                   const e = last && last.exercises.find(x => x.exerciseId === ex.id);
-                  const adj = e ? window.adjusted1RM(window.parseKiloInput(e.raw)) : null;
+                  const row = e ? window.parseWorkoutRow(e.raw) : null;
+                  const adj = (row && row.ok && row.sets) ? _bestEpley(row.sets) : null;
                   return (
                     <button
                       key={ex.id}
@@ -413,9 +415,9 @@ function KiloStats({ goToTab }) {
                           {!ex.po && ' · ∗'}
                         </div>
                       </div>
-                      {adj && (
+                      {adj !== null && (
                         <div style={{ textAlign: 'right' }}>
-                          <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj.adjusted)}</KiloNum>
+                          <KiloNum size={14} weight={600} color={KILO_C.accent}>{Math.round(adj)}</KiloNum>
                           <div className="kilo-mono" style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.1em', textTransform: 'uppercase' }}>1RM</div>
                         </div>
                       )}
