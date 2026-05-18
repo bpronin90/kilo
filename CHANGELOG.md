@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.6 - 2026-05-18
+
+- Issue #78: Made the Android Capacitor shell's backup behavior explicit by
+  wiring manifest backup rules that preserve WebView `localStorage` workout and
+  weight history across backup/restore flows while excluding SharedPreferences,
+  and documented that packaged-Android persistence policy in
+  `docs/current-state.md`.
+
 ## 0.14.5 - 2026-05-18
 
 - Issue #77: Added a GitHub Actions dependency-audit gate for both the root
