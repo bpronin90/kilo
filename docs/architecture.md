@@ -129,15 +129,16 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
-  and workout data, including canonical workout-note migration plumbing plus a
-  lightweight listener fanout for native weight-entry refreshes and
-  cross-consumer workout-note refreshes
+  plus the canonical workout-note read/write path, including migration
+  plumbing from legacy structured sessions and a lightweight listener fanout
+  for cross-consumer refreshes
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
-  data plus the canonical workout routine note and its legacy-session migration
+  data plus the canonical workout routine note, while retaining the legacy
+  session key only as a migration source
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -187,13 +188,13 @@ Analytics, and the Weight history stay in sync after edits or deletes.
 
 ```
 User types in native Weight or Log form
-  → App.js save handler calls native parser (`parseWeightEntry` or `parseWorkoutEntry`)
+  → App.js save handler calls native parser (`parseWeightEntry`) or workout-note save path
   → on error: save is blocked in the handler
-  → on ok: App.js builds a canonical entry/session via `makeWeightEntry` or `makeWorkoutSession`
-  → `useWeightEntries` / `useWorkoutSessions` writes through `mobile/storage/entries.js`
-  → AsyncStorage persists the list
+  → on ok: App.js builds a canonical weight entry via `makeWeightEntry`, or saves canonical workout-note text through `useWorkoutNote`
+  → `useWeightEntries` / `useWorkoutNote` writes through `mobile/storage/entries.js`
+  → AsyncStorage persists the updated weight list or workout-note document
   → hook state updates
-  → Home / Analytics receive the re-derived recent-history view
+  → Home / Analytics re-derive recent activity, session alignment, and analytics from the same canonical workout note
 ```
 
 ## Parser Responsibilities
@@ -275,14 +276,15 @@ User types in weight input
 | Key | Contents |
 |-----|----------|
 | `kilo_weight_entries` | JSON array of native weight entries |
-| `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions |
-| `kilo_workout_note` | Single canonical native workout routine note document, including persisted `tracked_exercises` selection |
+| `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
+| `kilo_workout_note` | Single canonical native workout routine note document, including persisted `tracked_exercises` and `one_k_exercises` selections |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
 storage layer now synthesizes one from any legacy `kilo_workout_sessions`
 content and saves the migrated note before returning it. Subsequent tracked
-exercise toggles update the same note document so parsed exercise selection and
-raw workout text stay in one persisted source of truth.
+exercise toggles, 1k slot changes, and note edits update the same note
+document so parsed exercise selection, analytics inputs, and raw workout text
+stay in one persisted source of truth.
 
 ### Merge on load
 

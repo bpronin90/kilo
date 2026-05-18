@@ -14,6 +14,7 @@ import {
   migrateWorkoutNote,
 } from '../storage/entries';
 import { computeWeightTrends } from '../lib/data';
+import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -38,6 +39,34 @@ const S2 = {
       exercise_name: 'Plank', result_kind: 'duration', note_text: null, position: 2,
       sets: [{ set_index: 1, rep_count: null, weight_value: null, weight_unit: null, duration_seconds: 45, assistance_value: null, assistance_unit: null, note_text: null }],
     },
+  ],
+};
+
+// Fixture: weighted exercise with set-level note_text (mixed case)
+const S_MIXED = {
+  id: 's_mixed_1', entry_type: 'workout', date: '2026-05-03', saved_at: '2026-05-03T23:00:00.000Z',
+  items: [{
+    exercise_name: 'Bench Press', result_kind: 'sets', note_text: 'paused reps', position: 1,
+    sets: [
+      { set_index: 1, rep_count: 5, weight_value: 185, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: 'slow' },
+      { set_index: 2, rep_count: 5, weight_value: 185, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null },
+    ],
+  }],
+};
+
+// Two sessions: Squat in both, RDL only in session 2
+const S_SKIP_A = {
+  id: 's_skip_a', entry_type: 'workout', date: '2026-05-10', saved_at: '2026-05-10T23:00:00.000Z',
+  items: [{ exercise_name: 'Squat', result_kind: 'sets', note_text: null, position: 1,
+    sets: [{ set_index: 1, rep_count: 5, weight_value: 225, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] }],
+};
+const S_SKIP_B = {
+  id: 's_skip_b', entry_type: 'workout', date: '2026-05-11', saved_at: '2026-05-11T23:00:00.000Z',
+  items: [
+    { exercise_name: 'Squat', result_kind: 'sets', note_text: null, position: 1,
+      sets: [{ set_index: 1, rep_count: 5, weight_value: 230, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] },
+    { exercise_name: 'RDL', result_kind: 'sets', note_text: null, position: 2,
+      sets: [{ set_index: 1, rep_count: 8, weight_value: 185, weight_unit: 'lb', duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] },
   ],
 };
 
@@ -290,6 +319,99 @@ describe('computeWeightTrends', () => {
   });
 });
 
+// ── unified persistence ───────────────────────────────────────────────────────
+
+describe('unified persistence — note as canonical source', () => {
+  test('saved note raw_text is parseable into exercise sections', async () => {
+    const raw = 'Monday\n-Squat\n225 5,5,5\n-Bench\n135 8,8,8';
+    await saveWorkoutNote(raw);
+    const note = await loadWorkoutNote();
+    const { sections } = parseWorkoutNote(note.raw_text);
+    expect(sections.length).toBeGreaterThan(0);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+    expect(names).toContain('Bench');
+  });
+
+  test('editing note raw_text changes parsed exercise output consistently', async () => {
+    await saveWorkoutNote('Monday\n-Squat\n225 5,5,5');
+    await saveWorkoutNote('Monday\n-Squat\n225 5,5,5\n-Deadlift\n315 3,3,3');
+    const note = await loadWorkoutNote();
+    const { sections } = parseWorkoutNote(note.raw_text);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+    expect(names).toContain('Deadlift');
+  });
+
+  test('tracked exercises survive a note text update', async () => {
+    await saveWorkoutNote('Squat 225 5,5,5');
+    await saveTrackedExercises(['Squat', 'Bench']);
+    await saveWorkoutNote('Squat 225 5,5,5\nBench 135 8,8,8');
+    const note = await loadWorkoutNote();
+    expect(note.tracked_exercises).toEqual(['Squat', 'Bench']);
+    expect(note.raw_text).toContain('Bench');
+  });
+
+  test('legacy sessions-only install migrates to a parseable note with correct exercises', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    const { sections } = parseWorkoutNote(migrated.raw_text);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+  });
+
+  test('migration is idempotent — second call with existing note returns same raw_text', async () => {
+    await saveWorkoutSession(S1);
+    const first = await migrateWorkoutNote();
+    const second = await migrateWorkoutNote();
+    expect(second.raw_text).toBe(first.raw_text);
+    expect(second.saved_at).toBe(first.saved_at);
+  });
+
+  test('migrated note sets are parseable with correct weights', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    const { sections } = parseWorkoutNote(migrated.raw_text);
+    const allSets = sections.flatMap(s => s.exercises.flatMap(e => e.sets));
+    const squatSets = allSets.filter(s => s.weight_value === 225);
+    expect(squatSets.length).toBeGreaterThan(0);
+  });
+
+  test('migrated non-weight exercise produces unparsed session entry, not a skip', async () => {
+    await saveWorkoutSession(S2);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBeGreaterThan(0);
+    const assistedEntry = sessions[0].entries.find(e => e.exercise_name === 'Assisted Pull-up');
+    expect(assistedEntry).toBeDefined();
+    expect(assistedEntry.entry.skipped).toBe(false);
+    expect(assistedEntry.entry.unparsed).toBe(true);
+    expect(assistedEntry.entry.raw).toContain('assist:20 lb');
+  });
+
+  test('migrated note session count matches original legacy session count — single session', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBe(1);
+  });
+
+  test('migrated note session count matches original legacy session count — two sessions', async () => {
+    const S_A = { ...S1, id: 's_a', date: '2026-05-01' };
+    const S_B = {
+      id: 's_b', entry_type: 'workout', date: '2026-05-02', saved_at: '2026-05-02T23:00:00.000Z',
+      items: [{ exercise_name: 'Squat', result_kind: 'sets', note_text: null, position: 1,
+        sets: [{ set_index: 1, rep_count: 5, weight_value: 230, weight_unit: 'lb',
+          duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] }],
+    };
+    await saveWorkoutSession(S_A);
+    await saveWorkoutSession(S_B);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBe(2);
+  });
+});
+
 // ── workout note migration ────────────────────────────────────────────────────
 
 describe('migrateWorkoutNote', () => {
@@ -344,5 +466,110 @@ describe('migrateWorkoutNote', () => {
     await saveWorkoutSession(S2);
     const result = await migrateWorkoutNote();
     expect(result.raw_text).toContain('45s');
+  });
+});
+
+// ── migration contract ────────────────────────────────────────────────────────
+// Six contract points verified simultaneously:
+// 1. Weighted-only item → parseable session entry with correct sets
+// 2. Non-weight-only item → unparsed (skipped:false, unparsed:true), not a skip
+// 3. Mixed weighted + extra metadata → parseable entry AND metadata in raw_text
+// 4. Exercise absent in one session → skip slot only for that session
+// 5. Multi-session → correct count and exercise names across sessions
+// 6. LogScreen semantics: every non-skip entry has skipped:false
+
+describe('migration contract — all six properties', () => {
+  test('contract 1: weighted-only item produces parseable session entry with sets', async () => {
+    await saveWorkoutSession(S1);
+    const { raw_text } = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(raw_text);
+    expect(sessions).toHaveLength(1);
+    const squat = sessions[0].entries.find(e => e.exercise_name === 'Squat');
+    expect(squat).toBeDefined();
+    expect(squat.entry.skipped).toBe(false);
+    expect(squat.entry.unparsed).toBeFalsy();
+    expect(squat.entry.sets.length).toBeGreaterThan(0);
+    expect(squat.entry.sets[0].weight_value).toBe(225);
+  });
+
+  test('contract 2: non-weight-only item is unparsed entry, not a skip', async () => {
+    await saveWorkoutSession(S2);
+    const { raw_text } = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(raw_text);
+    expect(sessions.length).toBeGreaterThan(0);
+    const assisted = sessions[0].entries.find(e => e.exercise_name === 'Assisted Pull-up');
+    expect(assisted).toBeDefined();
+    expect(assisted.entry.skipped).toBe(false);
+    expect(assisted.entry.unparsed).toBe(true);
+    expect(assisted.entry.raw).toContain('assist:20 lb');
+  });
+
+  test('contract 3: mixed item (weighted + set-level note) produces parseable entry and preserves metadata', async () => {
+    await saveWorkoutSession(S_MIXED);
+    const { raw_text } = await migrateWorkoutNote();
+    // raw_text must contain both the parseable row and the extra metadata
+    expect(raw_text).toContain('185 5,5');
+    expect(raw_text).toContain('[slow]');
+    expect(raw_text).toContain('paused reps');
+    // The session entry for Bench Press must be parseable with weight sets
+    const { sessions } = buildSessionsFromNote(raw_text);
+    expect(sessions).toHaveLength(1);
+    const bench = sessions[0].entries.find(e => e.exercise_name === 'Bench Press');
+    expect(bench).toBeDefined();
+    expect(bench.entry.skipped).toBe(false);
+    expect(bench.entry.unparsed).toBeFalsy();
+    expect(bench.entry.sets.length).toBeGreaterThan(0);
+    expect(bench.entry.sets[0].weight_value).toBe(185);
+    // Metadata must be in entry.comments so LogScreen can render it alongside the set lines
+    expect(Array.isArray(bench.entry.comments)).toBe(true);
+    const commentText = bench.entry.comments.join(' ');
+    expect(commentText).toContain('[slow]');
+    expect(commentText).toContain('paused reps');
+  });
+
+  test('contract 4: exercise absent in one session produces a skip slot only for that session', async () => {
+    await saveWorkoutSession(S_SKIP_A);
+    await saveWorkoutSession(S_SKIP_B);
+    const { raw_text } = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(raw_text);
+    expect(sessions).toHaveLength(2);
+    // RDL was only in session 2 — session 1 must have a skip slot for it
+    const rdlSession1 = sessions[0].entries.find(e => e.exercise_name === 'RDL');
+    expect(rdlSession1).toBeDefined();
+    expect(rdlSession1.entry.skipped).toBe(true);
+    // Session 2 must have a real entry for RDL
+    const rdlSession2 = sessions[1].entries.find(e => e.exercise_name === 'RDL');
+    expect(rdlSession2).toBeDefined();
+    expect(rdlSession2.entry.skipped).toBe(false);
+    expect(rdlSession2.entry.sets[0].weight_value).toBe(185);
+  });
+
+  test('contract 5: multi-session history produces correct count and all exercise names', async () => {
+    await saveWorkoutSession(S_SKIP_A);
+    await saveWorkoutSession(S_SKIP_B);
+    const { raw_text } = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(raw_text);
+    expect(sessions).toHaveLength(2);
+    const allNames = sessions.flatMap(s => s.entries.map(e => e.exercise_name));
+    expect(allNames).toContain('Squat');
+    expect(allNames).toContain('RDL');
+  });
+
+  test('contract 6: every non-skip entry across sessions has skipped:false', async () => {
+    await saveWorkoutSession(S_SKIP_A);
+    await saveWorkoutSession(S_SKIP_B);
+    await saveWorkoutSession(S2);
+    const { raw_text } = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(raw_text);
+    for (const session of sessions) {
+      for (const e of session.entries) {
+        if (!e.entry.skipped) {
+          // must be either parsed sets or unparsed raw text — never both empty
+          const hasSets = Array.isArray(e.entry.sets) && e.entry.sets.length > 0;
+          const isUnparsed = e.entry.unparsed === true && typeof e.entry.raw === 'string';
+          expect(hasSets || isUnparsed).toBe(true);
+        }
+      }
+    }
   });
 });

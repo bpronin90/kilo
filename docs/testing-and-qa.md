@@ -74,7 +74,9 @@ reaching existing installs.
 Current limitation:
 
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
-  including tracked-exercise persistence on the canonical workout note.
+  including tracked-exercise persistence on the canonical workout note and a
+  fixture-driven migration contract suite for legacy structured workout
+  history.
 - No automated native test covers rendered React Native screens, tab routing, or
   an Expo device/emulator pass yet.
 - The current native workout form is narrower than the browser prototype UI even
@@ -255,6 +257,10 @@ Provides the global runtime contract required by the prototype:
   note save/overwrite/clear behavior, tracked-exercise persistence across note
   edits, and migration of legacy structured sessions into the canonical
   workout-note document
+- includes a contract-driven migration suite that verifies weighted entries,
+  non-weight entries, mixed weighted-plus-metadata entries, positional skip
+  slots, multi-session count preservation, and session-view-visible mixed-entry
+  comments after `buildSessionsFromNote()`
 
 ---
 

@@ -10,7 +10,7 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
 
-import { useWeightEntries, useWorkoutSessions, useWorkoutNote } from './hooks/useEntries';
+import { useWeightEntries, useWorkoutNote } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
 
@@ -20,7 +20,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
 
   const weightHook = useWeightEntries();
-  const workoutHook = useWorkoutSessions();
   const noteHook = useWorkoutNote();
 
   const [weightValue, setWeightValue] = useState('');
@@ -55,24 +54,17 @@ export default function App() {
       note: e.note || 'No note',
       createdAt: new Date(e.logged_at).getTime(),
     }));
-    const workoutEntries = workoutHook.sessions.map(s => {
-      const item = s.items[0];
-      let detail = '';
-      if (item?.result_kind === 'sets' && item.sets?.length) {
-        const totalSets = item.sets.length;
-        const volume = item.sets.reduce((sum, set) => sum + (set.weight_value || 0) * set.rep_count, 0);
-        detail = `${totalSets} set${totalSets !== 1 ? 's' : ''} · ${volume} lb total`;
-      }
-      return {
-        id: s.id,
-        type: 'workout',
-        title: item?.exercise_name || 'Workout',
-        detail,
-        createdAt: new Date(s.saved_at).getTime(),
-      };
-    });
+    const workoutEntries = noteHook.note
+      ? [{
+          id: `note_${noteHook.note.updated_at}`,
+          type: 'workout',
+          title: 'Workout note',
+          detail: noteHook.note.raw_text?.split('\n').find(l => l.trim()) || '',
+          createdAt: new Date(noteHook.note.updated_at).getTime(),
+        }]
+      : [];
     return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
-  }, [weightHook.entries, workoutHook.sessions]);
+  }, [weightHook.entries, noteHook.note]);
 
   const saveWeight = useCallback(async () => {
     if (weightSaving) return;
@@ -120,11 +112,11 @@ export default function App() {
     switch (activeTab) {
       case 'Home':
         return (
-          <HomeScreen 
-            entries={entries} 
+          <HomeScreen
+            entries={entries}
             weightEntries={weightHook.entries}
-            workoutSessions={workoutHook.sessions}
-            successMessage={saveSuccess} 
+            workoutNote={noteHook.note}
+            successMessage={saveSuccess}
           />
         );
       case 'Log':

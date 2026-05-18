@@ -204,7 +204,16 @@ export function parseWorkoutNote(noteText) {
     }
 
     if (trimmed.startsWith('--')) {
-      if (currentExercise) currentExercise.unparsed_rows.push(trimmed);
+      if (currentExercise) {
+        const entries = currentExercise.session_entries;
+        const last = entries[entries.length - 1];
+        if (last && !last.skipped) {
+          if (!last.comments) last.comments = [];
+          last.comments.push(trimmed.slice(2).trim());
+        } else {
+          currentExercise.unparsed_rows.push(trimmed);
+        }
+      }
       continue;
     }
 
