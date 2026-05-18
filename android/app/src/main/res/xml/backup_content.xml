@@ -2,9 +2,9 @@
 <!--
     Android 11 and below (API 30-) full backup content rules for Kilo.
 
-    Policy: back up user workout/weight data; exclude SharedPreferences which
-    may contain Supabase auth session tokens that should not be restored
-    cross-device.
+    Policy: back up user workout/weight data (stored in WebView localStorage);
+    exclude SharedPreferences which contain Capacitor framework internals
+    (device IDs, cached paths) that do not restore cleanly across devices.
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="." />
