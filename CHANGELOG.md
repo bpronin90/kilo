@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1 - 2026-05-18
+
+- Issue #69: Added a Mermaid current-state architecture diagram to
+  `docs/architecture.md` and refreshed stale native-app routing references so
+  the architecture doc matches the current Expo app surface.
+
 ## 0.14.0 - 2026-05-18
 
 - Issue #68: Made native strength analytics resilient to conservative
