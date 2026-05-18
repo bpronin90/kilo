@@ -62,7 +62,7 @@ package.json
 capacitor.config.json    ← Capacitor app id/name + staged webDir
 vitest.config.js
 www/                   ← generated build output from `npm run build` (not committed)
-android/               ← generated Android Capacitor shell; synced from `www/`
+android/               ← intentionally tracked Capacitor shell source; generated build artifacts are excluded by `android/.gitignore`
 mobile/                ← active Expo / React Native app path
 
 src/                   ← all application source
@@ -86,12 +86,15 @@ tests/
   setup.js
   parser.test.jsx
   weight-ui.test.jsx
+  log-ui.test.jsx
 
 docs/
   current-state.md
   architecture.md
   testing-and-qa.md
   mvp-roadmap.md
+  mvp-v2-roadmap.md
+  phone-runbook.md
   repo-structure.md    ← this file
   archive/
     original-spec.md   ← original product spec; superseded by docs/ above
@@ -209,6 +212,7 @@ part of the MVP logging loop. A launch reviewer can ignore them.
 | `tests/setup.js` | Global runtime contract for jsdom. Sets `global.React`, `global.KILO_C`, `global.KILO_TODAY`, empty arrays for `KILO_WEIGHTS` / `KILO_SESSIONS` / etc. Runs `cleanup()` and `localStorage.clear()` after each test. |
 | `tests/parser.test.jsx` | Parser unit tests: `parseWeightEntry`, `parseWorkoutRow`, `parseWorkoutEntry`. |
 | `tests/weight-ui.test.jsx` | Weight-log UI tests: `KiloWeight` and `KiloHome` button states, success/failure feedback, `localStorage` write shape, `parseWeightEntry` acceptance/rejection cases. |
+| `tests/log-ui.test.jsx` | Workout-log UI tests for the `KiloLog` screen. |
 | `mobile/tests/parser.test.js` | Native parser parity tests for `mobile/lib/parser.js`. |
 | `mobile/tests/storage.test.js` | Native storage tests for `mobile/storage/entries.js` using the AsyncStorage Jest mock. |
 | `vitest.config.js` | Vitest config. `jsdom` environment, `globals: true`, `esbuild` JSX factory set for React without imports. |
@@ -228,7 +232,9 @@ npm test
 | `docs/current-state.md` | Single source of truth for MVP status: what is implemented, known gaps, and the launch prerequisite checklist. Read this first. |
 | `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
-| `docs/mvp-roadmap.md` | Full ordered roadmap from Phase 1 through launch. Includes the Pre-Launch Repo Readiness Sequence and the hold statement for issue #17. |
+| `docs/mvp-roadmap.md` | Full ordered roadmap from Phase 1 through launch. Includes the Pre-Launch Repo Readiness Sequence and the hold statement for issue #17. Covers the original MVP scope. |
+| `docs/mvp-v2-roadmap.md` | Roadmap for MVP v2, which redefines the product around a freeform logging model rather than the rigid tracker model. Extends and supersedes portions of `docs/mvp-roadmap.md` for post-v1 work. |
+| `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
 | `docs/repo-structure.md` | This file. |
 | `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by `docs/mvp-roadmap.md` and `docs/current-state.md`. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |
