@@ -46,8 +46,8 @@ const styles = StyleSheet.create({
     height: 32,
   },
   wordmark: {
-    width: 120,
-    height: 40,
+    width: 91,
+    height: 32,
   },
   versionBadge: {
     backgroundColor: Colors.chipBackground,
