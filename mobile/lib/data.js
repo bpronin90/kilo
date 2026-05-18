@@ -150,6 +150,14 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   return { avg7, avg30, paceFlag };
 }
 
+// Default exercise selections for the 1k total slots.
+// Mirrors the primary compounds in KILO_EXERCISES for this program.
+export const DEFAULT_1K_EXERCISES = {
+  bench: 'DB Bench Press',
+  squat: 'Squat',
+  deadlift: 'Deadlift',
+};
+
 // derive1kTotal: sum estimated PRs for the selected bench, squat, and deadlift exercises.
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot

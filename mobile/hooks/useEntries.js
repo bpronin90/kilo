@@ -119,11 +119,18 @@ export function useWorkoutNote() {
     return saved;
   }, []);
 
+  const saveOneK = useCallback(async (one_k_exercises) => {
+    const saved = await Storage.saveOneKExercises(one_k_exercises);
+    setNote(saved);
+    notifyNote();
+    return saved;
+  }, []);
+
   const clear = useCallback(async () => {
     await Storage.clearWorkoutNote();
     setNote(null);
     notifyNote();
   }, []);
 
-  return { note, loading, error, save, saveTracked, clear };
+  return { note, loading, error, save, saveTracked, saveOneK, clear };
 }

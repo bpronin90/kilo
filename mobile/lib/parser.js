@@ -362,10 +362,11 @@ export function deriveWorkoutAnalytics(sections) {
   for (const section of sections) {
     const { heading, subheading, kind, exercises } = section;
     for (const ex of exercises) {
-      if (!byName.has(ex.name)) {
-        byName.set(ex.name, { name: ex.name, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
+      const key = _canonicalizeName(ex.name);
+      if (!byName.has(key)) {
+        byName.set(key, { name: key, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
-      const derived = byName.get(ex.name);
+      const derived = byName.get(key);
       derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
@@ -393,20 +394,55 @@ export function deriveWorkoutAnalytics(sections) {
   return { exercises };
 }
 
+// ── Exercise alias resolution ─────────────────────────────────────────────────
+// Deterministic table: canonical name → lowercase alias variants.
+// Canonicalization happens at grouping time in deriveWorkoutAnalytics so that
+// mixed-name history (e.g. "DB Bench Press" one week, "DB Bench" the next) is
+// merged into one bucket and never splits progression or 1k calculations.
+const _EXERCISE_ALIASES = new Map([
+  ['DB Bench Press',           ['db bench', 'dumbbell bench press', 'dumbbell bench', 'db bench press']],
+  ['Bench Press',              ['bb bench press', 'barbell bench press', 'barbell bench']],
+  ['Incline DB Press',         ['incline dumbbell press', 'incline db', 'incline press', 'incline db bench', 'incline bench']],
+  ['Squat',                    ['back squat', 'barbell squat', 'bb squat', 'low bar squat', 'high bar squat', 'low-bar squat', 'high-bar squat']],
+  ['Deadlift',                 ['deadlifts', 'dl', 'conventional deadlift', 'barbell deadlift', 'bb deadlift', 'conv deadlift', 'conv. deadlift']],
+  ['RDL',                      ['romanian deadlift', 'romanian dl', 'rdls']],
+  ['Hammer Strength Iso Row',  ['hs iso row', 'iso row', 'hs row']],
+  ['Lat Pulldown',             ['lat pd', 'lat pulldowns', 'pulldowns']],
+]);
+
+// Resolves a raw exercise name to its canonical alias key.
+// If the name is already a canonical key or has no alias entry, returns it unchanged.
+function _canonicalizeName(name) {
+  const lower = name.toLowerCase().trim();
+  for (const [canonical, aliases] of _EXERCISE_ALIASES) {
+    if (canonical.toLowerCase() === lower) return canonical;
+    if (aliases.includes(lower)) return canonical;
+  }
+  return name;
+}
+
+// Looks up a target name in an analytics exercises array using canonical keys.
+// Since deriveWorkoutAnalytics stores exercises under canonical names, this is an exact lookup
+// after canonicalizing the target.
+function _findExercise(exercises, targetName) {
+  const canonical = _canonicalizeName(targetName);
+  return exercises.find(e => e.name === canonical) || null;
+}
+
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
 // list of tracked exercise names. Exercises absent from the note return null.
+// Supports alias matching so note variants like "DB Bench" resolve to "DB Bench Press".
 //
 // Input: sections from parseWorkoutNote, trackedNames string[]
 // Output: { exercises: [{ name, estimated_pr }] } in trackedNames order
 export function deriveTrackedPRs(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
-  const byName = new Map(exercises.map(e => [e.name, e]));
   return {
-    exercises: uniqueNames.map(name => ({
-      name,
-      estimated_pr: byName.has(name) ? byName.get(name).estimated_pr : null,
-    })),
+    exercises: uniqueNames.map(name => {
+      const match = _findExercise(exercises, name);
+      return { name, estimated_pr: match ? match.estimated_pr : null };
+    }),
   };
 }
 
@@ -450,13 +486,12 @@ function _occurrenceRepeatabilityScore(occurrence) {
 export function deriveProgressionSignals(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
-  const byName = new Map(exercises.map(e => [e.name, e]));
 
   return {
     exercises: uniqueNames.map(name => {
       const absent = { name, progression_status: null, latest_pr: null, prior_pr: null, repeatability_score: null };
-      if (!byName.has(name)) return absent;
-      const ex = byName.get(name);
+      const ex = _findExercise(exercises, name);
+      if (!ex) return absent;
       const occs = ex.occurrences;
       if (occs.length === 0) return absent;
 

@@ -24,6 +24,9 @@ The repo now has a real native app scaffold under `mobile/`.
 - Issue #37 completed the native parser port, local data model, AsyncStorage
   persistence layer, and native save/reload loop for weight and workout
   entries.
+- Issue #68 tightened the native analytics path by making the three 1k inputs
+  explicitly user-selectable and by handling a conservative deterministic set
+  of exercise-name variants for tracked strength analytics.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

@@ -1,5 +1,5 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
-import { getDefaultTrackedNames, derive1kTotal } from '../lib/data';
+import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -1492,6 +1492,108 @@ describe('buildSessionsFromNote — uneven count warnings', () => {
     const r = buildSessionsFromNote(note);
     const dl2 = r.sessions[1].entries.find(e => e.exercise_name === 'Deadlift');
     expect(dl2.entry.skipped).toBe(true);
+  });
+});
+
+// ── Exercise alias matching ───────────────────────────────────────────────────
+
+describe('deriveTrackedPRs — alias matching', () => {
+  test('exact name match still works', () => {
+    const { sections } = parseWorkoutNote('-DB Bench Press\n80 8,8,8');
+    const result = deriveTrackedPRs(sections, ['DB Bench Press']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+
+  test('note "DB Bench" matches slot "DB Bench Press" via alias', () => {
+    const { sections } = parseWorkoutNote('-DB Bench\n80 8,8,8');
+    const result = deriveTrackedPRs(sections, ['DB Bench Press']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+
+  test('note "Dumbbell Bench Press" matches slot "DB Bench Press" via alias', () => {
+    const { sections } = parseWorkoutNote('-Dumbbell Bench Press\n80 8,8,8');
+    const result = deriveTrackedPRs(sections, ['DB Bench Press']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+
+  test('note "Back Squat" matches slot "Squat" via alias', () => {
+    const { sections } = parseWorkoutNote('-Back Squat\n225 5,5,5');
+    const result = deriveTrackedPRs(sections, ['Squat']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+
+  test('note "Deadlifts" matches slot "Deadlift" via alias', () => {
+    const { sections } = parseWorkoutNote('-Deadlifts\n315 5,5');
+    const result = deriveTrackedPRs(sections, ['Deadlift']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+
+  test('unrelated exercise does not alias match', () => {
+    const { sections } = parseWorkoutNote('-RDL\n225 8,8');
+    const result = deriveTrackedPRs(sections, ['Deadlift']);
+    expect(result.exercises[0].estimated_pr).toBeNull();
+  });
+
+  test('alias match is case-insensitive', () => {
+    const { sections } = parseWorkoutNote('-db bench\n80 8,8');
+    const result = deriveTrackedPRs(sections, ['DB Bench Press']);
+    expect(result.exercises[0].estimated_pr).not.toBeNull();
+  });
+});
+
+describe('deriveProgressionSignals — alias matching', () => {
+  test('tracks progression via alias — note "DB Bench" tracked as "DB Bench Press"', () => {
+    const note = 'Monday\n-DB Bench\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['DB Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).not.toBeNull();
+  });
+
+  test('absent exercise still returns null progression via alias', () => {
+    const { sections } = parseWorkoutNote('-RDL\n225 8,8');
+    const sig = deriveProgressionSignals(sections, ['DB Bench Press']).exercises[0];
+    expect(sig.progression_status).toBeNull();
+  });
+
+  test('mixed canonical and alias name in same note merges into one history — reviewer repro', () => {
+    // Monday uses canonical, Wednesday uses alias — both should count as the same lift
+    const note = 'Monday\n-DB Bench Press\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['DB Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeGreaterThan(sig.prior_pr);
+  });
+
+  test('1k total uses best PR across mixed-name occurrences', () => {
+    // Monday canonical at 80, Wednesday alias at 85 — 1k should use the higher 85
+    const note = 'Monday\n-DB Bench Press\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8\n-Squat\n225 5,5\n-Deadlift\n315 5,5';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' });
+    const expectedBenchPR = 85 * (1 + 8 / 30);
+    expect(result.bench).toBeCloseTo(expectedBenchPR, 1);
+    expect(result.total).not.toBeNull();
+  });
+});
+
+describe('derive1kTotal — alias matching', () => {
+  test('note "DB Bench" contributes to bench slot "DB Bench Press"', () => {
+    const { sections } = parseWorkoutNote('-DB Bench\n80 8,8,8\n-Squat\n225 5,5\n-Deadlift\n315 5,5');
+    const result = derive1kTotal(sections, { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' });
+    expect(result.bench).not.toBeNull();
+    expect(result.total).not.toBeNull();
+  });
+
+  test('DEFAULT_1K_EXERCISES bench slot is DB Bench Press', () => {
+    expect(DEFAULT_1K_EXERCISES.bench).toBe('DB Bench Press');
+  });
+
+  test('DEFAULT_1K_EXERCISES squat slot is Squat', () => {
+    expect(DEFAULT_1K_EXERCISES.squat).toBe('Squat');
+  });
+
+  test('DEFAULT_1K_EXERCISES deadlift slot is Deadlift', () => {
+    expect(DEFAULT_1K_EXERCISES.deadlift).toBe('Deadlift');
   });
 });
 
