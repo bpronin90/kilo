@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.5 - 2026-05-18
+
+- Issue #77: Added a GitHub Actions dependency-audit gate for both the root
+  and `mobile/` package trees, added matching local `npm audit` scripts, and
+  documented the new high-severity vulnerability check in
+  `docs/testing-and-qa.md`.
+
 ## 0.14.4 - 2026-05-18
 
 - Issue #76: Enabled Expo OTA update code signing for the native app by adding
