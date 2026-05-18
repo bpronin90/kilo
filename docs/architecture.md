@@ -47,20 +47,23 @@ target runtime for future MVP implementation.
 
 ## OTA Update Code Signing
 
-The native Expo app uses `expo-updates` with client-side code signing enabled.
+The native Expo app is configured for `expo-updates` client-side code signing.
+On-device enforcement is not active until a native binary built after this
+configuration change is installed — existing installs do not contain the
+embedded certificate and will not verify OTA signatures.
 
 - `mobile/app.json` sets `updates.codeSigningCertificate` to
   `./certs/certificate.crt` and `updates.codeSigningMetadata` to
   `{ keyid: "main", alg: "rsa-v1_5-sha256" }`.
 - `mobile/certs/certificate.crt` is a PEM-encoded self-signed RSA 2048 X.509
   certificate committed to the repo. It is embedded in the native app bundle
-  at build time.
+  at build time; builds produced before this change do not contain it.
 - The matching private key is stored outside the repo. See
   `mobile/certs/KEYS.md` for storage guidance and the signed-publish command.
-- `eas update` must be invoked with `--private-key-path` to sign the update
-  manifest. The on-device runtime verifies the manifest signature against the
-  embedded certificate before applying the update. Unsigned or mismatched
-  bundles are rejected.
+- Once a post-change binary is installed, `eas update` must be invoked with
+  `--private-key-path` to sign the update manifest. The on-device runtime
+  verifies the manifest signature against the embedded certificate before
+  applying the update. Unsigned or mismatched bundles are rejected.
 
 ## Native Migration Boundary
 
