@@ -520,6 +520,11 @@ describe('migration contract — all six properties', () => {
     expect(bench.entry.unparsed).toBeFalsy();
     expect(bench.entry.sets.length).toBeGreaterThan(0);
     expect(bench.entry.sets[0].weight_value).toBe(185);
+    // Metadata must be in entry.comments so LogScreen can render it alongside the set lines
+    expect(Array.isArray(bench.entry.comments)).toBe(true);
+    const commentText = bench.entry.comments.join(' ');
+    expect(commentText).toContain('[slow]');
+    expect(commentText).toContain('paused reps');
   });
 
   test('contract 4: exercise absent in one session produces a skip slot only for that session', async () => {

@@ -113,7 +113,12 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
                     ) : e.entry.unparsed ? (
                       <Text style={styles.unparsedRow}>{e.entry.raw}</Text>
                     ) : (
-                      <SetLine sets={e.entry.sets} />
+                      <>
+                        <SetLine sets={e.entry.sets} />
+                        {(e.entry.comments || []).map((c, ci) => (
+                          <Text key={`c-${ci}`} style={styles.unparsedRow}>{c}</Text>
+                        ))}
+                      </>
                     )}
                   </ExerciseBlock>
                 ))}
