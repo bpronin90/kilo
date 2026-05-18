@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.1 - 2026-05-18
+
+- Issue #83: Synced `mobile/package-lock.json` with the declared
+  `expo-updates@~29.0.17` dependency so EAS `npm ci` no longer fails in the
+  Install dependencies phase. No version-pin change.
+- Issue #84: Renamed `mobile/assets/brand/logo.png` and `wordmark.png` to
+  `.jpg` (the files were JPEG data with a `.png` extension) and updated the
+  `ScreenShell` `require()` paths, fixing the AAPT2
+  `:app:mergeReleaseResources` failure on the Android preview build. No
+  visual or transcoding change.
+
 ## 0.17.0 - 2026-05-18
 
 - Issue #82: Fixed Android preview OTA update visibility. Switched
