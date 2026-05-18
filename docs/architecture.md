@@ -22,7 +22,7 @@ graph TD
     subgraph expo["Native Expo App (active)"]
         ExpoEntry["mobile/index.js\n(Expo entry)"]
         AppJs["mobile/App.js\ntab state · save wiring"]
-        NativeScreens["mobile/screens/\nHome · Log · Weight · Stats · More"]
+        NativeScreens["mobile/screens/\nHome · Log · Weight · Analytics · More"]
         NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
@@ -63,7 +63,7 @@ The migration boundary is intentionally narrow:
 The first native milestone does not require backend work. It does require a
 clear separation between UI and data responsibilities inside `mobile/`:
 
-- Screen and component layers render Home, Log, Weight, and Stats surfaces.
+- Screen and component layers render Home, Log, Weight, Analytics, and More surfaces.
 - Parser and persistence modules own entry validation, canonical save shapes,
   local writes, and recent-history reads.
 - Screen components consume explicit module boundaries instead of directly
@@ -159,7 +159,7 @@ correction surface. Tapping a row reloads that entry into the shared form
 state, edit submissions rerun `parseWeightEntry()` before
 `updateWeightEntry()`, delete submissions remove the selected entry in place,
 and the hook-level listener fanout reloads other weight consumers so Home,
-Stats, and the Weight history stay in sync after edits or deletes.
+Analytics, and the Weight history stay in sync after edits or deletes.
 
 ## Native Parse-to-Persistence Flow
 
@@ -171,7 +171,7 @@ User types in native Weight or Log form
   → `useWeightEntries` / `useWorkoutSessions` writes through `mobile/storage/entries.js`
   → AsyncStorage persists the list
   → hook state updates
-  → Home / Stats receive the re-derived recent-history view
+  → Home / Analytics receive the re-derived recent-history view
 ```
 
 ## Parser Responsibilities
