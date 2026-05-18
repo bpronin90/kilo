@@ -123,8 +123,8 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
-  weight trends, tracked-lift estimated-max values, 1k progress, progression
-  status, and set-count context
+  weight trends, tracked-lift estimated-max values, user-selectable 1k slot
+  progress, progression status, and set-count context
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
@@ -135,14 +135,14 @@ The real native app path now has a modular React Native shell:
   including tracked-exercise estimated-PR derivation from parsed sets and
   positional session-alignment derivation for long-note imports
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
-  including the default tracked-exercise name selection used by analytics
+  including the default 1k exercise-slot selection used by analytics
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including workout-note migration plumbing and cross-consumer note refresh
   fanout
 - `mobile/storage/entries.js` persists weight entries and workout sessions via
   AsyncStorage and now also supports one canonical workout routine note with a
-  persisted `tracked_exercises` selection and a one-time migration bridge from
-  legacy structured sessions
+  persisted `tracked_exercises` selection, persisted `one_k_exercises`
+  selection, and a one-time migration bridge from legacy structured sessions
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves one canonical workout
@@ -168,10 +168,12 @@ includes a tracked-exercise estimated-PR engine that computes Epley values per
 parseable set, keeps each tracked exercise's best current estimate, and
 deduplicates tracked names before emitting analytics rows. It now also derives
 the tracked 1k total locally from the user-selected bench, squat, and
-deadlift exercises, recomputing immediately when note content or tracked-lift
-selection changes, plus progression-over-time and repeatability signals that
-compare the latest comparable weighted result against the prior comparable
-result without changing the formal estimated-PR formula. Recent history in
+deadlift exercises, persists those three slot choices on the canonical workout
+note document, and resolves a conservative set of deterministic exercise-name
+aliases so obvious note variants such as `DB Bench` still count toward the
+intended lift without fuzzy matching. Progression-over-time and repeatability
+signals compare the latest comparable weighted result against the prior
+comparable result without changing the formal estimated-PR formula. Recent history in
 the native app still reflects persisted workout sessions rather than live
 workout-note revisions, so the note-first authoring shift is complete before
 the downstream read and analytics surfaces are updated. The native Home tab is

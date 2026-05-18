@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 - 2026-05-18
+
+- Issue #68: Made native strength analytics resilient to conservative
+  deterministic exercise-name variants, added explicit persisted 1k exercise
+  slot selection on the Analytics screen, and updated analytics copy so 1k and
+  tracked-lift behavior no longer depends on rigid hardcoded lift names.
+
 ## 0.13.3 - 2026-05-18
 
 - Issue #67: Fixed the native Weight flow so saving a weigh-in keeps the user on
