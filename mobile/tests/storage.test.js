@@ -14,7 +14,7 @@ import {
   migrateWorkoutNote,
 } from '../storage/entries';
 import { computeWeightTrends } from '../lib/data';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -347,6 +347,28 @@ describe('unified persistence — note as canonical source', () => {
     const allSets = sections.flatMap(s => s.exercises.flatMap(e => e.sets));
     const squatSets = allSets.filter(s => s.weight_value === 225);
     expect(squatSets.length).toBeGreaterThan(0);
+  });
+
+  test('migrated note session count matches original legacy session count — single session', async () => {
+    await saveWorkoutSession(S1);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBe(1);
+  });
+
+  test('migrated note session count matches original legacy session count — two sessions', async () => {
+    const S_A = { ...S1, id: 's_a', date: '2026-05-01' };
+    const S_B = {
+      id: 's_b', entry_type: 'workout', date: '2026-05-02', saved_at: '2026-05-02T23:00:00.000Z',
+      items: [{ exercise_name: 'Squat', result_kind: 'sets', note_text: null, position: 1,
+        sets: [{ set_index: 1, rep_count: 5, weight_value: 230, weight_unit: 'lb',
+          duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null }] }],
+    };
+    await saveWorkoutSession(S_A);
+    await saveWorkoutSession(S_B);
+    const migrated = await migrateWorkoutNote();
+    const { sessions } = buildSessionsFromNote(migrated.raw_text);
+    expect(sessions.length).toBe(2);
   });
 });
 
