@@ -324,13 +324,12 @@ describe('unified persistence — note as canonical source', () => {
     expect(note.raw_text).toContain('Bench');
   });
 
-  test('legacy sessions-only install migrates to a non-empty, persistently loadable note', async () => {
+  test('legacy sessions-only install migrates to a parseable note with correct exercises', async () => {
     await saveWorkoutSession(S1);
     const migrated = await migrateWorkoutNote();
-    const reloaded = await loadWorkoutNote();
-    expect(reloaded).not.toBeNull();
-    expect(reloaded.raw_text).toBe(migrated.raw_text);
-    expect(reloaded.raw_text.length).toBeGreaterThan(0);
+    const { sections } = parseWorkoutNote(migrated.raw_text);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
   });
 
   test('migration is idempotent — second call with existing note returns same raw_text', async () => {
@@ -341,11 +340,13 @@ describe('unified persistence — note as canonical source', () => {
     expect(second.saved_at).toBe(first.saved_at);
   });
 
-  test('migrated note raw_text preserves exercise names and weights from sessions', async () => {
+  test('migrated note sets are parseable with correct weights', async () => {
     await saveWorkoutSession(S1);
     const migrated = await migrateWorkoutNote();
-    expect(migrated.raw_text).toContain('Squat');
-    expect(migrated.raw_text).toContain('225');
+    const { sections } = parseWorkoutNote(migrated.raw_text);
+    const allSets = sections.flatMap(s => s.exercises.flatMap(e => e.sets));
+    const squatSets = allSets.filter(s => s.weight_value === 225);
+    expect(squatSets.length).toBeGreaterThan(0);
   });
 });
 

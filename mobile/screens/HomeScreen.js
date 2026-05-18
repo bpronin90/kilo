@@ -4,7 +4,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 import pkg from '../package.json';
 
 export function HomeScreen({ entries, weightEntries, workoutNote, successMessage }) {
@@ -13,17 +13,26 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
     let totalWorkouts = 0;
 
     if (workoutNote?.raw_text) {
-      const { sections } = parseWorkoutNote(workoutNote.raw_text);
-      // Group sections by day heading, accumulating set counts per day
-      const dayMap = new Map();
-      for (const section of sections) {
-        const key = section.heading || '';
-        if (!dayMap.has(key)) dayMap.set(key, 0);
-        const sectionSets = section.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-        dayMap.set(key, dayMap.get(key) + sectionSets);
+      const { sessions: noteSessions } = buildSessionsFromNote(workoutNote.raw_text);
+      if (noteSessions.length > 0) {
+        // Session-entry format: derive volume and count from aligned session entries.
+        volumeData = noteSessions.slice(-7).map(session =>
+          session.entries.reduce((sum, e) => sum + (!e.entry.skipped ? e.entry.sets.length : 0), 0)
+        );
+        totalWorkouts = noteSessions.length;
+      } else {
+        // Heading-based format: group sections by day heading.
+        const { sections } = parseWorkoutNote(workoutNote.raw_text);
+        const dayMap = new Map();
+        for (const section of sections) {
+          const key = section.heading || '';
+          if (!dayMap.has(key)) dayMap.set(key, 0);
+          const sectionSets = section.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+          dayMap.set(key, dayMap.get(key) + sectionSets);
+        }
+        volumeData = [...dayMap.values()].slice(-7);
+        totalWorkouts = dayMap.size;
       }
-      volumeData = [...dayMap.values()].slice(-7);
-      totalWorkouts = dayMap.size;
     }
 
     const weightTrend = weightEntries
