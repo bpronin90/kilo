@@ -8,6 +8,39 @@ Kilo currently has a split architecture:
 - `mobile/` is the active native-app path. It is an Expo/React Native app and
   should receive forward-looking app architecture work.
 
+## Architecture Overview
+
+```mermaid
+graph TD
+    subgraph browser["Browser Prototype (legacy — reference only)"]
+        CDN["CDN\nReact / ReactDOM / Babel"]
+        KiloHtml["Kilo.html\n(entry point)"]
+        BrowserSrc["src/\nparser.jsx · data.jsx · ui.jsx\nhome · log · weight · stats · more · app.jsx"]
+        LS[("localStorage\nkilo_workout_sessions\nkilo_weight_entries")]
+    end
+
+    subgraph expo["Native Expo App (active)"]
+        ExpoEntry["mobile/index.js\n(Expo entry)"]
+        AppJs["mobile/App.js\ntab state · save wiring"]
+        NativeScreens["mobile/screens/\nHome · Log · Weight · Analytics · More"]
+        NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
+        NativeHooks["mobile/hooks/useEntries.js"]
+        NativeStorage["mobile/storage/entries.js"]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_workout_sessions\nkilo_workout_note")]
+    end
+
+    CDN -->|"loads at runtime"| KiloHtml
+    KiloHtml -->|"script tag order"| BrowserSrc
+    BrowserSrc <-->|"r/w globals + localStorage"| LS
+
+    ExpoEntry --> AppJs
+    AppJs --> NativeScreens
+    NativeScreens --> NativeLib
+    NativeScreens --> NativeHooks
+    NativeHooks --> NativeStorage
+    NativeStorage <--> AS
+```
+
 Issue #35 defines the migration contract between these paths: the prototype path
 remains the behavior reference during migration, but the native path is the
 target runtime for future MVP implementation.
@@ -30,7 +63,7 @@ The migration boundary is intentionally narrow:
 The first native milestone does not require backend work. It does require a
 clear separation between UI and data responsibilities inside `mobile/`:
 
-- Screen and component layers render Home, Log, Weight, and Stats surfaces.
+- Screen and component layers render Home, Log, Weight, Analytics, and More surfaces.
 - Parser and persistence modules own entry validation, canonical save shapes,
   local writes, and recent-history reads.
 - Screen components consume explicit module boundaries instead of directly
@@ -109,15 +142,16 @@ the URL.
 ## Native Screen Routing
 
 `mobile/App.js` owns a separate `activeTab` state string initialized to
-`'Home'`. A `switch` statement maps it to one of four native screens:
+`'Home'`. A `switch` statement maps it to one of five native screens:
 
 ```
-activeTab: 'Home' | 'Log' | 'Weight' | 'Stats'
+activeTab: 'Home' | 'Log' | 'Weight' | 'Analytics' | 'More'
 ```
 
-`mobile/components/TabBar.js` calls `setActiveTab` directly. The save handlers
-for weight and workout entries validate input, persist via the hook/storage
-layer, and then send the user back to Home. There is no router library, deep
+`mobile/components/TabBar.js` calls `setActiveTab` directly. The workout save
+handler validates input, persists via the hook/storage layer, and then
+navigates the user back to Home. The weight save handler validates and persists
+but keeps the user on the Weight screen. There is no router library, deep
 linking, or persisted navigation state in the native path yet.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
@@ -125,7 +159,7 @@ correction surface. Tapping a row reloads that entry into the shared form
 state, edit submissions rerun `parseWeightEntry()` before
 `updateWeightEntry()`, delete submissions remove the selected entry in place,
 and the hook-level listener fanout reloads other weight consumers so Home,
-Stats, and the Weight history stay in sync after edits or deletes.
+Analytics, and the Weight history stay in sync after edits or deletes.
 
 ## Native Parse-to-Persistence Flow
 
@@ -137,7 +171,7 @@ User types in native Weight or Log form
   → `useWeightEntries` / `useWorkoutSessions` writes through `mobile/storage/entries.js`
   → AsyncStorage persists the list
   → hook state updates
-  → Home / Stats receive the re-derived recent-history view
+  → Home / Analytics receive the re-derived recent-history view
 ```
 
 ## Parser Responsibilities
