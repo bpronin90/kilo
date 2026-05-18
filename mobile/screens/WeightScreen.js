@@ -138,17 +138,21 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
         {entries.map((entry, index) => (
-          <Pressable 
+          <View 
             key={entry.id} 
-            onPress={() => handleEditEntry(entry)}
-            style={({ pressed }) => [
-              styles.historyRow,
-              pressed && styles.historyRowPressed,
+            style={[
+              styles.historyRowContainer,
               editingId === entry.id && styles.activeEntryRow,
               index === entries.length - 1 && styles.lastHistoryRow
             ]}
           >
-            <View style={styles.rowMain}>
+            <Pressable 
+              onPress={() => handleEditEntry(entry)}
+              style={({ pressed }) => [
+                styles.rowMain,
+                pressed && styles.historyRowPressed
+              ]}
+            >
               <View style={styles.rowTop}>
                 <Text style={styles.rowWeight}>
                   {entry.weight_value} {entry.weight_unit || 'lb'}
@@ -160,15 +164,18 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                   {entry.note}
                 </Text>
               ) : null}
-            </View>
+            </Pressable>
             <Pressable 
               onPress={() => handleDelete(entry.id)} 
-              style={styles.deleteAffordance}
+              style={({ pressed }) => [
+                styles.deleteAffordance,
+                pressed && styles.deleteAffordancePressed
+              ]}
               hitSlop={12}
             >
               <Text style={styles.deleteAffordanceText}>✕</Text>
             </Pressable>
-          </Pressable>
+          </View>
         ))}
         {entries.length === 0 ? (
           <Text style={styles.emptyText}>No weight entries yet.</Text>
@@ -249,11 +256,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.cardBorder,
     overflow: 'hidden',
   },
-  historyRow: {
+  historyRowContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    alignItems: 'stretch',
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
   },
@@ -269,6 +274,8 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     gap: 2,
   },
   rowTop: {
@@ -290,8 +297,13 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   deleteAffordance: {
-    paddingLeft: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteAffordancePressed: {
+    backgroundColor: Colors.chipBackground,
+    opacity: 0.8,
   },
   deleteAffordanceText: {
     fontSize: 18,
