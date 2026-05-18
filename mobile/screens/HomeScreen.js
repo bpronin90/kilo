@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
@@ -122,7 +122,7 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
   );
 }
 
-export function MoreScreen({ onNavigate }) {
+export function MoreScreen({ onNavigate, onExport, onImport }) {
   const [activeView, setActiveView] = useState('menu');
 
   if (activeView === 'help') {
@@ -133,11 +133,25 @@ export function MoreScreen({ onNavigate }) {
     return <AboutScreen onBack={() => setActiveView('menu')} />;
   }
 
+  if (activeView === 'backup') {
+    return (
+      <BackupScreen
+        onBack={() => setActiveView('menu')}
+        onExport={onExport}
+        onImport={onImport}
+      />
+    );
+  }
+
   return (
     <ScreenShell title="More" subtitle="Help, about, and application info.">
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
           <Text style={styles.menuItemText}>Help & Terminology</Text>
+          <Text style={styles.menuItemChevron}>→</Text>
+        </Pressable>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')}>
+          <Text style={styles.menuItemText}>Data & Backup</Text>
           <Text style={styles.menuItemChevron}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('about')}>
@@ -151,6 +165,95 @@ export function MoreScreen({ onNavigate }) {
         <Button title="Log Workout" onPress={() => onNavigate('Log')} style={{ flex: 1 }} />
         <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={{ flex: 1 }} />
       </View>
+    </ScreenShell>
+  );
+}
+
+function BackupScreen({ onBack, onExport, onImport }) {
+  const [importText, setImportText] = useState('');
+  const [status, setStatus] = useState(null); // { ok: bool, message: string }
+  const [busy, setBusy] = useState(false);
+
+  const handleExport = async () => {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const result = await onExport();
+      if (!result.ok) {
+        setStatus({ ok: false, message: result.error || 'Export failed.' });
+        return;
+      }
+      await Share.share({ message: result.json });
+    } catch (e) {
+      setStatus({ ok: false, message: 'Export failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importText.trim()) {
+      setStatus({ ok: false, message: 'Paste your backup JSON first.' });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      let payload;
+      try {
+        payload = JSON.parse(importText.trim());
+      } catch {
+        setStatus({ ok: false, message: 'Invalid JSON — check your backup text.' });
+        return;
+      }
+      const result = await onImport(payload);
+      if (result.ok) {
+        setImportText('');
+        setStatus({ ok: true, message: 'Data restored successfully.' });
+      } else {
+        setStatus({ ok: false, message: result.error || 'Import failed.' });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data.">
+      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
+      {status ? (
+        <Card tone={status.ok ? 'success' : 'error'}>
+          <Text style={styles.statusText}>{status.message}</Text>
+        </Card>
+      ) : null}
+
+      <SectionTitle>Export</SectionTitle>
+      <Card>
+        <Text style={styles.helpText}>
+          Exports all your weight entries and workout note as a JSON file you can save or share.
+        </Text>
+        <Button title="Export Data" onPress={handleExport} disabled={busy} style={styles.actionButton} />
+      </Card>
+
+      <SectionTitle>Import</SectionTitle>
+      <Card>
+        <Text style={styles.helpText}>
+          Paste a previously exported backup below, then tap Import. This will replace all current data.
+        </Text>
+        <TextInput
+          style={styles.importInput}
+          multiline
+          numberOfLines={6}
+          placeholder="Paste backup JSON here…"
+          placeholderTextColor={Colors.textMuted}
+          value={importText}
+          onChangeText={setImportText}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Button title="Import Data" onPress={handleImport} disabled={busy} style={styles.actionButton} />
+      </Card>
     </ScreenShell>
   );
 }
@@ -386,5 +489,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textMuted,
     textAlign: 'center',
+  },
+  statusText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textLight,
+    textAlign: 'center',
+  },
+  actionButton: {
+    marginTop: 12,
+  },
+  importInput: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    color: Colors.text,
+    fontFamily: 'monospace',
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
 });

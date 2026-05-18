@@ -13,6 +13,7 @@ import { StatsScreen } from './screens/StatsScreen';
 import { useWeightEntries, useWorkoutNote } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
+import { exportBackup, importBackup } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -91,6 +92,24 @@ export default function App() {
     }
   }, [weightSaving, weightValue, weightNote, weightHook]);
 
+  const handleExport = useCallback(async () => {
+    try {
+      const backup = await exportBackup();
+      return { ok: true, json: JSON.stringify(backup, null, 2) };
+    } catch {
+      return { ok: false, error: 'Failed to export data.' };
+    }
+  }, []);
+
+  const handleImport = useCallback(async (payload) => {
+    const result = await importBackup(payload, 'replace');
+    if (result.ok) {
+      weightHook.refresh();
+      noteHook.refresh();
+    }
+    return result;
+  }, [weightHook, noteHook]);
+
   const saveWorkout = useCallback(async () => {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
 
@@ -142,7 +161,7 @@ export default function App() {
       case 'Analytics':
         return <StatsScreen entries={entries} />;
       case 'More':
-        return <MoreScreen onNavigate={handleTabPress} />;
+        return <MoreScreen onNavigate={handleTabPress} onExport={handleExport} onImport={handleImport} />;
       default:
         return null;
     }

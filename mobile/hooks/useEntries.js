@@ -45,7 +45,7 @@ export function useWeightEntries() {
     return ok;
   }, []);
 
-  return { entries, loading, error, add, remove, update };
+  return { entries, loading, error, add, remove, update, refresh };
 }
 
 export function useWorkoutNote() {
@@ -96,5 +96,5 @@ export function useWorkoutNote() {
     notifyNote();
   }, []);
 
-  return { note, loading, error, save, saveTracked, saveOneK, clear };
+  return { note, loading, error, save, saveTracked, saveOneK, clear, refresh };
 }
