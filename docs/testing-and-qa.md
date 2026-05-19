@@ -241,6 +241,10 @@ Provides the global runtime contract required by the prototype:
 - covers long-note session alignment, including positional `- ...` grouping,
   bare `-` skip-slot preservation, warmup/day boundary avoidance, non-weight
   alignment, deload coexistence, and uneven-count warning behavior
+- covers `countWorkoutSessions` (max history-row count across exercises, skip
+  slots excluded, zero when no rows) and a real-format `current_workout`-shape
+  fixture asserting main lifts retain history rows and bare `-` skips do not
+  hide that history
 - covers `epleyPR` and `deriveWorkoutAnalytics`, including grouped-row
   preservation, multi-occurrence exercise merging, stable
   `set_prs[].occurrence_index` linkage, and propagation of non-weight

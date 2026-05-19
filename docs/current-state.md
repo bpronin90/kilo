@@ -121,10 +121,10 @@ The real native app path now has a modular React Native shell:
   workout-volume and weight-trend graphs, recent activity, and the exported
   More/Help/About/Data & Backup surfaces used by the More tab
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
-  with read/edit modes, a formatted mirror of the canonical note, parsed
-  exercise tracking toggles in read mode, session-aligned read blocks for notes
-  that use positional `- ...` entry history, visible uneven-entry warnings, a
-  labeled bottom `Edit note` action in the read view, and attempt-scoped save
+  with read/edit modes, a formatted mirror of the canonical note that always
+  renders day/section/exercise blocks faithful to the raw text, parsed
+  exercise tracking toggles in read mode, inline `—` skip markers for bare `-`
+  lines, a labeled bottom `Edit note` action in the read view, and attempt-scoped save
   handling that preserves the editor's current context instead of bouncing back
   to the top-level read view after a successful save
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
@@ -195,11 +195,12 @@ workout-volume and bodyweight trend graphs as the default landing view. The
 native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection persists on the
-canonical workout-note document. For long structured notes that use positional
-`- ...` history, the same read view now groups entries into session-aligned
-blocks across warmup and lifting sections, preserves bare `-` skips as empty
-session slots, and shows a visible warning when exercise entry counts drift out
-of alignment. The native Analytics tab now consumes those
+canonical workout-note document. The read view always renders the formatted
+note mirror (day heading, `+` subheading, `-` exercise block, history rows)
+faithful to the raw text, with bare `-` lines shown as unobtrusive inline skip
+markers; Home and Analytics derive the workout/session count from the maximum
+parsed history-row count across exercises rather than positional session
+decomposition. The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, 1k progress, progression status, and set-count context
 in one minimal analytics view while keeping totals in sync with canonical
@@ -230,7 +231,13 @@ The MVP canonical parse path is fully implemented and tested.
 - `buildSessionsFromNote(noteText)` — aligns the `N`th positional `- ...`
   entry for each exercise into session `N`, ignores day and warmup/lifting
   boundaries for session construction, preserves bare `-` skips, and emits a
-  warning when exercises have uneven positional entry counts.
+  warning when exercises have uneven positional entry counts. Retained for
+  legacy-migration-format validation only; no product screen reads workout
+  presentation or counts through it.
+- `countWorkoutSessions(noteText)` — returns the workout/session count as the
+  maximum number of parsed history rows across all exercises in the note, and
+  `0` when no exercise has any parsed row. Source of the Home and Analytics
+  session counts.
 - `deriveWorkoutAnalytics(sections)` — converts parsed note sections into a
   per-exercise analytics input contract with flattened sets, grouped rows,
   per-occurrence context, preserved `unparsed_rows`, per-set Epley estimates,
