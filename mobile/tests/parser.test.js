@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -1721,5 +1721,35 @@ describe('parseWorkoutNote — real-format fixture', () => {
   test('note with exercises but no history rows yields count 0', () => {
     const noHistory = 'Monday\n+LIFTING  (~30 min) EXERCISE\n-DB Bench Press 4x6-8\n-Squat 4x6-8';
     expect(countWorkoutSessions(noHistory)).toBe(0);
+  });
+});
+
+// ── countWorkoutSessions — same-day warmup+lifting regression ─────────────────
+
+describe('countWorkoutSessions — combined warmup and lifting days', () => {
+  test('warmup and lifting on the same day count as one session', () => {
+    const note = 'Monday\n+Warmup\n-Bike\n- 5 min\n+Lifting\n-Bench\n- 125 4,4,4';
+    expect(countWorkoutSessions(note)).toBe(1);
+  });
+
+  test('two weeks of combined warmup+lifting on same day count as 2 sessions', () => {
+    const note = 'Monday\n+Warmup\n-Bike\n- 5 min\n- 5 min\n+Lifting\n-Bench\n- 125 4,4,4\n- 130 4,4,4';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
+  test('non-weight warmup session entries count toward session total', () => {
+    const note = '+Warmup\n-Bike\n- 5 min\n- 5 min\n+Lifting\n-Bench\n- 125 4,4\n- 130 4,4';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
+  test('session count is highest among days when days differ', () => {
+    const note = 'Monday\n-Bench\n- 125 4,4\n- 130 4,4\nWednesday\n-Squat\n- 205 5,5';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
+  test('countWorkoutSessionsFromSections matches countWorkoutSessions result', () => {
+    const note = 'Monday\n+Warmup\n-Bike\n- 5 min\n- 5 min\n+Lifting\n-Bench\n- 125 4,4\n- 130 4,4';
+    const { sections } = parseWorkoutNote(note);
+    expect(countWorkoutSessionsFromSections(sections)).toBe(countWorkoutSessions(note));
   });
 });

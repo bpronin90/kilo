@@ -342,19 +342,38 @@ export function buildSessionsFromNote(noteText) {
   return { sessions, warnings };
 }
 
-// ── countWorkoutSessions ──────────────────────────────────────────────────────
-// Returns the workout session count for the real freeform format:
-// the maximum number of parsed history rows across all exercises in the note.
-// Returns 0 when no exercise has any parsed rows.
-export function countWorkoutSessions(noteText) {
-  const { sections } = parseWorkoutNote(noteText || '');
-  let max = 0;
+// ── countWorkoutSessionsFromSections ─────────────────────────────────────────
+// Returns the session count from an already-parsed sections array.
+// Groups sections by day heading so warmup + lifting on the same day count as
+// one session. Uses max(session_entries.length, rows.length) per exercise to
+// handle both dash-space entry format (session_entries) and bare-row format (rows).
+export function countWorkoutSessionsFromSections(sections) {
+  const byDay = new Map();
   for (const section of sections) {
-    for (const ex of section.exercises) {
-      if (ex.rows.length > max) max = ex.rows.length;
+    const day = section.heading ?? '__no_day__';
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(section);
+  }
+  let max = 0;
+  for (const daySections of byDay.values()) {
+    let dayMax = 0;
+    for (const section of daySections) {
+      for (const ex of section.exercises) {
+        const count = Math.max(ex.session_entries.length, ex.rows.length);
+        if (count > dayMax) dayMax = count;
+      }
     }
+    if (dayMax > max) max = dayMax;
   }
   return max;
+}
+
+// ── countWorkoutSessions ──────────────────────────────────────────────────────
+// Returns the workout session count for the current workout note.
+// Delegates to countWorkoutSessionsFromSections for day-aware session counting.
+export function countWorkoutSessions(noteText) {
+  const { sections } = parseWorkoutNote(noteText || '');
+  return countWorkoutSessionsFromSections(sections);
 }
 
 // ── Derived analytics ────────────────────────────────────────────────────────
