@@ -244,6 +244,15 @@ function validateBackup(payload) {
     }
     if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
       return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
+    if ('weight_goal' in payload && payload.weight_goal !== null) {
+      const g = payload.weight_goal;
+      if (!g || typeof g !== 'object' || Array.isArray(g))
+        return { ok: false, error: 'Invalid backup: weight_goal must be an object or null' };
+      if (typeof g.target_weight !== 'number')
+        return { ok: false, error: 'Invalid backup: weight_goal missing target_weight' };
+      if (typeof g.target_date !== 'string')
+        return { ok: false, error: 'Invalid backup: weight_goal missing target_date' };
+    }
   }
 
   return { ok: true };

@@ -1180,3 +1180,49 @@ describe('importBackup — weight goal', () => {
     expect(goal.target_date).toBe('2026-12-01');
   });
 });
+
+describe('importBackup — malformed weight_goal rejection', () => {
+  test('rejects weight_goal that is a non-null primitive', async () => {
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: 123 };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/weight_goal/i);
+  });
+
+  test('rejects weight_goal that is an array', async () => {
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: [] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/weight_goal/i);
+  });
+
+  test('rejects weight_goal missing target_weight', async () => {
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: { target_date: '2026-09-01' } };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/target_weight/i);
+  });
+
+  test('rejects weight_goal with non-numeric target_weight', async () => {
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: { target_weight: 'bad', target_date: '2026-09-01' } };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/target_weight/i);
+  });
+
+  test('rejects weight_goal missing target_date', async () => {
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: { target_weight: 175 } };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/target_date/i);
+  });
+
+  test('does not mutate storage when weight_goal validation fails', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    const bad = { ...BASE_V2, weight_entries: [], weight_goal: { target_weight: 'bad', target_date: '2026-09-01' } };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+  });
+});
