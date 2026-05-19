@@ -4,7 +4,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { StatCard, Card, SectionTitle, Badge } from '../components/UI';
 import { computeWeightTrends, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, buildSessionsFromNote, deriveProgressionSignals } from '../lib/parser';
+import { parseWorkoutNote, countWorkoutSessions, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen() {
@@ -44,10 +44,7 @@ export function StatsScreen() {
     const trackedNames = note.tracked_exercises || [];
     const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
     const oneK = derive1kTotal(sections, oneKSelections);
-    const { sessions: noteSessions } = buildSessionsFromNote(note.raw_text);
-    const workoutDayCount = noteSessions.length > 0
-      ? noteSessions.length
-      : new Set(sections.map(s => s.heading || '')).size;
+    const workoutDayCount = countWorkoutSessions(note.raw_text);
     return { signals, oneK, workoutDayCount };
   }, [note, oneKSelections]);
 

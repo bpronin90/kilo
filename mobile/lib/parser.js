@@ -342,6 +342,21 @@ export function buildSessionsFromNote(noteText) {
   return { sessions, warnings };
 }
 
+// ── countWorkoutSessions ──────────────────────────────────────────────────────
+// Returns the workout session count for the real freeform format:
+// the maximum number of parsed history rows across all exercises in the note.
+// Returns 0 when no exercise has any parsed rows.
+export function countWorkoutSessions(noteText) {
+  const { sections } = parseWorkoutNote(noteText || '');
+  let max = 0;
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      if (ex.rows.length > max) max = ex.rows.length;
+    }
+  }
+  return max;
+}
+
 // ── Derived analytics ────────────────────────────────────────────────────────
 // epleyPR: estimated 1-rep max using Epley formula (weight * (1 + reps / 30))
 // Returns null when weight or reps are absent or non-positive.

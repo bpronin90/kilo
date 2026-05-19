@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -1632,5 +1632,94 @@ describe('deriveProgressionSignals — repeatability score', () => {
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.repeatability_score).toBe(1);
+  });
+});
+
+// ── countWorkoutSessions ──────────────────────────────────────────────────────
+
+describe('countWorkoutSessions — basics', () => {
+  test('returns 0 for empty string', () => {
+    expect(countWorkoutSessions('')).toBe(0);
+  });
+
+  test('returns 0 for null', () => {
+    expect(countWorkoutSessions(null)).toBe(0);
+  });
+
+  test('returns 0 for note with headers but no data rows', () => {
+    expect(countWorkoutSessions('Monday\n+LIFTING\n-Bench 4x6-8')).toBe(0);
+  });
+
+  test('returns max rows across exercises', () => {
+    const note = '-Bench\n80 8,8,8\n85 8\n-Squat\n205 8,8';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
+  test('single exercise single row returns 1', () => {
+    expect(countWorkoutSessions('-Bench\n80 8,8,8')).toBe(1);
+  });
+
+  test('bare dash skip does not count as a session row', () => {
+    const note = '-Bench\n80 8,8,8\n-\n85 8,8';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
+  test('deload-format row counts as a row', () => {
+    expect(countWorkoutSessions('Bench: 225 lbs 3x5')).toBe(1);
+  });
+});
+
+// ── real-format fixture tests (current_workout sample shape) ──────────────────
+
+const REAL_FORMAT_FIXTURE = [
+  'Monday',
+  '+WARMUP EXERCISE',
+  '-Bike',
+  '5 min 9',
+  '10',
+  '+LIFTING  (~30 min) EXERCISE',
+  '-DB Bench Press 4x6-8',
+  '80 8,8,8,8',
+  '85 8 80 8,8,8',
+  '85 8,8 80 8,8',
+  '-Low-to-High Cable Fly * no PO needed 2x12',
+  '12.5 12,12',
+  '12.5 12,12',
+  '12.5 12,12',
+  '-Squat 4x6-8',
+  '205 8,8,8,8',
+  '-',
+  '215 8,8',
+].join('\n');
+
+describe('parseWorkoutNote — real-format fixture', () => {
+  test('main lifts produce non-empty rows', () => {
+    const { sections } = parseWorkoutNote(REAL_FORMAT_FIXTURE);
+    const allExercises = sections.flatMap(s => s.exercises);
+    const bench = allExercises.find(e => e.name === 'DB Bench Press');
+    const squat = allExercises.find(e => e.name === 'Squat');
+    expect(bench.rows.length).toBeGreaterThan(0);
+    expect(squat.rows.length).toBeGreaterThan(0);
+  });
+
+  test('bare dash inside exercise does not hide real history rows', () => {
+    const { sections } = parseWorkoutNote(REAL_FORMAT_FIXTURE);
+    const allExercises = sections.flatMap(s => s.exercises);
+    const squat = allExercises.find(e => e.name === 'Squat');
+    expect(squat.rows).toHaveLength(2);
+    expect(squat.session_entries.filter(e => e.skipped)).toHaveLength(1);
+  });
+
+  test('countWorkoutSessions on fixture is a positive integer', () => {
+    expect(countWorkoutSessions(REAL_FORMAT_FIXTURE)).toBeGreaterThan(0);
+  });
+
+  test('countWorkoutSessions equals max-row exercise (DB Bench Press has 3 rows)', () => {
+    expect(countWorkoutSessions(REAL_FORMAT_FIXTURE)).toBe(3);
+  });
+
+  test('note with exercises but no history rows yields count 0', () => {
+    const noHistory = 'Monday\n+LIFTING  (~30 min) EXERCISE\n-DB Bench Press 4x6-8\n-Squat 4x6-8';
+    expect(countWorkoutSessions(noHistory)).toBe(0);
   });
 });
