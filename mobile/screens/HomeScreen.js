@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
@@ -8,6 +8,8 @@ import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import pkg from '../package.json';
+
+const LOGO = require('../assets/brand/logo.png');
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
@@ -132,7 +134,7 @@ export function MoreScreen({ onNavigate, onExport, onImport }) {
   }
 
   return (
-    <ScreenShell title="More" subtitle="Help, about, and application info.">
+    <ScreenShell title="More">
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
           <Text style={styles.menuItemText}>Help & Terminology</Text>
@@ -161,6 +163,12 @@ function BackupScreen({ onBack, onExport, onImport }) {
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
   const [busy, setBusy] = useState(false);
+
+  const headerLeft = (
+    <Pressable onPress={onBack} style={styles.headerBackButton}>
+      <Text style={styles.headerBackButtonText}>←</Text>
+    </Pressable>
+  );
 
   const handleExport = async () => {
     setBusy(true);
@@ -207,9 +215,7 @@ function BackupScreen({ onBack, onExport, onImport }) {
   };
 
   return (
-    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-
+    <ScreenShell title="Data & Backup" headerLeft={headerLeft}>
       {status ? (
         <Card tone={status.ok ? 'success' : 'error'}>
           <Text style={styles.statusText}>{status.message}</Text>
@@ -247,9 +253,17 @@ function BackupScreen({ onBack, onExport, onImport }) {
 }
 
 function HelpScreen({ onBack }) {
+  const headerLeft = (
+    <Pressable onPress={onBack} style={styles.headerBackButton}>
+      <Text style={styles.headerBackButtonText}>←</Text>
+    </Pressable>
+  );
+
   return (
-    <ScreenShell title="Help" subtitle="Terminology and usage guide.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="Help" headerLeft={headerLeft}>
+      <View style={styles.logoContainer}>
+        <Image source={LOGO} style={styles.logo} />
+      </View>
       
       <Card>
         <Text style={styles.helpHeading}>What is Kilo?</Text>
@@ -297,6 +311,12 @@ function AboutScreen({ onBack }) {
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
 
+  const headerLeft = (
+    <Pressable onPress={onBack} style={styles.headerBackButton}>
+      <Text style={styles.headerBackButtonText}>←</Text>
+    </Pressable>
+  );
+
   const handleCheckForUpdate = async () => {
     setChecking(true);
     setCheckResult(null);
@@ -317,9 +337,7 @@ function AboutScreen({ onBack }) {
   const updateIdLabel = isEmbedded ? 'embedded bundle' : (updateId ? updateId.slice(0, 8) + '…' : '—');
 
   return (
-    <ScreenShell title="About" subtitle="App information and attribution.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-
+    <ScreenShell title="About" headerLeft={headerLeft}>
       <Card style={styles.aboutCard}>
         <Text style={styles.aboutLabel}>Created by</Text>
         <Text style={styles.aboutValue}>Benjamin Pronin</Text>
@@ -494,6 +512,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.textMuted,
     fontWeight: '700',
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.chipBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: -4,
+  },
+  headerBackButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.accent,
+    marginTop: -2, // Optical alignment
+  },
+  logoContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  logo: {
+    width: 64,
+    height: 64,
+    resizeMode: 'contain',
+    opacity: 0.8,
   },
   backButton: {
     backgroundColor: 'transparent',
