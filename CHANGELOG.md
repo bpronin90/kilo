@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.5 - 2026-05-19
+
+- Issue #93: Normalized the native app's top safe-area spacing across Home,
+  Log, Weight, Analytics, and More/Help by moving Log and Weight onto the
+  shared `ScreenShell`, adding Android status-bar-aware top spacing there, and
+  preserving first-tap form actions via `keyboardShouldPersistTaps="handled"`
+  on the form-based screens. Bottom tab bar behavior unchanged.
+
 ## 0.17.4 - 2026-05-19
 
 - Issue #88: Fixed a regression from #79 that broke the workout read view.
