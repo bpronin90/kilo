@@ -197,8 +197,10 @@ gain/loss pace flags from saved entries, and shows that trend feedback on
 both the Weight and Stats screens. The native Weight screen now also supports
 a lightweight saved goal with target weight and target date, derives gain,
 loss, or maintain direction plus required weekly pace from the latest saved
-weight entry, and surfaces unrealistic or unhealthy pace warnings as
-advisory-only feedback rather than hard validation.
+weight entry, surfaces unrealistic or unhealthy pace warnings as advisory-only
+feedback rather than hard validation, and now adds a narrow advisory calorie
+helper for gain/loss goals using the saved goal direction plus derived weekly
+pace without storing any extra profile or nutrition settings.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor, a formatted read-mode mirror that preserves headings,
 exercise blocks, mixed-weight rows, and unparsed history lines, and a stable

@@ -25,7 +25,7 @@ import {
   saveWeightGoal,
   clearWeightGoal,
 } from '../storage/entries';
-import { computeWeightTrends, computeWeightGoal } from '../lib/data';
+import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
@@ -1178,6 +1178,66 @@ describe('importBackup — weight goal', () => {
     const goal = await loadWeightGoal();
     expect(goal.target_weight).toBe(170);
     expect(goal.target_date).toBe('2026-12-01');
+  });
+});
+
+// ── computeCalorieEstimate ────────────────────────────────────────────────────
+
+describe('computeCalorieEstimate', () => {
+  test('returns null calories_per_day and null label when pace is null', () => {
+    const result = computeCalorieEstimate(null, null);
+    expect(result.calories_per_day).toBeNull();
+    expect(result.label).toBeNull();
+  });
+
+  test('returns deficit label for negative pace (weight loss)', () => {
+    // -1 lb/week × 3500 / 7 = 500 cal/day deficit
+    const result = computeCalorieEstimate(-1, 'loss');
+    expect(result.calories_per_day).toBe(500);
+    expect(result.label).toBe('deficit');
+  });
+
+  test('returns surplus label for positive pace (weight gain)', () => {
+    const result = computeCalorieEstimate(1, 'gain');
+    expect(result.calories_per_day).toBe(500);
+    expect(result.label).toBe('surplus');
+  });
+
+  test('rounds calories to nearest integer', () => {
+    // -1.5 lb/week × 3500 / 7 = 750 cal/day
+    const result = computeCalorieEstimate(-1.5, 'loss');
+    expect(result.calories_per_day).toBe(750);
+    expect(result.label).toBe('deficit');
+  });
+
+  test('returns maintain label and 0 calories for zero pace', () => {
+    const result = computeCalorieEstimate(0, 'maintain');
+    expect(result.calories_per_day).toBe(0);
+    expect(result.label).toBe('maintain');
+  });
+
+  test('calories_per_day is always non-negative', () => {
+    expect(computeCalorieEstimate(-2, 'loss').calories_per_day).toBeGreaterThanOrEqual(0);
+    expect(computeCalorieEstimate(2, 'gain').calories_per_day).toBeGreaterThanOrEqual(0);
+  });
+
+  test('scales linearly with pace magnitude', () => {
+    const single = computeCalorieEstimate(-1, 'loss').calories_per_day;
+    const double = computeCalorieEstimate(-2, 'loss').calories_per_day;
+    expect(double).toBe(single * 2);
+  });
+
+  test('returns maintain label for maintain direction even when pace is non-zero', () => {
+    // current 180, target 180.4, 7 days out → direction=maintain, pace≈0.4 lb/week
+    // estimate must not produce a surplus label
+    const goalInfo = computeWeightGoal({
+      currentWeight: 180, targetWeight: 180.4, targetDate: '2026-05-26',
+      referenceDate: new Date(2026, 4, 19),
+    });
+    expect(goalInfo.direction).toBe('maintain');
+    const estimate = computeCalorieEstimate(goalInfo.required_weekly_pace, goalInfo.direction);
+    expect(estimate.label).toBe('maintain');
+    expect(estimate.calories_per_day).toBe(0);
   });
 });
 

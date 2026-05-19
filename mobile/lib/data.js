@@ -205,6 +205,25 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
   return { direction, weeks_remaining, required_weekly_pace, warnings };
 }
 
+// Estimate the daily calorie adjustment needed to hit a weight goal.
+// Uses the 3500 cal/lb convention (1 lb ≈ 3500 kcal).
+// required_weekly_pace: lb/week from computeWeightGoal (negative = loss, positive = gain).
+// direction: 'gain'|'loss'|'maintain'|null from computeWeightGoal — maintain goals return no estimate.
+// Returns { calories_per_day: number|null, label: 'deficit'|'surplus'|'maintain'|null }.
+export function computeCalorieEstimate(required_weekly_pace, direction) {
+  if (required_weekly_pace === null || required_weekly_pace === undefined) {
+    return { calories_per_day: null, label: null };
+  }
+  if (direction === 'maintain') {
+    return { calories_per_day: 0, label: 'maintain' };
+  }
+  const raw = Math.round((required_weekly_pace * 3500) / 7);
+  if (Math.abs(raw) < 10) {
+    return { calories_per_day: 0, label: 'maintain' };
+  }
+  return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
+}
+
 // Default exercise selections for the 1k total slots.
 // Mirrors the primary compounds in KILO_EXERCISES for this program.
 export const DEFAULT_1K_EXERCISES = {
