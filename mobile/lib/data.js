@@ -179,8 +179,15 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
   }
 
   const refMidnight = new Date(refStr + 'T00:00:00');
-  const targetMidnight = new Date(targetDate + 'T00:00:00');
-  if (isNaN(targetMidnight.getTime())) {
+  // Round-trip component check: JS normalizes impossible dates (e.g. Sep 31 → Oct 1)
+  // instead of returning Invalid Date, so isNaN alone is insufficient.
+  const [tYear, tMonth, tDay] = targetDate.split('-').map(Number);
+  const targetMidnight = new Date(tYear, tMonth - 1, tDay);
+  if (
+    targetMidnight.getFullYear() !== tYear ||
+    targetMidnight.getMonth() !== tMonth - 1 ||
+    targetMidnight.getDate() !== tDay
+  ) {
     return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
   }
   const days_remaining = Math.round((targetMidnight - refMidnight) / MS_DAY);

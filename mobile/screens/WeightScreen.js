@@ -77,8 +77,9 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalError('Enter target date as YYYY-MM-DD.');
       return;
     }
-    const parsedDate = new Date(goalTargetDate + 'T00:00:00');
-    if (isNaN(parsedDate.getTime())) {
+    const [tYear, tMonth, tDay] = goalTargetDate.split('-').map(Number);
+    const parsedDate = new Date(tYear, tMonth - 1, tDay);
+    if (parsedDate.getFullYear() !== tYear || parsedDate.getMonth() !== tMonth - 1 || parsedDate.getDate() !== tDay) {
       setGoalError('Enter a valid calendar date.');
       return;
     }

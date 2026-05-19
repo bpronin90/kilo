@@ -1109,8 +1109,16 @@ describe('computeWeightGoal', () => {
     expect(result.required_weekly_pace).toBeNull();
   });
 
-  test('returns unrealistic warning for impossible calendar date like 2026-02-31', () => {
-    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-02-31', referenceDate: REF });
+  test('returns unrealistic warning for impossible future date that JS would normalize (2026-09-31)', () => {
+    // Sep only has 30 days; JS normalizes 2026-09-31 → Oct 1, so isNaN alone misses it
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-09-31', referenceDate: REF });
+    expect(result.warnings).toContain('unrealistic');
+    expect(result.required_weekly_pace).toBeNull();
+  });
+
+  test('returns unrealistic warning for impossible future date in non-leap year (2027-02-29)', () => {
+    // 2027 is not a leap year; JS normalizes 2027-02-29 → March 1
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2027-02-29', referenceDate: REF });
     expect(result.warnings).toContain('unrealistic');
     expect(result.required_weekly_pace).toBeNull();
   });
