@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0 - 2026-05-19
+
+- Issue #100: Extended the native Log routine workflow so any non-current
+  workout note can be opened in a dedicated raw-note editor from the always-
+  visible `Previous Routines` list, current-note saves are guarded against
+  duplicate in-flight taps, and promoting another routine to the current
+  workout now requires confirmation and preserves unsaved edits by saving them
+  first or surfacing a failure without switching. Updated
+  `docs/current-state.md` to match the shipped Log behavior.
+
 ## 0.19.0 - 2026-05-19
 
 - Issue #99: Rebuilt the native Log tab around the selected current workout.
