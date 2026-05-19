@@ -137,8 +137,9 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   let paceFlag = null;
   const win = w7.length >= 2 ? w7 : w30.length >= 2 ? w30 : null;
   if (win) {
-    const newest = win[0];
-    const oldest = win[win.length - 1];
+    // Use reduce to find endpoints by date value — input may be sorted by logged_at, not date.
+    const newest = win.reduce((a, b) => (a.date >= b.date ? a : b));
+    const oldest = win.reduce((a, b) => (a.date <= b.date ? a : b));
     const days = (new Date(newest.date) - new Date(oldest.date)) / MS_DAY;
     if (days > 0) {
       const rate = (newest.weight_value - oldest.weight_value) / (days / 7);
