@@ -12,13 +12,13 @@ import pkg from '../package.json';
 export function HomeScreen({ entries, weightEntries, workoutNote, successMessage }) {
   const dashboardData = useMemo(() => {
     let volumeData = [];
-    let totalWorkouts = 0;
+    let totalWeeks = 0;
 
     if (workoutNote?.raw_text) {
       const { sections } = parseWorkoutNote(workoutNote.raw_text);
       const allExercises = sections.flatMap(s => s.exercises);
       const maxRows = allExercises.reduce((m, ex) => Math.max(m, ex.rows.length), 0);
-      totalWorkouts = maxRows;
+      totalWeeks = maxRows;
       const sessionSets = [];
       for (let i = 0; i < maxRows; i++) {
         let sets = 0;
@@ -37,12 +37,13 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
 
     const latestWeight = weightEntries[0]?.weight_value;
 
-    return { volumeData, weightTrend, latestWeight, totalWorkouts };
+    return { volumeData, weightTrend, latestWeight, totalWeeks };
   }, [weightEntries, workoutNote]);
 
   return (
     <ScreenShell
-      subtitle="Your training dashboard and recent logs."
+      title="Kilo"
+      subtitle="Your training dashboard."
     >
       {successMessage ? (
         <Card style={styles.successCard}>
@@ -51,8 +52,8 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
       ) : null}
 
       <View style={styles.grid}>
-        <StatCard label="Latest Weight" value={dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'} tone="accent" />
-        <StatCard label="Total Workouts" value={String(dashboardData.totalWorkouts)} />
+        <StatCard label="Latest Weight" value={dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'} />
+        <StatCard label="Total Weeks" value={String(dashboardData.totalWeeks)} />
       </View>
 
       <SectionTitle>Training Volume</SectionTitle>
