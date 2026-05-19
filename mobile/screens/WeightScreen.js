@@ -67,6 +67,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     <ScreenShell
       title="Weight log"
       subtitle="Track your body weight over time."
+      keyboardShouldPersistTaps="handled"
     >
       <Card style={editingId ? styles.editingCard : null}>
         {editingId ? (

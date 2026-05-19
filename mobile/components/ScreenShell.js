@@ -3,13 +3,16 @@ import { Image, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from '
 import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
-export function ScreenShell({ title, subtitle, headerRight, children }) {
+export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersistTaps, children }) {
   const logoSource = require('../assets/brand/logo.png');
   const wordmarkSource = require('../assets/brand/wordmark.png');
   const version = `alpha-${pkg.version}`;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView 
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+    >
       <View style={styles.header}>
         {!title && (
           <View style={styles.brandRow}>

@@ -63,6 +63,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       title="Workout note"
       subtitle="Your active training routine. Update it as you go."
       headerRight={headerRight}
+      keyboardShouldPersistTaps="handled"
     >
       {saveError ? (
         <Card style={styles.errorCard}>
