@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -10,6 +10,10 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [noteIsSaving, setNoteIsSaving] = useState(false);
 
   const { notes, currentId, selectCurrent, update } = useWorkoutNotes();
   const currentNote = notes.find(n => n.id === currentId);
@@ -36,13 +40,12 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const hasContent = workoutNoteText.trim().length > 0;
 
   const handleSave = async () => {
+    if (isSaving) return;
     setIsSaving(true);
     setSaveError('');
     try {
       const result = await onSaveWorkout();
-      if (result.ok) {
-        // Stay in edit mode to preserve cursor/scroll context as requested in #66
-      } else {
+      if (!result.ok) {
         setSaveError(result.error || 'Save failed');
       }
     } finally {
@@ -50,8 +53,43 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     }
   };
 
-  const headerRight = hasContent && (
-    <Pressable 
+  const handleOpenOtherNote = (other) => {
+    setEditingNoteId(other.id);
+    setEditingText(other.raw_text);
+    setSaveError('');
+  };
+
+  const handleSaveOtherNote = async () => {
+    if (noteIsSaving) return;
+    setNoteIsSaving(true);
+    setSaveError('');
+    try {
+      const result = await update(editingNoteId, { raw_text: editingText });
+      if (!result) setSaveError('Save failed');
+    } catch {
+      setSaveError('Save failed');
+    } finally {
+      setNoteIsSaving(false);
+    }
+  };
+
+  const handleSwitchCurrent = (id) => {
+    Alert.alert(
+      'Switch Workout',
+      'Switching your current workout affects analytics. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Switch',
+          style: 'destructive',
+          onPress: () => { selectCurrent(id); setEditingNoteId(null); },
+        },
+      ]
+    );
+  };
+
+  const headerRight = !editingNoteId && hasContent && (
+    <Pressable
       onPress={() => setMode(mode === 'read' ? 'edit' : 'read')}
       style={styles.modeToggle}
     >
@@ -60,6 +98,53 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       </Text>
     </Pressable>
   );
+
+  if (editingNoteId) {
+    const editingNote = notes.find(n => n.id === editingNoteId);
+    return (
+      <ScreenShell
+        title={editingNote?.title || 'Routine'}
+        subtitle="Edit raw note"
+        headerRight={
+          <Pressable onPress={() => setEditingNoteId(null)} style={styles.modeToggle}>
+            <Text style={styles.modeToggleText}>Back</Text>
+          </Pressable>
+        }
+        keyboardShouldPersistTaps="handled"
+      >
+        {saveError ? (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>{saveError}</Text>
+          </Card>
+        ) : null}
+        <View style={styles.editContainer}>
+          <Card>
+            <TextInput
+              value={editingText}
+              onChangeText={setEditingText}
+              placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              autoFocus
+              style={[styles.input, styles.editorInput]}
+            />
+            <Button
+              onPress={handleSaveOtherNote}
+              title="Save note"
+              disabled={noteIsSaving}
+              style={styles.saveButton}
+            />
+          </Card>
+          <Button
+            onPress={() => handleSwitchCurrent(editingNoteId)}
+            title="Switch to this routine"
+            style={styles.switchButton}
+            textStyle={styles.switchButtonText}
+          />
+        </View>
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell
@@ -108,9 +193,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             <View style={styles.previousRoutines}>
               <SectionTitle>Previous Routines</SectionTitle>
               {otherNotes.map(other => (
-                <Card 
-                  key={other.id} 
-                  onPress={() => selectCurrent(other.id)}
+                <Card
+                  key={other.id}
+                  onPress={() => handleOpenOtherNote(other)}
                   style={styles.otherNoteCard}
                 >
                   <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
@@ -226,6 +311,14 @@ const styles = StyleSheet.create({
   },
   editContainer: {
     gap: 16,
+  },
+  switchButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  switchButtonText: {
+    color: Colors.accent,
   },
   previousRoutines: {
     marginTop: 32,
