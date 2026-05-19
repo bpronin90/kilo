@@ -178,16 +178,11 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '45%',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 4,
   },
   statLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   statValue: {
     fontSize: 28,

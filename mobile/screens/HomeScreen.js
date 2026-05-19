@@ -42,7 +42,6 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
 
   return (
     <ScreenShell
-      title="Kilo"
       subtitle="Your training dashboard."
     >
       {successMessage ? (
@@ -51,9 +50,17 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
         </Card>
       ) : null}
 
-      <View style={styles.grid}>
-        <StatCard label="Latest Weight" value={dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'} />
-        <StatCard label="Total Weeks" value={String(dashboardData.totalWeeks)} />
+      <View style={styles.summaryGrid}>
+        <Card style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Latest Weight</Text>
+          <Text style={styles.summaryValue}>
+            {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
+          </Text>
+        </Card>
+        <Card style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Total Weeks</Text>
+          <Text style={styles.summaryValue}>{String(dashboardData.totalWeeks)}</Text>
+        </Card>
       </View>
 
       <SectionTitle>Training Volume</SectionTitle>
@@ -396,6 +403,29 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     gap: 12,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  summaryCard: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  summaryLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summaryValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.text,
   },
   graphCard: {
     padding: 16,
