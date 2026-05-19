@@ -135,7 +135,9 @@ The real native app path now has a modular React Native shell:
   requires explicit confirmation and does not proceed if saving pending edits
   fails
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
-  direct history edit/delete controls for saved weight entries
+  direct history edit/delete controls for saved weight entries, including a
+  denser history row treatment with per-entry delta badges for notable
+  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
   weight trends, tracked-lift estimated-max values, user-selectable 1k slot
   progress, progression status, and set-count context
@@ -183,9 +185,11 @@ back to Home.
 The native Weight screen now also lets the user reopen saved entries from a
 denser scannable history list, correct them in place, delete mistakes from
 inline row affordances, and immediately refresh the shared weight views after
-AsyncStorage updates. It also now derives 7-day and 30-day rolling averages
-plus fast gain/loss pace flags from saved entries, and shows that trend
-feedback on both the Weight and Stats screens.
+AsyncStorage updates. Each saved row also surfaces the change versus the next
+older weigh-in with visual severity cues for notable, spike, and outlier
+movement. It also now derives 7-day and 30-day rolling averages plus fast
+gain/loss pace flags from saved entries, and shows that trend feedback on
+both the Weight and Stats screens.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor, a formatted read-mode mirror that preserves headings,
 exercise blocks, mixed-weight rows, and unparsed history lines, and a stable

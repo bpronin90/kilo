@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.2 - 2026-05-19
+
+- Issue #103: Redesigned the native Weight history rows for long-history use
+  by tightening row spacing, adding per-entry delta formatting plus visual
+  severity cues for notable (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier
+  (`> 3.5 lb`) changes, and keeping the existing row edit/delete behavior
+  intact. Updated `docs/current-state.md` to match the shipped Weight-screen
+  behavior.
+
 ## 0.21.1 - 2026-05-19
 
 - Issue #102: Fixed the shared native weight pace calculation so backdated
