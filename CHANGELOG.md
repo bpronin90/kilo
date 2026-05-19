@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.7 - 2026-05-19
+
+- Issue #95: Simplified the native Home dashboard copy and top summary
+  presentation in `mobile/screens/HomeScreen.js` by changing the subtitle to
+  `Your training dashboard.`, renaming the second summary card from
+  `Total Workouts` to `Total Weeks`, and balancing the two summary cards with
+  local Home-only styling instead of broad shared-component changes.
+
 ## 0.17.6 - 2026-05-19
 
 - Issue #94: Simplified the native shared header treatment in
