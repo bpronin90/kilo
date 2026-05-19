@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.0 - 2026-05-19
+
+- Issue #96: Made the native Home dashboard more actionable by turning the
+  `Latest Weight` and `Total Weeks` summary cards into tab shortcuts to Weight
+  and Log, removing the low-value `Recent activity` section, and extending the
+  shared native `Card` primitive with an `onPress` path that preserves the
+  non-pressable card rendering behavior.
+
 ## 0.17.7 - 2026-05-19
 
 - Issue #95: Simplified the native Home dashboard copy and top summary

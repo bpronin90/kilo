@@ -2,18 +2,32 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 
-export function Card({ children, style, tone = 'default' }) {
+export function Card({ children, style, tone = 'default', onPress }) {
+  const Container = onPress ? Pressable : View;
+  
+  const baseStyles = [
+    styles.card,
+    tone === 'accent' ? styles.cardAccent : null,
+    tone === 'success' ? styles.cardSuccess : null,
+    tone === 'error' ? styles.cardError : null,
+    tone === 'warn' ? styles.cardWarn : null,
+    style
+  ];
+
+  if (!onPress) {
+    return <View style={baseStyles}>{children}</View>;
+  }
+
   return (
-    <View style={[
-      styles.card, 
-      tone === 'accent' ? styles.cardAccent : null,
-      tone === 'success' ? styles.cardSuccess : null,
-      tone === 'error' ? styles.cardError : null,
-      tone === 'warn' ? styles.cardWarn : null,
-      style
-    ]}>
+    <Pressable 
+      onPress={onPress}
+      style={({ pressed }) => [
+        ...baseStyles,
+        pressed ? { opacity: 0.7 } : null
+      ]}
+    >
       {children}
-    </View>
+    </Pressable>
   );
 }
 

@@ -118,9 +118,10 @@ The real native app path now has a modular React Native shell:
   persistence path, adapts persisted entries for the Home and Analytics
   surfaces, and now exposes a separate More tab for Help, About, and a
   local Data & Backup export/import/recovery surface
-- `mobile/screens/HomeScreen.js` renders a native dashboard with summary cards,
-  workout-volume and weight-trend graphs, recent activity, and the exported
-  More/Help/About/Data & Backup surfaces used by the More tab
+- `mobile/screens/HomeScreen.js` renders a native dashboard with tappable
+  summary-card shortcuts into Weight and Log, workout-volume and weight-trend
+  graphs, and the exported More/Help/About/Data & Backup surfaces used by the
+  More tab
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   with read/edit modes, a formatted mirror of the canonical note that always
   renders day/section/exercise blocks faithful to the raw text, parsed
@@ -197,9 +198,9 @@ canonical workout-note document used by the Log screen, including a one-time
 legacy-session migration path that preserves session count, weighted history,
 non-weight history, tracked selections, and mixed-entry note metadata during
 the transition away from the older structured session store. The native Home tab is
-now a dashboard rather than a static blurb, showing recent activity plus simple
-workout-volume and bodyweight trend graphs as the default landing view. The
-native Log read
+now a dashboard rather than a static blurb, with top summary cards that jump
+directly to Weight and Log plus simple workout-volume and bodyweight trend
+graphs as the default landing view. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection persists on the
 canonical workout-note document. The read view always renders the formatted
