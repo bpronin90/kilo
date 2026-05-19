@@ -74,16 +74,25 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   };
 
   const handleSwitchCurrent = (id) => {
+    const editingNote = notes.find(n => n.id === editingNoteId);
+    const hasUnsaved = editingNote && editingText !== editingNote.raw_text;
+
+    const doSwitch = async () => {
+      if (hasUnsaved) {
+        await update(editingNoteId, { raw_text: editingText });
+      }
+      selectCurrent(id);
+      setEditingNoteId(null);
+    };
+
     Alert.alert(
       'Switch Workout',
-      'Switching your current workout affects analytics. Are you sure?',
+      hasUnsaved
+        ? 'Your edits will be saved and this routine will become your current workout. Continue?'
+        : 'Switching your current workout affects analytics. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Switch',
-          style: 'destructive',
-          onPress: () => { selectCurrent(id); setEditingNoteId(null); },
-        },
+        { text: 'Switch', style: 'destructive', onPress: doSwitch },
       ]
     );
   };
@@ -188,25 +197,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           {!parsed.sections.length && (
             <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
           )}
-
-          {otherNotes.length > 0 && (
-            <View style={styles.previousRoutines}>
-              <SectionTitle>Previous Routines</SectionTitle>
-              {otherNotes.map(other => (
-                <Card
-                  key={other.id}
-                  onPress={() => handleOpenOtherNote(other)}
-                  style={styles.otherNoteCard}
-                >
-                  <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-                  <Text style={styles.otherNotePreview} numberOfLines={1}>
-                    {other.raw_text.split('\n').filter(l => l.trim()).join(' ') || 'No content'}
-                  </Text>
-                </Card>
-              ))}
-            </View>
-          )}
-
           <Button
             onPress={() => setMode('edit')}
             title="Edit note"
@@ -226,13 +216,31 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
               autoFocus={!hasContent}
               style={[styles.input, styles.editorInput]}
             />
-            <Button 
-              onPress={handleSave} 
-              title="Save note" 
-              disabled={isSaving} 
-              style={styles.saveButton} 
+            <Button
+              onPress={handleSave}
+              title="Save note"
+              disabled={isSaving}
+              style={styles.saveButton}
             />
           </Card>
+        </View>
+      )}
+
+      {otherNotes.length > 0 && (
+        <View style={styles.previousRoutines}>
+          <SectionTitle>Previous Routines</SectionTitle>
+          {otherNotes.map(other => (
+            <Card
+              key={other.id}
+              onPress={() => handleOpenOtherNote(other)}
+              style={styles.otherNoteCard}
+            >
+              <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+              <Text style={styles.otherNotePreview} numberOfLines={1}>
+                {other.raw_text.split('\n').filter(l => l.trim()).join(' ') || 'No content'}
+              </Text>
+            </Card>
+          ))}
         </View>
       )}
     </ScreenShell>
