@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.0 - 2026-05-19
+
+- Issue #101: Fixed current-workout session counting so warmup and lifting
+  blocks under the same day heading count as one session, changed Home `Total
+  Weeks` to use the highest per-day session count from the selected workout
+  note through a stable parser helper, and added regression coverage for the
+  corrected combined-day counting rules.
+
 ## 0.20.0 - 2026-05-19
 
 - Issue #100: Extended the native Log routine workflow so any non-current
