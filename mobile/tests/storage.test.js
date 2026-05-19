@@ -15,6 +15,12 @@ import {
   migrateWorkoutNote,
   exportBackup,
   importBackup,
+  loadWorkoutNotes,
+  saveWorkoutNoteItem,
+  deleteWorkoutNoteItem,
+  loadCurrentWorkoutId,
+  saveCurrentWorkoutId,
+  clearCurrentWorkoutId,
 } from '../storage/entries';
 import { computeWeightTrends } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -475,13 +481,14 @@ describe('migrateWorkoutNote', () => {
 // ── export / import ───────────────────────────────────────────────────────────
 
 describe('exportBackup', () => {
-  test('returns object with version, exported_at, weight_entries, workout_note', async () => {
+  test('returns object with version, exported_at, weight_entries, workout_notes, current_workout_id', async () => {
     const backup = await exportBackup();
-    expect(backup).toHaveProperty('version', '1');
+    expect(backup).toHaveProperty('version', '2');
     expect(backup).toHaveProperty('exported_at');
     expect(backup.exported_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(Array.isArray(backup.weight_entries)).toBe(true);
-    expect('workout_note' in backup).toBe(true);
+    expect(Array.isArray(backup.workout_notes)).toBe(true);
+    expect('current_workout_id' in backup).toBe(true);
   });
 
   test('includes saved weight entries in weight_entries', async () => {
@@ -493,28 +500,33 @@ describe('exportBackup', () => {
     expect(ids).toContain(W2.id);
   });
 
-  test('includes workout note with raw_text and tracked_exercises', async () => {
-    await saveWorkoutNote('Squat 225 5,5,5');
-    await saveTrackedExercises(['Squat']);
+  test('includes saved workout notes in workout_notes', async () => {
+    const NOTE = { id: 'wn_export_1', title: 'Push Day', raw_text: 'Squat 225 5,5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: ['Squat'], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
     const backup = await exportBackup();
-    expect(backup.workout_note.raw_text).toBe('Squat 225 5,5,5');
-    expect(backup.workout_note.tracked_exercises).toEqual(['Squat']);
+    expect(backup.workout_notes).toHaveLength(1);
+    expect(backup.workout_notes[0].id).toBe('wn_export_1');
+    expect(backup.workout_notes[0].title).toBe('Push Day');
   });
 
-  test('workout_note is null when no note exists', async () => {
+  test('includes current_workout_id when set', async () => {
+    await saveCurrentWorkoutId('wn_export_1');
     const backup = await exportBackup();
-    expect(backup.workout_note).toBeNull();
+    expect(backup.current_workout_id).toBe('wn_export_1');
+  });
+
+  test('workout_notes is empty array and current_workout_id is null when nothing exists', async () => {
+    const backup = await exportBackup();
+    expect(backup.workout_notes).toEqual([]);
+    expect(backup.current_workout_id).toBeNull();
   });
 });
 
+const BASE_V2 = { version: '2', exported_at: '2026-05-01T00:00:00.000Z', workout_notes: [], current_workout_id: null };
+
 describe('importBackup — valid restore', () => {
   test('restores weight entries from backup', async () => {
-    const backup = {
-      version: '1',
-      exported_at: '2026-05-01T00:00:00.000Z',
-      weight_entries: [W1, W2],
-      workout_note: null,
-    };
+    const backup = { ...BASE_V2, weight_entries: [W1, W2] };
     const result = await importBackup(backup);
     expect(result.ok).toBe(true);
     const entries = await loadWeightEntries();
@@ -523,27 +535,45 @@ describe('importBackup — valid restore', () => {
     expect(ids).toContain(W2.id);
   });
 
-  test('restores workout note from backup', async () => {
-    const note = { raw_text: 'Deadlift 315 3,3,3', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: ['Deadlift'] };
-    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: note };
+  test('restores workout notes from backup', async () => {
+    const note = { id: 'wn_import_1', title: 'Pull Day', raw_text: 'Deadlift 315 3,3,3', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: ['Deadlift'], one_k_exercises: null };
+    const backup = { ...BASE_V2, weight_entries: [], workout_notes: [note] };
     const result = await importBackup(backup);
     expect(result.ok).toBe(true);
-    const loaded = await loadWorkoutNote();
-    expect(loaded.raw_text).toBe('Deadlift 315 3,3,3');
-    expect(loaded.tracked_exercises).toEqual(['Deadlift']);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].raw_text).toBe('Deadlift 315 3,3,3');
+    expect(notes[0].tracked_exercises).toEqual(['Deadlift']);
   });
 
-  test('null workout_note in backup clears existing note', async () => {
-    await saveWorkoutNote('existing note');
-    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: null };
+  test('restores current_workout_id from backup', async () => {
+    const note = { id: 'wn_import_1', title: 'A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    const backup = { ...BASE_V2, weight_entries: [], workout_notes: [note], current_workout_id: 'wn_import_1' };
     await importBackup(backup);
-    const loaded = await loadWorkoutNote();
-    expect(loaded).toBeNull();
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBe('wn_import_1');
+  });
+
+  test('null current_workout_id in backup clears existing selection', async () => {
+    await saveCurrentWorkoutId('wn_old');
+    const backup = { ...BASE_V2, weight_entries: [] };
+    await importBackup(backup);
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBeNull();
+  });
+
+  test('empty workout_notes in backup clears existing notes', async () => {
+    const NOTE = { id: 'wn_x', title: 'Old', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    const backup = { ...BASE_V2, weight_entries: [] };
+    await importBackup(backup);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toEqual([]);
   });
 
   test('import does not touch legacy workout sessions', async () => {
     await saveWorkoutSession(S1);
-    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: null };
+    const backup = { ...BASE_V2, weight_entries: [] };
     await importBackup(backup);
     const sessions = await loadWorkoutSessions();
     expect(sessions).toHaveLength(1);
@@ -552,7 +582,7 @@ describe('importBackup — valid restore', () => {
 
   test('replace strategy overwrites existing weight entries with backup data', async () => {
     await saveWeightEntry(W1);
-    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [W2], workout_note: null };
+    const backup = { ...BASE_V2, weight_entries: [W2] };
     await importBackup(backup, 'replace');
     const entries = await loadWeightEntries();
     expect(entries).toHaveLength(1);
@@ -571,29 +601,23 @@ describe('importBackup — valid restore', () => {
     expect(entries.map(e => e.id).sort()).toEqual([W1.id, W2.id].sort());
   });
 
-  test('round-trip: export then import restores workout note raw_text', async () => {
-    await saveWorkoutNote('Squat 225 5,5,5\nBench 185 8,8');
-    await saveTrackedExercises(['Squat', 'Bench']);
+  test('round-trip: export then import restores workout notes and current selection', async () => {
+    const NOTE_A = { id: 'wn_rt_1', title: 'Push', raw_text: 'Bench 185 5,5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: ['Bench'], one_k_exercises: null };
+    const NOTE_B = { id: 'wn_rt_2', title: 'Pull', raw_text: 'Row 135 8,8,8', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    await saveCurrentWorkoutId('wn_rt_2');
     const backup = await exportBackup();
 
     AsyncStorage.clear();
 
     await importBackup(backup);
-    const note = await loadWorkoutNote();
-    expect(note.raw_text).toBe('Squat 225 5,5,5\nBench 185 8,8');
-    expect(note.tracked_exercises).toEqual(['Squat', 'Bench']);
-  });
-
-  test('round-trip: export then import restores one_k_exercises', async () => {
-    await saveWorkoutNote('Squat 225 5,5,5');
-    await saveOneKExercises({ bench: 'Incline DB Press', squat: 'Squat', deadlift: 'RDL' });
-    const backup = await exportBackup();
-
-    AsyncStorage.clear();
-
-    await importBackup(backup);
-    const note = await loadWorkoutNote();
-    expect(note.one_k_exercises).toEqual({ bench: 'Incline DB Press', squat: 'Squat', deadlift: 'RDL' });
+    const notes = await loadWorkoutNotes();
+    const id = await loadCurrentWorkoutId();
+    expect(notes.map(n => n.id).sort()).toEqual(['wn_rt_1', 'wn_rt_2'].sort());
+    expect(id).toBe('wn_rt_2');
+    const push = notes.find(n => n.id === 'wn_rt_1');
+    expect(push.tracked_exercises).toEqual(['Bench']);
   });
 });
 
@@ -613,67 +637,120 @@ describe('importBackup — malformed input rejection', () => {
     expect(result.error).toMatch(/invalid backup/i);
   });
 
-  test('rejects payload with wrong version', async () => {
-    const result = await importBackup({ version: '99', weight_entries: [], workout_note: null });
+  test('rejects payload with unsupported version', async () => {
+    const result = await importBackup({ version: '99', weight_entries: [], workout_notes: [], current_workout_id: null });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/version/i);
   });
 
   test('rejects payload where weight_entries is not an array', async () => {
-    const result = await importBackup({ version: '1', weight_entries: 'bad', workout_note: null });
+    const result = await importBackup({ version: '2', weight_entries: 'bad', workout_notes: [], current_workout_id: null });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/weight_entries/i);
   });
 
   test('rejects payload with missing version field', async () => {
-    const result = await importBackup({ weight_entries: [], workout_note: null });
+    const result = await importBackup({ weight_entries: [], workout_notes: [], current_workout_id: null });
     expect(result.ok).toBe(false);
   });
 
   test('rejects weight entry missing id', async () => {
-    const bad = { version: '1', exported_at: '', weight_entries: [{ entry_type: 'weight', date: '2026-05-01', weight_value: 190, logged_at: '2026-05-01T00:00:00.000Z' }], workout_note: null };
+    const bad = { version: '2', exported_at: '', weight_entries: [{ entry_type: 'weight', date: '2026-05-01', weight_value: 190, logged_at: '2026-05-01T00:00:00.000Z' }], workout_notes: [], current_workout_id: null };
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/id/i);
   });
 
   test('rejects weight entry with wrong entry_type', async () => {
-    const bad = { version: '1', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'workout', date: '2026-05-01', weight_value: 190, logged_at: '2026-05-01T00:00:00.000Z' }], workout_note: null };
+    const bad = { version: '2', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'workout', date: '2026-05-01', weight_value: 190, logged_at: '2026-05-01T00:00:00.000Z' }], workout_notes: [], current_workout_id: null };
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/entry_type/i);
   });
 
   test('rejects weight entry with non-numeric weight_value', async () => {
-    const bad = { version: '1', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: '190', logged_at: '2026-05-01T00:00:00.000Z' }], workout_note: null };
+    const bad = { version: '2', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: '190', logged_at: '2026-05-01T00:00:00.000Z' }], workout_notes: [], current_workout_id: null };
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/weight_value/i);
   });
 
-  test('rejects workout_note that is not an object', async () => {
-    const bad = { version: '1', exported_at: '', weight_entries: [], workout_note: 'bad' };
+  test('rejects payload where workout_notes is not an array', async () => {
+    const bad = { version: '2', exported_at: '', weight_entries: [], workout_notes: 'bad', current_workout_id: null };
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/workout_note/i);
+    expect(result.error).toMatch(/workout_notes/i);
   });
 
-  test('rejects workout_note missing raw_text', async () => {
-    const bad = { version: '1', exported_at: '', weight_entries: [], workout_note: { saved_at: 'x', updated_at: 'x' } };
+  test('rejects workout note missing id', async () => {
+    const bad = { version: '2', exported_at: '', weight_entries: [], workout_notes: [{ title: 'A', raw_text: '' }], current_workout_id: null };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/id/i);
+  });
+
+  test('rejects workout note missing title', async () => {
+    const bad = { version: '2', exported_at: '', weight_entries: [], workout_notes: [{ id: 'x', raw_text: '' }], current_workout_id: null };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/title/i);
+  });
+
+  test('rejects workout note missing raw_text', async () => {
+    const bad = { version: '2', exported_at: '', weight_entries: [], workout_notes: [{ id: 'x', title: 'A' }], current_workout_id: null };
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/raw_text/i);
   });
 
+  test('rejects current_workout_id that is not a string or null', async () => {
+    const bad = { version: '2', exported_at: '', weight_entries: [], workout_notes: [], current_workout_id: 123 };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/current_workout_id/i);
+  });
+
   test('does not mutate existing storage when weight entry validation fails', async () => {
     await saveWeightEntry(W1);
-    await saveWorkoutNote('original note');
-    const bad = { version: '1', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: 'bad', logged_at: '' }], workout_note: null };
+    const NOTE = { id: 'wn_guard', title: 'Guard', raw_text: 'original', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    const bad = { version: '2', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: 'bad', logged_at: '' }], workout_notes: [], current_workout_id: null };
     await importBackup(bad);
     const entries = await loadWeightEntries();
-    const note = await loadWorkoutNote();
+    const notes = await loadWorkoutNotes();
     expect(entries[0].id).toBe(W1.id);
-    expect(note.raw_text).toBe('original note');
+    expect(notes[0].id).toBe('wn_guard');
+  });
+});
+
+// ── v1 backup compatibility ───────────────────────────────────────────────────
+
+describe('importBackup — v1 compatibility', () => {
+  test('accepts v1 backup and restores weight entries', async () => {
+    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [W1, W2], workout_note: null };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    const entries = await loadWeightEntries();
+    expect(entries.map(e => e.id).sort()).toEqual([W1.id, W2.id].sort());
+  });
+
+  test('v1 import does not clear existing workout notes or current selection', async () => {
+    const NOTE = { id: 'wn_v1_keep', title: 'Keep Me', raw_text: 'Squat 225 5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    await saveCurrentWorkoutId('wn_v1_keep');
+    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: null };
+    await importBackup(backup);
+    const notes = await loadWorkoutNotes();
+    const id = await loadCurrentWorkoutId();
+    expect(notes[0].id).toBe('wn_v1_keep');
+    expect(id).toBe('wn_v1_keep');
+  });
+
+  test('v1 import rejects malformed weight entry', async () => {
+    const bad = { version: '1', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: 'bad', logged_at: '' }], workout_note: null };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/weight_value/i);
   });
 });
 
@@ -779,5 +856,116 @@ describe('migration contract — all six properties', () => {
         }
       }
     }
+  });
+});
+
+// ── multi-note workout storage ────────────────────────────────────────────────
+
+describe('loadWorkoutNotes', () => {
+  test('returns empty array when no notes exist', async () => {
+    const notes = await loadWorkoutNotes();
+    expect(notes).toEqual([]);
+  });
+});
+
+describe('saveWorkoutNoteItem', () => {
+  const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: 'Bench 185 5,5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+  const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: 'Row 135 8,8,8', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+
+  test('saves a new note and retrieves it', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe(NOTE_A.id);
+    expect(notes[0].title).toBe('Push Day');
+    expect(notes[0].raw_text).toBe('Bench 185 5,5,5');
+  });
+
+  test('saves multiple notes', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(2);
+    const ids = notes.map(n => n.id);
+    expect(ids).toContain(NOTE_A.id);
+    expect(ids).toContain(NOTE_B.id);
+  });
+
+  test('upserts an existing note by id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const updated = { ...NOTE_A, raw_text: 'Bench 195 5,5,5', updated_at: '2026-05-01T12:00:00.000Z' };
+    await saveWorkoutNoteItem(updated);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].raw_text).toBe('Bench 195 5,5,5');
+  });
+
+  test('upsert preserves other fields on update', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const updated = { ...NOTE_A, title: 'Chest Day' };
+    await saveWorkoutNoteItem(updated);
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].title).toBe('Chest Day');
+    expect(notes[0].saved_at).toBe(NOTE_A.saved_at);
+  });
+});
+
+describe('deleteWorkoutNoteItem', () => {
+  const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+  const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+
+  test('removes a note by id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    await deleteWorkoutNoteItem(NOTE_A.id);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe(NOTE_B.id);
+  });
+
+  test('is a no-op for a non-existent id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await deleteWorkoutNoteItem('no-such-id');
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+  });
+});
+
+describe('current workout id storage', () => {
+  test('returns null when no current id is set', async () => {
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBeNull();
+  });
+
+  test('saves and retrieves a current workout id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBe('wn_2026-05-01_1');
+  });
+
+  test('overwrites previous current id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    await saveCurrentWorkoutId('wn_2026-05-02_1');
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBe('wn_2026-05-02_1');
+  });
+
+  test('clearCurrentWorkoutId removes the stored id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    await clearCurrentWorkoutId();
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBeNull();
+  });
+
+  test('weight entries and workout notes are unaffected by current id operations', async () => {
+    await saveWeightEntry(W1);
+    const NOTE = { id: 'wn_x', title: 'Test', raw_text: 'Squat 225 5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    await saveCurrentWorkoutId('wn_x');
+    await clearCurrentWorkoutId();
+    const entries = await loadWeightEntries();
+    const notes = await loadWorkoutNotes();
+    expect(entries).toHaveLength(1);
+    expect(notes).toHaveLength(1);
   });
 });

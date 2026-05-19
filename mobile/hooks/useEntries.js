@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
+import { makeWorkoutNoteItem } from '../lib/data';
 
 let weightListeners = [];
 const notifyWeight = () => weightListeners.forEach(l => l());
@@ -97,4 +98,66 @@ export function useWorkoutNote() {
   }, []);
 
   return { note, loading, error, save, saveTracked, saveOneK, clear, refresh };
+}
+
+let workoutNotesListeners = [];
+const notifyWorkoutNotes = () => workoutNotesListeners.forEach(l => l());
+
+export function useWorkoutNotes() {
+  const [notes, setNotes] = useState([]);
+  const [currentId, setCurrentId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(() => {
+    Promise.all([Storage.loadWorkoutNotes(), Storage.loadCurrentWorkoutId()])
+      .then(([ns, id]) => {
+        setNotes(ns);
+        setCurrentId(id);
+      })
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    workoutNotesListeners.push(refresh);
+    return () => {
+      workoutNotesListeners = workoutNotesListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const currentNote = notes.find(n => n.id === currentId) ?? null;
+
+  const add = useCallback(async (title, raw_text = '') => {
+    const note = makeWorkoutNoteItem({ title, raw_text });
+    await Storage.saveWorkoutNoteItem(note);
+    notifyWorkoutNotes();
+    return note;
+  }, []);
+
+  const update = useCallback(async (id, patch) => {
+    const list = await Storage.loadWorkoutNotes();
+    const note = list.find(n => n.id === id);
+    if (!note) return false;
+    const updated = { ...note, ...patch, updated_at: new Date().toISOString() };
+    await Storage.saveWorkoutNoteItem(updated);
+    notifyWorkoutNotes();
+    return updated;
+  }, []);
+
+  const remove = useCallback(async (id) => {
+    await Storage.deleteWorkoutNoteItem(id);
+    if (id === currentId) {
+      await Storage.clearCurrentWorkoutId();
+    }
+    notifyWorkoutNotes();
+  }, [currentId]);
+
+  const selectCurrent = useCallback(async (id) => {
+    await Storage.saveCurrentWorkoutId(id);
+    notifyWorkoutNotes();
+  }, []);
+
+  return { notes, currentId, currentNote, loading, error, add, update, remove, selectCurrent, refresh };
 }

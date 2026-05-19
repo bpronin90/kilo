@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.2 - 2026-05-19
+
+- Issue #98: Replaced the native single workout-note store with a local-only
+  multi-note current-workout model. `mobile/storage/entries.js` now persists
+  multiple titled workout notes plus an explicit current-workout selection,
+  `mobile/hooks/useEntries.js` exposes the new current-note hook surface for
+  later UI work, `mobile/App.js` now saves through the selected workout note,
+  and the local backup/import path now exports the v2 multi-note format while
+  still accepting legacy v1 backups to restore weight history without wiping
+  the newer workout-note state. Updated the current-state, architecture, and
+  roadmap docs to match the shipped storage contract.
+
 ## 0.18.1 - 2026-05-19
 
 - Issue #97: Polished the native Help flow inside the More tab by extending

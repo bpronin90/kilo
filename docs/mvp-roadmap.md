@@ -27,6 +27,10 @@ The repo now has a real native app scaffold under `mobile/`.
 - Issue #68 tightened the native analytics path by making the three 1k inputs
   explicitly user-selectable and by handling a conservative deterministic set
   of exercise-name variants for tracked strength analytics.
+- Issue #98 replaced the native single workout-note store with a local
+  multi-note current-workout model, added explicit current-workout persistence,
+  and updated backup/import so new v2 exports preserve workout-note arrays
+  while older v1 backups still restore weight history safely.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
