@@ -4,21 +4,30 @@ import { Colors } from '../theme/colors';
 
 export function Card({ children, style, tone = 'default', onPress }) {
   const Container = onPress ? Pressable : View;
+  
+  const baseStyles = [
+    styles.card,
+    tone === 'accent' ? styles.cardAccent : null,
+    tone === 'success' ? styles.cardSuccess : null,
+    tone === 'error' ? styles.cardError : null,
+    tone === 'warn' ? styles.cardWarn : null,
+    style
+  ];
+
+  if (!onPress) {
+    return <View style={baseStyles}>{children}</View>;
+  }
+
   return (
-    <Container 
+    <Pressable 
       onPress={onPress}
       style={({ pressed }) => [
-        styles.card, 
-        tone === 'accent' ? styles.cardAccent : null,
-        tone === 'success' ? styles.cardSuccess : null,
-        tone === 'error' ? styles.cardError : null,
-        tone === 'warn' ? styles.cardWarn : null,
-        style,
-        pressed && onPress ? { opacity: 0.7 } : null
+        ...baseStyles,
+        pressed ? { opacity: 0.7 } : null
       ]}
     >
       {children}
-    </Container>
+    </Pressable>
   );
 }
 
