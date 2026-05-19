@@ -65,7 +65,7 @@ export default function App() {
         }]
       : [];
     return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
-  }, [weightHook.entries, noteHook.note]);
+  }, [weightHook.entries, noteHook.currentNote]);
 
   const saveWeight = useCallback(async () => {
     if (weightSaving) return;

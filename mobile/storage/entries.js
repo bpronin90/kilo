@@ -159,16 +159,18 @@ export async function clearCurrentWorkoutId() {
 
 // ── backup / restore ──────────────────────────────────────────────────────────
 
-const BACKUP_VERSION = '1';
+const BACKUP_VERSION = '2';
 
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
-  const workout_note = await loadWorkoutNote();
+  const workout_notes = await readList(WORKOUT_NOTES_KEY);
+  const current_workout_id = await loadCurrentWorkoutId();
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
     weight_entries,
-    workout_note,
+    workout_notes,
+    current_workout_id,
   };
 }
 
@@ -193,13 +195,20 @@ function validateBackup(payload) {
     if (typeof e.logged_at !== 'string')
       return { ok: false, error: 'Invalid backup: weight entry missing logged_at' };
   }
-  if (payload.workout_note != null) {
-    const n = payload.workout_note;
-    if (typeof n !== 'object' || Array.isArray(n))
-      return { ok: false, error: 'Invalid backup: workout_note must be an object or null' };
+  if (!Array.isArray(payload.workout_notes))
+    return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
+  for (const n of payload.workout_notes) {
+    if (!n || typeof n !== 'object' || Array.isArray(n))
+      return { ok: false, error: 'Invalid backup: workout note is not an object' };
+    if (typeof n.id !== 'string')
+      return { ok: false, error: 'Invalid backup: workout note missing id' };
+    if (typeof n.title !== 'string')
+      return { ok: false, error: 'Invalid backup: workout note missing title' };
     if (typeof n.raw_text !== 'string')
-      return { ok: false, error: 'Invalid backup: workout_note missing raw_text' };
+      return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
   }
+  if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
+    return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
   return { ok: true };
 }
 
@@ -212,14 +221,15 @@ export async function importBackup(payload, strategy = 'replace') {
 
   if (strategy === 'replace') {
     // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
-    const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
-    if (payload.workout_note != null) {
-      pairs.push([WORKOUT_NOTE_KEY, JSON.stringify(payload.workout_note)]);
-      await AsyncStorage.multiSet(pairs);
+    const pairs = [
+      [WEIGHT_KEY, JSON.stringify(payload.weight_entries)],
+      [WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)],
+    ];
+    await AsyncStorage.multiSet(pairs);
+    if (payload.current_workout_id != null) {
+      await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
     } else {
-      // Write weights first; then remove the note so the larger write is committed first.
-      await AsyncStorage.multiSet(pairs);
-      await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
+      await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
     }
   }
 
