@@ -4,7 +4,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries } from '../hooks/useEntries';
-import { formatTimestamp } from '../lib/format';
+import { formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { computeWeightTrends } from '../lib/data';
 
@@ -135,46 +135,64 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
-        {entries.map((entry, index) => (
-          <View 
-            key={entry.id} 
-            style={[
-              styles.historyRowContainer,
-              editingId === entry.id && styles.activeEntryRow,
-              index === entries.length - 1 && styles.lastHistoryRow
-            ]}
-          >
-            <Pressable 
-              onPress={() => handleEditEntry(entry)}
-              style={({ pressed }) => [
-                styles.rowMain,
-                pressed && styles.historyRowPressed
+        {entries.map((entry, index) => {
+          const nextEntry = entries[index + 1];
+          const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
+          const severity = getWeightDeltaSeverity(delta);
+
+          return (
+            <View 
+              key={entry.id} 
+              style={[
+                styles.historyRowContainer,
+                editingId === entry.id && styles.activeEntryRow,
+                index === entries.length - 1 && styles.lastHistoryRow
               ]}
             >
-              <View style={styles.rowTop}>
-                <Text style={styles.rowWeight}>
-                  {entry.weight_value} {entry.weight_unit || 'lb'}
-                </Text>
-                <Text style={styles.rowDate}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
-              </View>
-              {entry.note ? (
-                <Text style={styles.rowNote} numberOfLines={1}>
-                  {entry.note}
-                </Text>
-              ) : null}
-            </Pressable>
-            <Pressable 
-              onPress={() => handleDelete(entry.id)} 
-              style={({ pressed }) => [
-                styles.deleteAffordance,
-                pressed && styles.deleteAffordancePressed
-              ]}
-              hitSlop={12}
-            >
-              <Text style={styles.deleteAffordanceText}>✕</Text>
-            </Pressable>
-          </View>
-        ))}
+              <Pressable 
+                onPress={() => handleEditEntry(entry)}
+                style={({ pressed }) => [
+                  styles.rowMain,
+                  pressed && styles.historyRowPressed
+                ]}
+              >
+                <View style={styles.rowTop}>
+                  <View style={styles.rowWeightGroup}>
+                    <Text style={styles.rowWeight}>
+                      {entry.weight_value} {entry.weight_unit || 'lb'}
+                    </Text>
+                    {delta !== null && (
+                      <Text style={[
+                        styles.rowDelta,
+                        severity === 'notable' && styles.deltaNotable,
+                        severity === 'spike' && styles.deltaSpike,
+                        severity === 'outlier' && styles.deltaOutlier,
+                      ]}>
+                        {formatDelta(delta)}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.rowDate}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
+                </View>
+                {entry.note ? (
+                  <Text style={styles.rowNote} numberOfLines={1}>
+                    {entry.note}
+                  </Text>
+                ) : null}
+              </Pressable>
+              <Pressable 
+                onPress={() => handleDelete(entry.id)} 
+                style={({ pressed }) => [
+                  styles.deleteAffordance,
+                  pressed && styles.deleteAffordancePressed
+                ]}
+                hitSlop={12}
+              >
+                <Text style={styles.deleteAffordanceText}>✕</Text>
+              </Pressable>
+            </View>
+          );
+        })}
         {entries.length === 0 ? (
           <Text style={styles.emptyText}>No weight entries yet.</Text>
         ) : null}
@@ -252,27 +270,48 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 8,
     paddingHorizontal: 16,
-    gap: 2,
   },
   rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rowWeightGroup: {
+    flexDirection: 'row',
     alignItems: 'baseline',
+    gap: 6,
   },
   rowWeight: {
     fontSize: 17,
     fontWeight: '700',
     color: Colors.text,
   },
+  rowDelta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  deltaNotable: {
+    color: Colors.accent,
+  },
+  deltaSpike: {
+    color: Colors.error,
+  },
+  deltaOutlier: {
+    color: Colors.error,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
+  },
   rowDate: {
     fontSize: 12,
     color: Colors.textMuted,
   },
   rowNote: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textMuted,
+    marginTop: 1,
   },
   deleteAffordance: {
     paddingHorizontal: 16,

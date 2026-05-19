@@ -105,6 +105,12 @@ Changelog format:
 
 Create a branch for your assigned issue before committing. Treat the issue branch as the default working branch for that task.
 
+Issue branches must use this format:
+- `issue/<issue-number>-<short-kebab-scope>`
+- example: `issue/103-redesign-weight-history-rows`
+
+Do not invent agent-specific prefixes, usernames, or alternate issue branch formats when the work is tied to a GitHub issue.
+
 Never commit directly to `main` unless explicitly told.
 
 Merging to `main` requires explicit approval.
