@@ -134,7 +134,7 @@ export function MoreScreen({ onNavigate, onExport, onImport }) {
   }
 
   return (
-    <ScreenShell title="More">
+    <ScreenShell title="More" subtitle="Help, about, and application info.">
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
           <Text style={styles.menuItemText}>Help & Terminology</Text>
@@ -163,12 +163,6 @@ function BackupScreen({ onBack, onExport, onImport }) {
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
   const [busy, setBusy] = useState(false);
-
-  const headerLeft = (
-    <Pressable onPress={onBack} style={styles.headerBackButton}>
-      <Text style={styles.headerBackButtonText}>←</Text>
-    </Pressable>
-  );
 
   const handleExport = async () => {
     setBusy(true);
@@ -215,7 +209,9 @@ function BackupScreen({ onBack, onExport, onImport }) {
   };
 
   return (
-    <ScreenShell title="Data & Backup" headerLeft={headerLeft}>
+    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data.">
+      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
       {status ? (
         <Card tone={status.ok ? 'success' : 'error'}>
           <Text style={styles.statusText}>{status.message}</Text>
@@ -254,7 +250,12 @@ function BackupScreen({ onBack, onExport, onImport }) {
 
 function HelpScreen({ onBack }) {
   const headerLeft = (
-    <Pressable onPress={onBack} style={styles.headerBackButton}>
+    <Pressable 
+      onPress={onBack} 
+      style={styles.headerBackButton}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+    >
       <Text style={styles.headerBackButtonText}>←</Text>
     </Pressable>
   );
@@ -311,12 +312,6 @@ function AboutScreen({ onBack }) {
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  const headerLeft = (
-    <Pressable onPress={onBack} style={styles.headerBackButton}>
-      <Text style={styles.headerBackButtonText}>←</Text>
-    </Pressable>
-  );
-
   const handleCheckForUpdate = async () => {
     setChecking(true);
     setCheckResult(null);
@@ -337,7 +332,9 @@ function AboutScreen({ onBack }) {
   const updateIdLabel = isEmbedded ? 'embedded bundle' : (updateId ? updateId.slice(0, 8) + '…' : '—');
 
   return (
-    <ScreenShell title="About" headerLeft={headerLeft}>
+    <ScreenShell title="About" subtitle="App information and attribution.">
+      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
       <Card style={styles.aboutCard}>
         <Text style={styles.aboutLabel}>Created by</Text>
         <Text style={styles.aboutValue}>Benjamin Pronin</Text>
