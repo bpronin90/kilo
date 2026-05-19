@@ -637,7 +637,7 @@ describe('importBackup — malformed input rejection', () => {
     expect(result.error).toMatch(/invalid backup/i);
   });
 
-  test('rejects payload with wrong version', async () => {
+  test('rejects payload with unsupported version', async () => {
     const result = await importBackup({ version: '99', weight_entries: [], workout_notes: [], current_workout_id: null });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/version/i);
@@ -720,6 +720,37 @@ describe('importBackup — malformed input rejection', () => {
     const notes = await loadWorkoutNotes();
     expect(entries[0].id).toBe(W1.id);
     expect(notes[0].id).toBe('wn_guard');
+  });
+});
+
+// ── v1 backup compatibility ───────────────────────────────────────────────────
+
+describe('importBackup — v1 compatibility', () => {
+  test('accepts v1 backup and restores weight entries', async () => {
+    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [W1, W2], workout_note: null };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    const entries = await loadWeightEntries();
+    expect(entries.map(e => e.id).sort()).toEqual([W1.id, W2.id].sort());
+  });
+
+  test('v1 import does not clear existing workout notes or current selection', async () => {
+    const NOTE = { id: 'wn_v1_keep', title: 'Keep Me', raw_text: 'Squat 225 5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    await saveCurrentWorkoutId('wn_v1_keep');
+    const backup = { version: '1', exported_at: '2026-05-01T00:00:00.000Z', weight_entries: [], workout_note: null };
+    await importBackup(backup);
+    const notes = await loadWorkoutNotes();
+    const id = await loadCurrentWorkoutId();
+    expect(notes[0].id).toBe('wn_v1_keep');
+    expect(id).toBe('wn_v1_keep');
+  });
+
+  test('v1 import rejects malformed weight entry', async () => {
+    const bad = { version: '1', exported_at: '', weight_entries: [{ id: 'x', entry_type: 'weight', date: '2026-05-01', weight_value: 'bad', logged_at: '' }], workout_note: null };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/weight_value/i);
   });
 });
 

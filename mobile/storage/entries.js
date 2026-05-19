@@ -174,14 +174,12 @@ export async function exportBackup() {
   };
 }
 
-function validateBackup(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload))
-    return { ok: false, error: 'Invalid backup: not an object' };
-  if (payload.version !== BACKUP_VERSION)
-    return { ok: false, error: `Unsupported backup version: ${payload.version}` };
-  if (!Array.isArray(payload.weight_entries))
+const SUPPORTED_VERSIONS = new Set(['1', BACKUP_VERSION]);
+
+function validateWeightEntries(entries) {
+  if (!Array.isArray(entries))
     return { ok: false, error: 'Invalid backup: weight_entries must be an array' };
-  for (const e of payload.weight_entries) {
+  for (const e of entries) {
     if (!e || typeof e !== 'object')
       return { ok: false, error: 'Invalid backup: weight entry is not an object' };
     if (typeof e.id !== 'string')
@@ -195,41 +193,61 @@ function validateBackup(payload) {
     if (typeof e.logged_at !== 'string')
       return { ok: false, error: 'Invalid backup: weight entry missing logged_at' };
   }
-  if (!Array.isArray(payload.workout_notes))
-    return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
-  for (const n of payload.workout_notes) {
-    if (!n || typeof n !== 'object' || Array.isArray(n))
-      return { ok: false, error: 'Invalid backup: workout note is not an object' };
-    if (typeof n.id !== 'string')
-      return { ok: false, error: 'Invalid backup: workout note missing id' };
-    if (typeof n.title !== 'string')
-      return { ok: false, error: 'Invalid backup: workout note missing title' };
-    if (typeof n.raw_text !== 'string')
-      return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
+  return { ok: true };
+}
+
+function validateBackup(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+    return { ok: false, error: 'Invalid backup: not an object' };
+  if (!SUPPORTED_VERSIONS.has(payload.version))
+    return { ok: false, error: `Unsupported backup version: ${payload.version}` };
+
+  const weightCheck = validateWeightEntries(payload.weight_entries);
+  if (!weightCheck.ok) return weightCheck;
+
+  if (payload.version === BACKUP_VERSION) {
+    if (!Array.isArray(payload.workout_notes))
+      return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
+    for (const n of payload.workout_notes) {
+      if (!n || typeof n !== 'object' || Array.isArray(n))
+        return { ok: false, error: 'Invalid backup: workout note is not an object' };
+      if (typeof n.id !== 'string')
+        return { ok: false, error: 'Invalid backup: workout note missing id' };
+      if (typeof n.title !== 'string')
+        return { ok: false, error: 'Invalid backup: workout note missing title' };
+      if (typeof n.raw_text !== 'string')
+        return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
+    }
+    if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
+      return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
   }
-  if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
-    return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
+
   return { ok: true };
 }
 
 // Restores a backup. strategy 'replace' overwrites all local data atomically.
 // Returns { ok: true } or { ok: false, error: string }.
 // Validation runs before any write; storage is not mutated on failure.
+// v1 backups restore weight entries only; workout notes state is left untouched.
 export async function importBackup(payload, strategy = 'replace') {
   const check = validateBackup(payload);
   if (!check.ok) return check;
 
   if (strategy === 'replace') {
     // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
-    const pairs = [
-      [WEIGHT_KEY, JSON.stringify(payload.weight_entries)],
-      [WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)],
-    ];
-    await AsyncStorage.multiSet(pairs);
-    if (payload.current_workout_id != null) {
-      await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
+    const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
+
+    if (payload.version === BACKUP_VERSION) {
+      pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
+      await AsyncStorage.multiSet(pairs);
+      if (payload.current_workout_id != null) {
+        await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
+      } else {
+        await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+      }
     } else {
-      await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+      // v1: restore weight entries only; workout notes model was not part of the v1 contract
+      await AsyncStorage.multiSet(pairs);
     }
   }
 
