@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 - 2026-05-19
+
+- Issue #105: Added a lightweight advisory calorie-estimate helper for native
+  weight goals. The Weight screen now shows a direction-aware daily
+  surplus/deficit estimate derived from the saved goal's required weekly pace,
+  suppresses contradictory output for maintain goals, and includes regression
+  coverage for the maintain-direction edge case.
+
 ## 0.22.0 - 2026-05-19
 
 - Issue #104: Added a lightweight native Weight-goal flow with persistent

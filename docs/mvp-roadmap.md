@@ -35,6 +35,10 @@ The repo now has a real native app scaffold under `mobile/`.
   target date, derived weekly pace plus advisory warnings, and extended the
   v2 backup/import contract so optional persisted weight goals are exported,
   validated before any write, and restored safely.
+- Issue #105 added a lightweight advisory calorie-estimate helper on top of
+  saved weight goals, tied the estimate to the derived gain/loss/maintain
+  direction, and kept the feature local-only without expanding into broader
+  nutrition planning.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

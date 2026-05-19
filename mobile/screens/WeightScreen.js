@@ -6,7 +6,7 @@ import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
 import { formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
-import { computeWeightTrends, computeWeightGoal } from '../lib/data';
+import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 
 function GoalDerived({ info }) {
   if (!info) return null;
@@ -23,9 +23,13 @@ function GoalDerived({ info }) {
   const paceLabel = direction === 'maintain'
     ? 'Maintain current weight'
     : `${dirLabel} ${paceAbs} lb/week`;
+  const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
   return (
     <View style={styles.goalDerived}>
       <Text style={styles.goalPaceText}>{paceLabel}</Text>
+      {calories_per_day !== null && calLabel !== 'maintain' ? (
+        <Text style={styles.goalCalorieText}>~{calories_per_day} cal/day {calLabel}</Text>
+      ) : null}
       {warnings.includes('unrealistic') ? (
         <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
       ) : warnings.includes('unhealthy') ? (
@@ -585,6 +589,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Colors.text,
+  },
+  goalCalorieText: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   goalWarningText: {
     fontSize: 13,
