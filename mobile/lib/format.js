@@ -26,3 +26,18 @@ export function formatWorkoutSets(sets) {
     return `${weightStr} ${group.reps.join(', ')}`;
   }).join('; ');
 }
+
+export function formatDelta(delta) {
+  if (delta === null || delta === undefined) return '';
+  const sign = delta > 0 ? '+' : '';
+  return `${sign}${delta.toFixed(1)}`;
+}
+
+export function getWeightDeltaSeverity(delta) {
+  if (delta === null || delta === undefined) return 'normal';
+  const abs = Math.abs(delta);
+  if (abs > 3.5) return 'outlier';
+  if (abs > 2.3) return 'spike';
+  if (abs > 1.5) return 'notable';
+  return 'normal';
+}
