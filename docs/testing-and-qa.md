@@ -76,7 +76,8 @@ Current limitation:
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
   including tracked-exercise persistence on the canonical workout note and a
   fixture-driven migration contract suite for legacy structured workout
-  history.
+  history, plus weight-goal persistence/derivation coverage and malformed
+  backup rejection coverage for the optional `weight_goal` v2 import field.
 - No automated native test covers rendered React Native screens, tab routing, or
   an Expo device/emulator pass yet.
 - The current native workout form is narrower than the browser prototype UI even
