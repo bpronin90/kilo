@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const WEIGHT_KEY = 'kilo_weight_entries';
 const WORKOUT_KEY = 'kilo_workout_sessions';
 const WORKOUT_NOTE_KEY = 'kilo_workout_note';
+const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
+const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 
 async function readList(key) {
   try {
@@ -114,6 +116,45 @@ export async function saveOneKExercises(one_k_exercises) {
 
 export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
+}
+
+// ── multi-note workout storage ────────────────────────────────────────────────
+
+export async function loadWorkoutNotes() {
+  return readList(WORKOUT_NOTES_KEY);
+}
+
+export async function saveWorkoutNoteItem(note) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const idx = list.findIndex(n => n.id === note.id);
+  if (idx >= 0) {
+    list[idx] = note;
+  } else {
+    list.push(note);
+  }
+  await writeList(WORKOUT_NOTES_KEY, list);
+}
+
+export async function deleteWorkoutNoteItem(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  await writeList(WORKOUT_NOTES_KEY, list.filter(n => n.id !== id));
+}
+
+export async function loadCurrentWorkoutId() {
+  try {
+    const raw = await AsyncStorage.getItem(CURRENT_WORKOUT_ID_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCurrentWorkoutId(id) {
+  await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
+}
+
+export async function clearCurrentWorkoutId() {
+  await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
 }
 
 // ── backup / restore ──────────────────────────────────────────────────────────

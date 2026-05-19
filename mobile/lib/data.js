@@ -184,3 +184,17 @@ export function makeWorkoutNote({ raw_text }) {
     updated_at: now,
   };
 }
+
+// Factory for a named workout note in the multi-note model
+export function makeWorkoutNoteItem({ title, raw_text = '' }) {
+  const now = new Date().toISOString();
+  return {
+    id: `wn_${now.slice(0, 10)}_${Date.now()}`,
+    title,
+    raw_text,
+    saved_at: now,
+    updated_at: now,
+    tracked_exercises: [],
+    one_k_exercises: null,
+  };
+}

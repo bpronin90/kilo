@@ -10,7 +10,7 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
 
-import { useWeightEntries, useWorkoutNote } from './hooks/useEntries';
+import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
 import { exportBackup, importBackup } from './storage/entries';
@@ -21,17 +21,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
 
   const weightHook = useWeightEntries();
-  const noteHook = useWorkoutNote();
+  const noteHook = useWorkoutNotes();
 
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
 
   React.useEffect(() => {
-    if (noteHook.note && !workoutNoteText) {
-      setWorkoutNoteText(noteHook.note.raw_text);
+    if (noteHook.currentNote && !workoutNoteText) {
+      setWorkoutNoteText(noteHook.currentNote.raw_text);
     }
-  }, [noteHook.note]);
+  }, [noteHook.currentNote]);
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -55,13 +55,13 @@ export default function App() {
       note: e.note || 'No note',
       createdAt: new Date(e.logged_at).getTime(),
     }));
-    const workoutEntries = noteHook.note
+    const workoutEntries = noteHook.currentNote
       ? [{
-          id: `note_${noteHook.note.updated_at}`,
+          id: `note_${noteHook.currentNote.updated_at}`,
           type: 'workout',
-          title: 'Workout note',
-          detail: noteHook.note.raw_text?.split('\n').find(l => l.trim()) || '',
-          createdAt: new Date(noteHook.note.updated_at).getTime(),
+          title: noteHook.currentNote.title || 'Workout note',
+          detail: noteHook.currentNote.raw_text?.split('\n').find(l => l.trim()) || '',
+          createdAt: new Date(noteHook.currentNote.updated_at).getTime(),
         }]
       : [];
     return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
@@ -118,9 +118,14 @@ export default function App() {
     }
     setWorkoutSaving(true);
     try {
-      await noteHook.save(workoutNoteText.trim());
+      if (noteHook.currentId) {
+        await noteHook.update(noteHook.currentId, { raw_text: workoutNoteText.trim() });
+      } else {
+        const note = await noteHook.add('My Workout', workoutNoteText.trim());
+        await noteHook.selectCurrent(note.id);
+      }
       return { ok: true };
-    } catch (e) {
+    } catch {
       return { ok: false, error: 'Failed to save workout note' };
     } finally {
       setWorkoutSaving(false);
@@ -133,7 +138,7 @@ export default function App() {
         return (
           <HomeScreen
             weightEntries={weightHook.entries}
-            workoutNote={noteHook.note}
+            workoutNote={noteHook.currentNote}
             successMessage={saveSuccess}
             onNavigate={handleTabPress}
           />

@@ -15,6 +15,12 @@ import {
   migrateWorkoutNote,
   exportBackup,
   importBackup,
+  loadWorkoutNotes,
+  saveWorkoutNoteItem,
+  deleteWorkoutNoteItem,
+  loadCurrentWorkoutId,
+  saveCurrentWorkoutId,
+  clearCurrentWorkoutId,
 } from '../storage/entries';
 import { computeWeightTrends } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -779,5 +785,116 @@ describe('migration contract — all six properties', () => {
         }
       }
     }
+  });
+});
+
+// ── multi-note workout storage ────────────────────────────────────────────────
+
+describe('loadWorkoutNotes', () => {
+  test('returns empty array when no notes exist', async () => {
+    const notes = await loadWorkoutNotes();
+    expect(notes).toEqual([]);
+  });
+});
+
+describe('saveWorkoutNoteItem', () => {
+  const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: 'Bench 185 5,5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+  const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: 'Row 135 8,8,8', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+
+  test('saves a new note and retrieves it', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe(NOTE_A.id);
+    expect(notes[0].title).toBe('Push Day');
+    expect(notes[0].raw_text).toBe('Bench 185 5,5,5');
+  });
+
+  test('saves multiple notes', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(2);
+    const ids = notes.map(n => n.id);
+    expect(ids).toContain(NOTE_A.id);
+    expect(ids).toContain(NOTE_B.id);
+  });
+
+  test('upserts an existing note by id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const updated = { ...NOTE_A, raw_text: 'Bench 195 5,5,5', updated_at: '2026-05-01T12:00:00.000Z' };
+    await saveWorkoutNoteItem(updated);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].raw_text).toBe('Bench 195 5,5,5');
+  });
+
+  test('upsert preserves other fields on update', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const updated = { ...NOTE_A, title: 'Chest Day' };
+    await saveWorkoutNoteItem(updated);
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].title).toBe('Chest Day');
+    expect(notes[0].saved_at).toBe(NOTE_A.saved_at);
+  });
+});
+
+describe('deleteWorkoutNoteItem', () => {
+  const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+  const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+
+  test('removes a note by id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    await deleteWorkoutNoteItem(NOTE_A.id);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe(NOTE_B.id);
+  });
+
+  test('is a no-op for a non-existent id', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    await deleteWorkoutNoteItem('no-such-id');
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+  });
+});
+
+describe('current workout id storage', () => {
+  test('returns null when no current id is set', async () => {
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBeNull();
+  });
+
+  test('saves and retrieves a current workout id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBe('wn_2026-05-01_1');
+  });
+
+  test('overwrites previous current id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    await saveCurrentWorkoutId('wn_2026-05-02_1');
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBe('wn_2026-05-02_1');
+  });
+
+  test('clearCurrentWorkoutId removes the stored id', async () => {
+    await saveCurrentWorkoutId('wn_2026-05-01_1');
+    await clearCurrentWorkoutId();
+    const id = await loadCurrentWorkoutId();
+    expect(id).toBeNull();
+  });
+
+  test('weight entries and workout notes are unaffected by current id operations', async () => {
+    await saveWeightEntry(W1);
+    const NOTE = { id: 'wn_x', title: 'Test', raw_text: 'Squat 225 5,5', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE);
+    await saveCurrentWorkoutId('wn_x');
+    await clearCurrentWorkoutId();
+    const entries = await loadWeightEntries();
+    const notes = await loadWorkoutNotes();
+    expect(entries).toHaveLength(1);
+    expect(notes).toHaveLength(1);
   });
 });
