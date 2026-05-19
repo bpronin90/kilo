@@ -6,7 +6,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
@@ -18,9 +18,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
     if (workoutNote?.raw_text) {
       const { sections } = parseWorkoutNote(workoutNote.raw_text);
+      totalWeeks = countWorkoutSessionsFromSections(sections);
       const allExercises = sections.flatMap(s => s.exercises);
       const maxRows = allExercises.reduce((m, ex) => Math.max(m, ex.rows.length), 0);
-      totalWeeks = maxRows;
       const sessionSets = [];
       for (let i = 0; i < maxRows; i++) {
         let sets = 0;

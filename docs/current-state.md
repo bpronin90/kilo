@@ -217,9 +217,10 @@ tracked without editing note syntax, and that selection persists on the
 canonical workout-note document. The read view always renders the formatted
 note mirror (day heading, `+` subheading, `-` exercise block, history rows)
 faithful to the raw text, with bare `-` lines shown as unobtrusive inline skip
-markers; Home and Analytics derive the workout/session count from the maximum
-parsed history-row count across exercises rather than positional session
-decomposition. The native Analytics tab now consumes those
+markers; Home and Analytics derive the workout/session count from the highest
+per-day session count in the current workout note, so warmup and lifting
+sections under the same day heading count as one session rather than splitting
+the day across separate section blocks. The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, 1k progress, progression status, and set-count context
 in one minimal analytics view while keeping totals in sync with canonical
@@ -257,9 +258,10 @@ The MVP canonical parse path is fully implemented and tested.
   legacy-migration-format validation only; no product screen reads workout
   presentation or counts through it.
 - `countWorkoutSessions(noteText)` — returns the workout/session count as the
-  maximum number of parsed history rows across all exercises in the note, and
-  `0` when no exercise has any parsed row. Source of the Home and Analytics
-  session counts.
+  highest session count among day headings in the note, treating same-day
+  warmup and lifting sections as one session bucket and returning `0` when no
+  exercise has any parsed or explicit session history. Source of the Home and
+  Analytics session counts.
 - `deriveWorkoutAnalytics(sections)` — converts parsed note sections into a
   per-exercise analytics input contract with flattened sets, grouped rows,
   per-occurrence context, preserved `unparsed_rows`, per-set Epley estimates,
