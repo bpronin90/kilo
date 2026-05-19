@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.4 - 2026-05-19
+
+- Issue #88: Fixed a regression from #79 that broke the workout read view.
+  `buildSessionsFromNote` had been wired into `LogScreen`, `HomeScreen`, and
+  `StatsScreen`, so the real freeform log format (bare `weight reps` history
+  lines, bare `-` skip markers) rendered as "Session N" blocks full of
+  "— skipped" while actual parsed history was hidden, and workout counts
+  collapsed to skip-slot artifacts. Removed `buildSessionsFromNote` from all
+  product screens: the read view now always renders the formatted note mirror
+  (day → `+` subheading → `-` exercise → history rows) faithful to the raw
+  text with inline `—` skip markers. Added `countWorkoutSessions` (max parsed
+  history-row count across exercises) as the source for Home "Total Workouts"
+  / "Sets per session" and Analytics "Workout sessions". `buildSessionsFromNote`
+  and its tests are retained for legacy-migration-format validation only. No
+  migration-format, analytics-formula, or persistence change.
+
 ## 0.17.3 - 2026-05-18
 
 - Issue #86: Wired the OTA signing key into the mobile publish scripts. Both
