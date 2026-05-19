@@ -148,24 +148,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
               style={styles.saveButton} 
             />
           </Card>
-
-          {otherNotes.length > 0 && (
-            <View style={styles.previousRoutines}>
-              <SectionTitle>Previous Routines</SectionTitle>
-              {otherNotes.map(other => (
-                <Card 
-                  key={other.id} 
-                  onPress={() => selectCurrent(other.id)}
-                  style={styles.otherNoteCard}
-                >
-                  <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-                  <Text style={styles.otherNotePreview} numberOfLines={1}>
-                    {other.raw_text.split('\n').filter(l => l.trim()).join(' ') || 'No content'}
-                  </Text>
-                </Card>
-              ))}
-            </View>
-          )}
         </View>
       )}
     </ScreenShell>

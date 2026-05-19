@@ -122,7 +122,13 @@ The real native app path now has a modular React Native shell:
   summary-card shortcuts into Weight and Log, workout-volume and weight-trend
   graphs, and the exported More/Help/About/Data & Backup surfaces used by the
   More tab
-- `mobile/screens/LogScreen.js` renders a native multi-note workout flow centered on the currently selected routine with read/edit modes. In read mode, it shows a formatted mirror of the active workout (preserving day/section/exercise structure, exercise tracking toggles, and inline `—` skip markers), followed by a "Previous Routines" section presenting non-active routines as selectable compact panels. The editor supports attempt-scoped save handling that preserves the current context instead of bouncing back to the top-level read view after a successful save.
+- `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
+  with read/edit modes, a formatted mirror of the canonical note that always
+  renders day/section/exercise blocks faithful to the raw text, parsed
+  exercise tracking toggles in read mode, inline `—` skip markers for bare `-`
+  lines, a labeled bottom `Edit note` action in the read view, and attempt-scoped save
+  handling that preserves the editor's current context instead of bouncing back
+  to the top-level read view after a successful save
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
