@@ -79,7 +79,17 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
     const doSwitch = async () => {
       if (hasUnsaved) {
-        await update(editingNoteId, { raw_text: editingText });
+        let saved;
+        try {
+          saved = await update(editingNoteId, { raw_text: editingText });
+        } catch {
+          setSaveError('Save failed. Routine was not switched.');
+          return;
+        }
+        if (!saved) {
+          setSaveError('Save failed. Routine was not switched.');
+          return;
+        }
       }
       selectCurrent(id);
       setEditingNoteId(null);
