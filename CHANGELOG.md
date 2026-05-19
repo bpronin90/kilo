@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.1 - 2026-05-19
+
+- Issue #102: Fixed the shared native weight pace calculation so backdated
+  entries are classified by their actual `date` instead of insertion order,
+  keeping Weight and Analytics aligned on the same gain/loss pace result and
+  adding regression coverage for gain, loss, and neutral cases.
+
 ## 0.21.0 - 2026-05-19
 
 - Issue #101: Fixed current-workout session counting so warmup and lifting

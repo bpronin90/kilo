@@ -326,6 +326,36 @@ describe('computeWeightTrends', () => {
     const result = computeWeightTrends(entries, REF);
     expect(result.paceFlag).toBe('gain');
   });
+
+  // Regression: entries sorted by logged_at (insertion time) rather than date field.
+  // A backdated entry logged today appears first by logged_at but is older by date.
+  test('flags gain correctly when entries arrive oldest-first (logged_at order)', () => {
+    // oldest date listed first — simulates backdated entry logged before newer one
+    const entries = [
+      { date: '2026-05-11', weight_value: 192 },
+      { date: '2026-05-15', weight_value: 194 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBe('gain');
+  });
+
+  test('flags loss correctly when entries arrive oldest-first (logged_at order)', () => {
+    const entries = [
+      { date: '2026-05-11', weight_value: 192 },
+      { date: '2026-05-15', weight_value: 190 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBe('loss');
+  });
+
+  test('returns null paceFlag for neutral change regardless of entry order', () => {
+    const entries = [
+      { date: '2026-05-11', weight_value: 192.0 },
+      { date: '2026-05-15', weight_value: 192.2 },
+    ];
+    const result = computeWeightTrends(entries, REF);
+    expect(result.paceFlag).toBeNull();
+  });
 });
 
 // ── unified persistence ───────────────────────────────────────────────────────
