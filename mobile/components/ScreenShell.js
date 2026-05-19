@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-n
 import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
-export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersistTaps, children }) {
+export function ScreenShell({ title, subtitle, headerLeft, headerRight, keyboardShouldPersistTaps, children }) {
   const version = `v${pkg.version}`;
 
   return (
@@ -20,7 +20,10 @@ export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersis
         )}
         {title && (
           <View style={styles.titleRow}>
-            <Text style={styles.title}>{title}</Text>
+            <View style={styles.titleGroup}>
+              {headerLeft}
+              <Text style={styles.title}>{title}</Text>
+            </View>
             {headerRight}
           </View>
         )}
@@ -40,12 +43,17 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 8 : 16,
     paddingBottom: 8,
-    gap: 12,
+    gap: 8, // Reduced gap from 12 to 8 for cleaner look
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'center', // Changed from baseline to center for better alignment with icons/buttons
+    gap: 12,
+  },
+  titleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
   title: {

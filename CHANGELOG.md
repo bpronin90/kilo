@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.1 - 2026-05-19
+
+- Issue #97: Polished the native Help flow inside the More tab by extending
+  `mobile/components/ScreenShell.js` with a title-row `headerLeft` slot,
+  keeping More-screen quick actions unchanged, and moving Help-only branding
+  to a centered in-content logo above the Help and Terminology panel with an
+  accessible header back control.
+
 ## 0.18.0 - 2026-05-19
 
 - Issue #96: Made the native Home dashboard more actionable by turning the

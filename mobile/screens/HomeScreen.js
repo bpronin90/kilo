@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
@@ -8,6 +8,8 @@ import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import pkg from '../package.json';
+
+const LOGO = require('../assets/brand/logo.png');
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
@@ -247,9 +249,22 @@ function BackupScreen({ onBack, onExport, onImport }) {
 }
 
 function HelpScreen({ onBack }) {
+  const headerLeft = (
+    <Pressable 
+      onPress={onBack} 
+      style={styles.headerBackButton}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+    >
+      <Text style={styles.headerBackButtonText}>←</Text>
+    </Pressable>
+  );
+
   return (
-    <ScreenShell title="Help" subtitle="Terminology and usage guide.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="Help" headerLeft={headerLeft}>
+      <View style={styles.logoContainer}>
+        <Image source={LOGO} style={styles.logo} />
+      </View>
       
       <Card>
         <Text style={styles.helpHeading}>What is Kilo?</Text>
@@ -494,6 +509,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.textMuted,
     fontWeight: '700',
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.chipBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: -4,
+  },
+  headerBackButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.accent,
+    marginTop: -2, // Optical alignment
+  },
+  logoContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  logo: {
+    width: 64,
+    height: 64,
+    resizeMode: 'contain',
+    opacity: 0.8,
   },
   backButton: {
     backgroundColor: 'transparent',
