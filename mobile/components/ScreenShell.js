@@ -1,9 +1,9 @@
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
 import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
-export function ScreenShell({ title, subtitle, children }) {
+export function ScreenShell({ title, subtitle, headerRight, children }) {
   const logoSource = require('../assets/brand/logo.png');
   const wordmarkSource = require('../assets/brand/wordmark.png');
   const version = `alpha-${pkg.version}`;
@@ -11,13 +11,21 @@ export function ScreenShell({ title, subtitle, children }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <View style={styles.brandRow}>
-          <Image source={logoSource} style={styles.logo} resizeMode="contain" />
-          <Image source={wordmarkSource} style={styles.wordmark} resizeMode="contain" />
-          <View style={styles.versionBadge}>
-            <Text style={styles.versionText}>{version}</Text>
+        {!title && (
+          <View style={styles.brandRow}>
+            <Image source={logoSource} style={styles.logo} resizeMode="contain" />
+            <Image source={wordmarkSource} style={styles.wordmark} resizeMode="contain" />
+            <View style={styles.versionBadge}>
+              <Text style={styles.versionText}>{version}</Text>
+            </View>
           </View>
-        </View>
+        )}
+        {title && (
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{title}</Text>
+            {headerRight}
+          </View>
+        )}
         {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>
       {children}
@@ -32,7 +40,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   header: {
-    paddingTop: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 8 : 16,
     paddingBottom: 8,
     gap: 12,
   },
@@ -40,6 +48,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
   },
   logo: {
     width: 32,

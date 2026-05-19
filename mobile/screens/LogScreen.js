@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
@@ -46,28 +47,23 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     }
   };
 
-  return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+  const headerRight = hasContent && (
+    <Pressable 
+      onPress={() => setMode(mode === 'read' ? 'edit' : 'read')}
+      style={styles.modeToggle}
     >
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Workout note</Text>
-          {hasContent && (
-            <Pressable 
-              onPress={() => setMode(mode === 'read' ? 'edit' : 'read')}
-              style={styles.modeToggle}
-            >
-              <Text style={styles.modeToggleText}>
-                {mode === 'read' ? 'Edit' : 'Done'}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-        <Text style={styles.subtitle}>Your active training routine. Update it as you go.</Text>
-      </View>
+      <Text style={styles.modeToggleText}>
+        {mode === 'read' ? 'Edit' : 'Done'}
+      </Text>
+    </Pressable>
+  );
 
+  return (
+    <ScreenShell
+      title="Workout note"
+      subtitle="Your active training routine. Update it as you go."
+      headerRight={headerRight}
+    >
       {saveError ? (
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{saveError}</Text>
@@ -122,38 +118,18 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             style={[styles.input, styles.editorInput]}
           />
           <Button 
-            onPress={handleSave}
-            title="Save note"
-            disabled={isSaving}
+            onPress={handleSave} 
+            title="Save note" 
+            disabled={isSaving} 
             style={styles.saveButton} 
           />
         </Card>
       )}
-    </ScrollView>
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    paddingBottom: 120,
-    gap: 16,
-  },
-  header: {
-    paddingTop: 16,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: Colors.text,
-  },
   modeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -164,11 +140,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.accent,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.textMuted,
   },
   errorText: {
     color: Colors.error,

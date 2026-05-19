@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries } from '../hooks/useEntries';
@@ -63,14 +64,10 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const displayError = localError || errorMessage;
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    <ScreenShell
+      title="Weight log"
+      subtitle="Track your body weight over time."
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Weight log</Text>
-        <Text style={styles.subtitle}>Track your body weight over time.</Text>
-      </View>
       <Card style={editingId ? styles.editingCard : null}>
         {editingId ? (
           <View style={styles.editingHeader}>
@@ -181,31 +178,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           <Text style={styles.emptyText}>No weight entries yet.</Text>
         ) : null}
       </View>
-    </ScrollView>
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    paddingBottom: 120,
-    gap: 16,
-  },
-  header: {
-    paddingTop: 16,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.textMuted,
-  },
   errorText: {
     color: Colors.error,
     fontSize: 14,
