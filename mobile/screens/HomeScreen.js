@@ -9,7 +9,7 @@ import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import pkg from '../package.json';
 
-export function HomeScreen({ entries, weightEntries, workoutNote, successMessage }) {
+export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
     let volumeData = [];
     let totalWeeks = 0;
@@ -52,13 +52,13 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
       ) : null}
 
       <View style={styles.summaryGrid}>
-        <Card style={styles.summaryCard}>
+        <Card style={styles.summaryCard} onPress={() => onNavigate('Weight')}>
           <Text style={styles.summaryLabel}>Latest Weight</Text>
           <Text style={styles.summaryValue}>
             {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
           </Text>
         </Card>
-        <Card style={styles.summaryCard}>
+        <Card style={styles.summaryCard} onPress={() => onNavigate('Log')}>
           <Text style={styles.summaryLabel}>Total Weeks</Text>
           <Text style={styles.summaryValue}>{String(dashboardData.totalWeeks)}</Text>
         </Card>
@@ -106,22 +106,6 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
           )}
         </View>
       </Card>
-
-      <SectionTitle>Recent activity</SectionTitle>
-      {entries.slice(0, 5).map((entry) => (
-        <Card key={entry.id}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.entryTitle}>
-              {entry.type === 'weight' ? `${entry.value} ${entry.unit}` : entry.title}
-            </Text>
-            <Text style={styles.entryMeta}>{formatTimestamp(entry.createdAt)}</Text>
-          </View>
-          <Chip>{entry.type === 'weight' ? 'Weight log' : 'Workout log'}</Chip>
-          <Text style={styles.entryBody}>
-            {entry.type === 'weight' ? entry.note : entry.detail}
-          </Text>
-        </Card>
-      ))}
     </ScreenShell>
   );
 }

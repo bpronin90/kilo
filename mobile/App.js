@@ -132,10 +132,10 @@ export default function App() {
       case 'Home':
         return (
           <HomeScreen
-            entries={entries}
             weightEntries={weightHook.entries}
             workoutNote={noteHook.note}
             successMessage={saveSuccess}
+            onNavigate={handleTabPress}
           />
         );
       case 'Log':
