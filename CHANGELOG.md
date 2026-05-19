@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.3 - 2026-05-18
+
+- Issue #86: Wired the OTA signing key into the mobile publish scripts. Both
+  `publish:android` and `publish:android:preview` now pass
+  `--private-key-path "${EXPO_OTA_PRIVATE_KEY_PATH:?...}"`, so signed preview
+  and production updates no longer require hand-appending the key path and a
+  missing env var fails fast with a clear message instead of a cryptic
+  `eas` signing error. Documented the env var contract and both signed-publish
+  flows in `mobile/certs/KEYS.md`. No signing certificate, channel, or
+  platform change.
+
 ## 0.17.2 - 2026-05-18
 
 - Issue #85: Replaced the opaque-background brand assets with true RGBA

@@ -17,21 +17,49 @@ The private key (`private-key.pem`) must never be committed. Store it in one of:
 The private key was generated alongside this certificate and is needed only
 when publishing a signed OTA update.
 
-## Publishing a signed update
+## Environment variable
+
+Both publish scripts read the private key path from `EXPO_OTA_PRIVATE_KEY_PATH`.
+Set this before running any publish command:
+
+```sh
+export EXPO_OTA_PRIVATE_KEY_PATH=~/.kilo/ota-private-key.pem
+```
+
+The value must be an absolute or shell-expanded path to the private key file.
+The key itself must not be committed or embedded in any config file.
+
+## Publishing a signed production update
+
+```sh
+export EXPO_OTA_PRIVATE_KEY_PATH=~/.kilo/ota-private-key.pem
+npm --prefix mobile run publish:android -- --message "describe the change"
+```
+
+Equivalent direct invocation:
 
 ```sh
 eas update \
   --platform android \
   --channel production \
-  --private-key-path /path/to/private-key.pem \
+  --private-key-path ~/.kilo/ota-private-key.pem \
   --message "describe the change"
 ```
 
-Or via the npm script with the private key path appended:
+## Publishing a signed preview update
 
 ```sh
-npm --prefix mobile run publish:android -- \
-  --private-key-path /path/to/private-key.pem \
+export EXPO_OTA_PRIVATE_KEY_PATH=~/.kilo/ota-private-key.pem
+npm --prefix mobile run publish:android:preview -- --message "describe the change"
+```
+
+Equivalent direct invocation:
+
+```sh
+eas update \
+  --platform android \
+  --channel preview \
+  --private-key-path ~/.kilo/ota-private-key.pem \
   --message "describe the change"
 ```
 
