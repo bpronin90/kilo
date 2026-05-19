@@ -1102,4 +1102,73 @@ describe('computeWeightGoal', () => {
     const result = computeWeightGoal({ currentWeight: 175, targetWeight: 174, targetDate: '2026-05-26', referenceDate: REF });
     expect(result.weeks_remaining).toBeCloseTo(1, 1);
   });
+
+  test('returns unrealistic warning for structurally invalid date like 2026-99-99', () => {
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-99-99', referenceDate: REF });
+    expect(result.warnings).toContain('unrealistic');
+    expect(result.required_weekly_pace).toBeNull();
+  });
+
+  test('returns unrealistic warning for impossible calendar date like 2026-02-31', () => {
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-02-31', referenceDate: REF });
+    expect(result.warnings).toContain('unrealistic');
+    expect(result.required_weekly_pace).toBeNull();
+  });
+});
+
+// ── weight goal in backup ─────────────────────────────────────────────────────
+
+describe('exportBackup — weight goal', () => {
+  test('includes weight_goal field in export', async () => {
+    const backup = await exportBackup();
+    expect('weight_goal' in backup).toBe(true);
+  });
+
+  test('exports null weight_goal when no goal is set', async () => {
+    const backup = await exportBackup();
+    expect(backup.weight_goal).toBeNull();
+  });
+
+  test('exports saved weight goal in backup', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    const backup = await exportBackup();
+    expect(backup.weight_goal.target_weight).toBe(175);
+    expect(backup.weight_goal.target_date).toBe('2026-09-01');
+  });
+});
+
+describe('importBackup — weight goal', () => {
+  test('restores weight_goal from backup', async () => {
+    const backup = { ...BASE_V2, weight_entries: [], weight_goal: { target_weight: 175, target_date: '2026-09-01', saved_at: '2026-05-01T00:00:00.000Z' } };
+    await importBackup(backup);
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+    expect(goal.target_date).toBe('2026-09-01');
+  });
+
+  test('clears weight_goal when backup has null weight_goal', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    const backup = { ...BASE_V2, weight_entries: [], weight_goal: null };
+    await importBackup(backup);
+    const goal = await loadWeightGoal();
+    expect(goal).toBeNull();
+  });
+
+  test('leaves weight_goal untouched when backup has no weight_goal key (old v2 backup)', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    const backup = { ...BASE_V2, weight_entries: [] }; // no weight_goal key
+    await importBackup(backup);
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+  });
+
+  test('round-trip: export then import restores weight goal', async () => {
+    await saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const backup = await exportBackup();
+    AsyncStorage.clear();
+    await importBackup(backup);
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(170);
+    expect(goal.target_date).toBe('2026-12-01');
+  });
 });

@@ -187,12 +187,14 @@ export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
   const workout_notes = await readList(WORKOUT_NOTES_KEY);
   const current_workout_id = await loadCurrentWorkoutId();
+  const weight_goal = await loadWeightGoal();
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
     weight_entries,
     workout_notes,
     current_workout_id,
+    weight_goal,
   };
 }
 
@@ -266,6 +268,14 @@ export async function importBackup(payload, strategy = 'replace') {
         await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
       } else {
         await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+      }
+      // weight_goal is optional in older v2 backups; only touch it when the key is present
+      if ('weight_goal' in payload) {
+        if (payload.weight_goal != null) {
+          await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
+        } else {
+          await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
+        }
       }
     } else {
       // v1: restore weight entries only; workout notes model was not part of the v1 contract

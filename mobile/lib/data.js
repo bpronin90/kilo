@@ -180,6 +180,9 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
 
   const refMidnight = new Date(refStr + 'T00:00:00');
   const targetMidnight = new Date(targetDate + 'T00:00:00');
+  if (isNaN(targetMidnight.getTime())) {
+    return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
+  }
   const days_remaining = Math.round((targetMidnight - refMidnight) / MS_DAY);
   const weeks_remaining = days_remaining / 7;
   const required_weekly_pace = delta / weeks_remaining;
