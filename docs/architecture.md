@@ -28,7 +28,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_workout_sessions\nkilo_workout_note")]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
 
     CDN -->|"loads at runtime"| KiloHtml
@@ -129,16 +129,16 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
-  plus the canonical workout-note read/write path, including migration
-  plumbing from legacy structured sessions and a lightweight listener fanout
-  for cross-consumer refreshes
+  plus the multi-note current-workout read/write path and a lightweight
+  listener fanout for cross-consumer refreshes
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
-  data plus the canonical workout routine note, while retaining the legacy
-  session key only as a migration source
+  data plus the local multi-note workout store (`kilo_workout_notes` and
+  `kilo_current_workout_id`), while retaining the legacy session key only as a
+  migration source and the old single-note key only for backup compatibility
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -190,18 +190,19 @@ Analytics, and the Weight history stay in sync after edits or deletes.
 User types in native Weight or Log form
   → App.js save handler calls native parser (`parseWeightEntry`) or workout-note save path
   → on error: save is blocked in the handler
-  → on ok: App.js builds a canonical weight entry via `makeWeightEntry`, or saves canonical workout-note text through `useWorkoutNote`
-  → `useWeightEntries` / `useWorkoutNote` writes through `mobile/storage/entries.js`
-  → AsyncStorage persists the updated weight list or workout-note document
+  → on ok: App.js builds a canonical weight entry via `makeWeightEntry`, or upserts the selected titled workout note through `useWorkoutNotes`
+  → `useWeightEntries` / `useWorkoutNotes` writes through `mobile/storage/entries.js`
+  → AsyncStorage persists the updated weight list, workout-notes array, and current-workout id
   → hook state updates
-  → Home / Analytics re-derive recent activity, session alignment, and analytics from the same canonical workout note
+  → Home / Analytics re-derive recent activity and analytics from the selected current workout note
 ```
 
 `mobile/storage/entries.js` also exposes a local-only recovery path:
-`exportBackup()` serializes a versioned v1 snapshot (weight entries plus the
-canonical workout note), and `importBackup(payload, 'replace')` validates the
-payload before any write, then restores via a batched AsyncStorage write
-without mutating the legacy workout-session key. No remote sync is involved.
+`exportBackup()` serializes a versioned v2 snapshot (weight entries, titled
+workout notes, and the current workout id). `importBackup(payload, 'replace')`
+validates before any write, restores the full multi-note model for v2 backups,
+and still accepts v1 backups to restore weight history without clearing the
+newer workout-note state. No remote sync is involved.
 
 ## Parser Responsibilities
 

@@ -114,8 +114,8 @@ legacy prototype path.
 The real native app path now has a modular React Native shell:
 
 - `mobile/App.js` owns tab state, routes weight saves through the canonical
-  parser path, routes workout saves through the canonical workout-note
-  persistence path, adapts persisted entries for the Home and Analytics
+  parser path, routes workout saves through the current-workout path in the
+  multi-note workout store, adapts persisted entries for the Home and Analytics
   surfaces, and now exposes a separate More tab for Help, About, and a
   local Data & Backup export/import/recovery surface
 - `mobile/screens/HomeScreen.js` renders a native dashboard with tappable
@@ -144,25 +144,28 @@ The real native app path now has a modular React Native shell:
   including tracked-exercise estimated-PR derivation from parsed sets and
   positional session-alignment derivation for long-note imports
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
-  including the default 1k exercise-slot selection used by analytics
+  including the default 1k exercise-slot selection used by analytics and a
+  factory for titled workout-note items in the multi-note model
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
-  UI, including workout-note migration plumbing and cross-consumer note refresh
-  fanout
-- `mobile/storage/entries.js` persists weight entries plus one canonical
-  workout routine note via AsyncStorage, including persisted
-  `tracked_exercises` and `one_k_exercises` selections, while retaining the
-  legacy structured workout-session key only as a one-time migration source,
-  and now exposes a local-only versioned export/import/recovery path
-  (`exportBackup`/`importBackup`) that validates a v1 backup before any write,
-  restores weight entries and the workout note via a batched AsyncStorage
-  write, and leaves the legacy workout-session key untouched on restore
+  UI, including multi-note current-workout reads/writes and cross-consumer
+  refresh fanout
+- `mobile/storage/entries.js` persists weight entries plus a local-only
+  multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
+  multiple titled workout notes, `kilo_current_workout_id` stores the explicit
+  current selection, and persisted note items retain `tracked_exercises` and
+  `one_k_exercises` selections. The legacy structured workout-session key is
+  retained only as a one-time migration source. The local Data & Backup
+  recovery path now exports a versioned v2 snapshot (weight entries, workout
+  notes, current workout id), restores the full multi-note model on v2 import,
+  and still accepts older v1 backups to restore weight history without wiping
+  the newer workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
-before persistence, and the native Log flow now saves one canonical workout
-note document through the hook and storage layer instead of requiring a
-structured title-and-detail workout entry form. Saved native weight entries and
-the saved workout note both reload across app restarts through the native
-hook/storage layer. The shared native `ScreenShell` now normalizes Android top
+before persistence, and the native Log flow now saves through the current item
+in a local multi-note workout store instead of requiring a structured
+title-and-detail workout entry form. Saved native weight entries, workout note
+items, and the selected current workout all reload across app restarts through
+the native hook/storage layer. The shared native `ScreenShell` now normalizes Android top
 safe-area clearance across Home, Log, Weight, Analytics, and More/Help using
 shared status-bar spacing instead of per-screen header offsets, and its
 no-title header state now uses a plain text `Kilo` title plus a quiet `vX.Y.Z`
@@ -193,11 +196,12 @@ aliases so obvious note variants such as `DB Bench` still count toward the
 intended lift without fuzzy matching. Progression-over-time and repeatability
 signals compare the latest comparable weighted result against the prior
 comparable result without changing the formal estimated-PR formula. The native
-Home and Analytics tabs now derive workout activity consistently from the same
-canonical workout-note document used by the Log screen, including a one-time
-legacy-session migration path that preserves session count, weighted history,
-non-weight history, tracked selections, and mixed-entry note metadata during
-the transition away from the older structured session store. The native Home tab is
+Home and Analytics tabs now derive workout activity consistently from the
+currently selected workout note in the same multi-note store used by the Log
+screen, while later UI work can add routine switching without replacing the
+data contract. The local backup/import path also now preserves multiple titled
+workout notes plus the current-workout selection, and remains backward
+compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with top summary cards that jump
 directly to Weight and Log plus simple workout-volume and bodyweight trend
 graphs as the default landing view. The native Log read
