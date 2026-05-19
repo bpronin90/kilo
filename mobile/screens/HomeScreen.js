@@ -42,6 +42,7 @@ export function HomeScreen({ entries, weightEntries, workoutNote, successMessage
 
   return (
     <ScreenShell
+      title="Dashboard"
       subtitle="Your training dashboard."
     >
       {successMessage ? (
