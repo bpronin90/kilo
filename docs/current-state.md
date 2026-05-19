@@ -123,12 +123,15 @@ The real native app path now has a modular React Native shell:
   graphs, and the exported More/Help/About/Data & Backup surfaces used by the
   More tab
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
-  with read/edit modes, a formatted mirror of the canonical note that always
-  renders day/section/exercise blocks faithful to the raw text, parsed
-  exercise tracking toggles in read mode, inline `—` skip markers for bare `-`
-  lines, a labeled bottom `Edit note` action in the read view, and attempt-scoped save
-  handling that preserves the editor's current context instead of bouncing back
-  to the top-level read view after a successful save
+  centered on the selected current routine, with read/edit modes, a formatted
+  mirror of the canonical note that always renders day/section/exercise blocks
+  faithful to the raw text, parsed exercise tracking toggles in read mode,
+  inline `—` skip markers for bare `-` lines, a labeled bottom `Edit note`
+  action in the read view, attempt-scoped save handling that preserves the
+  editor's current context instead of bouncing back to the top-level read
+  view after a successful save, and a read-mode `Previous Routines` section
+  that presents non-current workout notes as compact titled panels the user
+  can tap to switch the active routine
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
@@ -198,10 +201,11 @@ signals compare the latest comparable weighted result against the prior
 comparable result without changing the formal estimated-PR formula. The native
 Home and Analytics tabs now derive workout activity consistently from the
 currently selected workout note in the same multi-note store used by the Log
-screen, while later UI work can add routine switching without replacing the
-data contract. The local backup/import path also now preserves multiple titled
-workout notes plus the current-workout selection, and remains backward
-compatible with older weight-only v1 backups. The native Home tab is
+screen, and the Log read view now exposes routine switching through compact
+non-current routine panels without replacing the underlying data contract. The
+local backup/import path also now preserves multiple titled workout notes plus
+the current-workout selection, and remains backward compatible with older
+weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with top summary cards that jump
 directly to Weight and Log plus simple workout-volume and bodyweight trend
 graphs as the default landing view. The native Log read

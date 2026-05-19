@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Colors } from './theme/colors';
@@ -27,11 +27,15 @@ export default function App() {
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
 
+  const prevCurrentId = useRef(noteHook.currentId);
   React.useEffect(() => {
-    if (noteHook.currentNote && !workoutNoteText) {
+    if (noteHook.currentId !== prevCurrentId.current) {
+      setWorkoutNoteText(noteHook.currentNote?.raw_text || '');
+      prevCurrentId.current = noteHook.currentId;
+    } else if (noteHook.currentNote && !workoutNoteText) {
       setWorkoutNoteText(noteHook.currentNote.raw_text);
     }
-  }, [noteHook.currentNote]);
+  }, [noteHook.currentId, noteHook.currentNote]);
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');

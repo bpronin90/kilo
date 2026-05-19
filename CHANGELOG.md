@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.0 - 2026-05-19
+
+- Issue #99: Rebuilt the native Log tab around the selected current workout.
+  `mobile/screens/LogScreen.js` now shows the active routine in the structured
+  read view while rendering non-current routines as compact `Previous
+  Routines` panels that switch the current selection, and `mobile/App.js` now
+  refreshes the editor text when the current routine changes. Updated
+  `docs/current-state.md` to match the shipped Log-tab behavior.
+
 ## 0.18.2 - 2026-05-19
 
 - Issue #98: Replaced the native single workout-note store with a local-only

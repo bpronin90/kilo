@@ -1,25 +1,28 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine } from '../components/UI';
+import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { useWorkoutNote } from '../hooks/useEntries';
+import { useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const { note, saveTracked } = useWorkoutNote();
+  const { notes, currentId, selectCurrent, update } = useWorkoutNotes();
+  const currentNote = notes.find(n => n.id === currentId);
+  const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => {
     return parseWorkoutNote(workoutNoteText);
   }, [workoutNoteText]);
 
-  const trackedExercises = note?.tracked_exercises || [];
+  const trackedExercises = currentNote?.tracked_exercises || [];
 
   const handleToggleTrack = (exerciseName) => {
+    if (!currentId) return;
     const isTracked = trackedExercises.includes(exerciseName);
     let nextTracked;
     if (isTracked) {
@@ -27,7 +30,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     } else {
       nextTracked = [...trackedExercises, exerciseName];
     }
-    saveTracked(nextTracked);
+    update(currentId, { tracked_exercises: nextTracked });
   };
 
   const hasContent = workoutNoteText.trim().length > 0;
@@ -100,6 +103,25 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           {!parsed.sections.length && (
             <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
           )}
+
+          {otherNotes.length > 0 && (
+            <View style={styles.previousRoutines}>
+              <SectionTitle>Previous Routines</SectionTitle>
+              {otherNotes.map(other => (
+                <Card 
+                  key={other.id} 
+                  onPress={() => selectCurrent(other.id)}
+                  style={styles.otherNoteCard}
+                >
+                  <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                  <Text style={styles.otherNotePreview} numberOfLines={1}>
+                    {other.raw_text.split('\n').filter(l => l.trim()).join(' ') || 'No content'}
+                  </Text>
+                </Card>
+              ))}
+            </View>
+          )}
+
           <Button
             onPress={() => setMode('edit')}
             title="Edit note"
@@ -108,23 +130,25 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           />
         </View>
       ) : (
-        <Card>
-          <TextInput
-            value={workoutNoteText}
-            onChangeText={setWorkoutNoteText}
-            placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
-            placeholderTextColor={Colors.textMuted}
-            multiline
-            autoFocus={!hasContent}
-            style={[styles.input, styles.editorInput]}
-          />
-          <Button 
-            onPress={handleSave} 
-            title="Save note" 
-            disabled={isSaving} 
-            style={styles.saveButton} 
-          />
-        </Card>
+        <View style={styles.editContainer}>
+          <Card>
+            <TextInput
+              value={workoutNoteText}
+              onChangeText={setWorkoutNoteText}
+              placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              autoFocus={!hasContent}
+              style={[styles.input, styles.editorInput]}
+            />
+            <Button 
+              onPress={handleSave} 
+              title="Save note" 
+              disabled={isSaving} 
+              style={styles.saveButton} 
+            />
+          </Card>
+        </View>
       )}
     </ScreenShell>
   );
@@ -199,5 +223,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textMuted,
     fontStyle: 'italic',
+  },
+  editContainer: {
+    gap: 16,
+  },
+  previousRoutines: {
+    marginTop: 32,
+    gap: 12,
+  },
+  otherNoteCard: {
+    padding: 14,
+    gap: 4,
+  },
+  otherNoteTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  otherNotePreview: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
 });
