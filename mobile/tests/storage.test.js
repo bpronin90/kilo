@@ -21,8 +21,11 @@ import {
   loadCurrentWorkoutId,
   saveCurrentWorkoutId,
   clearCurrentWorkoutId,
+  loadWeightGoal,
+  saveWeightGoal,
+  clearWeightGoal,
 } from '../storage/entries';
-import { computeWeightTrends } from '../lib/data';
+import { computeWeightTrends, computeWeightGoal } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
@@ -997,5 +1000,106 @@ describe('current workout id storage', () => {
     const notes = await loadWorkoutNotes();
     expect(entries).toHaveLength(1);
     expect(notes).toHaveLength(1);
+  });
+});
+
+// ── weight goal storage ───────────────────────────────────────────────────────
+
+describe('weight goal storage', () => {
+  test('returns null when no goal has been saved', async () => {
+    const goal = await loadWeightGoal();
+    expect(goal).toBeNull();
+  });
+
+  test('saves and retrieves a weight goal', async () => {
+    const saved = await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    expect(saved.target_weight).toBe(175);
+    expect(saved.target_date).toBe('2026-09-01');
+    expect(saved.saved_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+    expect(goal.target_date).toBe('2026-09-01');
+  });
+
+  test('overwrites previous goal on save', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    await saveWeightGoal({ target_weight: 170, target_date: '2026-12-01' });
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(170);
+    expect(goal.target_date).toBe('2026-12-01');
+  });
+
+  test('clear removes the goal', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    await clearWeightGoal();
+    const goal = await loadWeightGoal();
+    expect(goal).toBeNull();
+  });
+
+  test('weight entries are unaffected by goal operations', async () => {
+    await saveWeightEntry(W1);
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    await clearWeightGoal();
+    const entries = await loadWeightEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe(W1.id);
+  });
+});
+
+// ── computeWeightGoal ─────────────────────────────────────────────────────────
+
+describe('computeWeightGoal', () => {
+  const REF = new Date(2026, 4, 19); // 2026-05-19
+
+  test('derives loss direction when target is below current', () => {
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-09-19', referenceDate: REF });
+    expect(result.direction).toBe('loss');
+  });
+
+  test('derives gain direction when target is above current', () => {
+    const result = computeWeightGoal({ currentWeight: 160, targetWeight: 175, targetDate: '2026-09-19', referenceDate: REF });
+    expect(result.direction).toBe('gain');
+  });
+
+  test('derives maintain direction when delta is under 0.5 lb', () => {
+    const result = computeWeightGoal({ currentWeight: 175, targetWeight: 175.3, targetDate: '2026-09-19', referenceDate: REF });
+    expect(result.direction).toBe('maintain');
+  });
+
+  test('computes required_weekly_pace for a realistic loss goal', () => {
+    // 200 → 175 over ~17.4 weeks (122 days from May 19 to Sep 19)
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-09-19', referenceDate: REF });
+    expect(result.required_weekly_pace).toBeCloseTo(-25 / (122 / 7), 1);
+  });
+
+  test('returns no warnings for a healthy pace (under 1 lb/week)', () => {
+    // lose 10 lb over 14 weeks → 0.71 lb/week — healthy range
+    const result = computeWeightGoal({ currentWeight: 190, targetWeight: 180, targetDate: '2026-08-18', referenceDate: REF });
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('returns unhealthy warning for pace between 1 and 2 lb/week', () => {
+    // lose 14 lb over 10 weeks → 1.4 lb/week
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 186, targetDate: '2026-07-28', referenceDate: REF });
+    expect(result.warnings).toContain('unhealthy');
+    expect(result.warnings).not.toContain('unrealistic');
+  });
+
+  test('returns unrealistic warning for pace above 2 lb/week', () => {
+    // lose 30 lb over 10 weeks → 3 lb/week
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 170, targetDate: '2026-07-28', referenceDate: REF });
+    expect(result.warnings).toContain('unrealistic');
+  });
+
+  test('returns unrealistic warning when target date is today or in the past', () => {
+    const result = computeWeightGoal({ currentWeight: 200, targetWeight: 175, targetDate: '2026-05-19', referenceDate: REF });
+    expect(result.warnings).toContain('unrealistic');
+    expect(result.required_weekly_pace).toBeNull();
+  });
+
+  test('returns weeks_remaining proportional to the date range', () => {
+    // exactly 7 days out → 1 week
+    const result = computeWeightGoal({ currentWeight: 175, targetWeight: 174, targetDate: '2026-05-26', referenceDate: REF });
+    expect(result.weeks_remaining).toBeCloseTo(1, 1);
   });
 });

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WEIGHT_KEY = 'kilo_weight_entries';
+const WEIGHT_GOAL_KEY = 'kilo_weight_goal';
 const WORKOUT_KEY = 'kilo_workout_sessions';
 const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
@@ -45,6 +46,27 @@ export async function updateWeightEntry(id, weight_value, note) {
   entry.note = note;
   await writeList(WEIGHT_KEY, list);
   return true;
+}
+
+// Weight goal
+
+export async function loadWeightGoal() {
+  try {
+    const raw = await AsyncStorage.getItem(WEIGHT_GOAL_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWeightGoal(goal) {
+  const record = { ...goal, saved_at: new Date().toISOString() };
+  await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(record));
+  return record;
+}
+
+export async function clearWeightGoal() {
+  await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
 }
 
 // Workout sessions
