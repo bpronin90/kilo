@@ -56,9 +56,10 @@ constraints:
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
-plain text-only product naming. The native Expo path now also uses bundled Kilo
-logo and wordmark assets in its shared screen header, alongside an alpha
-version badge derived from `mobile/package.json`.
+plain text-only product naming. The native Expo path now uses a quieter shared
+header treatment: no-title screens render a plain `Kilo` text title with a
+low-emphasis `vX.Y.Z` version label derived from `mobile/package.json`, rather
+than shared logo/wordmark header branding or an alpha badge.
 
 The native app path is not yet a feature-complete port. It now proves that Kilo
 can run as a real React Native app with native screens, native parser/data
@@ -162,11 +163,14 @@ structured title-and-detail workout entry form. Saved native weight entries and
 the saved workout note both reload across app restarts through the native
 hook/storage layer. The shared native `ScreenShell` now normalizes Android top
 safe-area clearance across Home, Log, Weight, Analytics, and More/Help using
-shared status-bar spacing instead of per-screen header offsets. The native Log
-and Weight flows now keep save actions responsive on the first tap even with
-the keyboard visible, guard against duplicate in-flight saves, and keep the
-bottom tab bar reachable above the iOS keyboard. Successful native weight saves
-now keep the user on the Weight screen instead of bouncing them back to Home.
+shared status-bar spacing instead of per-screen header offsets, and its
+no-title header state now uses a plain text `Kilo` title plus a quiet `vX.Y.Z`
+version label instead of the heavier logo/wordmark-and-badge treatment. The
+native Log and Weight flows now keep save actions responsive on the first tap
+even with the keyboard visible, guard against duplicate in-flight saves, and
+keep the bottom tab bar reachable above the iOS keyboard. Successful native
+weight saves now keep the user on the Weight screen instead of bouncing them
+back to Home.
 The native Weight screen now also lets the user reopen saved entries from a
 denser scannable history list, correct them in place, delete mistakes from
 inline row affordances, and immediately refresh the shared weight views after

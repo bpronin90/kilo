@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.6 - 2026-05-19
+
+- Issue #94: Simplified the native shared header treatment in
+  `mobile/components/ScreenShell.js` by removing the shared logo/wordmark
+  header assets, reducing the version display to a low-emphasis `vX.Y.Z`
+  label, and standardizing the displayed version naming away from the old
+  `alpha-` prefix. Updated `docs/current-state.md` so the documented native
+  header behavior matches the shipped app.
+
 ## 0.17.5 - 2026-05-19
 
 - Issue #93: Normalized the native app's top safe-area spacing across Home,

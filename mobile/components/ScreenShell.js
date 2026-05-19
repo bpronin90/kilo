@@ -1,12 +1,10 @@
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Platform, StatusBar } from 'react-native';
 import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
 export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersistTaps, children }) {
-  const logoSource = require('../assets/brand/logo.png');
-  const wordmarkSource = require('../assets/brand/wordmark.png');
-  const version = `alpha-${pkg.version}`;
+  const version = `v${pkg.version}`;
 
   return (
     <ScrollView 
@@ -15,12 +13,9 @@ export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersis
     >
       <View style={styles.header}>
         {!title && (
-          <View style={styles.brandRow}>
-            <Image source={logoSource} style={styles.logo} resizeMode="contain" />
-            <Image source={wordmarkSource} style={styles.wordmark} resizeMode="contain" />
-            <View style={styles.versionBadge}>
-              <Text style={styles.versionText}>{version}</Text>
-            </View>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Kilo</Text>
+            <Text style={styles.version}>{version}</Text>
           </View>
         )}
         {title && (
@@ -47,41 +42,20 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 12,
   },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-  },
-  logo: {
-    width: 32,
-    height: 32,
-  },
-  wordmark: {
-    width: 91,
-    height: 32,
-  },
-  versionBadge: {
-    backgroundColor: Colors.chipBackground,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 4,
-  },
-  versionText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
+    gap: 12,
   },
   title: {
     fontSize: 34,
     fontWeight: '700',
     color: Colors.text,
+  },
+  version: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   subtitle: {
     fontSize: 15,
