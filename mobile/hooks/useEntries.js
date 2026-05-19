@@ -2,6 +2,43 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
 
+let goalListeners = [];
+const notifyGoal = () => goalListeners.forEach(l => l());
+
+export function useWeightGoal() {
+  const [goal, setGoal] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    Storage.loadWeightGoal()
+      .then(setGoal)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    goalListeners.push(refresh);
+    return () => {
+      goalListeners = goalListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const save = useCallback(async (goal_data) => {
+    const saved = await Storage.saveWeightGoal(goal_data);
+    setGoal(saved);
+    notifyGoal();
+    return saved;
+  }, []);
+
+  const clear = useCallback(async () => {
+    await Storage.clearWeightGoal();
+    setGoal(null);
+    notifyGoal();
+  }, []);
+
+  return { goal, loading, save, clear };
+}
+
 let weightListeners = [];
 const notifyWeight = () => weightListeners.forEach(l => l());
 

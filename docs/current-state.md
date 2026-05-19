@@ -137,7 +137,9 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
-  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes
+  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, plus a
+  lightweight goal card for target weight and target date with derived pace
+  and advisory warnings
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface for
   weight trends, tracked-lift estimated-max values, user-selectable 1k slot
   progress, progression status, and set-count context
@@ -154,18 +156,21 @@ The real native app path now has a modular React Native shell:
   including the default 1k exercise-slot selection used by analytics and a
   factory for titled workout-note items in the multi-note model
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
-  UI, including multi-note current-workout reads/writes and cross-consumer
-  refresh fanout
+  UI, including multi-note current-workout reads/writes, cross-consumer
+  refresh fanout, and persisted weight-goal reads/writes
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items retain `tracked_exercises` and
-  `one_k_exercises` selections. The legacy structured workout-session key is
-  retained only as a one-time migration source. The local Data & Backup
-  recovery path now exports a versioned v2 snapshot (weight entries, workout
-  notes, current workout id), restores the full multi-note model on v2 import,
-  and still accepts older v1 backups to restore weight history without wiping
-  the newer workout-note state
+  `one_k_exercises` selections. It also persists a lightweight weight-goal
+  record under `kilo_weight_goal` with `target_weight`, `target_date`, and
+  `saved_at`. The legacy structured workout-session key is retained only as a
+  one-time migration source. The local Data & Backup recovery path now exports
+  a versioned v2 snapshot (weight entries, workout notes, current workout id,
+  and optional weight goal), validates that payload before any write, restores
+  the full multi-note model plus weight goal on v2 import, and still accepts
+  older v1 backups to restore weight history without wiping the newer
+  workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves through the current item
@@ -189,7 +194,11 @@ AsyncStorage updates. Each saved row also surfaces the change versus the next
 older weigh-in with visual severity cues for notable, spike, and outlier
 movement. It also now derives 7-day and 30-day rolling averages plus fast
 gain/loss pace flags from saved entries, and shows that trend feedback on
-both the Weight and Stats screens.
+both the Weight and Stats screens. The native Weight screen now also supports
+a lightweight saved goal with target weight and target date, derives gain,
+loss, or maintain direction plus required weekly pace from the latest saved
+weight entry, and surfaces unrealistic or unhealthy pace warnings as
+advisory-only feedback rather than hard validation.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor, a formatted read-mode mirror that preserves headings,
 exercise blocks, mixed-weight rows, and unparsed history lines, and a stable

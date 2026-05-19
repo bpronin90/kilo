@@ -3,16 +3,115 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useWeightEntries } from '../hooks/useEntries';
+import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
 import { formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
-import { computeWeightTrends } from '../lib/data';
+import { computeWeightTrends, computeWeightGoal } from '../lib/data';
+
+function GoalDerived({ info }) {
+  if (!info) return null;
+  const { direction, weeks_remaining, required_weekly_pace, warnings } = info;
+  if (required_weekly_pace === null) {
+    return (
+      <View style={styles.goalDerived}>
+        <Text style={styles.goalWarningText}>Target date must be in the future.</Text>
+      </View>
+    );
+  }
+  const paceAbs = Math.abs(required_weekly_pace).toFixed(2);
+  const dirLabel = direction === 'gain' ? 'Gain' : direction === 'loss' ? 'Lose' : 'Maintain';
+  const paceLabel = direction === 'maintain'
+    ? 'Maintain current weight'
+    : `${dirLabel} ${paceAbs} lb/week`;
+  return (
+    <View style={styles.goalDerived}>
+      <Text style={styles.goalPaceText}>{paceLabel}</Text>
+      {warnings.includes('unrealistic') ? (
+        <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
+      ) : warnings.includes('unhealthy') ? (
+        <Text style={styles.goalWarningText}>Pace is aggressive — a slower target is safer.</Text>
+      ) : null}
+    </View>
+  );
+}
 
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   const { entries, remove, update } = useWeightEntries();
+  const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
+  const [goalEditing, setGoalEditing] = useState(false);
+  const [goalTargetWeight, setGoalTargetWeight] = useState('');
+  const [goalTargetDate, setGoalTargetDate] = useState('');
+  const [goalError, setGoalError] = useState('');
   const trends = useMemo(() => computeWeightTrends(entries), [entries]);
+
+  // Populate form inputs when a saved goal loads
+  React.useEffect(() => {
+    if (goal && !goalEditing) {
+      setGoalTargetWeight(String(goal.target_weight));
+      setGoalTargetDate(goal.target_date);
+    }
+  }, [goal]);
+
+  const currentWeight = entries.length > 0 ? entries[0].weight_value : null;
+
+  const goalInfo = useMemo(() => {
+    const tw = parseFloat(goalTargetWeight);
+    if (!currentWeight || isNaN(tw) || !goalTargetDate) return null;
+    try {
+      return computeWeightGoal({ currentWeight, targetWeight: tw, targetDate: goalTargetDate });
+    } catch {
+      return null;
+    }
+  }, [currentWeight, goalTargetWeight, goalTargetDate]);
+
+  const handleSaveGoal = async () => {
+    setGoalError('');
+    const tw = parseFloat(goalTargetWeight);
+    if (isNaN(tw) || tw <= 0) {
+      setGoalError('Enter a valid target weight.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(goalTargetDate)) {
+      setGoalError('Enter target date as YYYY-MM-DD.');
+      return;
+    }
+    const [tYear, tMonth, tDay] = goalTargetDate.split('-').map(Number);
+    const parsedDate = new Date(tYear, tMonth - 1, tDay);
+    if (parsedDate.getFullYear() !== tYear || parsedDate.getMonth() !== tMonth - 1 || parsedDate.getDate() !== tDay) {
+      setGoalError('Enter a valid calendar date.');
+      return;
+    }
+    await saveGoal({ target_weight: tw, target_date: goalTargetDate });
+    setGoalEditing(false);
+  };
+
+  const handleClearGoal = () => {
+    Alert.alert('Clear Goal', 'Remove your weight goal?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: async () => {
+        await clearGoal();
+        setGoalTargetWeight('');
+        setGoalTargetDate('');
+        setGoalEditing(false);
+      }},
+    ]);
+  };
+
+  const startEditGoal = () => {
+    if (goal) {
+      setGoalTargetWeight(String(goal.target_weight));
+      setGoalTargetDate(goal.target_date);
+    }
+    setGoalError('');
+    setGoalEditing(true);
+  };
+
+  const cancelEditGoal = () => {
+    setGoalError('');
+    setGoalEditing(false);
+  };
 
   const handleEditEntry = (entry) => {
     setLocalError('');
@@ -103,6 +202,66 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           title={editingId ? "Update entry" : "Save weigh-in"} 
           disabled={saving} 
         />
+      </Card>
+
+      <Card style={styles.goalCard}>
+        <View style={styles.goalHeader}>
+          <Text style={styles.goalTitle}>Goal</Text>
+          {goal && !goalEditing ? (
+            <View style={styles.goalHeaderActions}>
+              <Pressable onPress={startEditGoal} hitSlop={8}>
+                <Text style={styles.goalActionText}>Edit</Text>
+              </Pressable>
+              <Pressable onPress={handleClearGoal} hitSlop={8}>
+                <Text style={[styles.goalActionText, styles.goalClearText]}>Clear</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {goalEditing && goal ? (
+            <Pressable onPress={cancelEditGoal} hitSlop={8}>
+              <Text style={styles.goalActionText}>Cancel</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {(!goal || goalEditing) ? (
+          <View style={styles.goalForm}>
+            {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
+            <Text style={styles.inputLabel}>Target weight (lb)</Text>
+            <TextInput
+              value={goalTargetWeight}
+              onChangeText={setGoalTargetWeight}
+              placeholder="175.0"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+            <Text style={styles.inputLabel}>Target date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={goalTargetDate}
+              onChangeText={setGoalTargetDate}
+              placeholder="2026-09-01"
+              placeholderTextColor={Colors.textMuted}
+              style={styles.input}
+            />
+            {goalInfo ? <GoalDerived info={goalInfo} /> : null}
+            <Button onPress={handleSaveGoal} title="Save goal" />
+          </View>
+        ) : (
+          <View style={styles.goalDisplay}>
+            <View style={styles.goalDisplayRow}>
+              <View style={styles.goalDisplayItem}>
+                <Text style={styles.goalDisplayValue}>{goal.target_weight} lb</Text>
+                <Text style={styles.goalDisplayLabel}>target</Text>
+              </View>
+              <View style={styles.goalDisplayItem}>
+                <Text style={styles.goalDisplayValue}>{goal.target_date}</Text>
+                <Text style={styles.goalDisplayLabel}>by date</Text>
+              </View>
+            </View>
+            {goalInfo ? <GoalDerived info={goalInfo} /> : null}
+          </View>
+        )}
       </Card>
 
       {(trends.avg7 !== null || trends.avg30 !== null) ? (
@@ -364,5 +523,72 @@ const styles = StyleSheet.create({
   },
   paceLoss: {
     color: Colors.accent,
+  },
+  goalCard: {
+    gap: 10,
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  goalHeaderActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  goalActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  goalClearText: {
+    color: Colors.error,
+    opacity: 0.7,
+  },
+  goalForm: {
+    gap: 8,
+  },
+  goalErrorText: {
+    color: Colors.error,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  goalDisplay: {
+    gap: 8,
+  },
+  goalDisplayRow: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  goalDisplayItem: {
+    gap: 2,
+  },
+  goalDisplayValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  goalDisplayLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  goalDerived: {
+    gap: 4,
+  },
+  goalPaceText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  goalWarningText: {
+    fontSize: 13,
+    color: Colors.error,
+    opacity: 0.85,
   },
 });

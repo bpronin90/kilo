@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WEIGHT_KEY = 'kilo_weight_entries';
+const WEIGHT_GOAL_KEY = 'kilo_weight_goal';
 const WORKOUT_KEY = 'kilo_workout_sessions';
 const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
@@ -45,6 +46,27 @@ export async function updateWeightEntry(id, weight_value, note) {
   entry.note = note;
   await writeList(WEIGHT_KEY, list);
   return true;
+}
+
+// Weight goal
+
+export async function loadWeightGoal() {
+  try {
+    const raw = await AsyncStorage.getItem(WEIGHT_GOAL_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveWeightGoal(goal) {
+  const record = { ...goal, saved_at: new Date().toISOString() };
+  await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(record));
+  return record;
+}
+
+export async function clearWeightGoal() {
+  await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
 }
 
 // Workout sessions
@@ -165,12 +187,14 @@ export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
   const workout_notes = await readList(WORKOUT_NOTES_KEY);
   const current_workout_id = await loadCurrentWorkoutId();
+  const weight_goal = await loadWeightGoal();
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
     weight_entries,
     workout_notes,
     current_workout_id,
+    weight_goal,
   };
 }
 
@@ -220,6 +244,15 @@ function validateBackup(payload) {
     }
     if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
       return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
+    if ('weight_goal' in payload && payload.weight_goal !== null) {
+      const g = payload.weight_goal;
+      if (!g || typeof g !== 'object' || Array.isArray(g))
+        return { ok: false, error: 'Invalid backup: weight_goal must be an object or null' };
+      if (typeof g.target_weight !== 'number')
+        return { ok: false, error: 'Invalid backup: weight_goal missing target_weight' };
+      if (typeof g.target_date !== 'string')
+        return { ok: false, error: 'Invalid backup: weight_goal missing target_date' };
+    }
   }
 
   return { ok: true };
@@ -244,6 +277,14 @@ export async function importBackup(payload, strategy = 'replace') {
         await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
       } else {
         await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+      }
+      // weight_goal is optional in older v2 backups; only touch it when the key is present
+      if ('weight_goal' in payload) {
+        if (payload.weight_goal != null) {
+          await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(payload.weight_goal));
+        } else {
+          await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
+        }
       }
     } else {
       // v1: restore weight entries only; workout notes model was not part of the v1 contract

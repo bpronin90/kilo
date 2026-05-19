@@ -31,6 +31,10 @@ The repo now has a real native app scaffold under `mobile/`.
   multi-note current-workout model, added explicit current-workout persistence,
   and updated backup/import so new v2 exports preserve workout-note arrays
   while older v1 backups still restore weight history safely.
+- Issue #104 added a lightweight native weight-goal flow with target weight,
+  target date, derived weekly pace plus advisory warnings, and extended the
+  v2 backup/import contract so optional persisted weight goals are exported,
+  validated before any write, and restored safely.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

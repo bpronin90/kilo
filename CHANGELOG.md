@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.22.0 - 2026-05-19
+
+- Issue #104: Added a lightweight native Weight-goal flow with persistent
+  target weight and target date storage, derived gain/loss/maintain direction,
+  required weekly pace, and advisory unrealistic/unhealthy warnings that do
+  not block save. The local v2 backup/import path now includes the persisted
+  weight goal with pre-write validation and malformed-payload rejection
+  coverage, and the current-state, architecture, testing, and roadmap docs
+  now reflect the shipped native behavior.
+
 ## 0.21.2 - 2026-05-19
 
 - Issue #103: Redesigned the native Weight history rows for long-history use

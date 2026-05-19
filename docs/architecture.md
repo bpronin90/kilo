@@ -28,7 +28,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
 
     CDN -->|"loads at runtime"| KiloHtml
@@ -129,16 +129,17 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/App.js` owns tab state plus the native save/reload orchestration layer
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
-  plus the multi-note current-workout read/write path and a lightweight
-  listener fanout for cross-consumer refreshes
+  plus the persisted weight-goal and multi-note current-workout read/write
+  paths and a lightweight listener fanout for cross-consumer refreshes
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
-  data plus the local multi-note workout store (`kilo_workout_notes` and
-  `kilo_current_workout_id`), while retaining the legacy session key only as a
-  migration source and the old single-note key only for backup compatibility
+  data plus the local weight-goal key (`kilo_weight_goal`) and multi-note
+  workout store (`kilo_workout_notes` and `kilo_current_workout_id`), while
+  retaining the legacy session key only as a migration source and the old
+  single-note key only for backup compatibility
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -182,7 +183,10 @@ correction surface. Tapping a row reloads that entry into the shared form
 state, edit submissions rerun `parseWeightEntry()` before
 `updateWeightEntry()`, delete submissions remove the selected entry in place,
 and the hook-level listener fanout reloads other weight consumers so Home,
-Analytics, and the Weight history stay in sync after edits or deletes.
+Analytics, and the Weight history stay in sync after edits or deletes. The same
+screen also saves an optional weight-goal record (target weight + target date),
+derives direction and required weekly pace from the latest saved weight, and
+renders advisory warnings without blocking the save path.
 
 ## Native Parse-to-Persistence Flow
 
@@ -199,10 +203,12 @@ User types in native Weight or Log form
 
 `mobile/storage/entries.js` also exposes a local-only recovery path:
 `exportBackup()` serializes a versioned v2 snapshot (weight entries, titled
-workout notes, and the current workout id). `importBackup(payload, 'replace')`
-validates before any write, restores the full multi-note model for v2 backups,
-and still accepts v1 backups to restore weight history without clearing the
-newer workout-note state. No remote sync is involved.
+workout notes, the current workout id, and an optional weight goal).
+`importBackup(payload, 'replace')` validates before any write, restores the
+full multi-note model for v2 backups, conditionally restores or clears the
+weight goal when the key is present, and still accepts v1 backups to restore
+weight history without clearing the newer workout-note state. No remote sync is
+involved.
 
 ## Parser Responsibilities
 

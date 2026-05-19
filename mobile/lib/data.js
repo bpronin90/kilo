@@ -151,6 +151,60 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   return { avg7, avg30, paceFlag };
 }
 
+// Derive direction, required weekly pace, and advisory warnings from a weight goal.
+// currentWeight: number (lb); targetWeight: number (lb); targetDate: 'YYYY-MM-DD' string
+// referenceDate: Date (defaults to today)
+// Returns { direction, weeks_remaining, required_weekly_pace, warnings }
+//   direction: 'gain' | 'loss' | 'maintain'
+//   required_weekly_pace: lb/week (null if targetDate is not in the future)
+//   warnings: array of 'unrealistic' | 'unhealthy' (advisory only, never block save)
+export function computeWeightGoal({ currentWeight, targetWeight, targetDate, referenceDate = new Date() }) {
+  const MS_DAY = 86400000;
+  const pad = (n) => String(n).padStart(2, '0');
+  const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const refStr = localStr(referenceDate);
+
+  if (!targetDate || targetDate <= refStr) {
+    return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
+  }
+
+  const delta = targetWeight - currentWeight;
+
+  let direction;
+  if (Math.abs(delta) < 0.5) {
+    direction = 'maintain';
+  } else {
+    direction = delta > 0 ? 'gain' : 'loss';
+  }
+
+  const refMidnight = new Date(refStr + 'T00:00:00');
+  // Round-trip component check: JS normalizes impossible dates (e.g. Sep 31 → Oct 1)
+  // instead of returning Invalid Date, so isNaN alone is insufficient.
+  const [tYear, tMonth, tDay] = targetDate.split('-').map(Number);
+  const targetMidnight = new Date(tYear, tMonth - 1, tDay);
+  if (
+    targetMidnight.getFullYear() !== tYear ||
+    targetMidnight.getMonth() !== tMonth - 1 ||
+    targetMidnight.getDate() !== tDay
+  ) {
+    return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
+  }
+  const days_remaining = Math.round((targetMidnight - refMidnight) / MS_DAY);
+  const weeks_remaining = days_remaining / 7;
+  const required_weekly_pace = delta / weeks_remaining;
+
+  const warnings = [];
+  const abs_pace = Math.abs(required_weekly_pace);
+  if (abs_pace > 2) {
+    warnings.push('unrealistic');
+  } else if (abs_pace > 1) {
+    warnings.push('unhealthy');
+  }
+
+  return { direction, weeks_remaining, required_weekly_pace, warnings };
+}
+
 // Default exercise selections for the 1k total slots.
 // Mirrors the primary compounds in KILO_EXERCISES for this program.
 export const DEFAULT_1K_EXERCISES = {
