@@ -426,12 +426,17 @@ export function deriveWorkoutAnalytics(sections) {
       }
     }
     let estimated_pr = null;
-    for (const { epley_pr } of set_prs) {
+    let latest_pr = null;
+    const last_oi = derived.occurrences.length - 1;
+    for (const { epley_pr, occurrence_index } of set_prs) {
       if (epley_pr !== null && (estimated_pr === null || epley_pr > estimated_pr)) {
         estimated_pr = epley_pr;
       }
+      if (occurrence_index === last_oi && epley_pr !== null && (latest_pr === null || epley_pr > latest_pr)) {
+        latest_pr = epley_pr;
+      }
     }
-    exercises.push({ name: derived.name, occurrences: derived.occurrences, sets: derived.sets, rows: derived.rows, unparsed_rows: derived.unparsed_rows, set_prs, estimated_pr });
+    exercises.push({ name: derived.name, occurrences: derived.occurrences, sets: derived.sets, rows: derived.rows, unparsed_rows: derived.unparsed_rows, set_prs, estimated_pr, latest_pr });
   }
 
   return { exercises };
@@ -477,14 +482,18 @@ function _findExercise(exercises, targetName) {
 // Supports alias matching so note variants like "DB Bench" resolve to "DB Bench Press".
 //
 // Input: sections from parseWorkoutNote, trackedNames string[]
-// Output: { exercises: [{ name, estimated_pr }] } in trackedNames order
+// Output: { exercises: [{ name, estimated_pr, latest_pr }] } in trackedNames order
 export function deriveTrackedPRs(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
   return {
     exercises: uniqueNames.map(name => {
       const match = _findExercise(exercises, name);
-      return { name, estimated_pr: match ? match.estimated_pr : null };
+      return { 
+        name, 
+        estimated_pr: match ? match.estimated_pr : null,
+        latest_pr: match ? match.latest_pr : null
+      };
     }),
   };
 }
