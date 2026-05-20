@@ -6,6 +6,10 @@
   navigates to the shipped `Analytics` tab instead of a blank screen, and
   added a legacy `Stats` route fallback in `mobile/App.js` so stale
   navigation targets still resolve cleanly.
+- Added `docs/mvp-v3.5-roadmap.md` to capture the next post-MVP cleanup and
+  capability plan, and shipped the mobile Android bundle dependency fix that
+  updates the declared `expo-updates` version plus `mobile/package-lock.json`
+  so the native install path stays buildable.
 
 ## 0.27.0 - 2026-05-19
 
