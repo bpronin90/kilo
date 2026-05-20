@@ -158,6 +158,17 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   return { avg7, avg30, paceFlag };
 }
 
+// Return the severity level of the pace flag for the two most recent entries.
+// entries must contain { date: 'YYYY-MM-DD', weight_value: number }; order does not matter.
+// Returns 'notable' | 'spike' | null.
+export function computeWeightPaceLevel(entries) {
+  if (!entries || entries.length < 2) return null;
+  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  const delta = byDate[0].weight_value - byDate[1].weight_value;
+  const classified = classifyWeightPace(delta);
+  return classified ? classified.level : null;
+}
+
 // Derive direction, required weekly pace, and advisory warnings from a weight goal.
 // currentWeight: number (lb); targetWeight: number (lb); targetDate: 'YYYY-MM-DD' string
 // referenceDate: Date (defaults to today)
