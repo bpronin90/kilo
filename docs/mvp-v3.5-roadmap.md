@@ -124,7 +124,7 @@ narrowly scoped — they are not bundled within a phase.
 - **Problem:** No way to switch which routine is current.
 - **Scope:** Add an action on each non-current note to mark it current; confirmation modal ("Switch current routine to `<title>`? Analytics will re-scope."); on confirm, flip `isCurrent` flags; Log tab re-renders new current routine in full view.
 - **Out of scope:** Analytics re-scope behavior (Task 3.5 covers it).
-- **Acceptance:** Exactly one note is current at all times; confirmation appears every switch; cancel preserves prior state.
+- **Acceptance:** Exactly one note is current at all times; confirmation appears every switch; cancel preserves prior state; confirming the switch records a real `currentSince` timestamp for the newly current routine.
 - **Agent:** `agent:gemini`
 
 ### 3.4 — Track button → global tracked-lift persistence

@@ -6,7 +6,7 @@
   routines, requiring confirmation before routine switches, preserving pending
   edits before the switch, and recording a real `currentSince` timestamp when
   a different routine becomes current. Updated `docs/current-state.md` and
-  `docs/mvp-roadmap.md` to match the shipped behavior.
+  `docs/mvp-v3.5-roadmap.md` to match the shipped behavior.
 
 ## 0.30.0 - 2026-05-20
 
