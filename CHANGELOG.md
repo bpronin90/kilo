@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.27.2 - 2026-05-20
+
+- Issue #111: Fixed the native Log raw-note Save flow so current-note edits
+  persist through the workout-note store, successful saves return to read mode
+  for visible confirmation, first-save creation still blocks empty notes, and
+  existing notes can still be cleared to an empty string. Added storage
+  regression coverage for both the raw-text update round-trip and the
+  existing-note clear path, and updated `docs/current-state.md` to match the
+  shipped Log behavior.
+
 ## 0.27.1 - 2026-05-20
 
 - Issue #110: Fixed the native Home screen `1,000 lb Club` bubble so it

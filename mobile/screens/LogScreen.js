@@ -15,7 +15,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
 
-  const { notes, currentId, selectCurrent, update } = useWorkoutNotes();
+  const { notes, currentId, selectCurrent, update, add } = useWorkoutNotes();
   const currentNote = notes.find(n => n.id === currentId);
   const otherNotes = notes.filter(n => n.id !== currentId);
 
@@ -41,13 +41,29 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const handleSave = async () => {
     if (isSaving) return;
+    if (!currentId && !workoutNoteText.trim()) {
+      setSaveError('Workout note is required');
+      return;
+    }
     setIsSaving(true);
     setSaveError('');
     try {
-      const result = await onSaveWorkout();
-      if (!result.ok) {
-        setSaveError(result.error || 'Save failed');
+      let ok = false;
+      if (currentId) {
+        const result = await update(currentId, { raw_text: workoutNoteText });
+        ok = !!result;
+      } else {
+        const note = await add('My Workout', workoutNoteText);
+        await selectCurrent(note.id);
+        ok = true;
       }
+      if (ok) {
+        setMode('read');
+      } else {
+        setSaveError('Save failed');
+      }
+    } catch {
+      setSaveError('Save failed');
     } finally {
       setIsSaving(false);
     }
