@@ -186,9 +186,21 @@ export function StatsScreen() {
                   </Text>
                 </View>
                 <View>
+                  <Text style={styles.signalLabel}>Kilo max</Text>
+                  <Text style={styles.signalValue}>
+                    {sig.kilo_max ? `${sig.kilo_max.toFixed(0)} lb` : '—'}
+                  </Text>
+                </View>
+                <View>
                   <Text style={styles.signalLabel}>Top weight</Text>
                   <Text style={styles.signalValue}>
                     {sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.signalLabel}>Overload</Text>
+                  <Text style={styles.signalValue}>
+                    {formatOverload(sig.overload_trend)}
                   </Text>
                 </View>
               </View>
@@ -209,6 +221,16 @@ function formatStatus(status) {
     case 'improved': return 'Improved';
     case 'held': return 'Held';
     case 'regressed': return 'Regressed';
+    case 'first_session': return 'First';
+    default: return '—';
+  }
+}
+
+function formatOverload(trend) {
+  switch (trend) {
+    case 'up': return '↑ Up';
+    case 'flat': return '→ Flat';
+    case 'down': return '↓ Down';
     case 'first_session': return 'First';
     default: return '—';
   }
@@ -415,7 +437,9 @@ const styles = StyleSheet.create({
   },
   signalMeta: {
     flexDirection: 'row',
-    gap: 32,
+    flexWrap: 'wrap',
+    gap: 16,
+    rowGap: 12,
   },
   signalLabel: {
     fontSize: 12,

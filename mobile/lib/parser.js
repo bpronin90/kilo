@@ -540,7 +540,10 @@ function _occurrenceTopWeight(occurrence) {
 //   progression_status: 'improved' | 'held' | 'regressed' | 'first_session' | null,
 //   latest_pr: number | null,
 //   prior_pr: number | null,
+//   kilo_max: number | null,          — all-time best Epley across all occurrences
 //   repeatability_score: number | null,
+//   latest_top_weight: number | null, — highest completed weight_value in latest occurrence
+//   overload_trend: 'up' | 'flat' | 'down' | 'first_session' | null,
 // }
 export function deriveProgressionSignals(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
@@ -548,11 +551,13 @@ export function deriveProgressionSignals(sections, trackedNames) {
 
   return {
     exercises: uniqueNames.map(name => {
-      const absent = { name, progression_status: null, latest_pr: null, prior_pr: null, repeatability_score: null };
+      const absent = { name, progression_status: null, latest_pr: null, prior_pr: null, kilo_max: null, repeatability_score: null, latest_top_weight: null, overload_trend: null };
       const ex = _findExercise(exercises, name);
       if (!ex) return absent;
       const occs = ex.occurrences;
       if (occs.length === 0) return absent;
+
+      const kilo_max = ex.estimated_pr;
 
       // Walk backward to find the two most recent occurrences with computable PRs.
       let latestIdx = -1;
@@ -572,15 +577,20 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const latest_top_weight = _occurrenceTopWeight(latestOcc);
 
       if (priorIdx === -1) {
-        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, repeatability_score, latest_top_weight };
+        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, kilo_max, repeatability_score, latest_top_weight, overload_trend: 'first_session' };
       }
 
       const prior_pr = _occurrencePR(occs[priorIdx]);
+      const prior_top_weight = _occurrenceTopWeight(occs[priorIdx]);
       const progression_status = latest_pr > prior_pr ? 'improved'
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
+      const overload_trend = latest_top_weight === null || prior_top_weight === null ? null
+                           : latest_top_weight > prior_top_weight ? 'up'
+                           : latest_top_weight < prior_top_weight ? 'down'
+                           : 'flat';
 
-      return { name, progression_status, latest_pr, prior_pr, repeatability_score, latest_top_weight };
+      return { name, progression_status, latest_pr, prior_pr, kilo_max, repeatability_score, latest_top_weight, overload_trend };
     }),
   };
 }
