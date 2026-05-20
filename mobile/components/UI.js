@@ -90,22 +90,24 @@ export function WorkoutSubheading({ children }) {
   );
 }
 
-export function ExerciseBlock({ name, children, isTracked, onToggleTrack }) {
+export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack }) {
   return (
     <View style={styles.exerciseBlock}>
       <View style={styles.exerciseHeader}>
         <Text style={styles.exerciseName}>{name}</Text>
-        {onToggleTrack && (
+        {(onToggleTrack || disabledTrack) && (
           <Pressable 
-            onPress={onToggleTrack}
+            onPress={disabledTrack ? null : onToggleTrack}
             style={[
               styles.trackToggle,
-              isTracked ? styles.trackToggleActive : null
+              isTracked ? styles.trackToggleActive : null,
+              disabledTrack ? styles.trackToggleDisabled : null
             ]}
           >
             <Text style={[
               styles.trackToggleText,
-              isTracked ? styles.trackToggleTextActive : null
+              isTracked ? styles.trackToggleTextActive : null,
+              disabledTrack ? styles.trackToggleTextDisabled : null
             ]}>
               {isTracked ? 'Tracked' : 'Track'}
             </Text>
@@ -300,6 +302,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chipBackground,
     borderColor: Colors.chipBackground,
   },
+  trackToggleDisabled: {
+    opacity: 0.4,
+    borderColor: Colors.cardBorder,
+  },
   trackToggleText: {
     fontSize: 12,
     fontWeight: '700',
@@ -307,6 +313,9 @@ const styles = StyleSheet.create({
   },
   trackToggleTextActive: {
     color: Colors.chipText,
+  },
+  trackToggleTextDisabled: {
+    color: Colors.textMuted,
   },
   exerciseContent: {
     paddingLeft: 4,

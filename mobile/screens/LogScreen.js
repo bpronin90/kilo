@@ -46,20 +46,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     return parseWorkoutNote(workoutNoteText);
   }, [workoutNoteText]);
 
-  const trackedExercises = currentNote?.tracked_exercises || [];
-
-  const handleToggleTrack = (exerciseName) => {
-    if (!currentId) return;
-    const isTracked = trackedExercises.includes(exerciseName);
-    let nextTracked;
-    if (isTracked) {
-      nextTracked = trackedExercises.filter(name => name !== exerciseName);
-    } else {
-      nextTracked = [...trackedExercises, exerciseName];
-    }
-    update(currentId, { tracked_exercises: nextTracked });
-  };
-
   const hasContent = workoutNoteText.trim().length > 0;
 
   const handleSave = async () => {
@@ -227,8 +213,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
                 <ExerciseBlock
                   key={`ex-${si}-${ei}`}
                   name={ex.name}
-                  isTracked={trackedExercises.includes(ex.name)}
-                  onToggleTrack={() => handleToggleTrack(ex.name)}
+                  isTracked={false}
+                  disabledTrack={true}
                 >
                   {ex.rows.map((row, ri) => (
                     <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />
