@@ -941,6 +941,16 @@ describe('saveWorkoutNoteItem', () => {
     expect(notes[0].title).toBe('Chest Day');
     expect(notes[0].saved_at).toBe(NOTE_A.saved_at);
   });
+
+  test('raw_text update persists and reloads correctly (single-note save path)', async () => {
+    await saveWorkoutNoteItem(NOTE_A);
+    const updated = { ...NOTE_A, raw_text: 'Bench 225 5,5,5\nRDL 185 8,8', updated_at: '2026-05-01T12:00:00.000Z' };
+    await saveWorkoutNoteItem(updated);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].raw_text).toBe('Bench 225 5,5,5\nRDL 185 8,8');
+    expect(notes[0].saved_at).toBe(NOTE_A.saved_at);
+  });
 });
 
 describe('deleteWorkoutNoteItem', () => {
