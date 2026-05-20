@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.27.1 - 2026-05-20
+
+- Issue #110: Fixed the native Home screen `1,000 lb Club` bubble so it
+  navigates to the shipped `Analytics` tab instead of a blank screen, and
+  added a legacy `Stats` route fallback in `mobile/App.js` so stale
+  navigation targets still resolve cleanly.
+
 ## 0.27.0 - 2026-05-19
 
 - Issue #109: Redesigned the native Analytics strength section by renaming the
