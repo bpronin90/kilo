@@ -192,7 +192,7 @@ export function useWorkoutNotes() {
   }, [currentId]);
 
   const selectCurrent = useCallback(async (id) => {
-    await Storage.saveCurrentWorkoutId(id);
+    await Storage.setCurrentWorkoutNote(id);
     notifyWorkoutNotes();
   }, []);
 

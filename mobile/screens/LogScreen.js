@@ -145,14 +145,18 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   };
 
   const handleSwitchCurrent = (id) => {
-    const editingNote = notes.find(n => n.id === editingNoteId);
-    const hasUnsaved = editingNote && (editingText !== editingNote.raw_text || editingTitle !== editingNote.title);
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+
+    // Check if there are unsaved changes in the editor for ANY routine
+    const isEditing = editingNoteId !== null;
+    const editingNote = isEditing ? notes.find(n => n.id === editingNoteId) : null;
+    const hasUnsaved = isEditing && editingNote && (editingText !== editingNote.raw_text || editingTitle !== editingNote.title);
 
     const doSwitch = async () => {
       if (hasUnsaved) {
-        let saved;
         try {
-          saved = await update(editingNoteId, { 
+          await update(editingNoteId, { 
             title: editingTitle || 'Untitled Routine',
             raw_text: editingText 
           });
@@ -160,23 +164,24 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           setSaveError('Save failed. Routine was not switched.');
           return;
         }
-        if (!saved) {
-          setSaveError('Save failed. Routine was not switched.');
-          return;
-        }
       }
-      selectCurrent(id);
+      await selectCurrent(id);
       setEditingNoteId(null);
     };
 
+    const alertTitle = 'Set as Current Routine';
+    let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
+    
+    if (hasUnsaved) {
+      alertMessage = `Your unsaved changes in "${editingNote.title || 'Untitled Routine'}" will be saved before switching. Continue?`;
+    }
+
     Alert.alert(
-      'Switch Workout',
-      hasUnsaved
-        ? 'Your edits will be saved and this routine will become your current workout. Continue?'
-        : 'Switching your current workout affects analytics. Are you sure?',
+      alertTitle,
+      alertMessage,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Switch', style: 'destructive', onPress: doSwitch },
+        { text: 'Set as Current', onPress: doSwitch },
       ]
     );
   };
@@ -236,7 +241,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           </Card>
           <Button
             onPress={() => handleSwitchCurrent(editingNoteId)}
-            title="Switch to this routine"
+            title="Set as current routine"
             style={styles.switchButton}
             textStyle={styles.switchButtonText}
           />
@@ -344,10 +349,25 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             {otherNotes.map(other => (
               <Card
                 key={other.id}
-                onPress={() => handleOpenOtherNote(other)}
                 style={styles.otherNoteCard}
               >
-                <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                <View style={styles.otherNoteHeader}>
+                  <Pressable
+                    onPress={() => handleOpenOtherNote(other)}
+                    style={styles.otherNoteInfo}
+                  >
+                    <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                    {other.updated_at && (
+                      <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleSwitchCurrent(other.id)}
+                    style={styles.inlineSwitchButton}
+                  >
+                    <Text style={styles.inlineSwitchButtonText}>Set current</Text>
+                  </Pressable>
+                </View>
               </Card>
             ))}
           </>
@@ -461,12 +481,40 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   otherNoteCard: {
+    padding: 0,
+    overflow: 'hidden',
+  },
+  otherNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 14,
+    gap: 12,
+  },
+  otherNoteInfo: {
+    flex: 1,
   },
   otherNoteTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: Colors.text,
+  },
+  otherNoteSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  inlineSwitchButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: Colors.chipBackground,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  inlineSwitchButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.accent,
   },
   createButton: {
     marginTop: 8,

@@ -56,7 +56,6 @@ The repo now has a real native app scaffold under `mobile/`.
   adding create, rename, and delete flows on top of the notebook UI while
   keeping current-routine semantics coherent by clearing the persisted current
   selection when the active routine is deleted.
-
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.
