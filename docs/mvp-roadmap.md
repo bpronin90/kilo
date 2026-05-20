@@ -48,6 +48,10 @@ The repo now has a real native app scaffold under `mobile/`.
   `Routine 1` current entry when needed, normalizing older notebook rows to
   carry `isCurrent` and `currentSince`, and preserving `currentSince: null`
   where historical routine-start dates are unknowable.
+- Issue #118 completed the Log-tab notes list UI for the new notebook model by
+  keeping the selected current routine in the full parsed-workout view while
+  rendering every non-current routine as a collapsed title-only row that opens
+  its raw editor on tap.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

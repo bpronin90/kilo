@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.29.0 - 2026-05-20
+
+- Issue #118: Updated the native Log tab so the selected current routine stays
+  in the full parsed-workout view while every non-current routine now appears
+  as a collapsed title-only row in the bottom `Routines` list that opens its
+  raw editor on tap. Updated `docs/current-state.md` and
+  `docs/mvp-roadmap.md` to match the shipped behavior.
+
 ## 0.28.1 - 2026-05-20
 
 - Issue #117: Migrated native workout-note storage from the legacy single-note
