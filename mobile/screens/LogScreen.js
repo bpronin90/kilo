@@ -41,7 +41,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const handleSave = async () => {
     if (isSaving) return;
-    if (!workoutNoteText.trim()) {
+    if (!currentId && !workoutNoteText.trim()) {
       setSaveError('Workout note is required');
       return;
     }
