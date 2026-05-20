@@ -151,8 +151,9 @@ The real native app path now has a modular React Native shell:
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
   summary averages, alongside a renamed Big Three 1RM total, strength-only 1k
   slot selection, and tracked-lift cards that surface progression status,
-  latest estimated 1RM, all-time Kilo max, latest top weight, and overload
-  trend
+  latest estimated 1RM, a Kilo max derived from the average Epley value across
+  non-warmup tracked sets times a default `1.07` fatigue multiplier, tap-to-
+  inspect raw Kilo max, latest top weight, and overload trend
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system

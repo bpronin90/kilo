@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.6 - 2026-05-20
+
+- Issue #115: Fixed native Analytics Kilo max so tracked lifts no longer reuse
+  estimated 1RM. The tracked-lift cards now compute Kilo max from the average
+  Epley value across non-warmup sets with the default `1.07` fatigue
+  multiplier, store both adjusted and raw values, and let the user tap to
+  inspect the raw value on the Analytics screen. Updated `docs/current-state.md`
+  to match the shipped behavior.
+
 ## 0.27.5 - 2026-05-20
 
 - Issue #114: Fixed the shared native weight pace classifier so tiny daily
