@@ -7,13 +7,24 @@ import { parseWorkoutNote } from '../lib/parser';
 import { useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
+  const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
+
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
+
   const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (currentNote) {
+      setWorkoutNoteTitle(currentNote.title || '');
+    }
+  }, [currentNote]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -58,10 +69,13 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     try {
       let ok = false;
       if (currentId) {
-        const result = await update(currentId, { raw_text: workoutNoteText });
+        const result = await update(currentId, { 
+          title: workoutNoteTitle || 'My Workout',
+          raw_text: workoutNoteText 
+        });
         ok = !!result;
       } else {
-        const note = await add('My Workout', workoutNoteText);
+        const note = await add(workoutNoteTitle || 'My Workout', workoutNoteText);
         await selectCurrent(note.id);
         ok = true;
       }
@@ -79,6 +93,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
+    setEditingTitle(other.title || '');
     setEditingText(other.raw_text);
     setSaveError('');
   };
@@ -88,7 +103,10 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     setNoteIsSaving(true);
     setSaveError('');
     try {
-      const result = await update(editingNoteId, { raw_text: editingText });
+      const result = await update(editingNoteId, { 
+        title: editingTitle || 'Untitled Routine',
+        raw_text: editingText 
+      });
       if (!result) setSaveError('Save failed');
     } catch {
       setSaveError('Save failed');
@@ -97,15 +115,48 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     }
   };
 
+  const handleDeleteRoutine = (id, title, isCurrent) => {
+    Alert.alert(
+      'Delete Routine',
+      isCurrent
+        ? `"${title}" is your current active routine. Deleting it will affect your analytics. Are you sure?`
+        : `Are you sure you want to delete "${title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            await remove(id);
+            setEditingNoteId(null);
+            if (isCurrent) {
+              setMode('edit');
+              setWorkoutNoteText('');
+              setWorkoutNoteTitle('');
+            }
+          } 
+        },
+      ]
+    );
+  };
+
+  const handleCreateRoutine = async () => {
+    const note = await add('New Routine', '');
+    handleOpenOtherNote(note);
+  };
+
   const handleSwitchCurrent = (id) => {
     const editingNote = notes.find(n => n.id === editingNoteId);
-    const hasUnsaved = editingNote && editingText !== editingNote.raw_text;
+    const hasUnsaved = editingNote && (editingText !== editingNote.raw_text || editingTitle !== editingNote.title);
 
     const doSwitch = async () => {
       if (hasUnsaved) {
         let saved;
         try {
-          saved = await update(editingNoteId, { raw_text: editingText });
+          saved = await update(editingNoteId, { 
+            title: editingTitle || 'Untitled Routine',
+            raw_text: editingText 
+          });
         } catch {
           setSaveError('Save failed. Routine was not switched.');
           return;
@@ -146,8 +197,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     const editingNote = notes.find(n => n.id === editingNoteId);
     return (
       <ScreenShell
-        title={editingNote?.title || 'Routine'}
-        subtitle="Edit raw note"
+        title={editingTitle || 'Routine'}
+        subtitle="Edit routine"
         headerRight={
           <Pressable onPress={() => setEditingNoteId(null)} style={styles.modeToggle}>
             <Text style={styles.modeToggleText}>Back</Text>
@@ -163,17 +214,23 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
         <View style={styles.editContainer}>
           <Card>
             <TextInput
+              value={editingTitle}
+              onChangeText={setEditingTitle}
+              placeholder="Routine Name (e.g. Push Day)"
+              placeholderTextColor={Colors.textMuted}
+              style={[styles.input, styles.titleInput]}
+            />
+            <TextInput
               value={editingText}
               onChangeText={setEditingText}
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
               placeholderTextColor={Colors.textMuted}
               multiline
-              autoFocus
               style={[styles.input, styles.editorInput]}
             />
             <Button
               onPress={handleSaveOtherNote}
-              title="Save note"
+              title="Save changes"
               disabled={noteIsSaving}
               style={styles.saveButton}
             />
@@ -183,6 +240,12 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             title="Switch to this routine"
             style={styles.switchButton}
             textStyle={styles.switchButtonText}
+          />
+          <Button
+            onPress={() => handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false)}
+            title="Delete routine"
+            style={styles.deleteButton}
+            textStyle={styles.deleteButtonText}
           />
         </View>
       </ScreenShell>
@@ -242,6 +305,13 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
         <View style={styles.editContainer}>
           <Card>
             <TextInput
+              value={workoutNoteTitle}
+              onChangeText={setWorkoutNoteTitle}
+              placeholder="Routine Name (e.g. Push Day)"
+              placeholderTextColor={Colors.textMuted}
+              style={[styles.input, styles.titleInput]}
+            />
+            <TextInput
               value={workoutNoteText}
               onChangeText={setWorkoutNoteText}
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
@@ -257,23 +327,39 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
               style={styles.saveButton}
             />
           </Card>
+          {currentId && (
+            <Button
+              onPress={() => handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true)}
+              title="Delete routine"
+              style={styles.deleteButton}
+              textStyle={styles.deleteButtonText}
+            />
+          )}
         </View>
       )}
 
-      {otherNotes.length > 0 && (
-        <View style={styles.previousRoutines}>
-          <SectionTitle>Routines</SectionTitle>
-          {otherNotes.map(other => (
-            <Card
-              key={other.id}
-              onPress={() => handleOpenOtherNote(other)}
-              style={styles.otherNoteCard}
-            >
-              <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-            </Card>
-          ))}
-        </View>
-      )}
+      <View style={styles.previousRoutines}>
+        {otherNotes.length > 0 && (
+          <>
+            <SectionTitle>Routines</SectionTitle>
+            {otherNotes.map(other => (
+              <Card
+                key={other.id}
+                onPress={() => handleOpenOtherNote(other)}
+                style={styles.otherNoteCard}
+              >
+                <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+              </Card>
+            ))}
+          </>
+        )}
+        <Button
+          onPress={handleCreateRoutine}
+          title="+ New routine"
+          style={styles.createButton}
+          textStyle={styles.createButtonText}
+        />
+      </View>
     </ScreenShell>
   );
 }
@@ -310,6 +396,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.text,
+  },
+  titleInput: {
+    marginBottom: 12,
+    fontWeight: '700',
   },
   editorInput: {
     minHeight: 250,
@@ -359,6 +449,14 @@ const styles = StyleSheet.create({
   switchButtonText: {
     color: Colors.accent,
   },
+  deleteButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  deleteButtonText: {
+    color: Colors.error,
+  },
   previousRoutines: {
     marginTop: 32,
     gap: 12,
@@ -370,5 +468,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.text,
+  },
+  createButton: {
+    marginTop: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderStyle: 'dashed',
+  },
+  createButtonText: {
+    color: Colors.accent,
   },
 });
