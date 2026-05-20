@@ -136,14 +136,15 @@ The real native app path now has a modular React Native shell:
   faithful to the raw text, parsed exercise tracking toggles in read mode (now
   visibly disabled until the persistence pipeline lands), inline `—` skip
   markers for bare `-` lines, a labeled bottom `Edit note` action in the read
- view, save handling that persists raw-note edits directly through the current
+  view, save handling that persists raw-note edits directly through the current
   workout-note store and returns the current routine to read mode on success
-  for visible confirmation, and a bottom `Routines` list that keeps each
+  for visible confirmation, a bottom `Routines` list that keeps each
   non-current routine collapsed to a title-only row until the user reopens it
-  in its own raw-note editor; switching the current workout now requires
-  explicit confirmation and does not proceed if saving pending edits fails;
-  Android back now exits edit subviews before falling through to tab-level
-  navigation
+  in its own raw-note editor, plus routine create/rename/delete controls with
+  confirmation and current-selection cleanup guardrails; switching the current
+  workout now requires explicit confirmation and does not proceed if saving
+  pending edits fails; Android back now exits edit subviews before falling
+  through to tab-level navigation
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
@@ -214,7 +215,10 @@ denser scannable history list, correct them in place, delete mistakes from
 inline row affordances, and immediately refresh the shared weight views after
 AsyncStorage updates. Each saved row also surfaces the change versus the next
 older weigh-in with visual severity cues for notable, spike, and outlier
-movement. It also now derives 7-day and 30-day rolling averages plus fast
+movement. The native Log flow now also supports creating additional routine
+notes, renaming existing routines, and deleting routines with confirmation
+while clearing the persisted current-routine pointer when the active routine is
+removed. It also now derives 7-day and 30-day rolling averages plus fast
 gain/loss pace flags from saved entries, and shows that trend feedback on
 both the Weight and Analytics screens with shared threshold bands: sub-`1.5 lb`
 daily deltas stay unflagged, `1.5-2.2 lb` changes render as notable
