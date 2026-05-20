@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, Pressable, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
@@ -12,8 +12,7 @@ export function LineChart({
   color = Colors.accent,
 }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
-  const screenWidth = Dimensions.get('window').width;
-  const chartWidth = screenWidth - 72; // Assuming parent card padding and container margins
+  const [chartWidth, setChartWidth] = useState(0);
 
   if (!data || data.length < 2) {
     return (
@@ -22,6 +21,11 @@ export function LineChart({
       </View>
     );
   }
+
+  const onLayout = (event) => {
+    const { width } = event.nativeEvent.layout;
+    setChartWidth(width);
+  };
 
   const values = data.map(d => d.value);
   const minVal = Math.min(...values);
@@ -34,6 +38,7 @@ export function LineChart({
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 
   const handlePress = (evt) => {
+    if (!chartWidth) return;
     const { locationX } = evt.nativeEvent;
     const index = Math.round((locationX - paddingHorizontal) / (chartWidth - 2 * paddingHorizontal) * (data.length - 1));
     if (index >= 0 && index < data.length) {
@@ -45,7 +50,7 @@ export function LineChart({
   const displayPoint = data[displayIndex];
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={onLayout}>
       <View style={styles.header}>
         <Text style={styles.latestLabel}>
           {selectedIndex !== null ? 'Selected' : 'Latest'}
@@ -57,37 +62,41 @@ export function LineChart({
       </View>
 
       <Pressable onPress={handlePress}>
-        <Svg width={chartWidth} height={height}>
-          <Polyline
-            points={points}
-            fill="none"
-            stroke={color}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {data.map((d, i) => (
-            <Circle
-              key={i}
-              cx={getX(i)}
-              cy={getY(d.value)}
-              r={i === displayIndex ? 5 : 3}
-              fill={i === displayIndex ? color : Colors.card}
-              stroke={color}
-              strokeWidth={2}
-            />
-          ))}
-          {selectedIndex !== null && (
-            <G>
-               <Rect
-                x={getX(selectedIndex) - 1}
-                y={0}
-                width={2}
-                height={height}
-                fill={color}
-                opacity={0.2}
+        <Svg width={chartWidth || '100%'} height={height}>
+          {chartWidth > 0 && (
+            <>
+              <Polyline
+                points={points}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
-            </G>
+              {data.map((d, i) => (
+                <Circle
+                  key={i}
+                  cx={getX(i)}
+                  cy={getY(d.value)}
+                  r={i === displayIndex ? 5 : 3}
+                  fill={i === displayIndex ? color : Colors.card}
+                  stroke={color}
+                  strokeWidth={2}
+                />
+              ))}
+              {selectedIndex !== null && (
+                <G>
+                   <Rect
+                    x={getX(selectedIndex) - 1}
+                    y={0}
+                    width={2}
+                    height={height}
+                    fill={color}
+                    opacity={0.2}
+                  />
+                </G>
+              )}
+            </>
           )}
         </Svg>
       </Pressable>
