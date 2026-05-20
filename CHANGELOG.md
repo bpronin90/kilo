@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.4 - 2026-05-20
+
+- Issue #113: Disabled the native Log-screen `Track` control until the
+  persistence pipeline lands, removed the silent tap-with-no-result behavior,
+  and updated `docs/current-state.md` to match the shipped read-view state.
+
 ## 0.27.3 - 2026-05-20
 
 - Issue #112: Fixed native Android hardware-back behavior so non-Home tabs
