@@ -63,7 +63,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       </View>
 
       <SectionTitle>1,000 lb Club</SectionTitle>
-      <Card onPress={() => onNavigate('Stats')} style={styles.oneKCard}>
+      <Card onPress={() => onNavigate('Analytics')} style={styles.oneKCard}>
         <View style={styles.oneKHeader}>
           <Text style={styles.oneKLabel}>Current Workout Progress</Text>
           <Text style={styles.oneKValue}>

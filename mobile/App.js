@@ -167,6 +167,7 @@ export default function App() {
             saving={weightSaving}
           />
         );
+      case 'Stats':
       case 'Analytics':
         return <StatsScreen entries={entries} />;
       case 'More':
