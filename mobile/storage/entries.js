@@ -316,6 +316,54 @@ export async function importBackup(payload, strategy = 'replace') {
   return { ok: true };
 }
 
+// One-time migration: convert the legacy single workout note (kilo_workout_note) into
+// the first entry in the multi-note notebook (kilo_workout_notes), marked as current.
+// No-op if the notebook already contains entries.
+// Migrated entry gets currentSince: null because the routine-start date is unknown.
+// Returns the notebook list after migration (empty array if nothing to migrate).
+export async function migrateToNotebook() {
+  const existing = await readList(WORKOUT_NOTES_KEY);
+  if (existing.length > 0) return existing;
+
+  const legacyNote = await loadWorkoutNote();
+  if (!legacyNote) return [];
+
+  const now = new Date().toISOString();
+  const item = {
+    id: `wn_${now.slice(0, 10)}_${Date.now()}`,
+    title: 'Routine 1',
+    raw_text: legacyNote.raw_text || '',
+    saved_at: legacyNote.saved_at || now,
+    updated_at: legacyNote.updated_at || now,
+    tracked_exercises: legacyNote.tracked_exercises || [],
+    one_k_exercises: legacyNote.one_k_exercises || null,
+    isCurrent: true,
+    currentSince: null,
+  };
+
+  await writeList(WORKOUT_NOTES_KEY, [item]);
+  await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(item.id));
+
+  return [item];
+}
+
+// Mark a note as the current routine, recording when it became current.
+// All other notes in the list are marked isCurrent: false.
+// If the note is already current its currentSince is preserved.
+// Also updates CURRENT_WORKOUT_ID_KEY for backward compatibility.
+export async function setCurrentWorkoutNote(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const now = new Date().toISOString();
+  const updated = list.map(n => {
+    if (n.id === id) {
+      return { ...n, isCurrent: true, currentSince: n.isCurrent ? n.currentSince : now };
+    }
+    return { ...n, isCurrent: false };
+  });
+  await writeList(WORKOUT_NOTES_KEY, updated);
+  await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(id));
+}
+
 // One-time migration: synthesize a raw note from legacy structured sessions.
 // No-op if the note already exists or there are no sessions to migrate.
 //
