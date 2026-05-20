@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Image, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
@@ -103,6 +103,25 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
 export function MoreScreen({ onNavigate, onExport, onImport }) {
   const [activeView, setActiveView] = useState('menu');
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const backAction = () => {
+      if (activeView !== 'menu') {
+        setActiveView('menu');
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, [activeView]);
 
   if (activeView === 'help') {
     return <HelpScreen onBack={() => setActiveView('menu')} />;

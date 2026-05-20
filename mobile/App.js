@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useState, useRef } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -36,6 +36,34 @@ export default function App() {
       setWorkoutNoteText(noteHook.currentNote.raw_text);
     }
   }, [noteHook.currentId, noteHook.currentNote]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const backAction = () => {
+      if (activeTab !== 'Home') {
+        setActiveTab('Home');
+        return true;
+      }
+      
+      Alert.alert('Hold on!', 'Are you sure you want to exit?', [
+        {
+          text: 'Cancel',
+          onPress: () => null,
+          style: 'cancel',
+        },
+        { text: 'YES', onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction,
+    );
+
+    return () => backHandler.remove();
+  }, [activeTab]);
 
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
