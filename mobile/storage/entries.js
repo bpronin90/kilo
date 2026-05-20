@@ -176,6 +176,10 @@ export async function saveWorkoutNoteItem(note) {
 export async function deleteWorkoutNoteItem(id) {
   const list = await readList(WORKOUT_NOTES_KEY);
   await writeList(WORKOUT_NOTES_KEY, list.filter(n => n.id !== id));
+  const currentId = await loadCurrentWorkoutId();
+  if (currentId === id) {
+    await clearCurrentWorkoutId();
+  }
 }
 
 export async function loadCurrentWorkoutId() {
