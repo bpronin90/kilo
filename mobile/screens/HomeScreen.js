@@ -3,43 +3,39 @@ import { Image, Pressable, Share, StyleSheet, Text, TextInput, View } from 'reac
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, Chip, StatCard, Button } from '../components/UI';
+import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../lib/parser';
+import { 
+  computeWeightRollingAverageSeries, 
+  derive1kTotal, 
+  DEFAULT_1K_EXERCISES 
+} from '../lib/data';
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
-    let volumeData = [];
     let totalWeeks = 0;
+    let oneK = null;
 
     if (workoutNote?.raw_text) {
       const { sections } = parseWorkoutNote(workoutNote.raw_text);
       totalWeeks = countWorkoutSessionsFromSections(sections);
-      const allExercises = sections.flatMap(s => s.exercises);
-      const maxRows = allExercises.reduce((m, ex) => Math.max(m, ex.rows.length), 0);
-      const sessionSets = [];
-      for (let i = 0; i < maxRows; i++) {
-        let sets = 0;
-        for (const ex of allExercises) {
-          if (i < ex.rows.length) sets += ex.rows[i].sets.length;
-        }
-        sessionSets.push(sets);
-      }
-      volumeData = sessionSets.slice(-7);
+      
+      const oneKSelections = {
+        ...DEFAULT_1K_EXERCISES,
+        ...(workoutNote?.one_k_exercises || {}),
+      };
+      oneK = derive1kTotal(sections, oneKSelections);
     }
 
-    const weightTrend = weightEntries
-      .slice(0, 7)
-      .reverse()
-      .map(e => e.weight_value);
-
+    const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
 
-    return { volumeData, weightTrend, latestWeight, totalWeeks };
+    return { weightSeries, oneK, latestWeight, totalWeeks };
   }, [weightEntries, workoutNote]);
 
   return (
@@ -66,47 +62,40 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </Card>
       </View>
 
-      <SectionTitle>Training Volume</SectionTitle>
-      <Card style={styles.graphCard}>
-        <Text style={styles.graphLabel}>Sets per session (Last 7)</Text>
-        <View style={styles.graphContainer}>
-          {dashboardData.volumeData.length > 0 ? (
-            dashboardData.volumeData.map((val, i) => (
-              <View key={i} style={styles.barContainer}>
-                <View 
-                  style={[
-                    styles.bar, 
-                    { height: Math.max(4, (val / Math.max(...dashboardData.volumeData, 1)) * 100) }
-                  ]} 
-                />
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyGraphText}>Log workouts to see volume trend.</Text>
-          )}
+      <SectionTitle>1,000 lb Club</SectionTitle>
+      <Card onPress={() => onNavigate('Stats')} style={styles.oneKCard}>
+        <View style={styles.oneKHeader}>
+          <Text style={styles.oneKLabel}>Current Workout Progress</Text>
+          <Text style={styles.oneKValue}>
+            {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
+            <Text style={styles.oneKUnit}> lb</Text>
+          </Text>
+        </View>
+        <View style={styles.progressBar}>
+          <View 
+            style={[
+              styles.progressFill, 
+              { width: `${Math.min(100, ((dashboardData.oneK?.total || 0) / 1000) * 100)}%` }
+            ]} 
+          />
+        </View>
+        <View style={styles.oneKBreakdown}>
+          <Text style={styles.oneKBreakdownText}>
+            S: {dashboardData.oneK?.squat?.toFixed(0) || '—'}  ·  
+            B: {dashboardData.oneK?.bench?.toFixed(0) || '—'}  ·  
+            D: {dashboardData.oneK?.deadlift?.toFixed(0) || '—'}
+          </Text>
         </View>
       </Card>
 
       <SectionTitle>Weight Trend</SectionTitle>
-      <Card style={styles.graphCard}>
-        <Text style={styles.graphLabel}>Last 7 weigh-ins</Text>
-        <View style={styles.graphContainer}>
-          {dashboardData.weightTrend.length > 0 ? (
-            dashboardData.weightTrend.map((val, i) => {
-              const min = Math.min(...dashboardData.weightTrend);
-              const max = Math.max(...dashboardData.weightTrend);
-              const range = max - min || 1;
-              const height = ((val - min) / range) * 80 + 20; // 20-100% height
-              return (
-                <View key={i} style={styles.barContainer}>
-                  <View style={[styles.bar, styles.weightBar, { height }]} />
-                </View>
-              );
-            })
-          ) : (
-            <Text style={styles.emptyGraphText}>Log weight to see trend.</Text>
-          )}
-        </View>
+      <Card onPress={() => onNavigate('Weight')} style={styles.chartCard}>
+        <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
+        <LineChart 
+          data={dashboardData.weightSeries} 
+          color={Colors.success} 
+          height={100}
+        />
       </Card>
     </ScreenShell>
   );
@@ -427,44 +416,59 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  graphCard: {
-    padding: 16,
-    gap: 16,
+  oneKCard: {
+    padding: 18,
+    gap: 12,
   },
-  graphLabel: {
-    fontSize: 13,
+  oneKHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  oneKLabel: {
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
   },
-  graphContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 100,
-    gap: 8,
-    paddingBottom: 4,
+  oneKValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.accent,
   },
-  barContainer: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    backgroundColor: Colors.accent,
-    borderRadius: 4,
-    width: '100%',
-  },
-  weightBar: {
-    backgroundColor: Colors.success,
-    opacity: 0.7,
-  },
-  emptyGraphText: {
-    flex: 1,
-    textAlign: 'center',
-    color: Colors.textMuted,
+  oneKUnit: {
     fontSize: 14,
-    fontStyle: 'italic',
-    alignSelf: 'center',
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: Colors.cardBorder,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: Colors.accent,
+  },
+  oneKBreakdown: {
+    alignItems: 'center',
+  },
+  oneKBreakdownText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  chartCard: {
+    padding: 18,
+    gap: 0,
+  },
+  chartLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: -8,
   },
   rowBetween: {
     flexDirection: 'row',

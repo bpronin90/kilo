@@ -224,6 +224,27 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
+// Compute a series of 7-day rolling averages for the last N weigh-in dates.
+// entries must be sorted newest-first.
+export function computeWeightRollingAverageSeries(entries, limit = 7) {
+  if (entries.length === 0) return [];
+
+  // We want the last 'limit' dates that have entries.
+  // Sort ascending by date to pick the last 'limit' dates.
+  const allDates = [...new Set(entries.map(e => e.date))].sort();
+  const targetDates = allDates.slice(-limit);
+
+  return targetDates.map(dateStr => {
+    const refDate = new Date(dateStr + 'T12:00:00');
+    const { avg7 } = computeWeightTrends(entries, refDate);
+    return {
+      value: avg7 !== null ? Number(avg7.toFixed(1)) : null,
+      label: dateStr.split('-').slice(1).join('/'), // MM/DD
+      unit: 'lb'
+    };
+  }).filter(d => d.value !== null);
+}
+
 // Default exercise selections for the 1k total slots.
 // Mirrors the primary compounds in KILO_EXERCISES for this program.
 export const DEFAULT_1K_EXERCISES = {
