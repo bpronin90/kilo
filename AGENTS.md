@@ -52,6 +52,15 @@ Do not read unrelated docs, specs, prototypes, source files, `README` files, or 
 
 If the issue lacks needed context, stop and report the missing context instead of searching broadly.
 
+## Execution Envelope
+
+For any assigned issue, derive and obey three explicit sets before taking action:
+- `Read Set`: only files and sources explicitly authorized by this policy and the issue
+- `Edit Set`: only files listed in `Allowed Files`, except reviewer closing-procedure exceptions
+- `Output Set`: only the required completion artifacts for that task
+
+If an action is not clearly inside one of those sets, stop and report the mismatch instead of proceeding.
+
 ## Scope Control
 
 Only edit files listed in the issue's `Allowed Files`.
