@@ -127,13 +127,13 @@ The real native app path now has a modular React Native shell:
   mirror of the canonical note that always renders day/section/exercise blocks
   faithful to the raw text, parsed exercise tracking toggles in read mode,
   inline `—` skip markers for bare `-` lines, a labeled bottom `Edit note`
-  action in the read view, attempt-scoped save handling that preserves the
-  editor's current context instead of bouncing back to the top-level read
-  view after a successful save, and a `Previous Routines` section that stays
-  visible even when the current note is empty so any non-current routine can
-  be reopened in its own raw-note editor; switching the current workout now
-  requires explicit confirmation and does not proceed if saving pending edits
-  fails
+  action in the read view, save handling that persists raw-note edits directly
+  through the current workout-note store and returns the current routine to
+  read mode on success for visible confirmation, and a `Previous Routines`
+  section that stays visible even when the current note is empty so any
+  non-current routine can be reopened in its own raw-note editor; switching
+  the current workout now requires explicit confirmation and does not proceed
+  if saving pending edits fails
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
