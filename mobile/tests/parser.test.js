@@ -1259,6 +1259,97 @@ describe('deriveProgressionSignals — progression status', () => {
   });
 });
 
+describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_trend', () => {
+  test('kilo_max equals all-time best Epley, not just latest session', () => {
+    // Monday: 100 8 (best ever); Wednesday: 90 8 (regression)
+    const note = 'Monday\n-Bench\n100 8\nWednesday\n-Bench\n90 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.kilo_max).toBeCloseTo(epleyPR(100, 8));
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
+    // kilo_max exceeds latest_pr when the note contains a historical best
+    expect(sig.kilo_max).toBeGreaterThan(sig.latest_pr);
+  });
+
+  test('kilo_max equals latest_pr on first session', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.kilo_max).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.kilo_max).toBeCloseTo(sig.latest_pr);
+  });
+
+  test('kilo_max is null for absent exercise', () => {
+    const { sections } = parseWorkoutNote('-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Squat']).exercises[0];
+    expect(sig.kilo_max).toBeNull();
+  });
+
+  test('latest_top_weight is highest weight_value in latest occurrence', () => {
+    // Two sets at different weights — top should be 90
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n85 6 90 4';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(90);
+  });
+
+  test('latest_top_weight reflects latest occurrence only, not historical max', () => {
+    // Peak weight was on Monday; Wednesday is lighter
+    const note = 'Monday\n-Bench\n100 6\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(80);
+  });
+
+  test('latest_top_weight is null for no-weight (rep-only) sets', () => {
+    const { sections } = parseWorkoutNote('-Bench\n8,8,8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBeNull();
+  });
+
+  test('overload_trend is first_session on single occurrence', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('first_session');
+  });
+
+  test('overload_trend up when latest top weight exceeds prior', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('up');
+  });
+
+  test('overload_trend down when latest top weight is below prior', () => {
+    const note = 'Monday\n-Bench\n90 8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('down');
+  });
+
+  test('overload_trend flat when latest top weight equals prior', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 6';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('flat');
+  });
+
+  test('overload_trend is first_session when prior occurrence has no weighted sets', () => {
+    // Monday is rep-only (no computable PR) → priorIdx stays -1 → treated as first_session
+    const note = 'Monday\n-Bench\n8,8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('first_session');
+  });
+
+  test('output shape includes all new fields', () => {
+    const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig).toHaveProperty('kilo_max');
+    expect(sig).toHaveProperty('latest_top_weight');
+    expect(sig).toHaveProperty('overload_trend');
+  });
+});
+
 // ── parseWorkoutNote — session_entries ────────────────────────────────────────
 
 describe('parseWorkoutNote — session_entries', () => {

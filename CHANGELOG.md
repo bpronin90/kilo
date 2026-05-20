@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.0 - 2026-05-19
+
+- Issue #109: Redesigned the native Analytics strength section by renaming the
+  old `1,000 lb Club` panel to a Big Three 1RM total, filtering 1k slot
+  selection down to strength lifts, and expanding tracked-lift cards to show
+  estimated 1RM, all-time Kilo max, latest top weight, and overload trend.
+  Added parser coverage for the new analytics outputs and updated
+  `docs/current-state.md` to match the shipped behavior.
+
 ## 0.26.0 - 2026-05-19
 
 - Issue #108: Compacted the native Analytics weight section into a single

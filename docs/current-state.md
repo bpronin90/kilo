@@ -143,8 +143,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
-  summary averages, alongside tracked-lift estimated-max values,
-  user-selectable 1k slot progress, progression status, and set-count context
+  summary averages, alongside a renamed Big Three 1RM total, strength-only 1k
+  slot selection, and tracked-lift cards that surface progression status,
+  latest estimated 1RM, all-time Kilo max, latest top weight, and overload
+  trend
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
@@ -240,9 +242,10 @@ per-day session count in the current workout note, so warmup and lifting
 sections under the same day heading count as one session rather than splitting
 the day across separate section blocks. The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
-estimated-max values, 1k progress, progression status, and set-count context
-in one minimal analytics view while keeping totals in sync with canonical
-workout-note refreshes. A separate native More tab now exposes Help and
+estimated-max values, Big Three 1RM progress, progression status, Kilo max,
+latest top weight, and overload trend in one minimal analytics view while
+keeping totals in sync with canonical workout-note refreshes. A separate native
+More tab now exposes Help and
 About surfaces while keeping the parent More quick actions intact; the Help
 surface now uses the shared top-safe-area header treatment, a local accessible
 header back control, and a centered Kilo logo placed above the Help and
@@ -293,7 +296,8 @@ The MVP canonical parse path is fully implemented and tested.
 - `deriveProgressionSignals(sections, trackedNames)` — walks backward through
   tracked exercise occurrences to compare the latest comparable weighted result
   to the prior comparable result, returning improved, held, regressed, or
-  first-session progression status plus a same-session top-weight
+  first-session progression status plus latest-session estimated 1RM, all-time
+  Kilo max, latest top weight, overload trend, and same-session top-weight
   `repeatability_score`.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, legacy helpers)

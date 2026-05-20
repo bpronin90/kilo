@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { computeWeightTrends, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName } from '../lib/data';
 import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -39,7 +39,7 @@ export function StatsScreen() {
     if (!note?.raw_text) return [];
     const { sections } = parseWorkoutNote(note.raw_text);
     const names = sections.flatMap(s => s.exercises.map(e => e.name));
-    return [...new Set(names)];
+    return [...new Set(names)].filter(isStrengthExerciseName);
   }, [note]);
 
   const analytics = useMemo(() => {
@@ -106,7 +106,7 @@ export function StatsScreen() {
       <SectionTitle>Strength</SectionTitle>
       {analytics?.oneK?.total ? (
         <Card style={styles.oneKCard}>
-          <Text style={styles.oneKLabel}>1,000 lb Club Progress</Text>
+          <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
           <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
           <View style={styles.oneKBreakdown}>
             <View style={styles.oneKItem}>
@@ -132,7 +132,7 @@ export function StatsScreen() {
       )}
 
       <Card style={styles.slotCard}>
-        <Text style={styles.slotCardTitle}>1k exercise slots</Text>
+        <Text style={styles.slotCardTitle}>Slot assignments</Text>
         {(['bench', 'squat', 'deadlift']).map(slot => (
           <View key={slot}>
             <Pressable
@@ -180,17 +180,29 @@ export function StatsScreen() {
               </View>
               <View style={styles.signalMeta}>
                 <View>
-                  <Text style={styles.signalLabel}>Est. Max</Text>
+                  <Text style={styles.signalLabel}>Est. 1RM</Text>
                   <Text style={styles.signalValue}>
                     {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
                   </Text>
                 </View>
-                {sig.repeatability_score > 1 && (
-                  <View>
-                    <Text style={styles.signalLabel}>Sets</Text>
-                    <Text style={styles.signalValue}>{sig.repeatability_score} sets</Text>
-                  </View>
-                )}
+                <View>
+                  <Text style={styles.signalLabel}>Kilo max</Text>
+                  <Text style={styles.signalValue}>
+                    {sig.kilo_max ? `${sig.kilo_max.toFixed(0)} lb` : '—'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.signalLabel}>Top weight</Text>
+                  <Text style={styles.signalValue}>
+                    {sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.signalLabel}>Overload</Text>
+                  <Text style={styles.signalValue}>
+                    {formatOverload(sig.overload_trend)}
+                  </Text>
+                </View>
               </View>
             </Card>
           ))
@@ -209,6 +221,16 @@ function formatStatus(status) {
     case 'improved': return 'Improved';
     case 'held': return 'Held';
     case 'regressed': return 'Regressed';
+    case 'first_session': return 'First';
+    default: return '—';
+  }
+}
+
+function formatOverload(trend) {
+  switch (trend) {
+    case 'up': return '↑ Up';
+    case 'flat': return '→ Flat';
+    case 'down': return '↓ Down';
     case 'first_session': return 'First';
     default: return '—';
   }
@@ -415,7 +437,9 @@ const styles = StyleSheet.create({
   },
   signalMeta: {
     flexDirection: 'row',
-    gap: 32,
+    flexWrap: 'wrap',
+    gap: 16,
+    rowGap: 12,
   },
   signalLabel: {
     fontSize: 12,

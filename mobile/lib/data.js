@@ -79,6 +79,17 @@ export function exercisesForDay(day) {
   return KILO_EXERCISES.filter(e => e.day === day);
 }
 
+const _WARMUP_NAMES = new Set(KILO_EXERCISES.filter(e => e.cat === 'warmup').map(e => e.name.toLowerCase()));
+const _NON_LIFT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|swim|cardio|rowing machine|ski erg)\b/i;
+
+// Returns true when an exercise name is likely a strength lift rather than warmup or cardio.
+export function isStrengthExerciseName(name) {
+  if (!name) return false;
+  if (_WARMUP_NAMES.has(name.toLowerCase())) return false;
+  if (_NON_LIFT_RE.test(name)) return false;
+  return true;
+}
+
 // Return the default set of tracked exercise names (those with po: true)
 export function getDefaultTrackedNames() {
   return [...new Set(KILO_EXERCISES.filter(e => e.po).map(e => e.name))];
