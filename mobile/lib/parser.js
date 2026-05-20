@@ -519,6 +519,13 @@ function _occurrenceRepeatabilityScore(occurrence) {
   return weighted.filter(s => s.weight_value === maxWeight).length;
 }
 
+// Highest completed weight_value in one occurrence.
+function _occurrenceTopWeight(occurrence) {
+  const weighted = occurrence.sets.filter(s => s.weight_value !== null && s.weight_value > 0);
+  if (weighted.length === 0) return null;
+  return Math.max(...weighted.map(s => s.weight_value));
+}
+
 // deriveProgressionSignals: progression status and repeatability context for tracked exercises.
 //
 // Compares the latest occurrence against the most recent prior occurrence with a computable PR.
@@ -562,9 +569,10 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const latestOcc = occs[latestIdx];
       const latest_pr = _occurrencePR(latestOcc);
       const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
+      const latest_top_weight = _occurrenceTopWeight(latestOcc);
 
       if (priorIdx === -1) {
-        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, repeatability_score };
+        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, repeatability_score, latest_top_weight };
       }
 
       const prior_pr = _occurrencePR(occs[priorIdx]);
@@ -572,7 +580,7 @@ export function deriveProgressionSignals(sections, trackedNames) {
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
 
-      return { name, progression_status, latest_pr, prior_pr, repeatability_score };
+      return { name, progression_status, latest_pr, prior_pr, repeatability_score, latest_top_weight };
     }),
   };
 }
