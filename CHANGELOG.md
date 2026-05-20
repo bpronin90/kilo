@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.0 - 2026-05-19
+
+- Issue #107: Replaced the native Home mini-analytics cards by removing the
+  old sets-per-session panel, adding a current-workout `1,000 lb Club`
+  progress card derived from the latest tracked lift results, and switching
+  the weight surface to a compact 7-day rolling-average line chart with the
+  shared tap-to-inspect value display. Updated `docs/current-state.md` and
+  `docs/mvp-roadmap.md` to match the shipped Home behavior.
+
 ## 0.24.0 - 2026-05-19
 
 - Issue #106: Added a reusable compact native line-chart primitive for the

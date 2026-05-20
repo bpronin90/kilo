@@ -39,6 +39,10 @@ The repo now has a real native app scaffold under `mobile/`.
   saved weight goals, tied the estimate to the derived gain/loss/maintain
   direction, and kept the feature local-only without expanding into broader
   nutrition planning.
+- Issue #107 replaced the native Home mini-analytics cards by removing the
+  old sets-per-session panel, adding current-workout `1,000 lb Club` progress,
+  and switching the weight surface to a compact 7-day rolling-average line
+  chart.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

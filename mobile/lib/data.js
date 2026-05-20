@@ -224,6 +224,27 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
+// Compute a series of 7-day rolling averages for the last N weigh-in dates.
+// entries must be sorted newest-first.
+export function computeWeightRollingAverageSeries(entries, limit = 7) {
+  if (entries.length === 0) return [];
+
+  // We want the last 'limit' dates that have entries.
+  // Sort ascending by date to pick the last 'limit' dates.
+  const allDates = [...new Set(entries.map(e => e.date))].sort();
+  const targetDates = allDates.slice(-limit);
+
+  return targetDates.map(dateStr => {
+    const refDate = new Date(dateStr + 'T12:00:00');
+    const { avg7 } = computeWeightTrends(entries, refDate);
+    return {
+      value: avg7 !== null ? Number(avg7.toFixed(1)) : null,
+      label: dateStr.split('-').slice(1).join('/'), // MM/DD
+      unit: 'lb'
+    };
+  }).filter(d => d.value !== null);
+}
+
 // Default exercise selections for the 1k total slots.
 // Mirrors the primary compounds in KILO_EXERCISES for this program.
 export const DEFAULT_1K_EXERCISES = {
@@ -232,14 +253,14 @@ export const DEFAULT_1K_EXERCISES = {
   deadlift: 'Deadlift',
 };
 
-// derive1kTotal: sum estimated PRs for the selected bench, squat, and deadlift exercises.
+// derive1kTotal: sum latest estimated PRs for the selected bench, squat, and deadlift exercises.
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
-// total is null when any selected exercise has no estimated PR in the note.
+// total is null when any selected exercise has no latest PR in the note.
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
   const { exercises } = deriveTrackedPRs(sections, [bench, squat, deadlift]);
-  const byName = new Map(exercises.map(e => [e.name, e.estimated_pr]));
+  const byName = new Map(exercises.map(e => [e.name, e.latest_pr]));
   const benchPR = byName.get(bench) ?? null;
   const squatPR = byName.get(squat) ?? null;
   const deadliftPR = byName.get(deadlift) ?? null;
