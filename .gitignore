@@ -3,3 +3,5 @@ www/
 .env*
 .DS_Store
 .claude/
+.antigravitycli/
+.antigravitiycli/

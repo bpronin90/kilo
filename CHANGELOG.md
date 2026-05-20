@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.0 - 2026-05-19
+
+- Issue #106: Added a reusable compact native line-chart primitive for the
+  shared mobile UI layer, with latest-value display and tap-to-inspect point
+  selection while removing hard-coded screen-width assumptions so future Home
+  and Analytics chart surfaces can embed it in different layout contexts.
+
 ## 0.23.0 - 2026-05-19
 
 - Issue #105: Added a lightweight advisory calorie-estimate helper for native
