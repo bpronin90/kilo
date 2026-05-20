@@ -148,13 +148,15 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
-    const isEditingThis = editingNoteId === id;
-    const hasUnsaved = isEditingThis && (editingText !== note.raw_text || editingTitle !== note.title);
+    // Check if there are unsaved changes in the editor for ANY routine
+    const isEditing = editingNoteId !== null;
+    const editingNote = isEditing ? notes.find(n => n.id === editingNoteId) : null;
+    const hasUnsaved = isEditing && editingNote && (editingText !== editingNote.raw_text || editingTitle !== editingNote.title);
 
     const doSwitch = async () => {
       if (hasUnsaved) {
         try {
-          await update(id, { 
+          await update(editingNoteId, { 
             title: editingTitle || 'Untitled Routine',
             raw_text: editingText 
           });
@@ -167,11 +169,16 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       setEditingNoteId(null);
     };
 
+    const alertTitle = 'Set as Current Routine';
+    let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
+    
+    if (hasUnsaved) {
+      alertMessage = `Your unsaved changes in "${editingNote.title || 'Untitled Routine'}" will be saved before switching. Continue?`;
+    }
+
     Alert.alert(
-      'Set as Current Routine',
-      hasUnsaved
-        ? 'Your edits will be saved and this routine will become your current workout. Continue?'
-        : `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`,
+      alertTitle,
+      alertMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Set as Current', onPress: doSwitch },
