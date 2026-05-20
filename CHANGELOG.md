@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.28.1 - 2026-05-20
+
+- Issue #117: Migrated native workout-note storage from the legacy single-note
+  shape into the multi-routine notebook model, including one-time backfill of
+  a `Routine 1` current entry for old local data, normalization of older
+  notebook rows so they carry `isCurrent` and `currentSince`, and regression
+  coverage for migration, persistence, and current-routine metadata. Updated
+  `docs/current-state.md`, `docs/architecture.md`, and `docs/mvp-roadmap.md`
+  to match the shipped storage behavior.
+
 ## 0.28.0 - 2026-05-20
 
 - Issue #116: Added a low-prominence fatigue-multiplier setting to the More

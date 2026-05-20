@@ -176,18 +176,21 @@ The real native app path now has a modular React Native shell:
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
-  current selection, and persisted note items retain `tracked_exercises` and
+  current selection, and persisted note items now carry `isCurrent` plus
+  `currentSince` metadata alongside the retained `tracked_exercises` and
   `one_k_exercises` selections. It also persists a lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`, and
   `saved_at`, plus a persisted Kilo fatigue multiplier under
   `kilo_fatigue_multiplier`. The legacy structured workout-session key is
-  retained only as a one-time migration source. The local Data & Backup
-  recovery path now exports a versioned v2 snapshot (weight entries, workout
-  notes, current workout id, optional weight goal, and optional fatigue
-  multiplier), validates that payload before any write, restores the full
-  multi-note model plus weight goal and fatigue multiplier on v2 import, and
-  still accepts older v1 backups to restore weight history without wiping the
-  newer workout-note state
+  retained only as a one-time migration source, and the older single-note key
+  is now also migrated forward into the notebook model by synthesizing a
+  `Routine 1` current entry with `currentSince: null` when historic start-date
+  data is unavailable. The local Data & Backup recovery path now exports a
+  versioned v2 snapshot (weight entries, workout notes, current workout id,
+  optional weight goal, and optional fatigue multiplier), validates that
+  payload before any write, restores the full multi-note model plus weight goal
+  and fatigue multiplier on v2 import, and still accepts older v1 backups to
+  restore weight history without wiping the newer workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves through the current item

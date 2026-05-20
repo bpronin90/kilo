@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem } from '../lib/data';
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
 
@@ -178,5 +178,56 @@ describe('computeWeightPaceLevel', () => {
       { date: '2026-05-20', weight_value: 187.4 },
     ];
     expect(computeWeightPaceLevel(entries)).toBe('spike');
+  });
+});
+
+// ── makeWorkoutNoteItem ───────────────────────────────────────────────────────
+
+describe('makeWorkoutNoteItem', () => {
+  test('returns an object with id, title, raw_text, timestamps, tracked_exercises, one_k_exercises', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day' });
+    expect(typeof item.id).toBe('string');
+    expect(item.title).toBe('Push Day');
+    expect(typeof item.raw_text).toBe('string');
+    expect(item.saved_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(item.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(Array.isArray(item.tracked_exercises)).toBe(true);
+    expect(item.one_k_exercises).toBeNull();
+  });
+
+  test('defaults isCurrent to false', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day' });
+    expect(item.isCurrent).toBe(false);
+  });
+
+  test('defaults currentSince to null', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day' });
+    expect(item.currentSince).toBeNull();
+  });
+
+  test('accepts isCurrent: true', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true });
+    expect(item.isCurrent).toBe(true);
+  });
+
+  test('accepts a currentSince timestamp', () => {
+    const ts = '2026-05-20T10:00:00.000Z';
+    const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true, currentSince: ts });
+    expect(item.currentSince).toBe(ts);
+  });
+
+  test('defaults raw_text to empty string', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day' });
+    expect(item.raw_text).toBe('');
+  });
+
+  test('uses provided raw_text', () => {
+    const item = makeWorkoutNoteItem({ title: 'Push Day', raw_text: '-Squat\n225 5,5,5' });
+    expect(item.raw_text).toBe('-Squat\n225 5,5,5');
+  });
+
+  test('id follows wn_YYYY-MM-DD_timestamp format', () => {
+    const item = makeWorkoutNoteItem({ title: 'Test' });
+    expect(item.id).toMatch(/^wn_\d{4}-\d{2}-\d{2}_\d+$/);
   });
 });
