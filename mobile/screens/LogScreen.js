@@ -39,7 +39,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   }, [editingNoteId, mode, workoutNoteText]);
 
   const { notes, currentId, selectCurrent, update, add } = useWorkoutNotes();
-  const currentNote = notes.find(n => n.id === currentId);
   const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => {
