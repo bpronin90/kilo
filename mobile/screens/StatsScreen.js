@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName } from '../lib/data';
 import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -23,6 +23,7 @@ export function StatsScreen() {
       avg7:  trends.avg7  !== null ? `${trends.avg7.toFixed(1)} ${unit}`  : '—',
       avg30: trends.avg30 !== null ? `${trends.avg30.toFixed(1)} ${unit}` : '—',
       paceFlag: trends.paceFlag,
+      paceLevel: computeWeightPaceLevel(weightEntries),
     };
   }, [weightEntries]);
 
@@ -81,7 +82,7 @@ export function StatsScreen() {
             <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
           </View>
           {weightSummary.paceFlag && (
-            <View style={[styles.paceBadge, weightSummary.paceFlag === 'gain' ? styles.paceGain : styles.paceLoss]}>
+            <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
               <Text style={styles.paceText}>
                 {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
               </Text>
@@ -266,10 +267,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
-  paceGain: {
+  paceSpike: {
     backgroundColor: Colors.error,
   },
-  paceLoss: {
+  paceNotable: {
     backgroundColor: Colors.accent,
   },
   paceText: {

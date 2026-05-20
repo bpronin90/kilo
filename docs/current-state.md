@@ -206,7 +206,10 @@ AsyncStorage updates. Each saved row also surfaces the change versus the next
 older weigh-in with visual severity cues for notable, spike, and outlier
 movement. It also now derives 7-day and 30-day rolling averages plus fast
 gain/loss pace flags from saved entries, and shows that trend feedback on
-both the Weight and Stats screens. The native Weight screen now also supports
+both the Weight and Analytics screens with shared threshold bands: sub-`1.5 lb`
+daily deltas stay unflagged, `1.5-2.2 lb` changes render as notable
+yellow/amber warnings, and `>= 2.3 lb` changes render as red spike warnings.
+The native Weight screen now also supports
 a lightweight saved goal with target weight and target date, derives gain,
 loss, or maintain direction plus required weekly pace from the latest saved
 weight entry, surfaces unrealistic or unhealthy pace warnings as advisory-only

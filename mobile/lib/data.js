@@ -1,5 +1,6 @@
 // Native entry model factories and exercise catalog
 import { deriveTrackedPRs } from './parser.js';
+import { classifyWeightPace } from './format.js';
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -146,20 +147,26 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
   const avg30 = mean(w30);
 
   let paceFlag = null;
-  const win = w7.length >= 2 ? w7 : w30.length >= 2 ? w30 : null;
-  if (win) {
-    // Use reduce to find endpoints by date value — input may be sorted by logged_at, not date.
-    const newest = win.reduce((a, b) => (a.date >= b.date ? a : b));
-    const oldest = win.reduce((a, b) => (a.date <= b.date ? a : b));
-    const days = (new Date(newest.date) - new Date(oldest.date)) / MS_DAY;
-    if (days > 0) {
-      const rate = (newest.weight_value - oldest.weight_value) / (days / 7);
-      if (rate >  0.5) paceFlag = 'gain';
-      else if (rate < -0.5) paceFlag = 'loss';
-    }
+  if (entries.length >= 2) {
+    // Sort by date so backdated entries logged out of order don't flip the delta.
+    const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+    const delta = byDate[0].weight_value - byDate[1].weight_value;
+    const classified = classifyWeightPace(delta);
+    paceFlag = classified ? classified.direction : null;
   }
 
   return { avg7, avg30, paceFlag };
+}
+
+// Return the severity level of the pace flag for the two most recent entries.
+// entries must contain { date: 'YYYY-MM-DD', weight_value: number }; order does not matter.
+// Returns 'notable' | 'spike' | null.
+export function computeWeightPaceLevel(entries) {
+  if (!entries || entries.length < 2) return null;
+  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  const delta = byDate[0].weight_value - byDate[1].weight_value;
+  const classified = classifyWeightPace(delta);
+  return classified ? classified.level : null;
 }
 
 // Derive direction, required weekly pace, and advisory warnings from a weight goal.

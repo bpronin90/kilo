@@ -6,7 +6,7 @@ import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
 import { formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
-import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 
 function GoalDerived({ info }) {
   if (!info) return null;
@@ -49,6 +49,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalTargetDate, setGoalTargetDate] = useState('');
   const [goalError, setGoalError] = useState('');
   const trends = useMemo(() => computeWeightTrends(entries), [entries]);
+  const paceLevel = useMemo(() => computeWeightPaceLevel(entries), [entries]);
 
   // Populate form inputs when a saved goal loads
   React.useEffect(() => {
@@ -286,7 +287,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             ) : null}
             {trends.paceFlag ? (
               <View style={styles.trendItem}>
-                <Text style={[styles.trendValue, trends.paceFlag === 'gain' ? styles.paceGain : styles.paceLoss]}>
+                <Text style={[styles.trendValue, paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
                   {trends.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
                 </Text>
                 <Text style={styles.trendLabel}>pace flag</Text>
@@ -522,10 +523,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
   },
-  paceGain: {
+  paceSpike: {
     color: Colors.error,
   },
-  paceLoss: {
+  paceNotable: {
     color: Colors.accent,
   },
   goalCard: {

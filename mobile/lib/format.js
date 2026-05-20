@@ -41,3 +41,13 @@ export function getWeightDeltaSeverity(delta) {
   if (abs > 1.5) return 'notable';
   return 'normal';
 }
+
+// Classify a weight delta (today − yesterday) into a pace flag.
+// Returns null when the change is within normal range.
+// Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.
+export function classifyWeightPace(delta) {
+  if (delta === null || delta === undefined) return null;
+  const abs = Math.abs(delta);
+  if (abs < 1.5) return null;
+  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= 2.3 ? 'spike' : 'notable' };
+}
