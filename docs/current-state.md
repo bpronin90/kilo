@@ -116,12 +116,16 @@ The real native app path now has a modular React Native shell:
 - `mobile/App.js` owns tab state, routes weight saves through the canonical
   parser path, routes workout saves through the current-workout path in the
   multi-note workout store, adapts persisted entries for the Home and Analytics
-  surfaces, and now exposes a separate More tab for Help, About, and a
-  local Data & Backup export/import/recovery surface
+  surfaces, now keeps Android hardware-back inside the app by returning
+  non-Home tabs to Home and gating root exit behind confirmation, and exposes
+  a separate More tab for Help, About, and a local Data & Backup
+  export/import/recovery surface
 - `mobile/screens/HomeScreen.js` renders a native dashboard with tappable
   summary-card shortcuts into Weight and Log, a current-workout `1,000 lb
   Club` progress card, a compact 7-day rolling-average weight line chart, and
-  the exported More/Help/About/Data & Backup surfaces used by the More tab
+  the exported More/Help/About/Data & Backup surfaces used by the More tab;
+  the More subviews now intercept Android back presses and return to the More
+  menu before falling through to tab-level navigation
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
@@ -133,7 +137,8 @@ The real native app path now has a modular React Native shell:
   section that stays visible even when the current note is empty so any
   non-current routine can be reopened in its own raw-note editor; switching
   the current workout now requires explicit confirmation and does not proceed
-  if saving pending edits fails
+  if saving pending edits fails; Android back now exits edit subviews before
+  falling through to tab-level navigation
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
@@ -190,7 +195,9 @@ native Log and Weight flows now keep save actions responsive on the first tap
 even with the keyboard visible, guard against duplicate in-flight saves, and
 keep the bottom tab bar reachable above the iOS keyboard. Successful native
 weight saves now keep the user on the Weight screen instead of bouncing them
-back to Home.
+back to Home. Android hardware-back now stays inside the native app flow:
+non-Home tabs return to Home first, the More and Log screens pop their own
+subviews before yielding, and the Home root shows an exit confirmation.
 The native Weight screen now also lets the user reopen saved entries from a
 denser scannable history list, correct them in place, delete mistakes from
 inline row affordances, and immediately refresh the shared weight views after

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.3 - 2026-05-20
+
+- Issue #112: Fixed native Android hardware-back behavior so non-Home tabs
+  route back toward Home instead of exiting immediately, the More and Log
+  flows pop their own in-screen subviews before falling through, and the Home
+  root now shows an exit confirmation instead of closing the app outright.
+  Updated `docs/current-state.md` to match the shipped mobile navigation
+  behavior.
+
 ## 0.27.2 - 2026-05-20
 
 - Issue #111: Fixed the native Log raw-note Save flow so current-note edits
