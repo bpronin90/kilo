@@ -139,12 +139,14 @@ The real native app path now has a modular React Native shell:
   view, save handling that persists raw-note edits directly through the current
   workout-note store and returns the current routine to read mode on success
   for visible confirmation, a bottom `Routines` list that keeps each
-  non-current routine collapsed to a title-only row until the user reopens it
-  in its own raw-note editor, plus routine create/rename/delete controls with
-  confirmation and current-selection cleanup guardrails; switching the current
-  workout now requires explicit confirmation and does not proceed if saving
-  pending edits fails; Android back now exits edit subviews before falling
-  through to tab-level navigation
+  non-current routine collapsed to a compact row that can either reopen its
+  raw-note editor or mark that routine current through an inline action, plus
+  routine create/rename/delete controls with confirmation and
+  current-selection cleanup guardrails; switching the current workout now
+  requires explicit confirmation, records a real `currentSince` timestamp when
+  a different routine becomes current, and does not proceed if saving pending
+  edits fails; Android back now exits edit subviews before falling through to
+  tab-level navigation
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
@@ -248,10 +250,11 @@ comparable result without changing the formal estimated-PR formula. The native
 Home and Analytics tabs now derive workout activity consistently from the
 currently selected workout note in the same multi-note store used by the Log
 screen, and the Log flow now keeps the selected current routine in the full
-parsed-workout view while rendering every non-current routine as a collapsed
-title-only row in the bottom `Routines` list, where it can be reopened in a
-dedicated raw-note editor before optionally being promoted to the current
-workout through an explicit confirmation step. The local backup/import path
+parsed-workout view while rendering every non-current routine as a compact row
+in the bottom `Routines` list, where it can be reopened in a dedicated
+raw-note editor or promoted directly to the current workout through an
+explicit confirmation step that also preserves any pending draft before
+switching. The local backup/import path
 also now preserves multiple
 titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is

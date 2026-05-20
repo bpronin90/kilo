@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.31.0 - 2026-05-20
+
+- Issue #120: Added native Log-tab `Set current` actions for non-current
+  routines, requiring confirmation before routine switches, preserving pending
+  edits before the switch, and recording a real `currentSince` timestamp when
+  a different routine becomes current. Updated `docs/current-state.md` and
+  `docs/mvp-roadmap.md` to match the shipped behavior.
+
 ## 0.30.0 - 2026-05-20
 
 - Issue #119: Added native Log-tab routine CRUD controls so users can create,
