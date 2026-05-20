@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.0 - 2026-05-19
+
+- Issue #108: Compacted the native Analytics weight section into a single
+  summary card with latest weigh-in, corrected shared pace warning, embedded
+  7-day rolling-average chart, and 7-day/30-day averages while removing the
+  low-value totals layout. Updated `docs/current-state.md` to match the
+  shipped Analytics behavior.
+
 ## 0.25.0 - 2026-05-19
 
 - Issue #107: Replaced the native Home mini-analytics cards by removing the

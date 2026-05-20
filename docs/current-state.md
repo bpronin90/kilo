@@ -140,9 +140,11 @@ The real native app path now has a modular React Native shell:
   (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, plus a
   lightweight goal card for target weight and target date with derived pace
   and advisory warnings
-- `mobile/screens/StatsScreen.js` now renders a native analytics surface for
-  weight trends, tracked-lift estimated-max values, user-selectable 1k slot
-  progress, progression status, and set-count context
+- `mobile/screens/StatsScreen.js` now renders a native analytics surface with
+  a compact weight-trends card that highlights the latest weigh-in, corrected
+  pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
+  summary averages, alongside tracked-lift estimated-max values,
+  user-selectable 1k slot progress, progression status, and set-count context
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system

@@ -10,6 +10,7 @@ export function LineChart({
   paddingHorizontal = 10,
   strokeWidth = 3,
   color = Colors.accent,
+  hideHeader = false,
 }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [chartWidth, setChartWidth] = useState(0);
@@ -51,15 +52,17 @@ export function LineChart({
 
   return (
     <View style={styles.container} onLayout={onLayout}>
-      <View style={styles.header}>
-        <Text style={styles.latestLabel}>
-          {selectedIndex !== null ? 'Selected' : 'Latest'}
-        </Text>
-        <Text style={styles.latestValue}>
-          {displayPoint.value}
-          <Text style={styles.unit}>{displayPoint.unit || ''}</Text>
-        </Text>
-      </View>
+      {!hideHeader && (
+        <View style={styles.header}>
+          <Text style={styles.latestLabel}>
+            {selectedIndex !== null ? 'Selected' : 'Latest'}
+          </Text>
+          <Text style={styles.latestValue}>
+            {displayPoint.value}
+            <Text style={styles.unit}>{displayPoint.unit || ''}</Text>
+          </Text>
+        </View>
+      )}
 
       <Pressable onPress={handlePress}>
         <Svg width={chartWidth || '100%'} height={height}>
