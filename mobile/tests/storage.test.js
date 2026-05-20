@@ -1411,6 +1411,71 @@ describe('migrateToNotebook', () => {
     expect(notes[0].isCurrent).toBe(true);
     expect(notes[0].currentSince).toBeNull();
   });
+
+  // normalization of pre-existing entries missing the new fields
+  test('normalizes pre-existing notebook entry missing isCurrent and currentSince', async () => {
+    const OLD = { id: 'wn_old', title: 'Old Routine', raw_text: 'old text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(OLD);
+    const result = await migrateToNotebook();
+    expect(result).toHaveLength(1);
+    expect(result[0].isCurrent).toBe(false);
+    expect(result[0].currentSince).toBeNull();
+    expect(result[0].raw_text).toBe('old text');
+  });
+
+  test('normalization marks the stored current note isCurrent: true', async () => {
+    const OLD = { id: 'wn_old', title: 'Old Routine', raw_text: 'text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(OLD);
+    await saveCurrentWorkoutId('wn_old');
+    const result = await migrateToNotebook();
+    expect(result[0].isCurrent).toBe(true);
+    expect(result[0].currentSince).toBeNull();
+  });
+
+  test('normalization marks non-current notes isCurrent: false', async () => {
+    const NOTE_A = { id: 'wn_a', title: 'A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    const NOTE_B = { id: 'wn_b', title: 'B', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(NOTE_A);
+    await saveWorkoutNoteItem(NOTE_B);
+    await saveCurrentWorkoutId('wn_b');
+    const result = await migrateToNotebook();
+    expect(result.find(n => n.id === 'wn_a').isCurrent).toBe(false);
+    expect(result.find(n => n.id === 'wn_b').isCurrent).toBe(true);
+  });
+
+  test('normalization with no stored current id sets all isCurrent: false', async () => {
+    const OLD = { id: 'wn_old', title: 'Old', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(OLD);
+    const result = await migrateToNotebook();
+    expect(result[0].isCurrent).toBe(false);
+  });
+
+  test('normalization persists the updated shape so loadWorkoutNotes returns the new fields', async () => {
+    const OLD = { id: 'wn_old', title: 'Old', raw_text: 'text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(OLD);
+    await migrateToNotebook();
+    const notes = await loadWorkoutNotes();
+    expect('isCurrent' in notes[0]).toBe(true);
+    expect('currentSince' in notes[0]).toBe(true);
+  });
+
+  test('normalization preserves existing isCurrent and currentSince when already set', async () => {
+    const NOTE = { id: 'wn_a', title: 'A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: true, currentSince: '2026-05-01T00:00:00.000Z' };
+    await saveWorkoutNoteItem(NOTE);
+    const result = await migrateToNotebook();
+    expect(result[0].isCurrent).toBe(true);
+    expect(result[0].currentSince).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  test('normalization is idempotent — second call returns same shape without re-writing', async () => {
+    const OLD = { id: 'wn_old', title: 'Old', raw_text: 'text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
+    await saveWorkoutNoteItem(OLD);
+    await saveCurrentWorkoutId('wn_old');
+    const first = await migrateToNotebook();
+    const second = await migrateToNotebook();
+    expect(second[0].isCurrent).toBe(first[0].isCurrent);
+    expect(second[0].currentSince).toBe(first[0].currentSince);
+  });
 });
 
 // ── setCurrentWorkoutNote ─────────────────────────────────────────────────────

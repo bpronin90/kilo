@@ -323,7 +323,24 @@ export async function importBackup(payload, strategy = 'replace') {
 // Returns the notebook list after migration (empty array if nothing to migrate).
 export async function migrateToNotebook() {
   const existing = await readList(WORKOUT_NOTES_KEY);
-  if (existing.length > 0) return existing;
+
+  if (existing.length > 0) {
+    // Normalize pre-existing entries that are missing the new required fields.
+    const needsNormalization = existing.some(n => !('isCurrent' in n) || !('currentSince' in n));
+    if (!needsNormalization) return existing;
+
+    const currentId = await loadCurrentWorkoutId();
+    const normalized = existing.map(n => {
+      const base = { isCurrent: false, currentSince: null, ...n };
+      // If isCurrent was absent and this note is the stored current, promote it.
+      if (!('isCurrent' in n) && currentId != null && n.id === currentId) {
+        base.isCurrent = true;
+      }
+      return base;
+    });
+    await writeList(WORKOUT_NOTES_KEY, normalized);
+    return normalized;
+  }
 
   const legacyNote = await loadWorkoutNote();
   if (!legacyNote) return [];
