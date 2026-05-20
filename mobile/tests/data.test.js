@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts } from '../lib/data';
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
 
@@ -229,5 +229,59 @@ describe('makeWorkoutNoteItem', () => {
   test('id follows wn_YYYY-MM-DD_timestamp format', () => {
     const item = makeWorkoutNoteItem({ title: 'Test' });
     expect(item.id).toMatch(/^wn_\d{4}-\d{2}-\d{2}_\d+$/);
+  });
+});
+
+// ── normalizeLiftName ─────────────────────────────────────────────────────────
+
+describe('normalizeLiftName', () => {
+  test('lowercases', () => {
+    expect(normalizeLiftName('Bench Press')).toBe('bench press');
+  });
+
+  test('trims leading and trailing whitespace', () => {
+    expect(normalizeLiftName('  bench press  ')).toBe('bench press');
+  });
+
+  test('collapses internal whitespace', () => {
+    expect(normalizeLiftName('Bench  Press')).toBe('bench press');
+  });
+
+  test('Bench Press, bench press, and " Bench  Press " all normalize identically', () => {
+    const a = normalizeLiftName('Bench Press');
+    const b = normalizeLiftName('bench press');
+    const c = normalizeLiftName(' Bench  Press ');
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  test('returns empty string for empty input', () => {
+    expect(normalizeLiftName('')).toBe('');
+  });
+
+  test('returns empty string for null', () => {
+    expect(normalizeLiftName(null)).toBe('');
+  });
+});
+
+// ── listTrackedLifts ──────────────────────────────────────────────────────────
+
+describe('listTrackedLifts', () => {
+  test('returns keys with truthy values', () => {
+    const map = { 'bench press': true, 'squat': true };
+    expect(listTrackedLifts(map).sort()).toEqual(['bench press', 'squat']);
+  });
+
+  test('excludes keys with falsy values', () => {
+    const map = { 'bench press': true, 'squat': false };
+    expect(listTrackedLifts(map)).toEqual(['bench press']);
+  });
+
+  test('returns empty array for null', () => {
+    expect(listTrackedLifts(null)).toEqual([]);
+  });
+
+  test('returns empty array for empty map', () => {
+    expect(listTrackedLifts({})).toEqual([]);
   });
 });

@@ -4,6 +4,8 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
+import { normalizeLiftName } from '../lib/data';
+import { loadTrackedLifts, setLiftTracked } from '../storage/entries';
 import { useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
@@ -15,10 +17,16 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
 
+  const [trackedLifts, setTrackedLifts] = useState({});
+
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
+
+  useEffect(() => {
+    loadTrackedLifts().then(setTrackedLifts);
+  }, []);
 
   useEffect(() => {
     if (currentNote) {
@@ -186,6 +194,13 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     );
   };
 
+  const handleToggleTrack = async (name) => {
+    const key = normalizeLiftName(name);
+    const next = !trackedLifts[key];
+    await setLiftTracked(key, next);
+    setTrackedLifts(prev => ({ ...prev, [key]: next }));
+  };
+
   const headerRight = !editingNoteId && hasContent && (
     <Pressable
       onPress={() => setMode(mode === 'read' ? 'edit' : 'read')}
@@ -279,8 +294,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
                 <ExerciseBlock
                   key={`ex-${si}-${ei}`}
                   name={ex.name}
-                  isTracked={false}
-                  disabledTrack={true}
+                  isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                  onToggleTrack={() => handleToggleTrack(ex.name)}
                 >
                   {ex.rows.map((row, ri) => (
                     <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />

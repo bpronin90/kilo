@@ -7,6 +7,7 @@ const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
+const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 
 async function readList(key) {
   try {
@@ -19,6 +20,30 @@ async function readList(key) {
 
 async function writeList(key, list) {
   await AsyncStorage.setItem(key, JSON.stringify(list));
+}
+
+// ── tracked lifts ─────────────────────────────────────────────────────────────
+
+// Returns { [normalizedName]: true } for all tracked lifts.
+export async function loadTrackedLifts() {
+  try {
+    const raw = await AsyncStorage.getItem(TRACKED_LIFTS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+// Set or unset a lift as tracked. normalizedName must already be normalized.
+// Passing tracked=false removes the key so the map stays compact.
+export async function setLiftTracked(normalizedName, tracked) {
+  const map = await loadTrackedLifts();
+  if (tracked) {
+    map[normalizedName] = true;
+  } else {
+    delete map[normalizedName];
+  }
+  await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────
