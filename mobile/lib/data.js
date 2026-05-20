@@ -314,14 +314,16 @@ export function makeWorkoutNoteItem({ title, raw_text = '' }) {
 
 // ── Kilo max ─────────────────────────────────────────────────────────────────
 
-export const KILO_FATIGUE_MULTIPLIER = 1.07;
+export function getKiloFatigueMultiplier() {
+  return 1.07;
+}
 
 // Compute the Kilo max for one exercise given its occurrences.
 // Excludes warmup occurrences (kind === 'warmup') and sets without valid weight/reps.
 // Returns { kilo_max_adjusted: number|null, kilo_max_raw: number|null }.
 // kilo_max_adjusted = Math.round(avgEpley * multiplier)
 // kilo_max_raw      = Math.round(avgEpley)
-export function computeKiloMax(occurrences, multiplier = KILO_FATIGUE_MULTIPLIER) {
+export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplier()) {
   const epleyValues = [];
   for (const occ of occurrences) {
     if (occ.kind === 'warmup') continue;
@@ -341,7 +343,7 @@ export function computeKiloMax(occurrences, multiplier = KILO_FATIGUE_MULTIPLIER
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
 // fatigue formula. Each signal gains a kilo_max_raw field (raw average, rounded)
 // alongside kilo_max (adjusted, rounded).
-export function deriveSignals(sections, trackedNames) {
+export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
   const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
   const { exercises: analyticsExercises } = deriveWorkoutAnalytics(sections);
 
@@ -351,7 +353,7 @@ export function deriveSignals(sections, trackedNames) {
     exercises: signals.map(sig => {
       const ex = byName.get(sig.name.toLowerCase());
       if (!ex) return { ...sig, kilo_max_raw: null };
-      const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(ex.occurrences);
+      const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(ex.occurrences, multiplier);
       return { ...sig, kilo_max: kilo_max_adjusted, kilo_max_raw };
     }),
   };

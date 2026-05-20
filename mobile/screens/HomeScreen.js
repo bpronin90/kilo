@@ -101,7 +101,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
   );
 }
 
-export function MoreScreen({ onNavigate, onExport, onImport }) {
+export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, onUpdateFatigueMultiplier }) {
   const [activeView, setActiveView] = useState('menu');
 
   useEffect(() => {
@@ -141,11 +141,25 @@ export function MoreScreen({ onNavigate, onExport, onImport }) {
     );
   }
 
+  if (activeView === 'settings') {
+    return (
+      <SettingsScreen
+        onBack={() => setActiveView('menu')}
+        multiplier={fatigueMultiplier}
+        onUpdate={onUpdateFatigueMultiplier}
+      />
+    );
+  }
+
   return (
     <ScreenShell title="More" subtitle="Help, about, and application info.">
       <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
           <Text style={styles.menuItemText}>Help & Terminology</Text>
+          <Text style={styles.menuItemChevron}>→</Text>
+        </Pressable>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')}>
+          <Text style={styles.menuItemText}>Settings & Algorithm</Text>
           <Text style={styles.menuItemChevron}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')}>
@@ -251,6 +265,45 @@ function BackupScreen({ onBack, onExport, onImport }) {
           autoCorrect={false}
         />
         <Button title="Import Data" onPress={handleImport} disabled={busy} style={styles.actionButton} />
+      </Card>
+    </ScreenShell>
+  );
+}
+
+function SettingsScreen({ onBack, multiplier, onUpdate }) {
+  const handleIncrement = () => onUpdate(Math.round((multiplier + 0.01) * 100) / 100);
+  const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
+  const handleReset = () => onUpdate(1.07);
+
+  return (
+    <ScreenShell title="Settings" subtitle="Algorithm and calculation defaults.">
+      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
+      <SectionTitle>Algorithm</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Fatigue Multiplier</Text>
+            <Text style={styles.settingHelp}>Applied to epley 1RM for Kilo max</Text>
+          </View>
+          <View style={styles.stepper}>
+            <Pressable style={styles.stepperButton} onPress={handleDecrement}>
+              <Text style={styles.stepperText}>−</Text>
+            </Pressable>
+            <View style={styles.stepperValueContainer}>
+              <Text style={styles.stepperValue}>{multiplier.toFixed(2)}</Text>
+            </View>
+            <Pressable style={styles.stepperButton} onPress={handleIncrement}>
+              <Text style={styles.stepperText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+        <Button 
+          title="Reset to default (1.07)" 
+          onPress={handleReset} 
+          style={styles.resetButton}
+          textStyle={styles.resetButtonText}
+        />
       </Card>
     </ScreenShell>
   );
@@ -679,5 +732,66 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  settingInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  settingHelp: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
+  },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.chipBackground,
+  },
+  stepperText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.accent,
+  },
+  stepperValueContainer: {
+    width: 60,
+    alignItems: 'center',
+  },
+  stepperValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  resetButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  resetButtonText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

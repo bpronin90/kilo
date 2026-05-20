@@ -13,7 +13,7 @@ import { StatsScreen } from './screens/StatsScreen';
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { exportBackup, importBackup } from './storage/entries';
+import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -26,6 +26,11 @@ export default function App() {
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
+  const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
+
+  React.useEffect(() => {
+    loadFatigueMultiplier().then(setFatigueMultiplier);
+  }, []);
 
   const prevCurrentId = useRef(noteHook.currentId);
   React.useEffect(() => {
@@ -197,9 +202,20 @@ export default function App() {
         );
       case 'Stats':
       case 'Analytics':
-        return <StatsScreen entries={entries} />;
+        return <StatsScreen entries={entries} multiplier={fatigueMultiplier} />;
       case 'More':
-        return <MoreScreen onNavigate={handleTabPress} onExport={handleExport} onImport={handleImport} />;
+        return (
+          <MoreScreen 
+            onNavigate={handleTabPress} 
+            onExport={handleExport} 
+            onImport={handleImport} 
+            fatigueMultiplier={fatigueMultiplier}
+            onUpdateFatigueMultiplier={async (val) => {
+              setFatigueMultiplier(val);
+              await saveFatigueMultiplier(val);
+            }}
+          />
+        );
       default:
         return null;
     }
