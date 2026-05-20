@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.28.0 - 2026-05-20
+
+- Issue #116: Added a low-prominence fatigue-multiplier setting to the More
+  tab in both the native app and the browser prototype, persisted the value
+  through the existing local storage paths and backup/export contract, and
+  wired Analytics to recompute tracked-lift Kilo max values immediately after
+  multiplier changes. Updated `docs/current-state.md` and
+  `docs/architecture.md` to match the shipped behavior.
+
 ## 0.27.6 - 2026-05-20
 
 - Issue #115: Fixed native Analytics Kilo max so tracked lifts no longer reuse
