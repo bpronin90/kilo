@@ -91,13 +91,17 @@ export function WorkoutSubheading({ children }) {
 }
 
 export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack }) {
+  const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
+
   return (
     <View style={styles.exerciseBlock}>
       <View style={styles.exerciseHeader}>
         <Text style={styles.exerciseName}>{name}</Text>
         {(onToggleTrack || disabledTrack) && (
-          <Pressable 
+          <TrackContainer 
             onPress={disabledTrack ? null : onToggleTrack}
+            disabled={disabledTrack}
+            accessibilityState={disabledTrack ? { disabled: true } : undefined}
             style={[
               styles.trackToggle,
               isTracked ? styles.trackToggleActive : null,
@@ -111,7 +115,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
             ]}>
               {isTracked ? 'Tracked' : 'Track'}
             </Text>
-          </Pressable>
+          </TrackContainer>
         )}
       </View>
       <View style={styles.exerciseContent}>
