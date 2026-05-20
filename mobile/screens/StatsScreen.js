@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
-import { StatCard, Card, SectionTitle, Badge } from '../components/UI';
-import { computeWeightTrends, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
+import { computeWeightTrends, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions, deriveProgressionSignals } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -24,6 +24,10 @@ export function StatsScreen() {
       avg30: trends.avg30 !== null ? `${trends.avg30.toFixed(1)} ${unit}` : '—',
       paceFlag: trends.paceFlag,
     };
+  }, [weightEntries]);
+
+  const rollingSeries = useMemo(() => {
+    return computeWeightRollingAverageSeries(weightEntries, 7);
   }, [weightEntries]);
 
   const oneKSelections = useMemo(() => ({
@@ -70,18 +74,34 @@ export function StatsScreen() {
       subtitle="Insights derived from your logs."
     >
       <SectionTitle>Weight Trends</SectionTitle>
-      <View style={styles.grid}>
-        <StatCard label="Latest weight" value={weightSummary.latestWeight} tone="accent" />
-        <StatCard label="7-day avg" value={weightSummary.avg7} />
-        <StatCard label="30-day avg" value={weightSummary.avg30} />
-        {weightSummary.paceFlag ? (
-          <StatCard
-            label="Pace flag"
-            value={weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
-            tone={weightSummary.paceFlag === 'gain' ? 'error' : 'success'}
-          />
-        ) : null}
-      </View>
+      <Card style={styles.weightCard}>
+        <View style={styles.weightHeader}>
+          <View>
+            <Text style={styles.weightLabel}>Latest weigh-in</Text>
+            <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
+          </View>
+          {weightSummary.paceFlag && (
+            <View style={[styles.paceBadge, weightSummary.paceFlag === 'gain' ? styles.paceGain : styles.paceLoss]}>
+              <Text style={styles.paceText}>
+                {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <LineChart data={rollingSeries} height={100} hideHeader />
+
+        <View style={styles.weightFooter}>
+          <View style={styles.weightStat}>
+            <Text style={styles.weightStatValue}>{weightSummary.avg7}</Text>
+            <Text style={styles.weightStatLabel}>7-day avg</Text>
+          </View>
+          <View style={styles.weightStat}>
+            <Text style={styles.weightStatValue}>{weightSummary.avg30}</Text>
+            <Text style={styles.weightStatLabel}>30-day avg</Text>
+          </View>
+        </View>
+      </Card>
 
       <SectionTitle>Strength</SectionTitle>
       {analytics?.oneK?.total ? (
@@ -180,12 +200,6 @@ export function StatsScreen() {
           </Text>
         )}
       </View>
-
-      <SectionTitle>Totals</SectionTitle>
-      <View style={styles.grid}>
-        <StatCard label="Weight entries" value={weightSummary.weightCount} />
-        <StatCard label="Workout sessions" value={workoutCount} />
-      </View>
     </ScreenShell>
   );
 }
@@ -201,13 +215,66 @@ function formatStatus(status) {
 }
 
 const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 14,
-  },
   list: {
     gap: 12,
+  },
+  weightCard: {
+    padding: 20,
+    gap: 16,
+  },
+  weightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  weightLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  weightValueLarge: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: Colors.accent,
+  },
+  paceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  paceGain: {
+    backgroundColor: Colors.error,
+  },
+  paceLoss: {
+    backgroundColor: Colors.accent,
+  },
+  paceText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textLight,
+  },
+  weightFooter: {
+    flexDirection: 'row',
+    gap: 24,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+    paddingTop: 16,
+  },
+  weightStat: {
+    gap: 2,
+  },
+  weightStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  weightStatLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   oneKCard: {
     padding: 24,
