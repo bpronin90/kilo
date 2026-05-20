@@ -6,6 +6,7 @@ const WORKOUT_KEY = 'kilo_workout_sessions';
 const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
+const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
 
 async function readList(key) {
   try {
@@ -18,6 +19,21 @@ async function readList(key) {
 
 async function writeList(key, list) {
   await AsyncStorage.setItem(key, JSON.stringify(list));
+}
+
+// ── settings ─────────────────────────────────────────────────────────────────
+
+export async function loadFatigueMultiplier() {
+  try {
+    const raw = await AsyncStorage.getItem(FATIGUE_MULTIPLIER_KEY);
+    return raw ? JSON.parse(raw) : 1.07;
+  } catch {
+    return 1.07;
+  }
+}
+
+export async function saveFatigueMultiplier(multiplier) {
+  await AsyncStorage.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
 }
 
 // Weight entries
@@ -188,6 +204,7 @@ export async function exportBackup() {
   const workout_notes = await readList(WORKOUT_NOTES_KEY);
   const current_workout_id = await loadCurrentWorkoutId();
   const weight_goal = await loadWeightGoal();
+  const fatigue_multiplier = await loadFatigueMultiplier();
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
@@ -195,6 +212,7 @@ export async function exportBackup() {
     workout_notes,
     current_workout_id,
     weight_goal,
+    fatigue_multiplier,
   };
 }
 
@@ -285,6 +303,9 @@ export async function importBackup(payload, strategy = 'replace') {
         } else {
           await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
         }
+      }
+      if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
+        await saveFatigueMultiplier(payload.fatigue_multiplier);
       }
     } else {
       // v1: restore weight entries only; workout notes model was not part of the v1 contract

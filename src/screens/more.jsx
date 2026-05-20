@@ -1,5 +1,11 @@
 // more.jsx — Goals, Deload generator, PT streak, Settings
 
+// Initialize global fatigue multiplier for prototype calculation
+(function initFatigue() {
+  const saved = localStorage.getItem('kilo_fatigue_multiplier');
+  window.KILO_FATIGUE_MULTIPLIER = saved ? parseFloat(saved) : 1.07;
+})();
+
 function GoalsView({ back }) {
   const goals = window.KILO_GOALS;
   return (
@@ -275,19 +281,82 @@ function ExerciseSettingsView({ back }) {
   );
 }
 
+function SettingsView({ back }) {
+  const [multiplier, setMultiplier] = React.useState(1.07);
+
+  React.useEffect(() => {
+    if (window.loadFatigueMultiplier) {
+      window.loadFatigueMultiplier().then(setMultiplier);
+    } else {
+      const saved = localStorage.getItem('kilo_fatigue_multiplier');
+      if (saved) setMultiplier(parseFloat(saved));
+    }
+  }, []);
+
+  const save = (val) => {
+    setMultiplier(val);
+    if (window.saveFatigueMultiplier) {
+      window.saveFatigueMultiplier(val);
+    } else {
+      localStorage.setItem('kilo_fatigue_multiplier', val.toString());
+      window.KILO_FATIGUE_MULTIPLIER = val;
+    }
+  };
+
+  return (
+    <div className="kilo-screen">
+      <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${KILO_C.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button onClick={back} className="kilo-btn" style={{ background: 'transparent', padding: 0, color: KILO_C.ink2 }}>
+          <KiloIcon name="arrowL" size={18} />
+        </button>
+        <div style={{ flex: 1, fontSize: 18, fontWeight: 600 }}>Settings</div>
+      </div>
+      <div className="kilo-scroll">
+        <KiloSection title="Algorithm">
+          <div style={{ padding: '0 16px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Fatigue Multiplier</div>
+                <div className="kilo-mono" style={{ fontSize: 10, color: KILO_C.ink3, marginTop: 2 }}>Applied to epley 1RM for Kilo max</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <KiloNum size={18} weight={700} color={KILO_C.accent}>{multiplier.toFixed(2)}</KiloNum>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <button onClick={() => save(multiplier + 0.01)} className="kilo-btn" style={{ padding: '2px 8px', background: KILO_C.surface, border: `1px solid ${KILO_C.border}`, borderRadius: 2, fontSize: 10 }}>+</button>
+                  <button onClick={() => save(Math.max(1, multiplier - 0.01))} className="kilo-btn" style={{ padding: '2px 8px', background: KILO_C.surface, border: `1px solid ${KILO_C.border}`, borderRadius: 2, fontSize: 10 }}>-</button>
+                </div>
+              </div>
+            </div>
+            <button 
+              onClick={() => save(1.07)}
+              className="kilo-btn kilo-mono" 
+              style={{ fontSize: 9, color: KILO_C.ink4, letterSpacing: '0.04em', textTransform: 'uppercase' }}
+            >
+              Reset to default (1.07)
+            </button>
+          </div>
+        </KiloSection>
+        <div style={{ height: 24 }} />
+      </div>
+    </div>
+  );
+}
+
 function KiloMore({ goToTab }) {
-  const [view, setView] = React.useState('list'); // list | goals | deload | pt | exercises
+  const [view, setView] = React.useState('list'); // list | goals | deload | pt | exercises | settings
 
   if (view === 'goals') return <GoalsView back={() => setView('list')} />;
   if (view === 'deload') return <DeloadView back={() => setView('list')} />;
   if (view === 'pt') return <PTView back={() => setView('list')} />;
   if (view === 'exercises') return <ExerciseSettingsView back={() => setView('list')} />;
+  if (view === 'settings') return <SettingsView back={() => setView('list')} />;
 
   const items = [
     { id: 'goals',     label: 'Goals',           icon: 'goal',    sub: `${window.KILO_GOALS.filter(g => g.active).length} active` },
     { id: 'deload',    label: 'Deload generator', icon: 'deload', sub: 'Generate a deload week' },
     { id: 'pt',        label: 'Shoulder PT',     icon: 'pt',      sub: 'Daily checklist · streak' },
     { id: 'exercises', label: 'Exercises & split', icon: 'gear', sub: `${window.KILO_EXERCISES.length} exercises · 5 days` },
+    { id: 'settings',  label: 'Settings',        icon: 'gear',    sub: 'Algorithm · advanced' },
   ];
 
   return (

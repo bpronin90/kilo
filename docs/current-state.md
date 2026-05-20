@@ -117,15 +117,19 @@ The real native app path now has a modular React Native shell:
   parser path, routes workout saves through the current-workout path in the
   multi-note workout store, adapts persisted entries for the Home and Analytics
   surfaces, now keeps Android hardware-back inside the app by returning
-  non-Home tabs to Home and gating root exit behind confirmation, and exposes
-  a separate More tab for Help, About, and a local Data & Backup
-  export/import/recovery surface
+  non-Home tabs to Home and gating root exit behind confirmation, keeps the
+  Kilo fatigue multiplier in app state for deterministic Analytics
+  recomputation, and exposes a separate More tab for Help, About, local Data &
+  Backup export/import/recovery, and a low-prominence Settings & Algorithm
+  sub-screen
 - `mobile/screens/HomeScreen.js` renders a native dashboard with tappable
   summary-card shortcuts into Weight and Log, a current-workout `1,000 lb
   Club` progress card, a compact 7-day rolling-average weight line chart, and
-  the exported More/Help/About/Data & Backup surfaces used by the More tab;
-  the More subviews now intercept Android back presses and return to the More
-  menu before falling through to tab-level navigation
+  the exported More/Help/About/Data & Backup/Settings surfaces used by the
+  More tab; the More subviews now intercept Android back presses and return to
+  the More menu before falling through to tab-level navigation, and the new
+  Settings & Algorithm sub-screen exposes a persisted fatigue-multiplier
+  stepper plus reset control
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
@@ -152,8 +156,8 @@ The real native app path now has a modular React Native shell:
   summary averages, alongside a renamed Big Three 1RM total, strength-only 1k
   slot selection, and tracked-lift cards that surface progression status,
   latest estimated 1RM, a Kilo max derived from the average Epley value across
-  non-warmup tracked sets times a default `1.07` fatigue multiplier, tap-to-
-  inspect raw Kilo max, latest top weight, and overload trend
+  non-warmup tracked sets times a user-tunable fatigue multiplier (default
+  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
@@ -175,13 +179,15 @@ The real native app path now has a modular React Native shell:
   current selection, and persisted note items retain `tracked_exercises` and
   `one_k_exercises` selections. It also persists a lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`, and
-  `saved_at`. The legacy structured workout-session key is retained only as a
-  one-time migration source. The local Data & Backup recovery path now exports
-  a versioned v2 snapshot (weight entries, workout notes, current workout id,
-  and optional weight goal), validates that payload before any write, restores
-  the full multi-note model plus weight goal on v2 import, and still accepts
-  older v1 backups to restore weight history without wiping the newer
-  workout-note state
+  `saved_at`, plus a persisted Kilo fatigue multiplier under
+  `kilo_fatigue_multiplier`. The legacy structured workout-session key is
+  retained only as a one-time migration source. The local Data & Backup
+  recovery path now exports a versioned v2 snapshot (weight entries, workout
+  notes, current workout id, optional weight goal, and optional fatigue
+  multiplier), validates that payload before any write, restores the full
+  multi-note model plus weight goal and fatigue multiplier on v2 import, and
+  still accepts older v1 backups to restore weight history without wiping the
+  newer workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves through the current item

@@ -7,7 +7,7 @@ import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen() {
+export function StatsScreen({ multiplier }) {
   const { note, saveOneK } = useWorkoutNote();
   const { entries: weightEntries } = useWeightEntries();
 
@@ -48,11 +48,11 @@ export function StatsScreen() {
     if (!note?.raw_text) return null;
     const { sections } = parseWorkoutNote(note.raw_text);
     const trackedNames = note.tracked_exercises || [];
-    const { exercises: signals } = deriveSignals(sections, trackedNames);
+    const { exercises: signals } = deriveSignals(sections, trackedNames, multiplier);
     const oneK = derive1kTotal(sections, oneKSelections);
     const workoutDayCount = countWorkoutSessions(note.raw_text);
     return { signals, oneK, workoutDayCount };
-  }, [note, oneKSelections]);
+  }, [note, oneKSelections, multiplier]);
 
   const workoutCount = useMemo(() => {
     return String(analytics?.workoutDayCount ?? 0);

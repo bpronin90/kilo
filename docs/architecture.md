@@ -28,7 +28,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
 
     CDN -->|"loads at runtime"| KiloHtml
@@ -126,7 +126,9 @@ not the target architecture for the native app path in `mobile/`.
 The `mobile/` app is a separate runtime from the browser prototype. `mobile/index.js`
 registers `mobile/App.js` with Expo. The current native architecture is narrow:
 
-- `mobile/App.js` owns tab state plus the native save/reload orchestration layer
+- `mobile/App.js` owns tab state plus the native save/reload orchestration
+  layer, including the persisted fatigue-multiplier state that is threaded
+  into More and Analytics
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
@@ -136,7 +138,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
-  data plus the local weight-goal key (`kilo_weight_goal`) and multi-note
+  data plus the local weight-goal key (`kilo_weight_goal`), the persisted
+  fatigue-multiplier key (`kilo_fatigue_multiplier`), and the multi-note
   workout store (`kilo_workout_notes` and `kilo_current_workout_id`), while
   retaining the legacy session key only as a migration source and the old
   single-note key only for backup compatibility
@@ -175,8 +178,11 @@ activeTab: 'Home' | 'Log' | 'Weight' | 'Analytics' | 'More'
 `mobile/components/TabBar.js` calls `setActiveTab` directly. The workout save
 handler validates input, persists via the hook/storage layer, and then
 navigates the user back to Home. The weight save handler validates and persists
-but keeps the user on the Weight screen. There is no router library, deep
-linking, or persisted navigation state in the native path yet.
+but keeps the user on the Weight screen. The More tab now also owns a local
+Settings & Algorithm sub-screen that updates a persisted fatigue-multiplier
+value in `App.js` state and immediately re-derives Analytics through a
+prop-driven recomputation path. There is no router library, deep linking, or
+persisted navigation state in the native path yet.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
 correction surface. Tapping a row reloads that entry into the shared form
@@ -203,12 +209,13 @@ User types in native Weight or Log form
 
 `mobile/storage/entries.js` also exposes a local-only recovery path:
 `exportBackup()` serializes a versioned v2 snapshot (weight entries, titled
-workout notes, the current workout id, and an optional weight goal).
+workout notes, the current workout id, an optional weight goal, and an
+optional fatigue multiplier).
 `importBackup(payload, 'replace')` validates before any write, restores the
 full multi-note model for v2 backups, conditionally restores or clears the
-weight goal when the key is present, and still accepts v1 backups to restore
-weight history without clearing the newer workout-note state. No remote sync is
-involved.
+weight goal when the key is present, restores the fatigue multiplier when
+provided, and still accepts v1 backups to restore weight history without
+clearing the newer workout-note state. No remote sync is involved.
 
 ## Parser Responsibilities
 
@@ -291,8 +298,12 @@ User types in weight input
 | Key | Contents |
 |-----|----------|
 | `kilo_weight_entries` | JSON array of native weight entries |
+| `kilo_weight_goal` | Optional native weight-goal object |
+| `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_note` | Single canonical native workout routine note document, including persisted `tracked_exercises` and `one_k_exercises` selections |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises` and `one_k_exercises` selections |
+| `kilo_current_workout_id` | String id of the selected current native workout note |
+| `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
 storage layer now synthesizes one from any legacy `kilo_workout_sessions`
