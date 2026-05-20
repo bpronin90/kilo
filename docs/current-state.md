@@ -129,9 +129,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
-  faithful to the raw text, parsed exercise tracking toggles in read mode,
-  inline `—` skip markers for bare `-` lines, a labeled bottom `Edit note`
-  action in the read view, save handling that persists raw-note edits directly
+  faithful to the raw text, parsed exercise tracking toggles in read mode (now
+  visibly disabled until the persistence pipeline lands), inline `—` skip
+  markers for bare `-` lines, a labeled bottom `Edit note` action in the read
+ view, save handling that persists raw-note edits directly
   through the current workout-note store and returns the current routine to
   read mode on success for visible confirmation, and a `Previous Routines`
   section that stays visible even when the current note is empty so any

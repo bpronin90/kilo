@@ -90,26 +90,32 @@ export function WorkoutSubheading({ children }) {
   );
 }
 
-export function ExerciseBlock({ name, children, isTracked, onToggleTrack }) {
+export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack }) {
+  const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
+
   return (
     <View style={styles.exerciseBlock}>
       <View style={styles.exerciseHeader}>
         <Text style={styles.exerciseName}>{name}</Text>
-        {onToggleTrack && (
-          <Pressable 
-            onPress={onToggleTrack}
+        {(onToggleTrack || disabledTrack) && (
+          <TrackContainer 
+            onPress={disabledTrack ? null : onToggleTrack}
+            disabled={disabledTrack}
+            accessibilityState={disabledTrack ? { disabled: true } : undefined}
             style={[
               styles.trackToggle,
-              isTracked ? styles.trackToggleActive : null
+              isTracked ? styles.trackToggleActive : null,
+              disabledTrack ? styles.trackToggleDisabled : null
             ]}
           >
             <Text style={[
               styles.trackToggleText,
-              isTracked ? styles.trackToggleTextActive : null
+              isTracked ? styles.trackToggleTextActive : null,
+              disabledTrack ? styles.trackToggleTextDisabled : null
             ]}>
               {isTracked ? 'Tracked' : 'Track'}
             </Text>
-          </Pressable>
+          </TrackContainer>
         )}
       </View>
       <View style={styles.exerciseContent}>
@@ -300,6 +306,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.chipBackground,
     borderColor: Colors.chipBackground,
   },
+  trackToggleDisabled: {
+    opacity: 0.4,
+    borderColor: Colors.cardBorder,
+  },
   trackToggleText: {
     fontSize: 12,
     fontWeight: '700',
@@ -307,6 +317,9 @@ const styles = StyleSheet.create({
   },
   trackToggleTextActive: {
     color: Colors.chipText,
+  },
+  trackToggleTextDisabled: {
+    color: Colors.textMuted,
   },
   exerciseContent: {
     paddingLeft: 4,
