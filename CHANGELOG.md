@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.5 - 2026-05-20
+
+- Issue #114: Fixed the shared native weight pace classifier so tiny daily
+  changes no longer trigger false fast-gain/fast-loss warnings, centralized
+  the threshold logic in one helper used by both Weight and Analytics, and
+  restored distinct yellow (`>= 1.5 lb`) versus red (`>= 2.3 lb`) warning
+  bands across both screens. Updated `docs/current-state.md` to match the
+  shipped behavior.
+
 ## 0.27.4 - 2026-05-20
 
 - Issue #113: Disabled the native Log-screen `Track` control until the
