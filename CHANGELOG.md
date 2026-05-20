@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.30.0 - 2026-05-20
+
+- Issue #119: Added native Log-tab routine CRUD controls so users can create,
+  rename, and delete routine notes from the notebook UI, with confirmation on
+  deletes and persisted current-routine cleanup when the active routine is
+  removed. Updated `docs/current-state.md` and `docs/mvp-roadmap.md` to match
+  the shipped behavior.
+
 ## 0.29.0 - 2026-05-20
 
 - Issue #118: Updated the native Log tab so the selected current routine stays
