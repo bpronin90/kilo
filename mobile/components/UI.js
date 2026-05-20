@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 
+export { LineChart } from './LineChart';
+
 export function Card({ children, style, tone = 'default', onPress }) {
   const Container = onPress ? Pressable : View;
   
