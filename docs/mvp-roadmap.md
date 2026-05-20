@@ -43,6 +43,11 @@ The repo now has a real native app scaffold under `mobile/`.
   old sets-per-session panel, adding current-workout `1,000 lb Club` progress,
   and switching the weight surface to a compact 7-day rolling-average line
   chart.
+- Issue #117 completed the workout-note storage migration from the legacy
+  single-note shape into the multi-routine notebook model by backfilling a
+  `Routine 1` current entry when needed, normalizing older notebook rows to
+  carry `isCurrent` and `currentSince`, and preserving `currentSince: null`
+  where historical routine-start dates are unknowable.
 
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native

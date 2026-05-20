@@ -142,7 +142,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   fatigue-multiplier key (`kilo_fatigue_multiplier`), and the multi-note
   workout store (`kilo_workout_notes` and `kilo_current_workout_id`), while
   retaining the legacy session key only as a migration source and the old
-  single-note key only for backup compatibility
+  single-note key as both a migration source into the notebook model and a
+  backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -209,13 +210,17 @@ User types in native Weight or Log form
 
 `mobile/storage/entries.js` also exposes a local-only recovery path:
 `exportBackup()` serializes a versioned v2 snapshot (weight entries, titled
-workout notes, the current workout id, an optional weight goal, and an
-optional fatigue multiplier).
+workout notes with `isCurrent` / `currentSince` metadata, the current workout
+id, an optional weight goal, and an optional fatigue multiplier).
 `importBackup(payload, 'replace')` validates before any write, restores the
 full multi-note model for v2 backups, conditionally restores or clears the
 weight goal when the key is present, restores the fatigue multiplier when
 provided, and still accepts v1 backups to restore weight history without
-clearing the newer workout-note state. No remote sync is involved.
+clearing the newer workout-note state. The same storage module also performs a
+one-time forward migration from the legacy single-note key by seeding a
+`Routine 1` notebook entry with `isCurrent: true` and `currentSince: null`,
+and normalizes pre-existing notebook rows that predate the new metadata fields.
+No remote sync is involved.
 
 ## Parser Responsibilities
 
