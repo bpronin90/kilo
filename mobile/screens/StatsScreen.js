@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals } from '../lib/data';
 import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, countWorkoutSessions, deriveProgressionSignals } from '../lib/parser';
+import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen() {
@@ -12,6 +12,7 @@ export function StatsScreen() {
   const { entries: weightEntries } = useWeightEntries();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
+  const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
 
   const weightSummary = useMemo(() => {
     const trends = computeWeightTrends(weightEntries);
@@ -47,7 +48,7 @@ export function StatsScreen() {
     if (!note?.raw_text) return null;
     const { sections } = parseWorkoutNote(note.raw_text);
     const trackedNames = note.tracked_exercises || [];
-    const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
+    const { exercises: signals } = deriveSignals(sections, trackedNames);
     const oneK = derive1kTotal(sections, oneKSelections);
     const workoutDayCount = countWorkoutSessions(note.raw_text);
     return { signals, oneK, workoutDayCount };
@@ -186,12 +187,14 @@ export function StatsScreen() {
                     {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
                   </Text>
                 </View>
-                <View>
+                <Pressable onPress={() => setKiloMaxRawName(prev => prev === sig.name ? null : sig.name)}>
                   <Text style={styles.signalLabel}>Kilo max</Text>
                   <Text style={styles.signalValue}>
-                    {sig.kilo_max ? `${sig.kilo_max.toFixed(0)} lb` : '—'}
+                    {kiloMaxRawName === sig.name && sig.kilo_max_raw != null
+                      ? `${sig.kilo_max_raw} lb`
+                      : (sig.kilo_max != null ? `${sig.kilo_max} lb` : '—')}
                   </Text>
-                </View>
+                </Pressable>
                 <View>
                   <Text style={styles.signalLabel}>Top weight</Text>
                   <Text style={styles.signalValue}>

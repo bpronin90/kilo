@@ -1,4 +1,75 @@
-import { computeWeightTrends, computeWeightPaceLevel } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax } from '../lib/data';
+
+// ── computeKiloMax ────────────────────────────────────────────────────────────
+
+describe('computeKiloMax', () => {
+  // Worked example: 245x5,5 / 240x8,8 (4 sets across one or more occurrences)
+  // Epley per set: 245*(1+5/30)=285.83, 285.83, 240*(1+8/30)=304.0, 304.0
+  // avgEpley = 294.917  rawRounded = 295  adjusted = Math.round(294.917*1.07) = 316
+  test('worked example 245x5,5 / 240x8,8 => kilo_max_adjusted 316, raw 295', () => {
+    const occurrences = [{
+      kind: 'lifting',
+      sets: [
+        { weight_value: 245, rep_count: 5 },
+        { weight_value: 245, rep_count: 5 },
+        { weight_value: 240, rep_count: 8 },
+        { weight_value: 240, rep_count: 8 },
+      ],
+    }];
+    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    expect(kilo_max_adjusted).toBe(316);
+    expect(kilo_max_raw).toBe(295);
+  });
+
+  test('kilo_max diverges from 1RM max for multi-set sessions', () => {
+    // Best single-set Epley: 240*(1+8/30)=304; kilo_max_adjusted=316 > 304
+    const occurrences = [{
+      kind: 'lifting',
+      sets: [
+        { weight_value: 245, rep_count: 5 },
+        { weight_value: 245, rep_count: 5 },
+        { weight_value: 240, rep_count: 8 },
+        { weight_value: 240, rep_count: 8 },
+      ],
+    }];
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
+    const best1rm = Math.round(240 * (1 + 8 / 30));
+    expect(kilo_max_adjusted).not.toBe(best1rm);
+  });
+
+  test('single set => adjusted correctly', () => {
+    // 300*(1+1/30)=310; adjusted=Math.round(310*1.07)=332
+    const occurrences = [{ kind: 'lifting', sets: [{ weight_value: 300, rep_count: 1 }] }];
+    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    expect(kilo_max_adjusted).toBe(332);
+    expect(kilo_max_raw).toBe(310);
+  });
+
+  test('all-warmup occurrences => null', () => {
+    const occurrences = [{ kind: 'warmup', sets: [{ weight_value: 135, rep_count: 10 }] }];
+    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    expect(kilo_max_adjusted).toBeNull();
+    expect(kilo_max_raw).toBeNull();
+  });
+
+  test('all-skipped (empty sets) => null', () => {
+    const occurrences = [{ kind: 'lifting', sets: [] }];
+    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    expect(kilo_max_adjusted).toBeNull();
+    expect(kilo_max_raw).toBeNull();
+  });
+
+  test('mixed warmup and lifting occurrences => warmup excluded', () => {
+    const occurrences = [
+      { kind: 'warmup', sets: [{ weight_value: 135, rep_count: 10 }] },
+      { kind: 'lifting', sets: [{ weight_value: 245, rep_count: 5 }] },
+    ];
+    const liftOnly = [{ kind: 'lifting', sets: [{ weight_value: 245, rep_count: 5 }] }];
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
+    const { kilo_max_adjusted: expected } = computeKiloMax(liftOnly);
+    expect(kilo_max_adjusted).toBe(expected);
+  });
+});
 
 // ── computeWeightTrends — paceFlag ────────────────────────────────────────────
 
