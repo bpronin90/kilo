@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.35.10 - 2026-05-21
+
+- Issue #143: Renamed the native Analytics `first_session` label from `First`
+  to the approved `Initial` wording in both progression-status and overload
+  contexts.
+
 ## 0.35.9 - 2026-05-21
 
 - Issue #145: Fixed tracked-lift Analytics progression status and overload
