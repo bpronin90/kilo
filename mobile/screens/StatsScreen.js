@@ -21,7 +21,8 @@ export function StatsScreen({ entries: propEntries, multiplier, section }) {
   const hasScrolled = useRef(false);
 
   const weightEntries = useMemo(() => {
-    return (propEntries && propEntries.length > 0) ? propEntries : (hookWeightEntries || []);
+    const source = (Array.isArray(propEntries) && propEntries.length > 0) ? propEntries : (hookWeightEntries || []);
+    return source.filter(e => e && e.date && e.weight_value != null);
   }, [propEntries, hookWeightEntries]);
 
   const isWeightLoading = loadingWeight && weightEntries.length === 0;
@@ -107,7 +108,7 @@ export function StatsScreen({ entries: propEntries, multiplier, section }) {
 
   const analytics = useMemo(() => {
     // Collect sections from all routines for full history of tracked lifts
-    const allSections = notes.flatMap(n => parseWorkoutNote(n.raw_text).sections);
+    const allSections = notes.flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
     
     // Identify lifts present in the current routine
     const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
