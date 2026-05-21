@@ -28,9 +28,16 @@ const styles = StyleSheet.create({
     bottom: 24,
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: Colors.tabBarBackground,
+    backgroundColor: Colors.card,
     borderRadius: 24,
     padding: 8,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
   tab: {
     flex: 1,
@@ -39,14 +46,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.chipBackground,
   },
   tabText: {
-    color: Colors.tabInactive,
+    color: Colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   tabTextActive: {
-    color: Colors.tabBarBackground,
+    color: Colors.chipText,
   },
 });
