@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.11 - 2026-05-21
+
+- Issue #144: Restored native Weight goal pace and calorie guidance by
+  computing saved-goal estimates without waiting for form-state hydration,
+  adding a current-weight fallback for no-entry goal setup, and clearing that
+  fallback state on edit cancel/clear so stale values are not silently reused.
+
 ## 0.35.10 - 2026-05-21
 
 - Issue #143: Renamed the native Analytics `first_session` label from `First`
