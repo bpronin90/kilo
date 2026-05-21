@@ -216,11 +216,14 @@ before persistence, and the native Log flow now saves through the current item
 in a local multi-note workout store instead of requiring a structured
 title-and-detail workout entry form. Saved native weight entries, workout note
 items, and the selected current workout all reload across app restarts through
-the native hook/storage layer. The shared native `ScreenShell` now normalizes Android top
-safe-area clearance across Home, Log, Weight, Analytics, and More/Help using
-shared status-bar spacing instead of per-screen header offsets, and its
-no-title header state now uses a plain text `Kilo` title plus a quiet `vX.Y.Z`
-version label instead of the heavier logo/wordmark-and-badge treatment. The
+the native hook/storage layer. The shared native `ScreenShell` now owns the
+top-spacing decision across Home, Log, Weight, Analytics, and More/Help by
+wrapping the shared header in `SafeAreaView`, applying one Android
+status-bar-aware offset there, and removing the old global top container
+padding so all tabs sit slightly higher without notch or status-bar clipping.
+Its no-title header state now uses a plain text `Kilo` title plus a quiet
+`vX.Y.Z` version label instead of the heavier logo/wordmark-and-badge
+treatment. The
 native Log and Weight flows now keep save actions responsive on the first tap
 even with the keyboard visible, guard against duplicate in-flight saves, and
 keep the bottom tab bar reachable above the iOS keyboard. Successful native
