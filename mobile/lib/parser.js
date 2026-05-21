@@ -410,7 +410,7 @@ export function deriveWorkoutAnalytics(sections) {
         byName.set(key, { name: key, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
       const derived = byName.get(key);
-      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows });
+      derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries });
       for (const s of ex.sets) derived.sets.push(s);
       for (const r of ex.rows) derived.rows.push(r);
       for (const u of ex.unparsed_rows) derived.unparsed_rows.push(u);
@@ -559,11 +559,21 @@ export function deriveProgressionSignals(sections, trackedNames) {
 
       const kilo_max = ex.estimated_pr;
 
-      // Walk backward to find the two most recent occurrences with computable PRs.
+      // Build a session-level comparable list. Each occurrence is expanded
+      // per-session-entry when it has them (the `- date sets` format); occurrences
+      // with only inline set lines contribute as a single comparable unit. This
+      // ensures mixed-history notes (some days inline, some days session-entry) all
+      // participate in the comparison rather than dropping inline occurrences.
+      const comparable = occs.flatMap(occ => {
+        const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
+        return valid.length > 0 ? valid.map(se => ({ sets: se.sets })) : [occ];
+      });
+
+      // Walk backward to find the two most recent comparable units with computable PRs.
       let latestIdx = -1;
       let priorIdx = -1;
-      for (let i = occs.length - 1; i >= 0; i--) {
-        if (_occurrencePR(occs[i]) !== null) {
+      for (let i = comparable.length - 1; i >= 0; i--) {
+        if (_occurrencePR(comparable[i]) !== null) {
           if (latestIdx === -1) latestIdx = i;
           else { priorIdx = i; break; }
         }
@@ -571,7 +581,7 @@ export function deriveProgressionSignals(sections, trackedNames) {
 
       if (latestIdx === -1) return absent;
 
-      const latestOcc = occs[latestIdx];
+      const latestOcc = comparable[latestIdx];
       const latest_pr = _occurrencePR(latestOcc);
       const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
       const latest_top_weight = _occurrenceTopWeight(latestOcc);
@@ -580,8 +590,8 @@ export function deriveProgressionSignals(sections, trackedNames) {
         return { name, progression_status: 'first_session', latest_pr, prior_pr: null, kilo_max, repeatability_score, latest_top_weight, overload_trend: 'first_session' };
       }
 
-      const prior_pr = _occurrencePR(occs[priorIdx]);
-      const prior_top_weight = _occurrenceTopWeight(occs[priorIdx]);
+      const prior_pr = _occurrencePR(comparable[priorIdx]);
+      const prior_top_weight = _occurrenceTopWeight(comparable[priorIdx]);
       const progression_status = latest_pr > prior_pr ? 'improved'
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
