@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.2 - 2026-05-20
+
+- Issue #135: Softened the native bottom tab bar by switching it from the
+  heavy dark floating treatment to the lighter shared card/chip palette,
+  keeping touch targets intact while making the active state remain easy to
+  identify. Updated `docs/current-state.md` and `docs/mvp-v3.5-roadmap.md` to
+  match the shipped UI and roadmap status.
+
 ## 0.35.1 - 2026-05-20
 
 - Issue #134: Fixed native Analytics tab entry flicker by stabilizing the

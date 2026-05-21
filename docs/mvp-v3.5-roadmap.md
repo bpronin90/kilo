@@ -21,7 +21,7 @@ narrowly scoped — they are not bundled within a phase.
 - **Correctness:** Pacing flag thresholds wrong; Kilo max equals 1RM max because the spec formula is not implemented.
 - **Missing MVP3 capability:** Multi-routine notes ("workout notebook" model), Track → progressive-overload pipeline, current-routine designation drives Analytics scope.
 - **Structure:** Log tab duplicates weekdays (warmup vs lifting split); Analytics tab entry flickers.
-- **Polish:** Kilo title image, Home subheader/copy, scoped tile click targets, "Weeks In" tile (deload coloring deferred to backlog issue #92), tab bar softening, global content offset, Weight log Save sizing/color, date picker + MM-DD-YYYY, Goal/suggestion prominence, Log typography, "first" label rename.
+- **Polish:** Kilo title image, Home subheader/copy, scoped tile click targets, "Weeks In" tile (deload coloring deferred to backlog issue #92), global content offset, Weight log Save sizing/color, date picker + MM-DD-YYYY, Goal/suggestion prominence, Log typography, "first" label rename.
 
 ---
 
@@ -203,7 +203,7 @@ narrowly scoped — they are not bundled within a phase.
 **Why last:** Underlying structure and data are settled; polish edits will not be redone.
 **Exit condition:** Every visual item from the brief is addressed; the "first" label is grounded in code reality and renamed.
 
-### 5.1 — Bottom tab bar softening
+### 5.1 — Bottom tab bar softening [DONE]
 
 - **Problem:** Tab bar visually overpowers content.
 - **Scope:** `mobile/components/TabBar.js` styling — translucent / faded treatment; preserve hit areas and active-state contrast.
