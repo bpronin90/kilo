@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.9 - 2026-05-21
+
+- Issue #145: Fixed tracked-lift Analytics progression status and overload
+  trend so exercises logged as multiple session-entry lines under one block no
+  longer stick on `first_session`, and mixed inline/session-entry history now
+  compares against the latest prior comparable session correctly.
+
 ## 0.35.8 - 2026-05-21
 
 - Issue #141: Normalized native Log-tab set-row typography by routing both
