@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.1 - 2026-05-20
+
+- Issue #134: Fixed native Analytics tab entry flicker by stabilizing the
+  initial `StatsScreen` layout and loading state, scoped section placeholders
+  to their own data dependencies, filtered incomplete weight rows before the
+  rolling-average helpers, and updated `docs/current-state.md` plus
+  `docs/mvp-roadmap.md` to match the shipped behavior.
+
 ## 0.35.0 - 2026-05-20
 
 - Issue #133: Updated the native Log read view so warmup and lifting work for

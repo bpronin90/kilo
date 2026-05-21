@@ -72,6 +72,10 @@ The repo now has a real native app scaffold under `mobile/`.
   under the same calendar day render beneath one weekday heading while
   preserving distinct sub-sections, and added parser coverage that pins the
   shared-heading contract for same-day sections.
+- Issue #134 stabilized native Analytics tab entry by removing the visible
+  mount-time flicker, scoping loading placeholders to the specific data each
+  section depends on, and hardening the screen against incomplete weight-entry
+  rows passed into the rolling-average path.
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.
