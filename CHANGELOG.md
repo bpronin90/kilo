@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.34.0 - 2026-05-20
+
+- Issue #132: Added a neutral native Home `Weeks In` tile derived from the
+  current routine's `currentSince` date, kept it 1-indexed from the
+  designation day, preserved a neutral unknown state for migrated legacy
+  routines without a known start date, and updated `docs/current-state.md`
+  plus `docs/mvp-roadmap.md` to match the shipped Home behavior.
+
 ## 0.33.2 - 2026-05-20
 
 - Issue #131: Updated the native Home header to use the bundled Kilo
