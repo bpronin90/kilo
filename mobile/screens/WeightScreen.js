@@ -75,7 +75,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     if (goal && !goalEditing) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
-      if (goal.start_weight) setGoalStartWeight(String(goal.start_weight));
+      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     }
   }, [goal]);
 
@@ -134,6 +134,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         await clearGoal();
         setGoalTargetWeight('');
         setGoalTargetDate('');
+        setGoalStartWeight('');
         setGoalEditing(false);
       }},
     ]);
@@ -143,12 +144,13 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
-      if (goal.start_weight) setGoalStartWeight(String(goal.start_weight));
+      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     } else {
       // Default to one month from now if no goal exists
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
       setGoalTargetDate(d.toISOString().slice(0, 10));
+      setGoalStartWeight('');
     }
     setGoalError('');
     setGoalEditing(true);
@@ -156,6 +158,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   const cancelEditGoal = () => {
     setGoalError('');
+    setGoalStartWeight('');
     setGoalEditing(false);
   };
 
