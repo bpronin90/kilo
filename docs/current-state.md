@@ -151,8 +151,11 @@ The real native app path now has a modular React Native shell:
   confirmation and current-selection cleanup guardrails; switching the current
   workout now requires explicit confirmation, records a real `currentSince`
   timestamp when a different routine becomes current, and does not proceed if
-  saving pending edits fails; Android back now exits edit subviews before
-  falling through to tab-level navigation
+  saving pending edits fails. The read view now also routes parsed `SetLine`
+  rows plus fallback unparsed/skip rows through one shared set-row typography
+  token so Log-tab rows render at a uniform size without the earlier stray
+  italics; Android back now exits edit subviews before falling through to
+  tab-level navigation
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
