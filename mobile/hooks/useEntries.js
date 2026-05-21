@@ -143,6 +143,9 @@ const notifyWorkoutNotes = () => workoutNotesListeners.forEach(l => l());
 let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => trackedLiftsListeners.forEach(l => l());
 
+let currentTrackedLifts = {};
+let trackedLiftsPromise = Promise.resolve();
+
 export function useWorkoutNotes() {
   const [notes, setNotes] = useState([]);
   const [currentId, setCurrentId] = useState(null);
@@ -203,13 +206,16 @@ export function useWorkoutNotes() {
 }
 
 export function useTrackedLifts() {
-  const [trackedLifts, setTrackedLifts] = useState({});
+  const [trackedLifts, setTrackedLifts] = useState(currentTrackedLifts);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const refresh = useCallback(() => {
     Storage.loadTrackedLifts()
-      .then(setTrackedLifts)
+      .then(data => {
+        currentTrackedLifts = data;
+        setTrackedLifts(data);
+      })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
@@ -223,24 +229,31 @@ export function useTrackedLifts() {
   }, [refresh]);
 
   const save = useCallback(async (nextTrackedLifts) => {
-    await Storage.saveTrackedLifts(nextTrackedLifts);
-    setTrackedLifts(nextTrackedLifts);
-    notifyTrackedLifts();
-    return nextTrackedLifts;
+    trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+      currentTrackedLifts = nextTrackedLifts;
+      setTrackedLifts(nextTrackedLifts);
+      await Storage.saveTrackedLifts(nextTrackedLifts);
+      notifyTrackedLifts();
+      return nextTrackedLifts;
+    });
+    return trackedLiftsPromise;
   }, []);
 
   const toggle = useCallback(async (name) => {
-    const currentTrackedLifts = await Storage.loadTrackedLifts();
-    const nextTrackedLifts = { ...currentTrackedLifts };
-    if (nextTrackedLifts[name]) {
-      delete nextTrackedLifts[name];
-    } else {
-      nextTrackedLifts[name] = true;
-    }
-    await Storage.saveTrackedLifts(nextTrackedLifts);
-    setTrackedLifts(nextTrackedLifts);
-    notifyTrackedLifts();
-    return nextTrackedLifts;
+    trackedLiftsPromise = trackedLiftsPromise.then(async () => {
+      const next = { ...currentTrackedLifts };
+      if (next[name]) {
+        delete next[name];
+      } else {
+        next[name] = true;
+      }
+      currentTrackedLifts = next;
+      setTrackedLifts(next);
+      await Storage.saveTrackedLifts(next);
+      notifyTrackedLifts();
+      return next;
+    });
+    return trackedLiftsPromise;
   }, []);
 
   return { trackedLifts, loading, error, save, toggle, refresh };
