@@ -10,7 +10,8 @@ import { parseWorkoutNote } from '../lib/parser';
 import { 
   computeWeightRollingAverageSeries, 
   derive1kTotal, 
-  DEFAULT_1K_EXERCISES 
+  DEFAULT_1K_EXERCISES,
+  computeWeeksIn
 } from '../lib/data';
 import pkg from '../package.json';
 
@@ -33,8 +34,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
+    const weeksIn = computeWeeksIn(workoutNote?.currentSince);
 
-    return { weightSeries, oneK, latestWeight };
+    return { weightSeries, oneK, latestWeight, weeksIn };
   }, [weightEntries, workoutNote]);
 
   return (
@@ -53,6 +55,12 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <Text style={styles.summaryLabel}>Latest Weight</Text>
           <Text style={styles.summaryValue}>
             {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
+          </Text>
+        </Card>
+        <Card style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Weeks In</Text>
+          <Text style={styles.summaryValue}>
+            {dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}
           </Text>
         </Card>
       </View>

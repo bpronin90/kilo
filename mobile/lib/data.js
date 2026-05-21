@@ -255,6 +255,45 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
+/**
+ * Calculate the 1-indexed week number since currentSince.
+ * Week 1 begins on the day of currentSince.
+ * Returns null if currentSince is missing or invalid.
+ */
+export function computeWeeksIn(currentSince, referenceDate = new Date()) {
+  if (!currentSince) return null;
+
+  // Handle YYYY-MM-DD by forcing it to be interpreted as a local date (noon)
+  // instead of UTC midnight to avoid timezone-offset day flips.
+  const isShortDate = typeof currentSince === 'string' && currentSince.length === 10;
+  const dateStr = isShortDate ? `${currentSince}T12:00:00` : currentSince;
+
+  const start = new Date(dateStr);
+  if (isNaN(start.getTime())) return null;
+
+  // Round-trip component check for YYYY-MM-DD to reject impossible dates (e.g. Feb 30)
+  if (isShortDate) {
+    const [year, month, day] = currentSince.split('-').map(Number);
+    if (
+      start.getFullYear() !== year ||
+      start.getMonth() !== month - 1 ||
+      start.getDate() !== day
+    ) {
+      return null;
+    }
+  }
+
+  // Use local calendar dates to avoid UTC flip-over issues during the day
+  const startLocal = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const refLocal = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+
+  const msDiff = refLocal.getTime() - startLocal.getTime();
+  if (msDiff < 0) return 1; // Future starts begin at week 1
+
+  const daysDiff = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+  return Math.floor(daysDiff / 7) + 1;
+}
+
 // Compute a series of 7-day rolling averages for the last N weigh-in dates.
 // entries must be sorted newest-first.
 export function computeWeightRollingAverageSeries(entries, limit = 7) {

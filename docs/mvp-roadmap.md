@@ -64,6 +64,10 @@ The repo now has a real native app scaffold under `mobile/`.
   changed the supporting copy to `Current Routine Progress`, renamed the
   strength card to `1k Club Progress`, and removed the old `Total Weeks`
   summary tile.
+- Issue #132 added a neutral native Home `Weeks In` tile derived from the
+  current routine's `currentSince` date, reset it automatically when the
+  current routine changes, and preserved a neutral unknown state for migrated
+  legacy routines whose true start date is unknowable.
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.
