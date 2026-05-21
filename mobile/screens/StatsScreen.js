@@ -326,7 +326,7 @@ function formatStatus(status) {
     case 'improved': return 'Improved';
     case 'held': return 'Held';
     case 'regressed': return 'Regressed';
-    case 'first_session': return 'First';
+    case 'first_session': return 'Initial';
     default: return '—';
   }
 }
@@ -336,7 +336,7 @@ function formatOverload(trend) {
     case 'up': return '↑ Up';
     case 'flat': return '→ Flat';
     case 'down': return '↓ Down';
-    case 'first_session': return 'First';
+    case 'first_session': return 'Initial';
     default: return '—';
   }
 }
