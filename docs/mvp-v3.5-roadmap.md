@@ -237,7 +237,9 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** All visible dates in Weight log render MM-DD-YYYY; storage unchanged; tests updated.
 - **Agent:** `agent:claude`, `reasoning:medium`
 
-### 5.5 — Weight log: native date picker for target date
+### 5.5 — Weight log: native date picker for target date [DONE]
+
+- **Status:** Shipped in Issue #139.
 
 - **Problem:** Target date has no picker.
 - **Scope:** `mobile/screens/WeightScreen.js` target-date field uses native date picker; on select, stores ISO and displays MM-DD-YYYY (depends on Task 5.4).

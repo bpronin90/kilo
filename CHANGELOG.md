@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.35.6 - 2026-05-21
+
+- Issue #139: Replaced the native Weight goal target-date text field with a
+  native date picker, kept stored goal dates in ISO while rendering visible
+  target dates as `MM-DD-YYYY`, and updated `docs/current-state.md` plus
+  `docs/mvp-v3.5-roadmap.md` to match the shipped behavior. Follow-up bug
+  #144 tracks the separate missing goal-estimate display issue found during
+  closeout verification.
+
 ## 0.35.5 - 2026-05-21
 
 - Issue #138: Reformatted visible native Weight history dates to
