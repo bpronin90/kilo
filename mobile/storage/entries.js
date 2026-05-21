@@ -7,6 +7,7 @@ const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
+const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 
 async function readList(key) {
   try {
@@ -19,6 +20,25 @@ async function readList(key) {
 
 async function writeList(key, list) {
   await AsyncStorage.setItem(key, JSON.stringify(list));
+}
+
+// ── tracked lifts ─────────────────────────────────────────────────────────────
+
+// Returns { [normalizedName]: true } for all tracked lifts.
+export async function loadTrackedLifts() {
+  try {
+    const raw = await AsyncStorage.getItem(TRACKED_LIFTS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+// Write the full tracked-lifts map atomically.
+// Callers must derive the next map from their own in-memory state rather than
+// re-reading storage, so that rapid consecutive toggles don't race.
+export async function saveTrackedLifts(map) {
+  await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────

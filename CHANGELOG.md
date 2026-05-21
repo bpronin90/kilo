@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.0 - 2026-05-20
+
+- Issue #121: Re-enabled the native Log-screen `Track` control with persistent
+  global tracked-lift storage keyed by normalized exercise names, fixed the
+  rapid-toggle race so consecutive Track updates cannot overwrite each other,
+  and updated `docs/current-state.md`, `docs/architecture.md`, and
+  `docs/mvp-v3.5-roadmap.md` to match the shipped behavior.
+
 ## 0.31.0 - 2026-05-20
 
 - Issue #120: Added native Log-tab `Set current` actions for non-current

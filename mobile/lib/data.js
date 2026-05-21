@@ -96,6 +96,19 @@ export function getDefaultTrackedNames() {
   return [...new Set(KILO_EXERCISES.filter(e => e.po).map(e => e.name))];
 }
 
+// Normalize a lift name: lowercase, trim, collapse internal whitespace.
+export function normalizeLiftName(name) {
+  if (!name) return '';
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// Return normalized lift names that are marked as tracked in the given map.
+// trackedMap: { [normalizedName]: true }
+export function listTrackedLifts(trackedMap) {
+  if (!trackedMap) return [];
+  return Object.keys(trackedMap).filter(k => trackedMap[k]);
+}
+
 // Factory for a new weight entry
 export function makeWeightEntry({ weight_value, logged_at, note }) {
   const ts = logged_at || new Date().toISOString();

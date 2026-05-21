@@ -133,15 +133,15 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
-  faithful to the raw text, parsed exercise tracking toggles in read mode (now
-  visibly disabled until the persistence pipeline lands), inline `—` skip
-  markers for bare `-` lines, a labeled bottom `Edit note` action in the read
-  view, save handling that persists raw-note edits directly through the current
-  workout-note store and returns the current routine to read mode on success
-  for visible confirmation, a bottom `Routines` list that keeps each
-  non-current routine collapsed to a compact row that can either reopen its
-  raw-note editor or mark that routine current through an inline action, plus
-  routine create/rename/delete controls with confirmation and
+  faithful to the raw text, parsed exercise tracking toggles in read mode that
+  now persist a global tracked-lift map keyed by normalized exercise name,
+  inline `—` skip markers for bare `-` lines, a labeled bottom `Edit note`
+  action in the read view, save handling that persists raw-note edits directly
+  through the current workout-note store and returns the current routine to
+  read mode on success for visible confirmation, a bottom `Routines` list that
+  keeps each non-current routine collapsed to a compact row that can either
+  reopen its raw-note editor or mark that routine current through an inline
+  action, plus routine create/rename/delete controls with confirmation and
   current-selection cleanup guardrails; switching the current workout now
   requires explicit confirmation, records a real `currentSince` timestamp when
   a different routine becomes current, and does not proceed if saving pending
@@ -184,16 +184,17 @@ The real native app path now has a modular React Native shell:
   `one_k_exercises` selections. It also persists a lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`, and
   `saved_at`, plus a persisted Kilo fatigue multiplier under
-  `kilo_fatigue_multiplier`. The legacy structured workout-session key is
-  retained only as a one-time migration source, and the older single-note key
-  is now also migrated forward into the notebook model by synthesizing a
-  `Routine 1` current entry with `currentSince: null` when historic start-date
-  data is unavailable. The local Data & Backup recovery path now exports a
-  versioned v2 snapshot (weight entries, workout notes, current workout id,
-  optional weight goal, and optional fatigue multiplier), validates that
-  payload before any write, restores the full multi-note model plus weight goal
-  and fatigue multiplier on v2 import, and still accepts older v1 backups to
-  restore weight history without wiping the newer workout-note state
+  `kilo_fatigue_multiplier` and a global tracked-lift map under
+  `kilo_tracked_lifts`. The legacy structured workout-session key is retained
+  only as a one-time migration source, and the older single-note key is now
+  also migrated forward into the notebook model by synthesizing a `Routine 1`
+  current entry with `currentSince: null` when historic start-date data is
+  unavailable. The local Data & Backup recovery path now exports a versioned
+  v2 snapshot (weight entries, workout notes, current workout id, optional
+  weight goal, and optional fatigue multiplier), validates that payload before
+  any write, restores the full multi-note model plus weight goal and fatigue
+  multiplier on v2 import, and still accepts older v1 backups to restore
+  weight history without wiping the newer workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves through the current item
@@ -263,14 +264,16 @@ directly to Weight and Log, a compact current-workout `1,000 lb Club`
 progress card, and a shared line-chart view of the 7-day rolling-average
 weight trend as the default landing view. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
-tracked without editing note syntax, and that selection persists on the
-canonical workout-note document. The read view always renders the formatted
-note mirror (day heading, `+` subheading, `-` exercise block, history rows)
-faithful to the raw text, with bare `-` lines shown as unobtrusive inline skip
-markers; Home and Analytics derive the workout/session count from the highest
-per-day session count in the current workout note, so warmup and lifting
-sections under the same day heading count as one session rather than splitting
-the day across separate section blocks. The native Analytics tab now consumes those
+tracked without editing note syntax, and that selection now persists globally
+by normalized lift name so `Bench Press`, `bench press`, and ` Bench  Press `
+map to the same tracked lift across app reloads. The read view always renders
+the formatted note mirror (day heading, `+` subheading, `-` exercise block,
+history rows) faithful to the raw text, with bare `-` lines shown as
+unobtrusive inline skip markers; Home and Analytics derive the
+workout/session count from the highest per-day session count in the current
+workout note, so warmup and lifting sections under the same day heading count
+as one session rather than splitting the day across separate section blocks.
+The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,
 latest top weight, and overload trend in one minimal analytics view while
