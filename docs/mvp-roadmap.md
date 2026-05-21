@@ -68,6 +68,10 @@ The repo now has a real native app scaffold under `mobile/`.
   current routine's `currentSince` date, reset it automatically when the
   current routine changes, and preserved a neutral unknown state for migrated
   legacy routines whose true start date is unknowable.
+- Issue #133 updated the native Log read view so warmup and lifting blocks
+  under the same calendar day render beneath one weekday heading while
+  preserving distinct sub-sections, and added parser coverage that pins the
+  shared-heading contract for same-day sections.
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.

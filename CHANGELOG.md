@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.0 - 2026-05-20
+
+- Issue #133: Updated the native Log read view so warmup and lifting work for
+  the same calendar day render under one weekday heading while preserving
+  distinct sub-sections, added parser coverage for the same-day heading
+  contract, and updated `docs/current-state.md` plus `docs/mvp-roadmap.md` to
+  match the shipped behavior.
+
 ## 0.34.0 - 2026-05-20
 
 - Issue #132: Added a neutral native Home `Weeks In` tile derived from the
