@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle } from '../components/UI';
+import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
@@ -408,8 +408,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     </ScreenShell>
   );
 }
-
-const SET_ROW_FONT_SIZE = 14;
 
 const styles = StyleSheet.create({
   modeToggle: {

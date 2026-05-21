@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 
+export const SET_ROW_FONT_SIZE = 14;
+
 export { LineChart } from './LineChart';
 
 export function Card({ children, style, tone = 'default', onPress }) {
@@ -336,12 +338,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   setWeight: {
-    fontSize: 15,
+    fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '600',
     color: Colors.textMuted,
   },
   setReps: {
-    fontSize: 16,
+    fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '400',
     color: Colors.text,
   },
