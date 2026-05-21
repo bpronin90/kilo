@@ -559,16 +559,15 @@ export function deriveProgressionSignals(sections, trackedNames) {
 
       const kilo_max = ex.estimated_pr;
 
-      // Build a session-level comparable list. When exercises are logged under a
-      // single block (one header, many `- date sets` lines), each session_entry is
-      // a distinct comparable unit. Fall back to block-level occurrences when the
-      // note uses inline set lines without session entries (no `- ` prefix).
-      const sessionOccs = occs.flatMap(occ =>
-        (occ.session_entries || [])
-          .filter(se => !se.skipped && !se.unparsed)
-          .map(se => ({ sets: se.sets }))
-      );
-      const comparable = sessionOccs.length > 0 ? sessionOccs : occs;
+      // Build a session-level comparable list. Each occurrence is expanded
+      // per-session-entry when it has them (the `- date sets` format); occurrences
+      // with only inline set lines contribute as a single comparable unit. This
+      // ensures mixed-history notes (some days inline, some days session-entry) all
+      // participate in the comparison rather than dropping inline occurrences.
+      const comparable = occs.flatMap(occ => {
+        const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
+        return valid.length > 0 ? valid.map(se => ({ sets: se.sets })) : [occ];
+      });
 
       // Walk backward to find the two most recent comparable units with computable PRs.
       let latestIdx = -1;

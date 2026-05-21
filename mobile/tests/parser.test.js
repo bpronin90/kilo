@@ -1409,6 +1409,18 @@ describe('deriveProgressionSignals — single-block multi-session entries', () =
     expect(sig.prior_pr).toBeCloseTo(epleyPR(235, 5));
     expect(sig.latest_pr).toBeCloseTo(epleyPR(230, 5));
   });
+
+  test('mixed-history: inline occurrence + session-entry occurrence both participate', () => {
+    // Monday uses inline sets; Wednesday uses a session-entry line.
+    // Both must participate so the comparison yields improved, not first_session.
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n- 90 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(80, 8));
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(90, 8));
+    expect(sig.overload_trend).toBe('up');
+  });
 });
 
 // ── parseWorkoutNote — session_entries ────────────────────────────────────────
