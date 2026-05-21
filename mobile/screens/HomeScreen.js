@@ -600,9 +600,9 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   wordmark: {
+    width: '100%',
     maxWidth: 160,
-    height: 40,
-    aspectRatio: 3, // Approx 120/40 from original fixed size
+    aspectRatio: 3, // Approx 120/40 ratio
     resizeMode: 'contain',
     marginLeft: -8, // Compensate for visual padding in the PNG
   },
