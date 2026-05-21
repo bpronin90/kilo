@@ -63,6 +63,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState('');
+  const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -74,26 +75,38 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     if (goal && !goalEditing) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
+      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     }
   }, [goal]);
 
   const currentWeight = entries.length > 0 ? entries[0].weight_value : null;
 
   const goalInfo = useMemo(() => {
-    const tw = parseFloat(goalTargetWeight);
-    if (!currentWeight || isNaN(tw) || !goalTargetDate) return null;
+    const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
+    const td = !goalEditing && goal ? goal.target_date : goalTargetDate;
+    // Use the most recent entry weight, falling back to the start weight captured
+    // when the goal was saved (covers the no-entries case).
+    const cw = currentWeight
+      ?? (!goalEditing && goal ? (goal.start_weight ?? null) : (parseFloat(goalStartWeight) || null));
+    if (!cw || isNaN(tw) || !td) return null;
     try {
-      return computeWeightGoal({ currentWeight, targetWeight: tw, targetDate: goalTargetDate });
+      return computeWeightGoal({ currentWeight: cw, targetWeight: tw, targetDate: td });
     } catch {
       return null;
     }
-  }, [currentWeight, goalTargetWeight, goalTargetDate]);
+  }, [currentWeight, goalTargetWeight, goalTargetDate, goalStartWeight, goal, goalEditing]);
 
   const handleSaveGoal = async () => {
     setGoalError('');
     const tw = parseFloat(goalTargetWeight);
     if (isNaN(tw) || tw <= 0) {
       setGoalError('Enter a valid target weight.');
+      return;
+    }
+    // Require a starting weight when no entries exist
+    const startW = currentWeight ?? parseFloat(goalStartWeight);
+    if (!currentWeight && (isNaN(startW) || startW <= 0)) {
+      setGoalError('Enter your current weight.');
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(goalTargetDate)) {
@@ -106,7 +119,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalError('Enter a valid calendar date.');
       return;
     }
-    await saveGoal({ target_weight: tw, target_date: goalTargetDate });
+    await saveGoal({
+      target_weight: tw,
+      target_date: goalTargetDate,
+      start_weight: !isNaN(startW) && startW > 0 ? startW : null,
+    });
     setGoalEditing(false);
   };
 
@@ -117,6 +134,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         await clearGoal();
         setGoalTargetWeight('');
         setGoalTargetDate('');
+        setGoalStartWeight('');
         setGoalEditing(false);
       }},
     ]);
@@ -126,11 +144,13 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
+      setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     } else {
       // Default to one month from now if no goal exists
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
       setGoalTargetDate(d.toISOString().slice(0, 10));
+      setGoalStartWeight('');
     }
     setGoalError('');
     setGoalEditing(true);
@@ -138,6 +158,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   const cancelEditGoal = () => {
     setGoalError('');
+    setGoalStartWeight('');
     setGoalEditing(false);
   };
 
@@ -215,6 +236,43 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
     >
+      <Card style={editingId ? styles.editingCard : null}>
+        {editingId ? (
+          <View style={styles.editingHeader}>
+            <Text style={styles.editingTitle}>Editing entry</Text>
+            <Pressable onPress={cancelEdit}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {displayError ? (
+          <Text style={styles.errorText}>{displayError}</Text>
+        ) : null}
+        <Text style={styles.inputLabel}>Weight (lb)</Text>
+        <TextInput
+          value={weightValue}
+          onChangeText={setWeightValue}
+          placeholder="185.0"
+          placeholderTextColor={Colors.textMuted}
+          keyboardType="decimal-pad"
+          style={styles.input}
+        />
+        <Text style={styles.inputLabel}>Note</Text>
+        <TextInput
+          value={weightNote}
+          onChangeText={setWeightNote}
+          placeholder="Morning, fasted"
+          placeholderTextColor={Colors.textMuted}
+          style={styles.input}
+        />
+        <Button
+          onPress={handleSubmit}
+          title={editingId ? "Update entry" : "Save weigh-in"}
+          disabled={saving}
+          style={styles.saveButton}
+        />
+      </Card>
+
       <Card style={styles.goalCard}>
         <View style={styles.goalHeader}>
           <Text style={styles.goalTitle}>Goal</Text>
@@ -238,6 +296,19 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         {(!goal || goalEditing) ? (
           <View style={styles.goalForm}>
             {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
+            {!currentWeight ? (
+              <>
+                <Text style={styles.inputLabel}>Current weight (lb)</Text>
+                <TextInput
+                  value={goalStartWeight}
+                  onChangeText={setGoalStartWeight}
+                  placeholder="200.0"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                />
+              </>
+            ) : null}
             <Text style={styles.inputLabel}>Target weight (lb)</Text>
             <TextInput
               value={goalTargetWeight}
@@ -248,7 +319,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               style={styles.input}
             />
             <Text style={styles.inputLabel}>Target date</Text>
-            <Pressable 
+            <Pressable
               onPress={() => setShowDatePicker(true)}
               style={styles.input}
             >
@@ -283,43 +354,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
           </View>
         )}
-      </Card>
-
-      <Card style={editingId ? styles.editingCard : null}>
-        {editingId ? (
-          <View style={styles.editingHeader}>
-            <Text style={styles.editingTitle}>Editing entry</Text>
-            <Pressable onPress={cancelEdit}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {displayError ? (
-          <Text style={styles.errorText}>{displayError}</Text>
-        ) : null}
-        <Text style={styles.inputLabel}>Weight (lb)</Text>
-        <TextInput
-          value={weightValue}
-          onChangeText={setWeightValue}
-          placeholder="185.0"
-          placeholderTextColor={Colors.textMuted}
-          keyboardType="decimal-pad"
-          style={styles.input}
-        />
-        <Text style={styles.inputLabel}>Note</Text>
-        <TextInput
-          value={weightNote}
-          onChangeText={setWeightNote}
-          placeholder="Morning, fasted"
-          placeholderTextColor={Colors.textMuted}
-          style={styles.input}
-        />
-        <Button 
-          onPress={handleSubmit} 
-          title={editingId ? "Update entry" : "Save weigh-in"} 
-          disabled={saving}
-          style={styles.saveButton}
-        />
       </Card>
 
       {(trends.avg7 !== null || trends.avg30 !== null) ? (

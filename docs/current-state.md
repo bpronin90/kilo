@@ -165,7 +165,9 @@ The real native app path now has a modular React Native shell:
   larger target/date typography, MM-DD-YYYY visible goal-date formatting, and
   high-hierarchy suggestion boxes for required weekly pace plus calorie
   surplus/deficit alongside advisory warnings; maintain-goal cases render
-  semantic guidance instead of numeric estimate boxes
+  semantic guidance instead of numeric estimate boxes, and when no saved weight
+  entries exist the goal form now requires a current-weight fallback so the
+  pace and calorie guidance can still render from the saved goal state
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
@@ -204,8 +206,9 @@ The real native app path now has a modular React Native shell:
   current selection, and persisted note items now carry `isCurrent` plus
   `currentSince` metadata alongside the retained `tracked_exercises` and
   `one_k_exercises` selections. It also persists a lightweight weight-goal
-  record under `kilo_weight_goal` with `target_weight`, `target_date`, and
-  `saved_at`, plus a persisted Kilo fatigue multiplier under
+  record under `kilo_weight_goal` with `target_weight`, `target_date`,
+  optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
+  multiplier under
   `kilo_fatigue_multiplier` and a global tracked-lift map under
   `kilo_tracked_lifts`. The legacy structured workout-session key is retained
   only as a one-time migration source, and the older single-note key is now
