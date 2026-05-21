@@ -139,11 +139,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/lib/data.js` owns native entry factories and the exercise catalog
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
-  fatigue-multiplier key (`kilo_fatigue_multiplier`), and the multi-note
-  workout store (`kilo_workout_notes` and `kilo_current_workout_id`), while
-  retaining the legacy session key only as a migration source and the old
-  single-note key as both a migration source into the notebook model and a
-  backup-compatibility fallback
+  fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
+  key (`kilo_tracked_lifts`), and the multi-note workout store
+  (`kilo_workout_notes` and `kilo_current_workout_id`), while retaining the
+  legacy session key only as a migration source and the old single-note key as
+  both a migration source into the notebook model and a backup-compatibility
+  fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -305,6 +306,7 @@ User types in weight input
 | `kilo_weight_entries` | JSON array of native weight entries |
 | `kilo_weight_goal` | Optional native weight-goal object |
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
+| `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises` and `one_k_exercises` selections |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
@@ -313,9 +315,10 @@ User types in weight input
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
 storage layer now synthesizes one from any legacy `kilo_workout_sessions`
 content and saves the migrated note before returning it. Subsequent tracked
-exercise toggles, 1k slot changes, and note edits update the same note
-document so parsed exercise selection, analytics inputs, and raw workout text
-stay in one persisted source of truth.
+exercise toggles now update the global `kilo_tracked_lifts` map keyed by
+normalized lift name, while 1k slot changes and note edits continue updating
+the selected workout-note document so analytics inputs and raw workout text
+stay persisted across reloads.
 
 ### Merge on load
 

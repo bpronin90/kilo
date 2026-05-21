@@ -129,6 +129,8 @@ narrowly scoped — they are not bundled within a phase.
 
 ### 3.4 — Track button → global tracked-lift persistence
 
+- **Status:** Shipped in Issue #121.
+
 - **Problem:** Track is currently disabled (Task 1.4); needs real persistence.
 - **Scope:** Re-enable Track in `mobile/screens/LogScreen.js`; toggling persists a global `tracked: true` flag keyed by normalized lift name (lowercase, trim, collapse internal whitespace); helper to list tracked lifts.
 - **Out of scope:** Analytics rendering (Task 3.5).
