@@ -277,7 +277,12 @@ The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,
 latest top weight, and overload trend in one minimal analytics view while
-keeping totals in sync with canonical workout-note refreshes. A separate native
+keeping totals in sync with canonical workout-note refreshes. Those
+tracked-lift cards now use the same reactive global tracked-lift state as the
+Log screen, update immediately when Track is toggled while Analytics remains
+mounted, stay visible only for tracked lifts that appear in the current
+routine, and still aggregate each lift's full history across all saved
+routines. A separate native
 More tab now exposes Help and
 About surfaces while keeping the parent More quick actions intact; the Help
 surface now uses the shared top-safe-area header treatment, a local accessible

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.33.0 - 2026-05-20
+
+- Issue #129: Shipped routine-aware tracked-lift Analytics cards on the native
+  app by wiring Log and Analytics to the same reactive global tracked-lift
+  store, filtering visible cards to lifts present in the current routine while
+  preserving full per-lift history across routines, and keeping Big Three 1RM
+  totals plus workout counts scoped to the current routine. Updated
+  `docs/current-state.md`, `docs/architecture.md`, and
+  `docs/mvp-v3.5-roadmap.md` to match the shipped behavior.
+
 ## 0.32.0 - 2026-05-20
 
 - Issue #121: Re-enabled the native Log-screen `Track` control with persistent

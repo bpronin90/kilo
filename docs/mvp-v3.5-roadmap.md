@@ -139,11 +139,13 @@ narrowly scoped — they are not bundled within a phase.
 
 ### 3.5 — Strength analytics: routine-scoped visibility, lift-continuous trends
 
+- **Status:** Shipped in Issue #129.
+
 - **Problem:** Tracked lifts have nowhere to surface; Analytics doesn't react to current routine.
 - **Scope:** Extend Analytics strength section (cards from #109) to render one card per tracked lift that also appears in the current routine. Each card's overload trend pulls all historical data for that lift name regardless of which routine logged it. Tracked-but-not-in-current-routine lifts are hidden (data preserved).
 - **Out of scope:** Card redesign, new chart types, weight-section changes.
 - **Acceptance:** A lift toggled Track + present in current routine appears as a card; switching current routine immediately changes which cards are visible; per-card trend includes data across routines; un-tracking removes the card; re-tracking restores full history.
-- **Agent:** `agent:gemini` (consumes existing data helpers; if a new filter helper is required it can be split out as a small `agent:claude` follow-up at brief-writing time)
+- **Agent:** `agent:claude`
 
 ---
 

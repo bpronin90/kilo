@@ -132,7 +132,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
-  paths and a lightweight listener fanout for cross-consumer refreshes
+  paths, plus lightweight listener fanout for cross-consumer refreshes and a
+  shared reactive `useTrackedLifts()` hook consumed by both Log and Analytics
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
@@ -195,6 +196,12 @@ Analytics, and the Weight history stay in sync after edits or deletes. The same
 screen also saves an optional weight-goal record (target weight + target date),
 derives direction and required weekly pace from the latest saved weight, and
 renders advisory warnings without blocking the save path.
+
+Tracked-lift visibility now follows a similar shared-hook pattern. Log toggles
+persist through the global `kilo_tracked_lifts` map, `useTrackedLifts()`
+fanouts the updated in-memory state to all mounted consumers immediately, and
+Analytics filters that global tracked set down to lifts present in the current
+routine while still deriving each visible lift's trend from all routine notes.
 
 ## Native Parse-to-Persistence Flow
 
