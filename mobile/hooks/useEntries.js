@@ -144,7 +144,11 @@ let trackedLiftsListeners = [];
 const notifyTrackedLifts = () => trackedLiftsListeners.forEach(l => l());
 
 let currentTrackedLifts = {};
-let trackedLiftsPromise = Promise.resolve();
+// Seed the write queue with the initial load so toggle/save always derive from
+// real storage, not the empty module-scope default.
+let trackedLiftsPromise = Storage.loadTrackedLifts()
+  .then(data => { currentTrackedLifts = data; })
+  .catch(() => {});
 
 export function useWorkoutNotes() {
   const [notes, setNotes] = useState([]);
