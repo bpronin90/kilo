@@ -57,6 +57,21 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     return parseWorkoutNote(workoutNoteText);
   }, [workoutNoteText]);
 
+  // Group consecutive sections that share the same day heading so each day
+  // renders exactly one heading, regardless of warmup/lifting splits.
+  const dayGroups = useMemo(() => {
+    const groups = [];
+    for (const section of parsed.sections) {
+      const last = groups[groups.length - 1];
+      if (last && last.heading === section.heading) {
+        last.sections.push(section);
+      } else {
+        groups.push({ heading: section.heading, sections: [section] });
+      }
+    }
+    return groups;
+  }, [parsed.sections]);
+
   const hasContent = workoutNoteText.trim().length > 0;
 
   const handleSave = async () => {
@@ -278,31 +293,35 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
-          {parsed.sections.map((section, si) => (
-            <View key={`section-${si}`}>
-              {section.heading && <WorkoutHeading>{section.heading}</WorkoutHeading>}
-              {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-              {section.exercises.map((ex, ei) => (
-                <ExerciseBlock
-                  key={`ex-${si}-${ei}`}
-                  name={ex.name}
-                  isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                  onToggleTrack={() => handleToggleTrack(ex.name)}
-                >
-                  {ex.rows.map((row, ri) => (
-                    <SetLine key={`row-${si}-${ei}-${ri}`} sets={row.sets} />
+          {dayGroups.map((group, gi) => (
+            <View key={`day-${gi}`}>
+              {group.heading && <WorkoutHeading>{group.heading}</WorkoutHeading>}
+              {group.sections.map((section, si) => (
+                <View key={`section-${gi}-${si}`}>
+                  {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                  {section.exercises.map((ex, ei) => (
+                    <ExerciseBlock
+                      key={`ex-${gi}-${si}-${ei}`}
+                      name={ex.name}
+                      isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                      onToggleTrack={() => handleToggleTrack(ex.name)}
+                    >
+                      {ex.rows.map((row, ri) => (
+                        <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                      ))}
+                      {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                        <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                      ))}
+                      {ex.unparsed_rows.map((u, ui) => (
+                        <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                      ))}
+                    </ExerciseBlock>
                   ))}
-                  {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                    <Text key={`skip-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                  ))}
-                  {ex.unparsed_rows.map((u, ui) => (
-                    <Text key={`u-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                  ))}
-                </ExerciseBlock>
+                </View>
               ))}
             </View>
           ))}
-          {!parsed.sections.length && (
+          {!dayGroups.length && (
             <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
           )}
           <Button
