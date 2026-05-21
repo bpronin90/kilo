@@ -409,6 +409,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   );
 }
 
+const SET_ROW_FONT_SIZE = 14;
+
 const styles = StyleSheet.create({
   modeToggle: {
     paddingHorizontal: 12,
@@ -457,9 +459,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   unparsedRow: {
-    fontSize: 15,
+    fontSize: SET_ROW_FONT_SIZE,
     color: Colors.textMuted,
-    fontStyle: 'italic',
     paddingLeft: 0,
   },
   emptyText: {
@@ -479,9 +480,8 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
   skipMarker: {
-    fontSize: 13,
+    fontSize: SET_ROW_FONT_SIZE,
     color: Colors.textMuted,
-    fontStyle: 'italic',
   },
   editContainer: {
     gap: 16,
