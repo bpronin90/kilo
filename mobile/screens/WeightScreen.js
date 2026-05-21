@@ -23,6 +23,14 @@ function GoalDerived({ info }) {
   const paceAbs = Math.abs(required_weekly_pace).toFixed(2);
   const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
 
+  if (direction === 'maintain') {
+    return (
+      <View style={styles.goalDerived}>
+        <Text style={styles.goalPaceText}>Maintain current weight</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.goalDerived}>
       <View style={styles.suggestionRow}>
@@ -660,6 +668,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 2,
+  },
+  goalPaceText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    textAlign: 'center',
   },
   goalWarningText: {
     fontSize: 13,
