@@ -205,7 +205,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         <Button 
           onPress={handleSubmit} 
           title={editingId ? "Update entry" : "Save weigh-in"} 
-          disabled={saving} 
+          disabled={saving}
+          style={styles.saveButton}
         />
       </Card>
 
@@ -250,7 +251,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               style={styles.input}
             />
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
-            <Button onPress={handleSaveGoal} title="Save goal" />
+            <Button onPress={handleSaveGoal} title="Save goal" style={styles.saveButton} />
           </View>
         ) : (
           <View style={styles.goalDisplay}>
@@ -599,5 +600,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.error,
     opacity: 0.85,
+  },
+  saveButton: {
+    backgroundColor: Colors.accent,
+    paddingVertical: 12,
   },
 });
