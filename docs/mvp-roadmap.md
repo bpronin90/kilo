@@ -60,6 +60,10 @@ The repo now has a real native app scaffold under `mobile/`.
   intended `1,000 lb Club` total and `7-day rolling average` regions navigate,
   both routes now land on the matching Analytics section, and the misleading
   extra `Current Workout Progress` line was removed from the 1k bubble.
+- Issue #131 updated the native Home header to use the bundled Kilo wordmark,
+  changed the supporting copy to `Current Routine Progress`, renamed the
+  strength card to `1k Club Progress`, and removed the old `Total Weeks`
+  summary tile.
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.
