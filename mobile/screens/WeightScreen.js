@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -48,6 +49,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState('');
   const [goalError, setGoalError] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   const trends = useMemo(() => computeWeightTrends(entries), [entries]);
   const paceLevel = useMemo(() => computeWeightPaceLevel(entries), [entries]);
 
@@ -79,7 +82,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(goalTargetDate)) {
-      setGoalError('Enter target date as YYYY-MM-DD.');
+      setGoalError('Enter target date.');
       return;
     }
     const [tYear, tMonth, tDay] = goalTargetDate.split('-').map(Number);
@@ -108,6 +111,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
+    } else {
+      // Default to one month from now if no goal exists
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      setGoalTargetDate(d.toISOString().slice(0, 10));
     }
     setGoalError('');
     setGoalEditing(true);
@@ -117,6 +125,25 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     setGoalError('');
     setGoalEditing(false);
   };
+
+  const onDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      // Use local date parts to avoid UTC shift
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      setGoalTargetDate(`${y}-${m}-${d}`);
+    }
+  };
+
+  const pickerDate = useMemo(() => {
+    if (goalTargetDate) {
+      const [y, m, d] = goalTargetDate.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    return new Date();
+  }, [goalTargetDate]);
 
   const handleEditEntry = (entry) => {
     setLocalError('');
@@ -242,14 +269,24 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               keyboardType="decimal-pad"
               style={styles.input}
             />
-            <Text style={styles.inputLabel}>Target date (YYYY-MM-DD)</Text>
-            <TextInput
-              value={goalTargetDate}
-              onChangeText={setGoalTargetDate}
-              placeholder="2026-09-01"
-              placeholderTextColor={Colors.textMuted}
+            <Text style={styles.inputLabel}>Target date</Text>
+            <Pressable 
+              onPress={() => setShowDatePicker(true)}
               style={styles.input}
-            />
+            >
+              <Text style={{ color: goalTargetDate ? Colors.text : Colors.textMuted }}>
+                {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
+              </Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={pickerDate}
+                mode="date"
+                display="default"
+                onChange={onDateChange}
+                minimumDate={new Date()}
+              />
+            )}
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
             <Button onPress={handleSaveGoal} title="Save goal" />
           </View>
@@ -261,7 +298,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 <Text style={styles.goalDisplayLabel}>target</Text>
               </View>
               <View style={styles.goalDisplayItem}>
-                <Text style={styles.goalDisplayValue}>{goal.target_date}</Text>
+                <Text style={styles.goalDisplayValue}>{formatDate(goal.target_date)}</Text>
                 <Text style={styles.goalDisplayLabel}>by date</Text>
               </View>
             </View>
@@ -387,6 +424,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.text,
+    justifyContent: 'center',
   },
   editingCard: {
     borderColor: Colors.accent,

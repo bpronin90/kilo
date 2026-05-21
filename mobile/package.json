@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-community/datetimepicker": "^9.1.0",
     "expo": "~54.0.33",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.17",
