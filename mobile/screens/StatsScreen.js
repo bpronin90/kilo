@@ -1,19 +1,40 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
-import { useWorkoutNotes, useWeightEntries, useTrackedLifts } from '../hooks/useEntries';
+import { useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
+import { loadTrackedLifts } from '../storage/entries';
 
-export function StatsScreen({ multiplier }) {
+export function StatsScreen({ entries, multiplier }) {
   const { notes, currentNote, update: updateNote } = useWorkoutNotes();
   const { entries: weightEntries } = useWeightEntries();
-  const { trackedLifts } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
+  const [trackedLifts, setTrackedLifts] = useState({});
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      const next = await loadTrackedLifts();
+      if (mounted) {
+        setTrackedLifts(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+          return next;
+        });
+      }
+    };
+
+    refresh();
+    const interval = setInterval(refresh, 1000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
   
   // ... weightSummary and rollingSeries remain same but use weightEntries
   const weightSummary = useMemo(() => {
@@ -47,22 +68,24 @@ export function StatsScreen({ multiplier }) {
   }, [currentNote]);
 
   const analytics = useMemo(() => {
-    // Collect sections from all routines for full history
+    // Collect sections from all routines for full history of tracked lifts
     const allSections = notes.flatMap(n => parseWorkoutNote(n.raw_text).sections);
     
     // Identify lifts present in the current routine
     const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
     const namesInCurrent = new Set(currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(e.name))));
     
-    // Globally tracked lifts
-    const globallyTracked = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
+    // Tracked lifts from the global store
+    const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
     
-    // Filter to tracked lifts that appear in current routine
-    const visibleTrackedNames = globallyTracked.filter(name => namesInCurrent.has(name));
+    // Filter to tracked lifts that also appear in current routine
+    const visibleTrackedNames = globallyTrackedNames.filter(name => namesInCurrent.has(normalizeLiftName(name)));
 
     const { exercises: signals } = deriveSignals(allSections, visibleTrackedNames, multiplier);
-    const oneK = derive1kTotal(allSections, oneKSelections);
-    const workoutDayCount = notes.reduce((sum, n) => sum + countWorkoutSessions(n.raw_text), 0);
+    
+    // Big Three 1RM total and workout count are scoped to the current routine per issue contract
+    const oneK = derive1kTotal(currentSections, oneKSelections);
+    const workoutDayCount = countWorkoutSessions(currentNote?.raw_text || '');
     
     return { signals, oneK, workoutDayCount };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);

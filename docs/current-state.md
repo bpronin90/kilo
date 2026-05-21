@@ -160,10 +160,7 @@ The real native app path now has a modular React Native shell:
   slot selection, and tracked-lift cards that surface progression status,
   latest estimated 1RM, a Kilo max derived from the average Epley value across
   non-warmup tracked sets times a user-tunable fatigue multiplier (default
-  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend;
-  analytics now correctly span all routines in the multi-note notebook for
-  complete historical continuity, while cards are filtered to only show
-  globally tracked lifts that appear in the current routine
+  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
@@ -178,8 +175,7 @@ The real native app path now has a modular React Native shell:
   factory for titled workout-note items in the multi-note model
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including multi-note current-workout reads/writes, cross-consumer
-  refresh fanout, persisted weight-goal reads/writes, and reactive access to 
-  globally tracked lifts
+  refresh fanout, and persisted weight-goal reads/writes
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit

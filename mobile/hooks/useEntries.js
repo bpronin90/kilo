@@ -45,9 +45,6 @@ const notifyWeight = () => weightListeners.forEach(l => l());
 let noteListeners = [];
 const notifyNote = () => noteListeners.forEach(l => l());
 
-let trackedLiftsListeners = [];
-const notifyTrackedLifts = () => trackedLiftsListeners.forEach(l => l());
-
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -138,32 +135,6 @@ export function useWorkoutNote() {
   }, []);
 
   return { note, loading, error, save, saveTracked, saveOneK, clear, refresh };
-}
-
-export function useTrackedLifts() {
-  const [trackedLifts, setTrackedLifts] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(() => {
-    Storage.loadTrackedLifts()
-      .then(setTrackedLifts)
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    trackedLiftsListeners.push(refresh);
-    return () => {
-      trackedLiftsListeners = trackedLiftsListeners.filter(l => l !== refresh);
-    };
-  }, [refresh]);
-
-  const save = useCallback(async (nextMap) => {
-    await Storage.saveTrackedLifts(nextMap);
-    notifyTrackedLifts();
-  }, []);
-
-  return { trackedLifts, loading, save, refresh };
 }
 
 let workoutNotesListeners = [];
