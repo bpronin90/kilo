@@ -5,7 +5,7 @@ import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
-import { loadTrackedLifts, setLiftTracked } from '../storage/entries';
+import { loadTrackedLifts, saveTrackedLifts } from '../storage/entries';
 import { useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
@@ -194,11 +194,14 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     );
   };
 
-  const handleToggleTrack = async (name) => {
+  const handleToggleTrack = (name) => {
     const key = normalizeLiftName(name);
-    const next = !trackedLifts[key];
-    await setLiftTracked(key, next);
-    setTrackedLifts(prev => ({ ...prev, [key]: next }));
+    setTrackedLifts(prev => {
+      const next = { ...prev };
+      if (next[key]) { delete next[key]; } else { next[key] = true; }
+      saveTrackedLifts(next);
+      return next;
+    });
   };
 
   const headerRight = !editingNoteId && hasContent && (

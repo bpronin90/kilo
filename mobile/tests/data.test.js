@@ -285,3 +285,50 @@ describe('listTrackedLifts', () => {
     expect(listTrackedLifts({})).toEqual([]);
   });
 });
+
+// ── tracked-lift toggle merge (race-safety) ───────────────────────────────────
+// These tests verify the in-memory merge pattern used by LogScreen.handleToggleTrack.
+// The pattern reads prev state (not storage) to build the next map, so consecutive
+// toggles on different exercises cannot overwrite each other.
+
+function toggleInMap(map, normalizedKey) {
+  const next = { ...map };
+  if (next[normalizedKey]) { delete next[normalizedKey]; } else { next[normalizedKey] = true; }
+  return next;
+}
+
+describe('tracked-lift toggle merge', () => {
+  test('two consecutive toggles on different lifts both survive', () => {
+    let state = {};
+    state = toggleInMap(state, normalizeLiftName('Bench Press'));
+    state = toggleInMap(state, normalizeLiftName('Squat'));
+    expect(state['bench press']).toBe(true);
+    expect(state['squat']).toBe(true);
+  });
+
+  test('toggling the same lift twice removes it', () => {
+    let state = {};
+    const key = normalizeLiftName('Bench Press');
+    state = toggleInMap(state, key);
+    state = toggleInMap(state, key);
+    expect(state[key]).toBeUndefined();
+  });
+
+  test('stale-read race drops a key but chained state updates do not', () => {
+    // Race: both calls read the same empty map from storage, each writes back
+    // only their own key. The second setItem overwrites the first entirely.
+    const base = {};
+    const write1 = toggleInMap(base, 'bench press'); // { 'bench press': true }
+    const write2 = toggleInMap(base, 'squat');        // { 'squat': true }
+    const finalAfterRace = write2; // second setItem overwrites first
+    expect(finalAfterRace['bench press']).toBeUndefined(); // bench press lost
+    expect(finalAfterRace['squat']).toBe(true);
+
+    // Correct pattern: chain from prev state — both keys survive.
+    let state = {};
+    state = toggleInMap(state, 'bench press');
+    state = toggleInMap(state, 'squat');
+    expect(state['bench press']).toBe(true);
+    expect(state['squat']).toBe(true);
+  });
+});

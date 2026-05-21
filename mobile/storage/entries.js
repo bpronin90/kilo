@@ -34,15 +34,10 @@ export async function loadTrackedLifts() {
   }
 }
 
-// Set or unset a lift as tracked. normalizedName must already be normalized.
-// Passing tracked=false removes the key so the map stays compact.
-export async function setLiftTracked(normalizedName, tracked) {
-  const map = await loadTrackedLifts();
-  if (tracked) {
-    map[normalizedName] = true;
-  } else {
-    delete map[normalizedName];
-  }
+// Write the full tracked-lifts map atomically.
+// Callers must derive the next map from their own in-memory state rather than
+// re-reading storage, so that rapid consecutive toggles don't race.
+export async function saveTrackedLifts(map) {
   await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
 }
 
