@@ -166,7 +166,11 @@ The real native app path now has a modular React Native shell:
   slot selection, and tracked-lift cards that surface progression status,
   latest estimated 1RM, a Kilo max derived from the average Epley value across
   non-warmup tracked sets times a user-tunable fatigue multiplier (default
-  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend
+  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend.
+  Its mount-time entry state is now stabilized so Analytics no longer visibly
+  flashes on entry, section loading placeholders stay scoped to the data each
+  section actually needs, and incomplete weight rows are filtered before they
+  reach the rolling-average path
 - `mobile/components/` contains shared shell, tab bar, and UI primitives
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system

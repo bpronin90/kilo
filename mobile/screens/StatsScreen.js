@@ -1,15 +1,15 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen({ entries, multiplier, section }) {
-  const { notes, currentNote, update: updateNote } = useWorkoutNotes();
-  const { entries: weightEntries } = useWeightEntries();
-  const { trackedLifts } = useTrackedLifts();
+export function StatsScreen({ entries: propEntries, multiplier, section }) {
+  const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
+  const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
+  const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
@@ -18,32 +18,65 @@ export function StatsScreen({ entries, multiplier, section }) {
   const weightSectionY = useRef(0);
   const strengthSectionY = useRef(0);
   const pendingSection = useRef(section);
+  const hasScrolled = useRef(false);
+
+  const weightEntries = useMemo(() => {
+    const source = (Array.isArray(propEntries) && propEntries.length > 0) ? propEntries : (hookWeightEntries || []);
+    return source.filter(e => e && e.date && e.weight_value != null);
+  }, [propEntries, hookWeightEntries]);
+
+  const isWeightLoading = loadingWeight && weightEntries.length === 0;
+  const isNotesLoading = loadingNotes && notes.length === 0;
+  const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
   useEffect(() => {
     pendingSection.current = section;
-    if (section === 'weight' && weightSectionY.current >= 0) {
+    hasScrolled.current = false;
+    
+    // If we already have the layout position, scroll immediately
+    if (section === 'weight' && weightSectionY.current > 0) {
       scrollRef.current?.scrollTo({ y: weightSectionY.current, animated: true });
+      hasScrolled.current = true;
     } else if (section === 'strength' && strengthSectionY.current > 0) {
       scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
+      hasScrolled.current = true;
     }
   }, [section]);
 
   function handleWeightLayout(e) {
-    weightSectionY.current = e.nativeEvent.layout.y;
-    if (pendingSection.current === 'weight') {
-      scrollRef.current?.scrollTo({ y: weightSectionY.current, animated: true });
+    const y = e.nativeEvent.layout.y;
+    if (Math.abs(weightSectionY.current - y) < 1) return;
+    weightSectionY.current = y;
+    
+    if (pendingSection.current === 'weight' && !hasScrolled.current) {
+      scrollRef.current?.scrollTo({ y, animated: true });
+      hasScrolled.current = true;
     }
   }
 
   function handleStrengthLayout(e) {
-    strengthSectionY.current = e.nativeEvent.layout.y;
-    if (pendingSection.current === 'strength') {
-      scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
+    const y = e.nativeEvent.layout.y;
+    if (Math.abs(strengthSectionY.current - y) < 1) return;
+    strengthSectionY.current = y;
+    
+    if (pendingSection.current === 'strength' && !hasScrolled.current) {
+      scrollRef.current?.scrollTo({ y, animated: true });
+      hasScrolled.current = true;
     }
   }
 
   // ... weightSummary and rollingSeries remain same but use weightEntries
   const weightSummary = useMemo(() => {
+    if (weightEntries.length === 0) {
+      return {
+        latestWeight: '—',
+        weightCount: '0',
+        avg7: '—',
+        avg30: '—',
+        paceFlag: null,
+        paceLevel: null,
+      };
+    }
     const trends = computeWeightTrends(weightEntries);
     const latest = weightEntries[0];
     const unit = latest?.weight_unit || 'lb';
@@ -75,7 +108,7 @@ export function StatsScreen({ entries, multiplier, section }) {
 
   const analytics = useMemo(() => {
     // Collect sections from all routines for full history of tracked lifts
-    const allSections = notes.flatMap(n => parseWorkoutNote(n.raw_text).sections);
+    const allSections = notes.flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
     
     // Identify lifts present in the current routine
     const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
@@ -138,7 +171,15 @@ export function StatsScreen({ entries, multiplier, section }) {
           )}
         </View>
 
-        <LineChart data={rollingSeries} height={100} hideHeader />
+        <View style={{ height: 100, justifyContent: 'center' }}>
+          {rollingSeries.length > 0 ? (
+            <LineChart data={rollingSeries} height={100} hideHeader />
+          ) : (
+            <View style={{ height: 100, backgroundColor: Colors.cardBorder, opacity: 0.05, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
+               {isWeightLoading && <ActivityIndicator size="small" color={Colors.accent} />}
+            </View>
+          )}
+        </View>
 
         <View style={styles.weightFooter}>
           <View style={styles.weightStat}>
@@ -154,24 +195,30 @@ export function StatsScreen({ entries, multiplier, section }) {
 
       <View onLayout={handleStrengthLayout}>
         <SectionTitle>Strength</SectionTitle>
-      {analytics?.oneK?.total ? (
-        <Card style={styles.oneKCard}>
-          <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
-          <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
-          <View style={styles.oneKBreakdown}>
-            <View style={styles.oneKItem}>
-              <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
-              <Text style={styles.oneKItemLabel}>Squat</Text>
-            </View>
-            <View style={styles.oneKItem}>
-              <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
-              <Text style={styles.oneKItemLabel}>Bench</Text>
-            </View>
-            <View style={styles.oneKItem}>
-              <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
-              <Text style={styles.oneKItemLabel}>Deadlift</Text>
-            </View>
-          </View>
+      {(isNotesLoading || analytics?.oneK?.total) ? (
+        <Card style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
+          {isNotesLoading ? (
+            <ActivityIndicator size="large" color={Colors.accent} />
+          ) : (
+            <>
+              <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
+              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
+              <View style={styles.oneKBreakdown}>
+                <View style={styles.oneKItem}>
+                  <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemLabel}>Squat</Text>
+                </View>
+                <View style={styles.oneKItem}>
+                  <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemLabel}>Bench</Text>
+                </View>
+                <View style={styles.oneKItem}>
+                  <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemLabel}>Deadlift</Text>
+                </View>
+              </View>
+            </>
+          )}
         </Card>
       ) : (
         <Card style={styles.infoCard}>
@@ -221,7 +268,11 @@ export function StatsScreen({ entries, multiplier, section }) {
 
       <SectionTitle>Tracked Lifts</SectionTitle>
       <View style={styles.list}>
-        {analytics?.signals?.length > 0 ? (
+        {(isNotesLoading || isTrackedLoading) ? (
+          <View style={{ height: 100, justifyContent: 'center' }}>
+            <ActivityIndicator color={Colors.accent} />
+          </View>
+        ) : analytics?.signals?.length > 0 ? (
           analytics.signals.map((sig, i) => (
             <Card key={i} style={styles.signalCard}>
               <View style={styles.signalHeader}>
