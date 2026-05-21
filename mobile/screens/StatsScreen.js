@@ -1,40 +1,19 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
-import { useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
-import { loadTrackedLifts } from '../storage/entries';
 
 export function StatsScreen({ entries, multiplier }) {
   const { notes, currentNote, update: updateNote } = useWorkoutNotes();
   const { entries: weightEntries } = useWeightEntries();
+  const { trackedLifts } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
-  const [trackedLifts, setTrackedLifts] = useState({});
-
-  useEffect(() => {
-    let mounted = true;
-    const refresh = async () => {
-      const next = await loadTrackedLifts();
-      if (mounted) {
-        setTrackedLifts(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
-          return next;
-        });
-      }
-    };
-
-    refresh();
-    const interval = setInterval(refresh, 1000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
   
   // ... weightSummary and rollingSeries remain same but use weightEntries
   const weightSummary = useMemo(() => {

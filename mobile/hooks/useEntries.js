@@ -140,6 +140,9 @@ export function useWorkoutNote() {
 let workoutNotesListeners = [];
 const notifyWorkoutNotes = () => workoutNotesListeners.forEach(l => l());
 
+let trackedLiftsListeners = [];
+const notifyTrackedLifts = () => trackedLiftsListeners.forEach(l => l());
+
 export function useWorkoutNotes() {
   const [notes, setNotes] = useState([]);
   const [currentId, setCurrentId] = useState(null);
@@ -197,4 +200,48 @@ export function useWorkoutNotes() {
   }, []);
 
   return { notes, currentId, currentNote, loading, error, add, update, remove, selectCurrent, refresh };
+}
+
+export function useTrackedLifts() {
+  const [trackedLifts, setTrackedLifts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(() => {
+    Storage.loadTrackedLifts()
+      .then(setTrackedLifts)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    trackedLiftsListeners.push(refresh);
+    return () => {
+      trackedLiftsListeners = trackedLiftsListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const save = useCallback(async (nextTrackedLifts) => {
+    await Storage.saveTrackedLifts(nextTrackedLifts);
+    setTrackedLifts(nextTrackedLifts);
+    notifyTrackedLifts();
+    return nextTrackedLifts;
+  }, []);
+
+  const toggle = useCallback(async (name) => {
+    const currentTrackedLifts = await Storage.loadTrackedLifts();
+    const nextTrackedLifts = { ...currentTrackedLifts };
+    if (nextTrackedLifts[name]) {
+      delete nextTrackedLifts[name];
+    } else {
+      nextTrackedLifts[name] = true;
+    }
+    await Storage.saveTrackedLifts(nextTrackedLifts);
+    setTrackedLifts(nextTrackedLifts);
+    notifyTrackedLifts();
+    return nextTrackedLifts;
+  }, []);
+
+  return { trackedLifts, loading, error, save, toggle, refresh };
 }
