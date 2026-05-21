@@ -4,7 +4,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
-import { formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
+import { formatDate, formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 
@@ -337,7 +337,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                       </Text>
                     )}
                   </View>
-                  <Text style={styles.rowDate}>{formatTimestamp(new Date(entry.logged_at).getTime())}</Text>
+                  <Text style={styles.rowDate}>{formatDate(entry.logged_at)}</Text>
                 </View>
                 {entry.note ? (
                   <Text style={styles.rowNote} numberOfLines={1}>

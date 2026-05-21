@@ -156,9 +156,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
-  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, plus a
-  lightweight goal card for target weight and target date with derived pace
-  and advisory warnings
+  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, MM-DD-YYYY
+  display dates for visible weight-history rows while stored timestamps remain
+  ISO, plus a lightweight goal card for target weight and target date with
+  derived pace and advisory warnings
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day

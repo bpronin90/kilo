@@ -21,7 +21,7 @@ narrowly scoped — they are not bundled within a phase.
 - **Correctness:** Pacing flag thresholds wrong; Kilo max equals 1RM max because the spec formula is not implemented.
 - **Missing MVP3 capability:** Multi-routine notes ("workout notebook" model), Track → progressive-overload pipeline, current-routine designation drives Analytics scope.
 - **Structure:** Log tab duplicates weekdays (warmup vs lifting split); Analytics tab entry flickers.
-- **Polish:** Kilo title image, Home subheader/copy, scoped tile click targets, "Weeks In" tile (deload coloring deferred to backlog issue #92), global content offset, Weight log Save sizing/color, date picker + MM-DD-YYYY, Goal/suggestion prominence, Log typography, "first" label rename.
+- **Polish:** Kilo title image, Home subheader/copy, scoped tile click targets, "Weeks In" tile (deload coloring deferred to backlog issue #92), global content offset, Weight log Save sizing/color, date picker, Goal/suggestion prominence, Log typography, "first" label rename.
 
 ---
 
@@ -228,7 +228,9 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** Buttons sized like other primary actions; no raw black; palette-aligned.
 - **Agent:** `agent:gemini`
 
-### 5.4 — Weight log: date display format MM-DD-YYYY
+### 5.4 — Weight log: date display format MM-DD-YYYY [DONE]
+
+- **Status:** Shipped in Issue #138.
 
 - **Problem:** Dates show YYYY-MM-DD.
 - **Scope:** `mobile/lib/format.js` display-layer formatter; storage stays ISO.

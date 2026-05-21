@@ -1,3 +1,11 @@
+export function formatDate(isoString) {
+  if (!isoString) return '';
+  const datePart = String(isoString).slice(0, 10);
+  const [year, month, day] = datePart.split('-');
+  if (!year || !month || !day) return '';
+  return `${month}-${day}-${year}`;
+}
+
 export function formatTimestamp(value) {
   return new Date(value).toLocaleString([], {
     month: 'short',

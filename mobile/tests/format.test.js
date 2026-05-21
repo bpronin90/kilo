@@ -1,4 +1,32 @@
-import { classifyWeightPace, getWeightDeltaSeverity, formatDelta } from '../lib/format';
+import { classifyWeightPace, getWeightDeltaSeverity, formatDelta, formatDate } from '../lib/format';
+
+// ── formatDate ────────────────────────────────────────────────────────────────
+
+describe('formatDate', () => {
+  test('formats ISO date string as MM-DD-YYYY', () => {
+    expect(formatDate('2024-05-21')).toBe('05-21-2024');
+  });
+
+  test('formats ISO datetime string using only the date portion', () => {
+    expect(formatDate('2024-01-09T10:30:00Z')).toBe('01-09-2024');
+  });
+
+  test('returns empty string for null', () => {
+    expect(formatDate(null)).toBe('');
+  });
+
+  test('returns empty string for undefined', () => {
+    expect(formatDate(undefined)).toBe('');
+  });
+
+  test('returns empty string for empty string', () => {
+    expect(formatDate('')).toBe('');
+  });
+
+  test('handles single-digit month and day with zero-padding preserved', () => {
+    expect(formatDate('2024-03-07')).toBe('03-07-2024');
+  });
+});
 
 // ── classifyWeightPace ────────────────────────────────────────────────────────
 
