@@ -221,6 +221,8 @@ narrowly scoped — they are not bundled within a phase.
 
 ### 5.3 — Weight log: Save button sizing + color
 
+- **Status:** Shipped in Issue #137.
+
 - **Problem:** Buttons too large and black.
 - **Scope:** `mobile/screens/WeightScreen.js` button styles only.
 - **Acceptance:** Buttons sized like other primary actions; no raw black; palette-aligned.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.4 - 2026-05-21
+
+- Issue #137: Right-sized and recolored the native Weight log weigh-in save
+  button so it matches the app's primary-action sizing more closely and uses
+  the shared accent palette instead of raw black. Updated
+  `docs/mvp-v3.5-roadmap.md` to mark the polish task shipped.
+
 ## 0.35.3 - 2026-05-20
 
 - Issue #136: Shifted native app content upward at the shared shell by moving
