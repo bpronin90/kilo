@@ -251,7 +251,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               style={styles.input}
             />
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
-            <Button onPress={handleSaveGoal} title="Save goal" style={styles.saveButton} />
+            <Button onPress={handleSaveGoal} title="Save goal" />
           </View>
         ) : (
           <View style={styles.goalDisplay}>
