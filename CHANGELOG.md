@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.2 - 2026-05-20
+
+- Issue #131: Updated the native Home header to use the bundled Kilo
+  wordmark, changed the supporting copy to `Current Routine Progress`,
+  renamed the strength card to `1k Club Progress`, removed the old `Total
+  Weeks` tile, and updated `docs/current-state.md` plus
+  `docs/mvp-roadmap.md` to match the shipped Home behavior.
+
 ## 0.33.1 - 2026-05-20
 
 - Issue #130: Tightened the native Home dashboard navigation so only the

@@ -6,7 +6,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../components/UI';
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote } from '../lib/parser';
 import { 
   computeWeightRollingAverageSeries, 
   derive1kTotal, 
@@ -15,15 +15,14 @@ import {
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
+const WORDMARK = require('../assets/brand/wordmark.png');
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
-    let totalWeeks = 0;
     let oneK = null;
 
     if (workoutNote?.raw_text) {
       const { sections } = parseWorkoutNote(workoutNote.raw_text);
-      totalWeeks = countWorkoutSessionsFromSections(sections);
       
       const oneKSelections = {
         ...DEFAULT_1K_EXERCISES,
@@ -35,13 +34,13 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
 
-    return { weightSeries, oneK, latestWeight, totalWeeks };
+    return { weightSeries, oneK, latestWeight };
   }, [weightEntries, workoutNote]);
 
   return (
     <ScreenShell
-      title="Dashboard"
-      subtitle="Your training dashboard."
+      title={<Image source={WORDMARK} style={styles.wordmark} />}
+      subtitle="Current Routine Progress"
     >
       {successMessage ? (
         <Card style={styles.successCard}>
@@ -56,13 +55,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
             {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
           </Text>
         </Card>
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Weeks</Text>
-          <Text style={styles.summaryValue}>{String(dashboardData.totalWeeks)}</Text>
-        </Card>
       </View>
 
-      <SectionTitle>1,000 lb Club</SectionTitle>
+      <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
         <Pressable onPress={() => onNavigate('Analytics', 'strength')} style={styles.oneKTotalTarget}>
           <Text style={styles.oneKValue}>
@@ -603,6 +598,13 @@ const styles = StyleSheet.create({
     height: 64,
     resizeMode: 'contain',
     opacity: 0.8,
+  },
+  wordmark: {
+    width: '100%',
+    maxWidth: 160,
+    aspectRatio: 3, // Approx 120/40 ratio
+    resizeMode: 'contain',
+    marginLeft: -8, // Compensate for visual padding in the PNG
   },
   backButton: {
     backgroundColor: 'transparent',
