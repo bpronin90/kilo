@@ -11,7 +11,7 @@ import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, compute
 
 function GoalDerived({ info }) {
   if (!info) return null;
-  const { direction, weeks_remaining, required_weekly_pace, warnings } = info;
+  const { direction, required_weekly_pace, warnings } = info;
   if (required_weekly_pace === null) {
     return (
       <View style={styles.goalDerived}>
@@ -19,18 +19,25 @@ function GoalDerived({ info }) {
       </View>
     );
   }
+
   const paceAbs = Math.abs(required_weekly_pace).toFixed(2);
-  const dirLabel = direction === 'gain' ? 'Gain' : direction === 'loss' ? 'Lose' : 'Maintain';
-  const paceLabel = direction === 'maintain'
-    ? 'Maintain current weight'
-    : `${dirLabel} ${paceAbs} lb/week`;
   const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
+
   return (
     <View style={styles.goalDerived}>
-      <Text style={styles.goalPaceText}>{paceLabel}</Text>
-      {calories_per_day !== null && calLabel !== 'maintain' ? (
-        <Text style={styles.goalCalorieText}>~{calories_per_day} cal/day {calLabel}</Text>
-      ) : null}
+      <View style={styles.suggestionRow}>
+        <View style={styles.suggestionItem}>
+          <Text style={styles.suggestionValue}>{paceAbs}</Text>
+          <Text style={styles.suggestionLabel}>lb / week</Text>
+        </View>
+        {calories_per_day !== null && calLabel !== 'maintain' ? (
+          <View style={styles.suggestionItem}>
+            <Text style={styles.suggestionValue}>{calories_per_day}</Text>
+            <Text style={styles.suggestionLabel}>cal {calLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+
       {warnings.includes('unrealistic') ? (
         <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
       ) : warnings.includes('unhealthy') ? (
@@ -200,43 +207,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
     >
-      <Card style={editingId ? styles.editingCard : null}>
-        {editingId ? (
-          <View style={styles.editingHeader}>
-            <Text style={styles.editingTitle}>Editing entry</Text>
-            <Pressable onPress={cancelEdit}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {displayError ? (
-          <Text style={styles.errorText}>{displayError}</Text>
-        ) : null}
-        <Text style={styles.inputLabel}>Weight (lb)</Text>
-        <TextInput
-          value={weightValue}
-          onChangeText={setWeightValue}
-          placeholder="185.0"
-          placeholderTextColor={Colors.textMuted}
-          keyboardType="decimal-pad"
-          style={styles.input}
-        />
-        <Text style={styles.inputLabel}>Note</Text>
-        <TextInput
-          value={weightNote}
-          onChangeText={setWeightNote}
-          placeholder="Morning, fasted"
-          placeholderTextColor={Colors.textMuted}
-          style={styles.input}
-        />
-        <Button 
-          onPress={handleSubmit} 
-          title={editingId ? "Update entry" : "Save weigh-in"} 
-          disabled={saving}
-          style={styles.saveButton}
-        />
-      </Card>
-
       <Card style={styles.goalCard}>
         <View style={styles.goalHeader}>
           <Text style={styles.goalTitle}>Goal</Text>
@@ -305,6 +275,43 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
           </View>
         )}
+      </Card>
+
+      <Card style={editingId ? styles.editingCard : null}>
+        {editingId ? (
+          <View style={styles.editingHeader}>
+            <Text style={styles.editingTitle}>Editing entry</Text>
+            <Pressable onPress={cancelEdit}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {displayError ? (
+          <Text style={styles.errorText}>{displayError}</Text>
+        ) : null}
+        <Text style={styles.inputLabel}>Weight (lb)</Text>
+        <TextInput
+          value={weightValue}
+          onChangeText={setWeightValue}
+          placeholder="185.0"
+          placeholderTextColor={Colors.textMuted}
+          keyboardType="decimal-pad"
+          style={styles.input}
+        />
+        <Text style={styles.inputLabel}>Note</Text>
+        <TextInput
+          value={weightNote}
+          onChangeText={setWeightNote}
+          placeholder="Morning, fasted"
+          placeholderTextColor={Colors.textMuted}
+          style={styles.input}
+        />
+        <Button 
+          onPress={handleSubmit} 
+          title={editingId ? "Update entry" : "Save weigh-in"} 
+          disabled={saving}
+          style={styles.saveButton}
+        />
       </Card>
 
       {(trends.avg7 !== null || trends.avg30 !== null) ? (
@@ -614,30 +621,52 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   goalDisplayValue: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: Colors.text,
   },
   goalDisplayLabel: {
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
-  goalDerived: {
-    gap: 4,
-  },
-  goalPaceText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  goalCalorieText: {
     fontSize: 12,
     color: Colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  goalDerived: {
+    marginTop: 4,
+    gap: 12,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  suggestionItem: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  suggestionValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: Colors.accent,
+  },
+  suggestionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 2,
   },
   goalWarningText: {
     fontSize: 13,
     color: Colors.error,
-    opacity: 0.85,
+    opacity: 0.9,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   saveButton: {
     backgroundColor: Colors.accent,
