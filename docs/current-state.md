@@ -138,20 +138,21 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
-  faithful to the raw text, parsed exercise tracking toggles in read mode that
-  now persist a global tracked-lift map keyed by normalized exercise name,
-  inline `—` skip markers for bare `-` lines, a labeled bottom `Edit note`
-  action in the read view, save handling that persists raw-note edits directly
-  through the current workout-note store and returns the current routine to
-  read mode on success for visible confirmation, a bottom `Routines` list that
-  keeps each non-current routine collapsed to a compact row that can either
-  reopen its raw-note editor or mark that routine current through an inline
-  action, plus routine create/rename/delete controls with confirmation and
-  current-selection cleanup guardrails; switching the current workout now
-  requires explicit confirmation, records a real `currentSince` timestamp when
-  a different routine becomes current, and does not proceed if saving pending
-  edits fails; Android back now exits edit subviews before falling through to
-  tab-level navigation
+  faithful to the raw text while collapsing same-day warmup and lifting
+  sections under one weekday heading, parsed exercise tracking toggles in read
+  mode that now persist a global tracked-lift map keyed by normalized
+  exercise name, inline `—` skip markers for bare `-` lines, a labeled bottom
+  `Edit note` action in the read view, save handling that persists raw-note
+  edits directly through the current workout-note store and returns the
+  current routine to read mode on success for visible confirmation, a bottom
+  `Routines` list that keeps each non-current routine collapsed to a compact
+  row that can either reopen its raw-note editor or mark that routine current
+  through an inline action, plus routine create/rename/delete controls with
+  confirmation and current-selection cleanup guardrails; switching the current
+  workout now requires explicit confirmation, records a real `currentSince`
+  timestamp when a different routine becomes current, and does not proceed if
+  saving pending edits fails; Android back now exits edit subviews before
+  falling through to tab-level navigation
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
@@ -173,8 +174,10 @@ The real native app path now has a modular React Native shell:
   modules and now also includes tolerant workout-note parsing for the archived
   sample-style shorthand logs used by the v2 note-based workflow plus a
   derived analytics contract for later note-based UI and analytics work,
-  including tracked-exercise estimated-PR derivation from parsed sets and
-  positional session-alignment derivation for long-note imports
+  including tracked-exercise estimated-PR derivation from parsed sets,
+  positional session-alignment derivation for long-note imports, and stable
+  same-day section headings so warmup and lifting blocks can render under one
+  calendar-day heading in the Log view
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
   including the default 1k exercise-slot selection used by analytics and a
   factory for titled workout-note items in the multi-note model

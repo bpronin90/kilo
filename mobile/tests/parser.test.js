@@ -1844,3 +1844,60 @@ describe('countWorkoutSessions — combined warmup and lifting days', () => {
     expect(countWorkoutSessionsFromSections(sections)).toBe(countWorkoutSessions(note));
   });
 });
+
+// ── parseWorkoutNote — warmup+lifting day-heading consistency ─────────────────
+// These tests pin the contract that makes LogScreen's day-grouping correct:
+// all sections under the same calendar day carry the same heading value.
+
+describe('parseWorkoutNote — warmup+lifting heading consistency', () => {
+  test('warmup and lifting on the same day both carry that heading', () => {
+    const note = 'Monday\n+WARMUP EXERCISE\n-Bike\n5 min\n+LIFTING\n-Bench\n80 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    expect(sections.find(s => s.kind === 'warmup').heading).toBe('Monday');
+    expect(sections.find(s => s.kind === 'lifting').heading).toBe('Monday');
+  });
+
+  test('warmup and lifting on the same day produce two separate sections', () => {
+    const note = 'Monday\n+WARMUP EXERCISE\n-Bike\n5 min\n+LIFTING\n-Bench\n80 8,8,8';
+    const { sections } = parseWorkoutNote(note);
+    expect(sections).toHaveLength(2);
+  });
+
+  test('multi-day note: each day heading appears on exactly its own sections', () => {
+    const note = [
+      'Monday',
+      '+Warmup',
+      '-Bike',
+      '5 min',
+      '+Lifting',
+      '-Bench',
+      '80 8',
+      'Wednesday',
+      '+Warmup',
+      '-Bike',
+      '5 min',
+      '+Lifting',
+      '-Squat',
+      '205 5',
+    ].join('\n');
+    const { sections } = parseWorkoutNote(note);
+    expect(sections.filter(s => s.heading === 'Monday')).toHaveLength(2);
+    expect(sections.filter(s => s.heading === 'Wednesday')).toHaveLength(2);
+  });
+
+  test('no-subheading sections under a day heading carry that heading', () => {
+    const note = 'Monday\n-Bench\n80 8\n-Squat\n205 5';
+    const { sections } = parseWorkoutNote(note);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].heading).toBe('Monday');
+    expect(sections[0].exercises).toHaveLength(2);
+  });
+
+  test('empty day with only a heading and no exercises produces no section', () => {
+    const note = 'Monday\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const mondaySections = sections.filter(s => s.heading === 'Monday');
+    expect(mondaySections).toHaveLength(0);
+    expect(sections.find(s => s.heading === 'Wednesday')).toBeDefined();
+  });
+});
