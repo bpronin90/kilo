@@ -50,52 +50,53 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       ) : null}
 
       <View style={styles.summaryGrid}>
-        <Card style={styles.summaryCard} onPress={() => onNavigate('Weight')}>
+        <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Latest Weight</Text>
           <Text style={styles.summaryValue}>
             {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
           </Text>
         </Card>
-        <Card style={styles.summaryCard} onPress={() => onNavigate('Log')}>
+        <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Total Weeks</Text>
           <Text style={styles.summaryValue}>{String(dashboardData.totalWeeks)}</Text>
         </Card>
       </View>
 
       <SectionTitle>1,000 lb Club</SectionTitle>
-      <Card onPress={() => onNavigate('Analytics')} style={styles.oneKCard}>
-        <View style={styles.oneKHeader}>
-          <Text style={styles.oneKLabel}>Current Workout Progress</Text>
+      <Card style={styles.oneKCard}>
+        <Pressable onPress={() => onNavigate('Analytics', 'strength')} style={styles.oneKTotalTarget}>
           <Text style={styles.oneKValue}>
             {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
             <Text style={styles.oneKUnit}> lb</Text>
           </Text>
-        </View>
+        </Pressable>
         <View style={styles.progressBar}>
-          <View 
+          <View
             style={[
-              styles.progressFill, 
+              styles.progressFill,
               { width: `${Math.min(100, ((dashboardData.oneK?.total || 0) / 1000) * 100)}%` }
-            ]} 
+            ]}
           />
         </View>
         <View style={styles.oneKBreakdown}>
           <Text style={styles.oneKBreakdownText}>
-            S: {dashboardData.oneK?.squat?.toFixed(0) || '—'}  ·  
-            B: {dashboardData.oneK?.bench?.toFixed(0) || '—'}  ·  
+            S: {dashboardData.oneK?.squat?.toFixed(0) || '—'}  ·
+            B: {dashboardData.oneK?.bench?.toFixed(0) || '—'}  ·
             D: {dashboardData.oneK?.deadlift?.toFixed(0) || '—'}
           </Text>
         </View>
       </Card>
 
       <SectionTitle>Weight Trend</SectionTitle>
-      <Card onPress={() => onNavigate('Weight')} style={styles.chartCard}>
-        <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
-        <LineChart 
-          data={dashboardData.weightSeries} 
-          color={Colors.success} 
-          height={100}
-        />
+      <Card style={styles.chartCard}>
+        <Pressable onPress={() => onNavigate('Analytics', 'weight')}>
+          <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
+          <LineChart
+            data={dashboardData.weightSeries}
+            color={Colors.success}
+            height={100}
+          />
+        </Pressable>
       </Card>
     </ScreenShell>
   );
@@ -492,16 +493,8 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
   },
-  oneKHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  oneKLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
+  oneKTotalTarget: {
+    alignSelf: 'flex-start',
   },
   oneKValue: {
     fontSize: 24,

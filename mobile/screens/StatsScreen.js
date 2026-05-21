@@ -1,20 +1,37 @@
-import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ScreenShell } from '../components/ScreenShell';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen({ entries, multiplier }) {
+export function StatsScreen({ entries, multiplier, section }) {
   const { notes, currentNote, update: updateNote } = useWorkoutNotes();
   const { entries: weightEntries } = useWeightEntries();
   const { trackedLifts } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
-  
+
+  const scrollRef = useRef(null);
+  const strengthSectionY = useRef(0);
+  const pendingSection = useRef(section);
+
+  useEffect(() => {
+    pendingSection.current = section;
+    if (section === 'strength' && strengthSectionY.current > 0) {
+      scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
+    }
+  }, [section]);
+
+  function handleStrengthLayout(e) {
+    strengthSectionY.current = e.nativeEvent.layout.y;
+    if (pendingSection.current === 'strength') {
+      scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
+    }
+  }
+
   // ... weightSummary and rollingSeries remain same but use weightEntries
   const weightSummary = useMemo(() => {
     const trends = computeWeightTrends(weightEntries);
@@ -87,10 +104,12 @@ export function StatsScreen({ entries, multiplier }) {
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
   return (
-    <ScreenShell
-      title="Analytics"
-      subtitle="Insights derived from your logs."
-    >
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
+      <View style={styles.shellHeader}>
+        <Text style={styles.shellTitle}>Analytics</Text>
+        <Text style={styles.shellSubtitle}>Insights derived from your logs.</Text>
+      </View>
+
       <SectionTitle>Weight Trends</SectionTitle>
       <Card style={styles.weightCard}>
         <View style={styles.weightHeader}>
@@ -121,7 +140,8 @@ export function StatsScreen({ entries, multiplier }) {
         </View>
       </Card>
 
-      <SectionTitle>Strength</SectionTitle>
+      <View onLayout={handleStrengthLayout}>
+        <SectionTitle>Strength</SectionTitle>
       {analytics?.oneK?.total ? (
         <Card style={styles.oneKCard}>
           <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
@@ -185,6 +205,8 @@ export function StatsScreen({ entries, multiplier }) {
         ))}
       </Card>
 
+      </View>
+
       <SectionTitle>Tracked Lifts</SectionTitle>
       <View style={styles.list}>
         {analytics?.signals?.length > 0 ? (
@@ -232,7 +254,7 @@ export function StatsScreen({ entries, multiplier }) {
           </Text>
         )}
       </View>
-    </ScreenShell>
+    </ScrollView>
   );
 }
 
@@ -257,6 +279,26 @@ function formatOverload(trend) {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    padding: 20,
+    paddingBottom: 120,
+    gap: 16,
+  },
+  shellHeader: {
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 8 : 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  shellTitle: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  shellSubtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.textMuted,
+  },
   list: {
     gap: 12,
   },
