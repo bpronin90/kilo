@@ -246,7 +246,9 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** Tap opens picker; selection persists; display format correct.
 - **Agent:** `agent:gemini`
 
-### 5.6 — Weight log: Goal + suggestion prominence
+### 5.6 — Weight log: Goal + suggestion prominence [DONE]
+
+- **Status:** Shipped in Issue #140.
 
 - **Problem:** Goal is buried; suggestion numbers (target gain/week, calorie surplus) too small.
 - **Scope:** Visual hierarchy pass in `mobile/screens/WeightScreen.js`; pull Goal up or highlight inside panel; increase suggestion-number type weight/size.

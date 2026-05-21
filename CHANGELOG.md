@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.7 - 2026-05-21
+
+- Issue #140: Raised the native Weight screen Goal section to the top of the
+  screen, enlarged goal target/date typography, promoted weekly pace and
+  calorie guidance into high-hierarchy suggestion boxes, preserved semantic
+  maintain-goal messaging, and updated `docs/current-state.md` plus
+  `docs/mvp-v3.5-roadmap.md` to match the shipped UI.
+
 ## 0.35.6 - 2026-05-21
 
 - Issue #139: Replaced the native Weight goal target-date text field with a

@@ -158,10 +158,11 @@ The real native app path now has a modular React Native shell:
   denser history row treatment with per-entry delta badges for notable
   (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, MM-DD-YYYY
   display dates for visible weight-history rows while stored timestamps remain
-  ISO, plus a lightweight goal card for target weight and target date with a
-  native target-date picker, MM-DD-YYYY visible goal-date formatting, and
-  derived pace plus advisory warnings. A separate follow-up bug (#144) tracks
-  the missing goal-estimate display issue found during closeout verification
+  ISO, and a prominent top-level goal card with a native target-date picker,
+  larger target/date typography, MM-DD-YYYY visible goal-date formatting, and
+  high-hierarchy suggestion boxes for required weekly pace plus calorie
+  surplus/deficit alongside advisory warnings; maintain-goal cases render
+  semantic guidance instead of numeric estimate boxes
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
