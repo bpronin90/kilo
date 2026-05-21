@@ -122,14 +122,15 @@ The real native app path now has a modular React Native shell:
   recomputation, and exposes a separate More tab for Help, About, local Data &
   Backup export/import/recovery, and a low-prominence Settings & Algorithm
   sub-screen
-- `mobile/screens/HomeScreen.js` renders a native dashboard with tappable
-  summary-card shortcuts into Weight and Log, a current-workout `1,000 lb
-  Club` progress card, a compact 7-day rolling-average weight line chart, and
-  the exported More/Help/About/Data & Backup/Settings surfaces used by the
-  More tab; the More subviews now intercept Android back presses and return to
-  the More menu before falling through to tab-level navigation, and the new
-  Settings & Algorithm sub-screen exposes a persisted fatigue-multiplier
-  stepper plus reset control
+- `mobile/screens/HomeScreen.js` renders a native dashboard with static top
+  summary cards, a current-workout `1,000 lb Club` progress card whose total
+  value now links into the Analytics Strength section, a compact 7-day
+  rolling-average weight line chart whose scoped tap target now links into the
+  Analytics Weight Trends section, and the exported More/Help/About/Data &
+  Backup/Settings surfaces used by the More tab; the More subviews now
+  intercept Android back presses and return to the More menu before falling
+  through to tab-level navigation, and the new Settings & Algorithm sub-screen
+  exposes a persisted fatigue-multiplier stepper plus reset control
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
@@ -259,10 +260,11 @@ switching. The local backup/import path
 also now preserves multiple
 titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
-now a dashboard rather than a static blurb, with top summary cards that jump
-directly to Weight and Log, a compact current-workout `1,000 lb Club`
-progress card, and a shared line-chart view of the 7-day rolling-average
-weight trend as the default landing view. The native Log read
+now a dashboard rather than a static blurb, with non-navigating top summary
+cards, a compact current-workout `1,000 lb Club` progress card whose total
+links into the Analytics Strength section, and a shared line-chart view of
+the 7-day rolling-average weight trend whose scoped tap target links into the
+Analytics Weight Trends section as the default landing view. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection now persists globally
 by normalized lift name so `Bench Press`, `bench press`, and ` Bench  Press `

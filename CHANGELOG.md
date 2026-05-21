@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.33.1 - 2026-05-20
+
+- Issue #130: Tightened the native Home dashboard navigation so only the
+  intended `1,000 lb Club` total and `7-day rolling average` regions
+  navigate, routed both targets to the matching Analytics section, removed the
+  misleading extra line from the 1k bubble, and updated
+  `docs/current-state.md` and `docs/mvp-roadmap.md` to match the shipped
+  behavior.
+
 ## 0.33.0 - 2026-05-20
 
 - Issue #129: Shipped routine-aware tracked-lift Analytics cards on the native

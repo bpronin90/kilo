@@ -19,6 +19,7 @@ const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
+  const [analyticsSection, setAnalyticsSection] = useState(null);
 
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
@@ -75,10 +76,11 @@ export default function App() {
   const [weightSaving, setWeightSaving] = useState(false);
   const [workoutSaving, setWorkoutSaving] = useState(false);
 
-  const handleTabPress = useCallback((tab) => {
+  const handleTabPress = useCallback((tab, section = null) => {
     Keyboard.dismiss();
     setSaveError('');
     setSaveSuccess('');
+    setAnalyticsSection(section);
     setActiveTab(tab);
   }, []);
 
@@ -202,7 +204,7 @@ export default function App() {
         );
       case 'Stats':
       case 'Analytics':
-        return <StatsScreen entries={entries} multiplier={fatigueMultiplier} />;
+        return <StatsScreen entries={entries} multiplier={fatigueMultiplier} section={analyticsSection} />;
       case 'More':
         return (
           <MoreScreen 
