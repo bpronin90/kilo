@@ -1,5 +1,10 @@
 # MVP v2 Roadmap For Kilo
 
+Status: complete and historical.
+
+This roadmap reflects an earlier completed planning pass. Keep it as history;
+do not use it as the edit target for future roadmap work.
+
 ## MVP v2 Definition
 Kilo MVP v2 remains a single-user logging product, but it should align with
 the real user workflow instead of forcing a rigid tracker model.

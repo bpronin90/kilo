@@ -1,5 +1,12 @@
 # MVP3.5 Roadmap
 
+Status: complete and historical.
+
+All planned roadmap work has shipped on `main`. The original task stack was
+completed through issues `#110`-`#141`, with follow-up closeout fixes landing
+in issues `#143`, `#144`, and `#145`. Do not extend this file for new planning;
+create a new roadmap doc instead.
+
 Post-MVP3 cleanup and capability roadmap. Phases are ordered by user-blocking
 severity → correctness → missing capability → IA fixes → polish. Each phase
 ends with the app in a releasable state so the reviewer can gate the next.
@@ -15,7 +22,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Current Problems Summary
+## Historical Problems Summary
 
 - **P0 broken behavior:** 1k Club blank screen, raw-note Save no-op, Android back exits app, Track is a dead control.
 - **Correctness:** Pacing flag thresholds wrong; Kilo max equals 1RM max because the spec formula is not implemented.
@@ -25,7 +32,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Phase 1 — Stop the Bleeding
+## Phase 1 — Stop the Bleeding [DONE]
 
 **Goal:** Eliminate dead-ends and data-loss bugs that make the build feel broken on launch.
 **Why first:** Tester-visible crashes and no-ops in the first 60 seconds; everything downstream is easier to verify once nav and saves work.
@@ -65,7 +72,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Phase 2 — Correctness Pass
+## Phase 2 — Correctness Pass [DONE]
 
 **Goal:** Trust the numbers before any UI is built on top of them.
 **Why now:** Math fixes are independent of UI; doing them later forces re-verification of every screen that displays the values.
@@ -97,7 +104,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Phase 3 — Workout Notebook + Track Pipeline
+## Phase 3 — Workout Notebook + Track Pipeline [DONE]
 
 **Goal:** Land the multi-routine "notebook" model and wire Track into progressive-overload analytics.
 **Why now:** Nav and math are stable; structural data changes can happen without re-fighting Phase 1/2. Phase 4's nav targets need Phase 3's data to point at something real.
@@ -149,7 +156,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Phase 4 — Information Architecture & Structural Fixes
+## Phase 4 — Information Architecture & Structural Fixes [DONE]
 
 **Goal:** Make navigation and layout honest now that the data beneath them is correct.
 **Why now:** Phase 3 features mean the new nav targets actually have something to show. Doing IA before pure visual polish prevents polishing screens whose structure will change.
@@ -197,7 +204,7 @@ narrowly scoped — they are not bundled within a phase.
 
 ---
 
-## Phase 5 — Polish & Affordance Pass
+## Phase 5 — Polish & Affordance Pass [DONE]
 
 **Goal:** Final visual + interaction polish across all tabs.
 **Why last:** Underlying structure and data are settled; polish edits will not be redone.
@@ -264,14 +271,18 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** Set rows render uniformly across a sample week; no spurious italics.
 - **Agent:** `agent:gemini`
 
-### 5.8 — Investigate "first" label semantics (spike)
+### 5.8 — Investigate "first" label semantics (spike) [DONE]
+
+- **Status:** Completed as the investigation step that led into Issue #143.
 
 - **Problem:** The label "first" in Analytics is unclear; even Ben isn't sure what it represents.
 - **Scope:** Read-only investigation in `mobile/screens/StatsScreen.js` and supporting `mobile/lib/data.js`; identify what value the "first" label currently displays and how it's computed; report findings as an issue comment with file/line references and a recommended replacement label. No code changes.
 - **Acceptance:** Issue comment posted stating exactly what "first" represents in current code and a recommended replacement label awaiting Ben's confirmation.
 - **Agent:** `agent:codex`
 
-### 5.9 — Rename "first" label based on investigation
+### 5.9 — Rename "first" label based on investigation [DONE]
+
+- **Status:** Shipped in Issue #143.
 
 - **Problem:** Label remains unclear until renamed.
 - **Scope:** `mobile/screens/StatsScreen.js` label string only; uses the replacement approved after Task 5.8.

@@ -1,6 +1,12 @@
 # MVP v3 Roadmap For Kilo
 
-## Diagnosis
+Status: complete and historical.
+
+This roadmap's issue map has shipped on `main` through issues `#93`-`#109`.
+Treat it as a historical snapshot of the v3 planning pass, not the place to
+add new roadmap work.
+
+## Historical Diagnosis
 Current MVP friction is concentrated in five places:
 
 - the shared mobile shell is not respecting Android top safe-area spacing
@@ -25,7 +31,7 @@ Current MVP friction is concentrated in five places:
 
 ## Ordered MVP v3 Roadmap
 
-### Phase 1: Global Mobile Shell Fixes
+### Phase 1: Global Mobile Shell Fixes (Complete)
 - Phase goal: remove top-level mobile usability friction across the app.
 - Why this phase comes here: every tab inherits the current shell and header,
   so this is the highest-leverage fix and reduces noise for all later UI work.
@@ -72,7 +78,7 @@ Ordered tasks:
   - `type:implementation`
   - `effort:default`
 
-### Phase 2: Home And Help Cleanup
+### Phase 2: Home And Help Cleanup (Complete)
 - Phase goal: make the default landing surfaces simpler, clearer, and more
   actionable without changing deeper data models yet.
 - Why this phase comes here: once the shell is fixed, the next priority is the
@@ -141,7 +147,7 @@ Ordered tasks:
   - `type:implementation`
   - `effort:default`
 
-### Phase 3: Log Model Reset
+### Phase 3: Log Model Reset (Complete)
 - Phase goal: replace the single-note workout model with a small explicit
   multi-note routine system centered on one selected current workout.
 - Why this phase comes here: Home and Analytics should not be rebuilt against
@@ -242,7 +248,7 @@ Ordered tasks:
   - `effort:default`
   - `reasoning:medium`
 
-### Phase 4: Weight Log Reliability And Goals
+### Phase 4: Weight Log Reliability And Goals (Complete)
 - Phase goal: make weight tracking trustworthy, scalable, and goal-aware before
   polishing downstream analytics.
 - Why this phase comes here: Analytics should consume corrected weight logic
@@ -337,7 +343,7 @@ Ordered tasks:
   - `effort:heavy`
   - `reasoning:high`
 
-### Phase 5: Home And Analytics Redesign
+### Phase 5: Home And Analytics Redesign (Complete)
 - Phase goal: replace low-value visuals with compact trustworthy analytics
   built on the new current-workout and weight-goal foundations.
 - Why this phase comes here: this phase depends on the corrected log and weight

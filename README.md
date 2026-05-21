@@ -14,7 +14,13 @@ persists them locally in AsyncStorage-backed modules under `mobile/`.
 
 ## Run The Native App
 
-From `mobile/`, use the Expo app workflow for local development.
+From the repo root, the default native dev entrypoint is:
+
+```sh
+npm run mobile:start
+```
+
+From `mobile/`, the equivalent Expo command is `npm start`.
 
 For physical-device Android packaging, the currently documented native build
 path is:
@@ -83,11 +89,16 @@ test suite.
 | [`docs/architecture.md`](docs/architecture.md) | Script load order, parser paths, persistence model, and global state |
 | [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Automated coverage inventory and manual smoke checklist |
 | [`docs/repo-structure.md`](docs/repo-structure.md) | File map, structural verdict, and repo-orientation notes |
-| [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) | Broader MVP scope and the pre-launch readiness sequence |
+| [`docs/mvp-v3.5-roadmap.md`](docs/mvp-v3.5-roadmap.md) | Latest completed roadmap pass for the native cleanup / polish sequence |
 
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
 what is implemented, which app path is current, and what still gates launch
 validation.
+
+The roadmap docs under `docs/mvp-roadmap.md`, `docs/mvp-v2-roadmap.md`,
+`docs/mvp-v3-roadmap.md`, and `docs/mvp-v3.5-roadmap.md` are historical
+planning snapshots. For new planning work, create a new roadmap doc instead of
+editing one of those older files in place.
 
 ## Copyright
 
