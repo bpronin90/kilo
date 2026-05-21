@@ -80,14 +80,17 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const currentWeight = entries.length > 0 ? entries[0].weight_value : null;
 
   const goalInfo = useMemo(() => {
-    const tw = parseFloat(goalTargetWeight);
-    if (!currentWeight || isNaN(tw) || !goalTargetDate) return null;
+    // In display mode (goal saved, not editing), read goal directly so estimates
+    // appear without waiting for the form-state sync effect.
+    const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
+    const td = !goalEditing && goal ? goal.target_date : goalTargetDate;
+    if (!currentWeight || isNaN(tw) || !td) return null;
     try {
-      return computeWeightGoal({ currentWeight, targetWeight: tw, targetDate: goalTargetDate });
+      return computeWeightGoal({ currentWeight, targetWeight: tw, targetDate: td });
     } catch {
       return null;
     }
-  }, [currentWeight, goalTargetWeight, goalTargetDate]);
+  }, [currentWeight, goalTargetWeight, goalTargetDate, goal, goalEditing]);
 
   const handleSaveGoal = async () => {
     setGoalError('');
