@@ -2,18 +2,20 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals } from '../lib/data';
-import { useWorkoutNote, useWeightEntries } from '../hooks/useEntries';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
+import { useWorkoutNotes, useWeightEntries, useTrackedLifts } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen({ multiplier }) {
-  const { note, saveOneK } = useWorkoutNote();
+  const { notes, currentNote, update: updateNote } = useWorkoutNotes();
   const { entries: weightEntries } = useWeightEntries();
+  const { trackedLifts } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
-
+  
+  // ... weightSummary and rollingSeries remain same but use weightEntries
   const weightSummary = useMemo(() => {
     const trends = computeWeightTrends(weightEntries);
     const latest = weightEntries[0];
@@ -34,25 +36,36 @@ export function StatsScreen({ multiplier }) {
 
   const oneKSelections = useMemo(() => ({
     ...DEFAULT_1K_EXERCISES,
-    ...(note?.one_k_exercises || {}),
-  }), [note]);
+    ...(currentNote?.one_k_exercises || {}),
+  }), [currentNote]);
 
   const noteExerciseNames = useMemo(() => {
-    if (!note?.raw_text) return [];
-    const { sections } = parseWorkoutNote(note.raw_text);
+    if (!currentNote?.raw_text) return [];
+    const { sections } = parseWorkoutNote(currentNote.raw_text);
     const names = sections.flatMap(s => s.exercises.map(e => e.name));
     return [...new Set(names)].filter(isStrengthExerciseName);
-  }, [note]);
+  }, [currentNote]);
 
   const analytics = useMemo(() => {
-    if (!note?.raw_text) return null;
-    const { sections } = parseWorkoutNote(note.raw_text);
-    const trackedNames = note.tracked_exercises || [];
-    const { exercises: signals } = deriveSignals(sections, trackedNames, multiplier);
-    const oneK = derive1kTotal(sections, oneKSelections);
-    const workoutDayCount = countWorkoutSessions(note.raw_text);
+    // Collect sections from all routines for full history
+    const allSections = notes.flatMap(n => parseWorkoutNote(n.raw_text).sections);
+    
+    // Identify lifts present in the current routine
+    const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
+    const namesInCurrent = new Set(currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(e.name))));
+    
+    // Globally tracked lifts
+    const globallyTracked = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
+    
+    // Filter to tracked lifts that appear in current routine
+    const visibleTrackedNames = globallyTracked.filter(name => namesInCurrent.has(name));
+
+    const { exercises: signals } = deriveSignals(allSections, visibleTrackedNames, multiplier);
+    const oneK = derive1kTotal(allSections, oneKSelections);
+    const workoutDayCount = notes.reduce((sum, n) => sum + countWorkoutSessions(n.raw_text), 0);
+    
     return { signals, oneK, workoutDayCount };
-  }, [note, oneKSelections, multiplier]);
+  }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
 
   const workoutCount = useMemo(() => {
     return String(analytics?.workoutDayCount ?? 0);
@@ -62,9 +75,10 @@ export function StatsScreen({ multiplier }) {
     setActiveSlot(prev => (prev === slot ? null : slot));
   }
 
-  function handleSelectExercise(slot, exerciseName) {
+  async function handleSelectExercise(slot, exerciseName) {
+    if (!currentNote) return;
     const next = { ...oneKSelections, [slot]: exerciseName };
-    saveOneK(next);
+    await updateNote(currentNote.id, { one_k_exercises: next });
     setActiveSlot(null);
   }
 

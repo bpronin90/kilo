@@ -5,11 +5,11 @@ import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
-import { loadTrackedLifts, saveTrackedLifts } from '../storage/entries';
-import { useWorkoutNotes } from '../hooks/useEntries';
+import { useWorkoutNotes, useTrackedLifts } from '../hooks/useEntries';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
   const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
+  const { trackedLifts, save: saveTracked } = useTrackedLifts();
 
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
@@ -17,16 +17,10 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
 
-  const [trackedLifts, setTrackedLifts] = useState({});
-
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
-
-  useEffect(() => {
-    loadTrackedLifts().then(setTrackedLifts);
-  }, []);
 
   useEffect(() => {
     if (currentNote) {
@@ -196,12 +190,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const handleToggleTrack = (name) => {
     const key = normalizeLiftName(name);
-    setTrackedLifts(prev => {
-      const next = { ...prev };
-      if (next[key]) { delete next[key]; } else { next[key] = true; }
-      saveTrackedLifts(next);
-      return next;
-    });
+    const next = { ...trackedLifts };
+    if (next[key]) { delete next[key]; } else { next[key] = true; }
+    saveTracked(next);
   };
 
   const headerRight = !editingNoteId && hasContent && (
