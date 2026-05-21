@@ -210,7 +210,9 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** Bar reads as subtler; active tab still clearly indicated.
 - **Agent:** `agent:gemini`
 
-### 5.2 — Global content vertical offset
+### 5.2 — Global content vertical offset [DONE]
+
+- **Status:** Shipped in Issue #136.
 
 - **Problem:** Content sits too low from the top.
 - **Scope:** `mobile/components/ScreenShell.js` top padding / safe-area; applied once at the shell, not per-screen.

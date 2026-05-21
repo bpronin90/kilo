@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.3 - 2026-05-20
+
+- Issue #136: Shifted native app content upward at the shared shell by moving
+  top-spacing responsibility into `mobile/components/ScreenShell.js`,
+  wrapping the shared header in `SafeAreaView`, keeping one Android
+  status-bar-aware offset there, and removing the old global top container
+  padding so all tabs sit higher without notch or status-bar clipping.
+  Updated `docs/current-state.md` and `docs/mvp-v3.5-roadmap.md` to match the
+  shipped behavior.
+
 ## 0.35.2 - 2026-05-20
 
 - Issue #135: Softened the native bottom tab bar by switching it from the
