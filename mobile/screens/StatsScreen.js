@@ -15,15 +15,25 @@ export function StatsScreen({ entries, multiplier, section }) {
   const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
 
   const scrollRef = useRef(null);
+  const weightSectionY = useRef(0);
   const strengthSectionY = useRef(0);
   const pendingSection = useRef(section);
 
   useEffect(() => {
     pendingSection.current = section;
-    if (section === 'strength' && strengthSectionY.current > 0) {
+    if (section === 'weight' && weightSectionY.current >= 0) {
+      scrollRef.current?.scrollTo({ y: weightSectionY.current, animated: true });
+    } else if (section === 'strength' && strengthSectionY.current > 0) {
       scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
     }
   }, [section]);
+
+  function handleWeightLayout(e) {
+    weightSectionY.current = e.nativeEvent.layout.y;
+    if (pendingSection.current === 'weight') {
+      scrollRef.current?.scrollTo({ y: weightSectionY.current, animated: true });
+    }
+  }
 
   function handleStrengthLayout(e) {
     strengthSectionY.current = e.nativeEvent.layout.y;
@@ -110,7 +120,9 @@ export function StatsScreen({ entries, multiplier, section }) {
         <Text style={styles.shellSubtitle}>Insights derived from your logs.</Text>
       </View>
 
-      <SectionTitle>Weight Trends</SectionTitle>
+      <View onLayout={handleWeightLayout}>
+        <SectionTitle>Weight Trends</SectionTitle>
+      </View>
       <Card style={styles.weightCard}>
         <View style={styles.weightHeader}>
           <View>
