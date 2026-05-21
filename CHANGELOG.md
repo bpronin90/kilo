@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.8 - 2026-05-21
+
+- Issue #141: Normalized native Log-tab set-row typography by routing both
+  parsed `SetLine` rows and fallback unparsed/skip rows through one shared
+  font-size token, removing the stray italics and inconsistent sizing from the
+  read view. Updated `docs/current-state.md` and `docs/mvp-v3.5-roadmap.md`
+  to match the shipped UI.
+
 ## 0.35.7 - 2026-05-21
 
 - Issue #140: Raised the native Weight screen Goal section to the top of the

@@ -255,7 +255,9 @@ narrowly scoped — they are not bundled within a phase.
 - **Acceptance:** Goal and the two key suggestion numbers dominate their regions; no small-screen regressions.
 - **Agent:** `agent:gemini`
 
-### 5.7 — Log tab typography normalization
+### 5.7 — Log tab typography normalization [DONE]
+
+- **Status:** Shipped in Issue #141.
 
 - **Problem:** Font sizes oscillate; some entries become italicized mid-list.
 - **Scope:** Consolidate exercise/set row text styles in `mobile/screens/LogScreen.js`; one source of truth for set-line typography.

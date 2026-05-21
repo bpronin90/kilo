@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle } from '../components/UI';
+import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
@@ -457,9 +457,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   unparsedRow: {
-    fontSize: 15,
+    fontSize: SET_ROW_FONT_SIZE,
     color: Colors.textMuted,
-    fontStyle: 'italic',
     paddingLeft: 0,
   },
   emptyText: {
@@ -479,9 +478,8 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
   skipMarker: {
-    fontSize: 13,
+    fontSize: SET_ROW_FONT_SIZE,
     color: Colors.textMuted,
-    fontStyle: 'italic',
   },
   editContainer: {
     gap: 16,
