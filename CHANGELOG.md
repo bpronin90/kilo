@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.5 - 2026-05-21
+
+- Issue #138: Reformatted visible native Weight history dates to
+  `MM-DD-YYYY` through a display-only formatter while leaving stored ISO
+  timestamps unchanged, added formatter regression coverage, and updated
+  `docs/current-state.md` plus `docs/mvp-v3.5-roadmap.md` to reflect the
+  shipped behavior.
+
 ## 0.35.4 - 2026-05-21
 
 - Issue #137: Right-sized and recolored the native Weight log weigh-in save
