@@ -1350,6 +1350,67 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
   });
 });
 
+// ── deriveProgressionSignals — single-block multi-session ─────────────────────
+
+describe('deriveProgressionSignals — single-block multi-session entries', () => {
+  test('improved: multi-session single block produces improved, not first_session', () => {
+    // Two session entries under one exercise header → comparable via session_entries
+    const note = '-Bench Press\n- 225 5,5,5\n- 235 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('improved');
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(235, 5));
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(225, 5));
+  });
+
+  test('regressed: later session with lower weight produces regressed', () => {
+    const note = '-Bench Press\n- 235 5,5,5\n- 225 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('regressed');
+  });
+
+  test('held: same weight across sessions produces held', () => {
+    const note = '-Bench Press\n- 225 5,5,5\n- 225 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('held');
+  });
+
+  test('first_session: single session entry still produces first_session', () => {
+    const note = '-Bench Press\n- 225 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('first_session');
+    expect(sig.overload_trend).toBe('first_session');
+  });
+
+  test('overload_trend up: top weight increases across sessions', () => {
+    const note = '-Bench Press\n- 225 5,5,5\n- 235 3';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.overload_trend).toBe('up');
+    expect(sig.latest_top_weight).toBe(235);
+  });
+
+  test('overload_trend down: top weight decreases across sessions', () => {
+    const note = '-Bench Press\n- 235 5,5,5\n- 225 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.overload_trend).toBe('down');
+  });
+
+  test('compares latest two sessions, not total best, across many entries', () => {
+    // Three sessions: 225 → 235 → 230; status should be regressed (vs prior 235)
+    const note = '-Bench Press\n- 225 5,5,5\n- 235 5,5,5\n- 230 5,5,5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench Press']).exercises[0];
+    expect(sig.progression_status).toBe('regressed');
+    expect(sig.prior_pr).toBeCloseTo(epleyPR(235, 5));
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(230, 5));
+  });
+});
+
 // ── parseWorkoutNote — session_entries ────────────────────────────────────────
 
 describe('parseWorkoutNote — session_entries', () => {
