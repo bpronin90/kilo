@@ -7,7 +7,7 @@
   wrapping the shared header in `SafeAreaView`, keeping one Android
   status-bar-aware offset there, and removing the old global top container
   padding so all tabs sit higher without notch or status-bar clipping.
-  Updated `docs/current-state.md` and `docs/mvp-roadmap.md` to match the
+  Updated `docs/current-state.md` and `docs/mvp-v3.5-roadmap.md` to match the
   shipped behavior.
 
 ## 0.35.2 - 2026-05-20

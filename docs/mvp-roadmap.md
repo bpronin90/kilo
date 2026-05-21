@@ -76,11 +76,6 @@ The repo now has a real native app scaffold under `mobile/`.
   mount-time flicker, scoping loading placeholders to the specific data each
   section depends on, and hardening the screen against incomplete weight-entry
   rows passed into the rolling-average path.
-- Issue #136 moved the native shell's top-spacing decision fully into
-  `ScreenShell` by wrapping the shared header in `SafeAreaView`, keeping one
-  Android status-bar-aware offset there, and removing the old global top
-  container padding so all tabs sit higher without notch or status-bar
-  clipping.
 The browser prototype still remains the broader behavior reference for
 prototype-only screens and analytics, but `mobile/` now covers the first native
 MVP create/store/retrieve milestone locally.
