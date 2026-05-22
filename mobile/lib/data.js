@@ -326,7 +326,7 @@ export function makeWorkoutNote({ raw_text }) {
 }
 
 // Factory for a named workout note in the multi-note model
-export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false, currentSince = null }) {
+export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false }) {
   const now = new Date().toISOString();
   return {
     id: `wn_${now.slice(0, 10)}_${Date.now()}`,
@@ -337,7 +337,6 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     tracked_exercises: [],
     one_k_exercises: null,
     isCurrent,
-    currentSince,
   };
 }
 

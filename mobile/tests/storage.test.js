@@ -1334,12 +1334,6 @@ describe('migrateToNotebook', () => {
     expect(result[0].isCurrent).toBe(true);
   });
 
-  test('migrated entry has currentSince: null (start date unknown for legacy data)', async () => {
-    await saveWorkoutNote('-Squat\n225 5,5,5');
-    const result = await migrateToNotebook();
-    expect(result[0].currentSince).toBeNull();
-  });
-
   test('migrated entry preserves raw_text from legacy note', async () => {
     await saveWorkoutNote('-Squat\n225 5,5,5\n-RDL\n185 8,8');
     const result = await migrateToNotebook();
@@ -1394,7 +1388,7 @@ describe('migrateToNotebook', () => {
   });
 
   test('does not overwrite existing notebook entries', async () => {
-    const EXISTING = { id: 'wn_existing', title: 'My Routine', raw_text: 'existing text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: true, currentSince: null };
+    const EXISTING = { id: 'wn_existing', title: 'My Routine', raw_text: 'existing text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: true };
     await saveWorkoutNoteItem(EXISTING);
     await saveWorkoutNote('legacy text that should be ignored');
     const result = await migrateToNotebook();
@@ -1409,17 +1403,15 @@ describe('migrateToNotebook', () => {
     const notes = await loadWorkoutNotes();
     expect(notes[0].raw_text).toBe('-Bench\n185 5,5,5');
     expect(notes[0].isCurrent).toBe(true);
-    expect(notes[0].currentSince).toBeNull();
   });
 
   // normalization of pre-existing entries missing the new fields
-  test('normalizes pre-existing notebook entry missing isCurrent and currentSince', async () => {
+  test('normalizes pre-existing notebook entry missing isCurrent', async () => {
     const OLD = { id: 'wn_old', title: 'Old Routine', raw_text: 'old text', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
     await saveWorkoutNoteItem(OLD);
     const result = await migrateToNotebook();
     expect(result).toHaveLength(1);
     expect(result[0].isCurrent).toBe(false);
-    expect(result[0].currentSince).toBeNull();
     expect(result[0].raw_text).toBe('old text');
   });
 
@@ -1429,7 +1421,6 @@ describe('migrateToNotebook', () => {
     await saveCurrentWorkoutId('wn_old');
     const result = await migrateToNotebook();
     expect(result[0].isCurrent).toBe(true);
-    expect(result[0].currentSince).toBeNull();
   });
 
   test('normalization marks non-current notes isCurrent: false', async () => {
@@ -1456,15 +1447,6 @@ describe('migrateToNotebook', () => {
     await migrateToNotebook();
     const notes = await loadWorkoutNotes();
     expect('isCurrent' in notes[0]).toBe(true);
-    expect('currentSince' in notes[0]).toBe(true);
-  });
-
-  test('normalization preserves existing isCurrent and currentSince when already set', async () => {
-    const NOTE = { id: 'wn_a', title: 'A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: true, currentSince: '2026-05-01T00:00:00.000Z' };
-    await saveWorkoutNoteItem(NOTE);
-    const result = await migrateToNotebook();
-    expect(result[0].isCurrent).toBe(true);
-    expect(result[0].currentSince).toBe('2026-05-01T00:00:00.000Z');
   });
 
   test('normalization is idempotent — second call returns same shape without re-writing', async () => {
@@ -1474,28 +1456,20 @@ describe('migrateToNotebook', () => {
     const first = await migrateToNotebook();
     const second = await migrateToNotebook();
     expect(second[0].isCurrent).toBe(first[0].isCurrent);
-    expect(second[0].currentSince).toBe(first[0].currentSince);
   });
 });
 
 // ── setCurrentWorkoutNote ─────────────────────────────────────────────────────
 
 describe('setCurrentWorkoutNote', () => {
-  const NOTE_A = { id: 'wn_a', title: 'Routine A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false, currentSince: null };
-  const NOTE_B = { id: 'wn_b', title: 'Routine B', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false, currentSince: null };
+  const NOTE_A = { id: 'wn_a', title: 'Routine A', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+  const NOTE_B = { id: 'wn_b', title: 'Routine B', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
 
   test('marks the target note isCurrent: true', async () => {
     await saveWorkoutNoteItem(NOTE_A);
     await setCurrentWorkoutNote('wn_a');
     const notes = await loadWorkoutNotes();
     expect(notes.find(n => n.id === 'wn_a').isCurrent).toBe(true);
-  });
-
-  test('sets currentSince timestamp on the newly-current note', async () => {
-    await saveWorkoutNoteItem(NOTE_A);
-    await setCurrentWorkoutNote('wn_a');
-    const notes = await loadWorkoutNotes();
-    expect(notes.find(n => n.id === 'wn_a').currentSince).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   test('marks all other notes isCurrent: false', async () => {
@@ -1514,24 +1488,6 @@ describe('setCurrentWorkoutNote', () => {
     const notes = await loadWorkoutNotes();
     expect(notes.find(n => n.id === 'wn_a').isCurrent).toBe(false);
     expect(notes.find(n => n.id === 'wn_b').isCurrent).toBe(true);
-  });
-
-  test('switching to B sets a new currentSince on B', async () => {
-    await saveWorkoutNoteItem(NOTE_A);
-    await saveWorkoutNoteItem(NOTE_B);
-    await setCurrentWorkoutNote('wn_b');
-    const notes = await loadWorkoutNotes();
-    expect(notes.find(n => n.id === 'wn_b').currentSince).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-  });
-
-  test('re-setting the already-current note preserves its currentSince', async () => {
-    await saveWorkoutNoteItem(NOTE_A);
-    await setCurrentWorkoutNote('wn_a');
-    const after_first = await loadWorkoutNotes();
-    const firstSince = after_first.find(n => n.id === 'wn_a').currentSince;
-    await setCurrentWorkoutNote('wn_a');
-    const after_second = await loadWorkoutNotes();
-    expect(after_second.find(n => n.id === 'wn_a').currentSince).toBe(firstSince);
   });
 
   test('updates CURRENT_WORKOUT_ID_KEY for backward compatibility', async () => {

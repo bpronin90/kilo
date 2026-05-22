@@ -196,20 +196,9 @@ describe('makeWorkoutNoteItem', () => {
     expect(item.isCurrent).toBe(false);
   });
 
-  test('defaults currentSince to null', () => {
-    const item = makeWorkoutNoteItem({ title: 'Push Day' });
-    expect(item.currentSince).toBeNull();
-  });
-
   test('accepts isCurrent: true', () => {
     const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true });
     expect(item.isCurrent).toBe(true);
-  });
-
-  test('accepts a currentSince timestamp', () => {
-    const ts = '2026-05-20T10:00:00.000Z';
-    const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true, currentSince: ts });
-    expect(item.currentSince).toBe(ts);
   });
 
   test('defaults raw_text to empty string', () => {
