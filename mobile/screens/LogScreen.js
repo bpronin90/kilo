@@ -10,7 +10,15 @@ import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 
-export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, onSaveWorkout }) {
+export function LogScreen({ 
+  workoutNoteText, 
+  setWorkoutNoteText, 
+  workoutNoteTitle, 
+  setWorkoutNoteTitle, 
+  isCollapsed,
+  toggleCollapsed,
+  onSaveWorkout 
+}) {
   const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
@@ -18,25 +26,11 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
-
-  useEffect(() => {
-    AsyncStorage.getItem(COLLAPSED_STATE_KEY).then(val => {
-      if (val !== null) setIsCollapsed(JSON.parse(val));
-    });
-  }, []);
-
-  const toggleCollapsed = async () => {
-    const next = !isCollapsed;
-    setIsCollapsed(next);
-    await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(next));
-  };
 
   useEffect(() => {
     if (saveSuccess) {

@@ -28,11 +28,23 @@ export default function App() {
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
+  const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
+
+  const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
+    AsyncStorage.getItem(COLLAPSED_STATE_KEY).then(val => {
+      if (val !== null) setIsWorkoutCollapsed(JSON.parse(val));
+    });
   }, []);
+
+  const toggleWorkoutCollapsed = useCallback(async () => {
+    const next = !isWorkoutCollapsed;
+    setIsWorkoutCollapsed(next);
+    await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(next));
+  }, [isWorkoutCollapsed]);
 
   const prevCurrentId = useRef(noteHook.currentId);
   React.useEffect(() => {
@@ -192,6 +204,8 @@ export default function App() {
             setWorkoutNoteText={setWorkoutNoteText}
             workoutNoteTitle={workoutNoteTitle}
             setWorkoutNoteTitle={setWorkoutNoteTitle}
+            isCollapsed={isWorkoutCollapsed}
+            toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
           />
         );
