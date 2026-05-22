@@ -175,7 +175,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           { 
             text: 'Save', 
             onPress: async () => {
-              await handleSave();
+              const ok = await handleSave();
+              if (ok) setMode('read');
             } 
           },
         ]
@@ -216,8 +217,8 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           { 
             text: 'Save', 
             onPress: async () => {
-              const result = await handleSaveOtherNote();
-              if (result) setEditingNoteId(null);
+              const ok = await handleSaveOtherNote();
+              if (ok) setEditingNoteId(null);
             } 
           },
         ]
