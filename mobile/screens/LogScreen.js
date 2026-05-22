@@ -486,7 +486,7 @@ export function LogScreen({
               {dayGroups.map((group, gi) => (
                 <View key={`day-${gi}`}>
                   {group.heading && (
-                    <WorkoutHeading style={gi === 0 ? { marginTop: 12 } : null}>
+                    <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
                       {group.heading}
                     </WorkoutHeading>
                   )}
@@ -715,8 +715,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
   },
   otherNoteInfo: {
     flex: 1,
@@ -739,6 +737,8 @@ const styles = StyleSheet.create({
   currentNoteContent: {
     padding: 18,
     paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
