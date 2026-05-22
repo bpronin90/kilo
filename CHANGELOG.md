@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.17 - 2026-05-22
+
+- Issue #127: Sharpened the Home header and made the summary panels static.
+  Replaced the low-resolution wordmark PNG with a resolution-independent inline
+  `react-native-svg` `KiloWordmark` component in `HomeScreen.js`, sourced from
+  `src/assets/brand/home-title.svg` (renamed from `kilo-wordmark-clean.svg` for
+  clarity). Removed navigation from the `1k Club Progress` and `Weight Trend`
+  panels, which are now non-interactive dashboard elements, and dropped the
+  now-dead `wordmark` style and the `0.8` opacity on the footer logo. Updated
+  `docs/current-state.md` to match the new Home header and static panels.
+
 ## 0.35.16 - 2026-05-22
 
 - Issue #126: Repaired the baseline strength Analytics presentation in

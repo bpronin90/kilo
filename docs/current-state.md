@@ -121,15 +121,17 @@ The real native app path now has a modular React Native shell:
   recomputation, and exposes a separate More tab for Help, About, local Data &
   Backup export/import/recovery, and a low-prominence Settings & Algorithm
   sub-screen
-- `mobile/screens/HomeScreen.js` renders a native dashboard with a responsive
-  Kilo wordmark header, `Current Routine Progress` supporting copy, top
-  summary cards for latest weight plus a neutral `Weeks In` routine counter
-  derived from the current routine's `currentSince` date and rendered as `—`
-  when legacy migrated data lacks a known start date, a renamed `1k Club
-  Progress` card whose total value now links into the Analytics Strength
-  section, a compact 7-day rolling-average weight line chart whose scoped tap
-  target now links into the Analytics Weight Trends section, and the exported
+- `mobile/screens/HomeScreen.js` renders a native dashboard with a resolution-
+  independent Kilo wordmark header drawn as an inline `react-native-svg`
+  component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`),
+  `Current Routine Progress` supporting copy, top summary cards for latest
+  weight plus a neutral `Weeks In` routine counter derived from the current
+  routine's `currentSince` date and rendered as `—` when legacy migrated data
+  lacks a known start date, a renamed `1k Club Progress` card, a compact 7-day
+  rolling-average weight line chart, and the exported
   More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
+  `1k Club Progress` and `Weight Trend` panels are now static dashboard
+  elements with no navigation, and the
   More subviews now intercept Android back presses and return to the More menu
   before falling through to tab-level navigation, and the new Settings &
   Algorithm sub-screen exposes a persisted fatigue-multiplier stepper plus
