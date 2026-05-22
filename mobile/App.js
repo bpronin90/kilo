@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
