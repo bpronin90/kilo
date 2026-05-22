@@ -181,11 +181,12 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
-  summary averages, alongside a renamed Big Three 1RM total, strength-only 1k
-  slot selection, and tracked-lift cards that surface progression status,
-  latest estimated 1RM, a Kilo max derived from the average Epley value across
-  non-warmup tracked sets times a user-tunable fatigue multiplier (default
-  `1.07`), tap-to-inspect raw Kilo max, latest top weight, and overload trend.
+  summary averages, alongside a `1K Progress` card, strength-only 1k
+  slot selection, and a `Progressive Overload` list whose rows surface
+  progression status, estimated 1RM, and a Kilo max derived from the average
+  Epley value across non-warmup tracked sets times a user-tunable fatigue
+  multiplier (default `1.07`) shown together, plus latest top weight and
+  overload trend.
   Its mount-time entry state is now stabilized so Analytics no longer visibly
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they
