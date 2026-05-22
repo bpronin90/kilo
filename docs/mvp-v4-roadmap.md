@@ -587,16 +587,21 @@ Off-shoot cards:
 - `#124` - `MVP4: fix empty Log state auto-open behavior`
 - `#125` - `MVP4: fix Analytics weight trends graph rendering`
 - `#126` - `MVP4: repair baseline strength analytics cards`
-- `#127` - `MVP4: sharpen Home header and remove tile navigation`
-- `#128` - `MVP4: rebuild Weeks In from routine progression depth`
-- `#129` - `MVP4: spec rendered workout note interaction model`
-- `#130` - `MVP4: investigate Log exercise typography and normalization`
-- `#131` - `MVP4: design Weight goal panel rewrite`
-- `#132` - `MVP4: design Weight trends panel layout`
-- `#133` - `MVP4: spec tracked exercise analytics rules`
-- `#134` - `MVP4: spec non-weighted exercise analytics`
-- `#135` - `MVP4: align Help back arrow styling`
-- `#136` - `MVP4: rework bottom tab bar fade behavior`
+- `#127` - `Phase 2 / Task 6: Sharpen Home header and remove tile navigation`
+- `#128` - `Phase 2 / Task 7: Rebuild Weeks In from routine progression depth`
+- `#148` - `Phase 2 / Task 8: Spec rendered workout note interaction model`
+- `#149` - `Phase 2 / Task 9: Investigate Log exercise typography and normalization`
+- `TBD` - `Phase 3 / Task 10: design Weight goal panel rewrite`
+- `TBD` - `Phase 3 / Task 11: design Weight trends panel layout`
+- `TBD` - `Phase 4 / Task 12: spec tracked exercise analytics rules`
+- `TBD` - `Phase 4 / Task 13: spec non-weighted exercise analytics`
+- `TBD` - `Phase 5 / Task 14: align Help back arrow styling`
+- `TBD` - `Phase 5 / Task 15: rework bottom tab bar fade behavior`
+
+The `#122`-`#128` reserved-number block is now exhausted. Phase 2's
+remaining cards were created at the next available numbers (`#148`, `#149`)
+because the issue counter had advanced past `#130`. Phase 3+ cards take
+whatever number GitHub assigns at creation time.
 
 Note for future issue creation:
 
@@ -613,11 +618,11 @@ Note for future issue creation:
 
 ## UX-Design-Only Or Spec-First Items
 
-- `#129` rendered-note interaction and copyability
-- `#131` Weight goal panel rewrite
-- `#132` Weight trends panel redesign
-- `#133` tracked exercise analytics rules
-- `#134` non-weighted exercise analytics rules
+- `#148` rendered-note interaction and copyability
+- Weight goal panel rewrite (Task 10, number TBD)
+- Weight trends panel redesign (Task 11, number TBD)
+- tracked exercise analytics rules (Task 12, number TBD)
+- non-weighted exercise analytics rules (Task 13, number TBD)
 
 These should be completed before any implementation issues that depend on them.
 
