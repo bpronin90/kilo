@@ -6,7 +6,7 @@ import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/use
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen({ entries: propEntries, multiplier, section }) {
+export function StatsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
