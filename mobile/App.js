@@ -101,7 +101,7 @@ export default function App() {
       ? [{
           id: `note_${noteHook.currentNote.updated_at}`,
           type: 'workout',
-          title: noteHook.currentNote.title || 'Workout note',
+          title: noteHook.currentNote.title || 'Workout Notes',
           detail: noteHook.currentNote.raw_text?.split('\n').find(l => l.trim()) || '',
           createdAt: new Date(noteHook.currentNote.updated_at).getTime(),
         }]
@@ -156,7 +156,7 @@ export default function App() {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
 
     if (!workoutNoteText.trim()) {
-      return { ok: false, error: 'Workout note is required' };
+      return { ok: false, error: 'Workout notes are required' };
     }
     setWorkoutSaving(true);
     try {
@@ -168,7 +168,7 @@ export default function App() {
       }
       return { ok: true };
     } catch {
-      return { ok: false, error: 'Failed to save workout note' };
+      return { ok: false, error: 'Failed to save workout notes' };
     } finally {
       setWorkoutSaving(false);
     }

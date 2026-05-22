@@ -110,7 +110,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
   const handleSave = async () => {
     if (isSaving) return;
     if (!currentId && !workoutNoteText.trim()) {
-      setSaveError('Workout note is required');
+      setSaveError('Workout notes are required');
       return;
     }
     setIsSaving(true);
@@ -431,7 +431,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
 
   return (
     <ScreenShell
-      title="Workout note"
+      title="Workout Notes"
       subtitle="Your active training routine. Update it as you go."
       headerRight={headerRight}
       keyboardShouldPersistTaps="handled"
@@ -450,7 +450,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
               style={styles.otherNoteHeader}
             >
               <View style={styles.otherNoteInfo}>
-                <Text style={styles.otherNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={[styles.otherNoteTitle, { fontSize: 26 }]}>{workoutNoteTitle || 'My Workout'}</Text>
                 <Text style={styles.otherNoteSub}>Current routine</Text>
               </View>
             </Pressable>
@@ -626,9 +626,9 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   currentRoutineCard: {
-    padding: 2,
+    padding: 6,
     overflow: 'hidden',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: Colors.cardBorder,
   },
   unparsedRow: {
