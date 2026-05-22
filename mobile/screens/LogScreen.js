@@ -15,6 +15,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -31,7 +32,7 @@ export function LogScreen({
   toggleCollapsed,
   onSaveWorkout 
 }) {
-  const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
+  const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
@@ -123,24 +124,27 @@ export function LogScreen({
     setSaveError('');
     setSaveSuccess('');
     try {
-      let ok = false;
+      let result = null;
+      const titleToSave = workoutNoteTitle || 'My Workout';
       if (currentId) {
-        const result = await update(currentId, { 
-          title: workoutNoteTitle || 'My Workout',
+        result = await update(currentId, { 
+          title: titleToSave,
           raw_text: workoutNoteText 
         });
-        ok = !!result;
       } else {
-        const note = await add(workoutNoteTitle || 'My Workout', workoutNoteText);
-        await selectCurrent(note.id);
-        ok = true;
+        result = await add(titleToSave, workoutNoteText);
+        await selectCurrent(result.id);
       }
-      if (ok) {
+
+      if (result) {
+        setWorkoutNoteTitle(result.title || '');
+        setWorkoutNoteText(result.raw_text || '');
         setSaveSuccess('Saved!');
+        return true;
       } else {
         setSaveError('Save failed');
+        return false;
       }
-      return ok;
     } catch {
       setSaveError('Save failed');
       return false;
@@ -256,21 +260,25 @@ export function LogScreen({
     setSaveSuccess('');
     try {
       let result;
+      const titleToSave = editingTitle || 'Untitled Routine';
       if (editingNoteId === 'new') {
-        result = await add(editingTitle || 'Untitled Routine', editingText);
+        result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
       } else {
         result = await update(editingNoteId, { 
-          title: editingTitle || 'Untitled Routine',
+          title: titleToSave,
           raw_text: editingText 
         });
       }
       if (!result) {
         setSaveError('Save failed');
+        return false;
       } else {
+        setEditingTitle(result.title || '');
+        setEditingText(result.raw_text || '');
         setSaveSuccess('Saved!');
+        return true;
       }
-      return result;
     } catch {
       setSaveError('Save failed');
       return false;
@@ -377,6 +385,19 @@ export function LogScreen({
     </Pressable>
   );
 
+  const isEmpty = !notesLoading && notes.length === 0;
+
+  if (!editingNoteId && isEmpty) {
+    return (
+      <ScreenShell
+        title="Workout Notes"
+        subtitle="Track your active training routine."
+      >
+        <LogEmptyState onCreateRoutine={handleCreateRoutine} />
+      </ScreenShell>
+    );
+  }
+
   if (editingNoteId) {
     return (
       <ScreenShell
@@ -465,7 +486,7 @@ export function LogScreen({
               {dayGroups.map((group, gi) => (
                 <View key={`day-${gi}`}>
                   {group.heading && (
-                    <WorkoutHeading style={gi === 0 ? { marginTop: 12 } : null}>
+                    <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
                       {group.heading}
                     </WorkoutHeading>
                   )}
@@ -522,7 +543,6 @@ export function LogScreen({
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
               placeholderTextColor={Colors.textMuted}
               multiline
-              autoFocus={!hasContent}
               style={[styles.input, styles.editorInput]}
             />
             <Button
@@ -632,7 +652,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   currentRoutineCard: {
-    padding: 8,
+    padding: 0,
     overflow: 'hidden',
     borderWidth: 4,
     borderColor: Colors.cardBorder,
@@ -693,7 +713,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     gap: 12,
   },
   otherNoteInfo: {
@@ -715,8 +735,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   currentNoteContent: {
-    padding: 18,
-    paddingTop: 0,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
   },

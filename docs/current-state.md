@@ -162,7 +162,11 @@ The real native app path now has a modular React Native shell:
   rows plus fallback unparsed/skip rows through one shared set-row typography
   token so Log-tab rows render at a uniform size without the earlier stray
   italics; Android back now exits edit subviews before falling through to
-  tab-level navigation
+  tab-level navigation. A fresh install with no logged routines now renders a
+  dedicated `LogEmptyState` surface — short explanatory copy, a `New Routine`
+  primary action, and an example-format card — instead of auto-opening the
+  editor or keyboard, and that empty state is gated on the workout-note load so
+  existing users do not see it flash before their routine appears
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable

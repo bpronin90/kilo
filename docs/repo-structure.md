@@ -179,6 +179,7 @@ These files define the current real native app path.
 | `mobile/components/ScreenShell.js` | Shared native screen wrapper with bundled logo/wordmark branding, alpha version badge, and scroll container. |
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
+| `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
 | `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries and workout sessions. |
 | `mobile/lib/data.js` | Native exercise catalog plus `makeWeightEntry` / `makeWorkoutSession` factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard plus the exported More / Help / About surfaces used by the More tab. |
