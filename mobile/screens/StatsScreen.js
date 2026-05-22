@@ -271,15 +271,15 @@ export function StatsScreen({ multiplier, section }) {
       </View>
 
       <SectionTitle>Progressive Overload</SectionTitle>
-      <View style={styles.list}>
-        {(isNotesLoading || isTrackedLoading) ? (
-          <View style={{ height: 100, justifyContent: 'center' }}>
-            <ActivityIndicator color={Colors.accent} />
-          </View>
-        ) : analytics?.signals?.length > 0 ? (
-          analytics.signals.map((sig, i) => (
-            <Card key={i} style={styles.signalCard}>
-              <View style={styles.signalHeader}>
+      {(isNotesLoading || isTrackedLoading) ? (
+        <View style={{ height: 100, justifyContent: 'center' }}>
+          <ActivityIndicator color={Colors.accent} />
+        </View>
+      ) : analytics?.signals?.length > 0 ? (
+        <View style={styles.signalList}>
+          {analytics.signals.map((sig, i) => (
+            <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
+              <View style={styles.signalRowTop}>
                 <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normalizeLiftName(sig.name)) || sig.name}</Text>
                 <Badge status={sig.progression_status}>
                   {formatStatus(sig.progression_status)}
@@ -287,38 +287,30 @@ export function StatsScreen({ multiplier, section }) {
               </View>
               <View style={styles.signalMeta}>
                 <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}</Text>
                   <Text style={styles.signalLabel}>1 Rep Max</Text>
-                  <Text style={styles.signalValue}>
-                    {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
-                  </Text>
                 </View>
                 <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}</Text>
                   <Text style={styles.signalLabel}>Kilo Max</Text>
-                  <Text style={styles.signalValue}>
-                    {sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}
-                  </Text>
                 </View>
                 <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}</Text>
                   <Text style={styles.signalLabel}>Top Weight</Text>
-                  <Text style={styles.signalValue}>
-                    {sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}
-                  </Text>
                 </View>
                 <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{formatOverload(sig.overload_trend)}</Text>
                   <Text style={styles.signalLabel}>Progress</Text>
-                  <Text style={styles.signalValue}>
-                    {formatOverload(sig.overload_trend)}
-                  </Text>
                 </View>
               </View>
-            </Card>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>
-            Tap the bookmark on any exercise in your note to track it here.
-          </Text>
-        )}
-      </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>
+          Tap the bookmark on any exercise in your note to track it here.
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -366,9 +358,6 @@ const styles = StyleSheet.create({
   },
   strengthSection: {
     gap: 16,
-  },
-  list: {
-    gap: 12,
   },
   weightCard: {
     padding: 20,
@@ -551,38 +540,49 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-  signalCard: {
-    gap: 12,
+  signalList: {
+    backgroundColor: Colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
   },
-  signalHeader: {
+  signalRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  signalRowLast: {
+    borderBottomWidth: 0,
+  },
+  signalRowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
   },
   signalName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     color: Colors.text,
     flex: 1,
   },
   signalMeta: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   signalMetaItem: {
-    width: '50%',
-    paddingRight: 12,
-    gap: 2,
-    marginBottom: 8,
+    flex: 1,
   },
   signalLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: Colors.textMuted,
-    marginBottom: 2,
+    textTransform: 'uppercase',
+    marginTop: 1,
   },
   signalValue: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
   },
