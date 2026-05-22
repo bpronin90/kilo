@@ -406,6 +406,9 @@ Ordered tasks:
 - **Title:** `MVP4: design Weight goal panel rewrite`
 - **Goal:** produce an implementation-ready UX brief for the odd-feeling goal
   panel.
+- **Current-state note:**
+  - preserve the native target-date picker behavior landed in `#139`
+  - preserve the weekly pace and calorie guidance restored in `#144`
 - **Scope:**
   - make `Target` and `By Date` the visual focus
   - preserve the useful pace and calorie guidance
@@ -418,8 +421,11 @@ Ordered tasks:
 - **Out of scope:**
   - implementation
   - duplicate-entry policy changes
+  - changing target-date picker behavior
+  - regressing weekly pace or calorie guidance
 - **Verification:**
   - brief defines visual priority, copy, and expected information hierarchy
+  - brief explicitly preserves target-date, pace, and calorie-estimate behavior
   - implementation issue can be created without product ambiguity
 - **Labels:**
   - `mvp4.0`
@@ -618,6 +624,10 @@ Off-shoot cards:
 - `#151` - `Phase 6 / Task 4: Normalize rendered workout rows and improve
   unparsed fallback in Log` (spun off from `#149`; `agent:claude`,
   `type:implementation`)
+- `#154` - `Phase 6 / Task 5: Implement Weight goal panel hierarchy and copy
+  rewrite` (spun off from `#152`; `agent:gemini`, `type:implementation`)
+- `#155` - `Phase 6 / Task 6: Review Weight goal estimate formula accuracy`
+  (spun off from `#152`; `agent:codex`, `type:planning`)
 
 ---
 
@@ -632,8 +642,8 @@ Off-shoot cards:
 - `#128` - `Phase 2 / Task 7: Rebuild Weeks In from routine progression depth`
 - `#148` - `Phase 2 / Task 8: Spec rendered workout note interaction model`
 - `#149` - `Phase 2 / Task 9: Investigate Log exercise typography and normalization`
-- `TBD` - `Phase 3 / Task 10: design Weight goal panel rewrite`
-- `TBD` - `Phase 3 / Task 11: design Weight trends panel layout`
+- `#152` - `Phase 3 / Task 10: Design Weight goal panel rewrite`
+- `#153` - `Phase 3 / Task 11: Design Weight trends panel layout`
 - `TBD` - `Phase 4 / Task 12: spec tracked exercise analytics rules`
 - `TBD` - `Phase 4 / Task 13: spec non-weighted exercise analytics`
 - `TBD` - `Phase 5 / Task 14: align Help back arrow styling`
@@ -641,13 +651,14 @@ Off-shoot cards:
 
 The `#122`-`#128` reserved-number block is now exhausted. Phase 2's
 remaining cards were created at the next available numbers (`#148`, `#149`)
-because the issue counter had advanced past `#130`. Phase 3+ cards take
-whatever number GitHub assigns at creation time.
+because the issue counter had advanced past `#130`. Phase 3's planning cards
+were later created as `#152` and `#153`. Phase 4+ cards take whatever number
+GitHub assigns at creation time.
 
 Note for future issue creation:
 
-- when Phase 2 cards are created in a later session, follow the same issue-body
-  structure used for Phase 1 cards
+- follow the same issue-body structure used for `#148`, `#149`, `#152`, and
+  `#153` for later MVP4 planning cards
 - keep the `mvp4.0` label on every MVP4 card
 - record any card spun off during MVP4 under `Phase 6: Off-Shoots` and apply the
   `mvp4.0` label; do not add off-shoots to the sequential mapping above
@@ -660,8 +671,8 @@ Note for future issue creation:
 ## UX-Design-Only Or Spec-First Items
 
 - `#148` rendered-note interaction and copyability
-- Weight goal panel rewrite (Task 10, number TBD)
-- Weight trends panel redesign (Task 11, number TBD)
+- `#152` Weight goal panel rewrite
+- `#153` Weight trends panel redesign
 - tracked exercise analytics rules (Task 12, number TBD)
 - non-weighted exercise analytics rules (Task 13, number TBD)
 
