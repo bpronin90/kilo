@@ -21,6 +21,14 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+
+  useEffect(() => {
+    if (saveSuccess) {
+      const timer = setTimeout(() => setSaveSuccess(''), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveSuccess]);
 
   const hasUnsavedCurrent = useMemo(() => {
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
@@ -221,12 +229,14 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     setEditingTitle(other.title || '');
     setEditingText(other.raw_text);
     setSaveError('');
+    setSaveSuccess('');
   };
 
   const handleSaveOtherNote = async () => {
     if (noteIsSaving) return;
     setNoteIsSaving(true);
     setSaveError('');
+    setSaveSuccess('');
     try {
       let result;
       if (editingNoteId === 'new') {
@@ -238,7 +248,11 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
           raw_text: editingText 
         });
       }
-      if (!result) setSaveError('Save failed');
+      if (!result) {
+        setSaveError('Save failed');
+      } else {
+        setSaveSuccess('Saved');
+      }
       return result;
     } catch {
       setSaveError('Save failed');
@@ -278,6 +292,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     setEditingTitle('');
     setEditingText('');
     setSaveError('');
+    setSaveSuccess('');
   };
 
   const handleSwitchCurrent = (id) => {
@@ -360,6 +375,11 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
         {saveError ? (
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>{saveError}</Text>
+          </Card>
+        ) : null}
+        {saveSuccess ? (
+          <Card style={styles.successCard}>
+            <Text style={styles.successText}>{saveSuccess}</Text>
           </Card>
         ) : null}
         <View style={styles.editContainer}>
@@ -556,6 +576,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff0f0', // Slight red tint
     padding: 12,
     marginBottom: 8,
+  },
+  successCard: {
+    borderColor: Colors.accent,
+    backgroundColor: '#f0fff4', // Slight green tint
+    padding: 12,
+    marginBottom: 8,
+  },
+  successText: {
+    color: Colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   input: {
     backgroundColor: Colors.inputBackground,
