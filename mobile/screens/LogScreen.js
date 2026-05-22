@@ -1,3 +1,18 @@
+// LOG TAB STYLE LOCK — DO NOT TOUCH.
+// The fonts, font sizes, colors, spacing, and overall visual style of the Log
+// tab are intentionally fixed. Do NOT change any styling here, in the `styles`
+// block below, or in the Log-tab typography of `components/UI.js`
+// (`WorkoutHeading` / `WorkoutSubheading`). No "creative" or opportunistic
+// visual tweaks. Change Log-tab styling ONLY when the repo owner explicitly
+// asks for that specific change.
+
+/**
+ * LOG TAB STYLE LOCK
+ * ------------------
+ * Fonts, sizes, colors, and spacing in this file (and related WorkoutHeading/WorkoutSubheading 
+ * typography in UI.js) must not change unless the repo owner explicitly requests it.
+ */
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
@@ -441,7 +456,7 @@ export function LogScreen({
               style={styles.otherNoteHeader}
             >
               <View style={styles.otherNoteInfo}>
-                <Text style={[styles.otherNoteTitle, { fontSize: 24, color: Colors.accent }]}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
                 <Text style={styles.otherNoteSub}>Current routine</Text>
               </View>
             </Pressable>
@@ -553,7 +568,6 @@ export function LogScreen({
                   >
                     <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
                   </Pressable>
-
                 </View>
               </Card>
             ))}
@@ -689,6 +703,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
+  },
+  currentNoteTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.accent,
   },
   otherNoteSub: {
     fontSize: 12,

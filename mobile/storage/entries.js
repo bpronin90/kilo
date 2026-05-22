@@ -38,8 +38,8 @@ export async function loadTrackedLifts() {
 // Write the full tracked-lifts map atomically.
 // Callers must derive the next map from their own in-memory state rather than
 // re-reading storage, so that rapid consecutive toggles don't race.
-export async function saveTrackedLifts(lifts) {
-  await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(lifts));
+export async function saveTrackedLifts(map) {
+  await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
 }
 
 export async function loadWorkoutCollapsed() {
@@ -54,7 +54,6 @@ export async function loadWorkoutCollapsed() {
 export async function saveWorkoutCollapsed(isCollapsed) {
   await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
 }
-
 
 // ── settings ─────────────────────────────────────────────────────────────────
 
