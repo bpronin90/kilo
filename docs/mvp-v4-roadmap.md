@@ -563,6 +563,21 @@ Ordered tasks:
   - `effort:default`
 - **Suggested runtime:** `agent:gemini`
 
+### Phase 6: Off-Shoots
+- Phase goal: track cards spun off mid-MVP4 that were not part of the original
+  planning sweep but still belong to the MVP4 effort.
+- Why this phase exists: regressions and review needs surface during execution;
+  this phase keeps them roadmap-visible without disturbing the planned
+  Phase 1-5 sequence.
+- Completion condition: all off-shoot cards are resolved or explicitly deferred.
+
+Off-shoot cards:
+
+- `#146` - routine editor exit leaves the Log tab at an unexpected scroll
+  position (Phase 1 core-flow regression; `agent:gemini`, `type:bug`)
+- `#147` - deep design review of the Tracked Exercises / Progressive Overload
+  section organization (spun off from `#126`; `agent:codex`, `type:planning`)
+
 ---
 
 ## Proposed Sequential Issue Mapping
@@ -588,6 +603,8 @@ Note for future issue creation:
 - when Phase 2 cards are created in a later session, follow the same issue-body
   structure used for Phase 1 cards
 - keep the `mvp4.0` label on every MVP4 card
+- record any card spun off during MVP4 under `Phase 6: Off-Shoots` and apply the
+  `mvp4.0` label; do not add off-shoots to the sequential mapping above
 - prefer `agent:claude` for any `effort:heavy` task, even if it is UI-heavy
 - prefer `agent:claude` for UI tasks that depend on non-trivial logic or are
   likely to be too brittle for `agent:gemini`
