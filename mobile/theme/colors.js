@@ -14,5 +14,5 @@ export const Colors = {
   chipText: '#96571c',
   success: '#4a7c44',
   error: '#b03a2e',
-  standout: '#2c2c2c', // Heavy Graphite
+  standout: '#1a365d', // Industrial Navy
 };

@@ -444,7 +444,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
-          <Card style={styles.otherNoteCard}>
+          <Card style={styles.currentRoutineCard}>
             <Pressable
               onPress={toggleCollapsed}
               style={styles.otherNoteHeader}
@@ -540,7 +540,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
       <View style={styles.previousRoutines}>
         {otherNotes.length > 0 && (
           <>
-            <SectionTitle>Other Routines</SectionTitle>
+            <SectionTitle>More Routines</SectionTitle>
             {otherNotes.map(other => (
               <Card
                 key={other.id}
@@ -623,7 +623,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   mirrorContainer: {
-    paddingBottom: 8,
+    paddingBottom: 4,
+  },
+  currentRoutineCard: {
+    padding: 2,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: Colors.cardBorder,
   },
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
