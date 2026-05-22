@@ -18,6 +18,7 @@ import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
 
+// Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
   return (
     <View style={{ width, height, justifyContent: 'center', marginLeft: -8 }}>
@@ -626,13 +627,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     resizeMode: 'contain',
-  },
-  wordmark: {
-    width: '100%',
-    maxWidth: 160,
-    aspectRatio: 2.85, // 1212/424 ratio
-    resizeMode: 'contain',
-    marginLeft: -8, // Compensate for visual padding
   },
   backButton: {
     backgroundColor: 'transparent',
