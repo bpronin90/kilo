@@ -1,11 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
+
+const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 
 export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
   const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
@@ -16,12 +19,25 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [saveError, setSaveError] = useState('');
 
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
+
+  useEffect(() => {
+    AsyncStorage.getItem(COLLAPSED_STATE_KEY).then(val => {
+      if (val !== null) setIsCollapsed(JSON.parse(val));
+    });
+  }, []);
+
+  const toggleCollapsed = async () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(next));
+  };
 
   useEffect(() => {
     if (saveSuccess) {
@@ -351,13 +367,13 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     await toggleTrackedLift(key);
   };
 
-  const headerRight = !editingNoteId && hasContent && (
+  const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
-      onPress={() => mode === 'read' ? setMode('edit') : handleDoneCurrent()}
+      onPress={handleDoneCurrent}
       style={styles.modeToggle}
     >
       <Text style={styles.modeToggleText}>
-        {mode === 'read' ? 'Edit' : 'Done'}
+        Done
       </Text>
     </Pressable>
   );
@@ -435,43 +451,62 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
-          {dayGroups.map((group, gi) => (
-            <View key={`day-${gi}`}>
-              {group.heading && <WorkoutHeading>{group.heading}</WorkoutHeading>}
-              {group.sections.map((section, si) => (
-                <View key={`section-${gi}-${si}`}>
-                  {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-                  {section.exercises.map((ex, ei) => (
-                    <ExerciseBlock
-                      key={`ex-${gi}-${si}-${ei}`}
-                      name={ex.name}
-                      isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                      onToggleTrack={() => handleToggleTrack(ex.name)}
-                    >
-                      {ex.rows.map((row, ri) => (
-                        <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
-                      ))}
-                      {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                        <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                      ))}
-                      {ex.unparsed_rows.map((u, ui) => (
-                        <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                      ))}
-                    </ExerciseBlock>
-                  ))}
-                </View>
-              ))}
-            </View>
-          ))}
-          {!dayGroups.length && (
-            <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-          )}
-          <Button
-            onPress={() => setMode('edit')}
-            title="Edit note"
-            style={styles.editButton}
-            textStyle={styles.editButtonText}
-          />
+          <Card style={styles.otherNoteCard}>
+            <Pressable
+              onPress={toggleCollapsed}
+              style={styles.otherNoteHeader}
+            >
+              <View style={styles.otherNoteInfo}>
+                <Text style={styles.otherNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={styles.otherNoteSub}>Current routine</Text>
+              </View>
+              <View style={styles.collapseIcon}>
+                <Text style={styles.collapseIconText}>{isCollapsed ? '▼' : '▲'}</Text>
+              </View>
+            </Pressable>
+
+            {!isCollapsed && (
+              <View style={styles.currentNoteContent}>
+                {dayGroups.map((group, gi) => (
+                  <View key={`day-${gi}`}>
+                    {group.heading && <WorkoutHeading>{group.heading}</WorkoutHeading>}
+                    {group.sections.map((section, si) => (
+                      <View key={`section-${gi}-${si}`}>
+                        {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                        {section.exercises.map((ex, ei) => (
+                          <ExerciseBlock
+                            key={`ex-${gi}-${si}-${ei}`}
+                            name={ex.name}
+                            isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                            onToggleTrack={() => handleToggleTrack(ex.name)}
+                          >
+                            {ex.rows.map((row, ri) => (
+                              <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                            ))}
+                            {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                              <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                            ))}
+                            {ex.unparsed_rows.map((u, ui) => (
+                              <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                            ))}
+                          </ExerciseBlock>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                ))}
+                {!dayGroups.length && (
+                  <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+                )}
+                <Button
+                  onPress={() => setMode('edit')}
+                  title="Edit note"
+                  style={styles.editButton}
+                  textStyle={styles.editButtonText}
+                />
+              </View>
+            )}
+          </Card>
         </View>
       ) : (
         <View style={styles.editContainer}>
@@ -668,6 +703,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  currentNoteContent: {
+    padding: 18,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+  },
+  collapseIcon: {
+    padding: 4,
+  },
+  collapseIconText: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   inlineSwitchButton: {
     paddingHorizontal: 12,
