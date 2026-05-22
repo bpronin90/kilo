@@ -16,9 +16,8 @@ describe('computeKiloMax', () => {
         { weight_value: 240, rep_count: 8 },
       ],
     }];
-    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
     expect(kilo_max_adjusted).toBe(316);
-    expect(kilo_max_raw).toBe(295);
   });
 
   test('kilo_max diverges from 1RM max for multi-set sessions', () => {
@@ -40,23 +39,20 @@ describe('computeKiloMax', () => {
   test('single set => adjusted correctly', () => {
     // 300*(1+1/30)=310; adjusted=Math.round(310*1.07)=332
     const occurrences = [{ kind: 'lifting', sets: [{ weight_value: 300, rep_count: 1 }] }];
-    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
     expect(kilo_max_adjusted).toBe(332);
-    expect(kilo_max_raw).toBe(310);
   });
 
   test('all-warmup occurrences => null', () => {
     const occurrences = [{ kind: 'warmup', sets: [{ weight_value: 135, rep_count: 10 }] }];
-    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
     expect(kilo_max_adjusted).toBeNull();
-    expect(kilo_max_raw).toBeNull();
   });
 
   test('all-skipped (empty sets) => null', () => {
     const occurrences = [{ kind: 'lifting', sets: [] }];
-    const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(occurrences);
+    const { kilo_max_adjusted } = computeKiloMax(occurrences);
     expect(kilo_max_adjusted).toBeNull();
-    expect(kilo_max_raw).toBeNull();
   });
 
   test('mixed warmup and lifting occurrences => warmup excluded', () => {

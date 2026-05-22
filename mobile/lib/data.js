@@ -374,9 +374,8 @@ export function getKiloFatigueMultiplier() {
 
 // Compute the Kilo max for one exercise given its occurrences.
 // Excludes warmup occurrences (kind === 'warmup') and sets without valid weight/reps.
-// Returns { kilo_max_adjusted: number|null, kilo_max_raw: number|null }.
+// Returns { kilo_max_adjusted: number|null }.
 // kilo_max_adjusted = Math.round(avgEpley * multiplier)
-// kilo_max_raw      = Math.round(avgEpley)
 export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplier()) {
   const epleyValues = [];
   for (const occ of occurrences) {
@@ -386,17 +385,15 @@ export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplie
       if (e !== null) epleyValues.push(e);
     }
   }
-  if (epleyValues.length === 0) return { kilo_max_adjusted: null, kilo_max_raw: null };
+  if (epleyValues.length === 0) return { kilo_max_adjusted: null };
   const rawAvg = epleyValues.reduce((sum, v) => sum + v, 0) / epleyValues.length;
   return {
     kilo_max_adjusted: Math.round(rawAvg * multiplier),
-    kilo_max_raw: Math.round(rawAvg),
   };
 }
 
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
-// fatigue formula. Each signal gains a kilo_max_raw field (raw average, rounded)
-// alongside kilo_max (adjusted, rounded).
+// fatigue formula (adjusted, rounded).
 export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
   const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
   const { exercises: analyticsExercises } = deriveWorkoutAnalytics(sections);
@@ -406,9 +403,9 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
   return {
     exercises: signals.map(sig => {
       const ex = byName.get(sig.name.toLowerCase());
-      if (!ex) return { ...sig, kilo_max_raw: null };
-      const { kilo_max_adjusted, kilo_max_raw } = computeKiloMax(ex.occurrences, multiplier);
-      return { ...sig, kilo_max: kilo_max_adjusted, kilo_max_raw };
+      if (!ex) return sig;
+      const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
+      return { ...sig, kilo_max: kilo_max_adjusted };
     }),
   };
 }

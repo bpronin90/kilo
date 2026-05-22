@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.35.16 - 2026-05-22
+
+- Issue #126: Repaired the baseline strength Analytics presentation in
+  `StatsScreen`. Restored uniform spacing between strength panels, replaced the
+  Kilo-max tap-toggle with both `1 Rep Max` and `Kilo Max` shown together in
+  every Progressive Overload row, and reworked the tracked-lift cards into a
+  compact bordered list matching the weight-history style. Labels were polished
+  (`Tracked Lifts` -> `Progressive Overload`, `Big Three 1RM Total` ->
+  `1K Progress`, `Slot assignments` -> `Big 3 Mapping`) and exercise names now
+  render with their original user-typed casing. The now-dead `kilo_max_raw`
+  field was removed from `computeKiloMax` and `deriveSignals` along with its
+  test assertions. Updated `docs/current-state.md` to match the new strength
+  surface.
+
 ## 0.35.15 - 2026-05-21
 
 - Issue #125: Restored the Analytics weight-trend chart, which had stopped

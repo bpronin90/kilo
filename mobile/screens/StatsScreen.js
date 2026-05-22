@@ -12,7 +12,6 @@ export function StatsScreen({ multiplier, section }) {
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
-  const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
 
   const scrollRef = useRef(null);
   const weightSectionY = useRef(0);
@@ -120,12 +119,18 @@ export function StatsScreen({ multiplier, section }) {
     const visibleTrackedNames = globallyTrackedNames.filter(name => namesInCurrent.has(normalizeLiftName(name)));
 
     const { exercises: signals } = deriveSignals(allSections, visibleTrackedNames, multiplier);
-    
+
+    // Preserve original user-typed casing for display (last occurrence wins)
+    const nameDisplayMap = new Map();
+    allSections.forEach(s => s.exercises.forEach(e => {
+      nameDisplayMap.set(normalizeLiftName(e.name), e.name);
+    }));
+
     // Big Three 1RM total and workout count are scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
     const workoutDayCount = countWorkoutSessions(currentNote?.raw_text || '');
-    
-    return { signals, oneK, workoutDayCount };
+
+    return { signals, oneK, workoutDayCount, nameDisplayMap };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
 
   const workoutCount = useMemo(() => {
@@ -192,7 +197,7 @@ export function StatsScreen({ multiplier, section }) {
         </View>
       </Card>
 
-      <View onLayout={handleStrengthLayout}>
+      <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
         <SectionTitle>Strength</SectionTitle>
       {(isNotesLoading || analytics?.oneK?.total) ? (
         <Card style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
@@ -200,7 +205,7 @@ export function StatsScreen({ multiplier, section }) {
             <ActivityIndicator size="large" color={Colors.accent} />
           ) : (
             <>
-              <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
+              <Text style={styles.oneKLabel}>1K Progress</Text>
               <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
               <View style={styles.oneKBreakdown}>
                 <View style={styles.oneKItem}>
@@ -228,7 +233,7 @@ export function StatsScreen({ multiplier, section }) {
       )}
 
       <Card style={styles.slotCard}>
-        <Text style={styles.slotCardTitle}>Slot assignments</Text>
+        <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
         {(['bench', 'squat', 'deadlift']).map(slot => (
           <View key={slot}>
             <Pressable
@@ -265,57 +270,47 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <SectionTitle>Tracked Lifts</SectionTitle>
-      <View style={styles.list}>
-        {(isNotesLoading || isTrackedLoading) ? (
-          <View style={{ height: 100, justifyContent: 'center' }}>
-            <ActivityIndicator color={Colors.accent} />
-          </View>
-        ) : analytics?.signals?.length > 0 ? (
-          analytics.signals.map((sig, i) => (
-            <Card key={i} style={styles.signalCard}>
-              <View style={styles.signalHeader}>
-                <Text style={styles.signalName}>{sig.name}</Text>
+      <SectionTitle>Progressive Overload</SectionTitle>
+      {(isNotesLoading || isTrackedLoading) ? (
+        <View style={{ height: 100, justifyContent: 'center' }}>
+          <ActivityIndicator color={Colors.accent} />
+        </View>
+      ) : analytics?.signals?.length > 0 ? (
+        <View style={styles.signalList}>
+          {analytics.signals.map((sig, i) => (
+            <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
+              <View style={styles.signalRowTop}>
+                <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normalizeLiftName(sig.name)) || sig.name}</Text>
                 <Badge status={sig.progression_status}>
                   {formatStatus(sig.progression_status)}
                 </Badge>
               </View>
               <View style={styles.signalMeta}>
-                <View>
-                  <Text style={styles.signalLabel}>Est. 1RM</Text>
-                  <Text style={styles.signalValue}>
-                    {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
-                  </Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}</Text>
+                  <Text style={styles.signalLabel}>1 Rep Max</Text>
                 </View>
-                <Pressable onPress={() => setKiloMaxRawName(prev => prev === sig.name ? null : sig.name)}>
-                  <Text style={styles.signalLabel}>Kilo max</Text>
-                  <Text style={styles.signalValue}>
-                    {kiloMaxRawName === sig.name && sig.kilo_max_raw != null
-                      ? `${sig.kilo_max_raw} lb`
-                      : (sig.kilo_max != null ? `${sig.kilo_max} lb` : '—')}
-                  </Text>
-                </Pressable>
-                <View>
-                  <Text style={styles.signalLabel}>Top weight</Text>
-                  <Text style={styles.signalValue}>
-                    {sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}
-                  </Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}</Text>
+                  <Text style={styles.signalLabel}>Kilo Max</Text>
                 </View>
-                <View>
-                  <Text style={styles.signalLabel}>Overload</Text>
-                  <Text style={styles.signalValue}>
-                    {formatOverload(sig.overload_trend)}
-                  </Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}</Text>
+                  <Text style={styles.signalLabel}>Top Weight</Text>
+                </View>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalValue}>{formatOverload(sig.overload_trend)}</Text>
+                  <Text style={styles.signalLabel}>Progress</Text>
                 </View>
               </View>
-            </Card>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>
-            Tap the bookmark on any exercise in your note to track it here.
-          </Text>
-        )}
-      </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>
+          Tap the bookmark on any exercise in your note to track it here.
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -361,8 +356,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: Colors.textMuted,
   },
-  list: {
-    gap: 12,
+  strengthSection: {
+    gap: 16,
   },
   weightCard: {
     padding: 20,
@@ -545,34 +540,49 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-  signalCard: {
-    gap: 12,
+  signalList: {
+    backgroundColor: Colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
   },
-  signalHeader: {
+  signalRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  signalRowLast: {
+    borderBottomWidth: 0,
+  },
+  signalRowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
   },
   signalName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     color: Colors.text,
     flex: 1,
   },
   signalMeta: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    rowGap: 12,
+  },
+  signalMetaItem: {
+    flex: 1,
   },
   signalLabel: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: Colors.textMuted,
-    marginBottom: 2,
+    textTransform: 'uppercase',
+    marginTop: 1,
   },
   signalValue: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
   },
