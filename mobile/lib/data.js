@@ -255,43 +255,18 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
-/**
- * Calculate the 1-indexed week number since currentSince.
- * Week 1 begins on the day of currentSince.
- * Returns null if currentSince is missing or invalid.
- */
-export function computeWeeksIn(currentSince, referenceDate = new Date()) {
-  if (!currentSince) return null;
-
-  // Handle YYYY-MM-DD by forcing it to be interpreted as a local date (noon)
-  // instead of UTC midnight to avoid timezone-offset day flips.
-  const isShortDate = typeof currentSince === 'string' && currentSince.length === 10;
-  const dateStr = isShortDate ? `${currentSince}T12:00:00` : currentSince;
-
-  const start = new Date(dateStr);
-  if (isNaN(start.getTime())) return null;
-
-  // Round-trip component check for YYYY-MM-DD to reject impossible dates (e.g. Feb 30)
-  if (isShortDate) {
-    const [year, month, day] = currentSince.split('-').map(Number);
-    if (
-      start.getFullYear() !== year ||
-      start.getMonth() !== month - 1 ||
-      start.getDate() !== day
-    ) {
-      return null;
+// Returns the longest session_entries chain across all exercises in sections.
+// Depth = total entry count (including skipped entries) for the deepest exercise line.
+// Returns null when sections is absent (no routine loaded). Returns 0 when no entries logged.
+export function computeWeeksIn(sections) {
+  if (!sections) return null;
+  let max = 0;
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      if (ex.session_entries.length > max) max = ex.session_entries.length;
     }
   }
-
-  // Use local calendar dates to avoid UTC flip-over issues during the day
-  const startLocal = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const refLocal = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
-
-  const msDiff = refLocal.getTime() - startLocal.getTime();
-  if (msDiff < 0) return 1; // Future starts begin at week 1
-
-  const daysDiff = Math.floor(msDiff / (1000 * 60 * 60 * 24));
-  return Math.floor(daysDiff / 7) + 1;
+  return max;
 }
 
 // Compute a series of 7-day rolling averages for the last N weigh-in dates.
@@ -351,7 +326,7 @@ export function makeWorkoutNote({ raw_text }) {
 }
 
 // Factory for a named workout note in the multi-note model
-export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false, currentSince = null }) {
+export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '', isCurrent = false }) {
   const now = new Date().toISOString();
   return {
     id: `wn_${now.slice(0, 10)}_${Date.now()}`,
@@ -362,7 +337,6 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     tracked_exercises: [],
     one_k_exercises: null,
     isCurrent,
-    currentSince,
   };
 }
 

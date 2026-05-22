@@ -357,19 +357,18 @@ export async function importBackup(payload, strategy = 'replace') {
 // One-time migration: convert the legacy single workout note (kilo_workout_note) into
 // the first entry in the multi-note notebook (kilo_workout_notes), marked as current.
 // No-op if the notebook already contains entries.
-// Migrated entry gets currentSince: null because the routine-start date is unknown.
 // Returns the notebook list after migration (empty array if nothing to migrate).
 export async function migrateToNotebook() {
   const existing = await readList(WORKOUT_NOTES_KEY);
 
   if (existing.length > 0) {
     // Normalize pre-existing entries that are missing the new required fields.
-    const needsNormalization = existing.some(n => !('isCurrent' in n) || !('currentSince' in n));
+    const needsNormalization = existing.some(n => !('isCurrent' in n));
     if (!needsNormalization) return existing;
 
     const currentId = await loadCurrentWorkoutId();
     const normalized = existing.map(n => {
-      const base = { isCurrent: false, currentSince: null, ...n };
+      const base = { isCurrent: false, ...n };
       // If isCurrent was absent and this note is the stored current, promote it.
       if (!('isCurrent' in n) && currentId != null && n.id === currentId) {
         base.isCurrent = true;
@@ -393,7 +392,6 @@ export async function migrateToNotebook() {
     tracked_exercises: legacyNote.tracked_exercises || [],
     one_k_exercises: legacyNote.one_k_exercises || null,
     isCurrent: true,
-    currentSince: null,
   };
 
   await writeList(WORKOUT_NOTES_KEY, [item]);
@@ -402,16 +400,14 @@ export async function migrateToNotebook() {
   return [item];
 }
 
-// Mark a note as the current routine, recording when it became current.
+// Mark a note as the current routine.
 // All other notes in the list are marked isCurrent: false.
-// If the note is already current its currentSince is preserved.
 // Also updates CURRENT_WORKOUT_ID_KEY for backward compatibility.
 export async function setCurrentWorkoutNote(id) {
   const list = await readList(WORKOUT_NOTES_KEY);
-  const now = new Date().toISOString();
   const updated = list.map(n => {
     if (n.id === id) {
-      return { ...n, isCurrent: true, currentSince: n.isCurrent ? n.currentSince : now };
+      return { ...n, isCurrent: true };
     }
     return { ...n, isCurrent: false };
   });

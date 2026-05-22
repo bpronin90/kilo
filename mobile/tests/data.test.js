@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn } from '../lib/data';
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
 
@@ -196,20 +196,9 @@ describe('makeWorkoutNoteItem', () => {
     expect(item.isCurrent).toBe(false);
   });
 
-  test('defaults currentSince to null', () => {
-    const item = makeWorkoutNoteItem({ title: 'Push Day' });
-    expect(item.currentSince).toBeNull();
-  });
-
   test('accepts isCurrent: true', () => {
     const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true });
     expect(item.isCurrent).toBe(true);
-  });
-
-  test('accepts a currentSince timestamp', () => {
-    const ts = '2026-05-20T10:00:00.000Z';
-    const item = makeWorkoutNoteItem({ title: 'Push Day', isCurrent: true, currentSince: ts });
-    expect(item.currentSince).toBe(ts);
   });
 
   test('defaults raw_text to empty string', () => {
@@ -326,5 +315,73 @@ describe('tracked-lift toggle merge', () => {
     state = toggleInMap(state, 'squat');
     expect(state['bench press']).toBe(true);
     expect(state['squat']).toBe(true);
+  });
+});
+
+// ── computeWeeksIn ────────────────────────────────────────────────────────────
+
+function makeSection(exercises) {
+  return { heading: null, subheading: null, kind: 'general', exercises };
+}
+
+function makeExercise(sessionEntryCount, { skippedIndices = [] } = {}) {
+  const session_entries = Array.from({ length: sessionEntryCount }, (_, i) =>
+    skippedIndices.includes(i)
+      ? { skipped: true, raw: '-', sets: [] }
+      : { skipped: false, raw: '100x5', sets: [{ weight_value: 100, rep_count: 5 }] }
+  );
+  return { name: 'Exercise', rows: [], session_entries, unparsed_rows: [] };
+}
+
+describe('computeWeeksIn', () => {
+  test('null sections returns null', () => {
+    expect(computeWeeksIn(null)).toBeNull();
+  });
+
+  test('undefined sections returns null', () => {
+    expect(computeWeeksIn(undefined)).toBeNull();
+  });
+
+  test('empty sections array returns 0', () => {
+    expect(computeWeeksIn([])).toBe(0);
+  });
+
+  test('routine with no session_entries returns 0', () => {
+    const sections = [makeSection([{ name: 'Squat', rows: [{ raw: '225x5', sets: [] }], session_entries: [], unparsed_rows: [] }])];
+    expect(computeWeeksIn(sections)).toBe(0);
+  });
+
+  test('single exercise with 1 session entry returns 1', () => {
+    const sections = [makeSection([makeExercise(1)])];
+    expect(computeWeeksIn(sections)).toBe(1);
+  });
+
+  test('single exercise with 12 session entries returns 12', () => {
+    const sections = [makeSection([makeExercise(12)])];
+    expect(computeWeeksIn(sections)).toBe(12);
+  });
+
+  test('uses deepest exercise chain across exercises in one section', () => {
+    const sections = [makeSection([makeExercise(3), makeExercise(7), makeExercise(2)])];
+    expect(computeWeeksIn(sections)).toBe(7);
+  });
+
+  test('uses deepest chain across multiple sections (days)', () => {
+    const sections = [
+      makeSection([makeExercise(4)]),
+      makeSection([makeExercise(9)]),
+      makeSection([makeExercise(1)]),
+    ];
+    expect(computeWeeksIn(sections)).toBe(9);
+  });
+
+  test('counts skipped entries toward chain depth', () => {
+    const sections = [makeSection([makeExercise(5, { skippedIndices: [1, 3] })])];
+    expect(computeWeeksIn(sections)).toBe(5);
+  });
+
+  test('mixed routine uses longest chain, not average', () => {
+    const sections = [makeSection([makeExercise(2), makeExercise(12), makeExercise(1)])];
+    expect(computeWeeksIn(sections)).toBe(12);
   });
 });

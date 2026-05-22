@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.35.18 - 2026-05-22
+
+- Issue #128: Rebuilt the Home `Weeks In` counter around routine progression
+  depth instead of a calendar-date approximation. `computeWeeksIn` in
+  `mobile/lib/data.js` now takes parsed `sections` and returns the longest
+  `session_entries` chain across all exercises and days (`null` when no routine
+  is loaded, `0` when a routine has no logged entries); `HomeScreen.js` parses
+  `sections` once and feeds them to the new signature. As follow-up cleanup,
+  the now-orphaned `currentSince` field — read only by the old `computeWeeksIn`
+  — was removed from the `makeWorkoutNoteItem` model and from all
+  `mobile/storage/entries.js` writes, normalization, and migration paths. Added
+  10 `computeWeeksIn` tests and removed 7 stale `currentSince` tests. Updated
+  `docs/current-state.md` to match.
+
 ## 0.35.17 - 2026-05-22
 
 - Issue #127: Sharpened the Home header and made the summary panels static.

@@ -126,8 +126,9 @@ The real native app path now has a modular React Native shell:
   component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`),
   `Current Routine Progress` supporting copy, top summary cards for latest
   weight plus a neutral `Weeks In` routine counter derived from the current
-  routine's `currentSince` date and rendered as `—` when legacy migrated data
-  lacks a known start date, a renamed `1k Club Progress` card, a compact 7-day
+  routine's progression depth (the longest `session_entries` chain across all
+  exercises and days), rendered as `—` when no routine is loaded, a renamed
+  `1k Club Progress` card, a compact 7-day
   rolling-average weight line chart, and the exported
   More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
   `1k Club Progress` and `Weight Trend` panels are now static dashboard
@@ -157,9 +158,8 @@ The real native app path now has a modular React Native shell:
   current
   through an inline action, plus routine create/rename/delete controls with
   confirmation and current-selection cleanup guardrails; switching the current
-  workout now requires explicit confirmation, offers a save-and-switch or
-  switch-anyway choice when there are unsaved edits, and records a real
-  `currentSince` timestamp when a different routine becomes current. The read view now also routes parsed `SetLine`
+  workout now requires explicit confirmation, and offers a save-and-switch or
+  switch-anyway choice when there are unsaved edits. The read view now also routes parsed `SetLine`
   rows plus fallback unparsed/skip rows through one shared set-row typography
   token so Log-tab rows render at a uniform size without the earlier stray
   italics; Android back now exits edit subviews before falling through to
@@ -216,8 +216,8 @@ The real native app path now has a modular React Native shell:
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
-  current selection, and persisted note items now carry `isCurrent` plus
-  `currentSince` metadata alongside the retained `tracked_exercises` and
+  current selection, and persisted note items now carry an `isCurrent` flag
+  alongside the retained `tracked_exercises` and
   `one_k_exercises` selections. It also persists a lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`,
   optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
@@ -227,8 +227,7 @@ The real native app path now has a modular React Native shell:
   `kilo_log_current_collapsed`. The legacy structured workout-session key is retained
   only as a one-time migration source, and the older single-note key is now
   also migrated forward into the notebook model by synthesizing a `Routine 1`
-  current entry with `currentSince: null` when historic start-date data is
-  unavailable. The local Data & Backup recovery path now exports a versioned
+  current entry. The local Data & Backup recovery path now exports a versioned
   v2 snapshot (weight entries, workout notes, current workout id, optional
   weight goal, and optional fatigue multiplier), validates that payload before
   any write, restores the full multi-note model plus weight goal and fatigue
