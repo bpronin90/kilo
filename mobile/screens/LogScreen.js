@@ -715,6 +715,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
   },
   otherNoteInfo: {
     flex: 1,
@@ -736,9 +738,7 @@ const styles = StyleSheet.create({
   },
   currentNoteContent: {
     padding: 18,
-    paddingTop: 0,
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    paddingTop: 12,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
