@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.13 - 2026-05-21
+
+- Issue #123: Made the current routine a title-first collapsible card on the
+  Log tab — the header row toggles a collapsed/expanded state persisted under
+  `kilo_log_current_collapsed` and held in `App.js` so it survives tab
+  navigation and app restarts. Removed the top header `Edit` button (edit mode
+  is now entered through the in-card `Edit note` action), renamed the Log
+  surfaces to `Workout Notes` / `More Routines` / `Set Current`, and added a
+  `LOG TAB STYLE LOCK` notice so Log-tab typography and styling are not changed
+  without an explicit owner request. Updated `docs/current-state.md` to match.
+
 ## 0.35.12 - 2026-05-21
 
 - Issue #122: Fixed workout-note save semantics so `Save` is the explicit save

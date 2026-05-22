@@ -79,8 +79,8 @@ export function Chip({ children }) {
   );
 }
 
-export function WorkoutHeading({ children }) {
-  return <Text style={styles.workoutHeading}>{children}</Text>;
+export function WorkoutHeading({ children, style }) {
+  return <Text style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
 export function WorkoutSubheading({ children }) {
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     color: Colors.chipText,
   },
   workoutHeading: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: Colors.text,
     marginTop: 24,

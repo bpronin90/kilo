@@ -13,7 +13,7 @@ import { StatsScreen } from './screens/StatsScreen';
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier } from './storage/entries';
+import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -27,19 +27,30 @@ export default function App() {
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
+  const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
+  const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
 
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
+    loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
   }, []);
+
+  const toggleWorkoutCollapsed = useCallback(async () => {
+    const next = !isWorkoutCollapsed;
+    setIsWorkoutCollapsed(next);
+    await saveWorkoutCollapsed(next);
+  }, [isWorkoutCollapsed]);
 
   const prevCurrentId = useRef(noteHook.currentId);
   React.useEffect(() => {
     if (noteHook.currentId !== prevCurrentId.current) {
       setWorkoutNoteText(noteHook.currentNote?.raw_text || '');
+      setWorkoutNoteTitle(noteHook.currentNote?.title || '');
       prevCurrentId.current = noteHook.currentId;
     } else if (noteHook.currentNote && !workoutNoteText) {
       setWorkoutNoteText(noteHook.currentNote.raw_text);
+      setWorkoutNoteTitle(noteHook.currentNote.title || '');
     }
   }, [noteHook.currentId, noteHook.currentNote]);
 
@@ -98,7 +109,7 @@ export default function App() {
       ? [{
           id: `note_${noteHook.currentNote.updated_at}`,
           type: 'workout',
-          title: noteHook.currentNote.title || 'Workout note',
+          title: noteHook.currentNote.title || 'Workout Notes',
           detail: noteHook.currentNote.raw_text?.split('\n').find(l => l.trim()) || '',
           createdAt: new Date(noteHook.currentNote.updated_at).getTime(),
         }]
@@ -153,7 +164,7 @@ export default function App() {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
 
     if (!workoutNoteText.trim()) {
-      return { ok: false, error: 'Workout note is required' };
+      return { ok: false, error: 'Workout notes are required' };
     }
     setWorkoutSaving(true);
     try {
@@ -165,7 +176,7 @@ export default function App() {
       }
       return { ok: true };
     } catch {
-      return { ok: false, error: 'Failed to save workout note' };
+      return { ok: false, error: 'Failed to save workout notes' };
     } finally {
       setWorkoutSaving(false);
     }
@@ -187,6 +198,10 @@ export default function App() {
           <LogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
+            workoutNoteTitle={workoutNoteTitle}
+            setWorkoutNoteTitle={setWorkoutNoteTitle}
+            isCollapsed={isWorkoutCollapsed}
+            toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
           />
         );

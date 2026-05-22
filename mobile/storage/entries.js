@@ -8,6 +8,7 @@ const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
+const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 
 async function readList(key) {
   try {
@@ -39,6 +40,19 @@ export async function loadTrackedLifts() {
 // re-reading storage, so that rapid consecutive toggles don't race.
 export async function saveTrackedLifts(map) {
   await AsyncStorage.setItem(TRACKED_LIFTS_KEY, JSON.stringify(map));
+}
+
+export async function loadWorkoutCollapsed() {
+  try {
+    const raw = await AsyncStorage.getItem(COLLAPSED_STATE_KEY);
+    return raw ? JSON.parse(raw) : false;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveWorkoutCollapsed(isCollapsed) {
+  await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(isCollapsed));
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────

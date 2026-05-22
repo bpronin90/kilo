@@ -141,14 +141,19 @@ The real native app path now has a modular React Native shell:
   faithful to the raw text while collapsing same-day warmup and lifting
   sections under one weekday heading, parsed exercise tracking toggles in read
   mode that now persist a global tracked-lift map keyed by normalized
-  exercise name, inline `—` skip markers for bare `-` lines, a labeled bottom
-  `Edit note` action in the read view, explicit `Save` actions that persist
+  exercise name, inline `—` skip markers for bare `-` lines, the current
+  routine rendered as a title-first card whose header row toggles a persisted
+  collapsed/expanded state (`kilo_log_current_collapsed`, surviving tab
+  navigation and app restarts) with the in-card `Edit note` action as the only
+  edit affordance now that the top header `Edit` button is removed, explicit
+  `Save` actions that persist
   raw-note edits directly through the current workout-note store, keep the
   editor open, and show a transient `Saved!` button confirmation, exit prompts
   so leaving an editor with unsaved changes via `Done` or Android back asks to
   discard a never-saved note or to save/discard an existing note, a bottom
-  `Routines` list that keeps each non-current routine collapsed to a compact
-  row that can either reopen its raw-note editor or mark that routine current
+  `More Routines` list that keeps each non-current routine collapsed to a
+  compact row that can either reopen its raw-note editor or mark that routine
+  current
   through an inline action, plus routine create/rename/delete controls with
   confirmation and current-selection cleanup guardrails; switching the current
   workout now requires explicit confirmation, offers a save-and-switch or
@@ -211,8 +216,9 @@ The real native app path now has a modular React Native shell:
   record under `kilo_weight_goal` with `target_weight`, `target_date`,
   optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
   multiplier under
-  `kilo_fatigue_multiplier` and a global tracked-lift map under
-  `kilo_tracked_lifts`. The legacy structured workout-session key is retained
+  `kilo_fatigue_multiplier`, a global tracked-lift map under
+  `kilo_tracked_lifts`, and the Log-tab current-routine collapsed state under
+  `kilo_log_current_collapsed`. The legacy structured workout-session key is retained
   only as a one-time migration source, and the older single-note key is now
   also migrated forward into the notebook model by synthesizing a `Routine 1`
   current entry with `currentSince: null` when historic start-date data is
@@ -282,7 +288,7 @@ Home and Analytics tabs now derive workout activity consistently from the
 currently selected workout note in the same multi-note store used by the Log
 screen, and the Log flow now keeps the selected current routine in the full
 parsed-workout view while rendering every non-current routine as a compact row
-in the bottom `Routines` list, where it can be reopened in a dedicated
+in the bottom `More Routines` list, where it can be reopened in a dedicated
 raw-note editor or promoted directly to the current workout through an
 explicit confirmation step that also preserves any pending draft before
 switching. The local backup/import path

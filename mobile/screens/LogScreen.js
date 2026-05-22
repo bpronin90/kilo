@@ -1,3 +1,18 @@
+// LOG TAB STYLE LOCK — DO NOT TOUCH.
+// The fonts, font sizes, colors, spacing, and overall visual style of the Log
+// tab are intentionally fixed. Do NOT change any styling here, in the `styles`
+// block below, or in the Log-tab typography of `components/UI.js`
+// (`WorkoutHeading` / `WorkoutSubheading`). No "creative" or opportunistic
+// visual tweaks. Change Log-tab styling ONLY when the repo owner explicitly
+// asks for that specific change.
+
+/**
+ * LOG TAB STYLE LOCK
+ * ------------------
+ * Fonts, sizes, colors, and spacing in this file (and related WorkoutHeading/WorkoutSubheading 
+ * typography in UI.js) must not change unless the repo owner explicitly requests it.
+ */
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
@@ -7,15 +22,21 @@ import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
-export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
+export function LogScreen({ 
+  workoutNoteText, 
+  setWorkoutNoteText, 
+  workoutNoteTitle, 
+  setWorkoutNoteTitle, 
+  isCollapsed,
+  toggleCollapsed,
+  onSaveWorkout 
+}) {
   const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-
-  const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -45,12 +66,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     if (!editingNote) return false;
     return editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
   }, [editingNoteId, editingNote, editingTitle, editingText]);
-
-  useEffect(() => {
-    if (currentNote) {
-      setWorkoutNoteTitle(currentNote.title || '');
-    }
-  }, [currentNote]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -101,7 +116,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const handleSave = async () => {
     if (isSaving) return;
     if (!currentId && !workoutNoteText.trim()) {
-      setSaveError('Workout note is required');
+      setSaveError('Workout notes are required');
       return;
     }
     setIsSaving(true);
@@ -351,13 +366,13 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     await toggleTrackedLift(key);
   };
 
-  const headerRight = !editingNoteId && hasContent && (
+  const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
-      onPress={() => mode === 'read' ? setMode('edit') : handleDoneCurrent()}
+      onPress={handleDoneCurrent}
       style={styles.modeToggle}
     >
       <Text style={styles.modeToggleText}>
-        {mode === 'read' ? 'Edit' : 'Done'}
+        Done
       </Text>
     </Pressable>
   );
@@ -422,7 +437,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   return (
     <ScreenShell
-      title="Workout note"
+      title="Workout Notes"
       subtitle="Your active training routine. Update it as you go."
       headerRight={headerRight}
       keyboardShouldPersistTaps="handled"
@@ -435,43 +450,61 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
       {mode === 'read' && hasContent ? (
         <View style={styles.mirrorContainer}>
-          {dayGroups.map((group, gi) => (
-            <View key={`day-${gi}`}>
-              {group.heading && <WorkoutHeading>{group.heading}</WorkoutHeading>}
-              {group.sections.map((section, si) => (
-                <View key={`section-${gi}-${si}`}>
-                  {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-                  {section.exercises.map((ex, ei) => (
-                    <ExerciseBlock
-                      key={`ex-${gi}-${si}-${ei}`}
-                      name={ex.name}
-                      isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                      onToggleTrack={() => handleToggleTrack(ex.name)}
-                    >
-                      {ex.rows.map((row, ri) => (
-                        <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+          <Card style={styles.currentRoutineCard}>
+            <Pressable
+              onPress={toggleCollapsed}
+              style={styles.otherNoteHeader}
+            >
+              <View style={styles.otherNoteInfo}>
+                <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={styles.otherNoteSub}>Current routine</Text>
+              </View>
+            </Pressable>
+
+            <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
+              {dayGroups.map((group, gi) => (
+                <View key={`day-${gi}`}>
+                  {group.heading && (
+                    <WorkoutHeading style={gi === 0 ? { marginTop: 12 } : null}>
+                      {group.heading}
+                    </WorkoutHeading>
+                  )}
+                  {group.sections.map((section, si) => (
+                    <View key={`section-${gi}-${si}`}>
+                      {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                      {section.exercises.map((ex, ei) => (
+                        <ExerciseBlock
+                          key={`ex-${gi}-${si}-${ei}`}
+                          name={ex.name}
+                          isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                          onToggleTrack={() => handleToggleTrack(ex.name)}
+                        >
+                          {ex.rows.map((row, ri) => (
+                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                          ))}
+                          {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                            <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                          ))}
+                          {ex.unparsed_rows.map((u, ui) => (
+                            <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                          ))}
+                        </ExerciseBlock>
                       ))}
-                      {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                        <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                      ))}
-                      {ex.unparsed_rows.map((u, ui) => (
-                        <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                      ))}
-                    </ExerciseBlock>
+                    </View>
                   ))}
                 </View>
               ))}
+              {!dayGroups.length && (
+                <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+              )}
+              <Button
+                onPress={() => setMode('edit')}
+                title="Edit note"
+                style={styles.editButton}
+                textStyle={styles.editButtonText}
+              />
             </View>
-          ))}
-          {!dayGroups.length && (
-            <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-          )}
-          <Button
-            onPress={() => setMode('edit')}
-            title="Edit note"
-            style={styles.editButton}
-            textStyle={styles.editButtonText}
-          />
+          </Card>
         </View>
       ) : (
         <View style={styles.editContainer}>
@@ -513,7 +546,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       <View style={styles.previousRoutines}>
         {otherNotes.length > 0 && (
           <>
-            <SectionTitle>Routines</SectionTitle>
+            <SectionTitle>More Routines</SectionTitle>
             {otherNotes.map(other => (
               <Card
                 key={other.id}
@@ -533,7 +566,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
                     onPress={() => handleSwitchCurrent(other.id)}
                     style={styles.inlineSwitchButton}
                   >
-                    <Text style={styles.inlineSwitchButtonText}>Set current</Text>
+                    <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
                   </Pressable>
                 </View>
               </Card>
@@ -596,7 +629,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   mirrorContainer: {
-    paddingBottom: 24,
+    paddingBottom: 2,
+  },
+  currentRoutineCard: {
+    padding: 8,
+    overflow: 'hidden',
+    borderWidth: 4,
+    borderColor: Colors.cardBorder,
   },
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
@@ -643,7 +682,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   previousRoutines: {
-    marginTop: 32,
+    marginTop: 4,
     gap: 12,
   },
   otherNoteCard: {
@@ -653,32 +692,44 @@ const styles = StyleSheet.create({
   otherNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     gap: 12,
   },
   otherNoteInfo: {
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: Colors.text,
+  },
+  currentNoteTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.accent,
   },
   otherNoteSub: {
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
   },
+  currentNoteContent: {
+    padding: 18,
+    paddingTop: 0,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+  },
   inlineSwitchButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
     backgroundColor: Colors.chipBackground,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
   },
   inlineSwitchButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.accent,
   },
