@@ -1,7 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -14,7 +13,7 @@ import { StatsScreen } from './screens/StatsScreen';
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier } from './storage/entries';
+import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -32,19 +31,15 @@ export default function App() {
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
 
-  const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
-
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
-    AsyncStorage.getItem(COLLAPSED_STATE_KEY).then(val => {
-      if (val !== null) setIsWorkoutCollapsed(JSON.parse(val));
-    });
+    loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
   }, []);
 
   const toggleWorkoutCollapsed = useCallback(async () => {
     const next = !isWorkoutCollapsed;
     setIsWorkoutCollapsed(next);
-    await AsyncStorage.setItem(COLLAPSED_STATE_KEY, JSON.stringify(next));
+    await saveWorkoutCollapsed(next);
   }, [isWorkoutCollapsed]);
 
   const prevCurrentId = useRef(noteHook.currentId);
