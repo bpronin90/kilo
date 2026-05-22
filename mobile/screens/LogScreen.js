@@ -652,7 +652,7 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   currentRoutineCard: {
-    padding: 8,
+    padding: 0,
     overflow: 'hidden',
     borderWidth: 4,
     borderColor: Colors.cardBorder,
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     gap: 12,
   },
   otherNoteInfo: {
@@ -735,8 +735,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   currentNoteContent: {
-    padding: 18,
-    paddingTop: 12,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
   },
