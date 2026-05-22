@@ -142,16 +142,18 @@ The real native app path now has a modular React Native shell:
   sections under one weekday heading, parsed exercise tracking toggles in read
   mode that now persist a global tracked-lift map keyed by normalized
   exercise name, inline `—` skip markers for bare `-` lines, a labeled bottom
-  `Edit note` action in the read view, save handling that persists raw-note
-  edits directly through the current workout-note store and returns the
-  current routine to read mode on success for visible confirmation, a bottom
+  `Edit note` action in the read view, explicit `Save` actions that persist
+  raw-note edits directly through the current workout-note store, keep the
+  editor open, and show a transient `Saved!` button confirmation, exit prompts
+  so leaving an editor with unsaved changes via `Done` or Android back asks to
+  discard a never-saved note or to save/discard an existing note, a bottom
   `Routines` list that keeps each non-current routine collapsed to a compact
   row that can either reopen its raw-note editor or mark that routine current
   through an inline action, plus routine create/rename/delete controls with
   confirmation and current-selection cleanup guardrails; switching the current
-  workout now requires explicit confirmation, records a real `currentSince`
-  timestamp when a different routine becomes current, and does not proceed if
-  saving pending edits fails. The read view now also routes parsed `SetLine`
+  workout now requires explicit confirmation, offers a save-and-switch or
+  switch-anyway choice when there are unsaved edits, and records a real
+  `currentSince` timestamp when a different routine becomes current. The read view now also routes parsed `SetLine`
   rows plus fallback unparsed/skip rows through one shared set-row typography
   token so Log-tab rows render at a uniform size without the earlier stray
   italics; Android back now exits edit subviews before falling through to

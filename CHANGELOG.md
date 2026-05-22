@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.12 - 2026-05-21
+
+- Issue #122: Fixed workout-note save semantics so `Save` is the explicit save
+  action, the editor stays open with a transient `Saved!` confirmation, and
+  `Done` / Android back no longer save implicitly — leaving with unsaved
+  changes now prompts to discard a never-saved note or save/discard an existing
+  note. Removed implicit creation of a never-saved note, fixed a stale
+  `BackHandler` closure that could drop the discard prompt, and replaced the
+  implicit save-on-switch with an explicit save-and-switch / switch-anyway
+  choice. Updated `docs/current-state.md` to match the shipped behavior.
+
 ## 0.35.11 - 2026-05-21
 
 - Issue #144: Restored native Weight goal pace and calorie guidance by
