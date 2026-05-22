@@ -606,12 +606,18 @@ Ordered tasks:
 
 Off-shoot cards:
 
-- `#146` - routine editor exit leaves the Log tab at an unexpected scroll
-  position (Phase 1 core-flow regression; `agent:gemini`, `type:bug`)
-- `#147` - deep design review of the Tracked Exercises / Progressive Overload
-  section organization (spun off from `#126`; `agent:codex`, `type:planning`)
-- `#150` - implement rendered workout note double-tap edit and text selection
-  (spun off from `#148`; `agent:claude`, `type:implementation`)
+- `#146` - `Phase 6 / Task 1: Fix routine editor exit scroll-position
+  regression in Log` (Phase 1 core-flow regression; `agent:gemini`,
+  `type:bug`)
+- `#147` - `Phase 6 / Task 2: Review Tracked Exercises / Progressive
+  Overload section organization` (spun off from `#126`; `agent:codex`,
+  `type:planning`)
+- `#150` - `Phase 6 / Task 3: Implement rendered workout note double-tap
+  edit and text selection` (spun off from `#148`; `agent:claude`,
+  `type:implementation`)
+- `#151` - `Phase 6 / Task 4: Normalize rendered workout rows and improve
+  unparsed fallback in Log` (spun off from `#149`; `agent:claude`,
+  `type:implementation`)
 
 ---
 
