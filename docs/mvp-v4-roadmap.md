@@ -298,12 +298,11 @@ Ordered tasks:
 - **Goal:** settle how the rendered current note should enter edit mode without
   breaking scroll, and define text-copy behavior.
 - **Scope:**
-  - decide the final edit-entry affordance inside expanded rendered workout
+  - define the final edit-entry affordance inside expanded rendered workout
     content
-  - evaluate the proposed approach of tapping day text / workout text rather
-    than the full body
-  - define whether rendered workout content should support text selection /
-    copy, and at what granularity
+  - settle whether day text / workout text should be tappable instead of the
+    full rendered body
+  - define rendered workout copy behavior and granularity
   - produce a narrow implementation-ready spec for later execution
 - **Allowed Files if determinable:**
   - `docs/mvp-v4-roadmap.md`
@@ -315,6 +314,40 @@ Ordered tasks:
   - spec explicitly states entry point(s) into raw edit mode
   - spec explicitly states scroll behavior and copyability expectations
   - resulting implementation issue can be written without re-planning
+- **Final interaction spec:**
+  - keep the expanded rendered workout body scroll-first
+  - do not open edit mode from a single tap anywhere inside the expanded
+    rendered note body
+  - enter raw edit mode from a double tap anywhere inside the expanded rendered
+    note body
+  - do not require tapping the rendered day label or other header-like text to
+    enter edit mode
+  - keep the outer current-note title row behavior from Task 2 unchanged:
+    single tap on the title still expands or collapses the note and is not an
+    edit-entry path
+  - exercise rows, set rows, notes, and spacer/body lines remain passive on
+    single tap so normal reading and scrolling are not interrupted
+  - drag/scroll gestures always win over edit-entry detection; double tap
+    should only fire when the body is stationary rather than during an
+    in-progress scroll gesture
+  - rendered workout text should remain selectable so the user can highlight
+    and copy arbitrary portions of the note
+  - copy behavior should rely on normal platform text selection rather than a
+    separate required whole-note copy affordance
+  - the implementation may add an optional secondary whole-note `Copy`
+    affordance later only if it does not compete with selection or add visual
+    clutter, but selection is the primary copy model
+  - this spec intentionally favors readable selectable content plus a deliberate
+    double-tap edit gesture over single-tap edit affordances inside the body
+- **Implementation handoff constraints:**
+  - remove ambiguity by keeping body single tap inert and using double tap as
+    the only in-body edit-entry path
+  - if the current note is collapsed, expand/collapse continues to belong to
+    the outer title row from Task 2; this spec only governs the expanded
+    rendered state
+  - follow-up implementation should verify that text selection, double-tap
+    edit, and vertical scrolling can coexist without accidental edit entry
+    during normal reading
 - **Labels:**
   - `mvp4.0`
   - `agent:codex`
@@ -577,6 +610,8 @@ Off-shoot cards:
   position (Phase 1 core-flow regression; `agent:gemini`, `type:bug`)
 - `#147` - deep design review of the Tracked Exercises / Progressive Overload
   section organization (spun off from `#126`; `agent:codex`, `type:planning`)
+- `#150` - implement rendered workout note double-tap edit and text selection
+  (spun off from `#148`; `agent:claude`, `type:implementation`)
 
 ---
 
@@ -644,7 +679,8 @@ work.
   notion of an exercise progression chain. The product rule is clear, but the
   issue writer should include one or two concrete routine examples in the final
   GitHub issue body.
-- `#129` should resolve whether rendered workout text is fully selectable,
-  partially selectable, or exposed through another copy affordance.
+- the follow-up implementation issue for `#148` should carry forward the
+  resolved rule that rendered workout text stays selectable and uses double tap
+  in the expanded body as the edit-entry gesture.
 - `#130` should explicitly decide whether normalization belongs in parser
   cleanup, renderer cleanup, or both.
