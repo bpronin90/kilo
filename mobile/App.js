@@ -27,6 +27,7 @@ export default function App() {
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
+  const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
 
   React.useEffect(() => {
@@ -37,9 +38,11 @@ export default function App() {
   React.useEffect(() => {
     if (noteHook.currentId !== prevCurrentId.current) {
       setWorkoutNoteText(noteHook.currentNote?.raw_text || '');
+      setWorkoutNoteTitle(noteHook.currentNote?.title || '');
       prevCurrentId.current = noteHook.currentId;
     } else if (noteHook.currentNote && !workoutNoteText) {
       setWorkoutNoteText(noteHook.currentNote.raw_text);
+      setWorkoutNoteTitle(noteHook.currentNote.title || '');
     }
   }, [noteHook.currentId, noteHook.currentNote]);
 
@@ -187,6 +190,8 @@ export default function App() {
           <LogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
+            workoutNoteTitle={workoutNoteTitle}
+            setWorkoutNoteTitle={setWorkoutNoteTitle}
             onSaveWorkout={saveWorkout}
           />
         );

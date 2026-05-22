@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     color: Colors.chipText,
   },
   workoutHeading: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: Colors.text,
     marginTop: 24,

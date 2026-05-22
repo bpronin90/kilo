@@ -10,7 +10,7 @@ import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 
-export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }) {
+export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitle, setWorkoutNoteTitle, onSaveWorkout }) {
   const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
@@ -18,7 +18,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -61,12 +60,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     if (!editingNote) return false;
     return editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
   }, [editingNoteId, editingNote, editingTitle, editingText]);
-
-  useEffect(() => {
-    if (currentNote) {
-      setWorkoutNoteTitle(currentNote.title || '');
-    }
-  }, [currentNote]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -694,9 +687,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: Colors.text,
+    color: Colors.standout,
   },
   otherNoteSub: {
     fontSize: 12,
