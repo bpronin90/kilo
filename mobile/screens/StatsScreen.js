@@ -6,7 +6,7 @@ import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/use
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen({ entries: propEntries, multiplier, section }) {
+export function StatsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
@@ -21,9 +21,8 @@ export function StatsScreen({ entries: propEntries, multiplier, section }) {
   const hasScrolled = useRef(false);
 
   const weightEntries = useMemo(() => {
-    const source = (Array.isArray(propEntries) && propEntries.length > 0) ? propEntries : (hookWeightEntries || []);
-    return source.filter(e => e && e.date && e.weight_value != null);
-  }, [propEntries, hookWeightEntries]);
+    return (hookWeightEntries || []).filter(e => e && e.date && e.weight_value != null);
+  }, [hookWeightEntries]);
 
   const isWeightLoading = loadingWeight && weightEntries.length === 0;
   const isNotesLoading = loadingNotes && notes.length === 0;

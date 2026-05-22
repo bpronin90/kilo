@@ -95,28 +95,6 @@ export default function App() {
     setActiveTab(tab);
   }, []);
 
-  // Adapt persistent store entries to the shape screens expect
-  const entries = useMemo(() => {
-    const weightEntries = weightHook.entries.map(e => ({
-      id: e.id,
-      type: 'weight',
-      value: String(e.weight_value),
-      unit: e.weight_unit,
-      note: e.note || 'No note',
-      createdAt: new Date(e.logged_at).getTime(),
-    }));
-    const workoutEntries = noteHook.currentNote
-      ? [{
-          id: `note_${noteHook.currentNote.updated_at}`,
-          type: 'workout',
-          title: noteHook.currentNote.title || 'Workout Notes',
-          detail: noteHook.currentNote.raw_text?.split('\n').find(l => l.trim()) || '',
-          createdAt: new Date(noteHook.currentNote.updated_at).getTime(),
-        }]
-      : [];
-    return [...weightEntries, ...workoutEntries].sort((a, b) => b.createdAt - a.createdAt);
-  }, [weightHook.entries, noteHook.currentNote]);
-
   const saveWeight = useCallback(async () => {
     if (weightSaving) return;
     Keyboard.dismiss();
@@ -219,7 +197,7 @@ export default function App() {
         );
       case 'Stats':
       case 'Analytics':
-        return <StatsScreen entries={entries} multiplier={fatigueMultiplier} section={analyticsSection} />;
+        return <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />;
       case 'More':
         return (
           <MoreScreen 
