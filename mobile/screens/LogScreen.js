@@ -377,11 +377,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             <Text style={styles.errorText}>{saveError}</Text>
           </Card>
         ) : null}
-        {saveSuccess ? (
-          <Card style={styles.successCard}>
-            <Text style={styles.successText}>{saveSuccess}</Text>
-          </Card>
-        ) : null}
         <View style={styles.editContainer}>
           <Card>
             <TextInput
@@ -401,7 +396,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             />
             <Button
               onPress={handleSaveOtherNote}
-              title="Save changes"
+              title={saveSuccess ? 'Saved!' : 'Save changes'}
               disabled={noteIsSaving}
               style={styles.saveButton}
             />
@@ -576,18 +571,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff0f0', // Slight red tint
     padding: 12,
     marginBottom: 8,
-  },
-  successCard: {
-    borderColor: Colors.accent,
-    backgroundColor: '#f0fff4', // Slight green tint
-    padding: 12,
-    marginBottom: 8,
-  },
-  successText: {
-    color: Colors.accent,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   input: {
     backgroundColor: Colors.inputBackground,
