@@ -444,7 +444,7 @@ export function LogScreen({
               style={styles.otherNoteHeader}
             >
               <View style={styles.otherNoteInfo}>
-                <Text style={[styles.otherNoteTitle, { fontSize: 22, color: Colors.accent }]}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={[styles.otherNoteTitle, { fontSize: 24, color: Colors.accent }]}>{workoutNoteTitle || 'My Workout'}</Text>
                 <Text style={styles.otherNoteSub}>Current routine</Text>
               </View>
             </Pressable>
