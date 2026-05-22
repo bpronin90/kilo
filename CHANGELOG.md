@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.14 - 2026-05-21
+
+- Issue #124: Fixed the empty Log state so a fresh install no longer auto-opens
+  the note editor or keyboard. Log now renders a dedicated `LogEmptyState`
+  component (`mobile/components/LogEmptyState.js`) with explanatory copy, a
+  `New Routine` primary action, and an example-format card, gated on the
+  workout-note load so existing users never see it flash before their routine
+  appears. Removed `autoFocus` from the note editor. Updated
+  `docs/current-state.md` and `docs/repo-structure.md` to match.
+
 ## 0.35.13 - 2026-05-21
 
 - Issue #123: Made the current routine a title-first collapsible card on the
