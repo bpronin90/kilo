@@ -15,6 +15,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -377,6 +378,19 @@ export function LogScreen({
     </Pressable>
   );
 
+  const isEmpty = notes.length === 0;
+
+  if (!editingNoteId && isEmpty) {
+    return (
+      <ScreenShell
+        title="Workout Notes"
+        subtitle="Track your active training routine."
+      >
+        <LogEmptyState onCreateRoutine={handleCreateRoutine} />
+      </ScreenShell>
+    );
+  }
+
   if (editingNoteId) {
     return (
       <ScreenShell
@@ -522,7 +536,6 @@ export function LogScreen({
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
               placeholderTextColor={Colors.textMuted}
               multiline
-              autoFocus={!hasContent}
               style={[styles.input, styles.editorInput]}
             />
             <Button
