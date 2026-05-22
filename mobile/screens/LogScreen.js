@@ -124,24 +124,27 @@ export function LogScreen({
     setSaveError('');
     setSaveSuccess('');
     try {
-      let ok = false;
+      let result = null;
+      const titleToSave = workoutNoteTitle || 'My Workout';
       if (currentId) {
-        const result = await update(currentId, { 
-          title: workoutNoteTitle || 'My Workout',
+        result = await update(currentId, { 
+          title: titleToSave,
           raw_text: workoutNoteText 
         });
-        ok = !!result;
       } else {
-        const note = await add(workoutNoteTitle || 'My Workout', workoutNoteText);
-        await selectCurrent(note.id);
-        ok = true;
+        result = await add(titleToSave, workoutNoteText);
+        await selectCurrent(result.id);
       }
-      if (ok) {
+
+      if (result) {
+        setWorkoutNoteTitle(result.title || '');
+        setWorkoutNoteText(result.raw_text || '');
         setSaveSuccess('Saved!');
+        return true;
       } else {
         setSaveError('Save failed');
+        return false;
       }
-      return ok;
     } catch {
       setSaveError('Save failed');
       return false;
@@ -257,21 +260,25 @@ export function LogScreen({
     setSaveSuccess('');
     try {
       let result;
+      const titleToSave = editingTitle || 'Untitled Routine';
       if (editingNoteId === 'new') {
-        result = await add(editingTitle || 'Untitled Routine', editingText);
+        result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
       } else {
         result = await update(editingNoteId, { 
-          title: editingTitle || 'Untitled Routine',
+          title: titleToSave,
           raw_text: editingText 
         });
       }
       if (!result) {
         setSaveError('Save failed');
+        return false;
       } else {
+        setEditingTitle(result.title || '');
+        setEditingText(result.raw_text || '');
         setSaveSuccess('Saved!');
+        return true;
       }
-      return result;
     } catch {
       setSaveError('Save failed');
       return false;
