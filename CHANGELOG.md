@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.19 - 2026-05-22
+
+- Issue #148: Finalized the MVP4 rendered-workout-note interaction spec in
+  `docs/mvp-v4-roadmap.md`. The roadmap now resolves expanded-note behavior to
+  body text that remains selectable for normal highlight/copy, single-tap body
+  content that stays inert, and double tap anywhere in the expanded rendered
+  note body as the only in-body path into raw edit mode while preserving the
+  existing title-row expand/collapse behavior. Spun off implementation issue
+  #150 and recorded it in the MVP4 Phase 6 off-shoot list.
+
 ## 0.35.18 - 2026-05-22
 
 - Issue #128: Rebuilt the Home `Weeks In` counter around routine progression
