@@ -119,12 +119,18 @@ export function StatsScreen({ multiplier, section }) {
     const visibleTrackedNames = globallyTrackedNames.filter(name => namesInCurrent.has(normalizeLiftName(name)));
 
     const { exercises: signals } = deriveSignals(allSections, visibleTrackedNames, multiplier);
-    
+
+    // Preserve original user-typed casing for display (last occurrence wins)
+    const nameDisplayMap = new Map();
+    allSections.forEach(s => s.exercises.forEach(e => {
+      nameDisplayMap.set(normalizeLiftName(e.name), e.name);
+    }));
+
     // Big Three 1RM total and workout count are scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
     const workoutDayCount = countWorkoutSessions(currentNote?.raw_text || '');
-    
-    return { signals, oneK, workoutDayCount };
+
+    return { signals, oneK, workoutDayCount, nameDisplayMap };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
 
   const workoutCount = useMemo(() => {
@@ -199,7 +205,7 @@ export function StatsScreen({ multiplier, section }) {
             <ActivityIndicator size="large" color={Colors.accent} />
           ) : (
             <>
-              <Text style={styles.oneKLabel}>Big Three 1RM Total</Text>
+              <Text style={styles.oneKLabel}>1K Progress</Text>
               <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
               <View style={styles.oneKBreakdown}>
                 <View style={styles.oneKItem}>
@@ -227,7 +233,7 @@ export function StatsScreen({ multiplier, section }) {
       )}
 
       <Card style={styles.slotCard}>
-        <Text style={styles.slotCardTitle}>Slot assignments</Text>
+        <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
         {(['bench', 'squat', 'deadlift']).map(slot => (
           <View key={slot}>
             <Pressable
@@ -264,7 +270,7 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <SectionTitle>Tracked Lifts</SectionTitle>
+      <SectionTitle>Progressive Overload</SectionTitle>
       <View style={styles.list}>
         {(isNotesLoading || isTrackedLoading) ? (
           <View style={{ height: 100, justifyContent: 'center' }}>
@@ -274,32 +280,32 @@ export function StatsScreen({ multiplier, section }) {
           analytics.signals.map((sig, i) => (
             <Card key={i} style={styles.signalCard}>
               <View style={styles.signalHeader}>
-                <Text style={styles.signalName}>{toTitleCase(sig.name)}</Text>
+                <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normalizeLiftName(sig.name)) || sig.name}</Text>
                 <Badge status={sig.progression_status}>
                   {formatStatus(sig.progression_status)}
                 </Badge>
               </View>
               <View style={styles.signalMeta}>
-                <View>
-                  <Text style={styles.signalLabel}>Est. 1RM</Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalLabel}>1 Rep Max</Text>
                   <Text style={styles.signalValue}>
                     {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
                   </Text>
                 </View>
-                <View>
-                  <Text style={styles.signalLabel}>Kilo max</Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalLabel}>Kilo Max</Text>
                   <Text style={styles.signalValue}>
                     {sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}
                   </Text>
                 </View>
-                <View>
-                  <Text style={styles.signalLabel}>Top weight</Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalLabel}>Top Weight</Text>
                   <Text style={styles.signalValue}>
                     {sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}
                   </Text>
                 </View>
-                <View>
-                  <Text style={styles.signalLabel}>Overload</Text>
+                <View style={styles.signalMetaItem}>
+                  <Text style={styles.signalLabel}>Progress</Text>
                   <Text style={styles.signalValue}>
                     {formatOverload(sig.overload_trend)}
                   </Text>
@@ -315,11 +321,6 @@ export function StatsScreen({ multiplier, section }) {
       </View>
     </ScrollView>
   );
-}
-
-function toTitleCase(str) {
-  if (!str) return '';
-  return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function formatStatus(status) {
@@ -567,8 +568,12 @@ const styles = StyleSheet.create({
   signalMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
-    rowGap: 12,
+  },
+  signalMetaItem: {
+    width: '50%',
+    paddingRight: 12,
+    gap: 2,
+    marginBottom: 8,
   },
   signalLabel: {
     fontSize: 12,
