@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
@@ -16,7 +17,27 @@ import {
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
-const WORDMARK = require('../assets/brand/wordmark.png');
+
+function KiloWordmark({ width = 140, height = 48 }) {
+  return (
+    <View style={{ width, height, justifyContent: 'center', marginLeft: -8 }}>
+      <Svg width="100%" height="100%" viewBox="0 0 303 106">
+        {/* K */}
+        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={Colors.text} />
+        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        {/* I */}
+        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={Colors.text} />
+        <Rect x="102" y="10" width="7" height="15" rx="3.5" ry="3.5" fill="#FF5C00" />
+        {/* L */}
+        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinecap="round" />
+        {/* O (dot) */}
+        <Rect x="187" y="89.5" width="16" height="7" rx="3.5" ry="3.5" fill="#FF5C00" />
+        {/* O (circle) */}
+        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinejoin="round" />
+      </Svg>
+    </View>
+  );
+}
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
@@ -41,7 +62,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
   return (
     <ScreenShell
-      title={<Image source={WORDMARK} style={styles.wordmark} />}
+      title={<KiloWordmark />}
       subtitle="Current Routine Progress"
     >
       {successMessage ? (
@@ -67,12 +88,12 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
-        <Pressable onPress={() => onNavigate('Analytics', 'strength')} style={styles.oneKTotalTarget}>
+        <View style={styles.oneKTotalTarget}>
           <Text style={styles.oneKValue}>
             {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
             <Text style={styles.oneKUnit}> lb</Text>
           </Text>
-        </Pressable>
+        </View>
         <View style={styles.progressBar}>
           <View
             style={[
@@ -92,14 +113,14 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
       <SectionTitle>Weight Trend</SectionTitle>
       <Card style={styles.chartCard}>
-        <Pressable onPress={() => onNavigate('Analytics', 'weight')}>
+        <View>
           <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
           <LineChart
             data={dashboardData.weightSeries}
             color={Colors.success}
             height={100}
           />
-        </Pressable>
+        </View>
       </Card>
     </ScreenShell>
   );
@@ -605,14 +626,13 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     resizeMode: 'contain',
-    opacity: 0.8,
   },
   wordmark: {
     width: '100%',
     maxWidth: 160,
-    aspectRatio: 3, // Approx 120/40 ratio
+    aspectRatio: 2.85, // 1212/424 ratio
     resizeMode: 'contain',
-    marginLeft: -8, // Compensate for visual padding in the PNG
+    marginLeft: -8, // Compensate for visual padding
   },
   backButton: {
     backgroundColor: 'transparent',
