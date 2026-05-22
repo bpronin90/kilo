@@ -79,8 +79,8 @@ export function Chip({ children }) {
   );
 }
 
-export function WorkoutHeading({ children }) {
-  return <Text style={styles.workoutHeading}>{children}</Text>;
+export function WorkoutHeading({ children, style }) {
+  return <Text style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
 export function WorkoutSubheading({ children }) {

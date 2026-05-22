@@ -460,52 +460,51 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
                 <Text style={styles.otherNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
                 <Text style={styles.otherNoteSub}>Current routine</Text>
               </View>
-              <View style={styles.collapseIcon}>
-                <Text style={styles.collapseIconText}>{isCollapsed ? '▼' : '▲'}</Text>
-              </View>
             </Pressable>
 
-            {!isCollapsed && (
-              <View style={styles.currentNoteContent}>
-                {dayGroups.map((group, gi) => (
-                  <View key={`day-${gi}`}>
-                    {group.heading && <WorkoutHeading>{group.heading}</WorkoutHeading>}
-                    {group.sections.map((section, si) => (
-                      <View key={`section-${gi}-${si}`}>
-                        {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-                        {section.exercises.map((ex, ei) => (
-                          <ExerciseBlock
-                            key={`ex-${gi}-${si}-${ei}`}
-                            name={ex.name}
-                            isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                            onToggleTrack={() => handleToggleTrack(ex.name)}
-                          >
-                            {ex.rows.map((row, ri) => (
-                              <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
-                            ))}
-                            {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                              <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                            ))}
-                            {ex.unparsed_rows.map((u, ui) => (
-                              <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                            ))}
-                          </ExerciseBlock>
-                        ))}
-                      </View>
-                    ))}
-                  </View>
-                ))}
-                {!dayGroups.length && (
-                  <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-                )}
-                <Button
-                  onPress={() => setMode('edit')}
-                  title="Edit note"
-                  style={styles.editButton}
-                  textStyle={styles.editButtonText}
-                />
-              </View>
-            )}
+            <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
+              {dayGroups.map((group, gi) => (
+                <View key={`day-${gi}`}>
+                  {group.heading && (
+                    <WorkoutHeading style={gi === 0 ? { marginTop: 12 } : null}>
+                      {group.heading}
+                    </WorkoutHeading>
+                  )}
+                  {group.sections.map((section, si) => (
+                    <View key={`section-${gi}-${si}`}>
+                      {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                      {section.exercises.map((ex, ei) => (
+                        <ExerciseBlock
+                          key={`ex-${gi}-${si}-${ei}`}
+                          name={ex.name}
+                          isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                          onToggleTrack={() => handleToggleTrack(ex.name)}
+                        >
+                          {ex.rows.map((row, ri) => (
+                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                          ))}
+                          {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                            <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                          ))}
+                          {ex.unparsed_rows.map((u, ui) => (
+                            <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                          ))}
+                        </ExerciseBlock>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ))}
+              {!dayGroups.length && (
+                <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+              )}
+              <Button
+                onPress={() => setMode('edit')}
+                title="Edit note"
+                style={styles.editButton}
+                textStyle={styles.editButtonText}
+              />
+            </View>
           </Card>
         </View>
       ) : (
@@ -695,9 +694,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
+    fontSize: 24,
+    fontWeight: '900',
+    color: Colors.accent,
+    textTransform: 'uppercase',
   },
   otherNoteSub: {
     fontSize: 12,
@@ -709,13 +709,6 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
-  },
-  collapseIcon: {
-    padding: 4,
-  },
-  collapseIconText: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   inlineSwitchButton: {
     paddingHorizontal: 12,
