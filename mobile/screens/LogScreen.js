@@ -678,7 +678,8 @@ const styles = StyleSheet.create({
   otherNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     gap: 12,
   },
   otherNoteInfo: {
