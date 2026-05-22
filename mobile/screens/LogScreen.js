@@ -547,7 +547,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       <View style={styles.previousRoutines}>
         {otherNotes.length > 0 && (
           <>
-            <SectionTitle>Routines</SectionTitle>
+            <SectionTitle>Other Routines</SectionTitle>
             {otherNotes.map(other => (
               <Card
                 key={other.id}
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   mirrorContainer: {
-    paddingBottom: 24,
+    paddingBottom: 8,
   },
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   previousRoutines: {
-    marginTop: 32,
+    marginTop: 16,
     gap: 12,
   },
   otherNoteCard: {
@@ -694,10 +694,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: Colors.accent,
-    textTransform: 'uppercase',
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.text,
   },
   otherNoteSub: {
     fontSize: 12,
