@@ -106,6 +106,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     }
     setIsSaving(true);
     setSaveError('');
+    setSaveSuccess('');
     try {
       let ok = false;
       if (currentId) {
@@ -120,7 +121,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
         ok = true;
       }
       if (ok) {
-        setMode('read');
+        setSaveSuccess('Saved!');
       } else {
         setSaveError('Save failed');
       }
@@ -251,7 +252,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       if (!result) {
         setSaveError('Save failed');
       } else {
-        setSaveSuccess('Saved');
+        setSaveSuccess('Saved!');
       }
       return result;
     } catch {
@@ -492,7 +493,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
             />
             <Button
               onPress={handleSave}
-              title="Save note"
+              title={saveSuccess ? 'Saved!' : 'Save note'}
               disabled={isSaving}
               style={styles.saveButton}
             />
