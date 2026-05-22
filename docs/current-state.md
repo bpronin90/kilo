@@ -115,8 +115,7 @@ The real native app path now has a modular React Native shell:
 
 - `mobile/App.js` owns tab state, routes weight saves through the canonical
   parser path, routes workout saves through the current-workout path in the
-  multi-note workout store, adapts persisted entries for the Home and Analytics
-  surfaces, now keeps Android hardware-back inside the app by returning
+  multi-note workout store, now keeps Android hardware-back inside the app by returning
   non-Home tabs to Home and gating root exit behind confirmation, keeps the
   Kilo fatigue multiplier in app state for deterministic Analytics
   recomputation, and exposes a separate More tab for Help, About, local Data &

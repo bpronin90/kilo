@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.35.15 - 2026-05-21
+
+- Issue #125: Restored the Analytics weight-trend chart, which had stopped
+  rendering. `StatsScreen` was overriding its raw weight entries with the
+  display-adapted `entries` prop from `App.js` (string `value`, no `date` or
+  `weight_value`), so the trend filter stripped every entry and the chart drew
+  nothing. `StatsScreen` now derives weight data exclusively from its own
+  `useWeightEntries()` hook, and the now-dead `entries` prop and its adapter
+  memo in `App.js` were removed. Same-day duplicate-weight behavior and weight
+  history are unchanged. Updated `docs/current-state.md` to drop the stale
+  entry-adapter description.
+
 ## 0.35.14 - 2026-05-21
 
 - Issue #124: Fixed the empty Log state so a fresh install no longer auto-opens

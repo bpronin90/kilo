@@ -95,7 +95,7 @@ export default function App() {
     setActiveTab(tab);
   }, []);
 
-const saveWeight = useCallback(async () => {
+  const saveWeight = useCallback(async () => {
     if (weightSaving) return;
     Keyboard.dismiss();
     setSaveError('');
