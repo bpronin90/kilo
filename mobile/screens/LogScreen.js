@@ -560,8 +560,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
                     onPress={() => handleSwitchCurrent(other.id)}
                     style={styles.inlineSwitchButton}
                   >
-                    <Text style={styles.inlineSwitchButtonText}>Set current</Text>
+                    <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
                   </Pressable>
+
                 </View>
               </Card>
             ))}
@@ -676,7 +677,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   previousRoutines: {
-    marginTop: 16,
+    marginTop: 8,
     gap: 12,
   },
   otherNoteCard: {
@@ -686,7 +687,7 @@ const styles = StyleSheet.create({
   otherNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 10,
     gap: 12,
   },
   otherNoteInfo: {
