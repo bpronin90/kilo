@@ -450,7 +450,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, workoutNoteTitl
               style={styles.otherNoteHeader}
             >
               <View style={styles.otherNoteInfo}>
-                <Text style={[styles.otherNoteTitle, { fontSize: 26 }]}>{workoutNoteTitle || 'My Workout'}</Text>
+                <Text style={[styles.otherNoteTitle, { fontSize: 22, color: Colors.accent }]}>{workoutNoteTitle || 'My Workout'}</Text>
                 <Text style={styles.otherNoteSub}>Current routine</Text>
               </View>
             </Pressable>
@@ -624,12 +624,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   mirrorContainer: {
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   currentRoutineCard: {
-    padding: 6,
+    padding: 8,
     overflow: 'hidden',
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: Colors.cardBorder,
   },
   unparsedRow: {
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   previousRoutines: {
-    marginTop: 8,
+    marginTop: 4,
     gap: 12,
   },
   otherNoteCard: {
@@ -694,9 +694,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   otherNoteTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
-    color: Colors.standout,
+    color: Colors.text,
   },
   otherNoteSub: {
     fontSize: 12,
@@ -710,15 +710,15 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.cardBorder,
   },
   inlineSwitchButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
     backgroundColor: Colors.chipBackground,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
   },
   inlineSwitchButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.accent,
   },
