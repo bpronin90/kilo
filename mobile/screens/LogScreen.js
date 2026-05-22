@@ -32,7 +32,7 @@ export function LogScreen({
   toggleCollapsed,
   onSaveWorkout 
 }) {
-  const { notes, currentId, currentNote, selectCurrent, update, add, remove } = useWorkoutNotes();
+  const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
@@ -385,7 +385,7 @@ export function LogScreen({
     </Pressable>
   );
 
-  const isEmpty = notes.length === 0;
+  const isEmpty = !notesLoading && notes.length === 0;
 
   if (!editingNoteId && isEmpty) {
     return (
