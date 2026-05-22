@@ -65,7 +65,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, mode, workoutNoteText]);
+  }, [editingNoteId, mode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
 
   const otherNotes = notes.filter(n => n.id !== currentId);
 
@@ -346,7 +346,6 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   );
 
   if (editingNoteId) {
-    const editingNote = editingNoteId === 'new' ? null : notes.find(n => n.id === editingNoteId);
     return (
       <ScreenShell
         title={editingTitle || 'Routine'}
