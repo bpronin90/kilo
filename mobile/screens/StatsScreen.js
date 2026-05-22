@@ -12,7 +12,6 @@ export function StatsScreen({ multiplier, section }) {
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
-  const [kiloMaxRawName, setKiloMaxRawName] = useState(null);
 
   const scrollRef = useRef(null);
   const weightSectionY = useRef(0);
@@ -192,7 +191,7 @@ export function StatsScreen({ multiplier, section }) {
         </View>
       </Card>
 
-      <View onLayout={handleStrengthLayout}>
+      <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
         <SectionTitle>Strength</SectionTitle>
       {(isNotesLoading || analytics?.oneK?.total) ? (
         <Card style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
@@ -275,7 +274,7 @@ export function StatsScreen({ multiplier, section }) {
           analytics.signals.map((sig, i) => (
             <Card key={i} style={styles.signalCard}>
               <View style={styles.signalHeader}>
-                <Text style={styles.signalName}>{sig.name}</Text>
+                <Text style={styles.signalName}>{toTitleCase(sig.name)}</Text>
                 <Badge status={sig.progression_status}>
                   {formatStatus(sig.progression_status)}
                 </Badge>
@@ -287,14 +286,12 @@ export function StatsScreen({ multiplier, section }) {
                     {sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}
                   </Text>
                 </View>
-                <Pressable onPress={() => setKiloMaxRawName(prev => prev === sig.name ? null : sig.name)}>
+                <View>
                   <Text style={styles.signalLabel}>Kilo max</Text>
                   <Text style={styles.signalValue}>
-                    {kiloMaxRawName === sig.name && sig.kilo_max_raw != null
-                      ? `${sig.kilo_max_raw} lb`
-                      : (sig.kilo_max != null ? `${sig.kilo_max} lb` : '—')}
+                    {sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}
                   </Text>
-                </Pressable>
+                </View>
                 <View>
                   <Text style={styles.signalLabel}>Top weight</Text>
                   <Text style={styles.signalValue}>
@@ -318,6 +315,11 @@ export function StatsScreen({ multiplier, section }) {
       </View>
     </ScrollView>
   );
+}
+
+function toTitleCase(str) {
+  if (!str) return '';
+  return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function formatStatus(status) {
@@ -360,6 +362,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
+  },
+  strengthSection: {
+    gap: 16,
   },
   list: {
     gap: 12,
