@@ -43,10 +43,11 @@ function KiloWordmark({ width = 140, height = 48 }) {
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
     let oneK = null;
+    let sections = null;
 
     if (workoutNote?.raw_text) {
-      const { sections } = parseWorkoutNote(workoutNote.raw_text);
-      
+      ({ sections } = parseWorkoutNote(workoutNote.raw_text));
+
       const oneKSelections = {
         ...DEFAULT_1K_EXERCISES,
         ...(workoutNote?.one_k_exercises || {}),
@@ -56,7 +57,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
-    const weeksIn = computeWeeksIn(workoutNote?.currentSince);
+    const weeksIn = computeWeeksIn(sections);
 
     return { weightSeries, oneK, latestWeight, weeksIn };
   }, [weightEntries, workoutNote]);
