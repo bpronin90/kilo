@@ -22,6 +22,22 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
 
+  const hasUnsavedCurrent = useMemo(() => {
+    if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
+    return workoutNoteTitle !== (currentNote.title || '') || workoutNoteText !== currentNote.raw_text;
+  }, [currentNote, workoutNoteTitle, workoutNoteText]);
+
+  const editingNote = useMemo(() => 
+    (editingNoteId && editingNoteId !== 'new') ? notes.find(n => n.id === editingNoteId) : null
+  , [editingNoteId, notes]);
+
+  const hasUnsavedOther = useMemo(() => {
+    if (!editingNoteId) return false;
+    if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
+    if (!editingNote) return false;
+    return editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
+  }, [editingNoteId, editingNote, editingTitle, editingText]);
+
   useEffect(() => {
     if (currentNote) {
       setWorkoutNoteTitle(currentNote.title || '');
@@ -33,11 +49,11 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
     const backAction = () => {
       if (editingNoteId) {
-        setEditingNoteId(null);
+        handleDoneOther();
         return true;
       }
-      if (mode === 'edit' && workoutNoteText) {
-        setMode('read');
+      if (mode === 'edit') {
+        handleDoneCurrent();
         return true;
       }
       return false;
@@ -100,10 +116,103 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
       } else {
         setSaveError('Save failed');
       }
+      return ok;
     } catch {
       setSaveError('Save failed');
+      return false;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDoneCurrent = () => {
+    if (!hasUnsavedCurrent) {
+      setMode('read');
+      return;
+    }
+
+    if (!currentId) {
+      Alert.alert(
+        'Discard changes?',
+        'You have not saved this new routine. Are you sure you want to discard it?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => {
+              setMode('read');
+              setWorkoutNoteText('');
+              setWorkoutNoteTitle('');
+            } 
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Unsaved Changes',
+        'Do you want to save your changes before leaving?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => {
+              setMode('read');
+              setWorkoutNoteText(currentNote.raw_text);
+              setWorkoutNoteTitle(currentNote.title || '');
+            } 
+          },
+          { 
+            text: 'Save', 
+            onPress: async () => {
+              await handleSave();
+            } 
+          },
+        ]
+      );
+    }
+  };
+
+  const handleDoneOther = () => {
+    if (!hasUnsavedOther) {
+      setEditingNoteId(null);
+      return;
+    }
+
+    if (editingNoteId === 'new') {
+      Alert.alert(
+        'Discard changes?',
+        'You have not saved this new routine. Are you sure you want to discard it?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => setEditingNoteId(null) 
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Unsaved Changes',
+        'Do you want to save your changes before leaving?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => setEditingNoteId(null) 
+          },
+          { 
+            text: 'Save', 
+            onPress: async () => {
+              const result = await handleSaveOtherNote();
+              if (result) setEditingNoteId(null);
+            } 
+          },
+        ]
+      );
     }
   };
 
@@ -119,13 +228,21 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     setNoteIsSaving(true);
     setSaveError('');
     try {
-      const result = await update(editingNoteId, { 
-        title: editingTitle || 'Untitled Routine',
-        raw_text: editingText 
-      });
+      let result;
+      if (editingNoteId === 'new') {
+        result = await add(editingTitle || 'Untitled Routine', editingText);
+        setEditingNoteId(result.id);
+      } else {
+        result = await update(editingNoteId, { 
+          title: editingTitle || 'Untitled Routine',
+          raw_text: editingText 
+        });
+      }
       if (!result) setSaveError('Save failed');
+      return result;
     } catch {
       setSaveError('Save failed');
+      return false;
     } finally {
       setNoteIsSaving(false);
     }
@@ -156,9 +273,11 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     );
   };
 
-  const handleCreateRoutine = async () => {
-    const note = await add('New Routine', '');
-    handleOpenOtherNote(note);
+  const handleCreateRoutine = () => {
+    setEditingNoteId('new');
+    setEditingTitle('');
+    setEditingText('');
+    setSaveError('');
   };
 
   const handleSwitchCurrent = (id) => {
@@ -166,22 +285,9 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     if (!note) return;
 
     // Check if there are unsaved changes in the editor for ANY routine
-    const isEditing = editingNoteId !== null;
-    const editingNote = isEditing ? notes.find(n => n.id === editingNoteId) : null;
-    const hasUnsaved = isEditing && editingNote && (editingText !== editingNote.raw_text || editingTitle !== editingNote.title);
+    const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
     const doSwitch = async () => {
-      if (hasUnsaved) {
-        try {
-          await update(editingNoteId, { 
-            title: editingTitle || 'Untitled Routine',
-            raw_text: editingText 
-          });
-        } catch {
-          setSaveError('Save failed. Routine was not switched.');
-          return;
-        }
-      }
       await selectCurrent(id);
       setEditingNoteId(null);
     };
@@ -190,17 +296,37 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
     let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
     
     if (hasUnsaved) {
-      alertMessage = `Your unsaved changes in "${editingNote.title || 'Untitled Routine'}" will be saved before switching. Continue?`;
+      alertMessage = `You have unsaved changes that will be lost if you switch. Continue?`;
+      Alert.alert(
+        alertTitle,
+        alertMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Switch Anyway', style: 'destructive', onPress: doSwitch },
+          { 
+            text: 'Save & Switch', 
+            onPress: async () => {
+              let ok = false;
+              if (editingNoteId) {
+                ok = await handleSaveOtherNote();
+              } else {
+                ok = await handleSave();
+              }
+              if (ok) await doSwitch();
+            } 
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        alertTitle,
+        alertMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Set as Current', onPress: doSwitch },
+        ]
+      );
     }
-
-    Alert.alert(
-      alertTitle,
-      alertMessage,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Set as Current', onPress: doSwitch },
-      ]
-    );
   };
 
   const handleToggleTrack = async (name) => {
@@ -210,7 +336,7 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
 
   const headerRight = !editingNoteId && hasContent && (
     <Pressable
-      onPress={() => setMode(mode === 'read' ? 'edit' : 'read')}
+      onPress={() => mode === 'read' ? setMode('edit') : handleDoneCurrent()}
       style={styles.modeToggle}
     >
       <Text style={styles.modeToggleText}>
@@ -220,14 +346,14 @@ export function LogScreen({ workoutNoteText, setWorkoutNoteText, onSaveWorkout }
   );
 
   if (editingNoteId) {
-    const editingNote = notes.find(n => n.id === editingNoteId);
+    const editingNote = editingNoteId === 'new' ? null : notes.find(n => n.id === editingNoteId);
     return (
       <ScreenShell
         title={editingTitle || 'Routine'}
         subtitle="Edit routine"
         headerRight={
-          <Pressable onPress={() => setEditingNoteId(null)} style={styles.modeToggle}>
-            <Text style={styles.modeToggleText}>Back</Text>
+          <Pressable onPress={handleDoneOther} style={styles.modeToggle}>
+            <Text style={styles.modeToggleText}>Done</Text>
           </Pressable>
         }
         keyboardShouldPersistTaps="handled"
