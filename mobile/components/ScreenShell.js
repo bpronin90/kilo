@@ -1,15 +1,20 @@
-import React from 'react';
+import React, { useContext, createContext } from 'react';
 import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, SafeAreaView } from 'react-native';
 import { Colors } from '../theme/colors';
 import pkg from '../package.json';
 
+export const ScrollContext = createContext({ onScroll: () => {} });
+
 export function ScreenShell({ title, subtitle, headerLeft, headerRight, keyboardShouldPersistTaps, children }) {
   const version = `v${pkg.version}`;
+  const { onScroll } = useContext(ScrollContext);
 
   return (
     <ScrollView 
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
     >
       <SafeAreaView style={styles.headerWrapper}>
         <View style={styles.header}>

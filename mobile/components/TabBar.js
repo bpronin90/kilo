@@ -1,10 +1,67 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 
-export function TabBar({ tabs, activeTab, onTabPress }) {
+export function TabBar({ tabs, activeTab, onTabPress, isScrolling }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const timeoutRef = useRef(null);
+
+  const animateTo = (toValue, duration, easing = Easing.out(Easing.exp)) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    Animated.timing(fadeAnim, {
+      toValue,
+      duration,
+      easing,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const setSolid = (immediate = false) => 
+    animateTo(1, immediate ? 0 : 300, Easing.out(Easing.exp));
+    
+  const setTransparent = (immediate = false) => 
+    animateTo(0.25, immediate ? 0 : 1000, Easing.bezier(0.4, 0, 0.2, 1));
+
+  // Initial settle
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => {
+      setTransparent(false);
+    }, 2000);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  // Handle external scroll activity
+  useEffect(() => {
+    if (isScrolling) {
+      setTransparent(false);
+    }
+  }, [isScrolling]);
+
+  const handleInteractionStart = () => {
+    setSolid(false); // Smooth but quick appearance on touch
+  };
+
+  const handleInteractionEnd = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setTransparent(false);
+    }, 1500);
+  };
+
   return (
-    <View style={styles.container}>
+    <Animated.View 
+      style={[
+        styles.container, 
+        { opacity: fadeAnim }
+      ]}
+      onTouchStart={handleInteractionStart}
+      onTouchEnd={handleInteractionEnd}
+    >
       {tabs.map((tab) => (
         <Pressable
           key={tab}
@@ -16,7 +73,7 @@ export function TabBar({ tabs, activeTab, onTabPress }) {
           </Text>
         </Pressable>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
