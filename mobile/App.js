@@ -1,9 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
+import { ScrollContext } from './components/ScreenShell';
 
 import { HomeScreen, MoreScreen } from './screens/HomeScreen';
 import { LogScreen } from './screens/LogScreen';
@@ -20,6 +21,22 @@ const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeout = useRef(null);
+
+  const handleScroll = useCallback(() => {
+    setIsScrolling(true);
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    scrollTimeout.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 150);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    };
+  }, []);
 
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
@@ -217,20 +234,23 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'height' : undefined}
-      >
-        <View style={styles.content}>{renderContent()}</View>
-        <TabBar
-          tabs={TABS}
-          activeTab={activeTab}
-          onTabPress={handleTabPress}
-        />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <ScrollContext.Provider value={{ onScroll: handleScroll }}>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'height' : undefined}
+        >
+          <View style={styles.content}>{renderContent()}</View>
+          <TabBar
+            tabs={TABS}
+            activeTab={activeTab}
+            onTabPress={handleTabPress}
+            isScrolling={isScrolling}
+          />
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </ScrollContext.Provider>
   );
 }
 

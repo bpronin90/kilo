@@ -196,7 +196,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/components/` contains shared shell, tab bar, and UI primitives; the
   shared bottom tab bar now uses the lighter card/chip palette instead of the
   older heavy dark floating treatment so it reads as lower-emphasis chrome
-  while keeping the active tab easy to distinguish
+  while keeping the active tab easy to distinguish, and it now behaves like a
+  content-aware overlay by fading toward transparency during shared-shell
+  scrolling, restoring a solid treatment during direct interaction, and then
+  settling back after a short timeout
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
 - `mobile/lib/parser.js` ports the MVP canonical parser path into native ES

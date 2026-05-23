@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.22 - 2026-05-22
+
+- Issue #167: Reworked the native bottom tab bar into a content-aware overlay.
+  `mobile/components/ScreenShell.js` now reports shared scroll activity up to
+  `App.js`, `mobile/components/TabBar.js` fades the bar toward transparency
+  during scrolling, restores the solid treatment during direct interaction, and
+  returns to its resting overlay state after a short timeout. Reviewer closeout
+  also removed the unused `mobile/context/ScrollContext.js` artifact and stale
+  imports left behind during implementation. Updated `docs/current-state.md`,
+  `docs/architecture.md`, and `docs/mvp-v4-roadmap.md` to match.
+
 ## 0.35.21 - 2026-05-22
 
 - Issue #157: Finalized the MVP4 tracked-exercise analytics spec as a

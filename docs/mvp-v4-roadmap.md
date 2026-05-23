@@ -40,9 +40,7 @@ Agent routing follows repo policy:
 - **Analytics:** weight trends graph is broken; strength section spacing is
   broken; current strength cards do not reflect the desired metric model; the
   broader exercise-analytics rules need a dedicated spec before implementation.
-- **More / Navigation:** Help back arrow is visually inconsistent; bottom tab
-  bar should fade to transparent on content scroll and return solid only during
-  direct interaction, then fade back after a short timeout.
+- **More / Navigation:** Help back arrow is visually inconsistent.
 
 ---
 
@@ -596,6 +594,7 @@ Ordered tasks:
 #### Task 15: Rework bottom-tab fade behavior around interaction
 
 - **Title:** `MVP4: rework bottom tab bar fade behavior`
+- **Status:** shipped in issue `#167`
 - **Goal:** make the bottom navigation behave like a content-aware overlay
   instead of a persistent solid block.
 - **Scope:**
@@ -693,7 +692,7 @@ Off-shoot cards:
 - `#157` - `Phase 4 / Task 12: Spec tracked exercise analytics rules`
 - `#158` - `Phase 4 / Task 13: Spec non-weighted exercise analytics`
 - `TBD` - `Phase 5 / Task 14: align Help back arrow styling`
-- `TBD` - `Phase 5 / Task 15: rework bottom tab bar fade behavior`
+- `#167` - `Phase 5 / Task 15: rework bottom tab bar fade behavior`
 
 The `#122`-`#128` reserved-number block is now exhausted. Phase 2's
 remaining cards were created at the next available numbers (`#148`, `#149`)
