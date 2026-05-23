@@ -489,7 +489,7 @@ Ordered tasks:
 
 #### Task 12: Spec the strength analytics model for tracked exercises
 
-- **Title:** `MVP4: spec tracked exercise analytics rules`
+- **Title:** `Phase 4 / Task 12: Spec tracked exercise analytics rules`
 - **Goal:** write the product spec for what metrics tracked exercises should
   show and when.
 - **Scope:**
@@ -499,14 +499,19 @@ Ordered tasks:
   - define what `overload` means, or remove / replace it if it is not a useful
     concept
   - define how `estimated 1RM` and `Kilo max` should coexist visually
+  - define fallback behavior when a tracked lift lacks enough history to
+    support part of the display
 - **Allowed Files if determinable:**
   - issue body / design brief only
 - **Out of scope:**
   - implementation
+  - tracked-exercise section organization or large-list layout planning already
+    covered by `#147`
   - chart polishing unrelated to metric rules
 - **Verification:**
   - spec explicitly covers Big 3 and weighted non-Big-3 rules
   - spec resolves the current meaningless `initial` overload state
+  - spec states the fallback behavior for missing or immature lift history
   - follow-up implementation can be split into normal scoped issues
 - **Labels:**
   - `mvp4.0`
@@ -521,20 +526,26 @@ Ordered tasks:
 
 #### Task 13: Spec fallback analytics for non-weighted tracked exercises
 
-- **Title:** `MVP4: spec non-weighted exercise analytics`
+- **Title:** `Phase 4 / Task 13: Spec non-weighted exercise analytics`
 - **Goal:** define the analytics contract for tracked exercises that do not use
   weight.
 - **Scope:**
   - decide reps/volume-style metrics for movements such as in-and-outs
   - define how these exercises surface alongside weighted exercise cards
+  - define whether non-weighted rules stay uniform or differ by movement class
+  - define fallback behavior when a tracked exercise lacks enough history to
+    support part of the display
   - keep the output implementation-ready, not exploratory
 - **Allowed Files if determinable:**
   - issue body / design brief only
 - **Out of scope:**
   - implementation
   - changing weight-entry behavior
+  - tracked-exercise section organization or large-list layout planning already
+    covered by `#147`
 - **Verification:**
   - spec names the concrete metric set for non-weighted tracked exercises
+  - spec states whether any movement-class exceptions exist
   - card/display expectations are clear enough for a later build issue
 - **Labels:**
   - `mvp4.0`
@@ -640,6 +651,23 @@ Off-shoot cards:
 - `#156` - `Phase 6 / Task 7: Implement Weight tab section hierarchy and
   stacked trends layout` (spun off from `#153`; `agent:gemini`,
   `type:implementation`)
+- `#159` - `Phase 6 / Task 8: Implement per-exercise session
+  classification` (spun off from `#157`; `agent:claude`,
+  `type:implementation`)
+- `#160` - `Phase 6 / Task 9: Implement intra-session rep drop-off flag`
+  (spun off from `#157`; `agent:claude`, `type:implementation`)
+- `#161` - `Phase 6 / Task 10: Implement session skip detection and
+  attendance flags` (spun off from `#157`; `agent:claude`,
+  `type:implementation`)
+- `#162` - `Phase 6 / Task 11: Implement cross-lift asymmetry detection
+  (Big 3)` (spun off from `#157`; `agent:claude`,
+  `type:implementation`)
+- `#163` - `Phase 6 / Task 12: Implement weekly assessment summary
+  panel` (spun off from `#157`; `agent:gemini`,
+  `type:implementation`)
+- `#164` - `Phase 6 / Task 13: Implement tracked-exercise asterisk
+  opt-out` (spun off from `#157`; `agent:claude`,
+  `type:implementation`)
 
 ---
 
@@ -656,16 +684,17 @@ Off-shoot cards:
 - `#149` - `Phase 2 / Task 9: Investigate Log exercise typography and normalization`
 - `#152` - `Phase 3 / Task 10: Design Weight goal panel rewrite`
 - `#153` - `Phase 3 / Task 11: Design Weight trends panel layout`
-- `TBD` - `Phase 4 / Task 12: spec tracked exercise analytics rules`
-- `TBD` - `Phase 4 / Task 13: spec non-weighted exercise analytics`
+- `#157` - `Phase 4 / Task 12: Spec tracked exercise analytics rules`
+- `#158` - `Phase 4 / Task 13: Spec non-weighted exercise analytics`
 - `TBD` - `Phase 5 / Task 14: align Help back arrow styling`
 - `TBD` - `Phase 5 / Task 15: rework bottom tab bar fade behavior`
 
 The `#122`-`#128` reserved-number block is now exhausted. Phase 2's
 remaining cards were created at the next available numbers (`#148`, `#149`)
 because the issue counter had advanced past `#130`. Phase 3's planning cards
-were later created as `#152` and `#153`. Phase 4+ cards take whatever number
-GitHub assigns at creation time.
+were later created as `#152` and `#153`. Phase 4's planning cards were then
+created as `#157` and `#158`. Phase 5+ cards take whatever number GitHub
+assigns at creation time.
 
 Note for future issue creation:
 
@@ -685,8 +714,8 @@ Note for future issue creation:
 - `#148` rendered-note interaction and copyability
 - `#152` Weight goal panel rewrite
 - `#153` Weight trends panel redesign
-- tracked exercise analytics rules (Task 12, number TBD)
-- non-weighted exercise analytics rules (Task 13, number TBD)
+- `#157` tracked exercise analytics rules
+- `#158` non-weighted exercise analytics rules
 
 These should be completed before any implementation issues that depend on them.
 
