@@ -668,6 +668,12 @@ Off-shoot cards:
 - `#164` - `Phase 6 / Task 13: Implement tracked-exercise asterisk
   opt-out` (spun off from `#157`; `agent:claude`,
   `type:implementation`)
+- `#165` - `Phase 6 / Task 14: Derive non-weighted tracked-exercise card
+  metrics` (spun off from `#158`; `agent:claude`,
+  `type:implementation`)
+- `#166` - `Phase 6 / Task 15: Render non-weighted tracked-exercise cards`
+  (spun off from `#158`; `agent:gemini`,
+  `type:implementation`)
 
 ---
 
