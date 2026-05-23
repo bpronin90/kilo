@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { Colors } from '../theme/colors';
 
 export function TabBar({ tabs, activeTab, onTabPress, isScrolling }) {

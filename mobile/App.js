@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
 
 import { Colors } from './theme/colors';
@@ -30,6 +30,12 @@ export default function App() {
     scrollTimeout.current = setTimeout(() => {
       setIsScrolling(false);
     }, 150);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    };
   }, []);
 
   const weightHook = useWeightEntries();

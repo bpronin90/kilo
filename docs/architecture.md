@@ -184,7 +184,9 @@ navigates the user back to Home. The weight save handler validates and persists
 but keeps the user on the Weight screen. The More tab now also owns a local
 Settings & Algorithm sub-screen that updates a persisted fatigue-multiplier
 value in `App.js` state and immediately re-derives Analytics through a
-prop-driven recomputation path. There is no router library, deep linking, or
+prop-driven recomputation path. `App.js` also now provides shared scroll
+activity down through `ScreenShell` so the tab bar can react to content
+scrolling as an overlay surface. There is no router library, deep linking, or
 persisted navigation state in the native path yet.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
