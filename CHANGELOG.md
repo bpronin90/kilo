@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.23 - 2026-05-22
+
+- Issue #168: Aligned the native Help screen back arrow with the standard
+  in-content back-button treatment already used by the other More sub-screens,
+  preserving the existing return-to-More behavior while removing the now-unused
+  `headerLeft` prop/render path from `mobile/components/ScreenShell.js`.
+
 ## 0.35.22 - 2026-05-22
 
 - Issue #167: Reworked the native bottom tab bar into a content-aware overlay.
