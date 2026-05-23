@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.35.21 - 2026-05-22
+
+- Issue #157: Finalized the MVP4 tracked-exercise analytics spec as a
+  comment on the issue, locking the per-card metric model to e1RM and
+  Kilo max as co-primary alongside two session-to-session arrows (PO and
+  Kilo PO) with an explicit baseline state on the first logged session,
+  applying uniformly to all tracked weighted exercises with no settings
+  toggles. Spun off six Phase 6 implementation cards (#159 per-exercise
+  classification, #160 intra-session rep drop-off flag, #161 skip
+  detection, #162 Big 3 asymmetry detection, #163 weekly assessment
+  summary panel, #164 asterisk opt-out) and recorded them in the MVP4
+  Phase 6 off-shoot list in `docs/mvp-v4-roadmap.md`.
+
 ## 0.35.20 - 2026-05-22
 
 - Issue #153: Finalized the MVP4 Weight trends design brief in
