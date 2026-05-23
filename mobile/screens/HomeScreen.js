@@ -337,19 +337,10 @@ function SettingsScreen({ onBack, multiplier, onUpdate }) {
 }
 
 function HelpScreen({ onBack }) {
-  const headerLeft = (
-    <Pressable 
-      onPress={onBack} 
-      style={styles.headerBackButton}
-      accessibilityRole="button"
-      accessibilityLabel="Back"
-    >
-      <Text style={styles.headerBackButtonText}>←</Text>
-    </Pressable>
-  );
-
   return (
-    <ScreenShell title="Help" headerLeft={headerLeft}>
+    <ScreenShell title="Help" subtitle="Terminology and usage guide.">
+      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
       <View style={styles.logoContainer}>
         <Image source={LOGO} style={styles.logo} />
       </View>
@@ -604,21 +595,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.textMuted,
     fontWeight: '700',
-  },
-  headerBackButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.chipBackground,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: -4,
-  },
-  headerBackButtonText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.accent,
-    marginTop: -2, // Optical alignment
   },
   logoContainer: {
     alignItems: 'center',
