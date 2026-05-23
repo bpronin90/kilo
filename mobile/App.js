@@ -45,6 +45,7 @@ export default function App() {
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
+  const [currentNoteScrollY, setCurrentNoteScrollY] = useState(0);
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
 
@@ -195,6 +196,8 @@ export default function App() {
             setWorkoutNoteText={setWorkoutNoteText}
             workoutNoteTitle={workoutNoteTitle}
             setWorkoutNoteTitle={setWorkoutNoteTitle}
+            currentNoteScrollY={currentNoteScrollY}
+            setCurrentNoteScrollY={setCurrentNoteScrollY}
             isCollapsed={isWorkoutCollapsed}
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}

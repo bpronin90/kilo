@@ -13,7 +13,7 @@
  * typography in UI.js) must not change unless the repo owner explicitly requests it.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
@@ -28,6 +28,8 @@ export function LogScreen({
   setWorkoutNoteText, 
   workoutNoteTitle, 
   setWorkoutNoteTitle, 
+  currentNoteScrollY,
+  setCurrentNoteScrollY,
   isCollapsed,
   toggleCollapsed,
   onSaveWorkout 
@@ -44,6 +46,9 @@ export function LogScreen({
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
+
+  const editorScrollRef = useRef(null);
+  const lastEditorNoteId = useRef(null);
 
   useEffect(() => {
     if (saveSuccess) {
@@ -374,6 +379,13 @@ export function LogScreen({
     await toggleTrackedLift(key);
   };
 
+  const handleEditorScroll = (e) => {
+    // Only track scroll for the current note editor to lift it to App.js
+    if (!editingNoteId && mode === 'edit') {
+      setCurrentNoteScrollY(e.nativeEvent.contentOffset.y);
+    }
+  };
+
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
       onPress={handleDoneCurrent}
@@ -386,25 +398,146 @@ export function LogScreen({
   );
 
   const isEmpty = !notesLoading && notes.length === 0;
+  const isEditing = !!editingNoteId || mode === 'edit';
 
-  if (!editingNoteId && isEmpty) {
-    return (
+  // Handle editor scroll reset or restoration
+  useEffect(() => {
+    if (isEditing) {
+      const currentEditId = editingNoteId || 'current';
+      if (lastEditorNoteId.current !== currentEditId) {
+        // We are entering a NEW routine editor session. Start at top.
+        editorScrollRef.current?.scrollTo({ y: 0, animated: false });
+        lastEditorNoteId.current = currentEditId;
+      } else if (!editingNoteId && mode === 'edit') {
+        // We are re-mounting the current note editor (e.g. back from another tab).
+        // Restore the App-level scroll position.
+        editorScrollRef.current?.scrollTo({ y: currentNoteScrollY, animated: false });
+      }
+    }
+  }, [isEditing, editingNoteId, mode]);
+
+  return (
+    <>
       <ScreenShell
+        style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
-        subtitle="Track your active training routine."
+        subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
+        headerRight={headerRight}
+        keyboardShouldPersistTaps="handled"
       >
-        <LogEmptyState onCreateRoutine={handleCreateRoutine} />
-      </ScreenShell>
-    );
-  }
+        {isEmpty ? (
+          <LogEmptyState onCreateRoutine={handleCreateRoutine} />
+        ) : (
+          <>
+            {mode === 'read' && hasContent && (
+              <View style={styles.mirrorContainer}>
+                <Card style={styles.currentRoutineCard}>
+                  <Pressable
+                    onPress={toggleCollapsed}
+                    style={styles.otherNoteHeader}
+                  >
+                    <View style={styles.otherNoteInfo}>
+                      <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                      <Text style={styles.otherNoteSub}>Current routine</Text>
+                    </View>
+                  </Pressable>
 
-  if (editingNoteId) {
-    return (
+                  <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
+                    {dayGroups.map((group, gi) => (
+                      <View key={`day-${gi}`}>
+                        {group.heading && (
+                          <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
+                            {group.heading}
+                          </WorkoutHeading>
+                        )}
+                        {group.sections.map((section, si) => (
+                          <View key={`section-${gi}-${si}`}>
+                            {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                            {section.exercises.map((ex, ei) => (
+                              <ExerciseBlock
+                                key={`ex-${gi}-${si}-${ei}`}
+                                name={ex.name}
+                                isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                                onToggleTrack={() => handleToggleTrack(ex.name)}
+                              >
+                                {ex.rows.map((row, ri) => (
+                                  <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                                ))}
+                                {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                                  <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                                ))}
+                                {ex.unparsed_rows.map((u, ui) => (
+                                  <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                                ))}
+                              </ExerciseBlock>
+                            ))}
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                    {!dayGroups.length && (
+                      <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+                    )}
+                    <Button
+                      onPress={() => setMode('edit')}
+                      title="Edit note"
+                      style={styles.editButton}
+                      textStyle={styles.editButtonText}
+                    />
+                  </View>
+                </Card>
+              </View>
+            )}
+
+            <View style={styles.previousRoutines}>
+              {otherNotes.length > 0 && (
+                <>
+                  <SectionTitle>More Routines</SectionTitle>
+                  {otherNotes.map(other => (
+                    <Card
+                      key={other.id}
+                      style={styles.otherNoteCard}
+                    >
+                      <View style={styles.otherNoteHeader}>
+                        <Pressable
+                          onPress={() => handleOpenOtherNote(other)}
+                          style={styles.otherNoteInfo}
+                        >
+                          <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                          {other.updated_at && (
+                            <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
+                          )}
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleSwitchCurrent(other.id)}
+                          style={styles.inlineSwitchButton}
+                        >
+                          <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
+                        </Pressable>
+                      </View>
+                    </Card>
+                  ))}
+                </>
+              )}
+              <Button
+                onPress={handleCreateRoutine}
+                title="+ New routine"
+                style={styles.createButton}
+                textStyle={styles.createButtonText}
+              />
+            </View>
+          </>
+        )}
+      </ScreenShell>
+
       <ScreenShell
-        title={editingTitle || 'Routine'}
+        ref={editorScrollRef}
+        onScroll={handleEditorScroll}
+        style={isEditing ? { flex: 1 } : { display: 'none' }}
+        title={editingNoteId ? (editingTitle || 'Routine') : (workoutNoteTitle || 'My Workout')}
         subtitle="Edit routine"
         headerRight={
-          <Pressable onPress={handleDoneOther} style={styles.modeToggle}>
+          <Pressable onPress={editingNoteId ? handleDoneOther : handleDoneCurrent} style={styles.modeToggle}>
             <Text style={styles.modeToggleText}>Done</Text>
           </Pressable>
         }
@@ -418,189 +551,50 @@ export function LogScreen({
         <View style={styles.editContainer}>
           <Card>
             <TextInput
-              value={editingTitle}
-              onChangeText={setEditingTitle}
+              value={editingNoteId ? editingTitle : workoutNoteTitle}
+              onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
               placeholder="Routine Name (e.g. Push Day)"
               placeholderTextColor={Colors.textMuted}
               style={[styles.input, styles.titleInput]}
             />
             <TextInput
-              value={editingText}
-              onChangeText={setEditingText}
+              value={editingNoteId ? editingText : workoutNoteText}
+              onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
               placeholderTextColor={Colors.textMuted}
               multiline
               style={[styles.input, styles.editorInput]}
             />
             <Button
-              onPress={handleSaveOtherNote}
+              onPress={editingNoteId ? handleSaveOtherNote : handleSave}
               title={saveSuccess ? 'Saved!' : 'Save changes'}
-              disabled={noteIsSaving}
+              disabled={editingNoteId ? noteIsSaving : isSaving}
               style={styles.saveButton}
             />
           </Card>
+          {editingNoteId && (
+            <Button
+              onPress={() => handleSwitchCurrent(editingNoteId)}
+              title="Set as current routine"
+              style={styles.switchButton}
+              textStyle={styles.switchButtonText}
+            />
+          )}
           <Button
-            onPress={() => handleSwitchCurrent(editingNoteId)}
-            title="Set as current routine"
-            style={styles.switchButton}
-            textStyle={styles.switchButtonText}
-          />
-          <Button
-            onPress={() => handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false)}
+            onPress={() => {
+              if (editingNoteId) {
+                handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+              } else {
+                handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true);
+              }
+            }}
             title="Delete routine"
             style={styles.deleteButton}
             textStyle={styles.deleteButtonText}
           />
         </View>
       </ScreenShell>
-    );
-  }
-
-  return (
-    <ScreenShell
-      title="Workout Notes"
-      subtitle="Your active training routine. Update it as you go."
-      headerRight={headerRight}
-      keyboardShouldPersistTaps="handled"
-    >
-      {saveError ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{saveError}</Text>
-        </Card>
-      ) : null}
-
-      {mode === 'read' && hasContent ? (
-        <View style={styles.mirrorContainer}>
-          <Card style={styles.currentRoutineCard}>
-            <Pressable
-              onPress={toggleCollapsed}
-              style={styles.otherNoteHeader}
-            >
-              <View style={styles.otherNoteInfo}>
-                <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
-                <Text style={styles.otherNoteSub}>Current routine</Text>
-              </View>
-            </Pressable>
-
-            <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
-              {dayGroups.map((group, gi) => (
-                <View key={`day-${gi}`}>
-                  {group.heading && (
-                    <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
-                      {group.heading}
-                    </WorkoutHeading>
-                  )}
-                  {group.sections.map((section, si) => (
-                    <View key={`section-${gi}-${si}`}>
-                      {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-                      {section.exercises.map((ex, ei) => (
-                        <ExerciseBlock
-                          key={`ex-${gi}-${si}-${ei}`}
-                          name={ex.name}
-                          isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                          onToggleTrack={() => handleToggleTrack(ex.name)}
-                        >
-                          {ex.rows.map((row, ri) => (
-                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
-                          ))}
-                          {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                            <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                          ))}
-                          {ex.unparsed_rows.map((u, ui) => (
-                            <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                          ))}
-                        </ExerciseBlock>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-              {!dayGroups.length && (
-                <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-              )}
-              <Button
-                onPress={() => setMode('edit')}
-                title="Edit note"
-                style={styles.editButton}
-                textStyle={styles.editButtonText}
-              />
-            </View>
-          </Card>
-        </View>
-      ) : (
-        <View style={styles.editContainer}>
-          <Card>
-            <TextInput
-              value={workoutNoteTitle}
-              onChangeText={setWorkoutNoteTitle}
-              placeholder="Routine Name (e.g. Push Day)"
-              placeholderTextColor={Colors.textMuted}
-              style={[styles.input, styles.titleInput]}
-            />
-            <TextInput
-              value={workoutNoteText}
-              onChangeText={setWorkoutNoteText}
-              placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
-              placeholderTextColor={Colors.textMuted}
-              multiline
-              style={[styles.input, styles.editorInput]}
-            />
-            <Button
-              onPress={handleSave}
-              title={saveSuccess ? 'Saved!' : 'Save note'}
-              disabled={isSaving}
-              style={styles.saveButton}
-            />
-          </Card>
-          {currentId && (
-            <Button
-              onPress={() => handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true)}
-              title="Delete routine"
-              style={styles.deleteButton}
-              textStyle={styles.deleteButtonText}
-            />
-          )}
-        </View>
-      )}
-
-      <View style={styles.previousRoutines}>
-        {otherNotes.length > 0 && (
-          <>
-            <SectionTitle>More Routines</SectionTitle>
-            {otherNotes.map(other => (
-              <Card
-                key={other.id}
-                style={styles.otherNoteCard}
-              >
-                <View style={styles.otherNoteHeader}>
-                  <Pressable
-                    onPress={() => handleOpenOtherNote(other)}
-                    style={styles.otherNoteInfo}
-                  >
-                    <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-                    {other.updated_at && (
-                      <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
-                    )}
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleSwitchCurrent(other.id)}
-                    style={styles.inlineSwitchButton}
-                  >
-                    <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
-                  </Pressable>
-                </View>
-              </Card>
-            ))}
-          </>
-        )}
-        <Button
-          onPress={handleCreateRoutine}
-          title="+ New routine"
-          style={styles.createButton}
-          textStyle={styles.createButtonText}
-        />
-      </View>
-    </ScreenShell>
+    </>
   );
 }
 
