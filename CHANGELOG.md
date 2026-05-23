@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.35.20 - 2026-05-22
+
+- Issue #153: Finalized the MVP4 Weight trends design brief in
+  `docs/mvp-v4-roadmap.md` by locking the Weight tab into stacked `Goals`,
+  `Trends`, and `History` sections beneath the existing weight-entry area,
+  defining Trends as three stacked panels (`Pace`, `7-day rolling`,
+  `30-day rolling`) with a fixed internal information order, and recording the
+  implementation spin-off issue #156 in the MVP4 Phase 6 off-shoot list.
+
 ## 0.35.19 - 2026-05-22
 
 - Issue #148: Finalized the MVP4 rendered-workout-note interaction spec in

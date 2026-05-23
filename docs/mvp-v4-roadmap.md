@@ -443,6 +443,15 @@ Ordered tasks:
 - **Title:** `MVP4: design Weight trends panel layout`
 - **Goal:** replace the current left-heavy / empty-space layout with an
   intentional trends panel design.
+- **Outcome (`#153`):**
+  - Weight should read as four stacked sections: weight entry, Goals, Trends,
+    and History.
+  - `Goals` and `Trends` should use the same heading treatment as `History`.
+  - Trends should render as three stacked panels: `Pace`, `7-day rolling`, and
+    `30-day rolling`.
+  - Each trend panel should present: main value, intra-window trend cue, and
+    delta vs prior comparable window.
+  - Implementation was spun off to `#156`.
 - **Scope:**
   - redesign the trends panel layout
   - decide how rolling averages should use width and alignment
@@ -628,6 +637,9 @@ Off-shoot cards:
   rewrite` (spun off from `#152`; `agent:gemini`, `type:implementation`)
 - `#155` - `Phase 6 / Task 6: Review Weight goal estimate formula accuracy`
   (spun off from `#152`; `agent:codex`, `type:planning`)
+- `#156` - `Phase 6 / Task 7: Implement Weight tab section hierarchy and
+  stacked trends layout` (spun off from `#153`; `agent:gemini`,
+  `type:implementation`)
 
 ---
 
