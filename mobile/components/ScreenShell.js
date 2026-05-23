@@ -5,7 +5,7 @@ import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
 
-export function ScreenShell({ title, subtitle, headerLeft, headerRight, keyboardShouldPersistTaps, children }) {
+export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersistTaps, children }) {
   const version = `v${pkg.version}`;
   const { onScroll } = useContext(ScrollContext);
 
@@ -27,7 +27,6 @@ export function ScreenShell({ title, subtitle, headerLeft, headerRight, keyboard
           {title && (
             <View style={styles.titleRow}>
               <View style={styles.titleGroup}>
-                {headerLeft}
                 <Text style={styles.title}>{title}</Text>
               </View>
               {headerRight}
