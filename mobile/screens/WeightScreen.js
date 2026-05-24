@@ -701,12 +701,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   trendValue: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '900',
     color: Colors.text,
   },
   trendLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
