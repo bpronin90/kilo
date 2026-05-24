@@ -644,7 +644,8 @@ Off-shoot cards:
   unparsed fallback in Log` (spun off from `#149`; `agent:claude`,
   `type:implementation`; completed 2026-05-24)
 - `#154` - `Phase 6 / Task 5: Implement Weight goal panel hierarchy and copy
-  rewrite` (spun off from `#152`; `agent:gemini`, `type:implementation`)
+  rewrite` (spun off from `#152`; `agent:gemini`, `type:implementation`;
+  completed 2026-05-24)
 - `#155` - `Phase 6 / Task 6: Review Weight goal estimate formula accuracy`
   (spun off from `#152`; `agent:codex`, `type:planning`)
 - `#156` - `Phase 6 / Task 7: Implement Weight tab section hierarchy and

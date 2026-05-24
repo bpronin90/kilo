@@ -78,8 +78,11 @@ Current limitation:
   fixture-driven migration contract suite for legacy structured workout
   history, plus weight-goal persistence/derivation coverage and malformed
   backup rejection coverage for the optional `weight_goal` v2 import field.
-- No automated native test covers rendered React Native screens, tab routing, or
-  an Expo device/emulator pass yet.
+- Native rendered-screen coverage is still narrow, but `mobile/tests/` now
+  includes a `react-test-renderer` suite for the Weight goal card's loss,
+  gain, maintain, no-estimate, and pace-warning states.
+- No automated native test covers broader tab routing or an Expo
+  device/emulator pass yet.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
@@ -267,6 +270,16 @@ Provides the global runtime contract required by the prototype:
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry
   comments after `buildSessionsFromNote()`
+
+### `mobile/tests/weight-goal-ui.test.js`
+
+- rendered React Native screen coverage for `mobile/screens/WeightScreen.js`
+  using `react-test-renderer`
+- verifies saved-goal derived-state presentation for loss, gain, maintain, and
+  no-estimate cases
+- verifies advisory warning copy for aggressive and unrealistic pace states
+- exercises the saved-goal display path with `start_weight` fallback coverage
+  rather than only pure helper-level calculation tests
 
 ---
 
