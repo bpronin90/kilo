@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
+import { formatSessionClassification } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -277,10 +278,22 @@ export function StatsScreen({ multiplier, section }) {
         </View>
       ) : analytics?.signals?.length > 0 ? (
         <View style={styles.signalList}>
-          {analytics.signals.map((sig, i) => (
+          {analytics.signals.map((sig, i) => {
+            const normName = normalizeLiftName(sig.name);
+            const classifLabel = formatSessionClassification(
+              currentNote?.exercise_classifications?.[normName] ?? null
+            );
+            return (
             <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
               <View style={styles.signalRowTop}>
-                <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normalizeLiftName(sig.name)) || sig.name}</Text>
+                <View style={styles.signalNameBlock}>
+                  <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
+                  {classifLabel ? (
+                    <Text style={[styles.classifBadge, classifBadgeColor(currentNote?.exercise_classifications?.[normName])]}>
+                      {classifLabel}
+                    </Text>
+                  ) : null}
+                </View>
                 <Badge status={sig.progression_status}>
                   {formatStatus(sig.progression_status)}
                 </Badge>
@@ -304,7 +317,8 @@ export function StatsScreen({ multiplier, section }) {
                 </View>
               </View>
             </View>
-          ))}
+            );
+          })}
         </View>
       ) : (
         <Text style={styles.emptyText}>
@@ -322,6 +336,16 @@ function formatStatus(status) {
     case 'regressed': return 'Regressed';
     case 'first_session': return 'Initial';
     default: return '—';
+  }
+}
+
+function classifBadgeColor(label) {
+  switch (label) {
+    case 'progressing':  return { color: '#4ade80' };
+    case 'regressing':   return { color: Colors.error };
+    case 'stalled':      return { color: Colors.textMuted };
+    case 'inconsistent': return { color: Colors.textMuted };
+    default:             return {};
   }
 }
 
@@ -562,11 +586,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  signalNameBlock: {
+    flex: 1,
+    gap: 2,
+  },
   signalName: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.text,
-    flex: 1,
+  },
+  classifBadge: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   signalMeta: {
     flexDirection: 'row',

@@ -366,6 +366,79 @@ export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplie
   };
 }
 
+// ── Per-exercise session classification ───────────────────────────────────────
+
+function _avgRepsAtWeight(sets, weight) {
+  const matching = sets.filter(s => s.weight_value === weight);
+  if (matching.length === 0) return 0;
+  return matching.reduce((sum, s) => sum + s.rep_count, 0) / matching.length;
+}
+
+function _topWeight(sets) {
+  const weighted = sets.filter(s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0);
+  if (weighted.length === 0) return null;
+  return Math.max(...weighted.map(s => s.weight_value));
+}
+
+// Classify one exercise given its full session_entries list (newest last).
+// Returns 'progressing' | 'stalled' | 'regressing' | 'inconsistent' | null
+function _classifyEntries(allEntries) {
+  const window = allEntries.slice(-3);
+  const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
+  if (logged.length < 2) return null;
+
+  const hasSkip = window.some(se => se.skipped);
+  const latest = logged[logged.length - 1];
+  const prior = logged[logged.length - 2];
+  const latestTop = _topWeight(latest.sets);
+  const priorTop = _topWeight(prior.sets);
+
+  // regressing: top weight dropped, or same weight but avg reps dropped > 2
+  if (latestTop < priorTop) return 'regressing';
+  if (latestTop === priorTop) {
+    const latestAvg = _avgRepsAtWeight(latest.sets, latestTop);
+    const priorAvg = _avgRepsAtWeight(prior.sets, priorTop);
+    if (priorAvg - latestAvg > 2) return 'regressing';
+  }
+
+  // progressing: top weight increased, or same weight with avg reps improved
+  if (latestTop > priorTop) return 'progressing';
+  if (latestTop === priorTop) {
+    const latestAvg = _avgRepsAtWeight(latest.sets, latestTop);
+    const priorAvg = _avgRepsAtWeight(prior.sets, priorTop);
+    if (latestAvg > priorAvg) return 'progressing';
+  }
+
+  // stalled: same top weight, same rep distribution at top weight
+  if (latestTop === priorTop) {
+    const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
+    const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
+    if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
+  }
+
+  // inconsistent: skipped sessions mixed with logged in window
+  if (hasSkip) return 'inconsistent';
+
+  return null;
+}
+
+// Classify session trends for all tracked exercises.
+// sections: output of parseWorkoutNote(noteText).sections
+// trackedNames: string[] of exercise names to classify
+// Returns { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
+export function classifyExerciseSessions(sections, trackedNames) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+  for (const name of trackedNames) {
+    const normName = normalizeLiftName(name);
+    const ex = exercises.find(e => normalizeLiftName(e.name) === normName);
+    if (!ex) { result[normName] = null; continue; }
+    const allEntries = ex.occurrences.flatMap(occ => occ.session_entries || []);
+    result[normName] = _classifyEntries(allEntries);
+  }
+  return result;
+}
+
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
 // fatigue formula (adjusted, rounded).
 export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {

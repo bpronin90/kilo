@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions } from '../lib/data';
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
 
@@ -315,6 +315,130 @@ describe('tracked-lift toggle merge', () => {
     state = toggleInMap(state, 'squat');
     expect(state['bench press']).toBe(true);
     expect(state['squat']).toBe(true);
+  });
+});
+
+// ── classifyExerciseSessions ──────────────────────────────────────────────────
+
+function classifSection(name, entries) {
+  const session_entries = entries.map(e =>
+    e === 'skip'
+      ? { skipped: true, raw: '-', sets: [] }
+      : { skipped: false, raw: 'x', sets: Array.isArray(e) ? e : [e] }
+  );
+  return {
+    heading: null, subheading: null, kind: 'general',
+    exercises: [{ name, rows: [], sets: [], unparsed_rows: [], session_entries }],
+  };
+}
+
+function w(weight, rep_count) { return { weight_value: weight, rep_count }; }
+
+describe('classifyExerciseSessions', () => {
+  test('fewer than 2 logged sessions → null', () => {
+    const sections = [classifSection('Squat', [w(225, 5)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBeNull();
+  });
+
+  test('no logged sessions → null', () => {
+    const sections = [classifSection('Squat', ['skip', 'skip'])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBeNull();
+  });
+
+  test('exercise absent from note → null', () => {
+    const sections = [classifSection('Bench Press', [w(135, 5), w(145, 5)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBeNull();
+  });
+
+  test('progressing — top-set weight increased', () => {
+    const sections = [classifSection('Squat', [w(225, 5), w(235, 5)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
+  test('progressing — same weight, higher avg reps', () => {
+    const sections = [classifSection('Squat', [
+      [w(225, 5), w(225, 5)],
+      [w(225, 6), w(225, 6)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
+  test('regressing — top-set weight dropped', () => {
+    const sections = [classifSection('Squat', [w(235, 5), w(225, 5)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('regressing');
+  });
+
+  test('regressing — same weight, avg reps dropped > 2', () => {
+    // prior avg reps: 8, latest avg reps: 4 → delta = 4 > 2
+    const sections = [classifSection('Squat', [
+      [w(225, 8), w(225, 8)],
+      [w(225, 4), w(225, 4)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('regressing');
+  });
+
+  test('NOT regressing — same weight, avg reps dropped exactly 2 (threshold is > 2)', () => {
+    // prior avg: 7, latest avg: 5 → delta = 2, not > 2
+    const sections = [classifSection('Squat', [
+      [w(225, 7), w(225, 7)],
+      [w(225, 5), w(225, 5)],
+    ])];
+    const result = classifyExerciseSessions(sections, ['Squat'])['squat'];
+    expect(result).not.toBe('regressing');
+  });
+
+  test('stalled — same weight and same rep counts', () => {
+    const sections = [classifSection('Squat', [
+      [w(225, 5), w(225, 5)],
+      [w(225, 5), w(225, 5)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('stalled');
+  });
+
+  test('inconsistent — skip mixed with logged sessions, reps within range (not regressing, not progressing, not stalled)', () => {
+    // prior: 225×7, skip, latest: 225×6 → 1-rep drop (≤2 so not regressing), reps fell (not progressing), different (not stalled), has skip → inconsistent
+    const sections = [classifSection('Squat', [w(225, 7), 'skip', w(225, 6)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('inconsistent');
+  });
+
+  test('precedence: regressing beats inconsistent', () => {
+    const sections = [classifSection('Squat', [
+      [w(235, 5)],
+      'skip',
+      [w(225, 5)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('regressing');
+  });
+
+  test('precedence: progressing beats inconsistent', () => {
+    const sections = [classifSection('Squat', [
+      [w(225, 5)],
+      'skip',
+      [w(235, 5)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
+  test('window uses only last 3 entries: skip outside window does not trigger inconsistent', () => {
+    // skip is 4 positions from the end; last 3 = [w(225,5), w(225,5), w(225,5)] — no skip → stalled
+    const sections = [classifSection('Squat', [
+      'skip',
+      w(225, 5),
+      w(225, 5),
+      w(225, 5),
+      w(225, 5),
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('stalled');
+  });
+
+  test('returns map for multiple tracked exercises', () => {
+    const sections = [
+      classifSection('Squat', [w(225, 5), w(235, 5)]),
+      classifSection('Deadlift', [w(315, 5), w(315, 5)]),
+    ];
+    const result = classifyExerciseSessions(sections, ['Squat', 'Deadlift']);
+    expect(result['squat']).toBe('progressing');
+    expect(result['deadlift']).toBeDefined();
   });
 });
 
