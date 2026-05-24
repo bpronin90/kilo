@@ -55,28 +55,33 @@ function GoalDerived({ info }) {
   );
 }
 
-function TrendPanel({ title, mainValue, trendCue, deltaText, paceLevel }) {
+function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
   const isSpike = paceLevel === 'spike';
   const isNotable = paceLevel === 'notable';
 
   return (
-    <Card style={styles.trendPanel}>
-      <Text style={styles.trendPanelTitle}>{title}</Text>
-      <View style={styles.trendPanelContent}>
-        <Text style={styles.trendPanelMain}>{mainValue}</Text>
-        {trendCue ? (
+    <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>
+      <Text style={styles.trendSectionTitle}>{title}</Text>
+      <View style={styles.trendGrid}>
+        <View style={styles.trendGridItem}>
+          <Text style={styles.trendLabel}>{col1.label}</Text>
+          <Text style={styles.trendValue}>{col1.value}</Text>
+        </View>
+        <View style={styles.trendGridItem}>
+          <Text style={styles.trendLabel}>{col2.label}</Text>
+          <Text style={styles.trendValue}>{col2.value}</Text>
+        </View>
+        <View style={styles.trendGridItem}>
+          <Text style={styles.trendLabel}>{col3.label}</Text>
           <Text style={[
-            styles.trendPanelCue,
+            styles.trendValue,
             isSpike ? styles.paceSpike : isNotable ? styles.paceNotable : null
           ]}>
-            {trendCue}
+            {col3.value}
           </Text>
-        ) : (
-          <Text style={styles.trendPanelCue}>—</Text>
-        )}
-        <Text style={styles.trendPanelDelta}>{deltaText}</Text>
+        </View>
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -291,17 +296,17 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   const displayError = localError || errorMessage;
 
-  const paceMain = trends.currentWeight ? (trends.currentWeight.toFixed(1) + " lb") : "-";
-  const paceCue = trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast') : null;
-  const paceDelta = trends.currentWeight && trends.priorDayWeight ? ("vs previous day: " + formatDelta(trends.currentWeight - trends.priorDayWeight)) : 'vs previous day: -';
+  const paceValue = trends.currentWeight ? `${trends.currentWeight.toFixed(1)} lb` : '-';
+  const paceDelta = trends.currentWeight && trends.priorDayWeight ? formatDelta(trends.currentWeight - trends.priorDayWeight) : '-';
+  const paceCue = trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-';
 
-  const avg7Main = trends.avg7 ? (trends.avg7.toFixed(1) + " lb") : "-";
-  const avg7Delta = trends.avg7 && trends.priorAvg7 ? ("vs prior 7 days: " + formatDelta(trends.avg7 - trends.priorAvg7)) : 'vs prior 7 days: -';
-  const avg7Cue = trends.avg7 && trends.priorAvg7 ? (trends.avg7 > trends.priorAvg7 ? '↑ Trending up' : trends.avg7 < trends.priorAvg7 ? '↓ Trending down' : '→ Stable') : null;
+  const avg7Value = trends.avg7 ? `${trends.avg7.toFixed(1)} lb` : '-';
+  const avg7Delta = trends.avg7 && trends.priorAvg7 ? formatDelta(trends.avg7 - trends.priorAvg7) : '-';
+  const avg7Cue = trends.avg7 && trends.priorAvg7 ? (trends.avg7 > trends.priorAvg7 ? '↑ Gaining' : trends.avg7 < trends.priorAvg7 ? '↓ Losing' : '→ Stable') : '-';
 
-  const avg30Main = trends.avg30 ? (trends.avg30.toFixed(1) + " lb") : "-";
-  const avg30Delta = trends.avg30 && trends.priorAvg30 ? ("vs prior 30 days: " + formatDelta(trends.avg30 - trends.priorAvg30)) : 'vs prior 30 days: -';
-  const avg30Cue = trends.avg30 && trends.priorAvg30 ? (trends.avg30 > trends.priorAvg30 ? '↑ Trending up' : trends.avg30 < trends.priorAvg30 ? '↓ Trending down' : '→ Stable') : null;
+  const avg30Value = trends.avg30 ? `${trends.avg30.toFixed(1)} lb` : '-';
+  const avg30Delta = trends.avg30 && trends.priorAvg30 ? formatDelta(trends.avg30 - trends.priorAvg30) : '-';
+  const avg30Cue = trends.avg30 && trends.priorAvg30 ? (trends.avg30 > trends.priorAvg30 ? '↑ Gaining' : trends.avg30 < trends.priorAvg30 ? '↓ Losing' : '→ Stable') : '-';
 
   return (
     <ScreenShell
@@ -440,27 +445,28 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       </Card>
 
       <SectionTitle>Trends</SectionTitle>
-      <View style={styles.trendsSection}>
-        <TrendPanel
+      <Card style={styles.trendsCardMerged}>
+        <TrendSection
           title="Pace"
-          mainValue={paceMain}
-          trendCue={paceCue}
-          deltaText={paceDelta}
+          col1={{ label: 'Current', value: paceValue }}
+          col2={{ label: 'Vs Previous', value: paceDelta }}
+          col3={{ label: 'Trend', value: paceCue }}
           paceLevel={paceLevel}
         />
-        <TrendPanel
+        <TrendSection
           title="7-day rolling"
-          mainValue={avg7Main}
-          trendCue={avg7Cue}
-          deltaText={avg7Delta}
+          col1={{ label: 'Average', value: avg7Value }}
+          col2={{ label: 'Vs Prior 7d', value: avg7Delta }}
+          col3={{ label: 'Trend', value: avg7Cue }}
         />
-        <TrendPanel
+        <TrendSection
           title="30-day rolling"
-          mainValue={avg30Main}
-          trendCue={avg30Cue}
-          deltaText={avg30Delta}
+          col1={{ label: 'Average', value: avg30Value }}
+          col2={{ label: 'Vs Prior 30d', value: avg30Delta }}
+          col3={{ label: 'Trend', value: avg30Cue }}
+          isLast
         />
-      </View>
+      </Card>
 
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
@@ -665,37 +671,46 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     fontSize: 15,
   },
-  trendsSection: {
+  trendsCardMerged: {
+    padding: 0,
+    gap: 0,
+    overflow: 'hidden',
+  },
+  trendSection: {
+    padding: 16,
     gap: 12,
   },
-  trendPanel: {
-    gap: 4,
-    padding: 16,
+  trendSectionDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
   },
-  trendPanelTitle: {
+  trendSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  trendPanelContent: {
+  trendGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  trendGridItem: {
+    flex: 1,
     gap: 2,
   },
-  trendPanelMain: {
-    fontSize: 20,
-    fontWeight: '900',
+  trendValue: {
+    fontSize: 17,
+    fontWeight: '800',
     color: Colors.text,
   },
-  trendPanelCue: {
-    fontSize: 14,
+  trendLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
     fontWeight: '700',
-    color: Colors.textMuted,
-  },
-  trendPanelDelta: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   paceSpike: {
     color: Colors.error,
