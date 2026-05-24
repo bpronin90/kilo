@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
   },
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.textMuted,
+    color: Colors.text,
     paddingLeft: 0,
   },
   emptyText: {
