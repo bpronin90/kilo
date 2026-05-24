@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.36.0 - 2026-05-24
+
+- Issue #159: Added persisted per-exercise session classifications to native
+  workout analytics, widened parser/analytics handling so tracked exercise
+  histories resolve more reliably across session-entry, plain-row, alias, and
+  bodyweight cases, and rebuilt the `Progressive Overload` surface around a
+  sticky column header plus compact trend indicators. Reviewer closeout updated
+  `docs/current-state.md` and `docs/testing-and-qa.md` to match and bumped the
+  app version.
+
 ## 0.35.28 - 2026-05-24
 
 - Issue #156: Reworked the native Weight tab into the approved top-to-bottom

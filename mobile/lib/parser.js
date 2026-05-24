@@ -23,19 +23,22 @@ function _stripLeadingFlag(s) {
 }
 
 // Normalize a workout row string before tokenization.
-// Splits on " - " to separate parseable set segments from inline prose notes.
+// Strips trailing *annotation suffixes (PR marks, tempo notes, etc.), then
+// splits on " - " to separate parseable set segments from inline prose notes.
 // Each segment is flag-stripped and validated (must consist only of digits,
 // commas, dots, and spaces). Valid segments are joined; prose is dropped.
 // Falls back to the original trimmed string if no segments are parseable.
 function _preprocessWorkoutRow(trimmed) {
-  if (!trimmed.includes(' - ')) return _stripLeadingFlag(trimmed);
+  // Drop trailing "* ..." or "*word" annotations (same rule as exercise name normalization)
+  const noAnnotation = trimmed.replace(/\s+\*.*$/, '').trim();
+  if (!noAnnotation.includes(' - ')) return _stripLeadingFlag(noAnnotation);
 
   const parseable = [];
-  for (const seg of trimmed.split(' - ')) {
+  for (const seg of noAnnotation.split(' - ')) {
     const stripped = _stripLeadingFlag(seg.trim());
     if (/^[\d.,\s]+$/.test(stripped)) parseable.push(stripped.trim());
   }
-  return parseable.length > 0 ? parseable.join(' ') : trimmed;
+  return parseable.length > 0 ? parseable.join(' ') : noAnnotation;
 }
 
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
@@ -494,6 +497,9 @@ const _EXERCISE_ALIASES = new Map([
 
 // Resolves a raw exercise name to its canonical alias key.
 // If the name is already a canonical key or has no alias entry, returns it unchanged.
+// Exported so callers outside the parser (e.g. classifyExerciseSessions) can
+// resolve alias variants before doing analytics lookups.
+export function canonicalizeName(name) { return _canonicalizeName(name); }
 function _canonicalizeName(name) {
   const lower = name.toLowerCase().trim();
   for (const [canonical, aliases] of _EXERCISE_ALIASES) {
@@ -504,11 +510,13 @@ function _canonicalizeName(name) {
 }
 
 // Looks up a target name in an analytics exercises array using canonical keys.
-// Since deriveWorkoutAnalytics stores exercises under canonical names, this is an exact lookup
-// after canonicalizing the target.
+// Primary: exact match after canonicalization. Fallback: case-insensitive match
+// so tracked names stored in lowercase still resolve to title-cased analytics entries.
 function _findExercise(exercises, targetName) {
   const canonical = _canonicalizeName(targetName);
-  return exercises.find(e => e.name === canonical) || null;
+  return exercises.find(e => e.name === canonical)
+      || exercises.find(e => e.name.toLowerCase() === canonical.toLowerCase())
+      || null;
 }
 
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
@@ -613,7 +621,21 @@ export function deriveProgressionSignals(sections, trackedNames) {
         }
       }
 
-      if (latestIdx === -1) return absent;
+      if (latestIdx === -1) {
+        // Rep-only (bodyweight) fallback: use total reps per session as the comparable metric.
+        const repTotals = comparable.map(unit =>
+          unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
+        );
+        const latestReps = repTotals[repTotals.length - 1];
+        if (!latestReps) return absent;
+        const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
+        const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
+        const bw_status = priorReps === null ? 'first_session'
+          : latestReps > priorReps ? 'improved' : latestReps < priorReps ? 'regressed' : 'held';
+        const bw_trend = priorReps === null ? null
+          : latestReps > priorReps ? 'up' : latestReps < priorReps ? 'down' : 'flat';
+        return { name, progression_status: bw_status, latest_pr: null, prior_pr: null, kilo_max: null, repeatability_score: null, latest_top_weight: latestBestSet || null, overload_trend: bw_trend, is_bodyweight: true };
+      }
 
       const latestOcc = comparable[latestIdx];
       const latest_pr = _occurrencePR(latestOcc);
@@ -629,10 +651,17 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const progression_status = latest_pr > prior_pr ? 'improved'
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
-      const overload_trend = latest_top_weight === null || prior_top_weight === null ? null
-                           : latest_top_weight > prior_top_weight ? 'up'
-                           : latest_top_weight < prior_top_weight ? 'down'
-                           : 'flat';
+
+      const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+      const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+      const weight_diff = latest_top_weight !== null && prior_top_weight !== null
+        ? latest_top_weight - prior_top_weight : null;
+      const overload_trend = weight_diff === null ? null
+        : weight_diff > 0 ? 'up'
+        : weight_diff < 0 ? 'down'
+        : latest_total_reps > prior_total_reps ? 'up'
+        : latest_total_reps < prior_total_reps ? 'down'
+        : 'flat';
 
       return { name, progression_status, latest_pr, prior_pr, kilo_max, repeatability_score, latest_top_weight, overload_trend };
     }),

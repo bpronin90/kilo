@@ -1230,11 +1230,14 @@ describe('deriveProgressionSignals — progression status', () => {
     expect(sig.prior_pr).toBeCloseTo(epleyPR(100, 8));
   });
 
-  test('null progression_status when no-weight exercise has only bodyweight sets', () => {
+  test('rep-based fallback for bodyweight exercise with no weight_value', () => {
     const { sections } = parseWorkoutNote('Core: Plank\n30,30');
     const sig = deriveProgressionSignals(sections, ['Core: Plank']).exercises[0];
-    expect(sig.progression_status).toBeNull();
+    // Single session → first_session status, no PR, best set reps surfaced as latest_top_weight
+    expect(sig.progression_status).toBe('first_session');
     expect(sig.latest_pr).toBeNull();
+    expect(sig.latest_top_weight).toBe(30);
+    expect(sig.is_bodyweight).toBe(true);
   });
 
   test('non-comparable latest occurrence — walks back to most recent comparable', () => {
@@ -1300,16 +1303,27 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.latest_top_weight).toBe(80);
   });
 
-  test('latest_top_weight is null for no-weight (rep-only) sets', () => {
+  test('latest_top_weight is null for weighted exercise with no weight value (absent)', () => {
+    // Plain-row bench with no weight parses as bodyweight → rep fallback → best set reps
     const { sections } = parseWorkoutNote('-Bench\n8,8,8');
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
-    expect(sig.latest_top_weight).toBeNull();
+    expect(sig.is_bodyweight).toBe(true);
+    expect(sig.latest_top_weight).toBe(8);
   });
 
   test('overload_trend is first_session on single occurrence', () => {
     const { sections } = parseWorkoutNote('Monday\n-Bench\n80 8');
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.overload_trend).toBe('first_session');
+  });
+
+  test('multi-row plain-row block does not fabricate sessions — still first_session', () => {
+    // Two rows within one occurrence (e.g. progressive sets in one workout) must not be
+    // compared as separate sessions. Without date markers, the whole occurrence is one unit.
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n90 6');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('first_session');
+    expect(sig.progression_status).toBe('first_session');
   });
 
   test('overload_trend up when latest top weight exceeds prior', () => {
@@ -1326,11 +1340,25 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.overload_trend).toBe('down');
   });
 
-  test('overload_trend flat when latest top weight equals prior', () => {
+  test('overload_trend down when same weight but fewer total reps', () => {
     const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 6';
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('down');
+  });
+
+  test('overload_trend flat when same weight and same total reps', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.overload_trend).toBe('flat');
+  });
+
+  test('overload_trend up when same weight but more total reps', () => {
+    const note = 'Monday\n-Bench\n80 6\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('up');
   });
 
   test('overload_trend is first_session when prior occurrence has no weighted sets', () => {
@@ -1408,6 +1436,16 @@ describe('deriveProgressionSignals — single-block multi-session entries', () =
     expect(sig.progression_status).toBe('regressed');
     expect(sig.prior_pr).toBeCloseTo(epleyPR(235, 5));
     expect(sig.latest_pr).toBeCloseTo(epleyPR(230, 5));
+  });
+
+  test('tracked name in lowercase resolves to title-case analytics entry (non-aliased exercise)', () => {
+    // trackedLifts stores names lowercase; analytics stores them with original note casing.
+    // _findExercise must match case-insensitively so non-aliased exercises are not silently dropped.
+    const note = '-Hammer Curl\n- 35 10,10,10\n- 40 10,10,10';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['hammer curl']).exercises[0];
+    expect(sig.latest_pr).not.toBeNull();
+    expect(sig.progression_status).toBe('improved');
   });
 
   test('mixed-history: inline occurrence + session-entry occurrence both participate', () => {
@@ -1502,6 +1540,36 @@ describe('parseWorkoutNote — session_entries', () => {
     const deadlift = sections[1].exercises.find(e => e.name === 'Deadlift');
     expect(bench.session_entries).toHaveLength(2);
     expect(deadlift.session_entries).toHaveLength(2);
+  });
+
+  test('session entry with trailing *annotation parses sets correctly (not unparsed)', () => {
+    // Common real-world annotation: user marks a PR with "* PR"
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(1);
+    expect(ex.session_entries[0].unparsed).toBeFalsy();
+    expect(ex.session_entries[0].sets).toHaveLength(3);
+    expect(ex.session_entries[0].sets[0].weight_value).toBe(225);
+    expect(ex.session_entries[0].sets[0].rep_count).toBe(5);
+  });
+
+  test('session entry with *annotation in multi-weight row parses all sets', () => {
+    // "215 5 225 5,5,5 *top set" — annotation should not corrupt the sets
+    const r = parseWorkoutNote('-Squat\n- 215 5 225 5,5,5 *top set');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries[0].unparsed).toBeFalsy();
+    expect(ex.session_entries[0].sets).toHaveLength(4);
+    expect(ex.session_entries[0].sets[3].weight_value).toBe(225);
+  });
+
+  test('multiple session entries: annotated and plain both produce parseable sets', () => {
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5\n- 235 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(2);
+    expect(ex.session_entries[0].sets).toHaveLength(3);
+    expect(ex.session_entries[1].unparsed).toBeFalsy();
+    expect(ex.session_entries[1].sets).toHaveLength(3);
+    expect(ex.session_entries[1].sets[0].weight_value).toBe(235);
   });
 });
 

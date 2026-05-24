@@ -50,6 +50,18 @@ export function getWeightDeltaSeverity(delta) {
   return 'normal';
 }
 
+// Format a session classification label for display.
+export function formatSessionClassification(label) {
+  switch (label) {
+    case 'initial':      return 'Initial';
+    case 'progressing':  return '↑ Progressing';
+    case 'stalled':      return '→ Stalled';
+    case 'regressing':   return null;
+    case 'inconsistent': return '~ Inconsistent';
+    default:             return null;
+  }
+}
+
 // Classify a weight delta (today − yesterday) into a pace flag.
 // Returns null when the change is within normal range.
 // Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.

@@ -20,7 +20,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { normalizeLiftName } from '../lib/data';
+import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({
@@ -168,14 +168,21 @@ export function LogScreen({
     try {
       let result = null;
       const titleToSave = workoutNoteTitle || 'My Workout';
+      const { sections: savedSections } = parseWorkoutNote(workoutNoteText);
+      const trackedNames = listTrackedLifts(trackedLifts);
+      const exercise_classifications = classifyExerciseSessions(savedSections, trackedNames);
       if (currentId) {
-        result = await update(currentId, { 
+        result = await update(currentId, {
           title: titleToSave,
-          raw_text: workoutNoteText 
+          raw_text: workoutNoteText,
+          exercise_classifications,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);
         await selectCurrent(result.id);
+        if (result) {
+          await update(result.id, { exercise_classifications });
+        }
       }
 
       if (result) {

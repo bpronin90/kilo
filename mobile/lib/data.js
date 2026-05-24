@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
 import { classifyWeightPace } from './format.js';
 
 export const KILO_SPLIT = {
@@ -364,6 +364,97 @@ export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplie
   return {
     kilo_max_adjusted: Math.round(rawAvg * multiplier),
   };
+}
+
+// ── Per-exercise session classification ───────────────────────────────────────
+
+function _avgRepsAtWeight(sets, weight) {
+  const matching = sets.filter(s => s.weight_value === weight);
+  if (matching.length === 0) return 0;
+  return matching.reduce((sum, s) => sum + s.rep_count, 0) / matching.length;
+}
+
+// Returns true when a majority of sets at the given weight improved vs the prior session.
+// Compares sorted rep counts positionally so set-recording order doesn't matter.
+function _majorityOfSetsImproved(latestSets, priorSets, weight) {
+  const latest = latestSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
+  const prior = priorSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
+  const pairs = Math.min(latest.length, prior.length);
+  if (pairs === 0) return false;
+  let improved = 0;
+  for (let i = 0; i < pairs; i++) {
+    if (latest[i] > prior[i]) improved++;
+  }
+  return improved > pairs / 2;
+}
+
+function _topWeight(sets) {
+  const weighted = sets.filter(s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0);
+  if (weighted.length === 0) return null;
+  return Math.max(...weighted.map(s => s.weight_value));
+}
+
+// Classify one exercise given its full session_entries list (newest last).
+// Returns 'progressing' | 'stalled' | 'regressing' | 'inconsistent' | null
+function _classifyEntries(allEntries) {
+  const window = allEntries.slice(-3);
+  const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
+  if (logged.length === 0) return null;
+  if (logged.length === 1) return 'initial';
+
+  const hasSkip = window.some(se => se.skipped);
+  const latest = logged[logged.length - 1];
+  const prior = logged[logged.length - 2];
+  const latestTop = _topWeight(latest.sets);
+  const priorTop = _topWeight(prior.sets);
+
+  // regressing: top weight dropped, or same weight but avg reps dropped > 2
+  if (latestTop < priorTop) return 'regressing';
+  if (latestTop === priorTop) {
+    const latestAvg = _avgRepsAtWeight(latest.sets, latestTop);
+    const priorAvg = _avgRepsAtWeight(prior.sets, priorTop);
+    if (priorAvg - latestAvg > 2) return 'regressing';
+  }
+
+  // progressing: top weight increased, or same weight with majority of sets showing higher reps
+  if (latestTop > priorTop) return 'progressing';
+  if (latestTop === priorTop && _majorityOfSetsImproved(latest.sets, prior.sets, latestTop)) return 'progressing';
+
+  // stalled: same top weight, same rep distribution at top weight
+  if (latestTop === priorTop) {
+    const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
+    const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
+    if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
+  }
+
+  // inconsistent: skipped sessions mixed with logged in window
+  if (hasSkip) return 'inconsistent';
+
+  return null;
+}
+
+// Classify session trends for all tracked exercises.
+// sections: output of parseWorkoutNote(noteText).sections
+// trackedNames: string[] of exercise names to classify
+// Returns { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
+export function classifyExerciseSessions(sections, trackedNames) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+  for (const name of trackedNames) {
+    const normName = normalizeLiftName(name);
+    const lookupKey = normalizeLiftName(canonicalizeName(name));
+    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    if (!ex) { result[normName] = null; continue; }
+    // Mirror deriveProgressionSignals dual-path: occurrences with session_entries
+    // expand per-entry (preserving skips for the window); plain-row occurrences
+    // (inline sets, no session_entries) each count as one session unit.
+    const allEntries = ex.occurrences.flatMap(occ => {
+      if ((occ.session_entries || []).length > 0) return occ.session_entries;
+      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+    });
+    result[normName] = _classifyEntries(allEntries);
+  }
+  return result;
 }
 
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
