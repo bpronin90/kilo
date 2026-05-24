@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.35.26 - 2026-05-24
+
+- Issue #151: Tightened native Log workout-row normalization so recurring
+  mixed-load shorthand, simple leading flags, and parseable set segments split
+  by inline note tails now recover into the existing structured set path
+  instead of degrading to raw fallback rows. Unparsed fallback rows keep the
+  shared set-row typography treatment, render unresolved lifting rows in error
+  red, and leave warmup/non-lifting fallback rows in normal text. Reviewer
+  closeout updated `docs/current-state.md` and `docs/mvp-v4-roadmap.md` to
+  match and bumped the app version.
+
 ## 0.35.25 - 2026-05-24
 
 - Issue #150: Updated the native Log current-routine read view so the expanded

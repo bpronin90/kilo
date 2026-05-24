@@ -166,8 +166,10 @@ The real native app path now has a modular React Native shell:
   switch-anyway choice when there are unsaved edits. The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
-  without the earlier stray italics; Android back now exits edit subviews
-  before falling through to tab-level navigation. A fresh install with no
+  without the earlier stray italics, while unresolved lifting fallbacks render
+  in error red and warmup/non-lifting fallbacks stay standard text; Android
+  back now exits edit subviews before falling through to tab-level navigation.
+  A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card
   — instead of auto-opening the editor or keyboard, and that empty state is
@@ -212,9 +214,11 @@ The real native app path now has a modular React Native shell:
   sample-style shorthand logs used by the v2 note-based workflow plus a
   derived analytics contract for later note-based UI and analytics work,
   including tracked-exercise estimated-PR derivation from parsed sets,
-  positional session-alignment derivation for long-note imports, and stable
+  positional session-alignment derivation for long-note imports, stable
   same-day section headings so warmup and lifting blocks can render under one
-  calendar-day heading in the Log view
+  calendar-day heading in the Log view, and normalization for the recurring
+  mixed-load shorthand, leading flag prefixes, and parseable inline-tail row
+  segments evidenced in the archived workout-note samples
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
   including the default 1k exercise-slot selection used by analytics and a
   factory for titled workout-note items in the multi-note model
