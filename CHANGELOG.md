@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.24 - 2026-05-24
+
+- Issue #146: Finalized the native Log current-routine editor exit behavior on
+  the accepted fallback: leaving the raw current-note editor via `Done` or
+  Android back now returns consistently to the top of the rendered current
+  note instead of landing at stale or random scroll positions. Reviewer
+  closeout also removed the dead App-level current-note scroll state plumbing
+  and reverted an unrelated tab-persistence widen so the fix stays scoped to
+  the Log flow. Updated `docs/current-state.md` to match.
+
 ## 0.35.23 - 2026-05-22
 
 - Issue #168: Aligned the native Help screen back arrow with the standard

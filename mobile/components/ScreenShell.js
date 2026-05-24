@@ -5,15 +5,22 @@ import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
 
-export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersistTaps, children }) {
+export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children }, ref) => {
   const version = `v${pkg.version}`;
-  const { onScroll } = useContext(ScrollContext);
+  const { onScroll: contextOnScroll } = useContext(ScrollContext);
+
+  const handleScroll = (e) => {
+    if (contextOnScroll) contextOnScroll(e);
+    if (propOnScroll) propOnScroll(e);
+  };
 
   return (
     <ScrollView 
+      ref={ref}
+      style={style}
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-      onScroll={onScroll}
+      onScroll={handleScroll}
       scrollEventThrottle={16}
     >
       <SafeAreaView style={styles.headerWrapper}>
@@ -38,7 +45,7 @@ export function ScreenShell({ title, subtitle, headerRight, keyboardShouldPersis
       {children}
     </ScrollView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

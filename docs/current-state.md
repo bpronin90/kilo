@@ -152,7 +152,9 @@ The real native app path now has a modular React Native shell:
   raw-note edits directly through the current workout-note store, keep the
   editor open, and show a transient `Saved!` button confirmation, exit prompts
   so leaving an editor with unsaved changes via `Done` or Android back asks to
-  discard a never-saved note or to save/discard an existing note, a bottom
+  discard a never-saved note or to save/discard an existing note, and for the
+  current routine specifically exiting raw edit now returns consistently to the
+  top of the rendered note as the accepted fallback behavior, a bottom
   `More Routines` list that keeps each non-current routine collapsed to a
   compact row that can either reopen its raw-note editor or mark that routine
   current

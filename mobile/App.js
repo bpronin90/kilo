@@ -217,10 +217,10 @@ export default function App() {
         return <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />;
       case 'More':
         return (
-          <MoreScreen 
-            onNavigate={handleTabPress} 
-            onExport={handleExport} 
-            onImport={handleImport} 
+          <MoreScreen
+            onNavigate={handleTabPress}
+            onExport={handleExport}
+            onImport={handleImport}
             fatigueMultiplier={fatigueMultiplier}
             onUpdateFatigueMultiplier={async (val) => {
               setFatigueMultiplier(val);

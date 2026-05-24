@@ -13,8 +13,8 @@
  * typography in UI.js) must not change unless the repo owner explicitly requests it.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
@@ -23,14 +23,14 @@ import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
-export function LogScreen({ 
-  workoutNoteText, 
-  setWorkoutNoteText, 
-  workoutNoteTitle, 
-  setWorkoutNoteTitle, 
+export function LogScreen({
+  workoutNoteText,
+  setWorkoutNoteText,
+  workoutNoteTitle,
+  setWorkoutNoteTitle,
   isCollapsed,
   toggleCollapsed,
-  onSaveWorkout 
+  onSaveWorkout
 }) {
   const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -45,12 +45,37 @@ export function LogScreen({
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
 
+  const editorScrollRef = useRef(null);
+  const readScrollRef = useRef(null);
+  const keyboardVisibleRef = useRef(false);
+  const keyboardExitTimeoutRef = useRef(null);
+
   useEffect(() => {
     if (saveSuccess) {
       const timer = setTimeout(() => setSaveSuccess(''), 2000);
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      keyboardVisibleRef.current = true;
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardVisibleRef.current = false;
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (keyboardExitTimeoutRef.current) {
+        clearTimeout(keyboardExitTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const hasUnsavedCurrent = useMemo(() => {
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
@@ -153,9 +178,46 @@ export function LogScreen({
     }
   };
 
+  const finishExitCurrentEditor = () => {
+    readScrollRef.current?.scrollTo({ y: 0, animated: false });
+    setMode('read');
+  };
+
+  const exitCurrentEditor = () => {
+    if (!keyboardVisibleRef.current) {
+      finishExitCurrentEditor();
+      return;
+    }
+
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      hideSub.remove();
+      if (keyboardExitTimeoutRef.current) {
+        clearTimeout(keyboardExitTimeoutRef.current);
+        keyboardExitTimeoutRef.current = null;
+      }
+      finishExitCurrentEditor();
+    });
+
+    Keyboard.dismiss();
+
+    keyboardExitTimeoutRef.current = setTimeout(() => {
+      hideSub.remove();
+      keyboardExitTimeoutRef.current = null;
+      finishExitCurrentEditor();
+    }, Platform.OS === 'ios' ? 250 : 150);
+  };
+
+  const enterCurrentEditor = () => {
+    setMode('edit');
+    requestAnimationFrame(() => {
+      editorScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  };
+
   const handleDoneCurrent = () => {
     if (!hasUnsavedCurrent) {
-      setMode('read');
+      exitCurrentEditor();
       return;
     }
 
@@ -169,7 +231,7 @@ export function LogScreen({
             text: 'Discard', 
             style: 'destructive', 
             onPress: () => {
-              setMode('read');
+              exitCurrentEditor();
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
             } 
@@ -186,7 +248,7 @@ export function LogScreen({
             text: 'Discard', 
             style: 'destructive', 
             onPress: () => {
-              setMode('read');
+              exitCurrentEditor();
               setWorkoutNoteText(currentNote.raw_text);
               setWorkoutNoteTitle(currentNote.title || '');
             } 
@@ -195,7 +257,7 @@ export function LogScreen({
             text: 'Save', 
             onPress: async () => {
               const ok = await handleSave();
-              if (ok) setMode('read');
+              if (ok) exitCurrentEditor();
             } 
           },
         ]
@@ -374,6 +436,7 @@ export function LogScreen({
     await toggleTrackedLift(key);
   };
 
+
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
       onPress={handleDoneCurrent}
@@ -386,25 +449,138 @@ export function LogScreen({
   );
 
   const isEmpty = !notesLoading && notes.length === 0;
+  const isEditing = !!editingNoteId || mode === 'edit';
 
-  if (!editingNoteId && isEmpty) {
-    return (
+  useEffect(() => {
+    if (isEditing) {
+      editorScrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [isEditing, editingNoteId]);
+
+  return (
+    <>
       <ScreenShell
+        ref={readScrollRef}
+        style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
-        subtitle="Track your active training routine."
+        subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
+        headerRight={headerRight}
+        keyboardShouldPersistTaps="handled"
       >
-        <LogEmptyState onCreateRoutine={handleCreateRoutine} />
-      </ScreenShell>
-    );
-  }
+        {isEmpty ? (
+          <LogEmptyState onCreateRoutine={handleCreateRoutine} />
+        ) : (
+          <>
+            {mode === 'read' && hasContent && (
+              <View style={styles.mirrorContainer}>
+                <Card style={styles.currentRoutineCard}>
+                  <Pressable
+                    onPress={toggleCollapsed}
+                    style={styles.otherNoteHeader}
+                  >
+                    <View style={styles.otherNoteInfo}>
+                      <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                      <Text style={styles.otherNoteSub}>Current routine</Text>
+                    </View>
+                  </Pressable>
 
-  if (editingNoteId) {
-    return (
+                  <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
+                    {dayGroups.map((group, gi) => (
+                      <View key={`day-${gi}`}>
+                        {group.heading && (
+                          <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
+                            {group.heading}
+                          </WorkoutHeading>
+                        )}
+                        {group.sections.map((section, si) => (
+                          <View key={`section-${gi}-${si}`}>
+                            {section.subheading && (
+                              <WorkoutSubheading>{section.subheading}</WorkoutSubheading>
+                            )}
+                            {section.exercises.map((ex, ei) => (
+                              <ExerciseBlock
+                                key={`ex-${gi}-${si}-${ei}`}
+                                name={ex.name}
+                                isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                                onToggleTrack={() => handleToggleTrack(ex.name)}
+                              >
+                                {ex.rows.map((row, ri) => (
+                                  <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                                ))}
+                                {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
+                                  <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                                ))}
+                                {ex.unparsed_rows.map((u, ui) => (
+                                  <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                                ))}
+                              </ExerciseBlock>
+                            ))}
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                    {!dayGroups.length && (
+                      <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+                    )}
+                    <Button
+                      onPress={enterCurrentEditor}
+                      title="Edit note"
+                      style={styles.editButton}
+                      textStyle={styles.editButtonText}
+                    />
+                  </View>
+                </Card>
+              </View>
+            )}
+
+            <View style={styles.previousRoutines}>
+              {otherNotes.length > 0 && (
+                <>
+                  <SectionTitle>More Routines</SectionTitle>
+                  {otherNotes.map(other => (
+                    <Card
+                      key={other.id}
+                      style={styles.otherNoteCard}
+                    >
+                      <Pressable
+                        onPress={() => handleOpenOtherNote(other)}
+                        style={styles.otherNoteHeader}
+                      >
+                        <View style={styles.otherNoteInfo}>
+                          <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                          {other.updated_at && (
+                            <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
+                          )}
+                        </View>
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
+                          style={styles.inlineSwitchButton}
+                        >
+                          <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
+                        </Pressable>
+                      </Pressable>
+                    </Card>
+                  ))}
+                </>
+              )}
+              <Button
+                onPress={handleCreateRoutine}
+                title="+ New routine"
+                style={styles.createButton}
+                textStyle={styles.createButtonText}
+              />
+            </View>
+          </>
+        )}
+      </ScreenShell>
+
       <ScreenShell
-        title={editingTitle || 'Routine'}
+        ref={editorScrollRef}
+        style={isEditing ? { flex: 1 } : { display: 'none' }}
+        title={editingNoteId ? (editingTitle || 'Routine') : (workoutNoteTitle || 'My Workout')}
         subtitle="Edit routine"
         headerRight={
-          <Pressable onPress={handleDoneOther} style={styles.modeToggle}>
+          <Pressable onPress={editingNoteId ? handleDoneOther : handleDoneCurrent} style={styles.modeToggle}>
             <Text style={styles.modeToggleText}>Done</Text>
           </Pressable>
         }
@@ -418,189 +594,50 @@ export function LogScreen({
         <View style={styles.editContainer}>
           <Card>
             <TextInput
-              value={editingTitle}
-              onChangeText={setEditingTitle}
+              value={editingNoteId ? editingTitle : workoutNoteTitle}
+              onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
               placeholder="Routine Name (e.g. Push Day)"
               placeholderTextColor={Colors.textMuted}
               style={[styles.input, styles.titleInput]}
             />
             <TextInput
-              value={editingText}
-              onChangeText={setEditingText}
+              value={editingNoteId ? editingText : workoutNoteText}
+              onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
               placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
               placeholderTextColor={Colors.textMuted}
               multiline
               style={[styles.input, styles.editorInput]}
             />
             <Button
-              onPress={handleSaveOtherNote}
+              onPress={editingNoteId ? handleSaveOtherNote : handleSave}
               title={saveSuccess ? 'Saved!' : 'Save changes'}
-              disabled={noteIsSaving}
+              disabled={editingNoteId ? noteIsSaving : isSaving}
               style={styles.saveButton}
             />
           </Card>
+          {editingNoteId && (
+            <Button
+              onPress={() => handleSwitchCurrent(editingNoteId)}
+              title="Set as current routine"
+              style={styles.switchButton}
+              textStyle={styles.switchButtonText}
+            />
+          )}
           <Button
-            onPress={() => handleSwitchCurrent(editingNoteId)}
-            title="Set as current routine"
-            style={styles.switchButton}
-            textStyle={styles.switchButtonText}
-          />
-          <Button
-            onPress={() => handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false)}
+            onPress={() => {
+              if (editingNoteId) {
+                handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+              } else {
+                handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true);
+              }
+            }}
             title="Delete routine"
             style={styles.deleteButton}
             textStyle={styles.deleteButtonText}
           />
         </View>
       </ScreenShell>
-    );
-  }
-
-  return (
-    <ScreenShell
-      title="Workout Notes"
-      subtitle="Your active training routine. Update it as you go."
-      headerRight={headerRight}
-      keyboardShouldPersistTaps="handled"
-    >
-      {saveError ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{saveError}</Text>
-        </Card>
-      ) : null}
-
-      {mode === 'read' && hasContent ? (
-        <View style={styles.mirrorContainer}>
-          <Card style={styles.currentRoutineCard}>
-            <Pressable
-              onPress={toggleCollapsed}
-              style={styles.otherNoteHeader}
-            >
-              <View style={styles.otherNoteInfo}>
-                <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
-                <Text style={styles.otherNoteSub}>Current routine</Text>
-              </View>
-            </Pressable>
-
-            <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
-              {dayGroups.map((group, gi) => (
-                <View key={`day-${gi}`}>
-                  {group.heading && (
-                    <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
-                      {group.heading}
-                    </WorkoutHeading>
-                  )}
-                  {group.sections.map((section, si) => (
-                    <View key={`section-${gi}-${si}`}>
-                      {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
-                      {section.exercises.map((ex, ei) => (
-                        <ExerciseBlock
-                          key={`ex-${gi}-${si}-${ei}`}
-                          name={ex.name}
-                          isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
-                          onToggleTrack={() => handleToggleTrack(ex.name)}
-                        >
-                          {ex.rows.map((row, ri) => (
-                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
-                          ))}
-                          {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                            <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
-                          ))}
-                          {ex.unparsed_rows.map((u, ui) => (
-                            <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
-                          ))}
-                        </ExerciseBlock>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-              {!dayGroups.length && (
-                <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-              )}
-              <Button
-                onPress={() => setMode('edit')}
-                title="Edit note"
-                style={styles.editButton}
-                textStyle={styles.editButtonText}
-              />
-            </View>
-          </Card>
-        </View>
-      ) : (
-        <View style={styles.editContainer}>
-          <Card>
-            <TextInput
-              value={workoutNoteTitle}
-              onChangeText={setWorkoutNoteTitle}
-              placeholder="Routine Name (e.g. Push Day)"
-              placeholderTextColor={Colors.textMuted}
-              style={[styles.input, styles.titleInput]}
-            />
-            <TextInput
-              value={workoutNoteText}
-              onChangeText={setWorkoutNoteText}
-              placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
-              placeholderTextColor={Colors.textMuted}
-              multiline
-              style={[styles.input, styles.editorInput]}
-            />
-            <Button
-              onPress={handleSave}
-              title={saveSuccess ? 'Saved!' : 'Save note'}
-              disabled={isSaving}
-              style={styles.saveButton}
-            />
-          </Card>
-          {currentId && (
-            <Button
-              onPress={() => handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true)}
-              title="Delete routine"
-              style={styles.deleteButton}
-              textStyle={styles.deleteButtonText}
-            />
-          )}
-        </View>
-      )}
-
-      <View style={styles.previousRoutines}>
-        {otherNotes.length > 0 && (
-          <>
-            <SectionTitle>More Routines</SectionTitle>
-            {otherNotes.map(other => (
-              <Card
-                key={other.id}
-                style={styles.otherNoteCard}
-              >
-                <View style={styles.otherNoteHeader}>
-                  <Pressable
-                    onPress={() => handleOpenOtherNote(other)}
-                    style={styles.otherNoteInfo}
-                  >
-                    <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-                    {other.updated_at && (
-                      <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
-                    )}
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleSwitchCurrent(other.id)}
-                    style={styles.inlineSwitchButton}
-                  >
-                    <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
-                  </Pressable>
-                </View>
-              </Card>
-            ))}
-          </>
-        )}
-        <Button
-          onPress={handleCreateRoutine}
-          title="+ New routine"
-          style={styles.createButton}
-          textStyle={styles.createButtonText}
-        />
-      </View>
-    </ScreenShell>
+    </>
   );
 }
 
