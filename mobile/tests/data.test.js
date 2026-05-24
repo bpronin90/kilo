@@ -1,5 +1,6 @@
 import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData } from '../lib/data';
 
+
 // ── computeKiloMax ────────────────────────────────────────────────────────────
 
 describe('computeKiloMax', () => {
@@ -677,24 +678,61 @@ describe('deriveSkipData', () => {
     expect(day_skips[0].weekday).toBeNull();
   });
 
-  test('repeated weekday skip (2+) → repeated_weekday_skip flag', () => {
-    const section = skipSection('Monday', [
-      skipExercise('Squat', ['skip', 'skip']),
-      skipExercise('Deadlift', ['skip', 'skip']),
-    ]);
-    const { day_skips, attendance_flags } = deriveSkipData([section]);
+  test('repeated weekday skip (2+) with dated headings within 30-day window → flag', () => {
+    // 2026-05-11 and 2026-05-18 are both Mondays, both within 30 days of 2026-05-24
+    const refDate = new Date('2026-05-24T12:00:00');
+    const sections = [
+      skipSection('2026-05-11', [skipExercise('Squat', ['skip']), skipExercise('Deadlift', ['skip'])]),
+      skipSection('2026-05-18', [skipExercise('Squat', ['skip']), skipExercise('Deadlift', ['skip'])]),
+    ];
+    const { day_skips, attendance_flags } = deriveSkipData(sections, { referenceDate: refDate });
     expect(day_skips).toHaveLength(2);
     const weekdayFlag = attendance_flags.find(f => f.type === 'repeated_weekday_skip');
-    expect(weekdayFlag).toMatchObject({ type: 'repeated_weekday_skip', weekday: 'monday', skip_count: 2 });
+    expect(weekdayFlag).toBeDefined();
+    expect(weekdayFlag.skip_count).toBe(2);
   });
 
   test('single fully-skipped weekday → no repeated_weekday_skip flag', () => {
-    const section = skipSection('Monday', [
+    const refDate = new Date('2026-05-24T12:00:00');
+    const section = skipSection('2026-05-18', [
       skipExercise('Squat', ['skip']),
       skipExercise('Deadlift', ['skip']),
     ]);
-    const { attendance_flags } = deriveSkipData([section]);
+    const { attendance_flags } = deriveSkipData([section], { referenceDate: refDate });
     expect(attendance_flags.some(f => f.type === 'repeated_weekday_skip')).toBe(false);
+  });
+
+  test('day skips outside 30-day window do not count toward weekday flag', () => {
+    const refDate = new Date('2026-05-24T12:00:00');
+    // 2026-03-20 and 2026-03-27 are both Fridays, but outside the 30-day window
+    const sections = [
+      skipSection('2026-03-20', [skipExercise('Squat', ['skip'])]),
+      skipSection('2026-03-27', [skipExercise('Squat', ['skip'])]),
+    ];
+    const { attendance_flags } = deriveSkipData(sections, { referenceDate: refDate });
+    expect(attendance_flags.some(f => f.type === 'repeated_weekday_skip')).toBe(false);
+  });
+
+  test('day skip with undated heading does not count toward weekday flag', () => {
+    // 'Monday' has no ISO date → can't apply rolling window → not counted
+    const sections = [
+      skipSection('Monday', [skipExercise('Squat', ['skip'])]),
+      skipSection('Monday', [skipExercise('Squat', ['skip'])]),
+    ];
+    const { attendance_flags } = deriveSkipData(sections);
+    expect(attendance_flags.some(f => f.type === 'repeated_weekday_skip')).toBe(false);
+  });
+
+  test('missing history at a session index is not treated as a skip', () => {
+    // Exercise A has 3 entries; exercise B has only 1. Position 1 and 2 have
+    // no entry for B — that must not make position 1 or 2 a day_skip.
+    const section = skipSection('2026-05-18', [
+      skipExercise('Squat',    ['skip', 'skip', 'skip']),
+      skipExercise('Deadlift', ['log']),
+    ]);
+    const { day_skips } = deriveSkipData([section]);
+    // Only position 0 could be a day_skip, but Deadlift logged there → not a skip
+    expect(day_skips).toHaveLength(0);
   });
 
   test('exercise_id populated for catalog exercises', () => {
@@ -726,5 +764,27 @@ describe('deriveSkipData', () => {
     const { exercise_skips, attendance_flags } = deriveSkipData([section]);
     expect(exercise_skips).toHaveLength(0);
     expect(attendance_flags).toHaveLength(0);
+  });
+
+  test('day_skips carry date field from ISO heading', () => {
+    const section = skipSection('2026-05-18', [skipExercise('Squat', ['skip'])]);
+    const { day_skips } = deriveSkipData([section]);
+    expect(day_skips[0].date).toBe('2026-05-18');
+  });
+
+  test('day_skips date null when heading has no ISO date', () => {
+    const section = skipSection('Monday', [skipExercise('Squat', ['skip'])]);
+    const { day_skips } = deriveSkipData([section]);
+    expect(day_skips[0].date).toBeNull();
+  });
+});
+
+// ── makeWorkoutNoteItem skip fields ───────────────────────────────────────────
+
+describe('makeWorkoutNoteItem skip fields', () => {
+  test('new note item has skip_markers and attendance_flags initialised to null', () => {
+    const item = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
+    expect(item).toHaveProperty('skip_markers', null);
+    expect(item).toHaveProperty('attendance_flags', null);
   });
 });

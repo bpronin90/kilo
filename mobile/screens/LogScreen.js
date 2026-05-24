@@ -20,7 +20,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts } from '../lib/data';
+import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts, deriveSkipData } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({
@@ -171,17 +171,21 @@ export function LogScreen({
       const { sections: savedSections } = parseWorkoutNote(workoutNoteText);
       const trackedNames = listTrackedLifts(trackedLifts);
       const exercise_classifications = classifyExerciseSessions(savedSections, trackedNames);
+      const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
+      const skip_markers = { exercise_skips, day_skips };
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
           raw_text: workoutNoteText,
           exercise_classifications,
+          skip_markers,
+          attendance_flags,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);
         await selectCurrent(result.id);
         if (result) {
-          await update(result.id, { exercise_classifications });
+          await update(result.id, { exercise_classifications, skip_markers, attendance_flags });
         }
       }
 

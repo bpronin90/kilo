@@ -337,6 +337,8 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     tracked_exercises: [],
     one_k_exercises: null,
     isCurrent,
+    skip_markers: null,
+    attendance_flags: null,
   };
 }
 
@@ -370,18 +372,24 @@ export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplie
 
 const _DAY_LABELS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-function _weekdayFromHeading(heading) {
-  if (!heading) return null;
+// Returns { weekday: string|null, date: 'YYYY-MM-DD'|null } from a section heading.
+function _headingInfo(heading) {
+  if (!heading) return { weekday: null, date: null };
   const lower = heading.toLowerCase();
+  let weekday = null;
   for (const day of _DAY_LABELS) {
-    if (lower.includes(day)) return day;
+    if (lower.includes(day)) { weekday = day; break; }
   }
+  let date = null;
   const m = /(\d{4}-\d{2}-\d{2})/.exec(heading);
   if (m) {
-    const d = new Date(m[1] + 'T12:00:00');
-    if (!isNaN(d.getTime())) return _DAY_LABELS[d.getDay()];
+    date = m[1];
+    if (!weekday) {
+      const d = new Date(m[1] + 'T12:00:00');
+      if (!isNaN(d.getTime())) weekday = _DAY_LABELS[d.getDay()];
+    }
   }
-  return null;
+  return { weekday, date };
 }
 
 function _isAsterisked(ex) {
@@ -397,22 +405,34 @@ function _exerciseIdForName(name) {
 // Scan parsed sections for exercise-level and day-level skip markers plus
 // derived attendance flags.
 //
+// referenceDate: used as the upper bound of the 30-day rolling window for
+//   weekday attendance flags (defaults to today).
+//
 // exercise_skips: { exercise_name, exercise_id, session_index }[]
 //   One entry per skipped session_entry position, excluding asterisked exercises.
 //
-// day_skips: { session_index, weekday: string|null }[]
-//   Session positions where ALL eligible exercises in the same section are
-//   skipped. weekday is inferred from the section heading when possible.
+// day_skips: { session_index, weekday: string|null, date: 'YYYY-MM-DD'|null }[]
+//   Session positions where all exercises present at that index in the same
+//   section are skipped. Missing history at an index is not treated as a skip.
+//   weekday and date are inferred from the section heading when possible.
 //
 // attendance_flags:
 //   { type: 'consecutive_exercise_skips', exercise_name, exercise_id, consecutive_count }
-//     — emitted when an exercise has 2+ consecutive skipped session entries
+//     — 2+ consecutive skipped session entries for one exercise
 //   { type: 'repeated_weekday_skip', weekday, skip_count }
-//     — emitted when the same weekday has 2+ fully-skipped sessions
-export function deriveSkipData(sections) {
+//     — 2+ fully-skipped sessions on the same weekday within the 30-day window;
+//       only counted when the day_skip carries a parseable ISO date
+export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
   const exercise_skips = [];
   const day_skips = [];
   const attendance_flags = [];
+
+  const MS_DAY = 86400000;
+  const pad = n => String(n).padStart(2, '0');
+  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const refStr = localStr(referenceDate);
+  const cutStr = localStr(new Date(+referenceDate - 29 * MS_DAY));
+
   const weekdayCounts = {};
 
   for (const section of sections) {
@@ -421,7 +441,7 @@ export function deriveSkipData(sections) {
     );
     if (eligible.length === 0) continue;
 
-    const weekday = _weekdayFromHeading(section.heading);
+    const { weekday, date: headingDate } = _headingInfo(section.heading);
     const maxLen = Math.max(...eligible.map(ex => ex.session_entries.length));
 
     for (const ex of eligible) {
@@ -450,13 +470,16 @@ export function deriveSkipData(sections) {
     }
 
     for (let i = 0; i < maxLen; i++) {
-      const allSkipped = eligible.every(ex => {
-        if (i >= ex.session_entries.length) return true;
-        return ex.session_entries[i].skipped;
-      });
-      if (allSkipped) {
-        day_skips.push({ session_index: i, weekday });
-        if (weekday) weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
+      // All eligible exercises must have an entry at this position.
+      // Missing history is not evidence of a skip.
+      if (!eligible.every(ex => i < ex.session_entries.length)) continue;
+      if (!eligible.every(ex => ex.session_entries[i].skipped)) continue;
+
+      day_skips.push({ session_index: i, weekday, date: headingDate });
+
+      // Count toward weekday flag only when date is known and within the 30-day window.
+      if (weekday && headingDate && headingDate >= cutStr && headingDate <= refStr) {
+        weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
       }
     }
   }
