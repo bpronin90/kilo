@@ -366,6 +366,110 @@ export function computeKiloMax(occurrences, multiplier = getKiloFatigueMultiplie
   };
 }
 
+// ── Skip detection and attendance flags ───────────────────────────────────────
+
+const _DAY_LABELS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+function _weekdayFromHeading(heading) {
+  if (!heading) return null;
+  const lower = heading.toLowerCase();
+  for (const day of _DAY_LABELS) {
+    if (lower.includes(day)) return day;
+  }
+  const m = /(\d{4}-\d{2}-\d{2})/.exec(heading);
+  if (m) {
+    const d = new Date(m[1] + 'T12:00:00');
+    if (!isNaN(d.getTime())) return _DAY_LABELS[d.getDay()];
+  }
+  return null;
+}
+
+function _isAsterisked(ex) {
+  return (ex.raw_header || '').includes('*') || (ex.name || '').includes('*');
+}
+
+function _exerciseIdForName(name) {
+  const norm = normalizeLiftName(canonicalizeName(name));
+  const found = KILO_EXERCISES.find(e => normalizeLiftName(canonicalizeName(e.name)) === norm);
+  return found ? found.id : null;
+}
+
+// Scan parsed sections for exercise-level and day-level skip markers plus
+// derived attendance flags.
+//
+// exercise_skips: { exercise_name, exercise_id, session_index }[]
+//   One entry per skipped session_entry position, excluding asterisked exercises.
+//
+// day_skips: { session_index, weekday: string|null }[]
+//   Session positions where ALL eligible exercises in the same section are
+//   skipped. weekday is inferred from the section heading when possible.
+//
+// attendance_flags:
+//   { type: 'consecutive_exercise_skips', exercise_name, exercise_id, consecutive_count }
+//     — emitted when an exercise has 2+ consecutive skipped session entries
+//   { type: 'repeated_weekday_skip', weekday, skip_count }
+//     — emitted when the same weekday has 2+ fully-skipped sessions
+export function deriveSkipData(sections) {
+  const exercise_skips = [];
+  const day_skips = [];
+  const attendance_flags = [];
+  const weekdayCounts = {};
+
+  for (const section of sections) {
+    const eligible = section.exercises.filter(ex =>
+      ex.session_entries.length > 0 && !_isAsterisked(ex)
+    );
+    if (eligible.length === 0) continue;
+
+    const weekday = _weekdayFromHeading(section.heading);
+    const maxLen = Math.max(...eligible.map(ex => ex.session_entries.length));
+
+    for (const ex of eligible) {
+      const exId = _exerciseIdForName(ex.name);
+      let consecutive = 0;
+      let maxConsecutive = 0;
+
+      ex.session_entries.forEach((entry, idx) => {
+        if (entry.skipped) {
+          exercise_skips.push({ exercise_name: ex.name, exercise_id: exId, session_index: idx });
+          consecutive++;
+          if (consecutive > maxConsecutive) maxConsecutive = consecutive;
+        } else {
+          consecutive = 0;
+        }
+      });
+
+      if (maxConsecutive >= 2) {
+        attendance_flags.push({
+          type: 'consecutive_exercise_skips',
+          exercise_name: ex.name,
+          exercise_id: exId,
+          consecutive_count: maxConsecutive,
+        });
+      }
+    }
+
+    for (let i = 0; i < maxLen; i++) {
+      const allSkipped = eligible.every(ex => {
+        if (i >= ex.session_entries.length) return true;
+        return ex.session_entries[i].skipped;
+      });
+      if (allSkipped) {
+        day_skips.push({ session_index: i, weekday });
+        if (weekday) weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
+      }
+    }
+  }
+
+  for (const [weekday, count] of Object.entries(weekdayCounts)) {
+    if (count >= 2) {
+      attendance_flags.push({ type: 'repeated_weekday_skip', weekday, skip_count: count });
+    }
+  }
+
+  return { exercise_skips, day_skips, attendance_flags };
+}
+
 // ── Per-exercise session classification ───────────────────────────────────────
 
 function _avgRepsAtWeight(sets, weight) {
