@@ -66,7 +66,7 @@ describe('WeightScreen - GoalDerived component states', () => {
     const root = component.root;
 
     expect(findText(root, 'Target pace')).toBeTruthy();
-    expect(findText(root, '—')).toBeTruthy();
+    expect(findText(root, '-')).toBeTruthy();
     expect(findText(root, 'Select a future target date for guidance.')).toBeTruthy();
   });
 
@@ -108,7 +108,7 @@ describe('WeightScreen - GoalDerived component states', () => {
     const component = setup(goal);
     const root = component.root;
 
-    expect(findText(root, 'Pace is aggressive — a slower target is safer.')).toBeTruthy();
+    expect(findText(root, 'Pace is aggressive - a slower target is safer.')).toBeTruthy();
   });
 
   test('renders unrealistic warnings', () => {
@@ -116,6 +116,6 @@ describe('WeightScreen - GoalDerived component states', () => {
     const component = setup(goal);
     const root = component.root;
 
-    expect(findText(root, 'Pace is unrealistic — consider a longer timeline.')).toBeTruthy();
+    expect(findText(root, 'Pace is unrealistic - consider a longer timeline.')).toBeTruthy();
   });
 });

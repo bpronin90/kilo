@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
@@ -16,42 +16,67 @@ function GoalDerived({ info }) {
   const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
   const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
 
+  const isMaintain = direction === 'maintain';
+  const hasPace = required_weekly_pace !== null;
+  const isUnrealistic = warnings.includes('unrealistic');
+  const isUnhealthy = warnings.includes('unhealthy');
+
   return (
     <View style={styles.goalDerived}>
       <View style={styles.derivedRow}>
         <Text style={styles.derivedLabel}>Target pace</Text>
-        {required_weekly_pace === null ? (
-          <Text style={styles.derivedValueNeutral}>—</Text>
-        ) : direction === 'maintain' ? (
-          <Text style={styles.derivedValue}>Maintain</Text>
-        ) : (
-          <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>
-        )}
+        {!hasPace && <Text style={styles.derivedValueNeutral}>-</Text>}
+        {hasPace && isMaintain && <Text style={styles.derivedValue}>Maintain</Text>}
+        {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>}
       </View>
 
-      {required_weekly_pace !== null && direction !== 'maintain' && calLabel !== 'maintain' ? (
+      {hasPace && !isMaintain && calLabel !== 'maintain' && (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
             Suggested <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>
           </Text>
           <Text style={styles.derivedValue}>{calories_per_day} cal / day</Text>
         </View>
-      ) : null}
+      )}
 
-      {required_weekly_pace === null ? (
+      {!hasPace && (
         <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
-      ) : direction === 'maintain' ? (
+      )}
+      {hasPace && isMaintain && (
         <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
-      ) : (
-        <>
-          {warnings.includes('unrealistic') ? (
-            <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
-          ) : warnings.includes('unhealthy') ? (
-            <Text style={styles.goalWarningText}>Pace is aggressive — a slower target is safer.</Text>
-          ) : null}
-        </>
+      )}
+      {hasPace && !isMaintain && isUnrealistic && (
+        <Text style={styles.goalWarningText}>Pace is unrealistic - consider a longer timeline.</Text>
+      )}
+      {hasPace && !isMaintain && isUnhealthy && (
+        <Text style={styles.goalWarningText}>Pace is aggressive - a slower target is safer.</Text>
       )}
     </View>
+  );
+}
+
+function TrendPanel({ title, mainValue, trendCue, deltaText, paceLevel }) {
+  const isSpike = paceLevel === 'spike';
+  const isNotable = paceLevel === 'notable';
+
+  return (
+    <Card style={styles.trendPanel}>
+      <Text style={styles.trendPanelTitle}>{title}</Text>
+      <View style={styles.trendPanelContent}>
+        <Text style={styles.trendPanelMain}>{mainValue}</Text>
+        {trendCue ? (
+          <Text style={[
+            styles.trendPanelCue,
+            isSpike ? styles.paceSpike : isNotable ? styles.paceNotable : null
+          ]}>
+            {trendCue}
+          </Text>
+        ) : (
+          <Text style={styles.trendPanelCue}>—</Text>
+        )}
+        <Text style={styles.trendPanelDelta}>{deltaText}</Text>
+      </View>
+    </Card>
   );
 }
 
@@ -67,25 +92,64 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const trends = useMemo(() => computeWeightTrends(entries), [entries]);
+  const trends = useMemo(() => {
+    const base = computeWeightTrends(entries);
+    
+    // Compute extra metadata locally to respect #156 Allowed Files scope
+    const referenceDate = new Date();
+    const MS_DAY = 86400000;
+    const pad = (n) => String(n).padStart(2, '0');
+    const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    const cut7_priorStart = localStr(new Date(referenceDate - 13 * MS_DAY));
+    const cut7_priorEnd = localStr(new Date(referenceDate - 7 * MS_DAY));
+    const cut30_priorStart = localStr(new Date(referenceDate - 59 * MS_DAY));
+    const cut30_priorEnd = localStr(new Date(referenceDate - 30 * MS_DAY));
+
+    const w7_prior = entries.filter(e => e.date >= cut7_priorStart && e.date <= cut7_priorEnd);
+    const w30_prior = entries.filter(e => e.date >= cut30_priorStart && e.date <= cut30_priorEnd);
+
+    const mean = (arr) =>
+      arr.length === 0 ? null : arr.reduce((s, e) => s + e.weight_value, 0) / arr.length;
+
+    const priorAvg7 = mean(w7_prior);
+    const priorAvg30 = mean(w30_prior);
+
+    let currentWeight = null;
+    let priorDayWeight = null;
+
+    if (entries.length > 0) {
+      const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+      currentWeight = byDate[0].weight_value;
+      if (byDate.length >= 2) {
+        priorDayWeight = byDate[1].weight_value;
+      }
+    }
+
+    return { 
+      ...base,
+      priorAvg7, 
+      priorAvg30, 
+      currentWeight, 
+      priorDayWeight 
+    };
+  }, [entries]);
+
   const paceLevel = useMemo(() => computeWeightPaceLevel(entries), [entries]);
 
-  // Populate form inputs when a saved goal loads
-  React.useEffect(() => {
+  useEffect(() => {
     if (goal && !goalEditing) {
       setGoalTargetWeight(String(goal.target_weight));
       setGoalTargetDate(goal.target_date);
       setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     }
-  }, [goal]);
+  }, [goal, goalEditing]);
 
   const currentWeight = entries.length > 0 ? entries[0].weight_value : null;
 
   const goalInfo = useMemo(() => {
     const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
     const td = !goalEditing && goal ? goal.target_date : goalTargetDate;
-    // Use the most recent entry weight, falling back to the start weight captured
-    // when the goal was saved (covers the no-entries case).
     const cw = currentWeight
       ?? (!goalEditing && goal ? (goal.start_weight ?? null) : (parseFloat(goalStartWeight) || null));
     if (!cw || isNaN(tw) || !td) return null;
@@ -103,7 +167,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalError('Enter a valid target weight.');
       return;
     }
-    // Require a starting weight when no entries exist
     const startW = currentWeight ?? parseFloat(goalStartWeight);
     if (!currentWeight && (isNaN(startW) || startW <= 0)) {
       setGoalError('Enter your current weight.');
@@ -146,7 +209,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalTargetDate(goal.target_date);
       setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     } else {
-      // Default to one month from now if no goal exists
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
       setGoalTargetDate(d.toISOString().slice(0, 10));
@@ -165,7 +227,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const onDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
-      // Use local date parts to avoid UTC shift
       const y = selectedDate.getFullYear();
       const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const d = String(selectedDate.getDate()).padStart(2, '0');
@@ -230,6 +291,18 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   const displayError = localError || errorMessage;
 
+  const paceMain = trends.currentWeight ? (trends.currentWeight.toFixed(1) + " lb") : "-";
+  const paceCue = trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast') : null;
+  const paceDelta = trends.currentWeight && trends.priorDayWeight ? ("vs previous day: " + formatDelta(trends.currentWeight - trends.priorDayWeight)) : 'vs previous day: -';
+
+  const avg7Main = trends.avg7 ? (trends.avg7.toFixed(1) + " lb") : "-";
+  const avg7Delta = trends.avg7 && trends.priorAvg7 ? ("vs prior 7 days: " + formatDelta(trends.avg7 - trends.priorAvg7)) : 'vs prior 7 days: -';
+  const avg7Cue = trends.avg7 && trends.priorAvg7 ? (trends.avg7 > trends.priorAvg7 ? '↑ Trending up' : trends.avg7 < trends.priorAvg7 ? '↓ Trending down' : '→ Stable') : null;
+
+  const avg30Main = trends.avg30 ? (trends.avg30.toFixed(1) + " lb") : "-";
+  const avg30Delta = trends.avg30 && trends.priorAvg30 ? ("vs prior 30 days: " + formatDelta(trends.avg30 - trends.priorAvg30)) : 'vs prior 30 days: -';
+  const avg30Cue = trends.avg30 && trends.priorAvg30 ? (trends.avg30 > trends.priorAvg30 ? '↑ Trending up' : trends.avg30 < trends.priorAvg30 ? '↓ Trending down' : '→ Stable') : null;
+
   return (
     <ScreenShell
       title="Weight log"
@@ -237,14 +310,14 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       keyboardShouldPersistTaps="handled"
     >
       <Card style={editingId ? styles.editingCard : null}>
-        {editingId ? (
+        {editingId && (
           <View style={styles.editingHeader}>
             <Text style={styles.editingTitle}>Editing entry</Text>
             <Pressable onPress={cancelEdit}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
           </View>
-        ) : null}
+        )}
         {displayError ? (
           <Text style={styles.errorText}>{displayError}</Text>
         ) : null}
@@ -273,10 +346,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         />
       </Card>
 
+      <SectionTitle>Goals</SectionTitle>
       <Card style={styles.goalCard}>
         <View style={styles.goalHeader}>
           <Text style={styles.goalTitle}>Goal</Text>
-          {goal && !goalEditing ? (
+          {goal && !goalEditing && (
             <View style={styles.goalHeaderActions}>
               <Pressable onPress={startEditGoal} hitSlop={8}>
                 <Text style={styles.goalActionText}>Edit</Text>
@@ -285,18 +359,18 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 <Text style={[styles.goalActionText, styles.goalClearText]}>Clear</Text>
               </Pressable>
             </View>
-          ) : null}
-          {goalEditing && goal ? (
+          )}
+          {goalEditing && goal && (
             <Pressable onPress={cancelEditGoal} hitSlop={8}>
               <Text style={styles.goalActionText}>Cancel</Text>
             </Pressable>
-          ) : null}
+          )}
         </View>
 
         {(!goal || goalEditing) ? (
           <View style={styles.goalForm}>
             {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
-            {!currentWeight ? (
+            {!currentWeight && (
               <>
                 <Text style={styles.inputLabel}>Current weight (lb)</Text>
                 <TextInput
@@ -308,7 +382,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                   style={styles.input}
                 />
               </>
-            ) : null}
+            )}
             <Text style={styles.inputLabel}>Target</Text>
             <TextInput
               value={goalTargetWeight}
@@ -336,13 +410,13 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 minimumDate={new Date()}
               />
             )}
-            {goalInfo ? (
+            {goalInfo && (
               <View style={styles.formDerived}>
                 <View style={styles.goalDivider} />
                 <GoalDerived info={goalInfo} />
                 <View style={[styles.goalDivider, { marginBottom: 8 }]} />
               </View>
-            ) : null}
+            )}
             <Button onPress={handleSaveGoal} title="Save goal" />
           </View>
         ) : (
@@ -360,38 +434,33 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             
             <View style={styles.goalDivider} />
             
-            {goalInfo ? <GoalDerived info={goalInfo} /> : null}
+            {goalInfo && <GoalDerived info={goalInfo} />}
           </View>
         )}
       </Card>
 
-      {(trends.avg7 !== null || trends.avg30 !== null) ? (
-        <Card style={styles.trendsCard}>
-          <Text style={styles.trendsTitle}>Trends</Text>
-          <View style={styles.trendsRow}>
-            {trends.avg7 !== null ? (
-              <View style={styles.trendItem}>
-                <Text style={styles.trendValue}>{trends.avg7.toFixed(1)} lb</Text>
-                <Text style={styles.trendLabel}>7-day avg</Text>
-              </View>
-            ) : null}
-            {trends.avg30 !== null ? (
-              <View style={styles.trendItem}>
-                <Text style={styles.trendValue}>{trends.avg30.toFixed(1)} lb</Text>
-                <Text style={styles.trendLabel}>30-day avg</Text>
-              </View>
-            ) : null}
-            {trends.paceFlag ? (
-              <View style={styles.trendItem}>
-                <Text style={[styles.trendValue, paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
-                  {trends.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
-                </Text>
-                <Text style={styles.trendLabel}>pace flag</Text>
-              </View>
-            ) : null}
-          </View>
-        </Card>
-      ) : null}
+      <SectionTitle>Trends</SectionTitle>
+      <View style={styles.trendsSection}>
+        <TrendPanel
+          title="Pace"
+          mainValue={paceMain}
+          trendCue={paceCue}
+          deltaText={paceDelta}
+          paceLevel={paceLevel}
+        />
+        <TrendPanel
+          title="7-day rolling"
+          mainValue={avg7Main}
+          trendCue={avg7Cue}
+          deltaText={avg7Delta}
+        />
+        <TrendPanel
+          title="30-day rolling"
+          mainValue={avg30Main}
+          trendCue={avg30Cue}
+          deltaText={avg30Delta}
+        />
+      </View>
 
       <SectionTitle>History</SectionTitle>
       <View style={styles.historyList}>
@@ -399,14 +468,16 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           const nextEntry = entries[index + 1];
           const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
           const severity = getWeightDeltaSeverity(delta);
+          const isLast = index === entries.length - 1;
+          const isActive = editingId === entry.id;
 
           return (
             <View 
               key={entry.id} 
               style={[
                 styles.historyRowContainer,
-                editingId === entry.id && styles.activeEntryRow,
-                index === entries.length - 1 && styles.lastHistoryRow
+                isActive && styles.activeEntryRow,
+                isLast && styles.lastHistoryRow
               ]}
             >
               <Pressable 
@@ -434,11 +505,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                   </View>
                   <Text style={styles.rowDate}>{formatDate(entry.logged_at)}</Text>
                 </View>
-                {entry.note ? (
+                {entry.note && (
                   <Text style={styles.rowNote} numberOfLines={1}>
                     {entry.note}
                   </Text>
-                ) : null}
+                )}
               </Pressable>
               <Pressable 
                 onPress={() => handleDelete(entry.id)} 
@@ -453,9 +524,9 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             </View>
           );
         })}
-        {entries.length === 0 ? (
+        {entries.length === 0 && (
           <Text style={styles.emptyText}>No weight entries yet.</Text>
-        ) : null}
+        )}
       </View>
     </ScreenShell>
   );
@@ -594,30 +665,36 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     fontSize: 15,
   },
-  trendsCard: {
-    gap: 10,
+  trendsSection: {
+    gap: 12,
   },
-  trendsTitle: {
+  trendPanel: {
+    gap: 4,
+    padding: 16,
+  },
+  trendPanelTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  trendsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 20,
-  },
-  trendItem: {
+  trendPanelContent: {
     gap: 2,
   },
-  trendValue: {
-    fontSize: 17,
-    fontWeight: '700',
+  trendPanelMain: {
+    fontSize: 20,
+    fontWeight: '900',
     color: Colors.text,
   },
-  trendLabel: {
-    fontSize: 11,
+  trendPanelCue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  trendPanelDelta: {
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.textMuted,
   },
   paceSpike: {
