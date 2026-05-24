@@ -134,10 +134,6 @@ export function StatsScreen({ multiplier, section }) {
     return { signals, oneK, workoutDayCount, nameDisplayMap };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
 
-  const workoutCount = useMemo(() => {
-    return String(analytics?.workoutDayCount ?? 0);
-  }, [analytics]);
-
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));
   }
@@ -334,7 +330,6 @@ export function StatsScreen({ multiplier, section }) {
 function classifBadgeColor(label) {
   switch (label) {
     case 'progressing':  return { color: '#4ade80' };
-    case 'regressing':   return { color: Colors.error };
     case 'initial':
     case 'stalled':
     case 'inconsistent': return { color: Colors.textMuted };

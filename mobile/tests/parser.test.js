@@ -1317,6 +1317,15 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.overload_trend).toBe('first_session');
   });
 
+  test('multi-row plain-row block does not fabricate sessions — still first_session', () => {
+    // Two rows within one occurrence (e.g. progressive sets in one workout) must not be
+    // compared as separate sessions. Without date markers, the whole occurrence is one unit.
+    const { sections } = parseWorkoutNote('-Bench\n80 8\n90 6');
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('first_session');
+    expect(sig.progression_status).toBe('first_session');
+  });
+
   test('overload_trend up when latest top weight exceeds prior', () => {
     const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 8';
     const { sections } = parseWorkoutNote(note);

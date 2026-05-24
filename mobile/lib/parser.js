@@ -608,10 +608,7 @@ export function deriveProgressionSignals(sections, trackedNames) {
       // participate in the comparison rather than dropping inline occurrences.
       const comparable = occs.flatMap(occ => {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
-        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
-        // Plain-row format: treat each row as a separate session unit when multiple rows exist.
-        const rows = occ.rows || [];
-        return rows.length > 1 ? rows.map(r => ({ sets: r.sets })) : [occ];
+        return valid.length > 0 ? valid.map(se => ({ sets: se.sets })) : [occ];
       });
 
       // Walk backward to find the two most recent comparable units with computable PRs.
