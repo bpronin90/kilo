@@ -335,14 +335,14 @@ function classifSection(name, entries) {
 function w(weight, rep_count) { return { weight_value: weight, rep_count }; }
 
 describe('classifyExerciseSessions', () => {
-  test('fewer than 2 logged sessions → null', () => {
-    const sections = [classifSection('Squat', [w(225, 5)])];
-    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBeNull();
-  });
-
   test('no logged sessions → null', () => {
     const sections = [classifSection('Squat', ['skip', 'skip'])];
     expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBeNull();
+  });
+
+  test('exactly 1 logged session → initial', () => {
+    const sections = [classifSection('Squat', [w(225, 5)])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('initial');
   });
 
   test('exercise absent from note → null', () => {

@@ -53,6 +53,7 @@ export function getWeightDeltaSeverity(delta) {
 // Format a session classification label for display.
 export function formatSessionClassification(label) {
   switch (label) {
+    case 'initial':      return 'Initial';
     case 'progressing':  return '↑ Progressing';
     case 'stalled':      return '→ Stalled';
     case 'regressing':   return '↓ Regressing';

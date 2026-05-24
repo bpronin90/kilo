@@ -331,9 +331,9 @@ export function StatsScreen({ multiplier, section }) {
 
 function formatStatus(status) {
   switch (status) {
-    case 'improved': return 'Improved';
-    case 'held': return 'Held';
-    case 'regressed': return 'Regressed';
+    case 'improved': return 'Improving';
+    case 'held': return 'Steady';
+    case 'regressed': return 'Regressing';
     case 'first_session': return 'Initial';
     default: return '—';
   }
@@ -343,7 +343,8 @@ function classifBadgeColor(label) {
   switch (label) {
     case 'progressing':  return { color: '#4ade80' };
     case 'regressing':   return { color: Colors.error };
-    case 'stalled':      return { color: Colors.textMuted };
+    case 'initial':
+    case 'stalled':
     case 'inconsistent': return { color: Colors.textMuted };
     default:             return {};
   }

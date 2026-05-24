@@ -399,7 +399,8 @@ function _topWeight(sets) {
 function _classifyEntries(allEntries) {
   const window = allEntries.slice(-3);
   const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
-  if (logged.length < 2) return null;
+  if (logged.length === 0) return null;
+  if (logged.length === 1) return 'initial';
 
   const hasSkip = window.some(se => se.skipped);
   const latest = logged[logged.length - 1];
