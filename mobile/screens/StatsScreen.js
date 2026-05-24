@@ -294,9 +294,11 @@ export function StatsScreen({ multiplier, section }) {
                     </Text>
                   ) : null}
                 </View>
-                <Badge status={sig.progression_status}>
-                  {formatStatus(sig.progression_status)}
-                </Badge>
+                {sig.progression_status !== 'first_session' && (
+                  <Badge status={sig.progression_status}>
+                    {formatStatus(sig.progression_status)}
+                  </Badge>
+                )}
               </View>
               <View style={styles.signalMeta}>
                 <View style={styles.signalMetaItem}>
