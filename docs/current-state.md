@@ -167,7 +167,11 @@ The real native app path now has a modular React Native shell:
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
-  in error red and warmup/non-lifting fallbacks stay standard text; Android
+  in error red and warmup/non-lifting fallbacks stay standard text. The same
+  save path now also persists workout-note `skip_markers`
+  (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
+  downstream analytics consumers read stored skip/attendance state instead of
+  recomputing it during render; Android
   back now exits edit subviews before falling through to tab-level navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
@@ -240,8 +244,9 @@ The real native app path now has a modular React Native shell:
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
-  alongside the retained `tracked_exercises` and
-  `one_k_exercises` selections. It also persists a lightweight weight-goal
+  alongside the retained `tracked_exercises`, `one_k_exercises`,
+  `skip_markers`, and `attendance_flags` fields. It also persists a
+  lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`,
   optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
   multiplier under
