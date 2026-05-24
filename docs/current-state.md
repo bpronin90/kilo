@@ -199,11 +199,14 @@ The real native app path now has a modular React Native shell:
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
   summary averages, alongside a `1K Progress` card, strength-only 1k
-  slot selection, and a `Progressive Overload` list whose rows surface
-  progression status, estimated 1RM, and a Kilo max derived from the average
-  Epley value across non-warmup tracked sets times a user-tunable fatigue
-  multiplier (default `1.07`) shown together, plus latest top weight and
-  overload trend.
+  slot selection, and a `Progressive Overload` list with a single sticky
+  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`).
+  The list now keeps per-exercise session classifications persisted on note
+  save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`; `Regressing`
+  remains a trend-only signal), surfaces estimated 1RM and Kilo max together,
+  shows either latest top weight in pounds or best-set reps for bodyweight
+  exercises, and renders the trend column as `↑`, `↔`, `↓`, or `—` based on
+  the latest comparable session pair.
   Its mount-time entry state is now stabilized so Analytics no longer visibly
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they
@@ -399,7 +402,9 @@ The MVP canonical parse path is fully implemented and tested.
   to the prior comparable result, returning improved, held, regressed, or
   first-session progression status plus latest-session estimated 1RM, all-time
   Kilo max, latest top weight, overload trend, and same-session top-weight
-  `repeatability_score`.
+  `repeatability_score`. Exercises with no weighted sets fall back to a
+  bodyweight path that compares session-level total reps and surfaces the best
+  set reps in place of top weight.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, legacy helpers)
 still exists for seeded-history compatibility and other browser-runtime

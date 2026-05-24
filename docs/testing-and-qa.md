@@ -259,6 +259,14 @@ Provides the global runtime contract required by the prototype:
 - covers `deriveTrackedPRs` caller-order behavior and `derive1kTotal`
   aggregation behavior, including missing-lift null totals, mixed-weight rows,
   changing tracked selections, and best-set selection across multiple days
+- covers `classifyExerciseSessions`, including single-session `Initial`,
+  majority-of-sets progression, same-weight rep-drop regression threshold,
+  skip-window inconsistency, alias-aware tracked-name resolution, and plain-row
+  occurrence handling
+- covers `deriveProgressionSignals`, including bodyweight rep-fallback
+  behavior, same-weight total-rep trend tiebreaks, and the guard that a
+  multi-row plain-row block still counts as one comparable session rather than
+  fabricating history
 
 ### `mobile/tests/storage.test.js`
 
