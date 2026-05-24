@@ -374,6 +374,20 @@ function _avgRepsAtWeight(sets, weight) {
   return matching.reduce((sum, s) => sum + s.rep_count, 0) / matching.length;
 }
 
+// Returns true when a majority of sets at the given weight improved vs the prior session.
+// Compares sorted rep counts positionally so set-recording order doesn't matter.
+function _majorityOfSetsImproved(latestSets, priorSets, weight) {
+  const latest = latestSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
+  const prior = priorSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
+  const pairs = Math.min(latest.length, prior.length);
+  if (pairs === 0) return false;
+  let improved = 0;
+  for (let i = 0; i < pairs; i++) {
+    if (latest[i] > prior[i]) improved++;
+  }
+  return improved > pairs / 2;
+}
+
 function _topWeight(sets) {
   const weighted = sets.filter(s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0);
   if (weighted.length === 0) return null;
@@ -401,13 +415,9 @@ function _classifyEntries(allEntries) {
     if (priorAvg - latestAvg > 2) return 'regressing';
   }
 
-  // progressing: top weight increased, or same weight with avg reps improved
+  // progressing: top weight increased, or same weight with majority of sets showing higher reps
   if (latestTop > priorTop) return 'progressing';
-  if (latestTop === priorTop) {
-    const latestAvg = _avgRepsAtWeight(latest.sets, latestTop);
-    const priorAvg = _avgRepsAtWeight(prior.sets, priorTop);
-    if (latestAvg > priorAvg) return 'progressing';
-  }
+  if (latestTop === priorTop && _majorityOfSetsImproved(latest.sets, prior.sets, latestTop)) return 'progressing';
 
   // stalled: same top weight, same rep distribution at top weight
   if (latestTop === priorTop) {

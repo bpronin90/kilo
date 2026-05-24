@@ -23,19 +23,22 @@ function _stripLeadingFlag(s) {
 }
 
 // Normalize a workout row string before tokenization.
-// Splits on " - " to separate parseable set segments from inline prose notes.
+// Strips trailing *annotation suffixes (PR marks, tempo notes, etc.), then
+// splits on " - " to separate parseable set segments from inline prose notes.
 // Each segment is flag-stripped and validated (must consist only of digits,
 // commas, dots, and spaces). Valid segments are joined; prose is dropped.
 // Falls back to the original trimmed string if no segments are parseable.
 function _preprocessWorkoutRow(trimmed) {
-  if (!trimmed.includes(' - ')) return _stripLeadingFlag(trimmed);
+  // Drop trailing "* ..." or "*word" annotations (same rule as exercise name normalization)
+  const noAnnotation = trimmed.replace(/\s+\*.*$/, '').trim();
+  if (!noAnnotation.includes(' - ')) return _stripLeadingFlag(noAnnotation);
 
   const parseable = [];
-  for (const seg of trimmed.split(' - ')) {
+  for (const seg of noAnnotation.split(' - ')) {
     const stripped = _stripLeadingFlag(seg.trim());
     if (/^[\d.,\s]+$/.test(stripped)) parseable.push(stripped.trim());
   }
-  return parseable.length > 0 ? parseable.join(' ') : trimmed;
+  return parseable.length > 0 ? parseable.join(' ') : noAnnotation;
 }
 
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+

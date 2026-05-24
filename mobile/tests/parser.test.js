@@ -1503,6 +1503,36 @@ describe('parseWorkoutNote — session_entries', () => {
     expect(bench.session_entries).toHaveLength(2);
     expect(deadlift.session_entries).toHaveLength(2);
   });
+
+  test('session entry with trailing *annotation parses sets correctly (not unparsed)', () => {
+    // Common real-world annotation: user marks a PR with "* PR"
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(1);
+    expect(ex.session_entries[0].unparsed).toBeFalsy();
+    expect(ex.session_entries[0].sets).toHaveLength(3);
+    expect(ex.session_entries[0].sets[0].weight_value).toBe(225);
+    expect(ex.session_entries[0].sets[0].rep_count).toBe(5);
+  });
+
+  test('session entry with *annotation in multi-weight row parses all sets', () => {
+    // "215 5 225 5,5,5 *top set" — annotation should not corrupt the sets
+    const r = parseWorkoutNote('-Squat\n- 215 5 225 5,5,5 *top set');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries[0].unparsed).toBeFalsy();
+    expect(ex.session_entries[0].sets).toHaveLength(4);
+    expect(ex.session_entries[0].sets[3].weight_value).toBe(225);
+  });
+
+  test('multiple session entries: annotated and plain both produce parseable sets', () => {
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5\n- 235 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(2);
+    expect(ex.session_entries[0].sets).toHaveLength(3);
+    expect(ex.session_entries[1].unparsed).toBeFalsy();
+    expect(ex.session_entries[1].sets).toHaveLength(3);
+    expect(ex.session_entries[1].sets[0].weight_value).toBe(235);
+  });
 });
 
 // ── buildSessionsFromNote ─────────────────────────────────────────────────────

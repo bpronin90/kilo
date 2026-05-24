@@ -355,12 +355,31 @@ describe('classifyExerciseSessions', () => {
     expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
   });
 
-  test('progressing — same weight, higher avg reps', () => {
+  test('progressing — same weight, majority of sets have higher reps (all improved)', () => {
     const sections = [classifSection('Squat', [
       [w(225, 5), w(225, 5)],
       [w(225, 6), w(225, 6)],
     ])];
     expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
+  test('progressing — same weight, majority of sets improved even with one regressed set', () => {
+    // prior [5,5,5], latest [6,6,3] → 2 of 3 improved → majority → progressing
+    const sections = [classifSection('Squat', [
+      [w(225, 5), w(225, 5), w(225, 5)],
+      [w(225, 6), w(225, 6), w(225, 3)],
+    ])];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
+  test('NOT progressing — same weight, exactly half sets improved (not majority)', () => {
+    // prior [5,5], latest [6,4] → 1 of 2 improved = 50%, not majority
+    const sections = [classifSection('Squat', [
+      [w(225, 5), w(225, 5)],
+      [w(225, 6), w(225, 4)],
+    ])];
+    const result = classifyExerciseSessions(sections, ['Squat'])['squat'];
+    expect(result).not.toBe('progressing');
   });
 
   test('regressing — top-set weight dropped', () => {
