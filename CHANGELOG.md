@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.36.1 - 2026-05-24
+
+- Issue #161: Added persisted workout skip markers and attendance flags to the
+  native workout-note save path, including exercise-level skip tracking,
+  fully-skipped day detection, 30-day repeated-weekday attendance flags, and
+  cross-section consecutive-skip detection that preserves catalog rename
+  continuity. Reviewer closeout updated `docs/current-state.md` and
+  `docs/architecture.md` to match and bumped the app version.
+
 ## 0.36.0 - 2026-05-24
 
 - Issue #159: Added persisted per-exercise session classifications to native

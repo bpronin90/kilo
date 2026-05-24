@@ -142,10 +142,11 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), and the multi-note workout store
-  (`kilo_workout_notes` and `kilo_current_workout_id`), while retaining the
-  legacy session key only as a migration source and the old single-note key as
-  both a migration source into the notebook model and a backup-compatibility
-  fallback
+  (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
+  documents now also carry persisted `skip_markers` and `attendance_flags`
+  alongside tracked-lift and 1k-slot selections, while the legacy session key
+  remains only a migration source and the old single-note key remains both a
+  migration source into the notebook model and a backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -211,7 +212,7 @@ routine while still deriving each visible lift's trend from all routine notes.
 User types in native Weight or Log form
   → App.js save handler calls native parser (`parseWeightEntry`) or workout-note save path
   → on error: save is blocked in the handler
-  → on ok: App.js builds a canonical weight entry via `makeWeightEntry`, or upserts the selected titled workout note through `useWorkoutNotes`
+  → on ok: App.js builds a canonical weight entry via `makeWeightEntry`, or parses the workout note, derives persisted session classifications plus skip/attendance metadata, and upserts the selected titled workout note through `useWorkoutNotes`
   → `useWeightEntries` / `useWorkoutNotes` writes through `mobile/storage/entries.js`
   → AsyncStorage persists the updated weight list, workout-notes array, and current-workout id
   → hook state updates
@@ -317,7 +318,7 @@ User types in weight input
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises` and `one_k_exercises` selections |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `skip_markers`, and `attendance_flags` fields |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
