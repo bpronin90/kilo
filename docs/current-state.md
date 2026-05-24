@@ -146,8 +146,10 @@ The real native app path now has a modular React Native shell:
   exercise name, inline `—` skip markers for bare `-` lines, the current
   routine rendered as a title-first card whose header row toggles a persisted
   collapsed/expanded state (`kilo_log_current_collapsed`, surviving tab
-  navigation and app restarts) with the in-card `Edit note` action as the only
-  edit affordance now that the top header `Edit` button is removed, explicit
+  navigation and app restarts) with a double-tap on the expanded rendered note
+  body as the only in-body edit affordance (now that the explicit `Edit note`
+  button and top header `Edit` button are removed), where the rendered body
+  remains scroll-first and supports partial text selection, explicit
   `Save` actions that persist
   raw-note edits directly through the current workout-note store, keep the
   editor open, and show a transient `Saved!` button confirmation, exit prompts

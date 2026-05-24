@@ -48,6 +48,23 @@ export function LogScreen({
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
   const keyboardVisibleRef = useRef(false);
+  const lastTapRef = useRef(0);
+  const readScrollYRef = useRef(0);
+
+  const handleReadScroll = (e) => {
+    readScrollYRef.current = e.nativeEvent.contentOffset.y;
+  };
+
+  const handleNoteBodyPress = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      enterCurrentEditor();
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  };
   const keyboardExitTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -209,9 +226,10 @@ export function LogScreen({
   };
 
   const enterCurrentEditor = () => {
+    const scrollY = readScrollYRef.current;
     setMode('edit');
     requestAnimationFrame(() => {
-      editorScrollRef.current?.scrollTo({ y: 0, animated: false });
+      editorScrollRef.current?.scrollTo({ y: scrollY, animated: false });
     });
   };
 
@@ -452,15 +470,16 @@ export function LogScreen({
   const isEditing = !!editingNoteId || mode === 'edit';
 
   useEffect(() => {
-    if (isEditing) {
+    if (editingNoteId) {
       editorScrollRef.current?.scrollTo({ y: 0, animated: false });
     }
-  }, [isEditing, editingNoteId]);
+  }, [editingNoteId]);
 
   return (
     <>
       <ScreenShell
         ref={readScrollRef}
+        onScroll={handleReadScroll}
         style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
         subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
@@ -484,18 +503,24 @@ export function LogScreen({
                     </View>
                   </Pressable>
 
-                  <View style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}>
+                  <Pressable 
+                    onPress={handleNoteBodyPress}
+                    style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
+                  >
                     {dayGroups.map((group, gi) => (
                       <View key={`day-${gi}`}>
                         {group.heading && (
-                          <WorkoutHeading style={gi === 0 ? { marginTop: 0 } : null}>
+                          <WorkoutHeading 
+                            selectable={true}
+                            style={gi === 0 ? { marginTop: 0 } : null}
+                          >
                             {group.heading}
                           </WorkoutHeading>
                         )}
                         {group.sections.map((section, si) => (
                           <View key={`section-${gi}-${si}`}>
                             {section.subheading && (
-                              <WorkoutSubheading>{section.subheading}</WorkoutSubheading>
+                              <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
                             )}
                             {section.exercises.map((ex, ei) => (
                               <ExerciseBlock
@@ -503,15 +528,16 @@ export function LogScreen({
                                 name={ex.name}
                                 isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
                                 onToggleTrack={() => handleToggleTrack(ex.name)}
+                                selectable={true}
                               >
                                 {ex.rows.map((row, ri) => (
-                                  <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} />
+                                  <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
                                 ))}
                                 {ex.session_entries.filter(e => e.skipped).map((_, ski) => (
-                                  <Text key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
+                                  <Text selectable={true} key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
                                 ))}
                                 {ex.unparsed_rows.map((u, ui) => (
-                                  <Text key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                                  <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
                                 ))}
                               </ExerciseBlock>
                             ))}
@@ -520,15 +546,9 @@ export function LogScreen({
                       </View>
                     ))}
                     {!dayGroups.length && (
-                      <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
+                      <Text selectable={true} style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
                     )}
-                    <Button
-                      onPress={enterCurrentEditor}
-                      title="Edit note"
-                      style={styles.editButton}
-                      textStyle={styles.editButtonText}
-                    />
-                  </View>
+                  </Pressable>
                 </Card>
               </View>
             )}

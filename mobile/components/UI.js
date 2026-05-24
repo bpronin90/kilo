@@ -79,26 +79,26 @@ export function Chip({ children }) {
   );
 }
 
-export function WorkoutHeading({ children, style }) {
-  return <Text style={[styles.workoutHeading, style]}>{children}</Text>;
+export function WorkoutHeading({ children, style, selectable }) {
+  return <Text selectable={selectable} style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
-export function WorkoutSubheading({ children }) {
+export function WorkoutSubheading({ children, selectable }) {
   return (
     <View style={styles.subheadingContainer}>
-      <Text style={styles.workoutSubheading}>{children}</Text>
+      <Text selectable={selectable} style={styles.workoutSubheading}>{children}</Text>
       <View style={styles.subheadingLine} />
     </View>
   );
 }
 
-export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack }) {
+export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable }) {
   const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
 
   return (
     <View style={styles.exerciseBlock}>
       <View style={styles.exerciseHeader}>
-        <Text style={styles.exerciseName}>{name}</Text>
+        <Text selectable={selectable} style={styles.exerciseName}>{name}</Text>
         {(onToggleTrack || disabledTrack) && (
           <TrackContainer 
             onPress={disabledTrack ? null : onToggleTrack}
@@ -110,7 +110,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
               disabledTrack ? styles.trackToggleDisabled : null
             ]}
           >
-            <Text style={[
+            <Text selectable={selectable} style={[
               styles.trackToggleText,
               isTracked ? styles.trackToggleTextActive : null,
               disabledTrack ? styles.trackToggleTextDisabled : null
@@ -127,7 +127,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
   );
 }
 
-export function SetLine({ sets }) {
+export function SetLine({ sets, selectable }) {
   if (!sets || sets.length === 0) return null;
   
   const groups = [];
@@ -145,8 +145,8 @@ export function SetLine({ sets }) {
     <View style={styles.setLine}>
       {groups.map((group, i) => (
         <View key={i} style={styles.setGroup}>
-          <Text style={styles.setWeight}>{group.weight ? `${group.weight} lb` : 'BW'}</Text>
-          <Text style={styles.setReps}>{group.reps.join(', ')}</Text>
+          <Text selectable={selectable} style={styles.setWeight}>{group.weight ? `${group.weight} lb` : 'BW'}</Text>
+          <Text selectable={selectable} style={styles.setReps}>{group.reps.join(', ')}</Text>
         </View>
       ))}
     </View>
