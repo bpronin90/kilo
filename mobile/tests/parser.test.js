@@ -1410,6 +1410,16 @@ describe('deriveProgressionSignals — single-block multi-session entries', () =
     expect(sig.latest_pr).toBeCloseTo(epleyPR(230, 5));
   });
 
+  test('tracked name in lowercase resolves to title-case analytics entry (non-aliased exercise)', () => {
+    // trackedLifts stores names lowercase; analytics stores them with original note casing.
+    // _findExercise must match case-insensitively so non-aliased exercises are not silently dropped.
+    const note = '-Hammer Curl\n- 35 10,10,10\n- 40 10,10,10';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['hammer curl']).exercises[0];
+    expect(sig.latest_pr).not.toBeNull();
+    expect(sig.progression_status).toBe('improved');
+  });
+
   test('mixed-history: inline occurrence + session-entry occurrence both participate', () => {
     // Monday uses inline sets; Wednesday uses a session-entry line.
     // Both must participate so the comparison yields improved, not first_session.

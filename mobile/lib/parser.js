@@ -507,11 +507,13 @@ function _canonicalizeName(name) {
 }
 
 // Looks up a target name in an analytics exercises array using canonical keys.
-// Since deriveWorkoutAnalytics stores exercises under canonical names, this is an exact lookup
-// after canonicalizing the target.
+// Primary: exact match after canonicalization. Fallback: case-insensitive match
+// so tracked names stored in lowercase still resolve to title-cased analytics entries.
 function _findExercise(exercises, targetName) {
   const canonical = _canonicalizeName(targetName);
-  return exercises.find(e => e.name === canonical) || null;
+  return exercises.find(e => e.name === canonical)
+      || exercises.find(e => e.name.toLowerCase() === canonical.toLowerCase())
+      || null;
 }
 
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
