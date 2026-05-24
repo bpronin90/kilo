@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.25 - 2026-05-24
+
+- Issue #150: Updated the native Log current-routine read view so the expanded
+  rendered note body is scroll-first and partially selectable, single taps stay
+  inert, double tap enters raw edit, and the editor now preserves the rendered
+  note's approximate scroll position on read-to-edit transition. Reviewer
+  closeout also replaced the initial scroll-tracking state with a ref to avoid
+  unnecessary re-renders in the long-note scroll path, and updated
+  `docs/current-state.md` to match.
+
 ## 0.35.24 - 2026-05-24
 
 - Issue #146: Finalized the native Log current-routine editor exit behavior on

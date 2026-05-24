@@ -146,30 +146,33 @@ The real native app path now has a modular React Native shell:
   exercise name, inline `—` skip markers for bare `-` lines, the current
   routine rendered as a title-first card whose header row toggles a persisted
   collapsed/expanded state (`kilo_log_current_collapsed`, surviving tab
-  navigation and app restarts) with the in-card `Edit note` action as the only
-  edit affordance now that the top header `Edit` button is removed, explicit
-  `Save` actions that persist
-  raw-note edits directly through the current workout-note store, keep the
-  editor open, and show a transient `Saved!` button confirmation, exit prompts
-  so leaving an editor with unsaved changes via `Done` or Android back asks to
-  discard a never-saved note or to save/discard an existing note, and for the
-  current routine specifically exiting raw edit now returns consistently to the
-  top of the rendered note as the accepted fallback behavior, a bottom
-  `More Routines` list that keeps each non-current routine collapsed to a
-  compact row that can either reopen its raw-note editor or mark that routine
-  current
-  through an inline action, plus routine create/rename/delete controls with
-  confirmation and current-selection cleanup guardrails; switching the current
-  workout now requires explicit confirmation, and offers a save-and-switch or
-  switch-anyway choice when there are unsaved edits. The read view now also routes parsed `SetLine`
-  rows plus fallback unparsed/skip rows through one shared set-row typography
-  token so Log-tab rows render at a uniform size without the earlier stray
-  italics; Android back now exits edit subviews before falling through to
-  tab-level navigation. A fresh install with no logged routines now renders a
-  dedicated `LogEmptyState` surface — short explanatory copy, a `New Routine`
-  primary action, and an example-format card — instead of auto-opening the
-  editor or keyboard, and that empty state is gated on the workout-note load so
-  existing users do not see it flash before their routine appears
+  navigation and app restarts) with a double-tap on the expanded rendered note
+  body as the only in-body edit affordance (now that the explicit `Edit note`
+  button and top header `Edit` button are removed), where the rendered body
+  remains scroll-first and supports partial text selection, and where entering
+  raw edit from a scrolled rendered note keeps the editor aligned to that same
+  approximate scroll position. Explicit `Save` actions persist raw-note edits
+  directly through the current workout-note store, keep the editor open, and
+  show a transient `Saved!` button confirmation, exit prompts so leaving an
+  editor with unsaved changes via `Done` or Android back asks to discard a
+  never-saved note or to save/discard an existing note, and for the current
+  routine specifically exiting raw edit now returns consistently to the top of
+  the rendered note as the accepted fallback behavior, a bottom `More Routines`
+  list that keeps each non-current routine collapsed to a compact row that can
+  either reopen its raw-note editor or mark that routine current through an
+  inline action, plus routine create/rename/delete controls with confirmation
+  and current-selection cleanup guardrails; switching the current workout now
+  requires explicit confirmation, and offers a save-and-switch or
+  switch-anyway choice when there are unsaved edits. The read view now also
+  routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
+  shared set-row typography token so Log-tab rows render at a uniform size
+  without the earlier stray italics; Android back now exits edit subviews
+  before falling through to tab-level navigation. A fresh install with no
+  logged routines now renders a dedicated `LogEmptyState` surface — short
+  explanatory copy, a `New Routine` primary action, and an example-format card
+  — instead of auto-opening the editor or keyboard, and that empty state is
+  gated on the workout-note load so existing users do not see it flash before
+  their routine appears
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
