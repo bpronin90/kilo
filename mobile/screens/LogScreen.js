@@ -537,7 +537,7 @@ export function LogScreen({
                                   <Text selectable={true} key={`skip-${gi}-${si}-${ei}-${ski}`} style={styles.skipMarker}>—</Text>
                                 ))}
                                 {ex.unparsed_rows.map((u, ui) => (
-                                  <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRow}>{u}</Text>
+                                  <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                 ))}
                               </ExerciseBlock>
                             ))}
@@ -717,6 +717,11 @@ const styles = StyleSheet.create({
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
     color: Colors.error,
+    paddingLeft: 0,
+  },
+  unparsedRowMuted: {
+    fontSize: SET_ROW_FONT_SIZE,
+    color: Colors.textMuted,
     paddingLeft: 0,
   },
   emptyText: {
