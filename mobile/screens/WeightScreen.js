@@ -5,9 +5,90 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
-import { formatDate, formatTimestamp, formatDelta, getWeightDeltaSeverity } from '../lib/format';
+import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
+
+const MS_DAY = 86400000;
+
+function formatDayKey(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function meanWeight(entries) {
+  return entries.length === 0
+    ? null
+    : entries.reduce((sum, entry) => sum + entry.weight_value, 0) / entries.length;
+}
+
+function formatTrendValue(value) {
+  return value !== null ? `${value.toFixed(1)} lb` : '-';
+}
+
+function formatTrendDeltaValue(currentValue, priorValue) {
+  return currentValue !== null && priorValue !== null
+    ? formatDelta(currentValue - priorValue)
+    : '-';
+}
+
+function formatTrendCue(currentValue, priorValue) {
+  if (currentValue === null || priorValue === null) return '-';
+  if (currentValue > priorValue) return '↑ Gaining';
+  if (currentValue < priorValue) return '↓ Losing';
+  return '→ Stable';
+}
+
+function deriveTrendSummary(entries, referenceDate = new Date()) {
+  const base = computeWeightTrends(entries, referenceDate);
+
+  // Trend windows operate on entry.date, the normalized YYYY-MM-DD day key
+  // already used by the shared weight-trend helpers. History rows still
+  // display entry.logged_at as the recorded timestamp shown to the user.
+  // This screen only derives the additional comparison fields the merged
+  // Trends card needs while staying within #156's Allowed Files scope.
+  const prior7Start = formatDayKey(new Date(referenceDate - 13 * MS_DAY));
+  const prior7End = formatDayKey(new Date(referenceDate - 7 * MS_DAY));
+  const prior30Start = formatDayKey(new Date(referenceDate - 59 * MS_DAY));
+  const prior30End = formatDayKey(new Date(referenceDate - 30 * MS_DAY));
+
+  const prior7Entries = entries.filter((entry) => entry.date >= prior7Start && entry.date <= prior7End);
+  const prior30Entries = entries.filter((entry) => entry.date >= prior30Start && entry.date <= prior30End);
+  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+
+  return {
+    ...base,
+    priorAvg7: meanWeight(prior7Entries),
+    priorAvg30: meanWeight(prior30Entries),
+    currentWeight: byDate[0]?.weight_value ?? null,
+    priorDayWeight: byDate[1]?.weight_value ?? null,
+  };
+}
+
+function buildTrendSections(trends, paceLevel) {
+  return [
+    {
+      title: 'Pace',
+      col1: { label: 'Current', value: formatTrendValue(trends.currentWeight) },
+      col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight) },
+      col3: { label: 'Trend', value: trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-' },
+      paceLevel,
+    },
+    {
+      title: '7-day rolling',
+      col1: { label: 'Average', value: formatTrendValue(trends.avg7) },
+      col2: { label: 'Vs Prior 7d', value: formatTrendDeltaValue(trends.avg7, trends.priorAvg7) },
+      col3: { label: 'Trend', value: formatTrendCue(trends.avg7, trends.priorAvg7) },
+    },
+    {
+      title: '30-day rolling',
+      col1: { label: 'Average', value: formatTrendValue(trends.avg30) },
+      col2: { label: 'Vs Prior 30d', value: formatTrendDeltaValue(trends.avg30, trends.priorAvg30) },
+      col3: { label: 'Trend', value: formatTrendCue(trends.avg30, trends.priorAvg30) },
+      isLast: true,
+    },
+  ];
+}
 
 function GoalDerived({ info }) {
   if (!info) return null;
@@ -97,50 +178,9 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const trends = useMemo(() => {
-    const base = computeWeightTrends(entries);
-    
-    // Compute extra metadata locally to respect #156 Allowed Files scope
-    const referenceDate = new Date();
-    const MS_DAY = 86400000;
-    const pad = (n) => String(n).padStart(2, '0');
-    const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-    const cut7_priorStart = localStr(new Date(referenceDate - 13 * MS_DAY));
-    const cut7_priorEnd = localStr(new Date(referenceDate - 7 * MS_DAY));
-    const cut30_priorStart = localStr(new Date(referenceDate - 59 * MS_DAY));
-    const cut30_priorEnd = localStr(new Date(referenceDate - 30 * MS_DAY));
-
-    const w7_prior = entries.filter(e => e.date >= cut7_priorStart && e.date <= cut7_priorEnd);
-    const w30_prior = entries.filter(e => e.date >= cut30_priorStart && e.date <= cut30_priorEnd);
-
-    const mean = (arr) =>
-      arr.length === 0 ? null : arr.reduce((s, e) => s + e.weight_value, 0) / arr.length;
-
-    const priorAvg7 = mean(w7_prior);
-    const priorAvg30 = mean(w30_prior);
-
-    let currentWeight = null;
-    let priorDayWeight = null;
-
-    if (entries.length > 0) {
-      const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-      currentWeight = byDate[0].weight_value;
-      if (byDate.length >= 2) {
-        priorDayWeight = byDate[1].weight_value;
-      }
-    }
-
-    return { 
-      ...base,
-      priorAvg7, 
-      priorAvg30, 
-      currentWeight, 
-      priorDayWeight 
-    };
-  }, [entries]);
-
+  const trends = useMemo(() => deriveTrendSummary(entries), [entries]);
   const paceLevel = useMemo(() => computeWeightPaceLevel(entries), [entries]);
+  const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
 
   useEffect(() => {
     if (goal && !goalEditing) {
@@ -296,18 +336,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   const displayError = localError || errorMessage;
 
-  const paceValue = trends.currentWeight ? `${trends.currentWeight.toFixed(1)} lb` : '-';
-  const paceDelta = trends.currentWeight && trends.priorDayWeight ? formatDelta(trends.currentWeight - trends.priorDayWeight) : '-';
-  const paceCue = trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-';
-
-  const avg7Value = trends.avg7 ? `${trends.avg7.toFixed(1)} lb` : '-';
-  const avg7Delta = trends.avg7 && trends.priorAvg7 ? formatDelta(trends.avg7 - trends.priorAvg7) : '-';
-  const avg7Cue = trends.avg7 && trends.priorAvg7 ? (trends.avg7 > trends.priorAvg7 ? '↑ Gaining' : trends.avg7 < trends.priorAvg7 ? '↓ Losing' : '→ Stable') : '-';
-
-  const avg30Value = trends.avg30 ? `${trends.avg30.toFixed(1)} lb` : '-';
-  const avg30Delta = trends.avg30 && trends.priorAvg30 ? formatDelta(trends.avg30 - trends.priorAvg30) : '-';
-  const avg30Cue = trends.avg30 && trends.priorAvg30 ? (trends.avg30 > trends.priorAvg30 ? '↑ Gaining' : trends.avg30 < trends.priorAvg30 ? '↓ Losing' : '→ Stable') : '-';
-
   return (
     <ScreenShell
       title="Weight log"
@@ -446,26 +474,17 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
       <SectionTitle>Trends</SectionTitle>
       <Card style={styles.trendsCardMerged}>
-        <TrendSection
-          title="Pace"
-          col1={{ label: 'Current', value: paceValue }}
-          col2={{ label: 'Vs Previous', value: paceDelta }}
-          col3={{ label: 'Trend', value: paceCue }}
-          paceLevel={paceLevel}
-        />
-        <TrendSection
-          title="7-day rolling"
-          col1={{ label: 'Average', value: avg7Value }}
-          col2={{ label: 'Vs Prior 7d', value: avg7Delta }}
-          col3={{ label: 'Trend', value: avg7Cue }}
-        />
-        <TrendSection
-          title="30-day rolling"
-          col1={{ label: 'Average', value: avg30Value }}
-          col2={{ label: 'Vs Prior 30d', value: avg30Delta }}
-          col3={{ label: 'Trend', value: avg30Cue }}
-          isLast
-        />
+        {trendSections.map((section) => (
+          <TrendSection
+            key={section.title}
+            title={section.title}
+            col1={section.col1}
+            col2={section.col2}
+            col3={section.col3}
+            isLast={section.isLast}
+            paceLevel={section.paceLevel}
+          />
+        ))}
       </Card>
 
       <SectionTitle>History</SectionTitle>

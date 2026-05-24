@@ -80,7 +80,9 @@ Current limitation:
   backup rejection coverage for the optional `weight_goal` v2 import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
-  gain, maintain, no-estimate, and pace-warning states.
+  gain, maintain, no-estimate, and pace-warning states, plus merged Trends
+  rendering checks that lock the day-level `date` trend bucketing contract
+  while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
 - The current native workout form is narrower than the browser prototype UI even

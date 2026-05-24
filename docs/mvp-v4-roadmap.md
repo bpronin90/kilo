@@ -650,7 +650,7 @@ Off-shoot cards:
   (spun off from `#152`; `agent:codex`, `type:planning`)
 - `#156` - `Phase 6 / Task 7: Implement Weight tab section hierarchy and
   stacked trends layout` (spun off from `#153`; `agent:gemini`,
-  `type:implementation`)
+  `type:implementation`; completed 2026-05-24)
 - `#159` - `Phase 6 / Task 8: Implement per-exercise session
   classification` (spun off from `#157`; `agent:claude`,
   `type:implementation`)

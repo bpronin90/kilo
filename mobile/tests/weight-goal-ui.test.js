@@ -25,7 +25,7 @@ jest.mock('../hooks/useEntries');
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
-describe('WeightScreen - GoalDerived component states', () => {
+describe('WeightScreen', () => {
   const defaultProps = {
     weightValue: '',
     setWeightValue: jest.fn(),
@@ -117,5 +117,45 @@ describe('WeightScreen - GoalDerived component states', () => {
     const root = component.root;
 
     expect(findText(root, 'Pace is unrealistic - consider a longer timeline.')).toBeTruthy();
+  });
+
+  test('renders merged trends using entry.date windows', () => {
+    const entries = [
+      { id: '1', date: '2026-05-24', logged_at: '2026-05-24T22:15:00Z', weight_value: 185.0, note: '' },
+      { id: '2', date: '2026-05-23', logged_at: '2026-05-23T22:15:00Z', weight_value: 184.0, note: '' },
+      { id: '3', date: '2026-05-18', logged_at: '2026-05-18T22:15:00Z', weight_value: 183.0, note: '' },
+      { id: '4', date: '2026-05-12', logged_at: '2026-05-12T22:15:00Z', weight_value: 181.0, note: '' },
+      { id: '5', date: '2026-05-11', logged_at: '2026-05-11T22:15:00Z', weight_value: 180.0, note: '' },
+      { id: '6', date: '2026-04-25', logged_at: '2026-04-25T22:15:00Z', weight_value: 178.0, note: '' },
+    ];
+    const component = setup(null, entries);
+    const root = component.root;
+
+    expect(findText(root, 'Trends')).toBeTruthy();
+    expect(findText(root, 'Pace')).toBeTruthy();
+    expect(findText(root, 'Current')).toBeTruthy();
+    expect(findText(root, '185.0 lb')).toBeTruthy();
+    expect(findText(root, '+1.0')).toBeTruthy();
+    expect(findText(root, '↑ Gaining')).toBeTruthy();
+
+    expect(findText(root, '7-day rolling')).toBeTruthy();
+    expect(findText(root, '184.0 lb')).toBeTruthy();
+    expect(findText(root, '+3.5')).toBeTruthy();
+
+    expect(findText(root, '30-day rolling')).toBeTruthy();
+    expect(findText(root, '181.8 lb')).toBeTruthy();
+    expect(findText(root, '-')).toBeTruthy();
+  });
+
+  test('uses logged_at for history display while trends still use date buckets', () => {
+    const entries = [
+      { id: '1', date: '2026-05-24', logged_at: '2026-05-20T08:30:00Z', weight_value: 185.0, note: 'after travel' },
+    ];
+    const component = setup(null, entries);
+    const root = component.root;
+
+    expect(findText(root, '05-20-2026')).toBeTruthy();
+    expect(findText(root, '185.0 lb')).toBeTruthy();
+    expect(findText(root, 'after travel')).toBeTruthy();
   });
 });
