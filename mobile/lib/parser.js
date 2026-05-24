@@ -15,6 +15,29 @@ export function parseWeightEntry(raw) {
   return { ok: true, raw, weight_value: value, weight_unit: 'lb', logged_at: new Date().toISOString() };
 }
 
+// Strip a single leading alphabetic flag (e.g. "F", "Flat", "Cable") when
+// immediately followed by a digit. Returns the input unchanged otherwise.
+function _stripLeadingFlag(s) {
+  const m = /^([A-Za-z]+)\s+(\S.*)$/.exec(s);
+  return (m && /^\d/.test(m[2])) ? m[2] : s;
+}
+
+// Normalize a workout row string before tokenization.
+// Splits on " - " to separate parseable set segments from inline prose notes.
+// Each segment is flag-stripped and validated (must consist only of digits,
+// commas, dots, and spaces). Valid segments are joined; prose is dropped.
+// Falls back to the original trimmed string if no segments are parseable.
+function _preprocessWorkoutRow(trimmed) {
+  if (!trimmed.includes(' - ')) return _stripLeadingFlag(trimmed);
+
+  const parseable = [];
+  for (const seg of trimmed.split(' - ')) {
+    const stripped = _stripLeadingFlag(seg.trim());
+    if (/^[\d.,\s]+$/.test(stripped)) parseable.push(stripped.trim());
+  }
+  return parseable.length > 0 ? parseable.join(' ') : trimmed;
+}
+
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
 // Standalone rep-group requires at least one comma to be unambiguous.
 export function parseWorkoutRow(raw) {
@@ -22,7 +45,18 @@ export function parseWorkoutRow(raw) {
   const trimmed = raw.trim();
   if (trimmed === '-') return { ok: true, skipped: true };
 
-  const normalized = trimmed.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+  const preprocessed = _preprocessWorkoutRow(trimmed);
+  // ", " can be a pair separator ("90 10, 70 10,10") or a spaced rep-group
+  // separator ("135 8, 8, 8"). Disambiguate: split on ", " and check whether
+  // every subsequent chunk contains a space (weight+reps pair shape). If so,
+  // join with " " (pair separator). Otherwise collapse the ", " to "," (rep group).
+  let pairNormalized = preprocessed;
+  if (preprocessed.includes(', ')) {
+    const chunks = preprocessed.split(', ');
+    const allSubsequentArePairs = chunks.slice(1).every(c => c.includes(' '));
+    pairNormalized = allSubsequentArePairs ? chunks.join(' ') : chunks.join(',');
+  }
+  const normalized = pairNormalized.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
   const tokens = normalized.split(' ');
 
   if (tokens[0].includes(',')) {

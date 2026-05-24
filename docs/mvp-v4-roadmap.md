@@ -642,7 +642,7 @@ Off-shoot cards:
   `type:implementation`)
 - `#151` - `Phase 6 / Task 4: Normalize rendered workout rows and improve
   unparsed fallback in Log` (spun off from `#149`; `agent:claude`,
-  `type:implementation`)
+  `type:implementation`; completed 2026-05-24)
 - `#154` - `Phase 6 / Task 5: Implement Weight goal panel hierarchy and copy
   rewrite` (spun off from `#152`; `agent:gemini`, `type:implementation`)
 - `#155` - `Phase 6 / Task 6: Review Weight goal estimate formula accuracy`
