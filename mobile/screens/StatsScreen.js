@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
-import { Card, SectionTitle, Badge, LineChart } from '../components/UI';
+import { Card, SectionTitle, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
 import { formatSessionClassification } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
@@ -151,8 +151,10 @@ export function StatsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
+  const hasSignals = !isNotesLoading && !isTrackedLoading && analytics?.signals?.length > 0;
+
   return (
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.container} stickyHeaderIndices={[4]}>
       <View style={styles.shellHeader}>
         <Text style={styles.shellTitle}>Analytics</Text>
         <Text style={styles.shellSubtitle}>Insights derived from your logs.</Text>
@@ -271,7 +273,20 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <SectionTitle>Progressive Overload</SectionTitle>
+      <View style={styles.signalStickyHeader}>
+        <SectionTitle>Progressive Overload</SectionTitle>
+        {hasSignals && (
+          <View style={styles.signalColumnHeader}>
+            <Text style={[styles.signalColumnLabel, styles.signalColumnName]}>Exercise</Text>
+            <View style={styles.signalColumnMetrics}>
+              <Text style={styles.signalColumnLabel}>1 Rep Max</Text>
+              <Text style={styles.signalColumnLabel}>Kilo Max</Text>
+              <Text style={styles.signalColumnLabel}>Top Wt</Text>
+              <Text style={[styles.signalColumnLabel, styles.signalColumnProgress]}>Trend</Text>
+            </View>
+          </View>
+        )}
+      </View>
       {(isNotesLoading || isTrackedLoading) ? (
         <View style={{ height: 100, justifyContent: 'center' }}>
           <ActivityIndicator color={Colors.accent} />
@@ -285,7 +300,7 @@ export function StatsScreen({ multiplier, section }) {
             );
             return (
             <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
-              <View style={styles.signalRowTop}>
+              <View style={styles.signalRowInner}>
                 <View style={styles.signalNameBlock}>
                   <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
                   {classifLabel ? (
@@ -294,30 +309,13 @@ export function StatsScreen({ multiplier, section }) {
                     </Text>
                   ) : null}
                 </View>
-                <View style={styles.badgeSlot}>
-                  {sig.progression_status !== 'first_session' && (
-                    <Badge status={sig.progression_status}>
-                      {formatStatus(sig.progression_status)}
-                    </Badge>
-                  )}
-                </View>
-              </View>
-              <View style={styles.signalMeta}>
-                <View style={styles.signalMetaItem}>
+                <View style={styles.signalMetrics}>
                   <Text style={styles.signalValue}>{sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}</Text>
-                  <Text style={styles.signalLabel}>1 Rep Max</Text>
-                </View>
-                <View style={styles.signalMetaItem}>
                   <Text style={styles.signalValue}>{sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}</Text>
-                  <Text style={styles.signalLabel}>Kilo Max</Text>
-                </View>
-                <View style={styles.signalMetaItem}>
-                  <Text style={styles.signalValue}>{sig.latest_top_weight ? `${sig.latest_top_weight} lb` : '—'}</Text>
-                  <Text style={styles.signalLabel}>Top Weight</Text>
-                </View>
-                <View style={styles.signalMetaItem}>
-                  <Text style={styles.signalValue}>{formatOverload(sig.overload_trend)}</Text>
-                  <Text style={styles.signalLabel}>Progress</Text>
+                  <Text style={styles.signalValue}>{sig.latest_top_weight ? (sig.is_bodyweight ? `${sig.latest_top_weight} reps` : `${sig.latest_top_weight} lb`) : '—'}</Text>
+                  <Text style={[styles.signalValue, styles.signalProgress, overloadColor(sig.overload_trend)]}>
+                    {formatOverload(sig.overload_trend)}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -333,16 +331,6 @@ export function StatsScreen({ multiplier, section }) {
   );
 }
 
-function formatStatus(status) {
-  switch (status) {
-    case 'improved': return 'Improving';
-    case 'held': return 'Steady';
-    case 'regressed': return 'Regressing';
-    case 'first_session': return 'Initial';
-    default: return '—';
-  }
-}
-
 function classifBadgeColor(label) {
   switch (label) {
     case 'progressing':  return { color: '#4ade80' };
@@ -356,10 +344,18 @@ function classifBadgeColor(label) {
 
 function formatOverload(trend) {
   switch (trend) {
-    case 'up': return '↑ Up';
-    case 'flat': return '→ Flat';
-    case 'down': return '↓ Down';
+    case 'up': return '↑';
+    case 'flat': return '↔';
+    case 'down': return '↓';
     default: return '—';
+  }
+}
+
+function overloadColor(trend) {
+  switch (trend) {
+    case 'up': return { color: '#4ade80' };
+    case 'down': return { color: Colors.error };
+    default: return { color: Colors.textMuted };
   }
 }
 
@@ -568,38 +564,71 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
+  signalStickyHeader: {
+    backgroundColor: '#f4efe5',
+    paddingBottom: 2,
+  },
+  signalColumnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: Colors.cardBorder,
+  },
+  signalColumnLabel: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  signalColumnName: {
+    flex: 2,
+  },
+  signalColumnMetrics: {
+    flex: 3,
+    flexDirection: 'row',
+  },
+  signalColumnProgress: {
+    textAlign: 'center',
+  },
   signalList: {
     backgroundColor: Colors.card,
-    borderRadius: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     borderWidth: 1,
+    borderTopWidth: 0,
     borderColor: Colors.cardBorder,
     overflow: 'hidden',
   },
   signalRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
   },
   signalRowLast: {
     borderBottomWidth: 0,
   },
-  signalRowTop: {
+  signalRowInner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
   signalNameBlock: {
-    flex: 1,
+    flex: 2,
     gap: 2,
-  },
-  badgeSlot: {
-    minWidth: 80,
-    alignItems: 'flex-end',
+    paddingRight: 8,
   },
   signalName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.text,
   },
@@ -609,23 +638,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
-  signalMeta: {
+  signalMetrics: {
+    flex: 3,
     flexDirection: 'row',
   },
-  signalMetaItem: {
-    flex: 1,
-  },
-  signalLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    marginTop: 1,
-  },
   signalValue: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
+  },
+  signalProgress: {
+    textAlign: 'center',
   },
   emptyText: {
     textAlign: 'center',

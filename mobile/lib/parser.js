@@ -608,7 +608,10 @@ export function deriveProgressionSignals(sections, trackedNames) {
       // participate in the comparison rather than dropping inline occurrences.
       const comparable = occs.flatMap(occ => {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
-        return valid.length > 0 ? valid.map(se => ({ sets: se.sets })) : [occ];
+        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
+        // Plain-row format: treat each row as a separate session unit when multiple rows exist.
+        const rows = occ.rows || [];
+        return rows.length > 1 ? rows.map(r => ({ sets: r.sets })) : [occ];
       });
 
       // Walk backward to find the two most recent comparable units with computable PRs.
@@ -621,7 +624,21 @@ export function deriveProgressionSignals(sections, trackedNames) {
         }
       }
 
-      if (latestIdx === -1) return absent;
+      if (latestIdx === -1) {
+        // Rep-only (bodyweight) fallback: use total reps per session as the comparable metric.
+        const repTotals = comparable.map(unit =>
+          unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
+        );
+        const latestReps = repTotals[repTotals.length - 1];
+        if (!latestReps) return absent;
+        const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
+        const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
+        const bw_status = priorReps === null ? 'first_session'
+          : latestReps > priorReps ? 'improved' : latestReps < priorReps ? 'regressed' : 'held';
+        const bw_trend = priorReps === null ? null
+          : latestReps > priorReps ? 'up' : latestReps < priorReps ? 'down' : 'flat';
+        return { name, progression_status: bw_status, latest_pr: null, prior_pr: null, kilo_max: null, repeatability_score: null, latest_top_weight: latestBestSet || null, overload_trend: bw_trend, is_bodyweight: true };
+      }
 
       const latestOcc = comparable[latestIdx];
       const latest_pr = _occurrencePR(latestOcc);
@@ -637,10 +654,17 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const progression_status = latest_pr > prior_pr ? 'improved'
                                 : latest_pr < prior_pr ? 'regressed'
                                 : 'held';
-      const overload_trend = latest_top_weight === null || prior_top_weight === null ? null
-                           : latest_top_weight > prior_top_weight ? 'up'
-                           : latest_top_weight < prior_top_weight ? 'down'
-                           : 'flat';
+
+      const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+      const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+      const weight_diff = latest_top_weight !== null && prior_top_weight !== null
+        ? latest_top_weight - prior_top_weight : null;
+      const overload_trend = weight_diff === null ? null
+        : weight_diff > 0 ? 'up'
+        : weight_diff < 0 ? 'down'
+        : latest_total_reps > prior_total_reps ? 'up'
+        : latest_total_reps < prior_total_reps ? 'down'
+        : 'flat';
 
       return { name, progression_status, latest_pr, prior_pr, kilo_max, repeatability_score, latest_top_weight, overload_trend };
     }),

@@ -1230,11 +1230,14 @@ describe('deriveProgressionSignals — progression status', () => {
     expect(sig.prior_pr).toBeCloseTo(epleyPR(100, 8));
   });
 
-  test('null progression_status when no-weight exercise has only bodyweight sets', () => {
+  test('rep-based fallback for bodyweight exercise with no weight_value', () => {
     const { sections } = parseWorkoutNote('Core: Plank\n30,30');
     const sig = deriveProgressionSignals(sections, ['Core: Plank']).exercises[0];
-    expect(sig.progression_status).toBeNull();
+    // Single session → first_session status, no PR, best set reps surfaced as latest_top_weight
+    expect(sig.progression_status).toBe('first_session');
     expect(sig.latest_pr).toBeNull();
+    expect(sig.latest_top_weight).toBe(30);
+    expect(sig.is_bodyweight).toBe(true);
   });
 
   test('non-comparable latest occurrence — walks back to most recent comparable', () => {
@@ -1300,10 +1303,12 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.latest_top_weight).toBe(80);
   });
 
-  test('latest_top_weight is null for no-weight (rep-only) sets', () => {
+  test('latest_top_weight is null for weighted exercise with no weight value (absent)', () => {
+    // Plain-row bench with no weight parses as bodyweight → rep fallback → best set reps
     const { sections } = parseWorkoutNote('-Bench\n8,8,8');
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
-    expect(sig.latest_top_weight).toBeNull();
+    expect(sig.is_bodyweight).toBe(true);
+    expect(sig.latest_top_weight).toBe(8);
   });
 
   test('overload_trend is first_session on single occurrence', () => {
@@ -1326,11 +1331,25 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.overload_trend).toBe('down');
   });
 
-  test('overload_trend flat when latest top weight equals prior', () => {
+  test('overload_trend down when same weight but fewer total reps', () => {
     const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 6';
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('down');
+  });
+
+  test('overload_trend flat when same weight and same total reps', () => {
+    const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.overload_trend).toBe('flat');
+  });
+
+  test('overload_trend up when same weight but more total reps', () => {
+    const note = 'Monday\n-Bench\n80 6\nWednesday\n-Bench\n80 8';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.overload_trend).toBe('up');
   });
 
   test('overload_trend is first_session when prior occurrence has no weighted sets', () => {
