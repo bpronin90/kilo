@@ -12,46 +12,24 @@ import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, compute
 function GoalDerived({ info }) {
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
-  
-  // No-estimate state (past or today)
-  if (required_weekly_pace === null) {
-    return (
-      <View style={styles.goalDerived}>
-        <View style={styles.derivedRow}>
-          <Text style={styles.derivedLabel}>Target pace</Text>
-          <Text style={styles.derivedValueNeutral}>—</Text>
-        </View>
-        <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
-      </View>
-    );
-  }
 
-  const paceAbs = Math.abs(required_weekly_pace).toFixed(2);
+  const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
   const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
-
-  // Maintain state
-  if (direction === 'maintain') {
-    return (
-      <View style={styles.goalDerived}>
-        <View style={styles.derivedRow}>
-          <Text style={styles.derivedLabel}>Target pace</Text>
-          <Text style={styles.derivedValue}>Maintain</Text>
-        </View>
-        <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
-      </View>
-    );
-  }
-
-  const calorieLabel = calLabel === 'deficit' ? 'Suggested calorie deficit' : 'Suggested calorie surplus';
 
   return (
     <View style={styles.goalDerived}>
       <View style={styles.derivedRow}>
         <Text style={styles.derivedLabel}>Target pace</Text>
-        <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>
+        {required_weekly_pace === null ? (
+          <Text style={styles.derivedValueNeutral}>—</Text>
+        ) : direction === 'maintain' ? (
+          <Text style={styles.derivedValue}>Maintain</Text>
+        ) : (
+          <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>
+        )}
       </View>
-      
-      {calories_per_day !== null && calories_per_day > 0 ? (
+
+      {required_weekly_pace !== null && direction !== 'maintain' && calLabel !== 'maintain' ? (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
             Suggested <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>
@@ -60,11 +38,19 @@ function GoalDerived({ info }) {
         </View>
       ) : null}
 
-      {warnings.includes('unrealistic') ? (
-        <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
-      ) : warnings.includes('unhealthy') ? (
-        <Text style={styles.goalWarningText}>Pace is aggressive — a slower target is safer.</Text>
-      ) : null}
+      {required_weekly_pace === null ? (
+        <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
+      ) : direction === 'maintain' ? (
+        <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
+      ) : (
+        <>
+          {warnings.includes('unrealistic') ? (
+            <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
+          ) : warnings.includes('unhealthy') ? (
+            <Text style={styles.goalWarningText}>Pace is aggressive — a slower target is safer.</Text>
+          ) : null}
+        </>
+      )}
     </View>
   );
 }
