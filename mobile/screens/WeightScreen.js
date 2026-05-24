@@ -12,10 +12,16 @@ import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, compute
 function GoalDerived({ info }) {
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
+  
+  // No-estimate state (past or today)
   if (required_weekly_pace === null) {
     return (
       <View style={styles.goalDerived}>
-        <Text style={styles.goalWarningText}>Target date must be in the future.</Text>
+        <View style={styles.derivedRow}>
+          <Text style={styles.derivedLabel}>Target pace</Text>
+          <Text style={styles.derivedValueNeutral}>—</Text>
+        </View>
+        <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
       </View>
     );
   }
@@ -23,28 +29,36 @@ function GoalDerived({ info }) {
   const paceAbs = Math.abs(required_weekly_pace).toFixed(2);
   const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
 
+  // Maintain state
   if (direction === 'maintain') {
     return (
       <View style={styles.goalDerived}>
-        <Text style={styles.goalPaceText}>Maintain current weight</Text>
+        <View style={styles.derivedRow}>
+          <Text style={styles.derivedLabel}>Target pace</Text>
+          <Text style={styles.derivedValue}>Maintain</Text>
+        </View>
+        <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
       </View>
     );
   }
 
+  const calorieLabel = calLabel === 'deficit' ? 'Suggested calorie deficit' : 'Suggested calorie surplus';
+
   return (
     <View style={styles.goalDerived}>
-      <View style={styles.suggestionRow}>
-        <View style={styles.suggestionItem}>
-          <Text style={styles.suggestionValue}>{paceAbs}</Text>
-          <Text style={styles.suggestionLabel}>lb / week</Text>
-        </View>
-        {calories_per_day !== null && calLabel !== 'maintain' ? (
-          <View style={styles.suggestionItem}>
-            <Text style={styles.suggestionValue}>{calories_per_day}</Text>
-            <Text style={styles.suggestionLabel}>cal {calLabel}</Text>
-          </View>
-        ) : null}
+      <View style={styles.derivedRow}>
+        <Text style={styles.derivedLabel}>Target pace</Text>
+        <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>
       </View>
+      
+      {calories_per_day !== null && calories_per_day > 0 ? (
+        <View style={styles.derivedRow}>
+          <Text style={styles.derivedLabel}>
+            Suggested <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>
+          </Text>
+          <Text style={styles.derivedValue}>{calories_per_day} cal / day</Text>
+        </View>
+      ) : null}
 
       {warnings.includes('unrealistic') ? (
         <Text style={styles.goalWarningText}>Pace is unrealistic — consider a longer timeline.</Text>
@@ -309,7 +323,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 />
               </>
             ) : null}
-            <Text style={styles.inputLabel}>Target weight (lb)</Text>
+            <Text style={styles.inputLabel}>Target</Text>
             <TextInput
               value={goalTargetWeight}
               onChangeText={setGoalTargetWeight}
@@ -318,7 +332,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               keyboardType="decimal-pad"
               style={styles.input}
             />
-            <Text style={styles.inputLabel}>Target date</Text>
+            <Text style={styles.inputLabel}>By Date</Text>
             <Pressable
               onPress={() => setShowDatePicker(true)}
               style={styles.input}
@@ -336,21 +350,30 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 minimumDate={new Date()}
               />
             )}
-            {goalInfo ? <GoalDerived info={goalInfo} /> : null}
+            {goalInfo ? (
+              <View style={styles.formDerived}>
+                <View style={styles.goalDivider} />
+                <GoalDerived info={goalInfo} />
+                <View style={[styles.goalDivider, { marginBottom: 8 }]} />
+              </View>
+            ) : null}
             <Button onPress={handleSaveGoal} title="Save goal" />
           </View>
         ) : (
           <View style={styles.goalDisplay}>
             <View style={styles.goalDisplayRow}>
               <View style={styles.goalDisplayItem}>
+                <Text style={styles.goalDisplayLabel}>Target</Text>
                 <Text style={styles.goalDisplayValue}>{goal.target_weight} lb</Text>
-                <Text style={styles.goalDisplayLabel}>target</Text>
               </View>
               <View style={styles.goalDisplayItem}>
+                <Text style={styles.goalDisplayLabel}>By Date</Text>
                 <Text style={styles.goalDisplayValue}>{formatDate(goal.target_date)}</Text>
-                <Text style={styles.goalDisplayLabel}>by date</Text>
               </View>
             </View>
+            
+            <View style={styles.goalDivider} />
+            
             {goalInfo ? <GoalDerived info={goalInfo} /> : null}
           </View>
         )}
@@ -653,61 +676,65 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   goalDisplay: {
-    gap: 8,
+    gap: 12,
   },
   goalDisplayRow: {
     flexDirection: 'row',
-    gap: 20,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   goalDisplayItem: {
+    flex: 1,
     gap: 2,
   },
   goalDisplayValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  goalDisplayLabel: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  goalDerived: {
-    marginTop: 4,
-    gap: 12,
-  },
-  suggestionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  suggestionItem: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  suggestionValue: {
     fontSize: 24,
     fontWeight: '900',
     color: Colors.accent,
   },
-  suggestionLabel: {
-    fontSize: 11,
+  goalDisplayLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  goalDivider: {
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    opacity: 0.5,
+    marginVertical: 4,
+  },
+  goalDerived: {
+    gap: 12,
+  },
+  derivedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  derivedLabel: {
+    fontSize: 15,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  derivedValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  derivedValueNeutral: {
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    marginTop: 2,
+    opacity: 0.5,
   },
-  goalPaceText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
+  goalInfoText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
     textAlign: 'center',
+    marginTop: 2,
   },
   goalWarningText: {
     fontSize: 13,
@@ -715,6 +742,11 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     fontWeight: '600',
     textAlign: 'center',
+    marginTop: 2,
+  },
+  formDerived: {
+    gap: 12,
+    marginVertical: 4,
   },
   saveButton: {
     backgroundColor: Colors.accent,
