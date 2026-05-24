@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
   },
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.textMuted,
+    color: Colors.error,
     paddingLeft: 0,
   },
   emptyText: {

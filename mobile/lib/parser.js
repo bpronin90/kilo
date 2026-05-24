@@ -15,6 +15,18 @@ export function parseWeightEntry(raw) {
   return { ok: true, raw, weight_value: value, weight_unit: 'lb', logged_at: new Date().toISOString() };
 }
 
+// Strip inline note tail ( " - text...") and a single leading alphabetic flag
+// (e.g. "F", "Flat", "Cable") when followed immediately by a numeric weight.
+// Only the specific recurring patterns evidenced in sample notes are targeted.
+function _preprocessWorkoutRow(trimmed) {
+  const dashIdx = trimmed.indexOf(' - ');
+  const head = dashIdx !== -1 ? trimmed.slice(0, dashIdx).trim() : trimmed;
+  if (!head) return trimmed;
+  const flagMatch = /^([A-Za-z]+)\s+(\S.*)$/.exec(head);
+  if (flagMatch && /^\d/.test(flagMatch[2])) return flagMatch[2];
+  return head;
+}
+
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
 // Standalone rep-group requires at least one comma to be unambiguous.
 export function parseWorkoutRow(raw) {
@@ -22,7 +34,18 @@ export function parseWorkoutRow(raw) {
   const trimmed = raw.trim();
   if (trimmed === '-') return { ok: true, skipped: true };
 
-  const normalized = trimmed.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+  const preprocessed = _preprocessWorkoutRow(trimmed);
+  // ", " can be a pair separator ("90 10, 70 10,10") or a spaced rep-group
+  // separator ("135 8, 8, 8"). Disambiguate: split on ", " and check whether
+  // every subsequent chunk contains a space (weight+reps pair shape). If so,
+  // join with " " (pair separator). Otherwise collapse the ", " to "," (rep group).
+  let pairNormalized = preprocessed;
+  if (preprocessed.includes(', ')) {
+    const chunks = preprocessed.split(', ');
+    const allSubsequentArePairs = chunks.slice(1).every(c => c.includes(' '));
+    pairNormalized = allSubsequentArePairs ? chunks.join(' ') : chunks.join(',');
+  }
+  const normalized = pairNormalized.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
   const tokens = normalized.split(' ');
 
   if (tokens[0].includes(',')) {
