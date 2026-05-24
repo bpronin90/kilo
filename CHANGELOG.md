@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.35.28 - 2026-05-24
+
+- Issue #156: Reworked the native Weight tab into the approved top-to-bottom
+  `Goals`, `Trends`, and `History` hierarchy beneath the existing weigh-in
+  entry area, merged the Trends presentation into a cleaner sectioned card
+  covering `Pace`, `7-day rolling`, and `30-day rolling`, clarified the
+  day-level `date` vs recorded `logged_at` contract in the screen code, and
+  added rendered-screen regression coverage for merged Trends behavior plus the
+  Weight history timestamp split. Reviewer closeout updated
+  `docs/current-state.md`, `docs/testing-and-qa.md`, and
+  `docs/mvp-v4-roadmap.md` to match and bumped the app version.
+
 ## 0.35.27 - 2026-05-24
 
 - Issue #154: Reworked the native Weight goal card around `Target` and

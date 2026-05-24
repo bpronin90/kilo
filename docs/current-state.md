@@ -188,7 +188,13 @@ The real native app path now has a modular React Native shell:
   no-estimate state keeps the panel hierarchy visible with neutral fallback
   messaging, and when no saved weight entries exist the goal form still
   requires a current-weight fallback so the pace and calorie guidance can
-  render from the saved goal state
+  render from the saved goal state. The Weight tab now reads top-to-bottom as
+  weight entry, `Goals`, `Trends`, and `History`, with `Goals` / `Trends`
+  using the shared section-heading treatment and a merged Trends card that
+  surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
+  current-or-average value, prior-window comparison, and trend cue summaries
+  derived from the day-level `date` key while History continues to display the
+  recorded `logged_at` timestamp
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
