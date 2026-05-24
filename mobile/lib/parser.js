@@ -15,16 +15,27 @@ export function parseWeightEntry(raw) {
   return { ok: true, raw, weight_value: value, weight_unit: 'lb', logged_at: new Date().toISOString() };
 }
 
-// Strip inline note tail ( " - text...") and a single leading alphabetic flag
-// (e.g. "F", "Flat", "Cable") when followed immediately by a numeric weight.
-// Only the specific recurring patterns evidenced in sample notes are targeted.
+// Strip a single leading alphabetic flag (e.g. "F", "Flat", "Cable") when
+// immediately followed by a digit. Returns the input unchanged otherwise.
+function _stripLeadingFlag(s) {
+  const m = /^([A-Za-z]+)\s+(\S.*)$/.exec(s);
+  return (m && /^\d/.test(m[2])) ? m[2] : s;
+}
+
+// Normalize a workout row string before tokenization.
+// Splits on " - " to separate parseable set segments from inline prose notes.
+// Each segment is flag-stripped and validated (must consist only of digits,
+// commas, dots, and spaces). Valid segments are joined; prose is dropped.
+// Falls back to the original trimmed string if no segments are parseable.
 function _preprocessWorkoutRow(trimmed) {
-  const dashIdx = trimmed.indexOf(' - ');
-  const head = dashIdx !== -1 ? trimmed.slice(0, dashIdx).trim() : trimmed;
-  if (!head) return trimmed;
-  const flagMatch = /^([A-Za-z]+)\s+(\S.*)$/.exec(head);
-  if (flagMatch && /^\d/.test(flagMatch[2])) return flagMatch[2];
-  return head;
+  if (!trimmed.includes(' - ')) return _stripLeadingFlag(trimmed);
+
+  const parseable = [];
+  for (const seg of trimmed.split(' - ')) {
+    const stripped = _stripLeadingFlag(seg.trim());
+    if (/^[\d.,\s]+$/.test(stripped)) parseable.push(stripped.trim());
+  }
+  return parseable.length > 0 ? parseable.join(' ') : trimmed;
 }
 
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
