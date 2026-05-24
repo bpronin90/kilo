@@ -14,7 +14,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
@@ -23,16 +23,14 @@ import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
-export function LogScreen({ 
-  workoutNoteText, 
-  setWorkoutNoteText, 
-  workoutNoteTitle, 
-  setWorkoutNoteTitle, 
-  currentNoteScrollY,
-  setCurrentNoteScrollY,
+export function LogScreen({
+  workoutNoteText,
+  setWorkoutNoteText,
+  workoutNoteTitle,
+  setWorkoutNoteTitle,
   isCollapsed,
   toggleCollapsed,
-  onSaveWorkout 
+  onSaveWorkout
 }) {
   const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -48,7 +46,9 @@ export function LogScreen({
   const [saveSuccess, setSaveSuccess] = useState('');
 
   const editorScrollRef = useRef(null);
-  const lastEditorNoteId = useRef(null);
+  const readScrollRef = useRef(null);
+  const keyboardVisibleRef = useRef(false);
+  const keyboardExitTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (saveSuccess) {
@@ -56,6 +56,26 @@ export function LogScreen({
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => {
+      keyboardVisibleRef.current = true;
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardVisibleRef.current = false;
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      if (keyboardExitTimeoutRef.current) {
+        clearTimeout(keyboardExitTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const hasUnsavedCurrent = useMemo(() => {
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
@@ -158,9 +178,46 @@ export function LogScreen({
     }
   };
 
+  const finishExitCurrentEditor = () => {
+    readScrollRef.current?.scrollTo({ y: 0, animated: false });
+    setMode('read');
+  };
+
+  const exitCurrentEditor = () => {
+    if (!keyboardVisibleRef.current) {
+      finishExitCurrentEditor();
+      return;
+    }
+
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      hideSub.remove();
+      if (keyboardExitTimeoutRef.current) {
+        clearTimeout(keyboardExitTimeoutRef.current);
+        keyboardExitTimeoutRef.current = null;
+      }
+      finishExitCurrentEditor();
+    });
+
+    Keyboard.dismiss();
+
+    keyboardExitTimeoutRef.current = setTimeout(() => {
+      hideSub.remove();
+      keyboardExitTimeoutRef.current = null;
+      finishExitCurrentEditor();
+    }, Platform.OS === 'ios' ? 250 : 150);
+  };
+
+  const enterCurrentEditor = () => {
+    setMode('edit');
+    requestAnimationFrame(() => {
+      editorScrollRef.current?.scrollTo({ y: 0, animated: false });
+    });
+  };
+
   const handleDoneCurrent = () => {
     if (!hasUnsavedCurrent) {
-      setMode('read');
+      exitCurrentEditor();
       return;
     }
 
@@ -174,7 +231,7 @@ export function LogScreen({
             text: 'Discard', 
             style: 'destructive', 
             onPress: () => {
-              setMode('read');
+              exitCurrentEditor();
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
             } 
@@ -191,7 +248,7 @@ export function LogScreen({
             text: 'Discard', 
             style: 'destructive', 
             onPress: () => {
-              setMode('read');
+              exitCurrentEditor();
               setWorkoutNoteText(currentNote.raw_text);
               setWorkoutNoteTitle(currentNote.title || '');
             } 
@@ -200,7 +257,7 @@ export function LogScreen({
             text: 'Save', 
             onPress: async () => {
               const ok = await handleSave();
-              if (ok) setMode('read');
+              if (ok) exitCurrentEditor();
             } 
           },
         ]
@@ -379,12 +436,6 @@ export function LogScreen({
     await toggleTrackedLift(key);
   };
 
-  const handleEditorScroll = (e) => {
-    // Only track scroll for the current note editor to lift it to App.js
-    if (!editingNoteId && mode === 'edit') {
-      setCurrentNoteScrollY(e.nativeEvent.contentOffset.y);
-    }
-  };
 
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
@@ -400,25 +451,16 @@ export function LogScreen({
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit';
 
-  // Handle editor scroll reset or restoration
   useEffect(() => {
     if (isEditing) {
-      const currentEditId = editingNoteId || 'current';
-      if (lastEditorNoteId.current !== currentEditId) {
-        // We are entering a NEW routine editor session. Start at top.
-        editorScrollRef.current?.scrollTo({ y: 0, animated: false });
-        lastEditorNoteId.current = currentEditId;
-      } else if (!editingNoteId && mode === 'edit') {
-        // We are re-mounting the current note editor (e.g. back from another tab).
-        // Restore the App-level scroll position.
-        editorScrollRef.current?.scrollTo({ y: currentNoteScrollY, animated: false });
-      }
+      editorScrollRef.current?.scrollTo({ y: 0, animated: false });
     }
-  }, [isEditing, editingNoteId, mode]);
+  }, [isEditing, editingNoteId]);
 
   return (
     <>
       <ScreenShell
+        ref={readScrollRef}
         style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
         subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
@@ -452,7 +494,9 @@ export function LogScreen({
                         )}
                         {group.sections.map((section, si) => (
                           <View key={`section-${gi}-${si}`}>
-                            {section.subheading && <WorkoutSubheading>{section.subheading}</WorkoutSubheading>}
+                            {section.subheading && (
+                              <WorkoutSubheading>{section.subheading}</WorkoutSubheading>
+                            )}
                             {section.exercises.map((ex, ei) => (
                               <ExerciseBlock
                                 key={`ex-${gi}-${si}-${ei}`}
@@ -479,7 +523,7 @@ export function LogScreen({
                       <Text style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
                     )}
                     <Button
-                      onPress={() => setMode('edit')}
+                      onPress={enterCurrentEditor}
                       title="Edit note"
                       style={styles.editButton}
                       textStyle={styles.editButtonText}
@@ -498,23 +542,23 @@ export function LogScreen({
                       key={other.id}
                       style={styles.otherNoteCard}
                     >
-                      <View style={styles.otherNoteHeader}>
-                        <Pressable
-                          onPress={() => handleOpenOtherNote(other)}
-                          style={styles.otherNoteInfo}
-                        >
+                      <Pressable
+                        onPress={() => handleOpenOtherNote(other)}
+                        style={styles.otherNoteHeader}
+                      >
+                        <View style={styles.otherNoteInfo}>
                           <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
                           {other.updated_at && (
                             <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
                           )}
-                        </Pressable>
+                        </View>
                         <Pressable
-                          onPress={() => handleSwitchCurrent(other.id)}
+                          onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
                           style={styles.inlineSwitchButton}
                         >
                           <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
                         </Pressable>
-                      </View>
+                      </Pressable>
                     </Card>
                   ))}
                 </>
@@ -532,7 +576,6 @@ export function LogScreen({
 
       <ScreenShell
         ref={editorScrollRef}
-        onScroll={handleEditorScroll}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={editingNoteId ? (editingTitle || 'Routine') : (workoutNoteTitle || 'My Workout')}
         subtitle="Edit routine"

@@ -45,7 +45,6 @@ export default function App() {
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
-  const [currentNoteScrollY, setCurrentNoteScrollY] = useState(0);
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
 
@@ -196,8 +195,6 @@ export default function App() {
             setWorkoutNoteText={setWorkoutNoteText}
             workoutNoteTitle={workoutNoteTitle}
             setWorkoutNoteTitle={setWorkoutNoteTitle}
-            currentNoteScrollY={currentNoteScrollY}
-            setCurrentNoteScrollY={setCurrentNoteScrollY}
             isCollapsed={isWorkoutCollapsed}
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
@@ -220,10 +217,10 @@ export default function App() {
         return <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />;
       case 'More':
         return (
-          <MoreScreen 
-            onNavigate={handleTabPress} 
-            onExport={handleExport} 
-            onImport={handleImport} 
+          <MoreScreen
+            onNavigate={handleTabPress}
+            onExport={handleExport}
+            onImport={handleImport}
             fatigueMultiplier={fatigueMultiplier}
             onUpdateFatigueMultiplier={async (val) => {
               setFatigueMultiplier(val);
