@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.27 - 2026-05-24
+
+- Issue #154: Reworked the native Weight goal card around `Target` and
+  `By Date` as the primary anchors, rewrote the derived guidance into the
+  approved concise `Target pace` / `Suggested deficit|surplus` hierarchy while
+  preserving maintain and no-estimate states, and added rendered-screen
+  regression coverage for loss, gain, maintain, no-estimate, and pace-warning
+  variants. Reviewer closeout updated `docs/current-state.md`,
+  `docs/testing-and-qa.md`, and `docs/mvp-v4-roadmap.md` to match.
+
 ## 0.35.26 - 2026-05-24
 
 - Issue #151: Tightened native Log workout-row normalization so recurring
