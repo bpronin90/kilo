@@ -434,6 +434,9 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
   const cutStr = localStr(new Date(+referenceDate - 29 * MS_DAY));
 
   const weekdayCounts = {};
+  // Keyed by exercise identity (catalog id, or canonical name for non-catalog exercises).
+  // Accumulates session_entries in section order for cross-section consecutive detection.
+  const exerciseHistories = new Map();
 
   for (const section of sections) {
     const eligible = section.exercises.filter(ex =>
@@ -446,27 +449,18 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
 
     for (const ex of eligible) {
       const exId = _exerciseIdForName(ex.name);
-      let consecutive = 0;
-      let maxConsecutive = 0;
+      const histKey = exId ?? normalizeLiftName(canonicalizeName(ex.name));
+
+      if (!exerciseHistories.has(histKey)) {
+        exerciseHistories.set(histKey, { exercise_name: ex.name, exercise_id: exId, entries: [] });
+      }
+      exerciseHistories.get(histKey).entries.push(...ex.session_entries);
 
       ex.session_entries.forEach((entry, idx) => {
         if (entry.skipped) {
           exercise_skips.push({ exercise_name: ex.name, exercise_id: exId, session_index: idx });
-          consecutive++;
-          if (consecutive > maxConsecutive) maxConsecutive = consecutive;
-        } else {
-          consecutive = 0;
         }
       });
-
-      if (maxConsecutive >= 2) {
-        attendance_flags.push({
-          type: 'consecutive_exercise_skips',
-          exercise_name: ex.name,
-          exercise_id: exId,
-          consecutive_count: maxConsecutive,
-        });
-      }
     }
 
     for (let i = 0; i < maxLen; i++) {
@@ -481,6 +475,28 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
       if (weekday && headingDate && headingDate >= cutStr && headingDate <= refStr) {
         weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
       }
+    }
+  }
+
+  // Cross-section consecutive skip detection: evaluate each exercise's full history.
+  for (const { exercise_name, exercise_id, entries } of exerciseHistories.values()) {
+    let consecutive = 0;
+    let maxConsecutive = 0;
+    for (const entry of entries) {
+      if (entry.skipped) {
+        consecutive++;
+        if (consecutive > maxConsecutive) maxConsecutive = consecutive;
+      } else {
+        consecutive = 0;
+      }
+    }
+    if (maxConsecutive >= 2) {
+      attendance_flags.push({
+        type: 'consecutive_exercise_skips',
+        exercise_name,
+        exercise_id,
+        consecutive_count: maxConsecutive,
+      });
     }
   }
 

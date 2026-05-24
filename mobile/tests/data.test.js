@@ -747,7 +747,7 @@ describe('deriveSkipData', () => {
     expect(exercise_skips[0].exercise_id).toBeNull();
   });
 
-  test('multiple sections: each section tracked independently', () => {
+  test('different exercises across sections produce independent flags', () => {
     const sections = [
       skipSection('Monday', [skipExercise('Squat', ['skip', 'skip'])]),
       skipSection('Wednesday', [skipExercise('Deadlift', ['log', 'log'])]),
@@ -757,6 +757,42 @@ describe('deriveSkipData', () => {
     const sqFlag = attendance_flags.find(f => f.exercise_name === 'Squat');
     expect(sqFlag).toBeDefined();
     expect(attendance_flags.find(f => f.exercise_name === 'Deadlift')).toBeUndefined();
+  });
+
+  test('cross-section consecutive skips for same exercise → flag', () => {
+    // Squat has 1 skip in Monday section, 1 skip in Wednesday section.
+    // Consecutive streak spans sections → should flag.
+    const sections = [
+      skipSection('Monday',    [skipExercise('Squat', ['skip'])]),
+      skipSection('Wednesday', [skipExercise('Squat', ['skip'])]),
+    ];
+    const { attendance_flags } = deriveSkipData(sections);
+    const flag = attendance_flags.find(f => f.type === 'consecutive_exercise_skips' && f.exercise_name === 'Squat');
+    expect(flag).toBeDefined();
+    expect(flag.consecutive_count).toBe(2);
+  });
+
+  test('cross-section skip–log–skip (non-consecutive) → no flag', () => {
+    const sections = [
+      skipSection('Monday',    [skipExercise('Squat', ['skip'])]),
+      skipSection('Wednesday', [skipExercise('Squat', ['log'])]),
+      skipSection('Friday',    [skipExercise('Squat', ['skip'])]),
+    ];
+    const { attendance_flags } = deriveSkipData(sections);
+    expect(attendance_flags.some(f => f.type === 'consecutive_exercise_skips')).toBe(false);
+  });
+
+  test('rename continuity: catalog alias in different sections merges under same id', () => {
+    // 'Back Squat' canonicalizes to 'Squat' (same exercise_id 'squat').
+    // One skip as 'Squat', one skip as 'Back Squat' → consecutive → flag.
+    const sections = [
+      skipSection('Monday',    [skipExercise('Squat',      ['skip'])]),
+      skipSection('Wednesday', [skipExercise('Back Squat', ['skip'])]),
+    ];
+    const { attendance_flags } = deriveSkipData(sections);
+    const flag = attendance_flags.find(f => f.type === 'consecutive_exercise_skips');
+    expect(flag).toBeDefined();
+    expect(flag.consecutive_count).toBe(2);
   });
 
   test('all-logged exercise → no exercise_skips and no flags', () => {
