@@ -357,7 +357,6 @@ function formatOverload(trend) {
     case 'up': return '↑ Up';
     case 'flat': return '→ Flat';
     case 'down': return '↓ Down';
-    case 'first_session': return 'Initial';
     default: return '—';
   }
 }
