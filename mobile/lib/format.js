@@ -56,7 +56,7 @@ export function formatSessionClassification(label) {
     case 'initial':      return 'Initial';
     case 'progressing':  return '↑ Progressing';
     case 'stalled':      return '→ Stalled';
-    case 'regressing':   return '↓ Regressing';
+    case 'regressing':   return null;
     case 'inconsistent': return '~ Inconsistent';
     default:             return null;
   }

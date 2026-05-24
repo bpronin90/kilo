@@ -294,11 +294,13 @@ export function StatsScreen({ multiplier, section }) {
                     </Text>
                   ) : null}
                 </View>
-                {sig.progression_status !== 'first_session' && (
-                  <Badge status={sig.progression_status}>
-                    {formatStatus(sig.progression_status)}
-                  </Badge>
-                )}
+                <View style={styles.badgeSlot}>
+                  {sig.progression_status !== 'first_session' && (
+                    <Badge status={sig.progression_status}>
+                      {formatStatus(sig.progression_status)}
+                    </Badge>
+                  )}
+                </View>
               </View>
               <View style={styles.signalMeta}>
                 <View style={styles.signalMetaItem}>
@@ -591,6 +593,10 @@ const styles = StyleSheet.create({
   signalNameBlock: {
     flex: 1,
     gap: 2,
+  },
+  badgeSlot: {
+    minWidth: 80,
+    alignItems: 'flex-end',
   },
   signalName: {
     fontSize: 15,

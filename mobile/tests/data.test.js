@@ -450,6 +450,19 @@ describe('classifyExerciseSessions', () => {
     expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('stalled');
   });
 
+  test('alias variant tracked name resolves to canonical analytics entry', () => {
+    // "lat pd" is an alias for "Lat Pulldown" — classifyExerciseSessions must resolve it
+    const sections = [
+      { heading: null, subheading: null, kind: 'general', exercises: [
+        { name: 'Lat Pulldown', rows: [], sets: [w(100, 10), w(100, 10)], unparsed_rows: [], session_entries: [] },
+      ]},
+      { heading: null, subheading: null, kind: 'general', exercises: [
+        { name: 'Lat Pulldown', rows: [], sets: [w(110, 10), w(110, 10)], unparsed_rows: [], session_entries: [] },
+      ]},
+    ];
+    expect(classifyExerciseSessions(sections, ['lat pd'])['lat pd']).toBe('progressing');
+  });
+
   test('plain-row occurrences (no session_entries) each count as one session', () => {
     // Two separate section occurrences with bare rows (no "- " prefix), newest last
     const sections = [

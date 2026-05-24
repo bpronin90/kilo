@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
 import { classifyWeightPace } from './format.js';
 
 export const KILO_SPLIT = {
@@ -442,7 +442,8 @@ export function classifyExerciseSessions(sections, trackedNames) {
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
-    const ex = exercises.find(e => normalizeLiftName(e.name) === normName);
+    const lookupKey = normalizeLiftName(canonicalizeName(name));
+    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
     if (!ex) { result[normName] = null; continue; }
     // Mirror deriveProgressionSignals dual-path: occurrences with session_entries
     // expand per-entry (preserving skips for the window); plain-row occurrences
