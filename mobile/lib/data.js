@@ -443,7 +443,13 @@ export function classifyExerciseSessions(sections, trackedNames) {
     const normName = normalizeLiftName(name);
     const ex = exercises.find(e => normalizeLiftName(e.name) === normName);
     if (!ex) { result[normName] = null; continue; }
-    const allEntries = ex.occurrences.flatMap(occ => occ.session_entries || []);
+    // Mirror deriveProgressionSignals dual-path: occurrences with session_entries
+    // expand per-entry (preserving skips for the window); plain-row occurrences
+    // (inline sets, no session_entries) each count as one session unit.
+    const allEntries = ex.occurrences.flatMap(occ => {
+      if ((occ.session_entries || []).length > 0) return occ.session_entries;
+      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+    });
     result[normName] = _classifyEntries(allEntries);
   }
   return result;

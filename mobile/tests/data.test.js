@@ -450,6 +450,19 @@ describe('classifyExerciseSessions', () => {
     expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('stalled');
   });
 
+  test('plain-row occurrences (no session_entries) each count as one session', () => {
+    // Two separate section occurrences with bare rows (no "- " prefix), newest last
+    const sections = [
+      { heading: 'monday', subheading: null, kind: 'general', exercises: [
+        { name: 'Squat', rows: [], sets: [w(225, 5), w(225, 5), w(225, 5)], unparsed_rows: [], session_entries: [] },
+      ]},
+      { heading: 'friday', subheading: null, kind: 'general', exercises: [
+        { name: 'Squat', rows: [], sets: [w(235, 5), w(235, 5), w(235, 5)], unparsed_rows: [], session_entries: [] },
+      ]},
+    ];
+    expect(classifyExerciseSessions(sections, ['Squat'])['squat']).toBe('progressing');
+  });
+
   test('returns map for multiple tracked exercises', () => {
     const sections = [
       classifSection('Squat', [w(225, 5), w(235, 5)]),
