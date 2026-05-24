@@ -339,6 +339,8 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     isCurrent,
     skip_markers: null,
     attendance_flags: null,
+    rep_drop_off_flags: null,
+    dismissed_nudges: null,
   };
 }
 
@@ -596,6 +598,48 @@ export function classifyExerciseSessions(sections, trackedNames) {
       return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
     });
     result[normName] = _classifyEntries(allEntries);
+  }
+  return result;
+}
+
+// ── Rep drop-off flag ─────────────────────────────────────────────────────────
+
+// Compute the intra-session rep drop-off flag for one session's sets.
+// Uses working sets (weight_value > 0, rep_count > 0) only.
+// Mixed-weight: uses the heaviest-weight sets to compute first/last reps.
+// Returns 'hit_wall' | 'in_reserve' | null.
+export function computeRepDropOff(sets) {
+  const working = (sets || []).filter(s => s.weight_value > 0 && s.rep_count > 0);
+  if (working.length < 2) return null;
+  const maxWeight = Math.max(...working.map(s => s.weight_value));
+  const atMax = working.filter(s => s.weight_value === maxWeight);
+  if (atMax.length < 2) return null; // only 1 set at heaviest weight → ambiguous
+  const dropOff = atMax[0].rep_count - atMax[atMax.length - 1].rep_count;
+  if (dropOff >= 3) return 'hit_wall';
+  if (dropOff <= 1) return 'in_reserve';
+  return null; // drop_off === 2
+}
+
+// Derive rep drop-off flags for all tracked exercises.
+// For each tracked exercise, uses the most recent non-skipped logged session entry.
+// Untracked exercises (not in trackedNames) are excluded (result value = null).
+// Returns { [normalizedName]: 'hit_wall' | 'in_reserve' | null }
+export function deriveRepDropOffFlags(sections, trackedNames) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+  for (const name of trackedNames) {
+    const normName = normalizeLiftName(name);
+    const lookupKey = normalizeLiftName(canonicalizeName(name));
+    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    if (!ex) { result[normName] = null; continue; }
+    const allEntries = ex.occurrences.flatMap(occ => {
+      if ((occ.session_entries || []).length > 0) return occ.session_entries;
+      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+    });
+    const lastLogged = [...allEntries].reverse().find(
+      e => !e.skipped && !e.unparsed && e.sets && e.sets.length > 0
+    );
+    result[normName] = lastLogged ? computeRepDropOff(lastLogged.sets) : null;
   }
   return result;
 }

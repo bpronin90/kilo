@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -822,5 +822,215 @@ describe('makeWorkoutNoteItem skip fields', () => {
     const item = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
     expect(item).toHaveProperty('skip_markers', null);
     expect(item).toHaveProperty('attendance_flags', null);
+  });
+
+  test('new note item has rep_drop_off_flags and dismissed_nudges initialised to null', () => {
+    const item = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
+    expect(item).toHaveProperty('rep_drop_off_flags', null);
+    expect(item).toHaveProperty('dismissed_nudges', null);
+  });
+});
+
+// ── computeRepDropOff ─────────────────────────────────────────────────────────
+
+describe('computeRepDropOff', () => {
+  test('null sets → null', () => {
+    expect(computeRepDropOff(null)).toBeNull();
+  });
+
+  test('empty sets → null', () => {
+    expect(computeRepDropOff([])).toBeNull();
+  });
+
+  test('single working set → null (single-set rule)', () => {
+    expect(computeRepDropOff([{ weight_value: 225, rep_count: 8 }])).toBeNull();
+  });
+
+  test('drop_off ≥ 3 → hit_wall (first 8, last 4, drop=4)', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 6 },
+      { weight_value: 225, rep_count: 4 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('hit_wall');
+  });
+
+  test('drop_off exactly 3 → hit_wall (boundary)', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 5 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('hit_wall');
+  });
+
+  test('drop_off = 2 → null (no flag)', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 6 },
+    ];
+    expect(computeRepDropOff(sets)).toBeNull();
+  });
+
+  test('drop_off ≤ 1 → in_reserve (first 8, last 8, drop=0)', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 8 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('in_reserve');
+  });
+
+  test('drop_off exactly 1 → in_reserve (boundary)', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 7 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('in_reserve');
+  });
+
+  test('negative drop_off (reps increased) → in_reserve', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 6 },
+      { weight_value: 225, rep_count: 8 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('in_reserve');
+  });
+
+  test('mixed weight: only 1 set at heaviest → null (ambiguous)', () => {
+    const sets = [
+      { weight_value: 200, rep_count: 8 },
+      { weight_value: 200, rep_count: 8 },
+      { weight_value: 225, rep_count: 6 },
+    ];
+    expect(computeRepDropOff(sets)).toBeNull();
+  });
+
+  test('mixed weight: multiple sets at heaviest used for computation', () => {
+    // Lighter sets: 200×8,8 — ignored
+    // Heaviest sets: 225×8, 225×4 → drop=4 → hit_wall
+    const sets = [
+      { weight_value: 200, rep_count: 8 },
+      { weight_value: 200, rep_count: 8 },
+      { weight_value: 225, rep_count: 8 },
+      { weight_value: 225, rep_count: 4 },
+    ];
+    expect(computeRepDropOff(sets)).toBe('hit_wall');
+  });
+
+  test('sets with weight_value=0 excluded (bodyweight/unweighted excluded)', () => {
+    const sets = [
+      { weight_value: 0, rep_count: 10 },
+      { weight_value: 0, rep_count: 10 },
+    ];
+    expect(computeRepDropOff(sets)).toBeNull();
+  });
+
+  test('sets with rep_count=0 excluded', () => {
+    const sets = [
+      { weight_value: 225, rep_count: 0 },
+      { weight_value: 225, rep_count: 0 },
+    ];
+    expect(computeRepDropOff(sets)).toBeNull();
+  });
+});
+
+// ── deriveRepDropOffFlags ─────────────────────────────────────────────────────
+
+function dropOffSection(name, sessionEntries) {
+  const session_entries = sessionEntries.map(e =>
+    e === 'skip'
+      ? { skipped: true, raw: '-', sets: [] }
+      : { skipped: false, raw: 'x', sets: Array.isArray(e) ? e : [e] }
+  );
+  return {
+    heading: null, subheading: null, kind: 'general',
+    exercises: [{ name, rows: [], sets: [], unparsed_rows: [], session_entries }],
+  };
+}
+
+function ws(weight, rep_count) { return { weight_value: weight, rep_count }; }
+
+describe('deriveRepDropOffFlags', () => {
+  test('exercise not in note → null', () => {
+    const sections = [dropOffSection('Bench Press', [[ws(135, 8), ws(135, 8)]])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBeNull();
+  });
+
+  test('most recent session is skipped → uses prior logged session', () => {
+    // sessions: [8,4], skip → most recent logged has drop=4 → hit_wall
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 4)],
+      'skip',
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBe('hit_wall');
+  });
+
+  test('most recent session → hit_wall (drop ≥ 3)', () => {
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 4)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBe('hit_wall');
+  });
+
+  test('most recent session → in_reserve (drop ≤ 1)', () => {
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 8)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBe('in_reserve');
+  });
+
+  test('most recent session → no flag (drop = 2)', () => {
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 6)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBeNull();
+  });
+
+  test('single-set most recent session → no flag', () => {
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBeNull();
+  });
+
+  test('uses only the most recent logged session, not an earlier one', () => {
+    // First session: hit_wall (8,4), Second session: in_reserve (8,8)
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 4)],
+      [ws(225, 8), ws(225, 8)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBe('in_reserve');
+  });
+
+  test('returns flags for multiple tracked exercises', () => {
+    const sections = [
+      dropOffSection('Squat', [[ws(225, 8), ws(225, 4)]]),
+      dropOffSection('Deadlift', [[ws(315, 8), ws(315, 8)]]),
+    ];
+    const result = deriveRepDropOffFlags(sections, ['Squat', 'Deadlift']);
+    expect(result['squat']).toBe('hit_wall');
+    expect(result['deadlift']).toBe('in_reserve');
+  });
+
+  test('untracked exercise not in result', () => {
+    const sections = [
+      dropOffSection('Squat', [[ws(225, 8), ws(225, 4)]]),
+      dropOffSection('Bench Press', [[ws(135, 8), ws(135, 4)]]),
+    ];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBe('hit_wall');
+    expect(result['bench press']).toBeUndefined();
+  });
+
+  test('all sessions skipped → null', () => {
+    const sections = [dropOffSection('Squat', ['skip', 'skip'])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toBeNull();
   });
 });
