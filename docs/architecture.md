@@ -137,7 +137,11 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
-- `mobile/lib/data.js` owns native entry factories and the exercise catalog
+- `mobile/lib/data.js` owns native entry factories, the exercise catalog, and
+  shared recompute-only workout analytics helpers such as routine-depth and
+  canonical temporal semantics (`currentWeekStart()` for Sunday-based
+  current-week gating and `rollingWindowStart()` for inclusive attendance
+  windows)
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
@@ -645,6 +649,14 @@ recomputation at render time is permitted.
 - Weeks In, session count
 - Big 3 asymmetry detection (reads persisted dismissals, not persisted notes)
 - Weekly summary aggregation (reads persisted note fields, aggregates live)
+
+**Canonical temporal helper semantics for recompute-only consumers:**
+- `currentWeekStart()` defines the shared Sunday-based current-week gate used by
+  native workout consumers that need a current-week boundary
+- `rollingWindowStart()` defines the shared inclusive rolling-window cutoff used
+  by native workout consumers that need attendance windows
+- `detectBig3Asymmetry()` still uses its own internal Monday-based historical
+  grouping; consumers must not treat that grouping as the current-week gate
 
 **`computeWeeklySummary` consumption contract:**
 - Must read `exercise_classifications` from `workoutNote.exercise_classifications` only
