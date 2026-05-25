@@ -255,9 +255,34 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
+// ── Canonical temporal helpers ────────────────────────────────────────────────
+
+// Returns the Sunday-based current week start as 'YYYY-MM-DD'.
+// Use for current-week gating (Sunday-Saturday boundary per issue #163 contract).
+// Not for historical grouping — detectBig3Asymmetry uses Monday-based weeks internally.
+export function currentWeekStart(referenceDate = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  const day = referenceDate.getDay(); // 0=Sun
+  const sun = new Date(+referenceDate - day * 86400000);
+  return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
+}
+
+// Returns the start of a rolling N-day window ending on referenceDate, as 'YYYY-MM-DD'.
+// Inclusive on both ends: rollingWindowStart(ref, 30) covers ref-date minus 29 days.
+// Use for attendance window calculations (e.g., 30-day skip detection).
+export function rollingWindowStart(referenceDate = new Date(), days = 30) {
+  const pad = n => String(n).padStart(2, '0');
+  const start = new Date(+referenceDate - (days - 1) * 86400000);
+  return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+}
+
+// ── Routine depth ─────────────────────────────────────────────────────────────
+
 // Returns the longest session_entries chain across all exercises in sections.
 // Depth = total entry count (including skipped entries) for the deepest exercise line.
-// Returns null when sections is absent (no routine loaded). Returns 0 when no entries logged.
+// Only session_entries are counted; exercises with bare rows but no session_entries
+// contribute 0 to the depth. Returns null when sections is absent (no routine loaded).
+// Returns 0 when no entries logged.
 export function computeWeeksIn(sections) {
   if (!sections) return null;
   let max = 0;
@@ -429,11 +454,10 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
   const day_skips = [];
   const attendance_flags = [];
 
-  const MS_DAY = 86400000;
   const pad = n => String(n).padStart(2, '0');
   const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const refStr = localStr(referenceDate);
-  const cutStr = localStr(new Date(+referenceDate - 29 * MS_DAY));
+  const cutStr = rollingWindowStart(referenceDate, 30);
 
   const weekdayCounts = {};
   // Keyed by exercise identity (catalog id, or canonical name for non-catalog exercises).

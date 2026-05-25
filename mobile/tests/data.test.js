@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry, currentWeekStart, rollingWindowStart } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1276,5 +1276,149 @@ describe('detectBig3Asymmetry', () => {
     // Dismissing with the original runStart key must suppress the note.
     const dismissed = { [notes[0].dismissKey]: true };
     expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
+  });
+});
+
+// ── currentWeekStart ──────────────────────────────────────────────────────────
+
+describe('currentWeekStart', () => {
+  test('Sunday returns itself', () => {
+    // 2026-05-24 is a Sunday
+    expect(currentWeekStart(new Date('2026-05-24T12:00:00'))).toBe('2026-05-24');
+  });
+
+  test('Monday returns previous Sunday', () => {
+    // 2026-05-25 is a Monday → week starts 2026-05-24
+    expect(currentWeekStart(new Date('2026-05-25T12:00:00'))).toBe('2026-05-24');
+  });
+
+  test('Saturday returns 6 days prior Sunday', () => {
+    // 2026-05-30 is a Saturday → week starts 2026-05-24
+    expect(currentWeekStart(new Date('2026-05-30T12:00:00'))).toBe('2026-05-24');
+  });
+
+  test('Wednesday mid-week returns correct Sunday', () => {
+    // 2026-05-27 is a Wednesday → week starts 2026-05-24
+    expect(currentWeekStart(new Date('2026-05-27T12:00:00'))).toBe('2026-05-24');
+  });
+
+  test('returns YYYY-MM-DD string format', () => {
+    const result = currentWeekStart(new Date('2026-01-01T12:00:00'));
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// ── rollingWindowStart ────────────────────────────────────────────────────────
+
+describe('rollingWindowStart', () => {
+  test('30-day window: start is 29 days before reference (inclusive both ends)', () => {
+    // ref = 2026-05-24, window start = 2026-04-25
+    expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 30)).toBe('2026-04-25');
+  });
+
+  test('1-day window: start equals reference date', () => {
+    expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 1)).toBe('2026-05-24');
+  });
+
+  test('7-day window: start is 6 days before reference', () => {
+    // ref = 2026-05-24, 7-day window starts 2026-05-18
+    expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 7)).toBe('2026-05-18');
+  });
+
+  test('returns YYYY-MM-DD string format', () => {
+    const result = rollingWindowStart(new Date('2026-03-01T12:00:00'), 30);
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test('window spanning month boundary returns correct date', () => {
+    // ref = 2026-03-05, 30-day window starts 2026-02-04
+    expect(rollingWindowStart(new Date('2026-03-05T12:00:00'), 30)).toBe('2026-02-04');
+  });
+});
+
+// ── computeWeeksIn session semantics ──────────────────────────────────────────
+// Regression coverage for the session/routine-depth distinction.
+// computeWeeksIn counts session_entries depth only; exercises with bare rows
+// but no session_entries contribute 0. This differs from day-aware session
+// counting (countWorkoutSessionsFromSections in parser.js) which uses rows too.
+
+describe('computeWeeksIn plain-row vs session-entry distinction', () => {
+  test('exercise with bare rows only and no session_entries contributes 0 depth', () => {
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name: 'Squat', rows: [{ raw: '225x5', sets: [] }], session_entries: [], unparsed_rows: [] }],
+    }];
+    expect(computeWeeksIn(sections)).toBe(0);
+  });
+
+  test('mixed: one exercise with session_entries, one with only bare rows — uses session_entries depth', () => {
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [
+        { name: 'Squat', rows: [], session_entries: [{ skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }, { skipped: false, raw: '235x5', sets: [{ weight_value: 235, rep_count: 5 }] }], unparsed_rows: [] },
+        { name: 'Deadlift', rows: [{ raw: '315x5', sets: [] }], session_entries: [], unparsed_rows: [] },
+      ],
+    }];
+    // Squat has depth 2; Deadlift has depth 0 (bare rows only)
+    expect(computeWeeksIn(sections)).toBe(2);
+  });
+
+  test('undated routine with session_entries counted correctly', () => {
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name: 'Bench Press', rows: [], session_entries: Array.from({ length: 5 }, () => ({ skipped: false, raw: '185x8', sets: [{ weight_value: 185, rep_count: 8 }] })), unparsed_rows: [] }],
+    }];
+    expect(computeWeeksIn(sections)).toBe(5);
+  });
+
+  test('dated-heading section (ISO date in heading) counted same as undated', () => {
+    const sections = [{
+      heading: '2026-05-19', subheading: null, kind: 'lifting',
+      exercises: [{ name: 'Squat', rows: [], session_entries: [{ skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }, { skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }, { skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }], unparsed_rows: [] }],
+    }];
+    expect(computeWeeksIn(sections)).toBe(3);
+  });
+});
+
+// ── deriveSkipData uses rollingWindowStart (attendance window) ────────────────
+// Regression coverage confirming the 30-day attendance window boundary uses
+// the canonical rollingWindowStart semantics.
+
+describe('deriveSkipData attendance window boundary (rollingWindowStart regression)', () => {
+  test('skip exactly on window start date is counted toward weekday flag', () => {
+    // ref = 2026-05-24; 30-day window starts 2026-04-25
+    const refDate = new Date('2026-05-24T12:00:00');
+    const windowStart = rollingWindowStart(refDate, 30); // '2026-04-25' (a Saturday)
+    // Two fully-skipped Saturdays: one on the boundary, one inside
+    const sections = [
+      { heading: windowStart, subheading: null, kind: 'lifting', exercises: [
+        { name: 'Squat', raw_header: '-Squat', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+        { name: 'Deadlift', raw_header: '-Deadlift', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+      ]},
+      { heading: '2026-05-02', subheading: null, kind: 'lifting', exercises: [
+        { name: 'Squat', raw_header: '-Squat', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+        { name: 'Deadlift', raw_header: '-Deadlift', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+      ]},
+    ];
+    const { attendance_flags } = deriveSkipData(sections, { referenceDate: refDate });
+    const weekdayFlag = attendance_flags.find(f => f.type === 'repeated_weekday_skip');
+    expect(weekdayFlag).toBeDefined();
+    expect(weekdayFlag.skip_count).toBe(2);
+  });
+
+  test('skip one day before window start is excluded from weekday flag', () => {
+    // ref = 2026-05-24; 30-day window starts 2026-04-25
+    // A skip on 2026-04-24 (one day before) should be excluded
+    const refDate = new Date('2026-05-24T12:00:00');
+    const sections = [
+      { heading: '2026-04-24', subheading: null, kind: 'lifting', exercises: [
+        { name: 'Squat', raw_header: '-Squat', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+      ]},
+      { heading: '2026-05-01', subheading: null, kind: 'lifting', exercises: [
+        { name: 'Squat', raw_header: '-Squat', rows: [], session_entries: [{ skipped: true, raw: '-', sets: [] }], unparsed_rows: [] },
+      ]},
+    ];
+    const { attendance_flags } = deriveSkipData(sections, { referenceDate: refDate });
+    expect(attendance_flags.some(f => f.type === 'repeated_weekday_skip')).toBe(false);
   });
 });
