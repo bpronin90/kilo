@@ -210,8 +210,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
                   <Text style={styles.asymmetryBadgeIcon}>⚠</Text>
                   <Text style={styles.asymmetryBadgeText}>asymmetry notes</Text>
                 </View>
-                <View style={styles.asymmetryLine} />
-                <Text style={styles.asymmetryStatus}>Assessment Active</Text>
               </View>
             )}
 
@@ -744,7 +742,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   classifLabel: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: Colors.text,
     textTransform: 'uppercase',
@@ -757,7 +755,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   deltaDashboardTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -789,7 +787,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   deltaDashboardLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -798,7 +796,6 @@ const styles = StyleSheet.create({
   asymmetryBadgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
   asymmetryBadge: {
@@ -818,30 +815,17 @@ const styles = StyleSheet.create({
   },
   asymmetryBadgeText: {
     color: '#fffaf2',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
-  },
-  asymmetryLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.cardBorder,
-    opacity: 0.4,
-  },
-  asymmetryStatus: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   analyticsLink: {
     marginTop: 8,
     alignSelf: 'flex-end',
   },
   analyticsLinkText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',

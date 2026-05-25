@@ -698,8 +698,8 @@ function _big3IndexEntries(sections) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const out = { squat: [], bench: [], deadlift: [] };
   for (const slot of _BIG3_SLOTS) {
-    const normTarget = normalizeLiftName(canonicalizeName(_BIG3_NAMES[slot]));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === normTarget);
+    const targetName = _BIG3_NAMES[slot];
+    const ex = _findExercise(exercises, targetName);
     if (!ex) continue;
     for (const occ of ex.occurrences) {
       out[slot].push(..._occurrenceEntries(occ));
