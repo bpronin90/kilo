@@ -715,6 +715,12 @@ function _classifyBig3ByWeek(sections) {
   return sortedWeeks.map(week => {
     const row = { week };
     for (const slot of _BIG3_SLOTS) {
+      // Only classify when the lift has a session this week; weeks with no
+      // session for this slot produce null so the forward-walk skips them.
+      if (!weekMap[slot][week]?.length) {
+        row[slot] = null;
+        continue;
+      }
       const entriesUpTo = sortedWeeks
         .filter(wk => wk <= week)
         .flatMap(wk => weekMap[slot][wk] || []);
