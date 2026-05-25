@@ -127,12 +127,15 @@ The real native app path now has a modular React Native shell:
   `Current Routine Progress` supporting copy, top summary cards for latest
   weight plus a neutral `Weeks In` routine counter derived from the current
   routine's progression depth (the longest `session_entries` chain across all
-  exercises and days), rendered as `—` when no routine is loaded, persisted
-  attendance warning banners from `attendance_flags`, a compact `Session
-  Status` chip row sourced only from persisted
-  `exercise_classifications` and limited to `progressing`, `stalled`, and
-  `regressing`, a renamed `1k Club Progress` card, a compact 7-day
-  rolling-average weight line chart, and the exported
+  exercises and days), rendered as `—` when no routine is loaded, a `Weekly
+  Summary` panel beneath those cards that consumes persisted workout-note
+  analytics inputs rather than re-deriving them, shows a session-based empty
+  state when the current routine has no logged sessions, renders a 2x2
+  classification-count grid from stored `exercise_classifications` when that
+  field exists, opportunistically renders stored `big_3_deltas` when present,
+  and provides a discrete `Full history and insights` link into Analytics, a
+  renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
+  chart, and the exported
   More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
   `1k Club Progress` and `Weight Trend` panels are now static dashboard
   elements with no navigation, and the
@@ -254,8 +257,9 @@ The real native app path now has a modular React Native shell:
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
   alongside the retained `tracked_exercises`, `one_k_exercises`,
-  `skip_markers`, `attendance_flags`, `exercise_classifications`, and
-  per-session `rep_drop_off_flags` fields. It also persists a lightweight
+  `skip_markers`, `attendance_flags`, `exercise_classifications`,
+  `big_3_deltas`, and per-session `rep_drop_off_flags` fields. It also
+  persists a lightweight
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a global

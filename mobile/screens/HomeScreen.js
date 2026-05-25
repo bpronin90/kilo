@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
@@ -100,7 +100,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       <SectionTitle>Weekly Summary</SectionTitle>
       <Card style={styles.weeklyCard}>
         {!dashboardData.weeklySummary.hasActivity ? (
-          <Text style={styles.emptyText}>No sessions logged this week.</Text>
+          <Text style={styles.emptyText}>No sessions logged yet.</Text>
         ) : (
           <View style={styles.weeklyContent}>
             {/* Classification Counts Grid */}

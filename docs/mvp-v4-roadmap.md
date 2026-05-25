@@ -664,7 +664,7 @@ Off-shoot cards:
   `type:implementation`)
 - `#163` - `Phase 6 / Task 12: Implement weekly assessment summary
   panel` (spun off from `#157`; `agent:gemini`,
-  `type:implementation`)
+  `type:implementation`; completed 2026-05-25)
 - `#164` - `Phase 6 / Task 13: Implement tracked-exercise asterisk
   opt-out` (spun off from `#157`; `agent:claude`,
   `type:implementation`)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.40.0 - 2026-05-25
+
+- Issue #163: Added the native Home weekly summary panel beneath the existing
+  summary cards. The panel now renders from persisted workout-note inputs,
+  showing classification counts for stored tracked-exercise classifications,
+  opportunistic stored Big 3 deltas, and a session-based empty state when the
+  current routine has no logged sessions. Reviewer closeout also aligned the
+  Home empty-state copy and restored the parser's single-occurrence semantics
+  for plain inline workout rows so the native Jest suite passes cleanly.
+
 ## 0.39.0 - 2026-05-25
 
 - Issue #174: Rebuilt the native Home weekly summary around persisted workout
