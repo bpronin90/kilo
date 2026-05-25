@@ -74,7 +74,7 @@ export function formatRepDropOffNudge(flag) {
 // laggingClass: 'stalled'|'regressing'
 export function formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass) {
   const p = progressingSlot;
-  const state = laggingClass === 'regressing' ? 'regressing' : 'stalled';
+  const state = laggingClass === 'regressing' ? 'regressing' : 'steady';
   return `${p.charAt(0).toUpperCase() + p.slice(1)} progressing, ${laggingSlot} ${state} — worth reviewing.`;
 }
 

@@ -51,7 +51,7 @@ function KiloWordmark({ width = 140, height = 48 }) {
 
 function classificationColor(cls) {
   if (cls === 'progressing') return Colors.success;
-  if (cls === 'stalled') return Colors.accent;
+  if (cls === 'steady') return Colors.accent;
   if (cls === 'regressing') return Colors.error;
   return Colors.textMuted;
 }
@@ -123,19 +123,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </Card>
       ) : null}
 
-      {dashboardData.asymmetryNotes.map(note => (
-        <View key={note.dismissKey} style={styles.asymmetryNote}>
-          <Text style={styles.asymmetryNoteText}>{note.copy}</Text>
-          <Pressable
-            onPress={() => handleDismissAsymmetry(note.dismissKey)}
-            style={styles.asymmetryDismiss}
-            hitSlop={8}
-          >
-            <Text style={styles.asymmetryDismissText}>×</Text>
-          </Pressable>
-        </View>
-      ))}
-
       <View style={styles.summaryGrid}>
         <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Latest Weight</Text>
@@ -162,10 +149,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               <View style={styles.classifGrid}>
                 {[
                   { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-                  { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
+                  { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
                   { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
                   { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
-                  { label: 'new', count: dashboardData.weeklySummary.classifications.initial, color: Colors.accent },
                 ].map((item, idx) => (
                   <View key={idx} style={styles.classifItem}>
                     <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
@@ -204,12 +190,29 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               </View>
             )}
 
-            {/* Active Flags - Refined Technical Badge */}
-            {dashboardData.weeklySummary.flags.asymmetry && (
-              <View style={styles.asymmetryBadgeContainer}>
-                <View style={styles.asymmetryBadge}>
-                  <Text style={styles.asymmetryBadgeIcon}>⚠</Text>
-                  <Text style={styles.asymmetryBadgeText}>asymmetry notes</Text>
+            {/* Active Asymmetry Notes - Actionable technical layout */}
+            {dashboardData.asymmetryNotes.length > 0 && (
+              <View style={styles.asymmetrySection}>
+                <View style={styles.asymmetryHeader}>
+                  <View style={styles.asymmetryBadge}>
+                    <Text style={styles.asymmetryBadgeIcon}>⚠</Text>
+                    <Text style={styles.asymmetryBadgeText}>Asymmetry Notes</Text>
+                  </View>
+                  <View style={styles.asymmetryLine} />
+                </View>
+                <View style={styles.asymmetryNotesList}>
+                  {dashboardData.asymmetryNotes.map(note => (
+                    <View key={note.dismissKey} style={styles.asymmetryNoteItem}>
+                      <Text style={styles.asymmetryNoteItemText}>{note.copy}</Text>
+                      <Pressable
+                        onPress={() => handleDismissAsymmetry(note.dismissKey)}
+                        style={styles.asymmetryNoteDismiss}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.asymmetryNoteDismissText}>×</Text>
+                      </Pressable>
+                    </View>
+                  ))}
                 </View>
               </View>
             )}

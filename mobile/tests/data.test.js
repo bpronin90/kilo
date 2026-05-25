@@ -1375,7 +1375,7 @@ describe('detectBig3Asymmetry', () => {
     const notes = detectBig3Asymmetry(sections);
     expect(notes.length).toBe(1);
     expect(notes[0].copy).toContain('progressing');
-    expect(notes[0].copy).toContain('stalled');
+    expect(notes[0].copy).toContain('steady');
     expect(notes[0].copy).toContain('worth reviewing');
     expect(notes[0].dismissKey).toMatch(/asymmetry:squat_bench:/);
   });
@@ -1511,7 +1511,7 @@ describe('detectBig3Asymmetry', () => {
       ]),
     ];
     const [note] = detectBig3Asymmetry(sections);
-    expect(note.copy).toBe('Deadlift progressing, bench stalled — worth reviewing.');
+    expect(note.copy).toBe('Deadlift progressing, bench steady — worth reviewing.');
   });
 
   test('null-classification index does not break the run or reset dismissKey', () => {
