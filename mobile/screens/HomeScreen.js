@@ -45,16 +45,18 @@ function KiloWordmark({ width = 140, height = 48 }) {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
-  const [dismissedAsymmetries, setDismissedAsymmetries] = useState({});
+  // null = not yet loaded; {} = loaded with no dismissals.
+  // Asymmetry notes are suppressed until load completes to prevent flash-on-mount.
+  const [dismissedAsymmetries, setDismissedAsymmetries] = useState(null);
 
   useEffect(() => {
     AsyncStorage.getItem(DISMISSED_ASYMMETRIES_KEY)
-      .then(raw => { if (raw) setDismissedAsymmetries(JSON.parse(raw)); })
-      .catch(() => {});
+      .then(raw => setDismissedAsymmetries(raw ? JSON.parse(raw) : {}))
+      .catch(() => setDismissedAsymmetries({}));
   }, []);
 
   const handleDismissAsymmetry = useCallback(async (dismissKey) => {
-    const next = { ...dismissedAsymmetries, [dismissKey]: true };
+    const next = { ...(dismissedAsymmetries || {}), [dismissKey]: true };
     setDismissedAsymmetries(next);
     await AsyncStorage.setItem(DISMISSED_ASYMMETRIES_KEY, JSON.stringify(next));
   }, [dismissedAsymmetries]);
@@ -76,7 +78,11 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
     const weeksIn = computeWeeksIn(sections);
-    const asymmetryNotes = detectBig3Asymmetry(sections || [], dismissedAsymmetries);
+    // dismissedAsymmetries=null means storage hasn't loaded yet — pass empty map
+    // so detectBig3Asymmetry produces the full list, but we suppress rendering below.
+    const asymmetryNotes = dismissedAsymmetries !== null
+      ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
+      : [];
 
     return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes };
   }, [weightEntries, workoutNote, dismissedAsymmetries]);

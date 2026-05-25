@@ -730,10 +730,20 @@ function _isAsymmetric(clA, clB) {
   return false;
 }
 
+// Returns true only when both lifts have the same concrete classification.
+// null, 'initial', and 'inconsistent' are not concrete and cannot constitute a break.
+function _sharedConcreteClassification(clA, clB) {
+  const concrete = ['progressing', 'stalled', 'regressing'];
+  return concrete.includes(clA) && clA === clB;
+}
+
 // Detect active cross-lift asymmetry notes for the Big 3.
 //
 // A note fires when one Big 3 lift is progressing while another is stalled or
-// regressing for 2+ consecutive weeks.
+// regressing for 2+ asymmetric weeks within a single run. A run resets only
+// when both lifts share the same concrete classification (the issue-specified
+// break condition). Weeks where either lift is null/initial/inconsistent are
+// ignored: they neither count toward the run nor break it.
 //
 // dismissedAsymmetries: { [dismissKey]: true }
 //   dismissKey encodes the pair and the week the current asymmetric run started,
@@ -747,17 +757,23 @@ export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
 
   const notes = [];
   for (const [slotA, slotB] of _BIG3_PAIRS) {
-    // Walk backward to find current consecutive asymmetric run.
-    let runLength = 0;
+    // Forward walk: accumulate the current run.
+    // Reset only on a shared concrete classification (the break condition).
+    // Skip null/initial/inconsistent weeks without counting or resetting.
     let runStart = null;
-    for (let i = weekSeries.length - 1; i >= 0; i--) {
-      const { [slotA]: clA, [slotB]: clB, week } = weekSeries[i];
-      if (!_isAsymmetric(clA, clB)) break;
-      runLength++;
-      runStart = week;
+    let runCount = 0;
+    for (const { [slotA]: clA, [slotB]: clB, week } of weekSeries) {
+      if (_sharedConcreteClassification(clA, clB)) {
+        runStart = null;
+        runCount = 0;
+      } else if (_isAsymmetric(clA, clB)) {
+        if (runStart === null) runStart = week;
+        runCount++;
+      }
+      // null/initial/inconsistent on either side: ignored
     }
 
-    if (runLength < 2) continue;
+    if (runCount < 2) continue;
 
     const last = weekSeries[weekSeries.length - 1];
     const clA = last[slotA];

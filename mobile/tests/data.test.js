@@ -1241,4 +1241,40 @@ describe('detectBig3Asymmetry', () => {
     const [note] = detectBig3Asymmetry(sections);
     expect(note.copy).toBe('Deadlift progressing, bench stalled — worth reviewing.');
   });
+
+  test('null/initial week does not break the run or reset dismissKey', () => {
+    // 3 asymmetric weeks with a null-classification week in the middle.
+    // The null week (only 1 session logged → initial) must NOT reset runStart.
+    // The dismissed key from the first asymmetric week must still suppress the note.
+    const sections = [
+      // Baseline
+      asymSection('2023-12-18', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 1: squat progresses, bench stalls → asymmetric, runStart=2023-12-25
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 2: only squat logged — bench classification will be null (no bench entry)
+      // This should NOT reset the run.
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(245, 5)] },
+      ]),
+      // Week 3: squat progresses, bench stalls again → asymmetric, runCount reaches 2
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(255, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    const notes = detectBig3Asymmetry(sections);
+    expect(notes.length).toBe(1);
+    // runStart should still be 2023-12-25 (null week did not reset it)
+    expect(notes[0].dismissKey).toContain('2023-12-25');
+
+    // Dismissing with the original runStart key must suppress the note.
+    const dismissed = { [notes[0].dismissKey]: true };
+    expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
+  });
 });
