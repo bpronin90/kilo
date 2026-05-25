@@ -136,21 +136,23 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         ) : (
           <View style={styles.weeklyContent}>
             {/* Classification Counts */}
-            <View style={styles.classifRow}>
-              {[
-                { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-                { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' }, // Custom gold/yellow
-                { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
-                { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
-              ].map((item, idx) => (
-                <View key={idx} style={styles.classifItem}>
-                  <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                  <Text style={styles.classifText}>
-                    <Text style={styles.classifCount}>{item.count}</Text> {item.label}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {dashboardData.weeklySummary.classifications && (
+              <View style={styles.classifRow}>
+                {[
+                  { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+                  { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' }, // Custom gold/yellow
+                  { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+                  { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+                ].map((item, idx) => (
+                  <View key={idx} style={styles.classifItem}>
+                    <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                    <Text style={styles.classifText}>
+                      <Text style={styles.classifCount}>{item.count}</Text> {item.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {/* Strength Delta */}
             {dashboardData.weeklySummary.deltas && (
@@ -180,12 +182,14 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
             )}
 
             {/* Active Flags */}
-            <View style={styles.flagsRow}>
-              {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
-              {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
-              {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
-              {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
-            </View>
+            {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
+              <View style={styles.flagsRow}>
+                {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
+                {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
+                {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
+                {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
+              </View>
+            )}
           </View>
         )}
       </Card>

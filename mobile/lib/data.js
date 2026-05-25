@@ -841,9 +841,12 @@ export function computeWeeklySummary(sections, workoutNote, { referenceDate = ne
   (sections || []).forEach(section => {
     const { date } = _headingInfo(section.heading);
     if (!date) return;
-    const hasLogged = section.exercises.some(ex =>
-      (ex.session_entries || []).some(se => !se.skipped)
-    );
+    const hasLogged = section.exercises.some(ex => {
+      if ((ex.session_entries || []).length > 0) {
+        return ex.session_entries.some(se => !se.skipped);
+      }
+      return (ex.sets || []).length > 0;
+    });
     if (hasLogged) sessionDates.add(date);
   });
 
@@ -855,13 +858,15 @@ export function computeWeeklySummary(sections, workoutNote, { referenceDate = ne
   }
 
   // 1. Classification counts (tracked exercises only)
-  const classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0 };
-  const storedClassifs = workoutNote?.exercise_classifications || {};
-  Object.values(storedClassifs).forEach(val => {
-    if (classifications[val] !== undefined) {
-      classifications[val]++;
-    }
-  });
+  let classifications = null;
+  if (workoutNote?.exercise_classifications) {
+    classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0 };
+    Object.values(workoutNote.exercise_classifications).forEach(val => {
+      if (classifications[val] !== undefined) {
+        classifications[val]++;
+      }
+    });
+  }
 
   // 2. Big 3 strength delta (consume upstream-stored data)
   const deltas = workoutNote?.big_3_deltas || null;

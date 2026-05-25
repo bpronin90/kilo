@@ -1379,3 +1379,30 @@ describe('computeWeeklySummary', () => {
     expect(resultDismissed.flags.asymmetry).toBe(false);
   });
 });
+
+describe('computeWeeklySummary regression tests', () => {
+  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
+
+  test('reports hasActivity: true for plain inline set rows (no session_entries)', () => {
+    const sections = [{
+      heading: 'Sunday 2026-05-24',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('returns classifications: null if exercise_classifications is missing from note', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.classifications).toBe(null);
+  });
+});
