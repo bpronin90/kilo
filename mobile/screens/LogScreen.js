@@ -569,7 +569,7 @@ export function LogScreen({
                                 {nudgeCopy && (
                                   <View style={styles.nudgeChip}>
                                     <Text style={styles.nudgeChipText}>{nudgeCopy}</Text>
-                                    <Pressable onPress={() => handleDismissNudge(ex.name)} style={styles.nudgeDismiss}>
+                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss}>
                                       <Text style={styles.nudgeDismissText}>×</Text>
                                     </Pressable>
                                   </View>
