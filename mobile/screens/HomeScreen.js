@@ -6,7 +6,7 @@ import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../components/UI';
-import { formatTimestamp } from '../lib/format';
+import { formatTimestamp, formatDelta } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import {
@@ -15,6 +15,7 @@ import {
   DEFAULT_1K_EXERCISES,
   computeWeeksIn,
   detectBig3Asymmetry,
+  computeWeeklySummary,
 } from '../lib/data';
 import pkg from '../package.json';
 
@@ -84,7 +85,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
       : [];
 
-    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes };
+    const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries });
+
+    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes, weeklySummary };
   }, [weightEntries, workoutNote, dismissedAsymmetries]);
 
   return (
@@ -125,6 +128,37 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           </Text>
         </Card>
       </View>
+
+      <SectionTitle>Weekly Summary</SectionTitle>
+      <Card style={styles.weeklyCard}>
+        {!dashboardData.weeklySummary.hasActivity ? (
+          <Text style={styles.emptyText}>No sessions logged this week.</Text>
+        ) : (
+          <View style={styles.weeklyContent}>
+            <View style={styles.classifRow}>
+              <Text style={styles.classifText}>
+                {dashboardData.weeklySummary.classifications.progressing} progressing / {dashboardData.weeklySummary.classifications.stalled} stalled / {dashboardData.weeklySummary.classifications.regressing} regressing / {dashboardData.weeklySummary.classifications.inconsistent} inconsistent
+              </Text>
+            </View>
+
+            {dashboardData.weeklySummary.deltas && (
+              <View style={styles.deltaRow}>
+                <Text style={styles.deltaLabel}>Big 3 Delta (vs prev week)</Text>
+                <Text style={styles.deltaValue}>
+                  S: {formatDelta(dashboardData.weeklySummary.deltas.squat)}  ·  B: {formatDelta(dashboardData.weeklySummary.deltas.bench)}  ·  D: {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.flagsRow}>
+              {dashboardData.weeklySummary.flags.hit_wall && <Chip>hit-wall</Chip>}
+              {dashboardData.weeklySummary.flags.in_reserve && <Chip>in-reserve</Chip>}
+              {dashboardData.weeklySummary.flags.attendance && <Chip>attendance issues</Chip>}
+              {dashboardData.weeklySummary.flags.asymmetry && <Chip>asymmetry notes</Chip>}
+            </View>
+          </View>
+        )}
+      </Card>
 
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
@@ -615,6 +649,41 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: -8,
+  },
+  weeklyCard: {
+    padding: 16,
+  },
+  weeklyContent: {
+    gap: 12,
+  },
+  classifText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  deltaRow: {
+    gap: 2,
+  },
+  deltaLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  deltaValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  flagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
   },
   rowBetween: {
     flexDirection: 'row',

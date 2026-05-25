@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote } from './parser.js';
 import { classifyWeightPace, formatAsymmetryNote } from './format.js';
 
 export const KILO_SPLIT = {
@@ -811,5 +811,85 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
       const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
       return { ...sig, kilo_max: kilo_max_adjusted };
     }),
+  };
+}
+
+// ── Weekly Assessment Summary ────────────────────────────────────────────────
+
+function _sundayWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const day = d.getDay(); // 0=Sun
+  const sun = new Date(+d - day * 86400000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
+}
+
+/**
+ * Shapes stored weekly inputs for the assessment summary panel.
+ *
+ * sections: parsed sections from current routine note
+ * workoutNote: current routine object (notebook item)
+ * options: { referenceDate: Date, dismissedAsymmetries: object }
+ */
+export function computeWeeklySummary(sections, workoutNote, { referenceDate = new Date(), dismissedAsymmetries = {} } = {}) {
+  const pad = n => String(n).padStart(2, '0');
+  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const weekKey = _sundayWeekKey(localStr(referenceDate));
+
+  // Extract dates for all non-skipped sessions in sections
+  const sessionDates = new Set();
+  (sections || []).forEach(section => {
+    const { date } = _headingInfo(section.heading);
+    if (!date) return;
+    const hasLogged = section.exercises.some(ex =>
+      (ex.session_entries || []).some(se => !se.skipped)
+    );
+    if (hasLogged) sessionDates.add(date);
+  });
+
+  // A session is in the current week if its Sunday-based weekKey matches the reference's.
+  const hasActivity = [...sessionDates].some(date => _sundayWeekKey(date) === weekKey);
+
+  if (!hasActivity) {
+    return { hasActivity: false };
+  }
+
+  // 1. Classification counts (tracked exercises only)
+  const classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0 };
+  const storedClassifs = workoutNote?.exercise_classifications || {};
+  Object.values(storedClassifs).forEach(val => {
+    if (classifications[val] !== undefined) {
+      classifications[val]++;
+    }
+  });
+
+  // 2. Big 3 strength delta (consume upstream-stored data)
+  const deltas = workoutNote?.big_3_deltas || null;
+
+  // 3. Flags
+  const flags = {
+    hit_wall: false,
+    in_reserve: false,
+    attendance: (workoutNote?.attendance_flags || []).length > 0,
+    asymmetry: false,
+  };
+
+  // Check rep_drop_off_flags for any tracked exercise
+  const dropOff = workoutNote?.rep_drop_off_flags || {};
+  Object.values(dropOff).forEach(sessionFlags => {
+    const latest = getLatestRepDropOff(sessionFlags);
+    if (latest === 'hit_wall') flags.hit_wall = true;
+    if (latest === 'in_reserve') flags.in_reserve = true;
+  });
+
+  // Check asymmetry via existing helper (respects dismissals)
+  const asymmetryNotes = detectBig3Asymmetry(sections || [], dismissedAsymmetries);
+  flags.asymmetry = asymmetryNotes.length > 0;
+
+  return {
+    hasActivity: true,
+    classifications,
+    deltas,
+    flags,
   };
 }

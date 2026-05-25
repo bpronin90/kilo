@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry, computeWeeklySummary } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1276,5 +1276,106 @@ describe('detectBig3Asymmetry', () => {
     // Dismissing with the original runStart key must suppress the note.
     const dismissed = { [notes[0].dismissKey]: true };
     expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
+  });
+});
+
+// ── computeWeeklySummary ──────────────────────────────────────────────────────
+
+describe('computeWeeklySummary', () => {
+  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
+
+  test('returns hasActivity: false when no sessions in current week', () => {
+    const sections = [asymSection('2026-05-23', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])]; // Saturday
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(false);
+  });
+
+  test('returns hasActivity: true when session exists on Sunday (start of week)', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('returns hasActivity: true when session exists on Saturday (end of week)', () => {
+    const sections = [asymSection('2026-05-30', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('aggregates classification counts from workoutNote', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const workoutNote = {
+      exercise_classifications: {
+        squat: 'progressing',
+        bench: 'stalled',
+        deadlift: 'progressing',
+        curls: 'regressing',
+        press: 'inconsistent',
+        other: 'initial'
+      }
+    };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.classifications).toEqual({
+      progressing: 2,
+      stalled: 1,
+      regressing: 1,
+      inconsistent: 1
+    });
+  });
+
+  test('consumes Big 3 deltas opportunistically', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const deltas = { squat: 5, bench: -2.5, deadlift: 0 };
+    const workoutNote = { big_3_deltas: deltas };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.deltas).toEqual(deltas);
+  });
+
+  test('detects hit-wall and in-reserve flags', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const workoutNote = {
+      rep_drop_off_flags: {
+        squat: { '0': 'hit_wall' },
+        bench: { '0': 'in_reserve' }
+      }
+    };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.flags.hit_wall).toBe(true);
+    expect(result.flags.in_reserve).toBe(true);
+  });
+
+  test('detects attendance flags', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const workoutNote = {
+      attendance_flags: [{ type: 'repeated_weekday_skip', weekday: 'Monday', skip_count: 2 }]
+    };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.flags.attendance).toBe(true);
+  });
+
+  test('detects asymmetry notes (respecting dismissals)', () => {
+    const sections = [
+      asymSection('2023-12-18', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    
+    // Without dismissal
+    const result = computeWeeklySummary(sections, {}, { referenceDate: new Date('2024-01-01T12:00:00') });
+    expect(result.flags.asymmetry).toBe(true);
+    
+    // The runStart will be '2023-12-25' (Monday of the 12-25 week)
+    const dismissed = { 'asymmetry:squat_bench:2023-12-25': true };
+    const resultDismissed = computeWeeklySummary(sections, {}, { referenceDate: new Date('2024-01-01T12:00:00'), dismissedAsymmetries: dismissed });
+    expect(resultDismissed.flags.asymmetry).toBe(false);
   });
 });
