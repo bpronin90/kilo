@@ -150,52 +150,66 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <Text style={styles.emptyText}>No sessions logged this week.</Text>
         ) : (
           <View style={styles.weeklyContent}>
-            {/* Classification counts as a single line */}
+            {/* Classification Counts Grid */}
             {dashboardData.weeklySummary.classifications && (
-              <Text style={styles.classifText}>
-                <Text style={{ color: Colors.success }}>{dashboardData.weeklySummary.classifications.progressing} progressing</Text> /{' '}
-                <Text style={{ color: '#d4a017' }}>{dashboardData.weeklySummary.classifications.stalled} stalled</Text> /{' '}
-                <Text style={{ color: Colors.error }}>{dashboardData.weeklySummary.classifications.regressing} regressing</Text> /{' '}
-                <Text style={{ color: Colors.textMuted }}>{dashboardData.weeklySummary.classifications.inconsistent} inconsistent</Text>
-              </Text>
+              <View style={styles.classifGrid}>
+                {[
+                  { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+                  { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
+                  { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+                  { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+                ].map((item, idx) => (
+                  <View key={idx} style={styles.classifItem}>
+                    <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
+                    <Text style={styles.classifLabel}>
+                      <Text style={styles.classifCount}>{item.count}</Text> {item.label.toUpperCase()}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
 
-            {/* Big 3 Strength Delta */}
+            {/* Big 3 Strength Delta Dashboard */}
             {dashboardData.weeklySummary.deltas && (
-              <View style={styles.deltaSection}>
-                <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
-                <View style={styles.deltaGrid}>
-                  <View style={styles.deltaGridItem}>
-                    <Text style={styles.deltaGridLabel}>SQUAT</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.squat)}
+              <View style={styles.deltaDashboard}>
+                <Text style={styles.deltaDashboardTitle}>Big 3 Strength Delta</Text>
+                <View style={styles.deltaDashboardGrid}>
+                  <View style={styles.deltaDashboardItem}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.squat || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.squat || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.squat) || '0'}
                     </Text>
+                    <Text style={styles.deltaDashboardLabel}>SQUAT</Text>
                   </View>
-                  <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
-                    <Text style={styles.deltaGridLabel}>BENCH</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.bench)}
+                  <View style={[styles.deltaDashboardItem, styles.deltaDashboardItemMiddle]}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.bench || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.bench || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.bench) || '0'}
                     </Text>
+                    <Text style={styles.deltaDashboardLabel}>BENCH</Text>
                   </View>
-                  <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
-                    <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
+                  <View style={styles.deltaDashboardItem}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.deadlift || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.deadlift || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift) || '0'}
                     </Text>
+                    <Text style={styles.deltaDashboardLabel}>DEADLIFT</Text>
                   </View>
                 </View>
               </View>
             )}
 
-            {/* Active Flags */}
+            {/* Active Flags - Refined Technical Badge */}
             {dashboardData.weeklySummary.flags.asymmetry && (
-              <View style={styles.flagsRow}>
-                <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>
+              <View style={styles.asymmetryBadgeContainer}>
+                <View style={styles.asymmetryBadge}>
+                  <Text style={styles.asymmetryBadgeIcon}>⚠</Text>
+                  <Text style={styles.asymmetryBadgeText}>asymmetry notes</Text>
+                </View>
+                <View style={styles.asymmetryLine} />
+                <Text style={styles.asymmetryStatus}>Assessment Active</Text>
               </View>
             )}
 
             <Pressable onPress={() => onNavigate('Analytics')} style={styles.analyticsLink}>
-              <Text style={styles.analyticsLinkText}>Full analytics →</Text>
+              <Text style={styles.analyticsLinkText}>Full history and insights →</Text>
             </Pressable>
           </View>
         )}
@@ -695,77 +709,125 @@ const styles = StyleSheet.create({
     marginBottom: -8,
   },
   weeklyCard: {
-    padding: 18,
+    padding: 24,
+    borderRadius: 0,
+    backgroundColor: '#fffaf2',
   },
   weeklyContent: {
-    gap: 16,
+    gap: 32,
   },
-  classifText: {
-    fontSize: 13,
+  classifGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: Colors.cardBorder,
+    opacity: 0.8,
+  },
+  classifItem: {
+    width: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  classifSquare: {
+    width: 6,
+    height: 6,
+    borderRadius: 0,
+  },
+  classifLabel: {
+    fontSize: 10,
     fontWeight: '600',
     color: Colors.text,
-    lineHeight: 18,
-  },
-  deltaSection: {
-    gap: 10,
-    marginTop: 4,
-  },
-  deltaSectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  deltaGrid: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderColor: Colors.cardBorder,
-    paddingTop: 12,
-  },
-  deltaGridItem: {
-    flex: 1,
-    gap: 2,
-  },
-  deltaGridItemMiddle: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: Colors.cardBorder,
-    paddingHorizontal: 12,
-  },
-  deltaGridItemEnd: {
-    alignItems: 'flex-end',
-  },
-  deltaGridLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  deltaGridValue: {
-    fontSize: 20,
+  classifCount: {
     fontWeight: '800',
-    color: Colors.text,
   },
-  flagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
+  deltaDashboard: {
+    gap: 16,
   },
-  flagChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: Colors.background,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  flagChipText: {
+  deltaDashboardTitle: {
     fontSize: 10,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 2,
+    opacity: 0.6,
+  },
+  deltaDashboardGrid: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  deltaDashboardItem: {
+    flex: 1,
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 4,
+  },
+  deltaDashboardItemMiddle: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  deltaDashboardValue: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  deltaDashboardLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  asymmetryBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  asymmetryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.text,
+  },
+  asymmetryBadgeIcon: {
+    color: '#fffaf2',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  asymmetryBadgeText: {
+    color: '#fffaf2',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  asymmetryLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    opacity: 0.4,
+  },
+  asymmetryStatus: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   analyticsLink: {
     marginTop: 8,
@@ -776,7 +838,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+    textDecorationLine: 'underline',
   },
   emptyText: {
     fontSize: 14,
