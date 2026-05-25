@@ -147,13 +147,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
-  documents now also carry persisted `skip_markers`, `attendance_flags`, and
-  per-session `rep_drop_off_flags` alongside tracked-lift and 1k-slot
-  selections, while the separate global `kilo_dismissed_nudges` key holds
-  per-exercise nudge dismissals across routine switches. The legacy session
-  key remains only a migration source and the old single-note key remains both
-  a migration source into the notebook model and a backup-compatibility
-  fallback
+  documents now also carry persisted `exercise_classifications`,
+  `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags`
+  alongside tracked-lift and 1k-slot selections. Rep-drop-off nudge
+  dismissals are no longer persisted; they are ephemeral screen-local state in
+  Log. The legacy session key remains only a migration source and the old
+  single-note key remains both a migration source into the notebook model and
+  a backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -325,9 +325,8 @@ User types in weight input
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
-| `kilo_dismissed_nudges` | JSON object keyed by normalized lift name for global rep-drop-off nudge dismissals |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
@@ -518,13 +517,12 @@ recomputation at render time is permitted.
 
 | Field | Canonical Owner | Persistence | Allowed Consumers | Recompute at Render? |
 |-------|----------------|-------------|-------------------|---------------------|
-| `exercise_classifications` | Log save path (`LogScreen.js:183`) via `classifyExerciseSessions()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
-| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:184`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
-| `attendance_flags` | Log save path (`LogScreen.js:184`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
-| `rep_drop_off_flags` | Log save path (`LogScreen.js:186`) via `deriveRepDropOffFlags()` | Persisted on note document | Home weekly summary (read-only), Analytics badges (read-only), Log inline nudges (read-only) | No |
+| `exercise_classifications` | Log save path (`LogScreen.js:191`) via `classifyExerciseSessions()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
+| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
+| `attendance_flags` | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
+| `rep_drop_off_flags` | Log save path (`LogScreen.js:194`) via `deriveRepDropOffFlags()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
-| `big_3_deltas` | **Unresolved — no concrete producer exists** | Expected by `computeWeeklySummary` at `workoutNote.big_3_deltas` but never written | Home weekly summary (attempted read) | See resolution below |
 | Estimated 1RM per lift | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Kilo max per lift | `computeKiloMax()` via `deriveSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Latest top weight | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
@@ -535,7 +533,7 @@ recomputation at render time is permitted.
 | Weight goal guidance | `computeWeightGoal()` / `computeCalorieEstimate()` in `data.js` | Goal persisted; guidance recomputed | Weight goal card only | Yes — recompute-only (from persisted goal) |
 | Weeks In | `computeWeeksIn()` in `data.js` | Not persisted | Home summary card | Yes — recompute-only |
 | Session/activity count | `countWorkoutSessions()` in `parser.js` | Not persisted | Home, Analytics | Yes — recompute-only |
-| Big 3 asymmetry notes | `detectBig3Asymmetry()` in `data.js` | Not persisted (dismissals persisted separately) | Home dismissible notes, Home weekly summary flag | Yes — recompute-only |
+| Big 3 asymmetry notes | `detectBig3Asymmetry()` in `data.js` | Not persisted | No current UI consumer after `#174`; available for future use | Yes — recompute-only |
 | Weekly summary aggregation | `computeWeeklySummary()` in `data.js` | Not persisted | Home only | Yes — recompute-only (reads persisted note fields) |
 
 ### Producer/Consumer Map
@@ -552,8 +550,7 @@ recomputation at render time is permitted.
 │    • rep_drop_off_flags                                             │
 │                                                                     │
 │  Does NOT produce:                                                  │
-│    • big_3_deltas (ownership gap)                                   │
-│    • exercise_classifications default on note creation (gap)        │
+│    • big_3_deltas                                                   │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼  persisted on workoutNote document
@@ -562,17 +559,11 @@ recomputation at render time is permitted.
 │  HomeScreen.js                                                      │
 │                                                                     │
 │  Reads from persisted note:                                         │
-│    • exercise_classifications (lift highlights: lines 170-193)      │
-│    • attendance_flags (via computeWeeklySummary)                     │
-│    • rep_drop_off_flags (via computeWeeklySummary)                  │
-│    • big_3_deltas (via computeWeeklySummary — currently null)       │
-│                                                                     │
-│  ⚠ VIOLATION: also recomputes classifications live (line 93)       │
-│    via classifyExerciseSessions() and passes to computeWeeklySummary│
-│    This creates a dual-source: persisted vs live-recomputed.        │
+│    • exercise_classifications (via computeWeeklySummary)            │
+│    • attendance_flags (via computeWeeklySummary)                    │
 │                                                                     │
 │  Legitimately recomputes:                                           │
-│    • 1k total, weight series, weeks-in, asymmetry notes             │
+│    • 1k total, weight series, weeks-in                              │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -580,7 +571,6 @@ recomputation at render time is permitted.
 │  StatsScreen.js                                                     │
 │                                                                     │
 │  Reads from persisted note:                                         │
-│    • exercise_classifications (badge per row: line 295)             │
 │    • rep_drop_off_flags (badge per row: line 297)                   │
 │                                                                     │
 │  Legitimately recomputes:                                           │
@@ -588,51 +578,6 @@ recomputation at render time is permitted.
 │    • 1k total, weight rolling averages, pace                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-
-### Duplicate/Conflicting Calculation Paths to Remove
-
-1. **Home live classification recomputation (HIGH).** `HomeScreen.js:93` calls
-   `classifyExerciseSessions()` and passes the result to `computeWeeklySummary`
-   as `providedClassifs`. This duplicates the Log save path producer. The same
-   screen also reads `workoutNote.exercise_classifications` directly for the
-   lift-highlights section (lines 170-193). These two paths can disagree when
-   the note has been saved with one classification state but the current tracked
-   lifts or sections have since changed without a re-save.
-   **Resolution:** Home must read only the persisted
-   `workoutNote.exercise_classifications`. Remove the live
-   `classifyExerciseSessions()` call from HomeScreen. Update
-   `computeWeeklySummary` to always read from the persisted note field, removing
-   the `providedClassifs` parameter.
-
-2. **`big_3_deltas` ownership gap (HIGH).** `computeWeeklySummary` reads
-   `workoutNote.big_3_deltas` but no producer writes this field. The
-   `makeWorkoutNoteItem` factory does not include it. The Log save path does not
-   compute or persist it.
-   **Resolution:** A downstream implementation issue must decide what
-   `big_3_deltas` means (which calculation, which inputs, which comparison
-   window), assign it a single canonical producer, and either persist it on the
-   note document or make `computeWeeklySummary` compute it live. Until that
-   issue lands, `big_3_deltas` has no owner and the weekly summary deltas
-   section will always render as empty.
-
-3. **`exercise_classifications` defaults on note creation.** When a new note is
-   first created via `makeWorkoutNoteItem`, the factory does not include an
-   `exercise_classifications` field. Consumers reading
-   `workoutNote.exercise_classifications` get `undefined` until the first
-   explicit save with tracked lifts. This is not a source-of-truth bug but a
-   schema gap: the field should default to `{}` in the factory and storage
-   normalization.
-   **Resolution:** Add `exercise_classifications: {}` to
-   `makeWorkoutNoteItem` defaults.
-
-4. **`regressing` classification semantics.** `classifyExerciseSessions()`
-   returns `'regressing'` as a valid classification value. Home counts it in
-   lift highlights (line 182) and `computeWeeklySummary` counts it in
-   classification tallies (line 856). However, `docs/current-state.md` still
-   describes `Regressing` as a trend-only signal distinct from persisted
-   classifications (`Initial`, `Progressing`, `Stalled`, `Inconsistent`).
-   **Resolution:** Update `docs/current-state.md` to document `regressing` as
-   a valid persisted classification value since code already treats it that way.
 
 ### Recomputation Rules
 
@@ -647,7 +592,6 @@ recomputation at render time is permitted.
 - 1k total
 - Weight rolling averages, pace level, goal guidance
 - Weeks In, session count
-- Big 3 asymmetry detection (reads persisted dismissals, not persisted notes)
 - Weekly summary aggregation (reads persisted note fields, aggregates live)
 
 **Canonical temporal helper semantics for recompute-only consumers:**
@@ -655,15 +599,13 @@ recomputation at render time is permitted.
   native workout consumers that need a current-week boundary
 - `rollingWindowStart()` defines the shared inclusive rolling-window cutoff used
   by native workout consumers that need attendance windows
-- `detectBig3Asymmetry()` still uses its own internal Monday-based historical
-  grouping; consumers must not treat that grouping as the current-week gate
+- `detectBig3Asymmetry()` now aligns Big 3 history by session-entry index rather
+  than calendar-week buckets
 
 **`computeWeeklySummary` consumption contract:**
 - Must read `exercise_classifications` from `workoutNote.exercise_classifications` only
 - Must read `attendance_flags` from `workoutNote.attendance_flags` only
-- Must read `rep_drop_off_flags` from `workoutNote.rep_drop_off_flags` only
-- May recompute asymmetry detection live (it uses external dismissal state)
-- Must resolve `big_3_deltas` ownership before consuming it
+- Does not currently consume `rep_drop_off_flags`
 
 ### Acceptance Contract for Downstream Issues
 

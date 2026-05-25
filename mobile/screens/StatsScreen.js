@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, Act
 import { Card, SectionTitle, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
+import { parseWorkoutNote } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen({ multiplier, section }) {
@@ -126,16 +126,10 @@ export function StatsScreen({ multiplier, section }) {
       nameDisplayMap.set(normalizeLiftName(e.name), e.name);
     }));
 
-    // Big Three 1RM total and workout count are scoped to the current routine per issue contract
+    // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
-    const workoutDayCount = countWorkoutSessions(currentNote?.raw_text || '');
 
-    // DEBUG: dump classification lookup state
-    console.log('[Analytics] exercise_classifications keys:', Object.keys(currentNote?.exercise_classifications ?? {}));
-    console.log('[Analytics] visibleTrackedNames:', visibleTrackedNames);
-    console.log('[Analytics] namesInCurrent:', [...namesInCurrent]);
-
-    return { signals, oneK, workoutDayCount, nameDisplayMap };
+    return { signals, oneK, nameDisplayMap };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
 
   function handleSlotTap(slot) {

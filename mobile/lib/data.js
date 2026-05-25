@@ -616,15 +616,6 @@ export function classifyExerciseSessions(sections, trackedNames) {
     const classification = _classifyEntries(allEntries);
     result[normName] = classification;
 
-    // DEBUG
-    const window = allEntries.slice(-3);
-    const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
-    const windowSummary = window.map(e =>
-      e.skipped ? 'SKIP'
-      : e.unparsed ? 'UNPARSED'
-      : `top=${_topWeight(e.sets)} total@top=${_totalRepsAtWeight(e.sets, _topWeight(e.sets))} sets=[${(e.sets||[]).map(s=>`${s.weight_value}×${s.rep_count}`).join(',')}]`
-    );
-    console.log(`[classify] "${normName}" totalEntries=${allEntries.length} loggedInWindow=${logged.length} window=[${windowSummary.join(' | ')}] → ${classification}`);
   }
   return result;
 }
@@ -634,7 +625,7 @@ export function classifyExerciseSessions(sections, trackedNames) {
 // Compute the intra-session rep drop-off flag for one session's sets.
 // Uses working sets (weight_value > 0, rep_count > 0) only.
 // Mixed-weight: uses the heaviest-weight sets to compute first/last reps.
-// Returns 'hit_wall' | 'in_reserve' | null.
+// Returns 'hit_wall' | null.
 export function computeRepDropOff(sets) {
   const working = (sets || []).filter(s => s.weight_value > 0 && s.rep_count > 0);
   if (working.length < 2) return null;
@@ -647,7 +638,7 @@ export function computeRepDropOff(sets) {
 }
 
 // Derive rep drop-off flags for all tracked exercises, per session.
-// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null } }
+// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | null } }
 // Only logged (non-skipped) sessions are included; skipped sessions are omitted.
 // sessionIndex is the positional index in the exercise's full entry history (oldest = 0).
 export function deriveRepDropOffFlags(sections, trackedNames) {
@@ -671,8 +662,8 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
 }
 
 // Return the flag for the most recent logged session from a per-session flags map.
-// sessionFlags: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null }
-// Returns 'hit_wall' | 'in_reserve' | null
+// sessionFlags: { [sessionIndex]: 'hit_wall' | null }
+// Returns 'hit_wall' | null
 export function getLatestRepDropOff(sessionFlags) {
   if (!sessionFlags || typeof sessionFlags !== 'object') return null;
   const keys = Object.keys(sessionFlags);

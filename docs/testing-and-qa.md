@@ -88,15 +88,11 @@ Current limitation:
   while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
-- The global AsyncStorage paths for rep-drop-off nudge dismissals and Home-tab
-  asymmetry dismissals still rely on manual verification; the issue-scoped
-  Jest suite does not yet exercise those persistence contracts.
-- No automated test verifies that Home reads `exercise_classifications` only
-  from the persisted note document rather than recomputing it live. The known
-  dual-source violation (HomeScreen live `classifyExerciseSessions()` call vs
-  persisted `workoutNote.exercise_classifications`) is documented in
-  `docs/architecture.md` under the ownership contract and awaits a follow-up
-  implementation fix.
+- No automated native test yet verifies the rendered Home `Session Status`
+  surface end to end from a saved workout note, or the Log inline `hit_wall`
+  dismiss/re-fire interaction after save. The current suite covers the
+  underlying helper behavior and persisted field shaping, but not those
+  rendered-screen contracts.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
