@@ -877,7 +877,12 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
   }
 
   if (!hasActivity) {
-    return { hasActivity: false, attendanceBanners, sessionStatusRows };
+    return { 
+      hasActivity: false, 
+      attendanceBanners, 
+      sessionStatusRows,
+      flags: { hit_wall: false, attendance: attendanceBanners.length > 0, asymmetry: false }
+    };
   }
 
   // 2. Big 3 strength delta (consume upstream-stored data)
