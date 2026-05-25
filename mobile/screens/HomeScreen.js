@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../components/UI';
-import { formatTimestamp } from '../lib/format';
+import { Card, SectionTitle, Button, LineChart } from '../components/UI';
+import { formatDelta } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import {
@@ -41,13 +41,6 @@ function KiloWordmark({ width = 140, height = 48 }) {
   );
 }
 
-function classificationColor(cls) {
-  if (cls === 'progressing') return Colors.success;
-  if (cls === 'stalled') return Colors.accent;
-  if (cls === 'regressing') return Colors.error;
-  return Colors.textMuted;
-}
-
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const dashboardData = useMemo(() => {
     let oneK = null;
@@ -66,9 +59,16 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
     const weeksIn = computeWeeksIn(sections);
-    const { attendanceBanners, sessionStatusRows } = computeWeeklySummary(workoutNote);
 
-    return { weightSeries, oneK, latestWeight, weeksIn, attendanceBanners, sessionStatusRows };
+    const weeklySummary = computeWeeklySummary(sections, workoutNote);
+
+    return { 
+      weightSeries, 
+      oneK, 
+      latestWeight, 
+      weeksIn, 
+      weeklySummary, 
+    };
   }, [weightEntries, workoutNote]);
 
   return (
@@ -81,12 +81,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <Text style={styles.successText}>{successMessage}</Text>
         </Card>
       ) : null}
-
-      {dashboardData.attendanceBanners.map((copy, i) => (
-        <View key={i} style={styles.attendanceFlag}>
-          <Text style={styles.attendanceFlagText}>{copy}</Text>
-        </View>
-      ))}
 
       <View style={styles.summaryGrid}>
         <Card style={styles.summaryCard}>
@@ -103,23 +97,64 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </Card>
       </View>
 
-      {dashboardData.sessionStatusRows && (
-        <>
-          <SectionTitle>Session Status</SectionTitle>
-          <Card style={styles.sessionStatusCard}>
-            {dashboardData.sessionStatusRows.map(({ name, classification }) => (
-              <View
-                key={name}
-                style={[styles.classificationChip, { borderColor: classificationColor(classification) }]}
-              >
-                <Text style={[styles.classificationChipText, { color: classificationColor(classification) }]}>
-                  {name.replace(/\b\w/g, c => c.toUpperCase())}
-                </Text>
+      <SectionTitle>Weekly Summary</SectionTitle>
+      <Card style={styles.weeklyCard}>
+        {!dashboardData.weeklySummary.hasActivity ? (
+          <Text style={styles.emptyText}>No sessions logged yet.</Text>
+        ) : (
+          <View style={styles.weeklyContent}>
+            {/* Classification Counts Grid */}
+            {dashboardData.weeklySummary.classifications && (
+              <View style={styles.classifGrid}>
+                {[
+                  { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+                  { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
+                  { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+                  { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+                ].map((item, idx) => (
+                  <View key={idx} style={styles.classifItem}>
+                    <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
+                    <Text style={styles.classifLabel}>
+                      <Text style={styles.classifCount}>{item.count}</Text> {item.label.toUpperCase()}
+                    </Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </Card>
-        </>
-      )}
+            )}
+
+            {/* Big 3 Strength Delta Dashboard */}
+            {dashboardData.weeklySummary.deltas && (
+              <View style={styles.deltaDashboard}>
+                <Text style={styles.deltaDashboardTitle}>Big 3 Strength Delta</Text>
+                <View style={styles.deltaDashboardGrid}>
+                  <View style={styles.deltaDashboardItem}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.squat || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.squat || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.squat) || '0'}
+                    </Text>
+                    <Text style={styles.deltaDashboardLabel}>SQUAT</Text>
+                  </View>
+                  <View style={[styles.deltaDashboardItem, styles.deltaDashboardItemMiddle]}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.bench || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.bench || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.bench) || '0'}
+                    </Text>
+                    <Text style={styles.deltaDashboardLabel}>BENCH</Text>
+                  </View>
+                  <View style={styles.deltaDashboardItem}>
+                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.deadlift || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.deadlift || 0) < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift) || '0'}
+                    </Text>
+                    <Text style={styles.deltaDashboardLabel}>DEADLIFT</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <Pressable onPress={() => onNavigate('Analytics')} style={styles.analyticsLink}>
+              <Text style={styles.analyticsLinkText}>Full history and insights →</Text>
+            </Pressable>
+          </View>
+        )}
+      </Card>
 
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
@@ -574,45 +609,109 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textMuted,
   },
-  sessionStatusCard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 14,
-    gap: 8,
-  },
-  classificationChip: {
-    borderWidth: 1.5,
-    borderRadius: 20,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  classificationChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  attendanceFlag: {
-    backgroundColor: Colors.chipBackground,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  attendanceFlagText: {
-    fontSize: 13,
-    color: Colors.chipText,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  chartCard: {
-    padding: 18,
-    gap: 0,
-  },
   chartLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: -8,
+  },
+  weeklyCard: {
+    padding: 24,
+    borderRadius: 0,
+    backgroundColor: '#fffaf2',
+  },
+  weeklyContent: {
+    gap: 32,
+  },
+  classifGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: Colors.cardBorder,
+    opacity: 0.8,
+  },
+  classifItem: {
+    width: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  classifSquare: {
+    width: 6,
+    height: 6,
+    borderRadius: 0,
+  },
+  classifLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  classifCount: {
+    fontWeight: '800',
+  },
+  deltaDashboard: {
+    gap: 16,
+  },
+  deltaDashboardTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    opacity: 0.6,
+  },
+  deltaDashboardGrid: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  deltaDashboardItem: {
+    flex: 1,
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 4,
+  },
+  deltaDashboardItemMiddle: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  deltaDashboardValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  deltaDashboardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  analyticsLink: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  analyticsLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textDecorationLine: 'underline',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
   },
   rowBetween: {
     flexDirection: 'row',

@@ -68,32 +68,6 @@ export function formatRepDropOffNudge(flag) {
   return null;
 }
 
-// Format the copy for a cross-lift asymmetry note.
-// progressingSlot: 'squat'|'bench'|'deadlift'
-// laggingSlot: 'squat'|'bench'|'deadlift'
-// laggingClass: 'stalled'|'regressing'
-export function formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass) {
-  const p = progressingSlot;
-  const state = laggingClass === 'regressing' ? 'regressing' : 'stalled';
-  return `${p.charAt(0).toUpperCase() + p.slice(1)} progressing, ${laggingSlot} ${state} — worth reviewing.`;
-}
-
-// Format display copy for a persisted attendance flag.
-// Returns a string or null when the flag type is unrecognised.
-export function formatAttendanceFlag(flag) {
-  if (!flag) return null;
-  if (flag.type === 'consecutive_exercise_skips') {
-    return `${flag.exercise_name} skipped ${flag.consecutive_count} sessions in a row.`;
-  }
-  if (flag.type === 'repeated_weekday_skip') {
-    const day = flag.weekday
-      ? flag.weekday.charAt(0).toUpperCase() + flag.weekday.slice(1)
-      : 'A weekday';
-    return `${day} skipped ${flag.skip_count} times recently.`;
-  }
-  return null;
-}
-
 // Classify a weight delta (today − yesterday) into a pace flag.
 // Returns null when the change is within normal range.
 // Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.

@@ -1,6 +1,6 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
-import { classifyWeightPace, formatAsymmetryNote, formatAttendanceFlag } from './format.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote } from './parser.js';
+import { classifyWeightPace } from './format.js';
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -257,16 +257,6 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
 
 // ── Canonical temporal helpers ────────────────────────────────────────────────
 
-// Returns the Sunday-based current week start as 'YYYY-MM-DD'.
-// Use for current-week gating (Sunday-Saturday boundary per issue #163 contract).
-// Not for historical grouping — detectBig3Asymmetry uses Monday-based weeks internally.
-export function currentWeekStart(referenceDate = new Date()) {
-  const pad = n => String(n).padStart(2, '0');
-  const sun = new Date(referenceDate);
-  sun.setDate(sun.getDate() - sun.getDay()); // setDate handles DST correctly
-  return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
-}
-
 // Returns the start of a rolling N-day window ending on referenceDate, as 'YYYY-MM-DD'.
 // Inclusive on both ends: rollingWindowStart(ref, 30) covers ref-date minus 29 days.
 // Use for attendance window calculations (e.g., 30-day skip detection).
@@ -409,14 +399,26 @@ function _headingInfo(heading) {
   for (const day of _DAY_LABELS) {
     if (lower.includes(day)) { weekday = day; break; }
   }
+
   let date = null;
-  const m = /(\d{4}-\d{2}-\d{2})/.exec(heading);
-  if (m) {
-    date = m[1];
-    if (!weekday) {
-      const d = new Date(m[1] + 'T12:00:00');
-      if (!isNaN(d.getTime())) weekday = _DAY_LABELS[d.getDay()];
+  // Try ISO YYYY-MM-DD
+  const isoMatch = /(\d{4}-\d{2}-\d{2})/.exec(heading);
+  if (isoMatch) {
+    date = isoMatch[1];
+  } else {
+    // Try MM-DD-YYYY or MM/DD/YYYY
+    const commonMatch = /(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(heading);
+    if (commonMatch) {
+      const m = commonMatch[1].padStart(2, '0');
+      const d = commonMatch[2].padStart(2, '0');
+      const y = commonMatch[3];
+      date = `${y}-${m}-${d}`;
     }
+  }
+
+  if (date && !weekday) {
+    const d = new Date(date + 'T12:00:00');
+    if (!isNaN(d.getTime())) weekday = _DAY_LABELS[d.getDay()];
   }
   return { weekday, date };
 }
@@ -615,7 +617,6 @@ export function classifyExerciseSessions(sections, trackedNames) {
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const classification = _classifyEntries(allEntries);
     result[normName] = classification;
-
   }
   return result;
 }
@@ -672,157 +673,62 @@ export function getLatestRepDropOff(sessionFlags) {
   return sessionFlags[String(maxIdx)] ?? null;
 }
 
-// ── Cross-lift asymmetry detection (Big 3) ────────────────────────────────────
+// ── Weekly Assessment Summary ────────────────────────────────────────────────
 
-const _BIG3_NAMES = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
-const _BIG3_SLOTS = ['squat', 'bench', 'deadlift'];
-const _BIG3_PAIRS = [['squat', 'bench'], ['squat', 'deadlift'], ['bench', 'deadlift']];
-
-// Returns { squat: entry[], bench: entry[], deadlift: entry[] }, oldest first.
-// Aligns Big 3 lifts by session entry index (positional), not by calendar date.
-function _big3IndexEntries(sections) {
-  const { exercises } = deriveWorkoutAnalytics(sections);
-  const out = { squat: [], bench: [], deadlift: [] };
-  for (const slot of _BIG3_SLOTS) {
-    const normTarget = normalizeLiftName(canonicalizeName(_BIG3_NAMES[slot]));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === normTarget);
-    if (!ex) continue;
-    for (const occ of ex.occurrences) {
-      out[slot].push(..._occurrenceEntries(occ));
-    }
-  }
-  return out;
-}
-
-// Returns array of { index, squat, bench, deadlift } classification objects.
-// Each lift is classified using all entries up to and including that index.
-function _classifyBig3ByIndex(sections) {
-  const indexEntries = _big3IndexEntries(sections);
-  const maxLen = Math.max(..._BIG3_SLOTS.map(s => indexEntries[s].length), 0);
-  if (maxLen === 0) return [];
-  const rows = [];
-  for (let i = 0; i < maxLen; i++) {
-    const row = { index: i };
-    for (const slot of _BIG3_SLOTS) {
-      if (i >= indexEntries[slot].length) { row[slot] = null; continue; }
-      row[slot] = _classifyEntries(indexEntries[slot].slice(0, i + 1));
-    }
-    rows.push(row);
-  }
-  return rows;
-}
-
-function _isAsymmetric(clA, clB) {
-  if (clA === 'progressing' && (clB === 'stalled' || clB === 'regressing')) return true;
-  if (clB === 'progressing' && (clA === 'stalled' || clA === 'regressing')) return true;
-  return false;
-}
-
-// Returns true only when both lifts have the same concrete classification.
-// null, 'initial', and 'inconsistent' are not concrete and cannot constitute a break.
-function _sharedConcreteClassification(clA, clB) {
-  const concrete = ['progressing', 'stalled', 'regressing'];
-  return concrete.includes(clA) && clA === clB;
-}
-
-// Detect active cross-lift asymmetry notes for the Big 3.
-//
-// A note fires when one Big 3 lift is progressing while another is stalled or
-// regressing for 2+ asymmetric weeks within a single run. A run resets only
-// when both lifts share the same concrete classification (the issue-specified
-// break condition). Weeks where either lift is null/initial/inconsistent are
-// ignored: they neither count toward the run nor break it.
-//
-// dismissedAsymmetries: { [dismissKey]: true }
-//   dismissKey encodes the pair and the week the current asymmetric run started,
-//   so a dismissed note re-fires automatically after the relationship breaks and
-//   then re-emerges (the runStart week changes, making the old key stale).
-//
-// Returns: Array<{ copy: string, dismissKey: string }>
-export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
-  const indexSeries = _classifyBig3ByIndex(sections);
-  if (indexSeries.length < 2) return [];
-
-  const notes = [];
-  for (const [slotA, slotB] of _BIG3_PAIRS) {
-    // Forward walk: accumulate the current asymmetric run.
-    // Reset only on a shared concrete classification (the break condition).
-    // Skip null/initial/inconsistent positions without counting or resetting.
-    let runStart = null;
-    let runCount = 0;
-    for (const { [slotA]: clA, [slotB]: clB, index } of indexSeries) {
-      if (_sharedConcreteClassification(clA, clB)) {
-        runStart = null;
-        runCount = 0;
-      } else if (_isAsymmetric(clA, clB)) {
-        if (runStart === null) runStart = index;
-        runCount++;
+/**
+ * Shapes stored weekly inputs for the assessment summary panel.
+ *
+ * sections: parsed sections from current routine note
+ * workoutNote: current routine object (notebook item)
+ */
+export function computeWeeklySummary(sections, workoutNote) {
+  // A session exists if there are any non-skipped entries or sets in the sections
+  const hasActivity = (sections || []).some(section =>
+    section.exercises.some(ex => {
+      if ((ex.session_entries || []).length > 0) {
+        return ex.session_entries.some(se => !se.skipped);
       }
-    }
+      return (ex.sets || []).length > 0;
+    })
+  );
 
-    if (runCount < 2) continue;
-
-    const last = indexSeries[indexSeries.length - 1];
-    const clA = last[slotA];
-    const clB = last[slotB];
-    const [progressingSlot, laggingSlot, laggingClass] = clA === 'progressing'
-      ? [slotA, slotB, clB]
-      : [slotB, slotA, clA];
-
-    const dismissKey = `asymmetry:${slotA}_${slotB}:${runStart}`;
-    if (dismissedAsymmetries[dismissKey]) continue;
-
-    notes.push({ copy: formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass), dismissKey });
+  // 1. Classification counts (tracked exercises only)
+  let classifications = null;
+  const sourceClassifs = workoutNote?.exercise_classifications;
+  
+  if (sourceClassifs) {
+    classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };
+    Object.values(sourceClassifs).forEach(val => {
+      if (classifications[val] !== undefined) {
+        classifications[val]++;
+      }
+    });
   }
-  return notes;
-}
-
-// Shape persisted canonical analytics inputs from a workoutNote into display-ready structures.
-// Does not re-derive any analytics — reads only what is already stored on the note.
-//
-// attendanceBanners: string[] of formatted copy, empty when attendance_flags is absent.
-// sessionStatusRows: { name, classification }[] | null.
-//   Only 'progressing', 'stalled', and 'regressing' entries are included.
-//   'initial' and 'inconsistent' are filtered out.
-//   null when exercise_classifications is absent, empty, or fully filtered — callers hide the section.
-export function computeWeeklySummary(workoutNote) {
-  if (!workoutNote) {
-    return { attendanceBanners: [], sessionStatusRows: null };
-  }
-
-  const flags = workoutNote.attendance_flags;
-  const classifications = workoutNote.exercise_classifications;
-
-  const attendanceBanners = Array.isArray(flags)
-    ? flags.map(f => formatAttendanceFlag(f)).filter(Boolean)
-    : [];
 
   const DISPLAYABLE = new Set(['progressing', 'stalled', 'regressing']);
   let sessionStatusRows = null;
-  if (classifications) {
-    const rows = Object.entries(classifications)
+  if (sourceClassifs) {
+    const rows = Object.entries(sourceClassifs)
       .filter(([, cls]) => DISPLAYABLE.has(cls))
       .map(([name, classification]) => ({ name, classification }));
     sessionStatusRows = rows.length > 0 ? rows : null;
   }
 
-  return { attendanceBanners, sessionStatusRows };
-}
+  if (!hasActivity) {
+    return { 
+      hasActivity: false, 
+      sessionStatusRows,
+    };
+  }
 
-// Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
-// fatigue formula (adjusted, rounded).
-export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
-  const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
-  const { exercises: analyticsExercises } = deriveWorkoutAnalytics(sections);
-
-  const byName = new Map(analyticsExercises.map(ex => [ex.name.toLowerCase(), ex]));
+  // 2. Big 3 strength delta (consume upstream-stored data)
+  const deltas = workoutNote?.big_3_deltas || null;
 
   return {
-    exercises: signals.map(sig => {
-      const ex = byName.get(sig.name.toLowerCase());
-      if (!ex) return sig;
-      const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
-      return { ...sig, kilo_max: kilo_max_adjusted };
-    }),
+    hasActivity: true,
+    classifications,
+    deltas,
+    sessionStatusRows,
   };
 }
+

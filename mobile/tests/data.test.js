@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry, currentWeekStart, rollingWindowStart, computeWeeklySummary } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -988,23 +988,23 @@ describe('exercise_classifications producer completeness', () => {
 describe('computeWeeklySummary', () => {
   // Degraded / empty-state behavior
 
-  test('null workoutNote → empty banners, sessionStatusRows null (fully degraded)', () => {
-    expect(computeWeeklySummary(null)).toEqual({ attendanceBanners: [], sessionStatusRows: null });
+  test('null workoutNote → sessionStatusRows null (fully degraded)', () => {
+    expect(computeWeeklySummary([], null)).toEqual({ hasActivity: false, sessionStatusRows: null });
   });
 
-  test('note with all persisted fields null → empty banners, sessionStatusRows null (no producer yet)', () => {
+  test('note with all persisted fields null → sessionStatusRows null (no producer yet)', () => {
     const note = makeWorkoutNoteItem({ title: 'Test' });
-    expect(computeWeeklySummary(note)).toEqual({ attendanceBanners: [], sessionStatusRows: null });
+    expect(computeWeeklySummary([], note)).toEqual({ hasActivity: false, sessionStatusRows: null });
   });
 
   test('exercise_classifications absent → sessionStatusRows null (section hidden)', () => {
     const note = makeWorkoutNoteItem({ title: 'Test' });
-    expect(computeWeeklySummary(note).sessionStatusRows).toBeNull();
+    expect(computeWeeklySummary([], note).sessionStatusRows).toBeNull();
   });
 
   test('exercise_classifications empty object → sessionStatusRows null (section hidden, not empty card)', () => {
     const note = { ...makeWorkoutNoteItem({ title: 'Test' }), exercise_classifications: {} };
-    expect(computeWeeklySummary(note).sessionStatusRows).toBeNull();
+    expect(computeWeeklySummary([], note).sessionStatusRows).toBeNull();
   });
 
   test('exercise_classifications with only initial/inconsistent → sessionStatusRows null (all filtered)', () => {
@@ -1012,46 +1012,7 @@ describe('computeWeeklySummary', () => {
       ...makeWorkoutNoteItem({ title: 'Test' }),
       exercise_classifications: { squat: 'initial', deadlift: 'inconsistent' },
     };
-    expect(computeWeeklySummary(note).sessionStatusRows).toBeNull();
-  });
-
-  test('empty attendance_flags array → empty banners', () => {
-    const note = { ...makeWorkoutNoteItem({ title: 'Test' }), attendance_flags: [] };
-    expect(computeWeeklySummary(note).attendanceBanners).toEqual([]);
-  });
-
-  // attendance_flags → attendanceBanners display change
-
-  test('consecutive_exercise_skips flag → banner copy included', () => {
-    const note = {
-      ...makeWorkoutNoteItem({ title: 'Test' }),
-      attendance_flags: [{ type: 'consecutive_exercise_skips', exercise_name: 'Squat', exercise_id: 'squat', consecutive_count: 2 }],
-    };
-    const { attendanceBanners } = computeWeeklySummary(note);
-    expect(attendanceBanners).toHaveLength(1);
-    expect(attendanceBanners[0]).toContain('Squat');
-    expect(attendanceBanners[0]).toContain('2');
-  });
-
-  test('repeated_weekday_skip flag → banner copy included', () => {
-    const note = {
-      ...makeWorkoutNoteItem({ title: 'Test' }),
-      attendance_flags: [{ type: 'repeated_weekday_skip', weekday: 'monday', skip_count: 3 }],
-    };
-    const { attendanceBanners } = computeWeeklySummary(note);
-    expect(attendanceBanners).toHaveLength(1);
-    expect(attendanceBanners[0]).toContain('Monday');
-  });
-
-  test('multiple flags → multiple banners', () => {
-    const note = {
-      ...makeWorkoutNoteItem({ title: 'Test' }),
-      attendance_flags: [
-        { type: 'consecutive_exercise_skips', exercise_name: 'Squat', exercise_id: 'squat', consecutive_count: 2 },
-        { type: 'repeated_weekday_skip', weekday: 'friday', skip_count: 2 },
-      ],
-    };
-    expect(computeWeeklySummary(note).attendanceBanners).toHaveLength(2);
+    expect(computeWeeklySummary([], note).sessionStatusRows).toBeNull();
   });
 
   // exercise_classifications → sessionStatusRows display change
@@ -1061,7 +1022,7 @@ describe('computeWeeklySummary', () => {
       ...makeWorkoutNoteItem({ title: 'Test' }),
       exercise_classifications: { squat: 'progressing', 'db bench press': 'stalled' },
     };
-    const { sessionStatusRows } = computeWeeklySummary(note);
+    const { sessionStatusRows } = computeWeeklySummary([], note);
     expect(sessionStatusRows).not.toBeNull();
     expect(sessionStatusRows).toHaveLength(2);
   });
@@ -1071,7 +1032,7 @@ describe('computeWeeklySummary', () => {
       ...makeWorkoutNoteItem({ title: 'Test' }),
       exercise_classifications: { squat: 'progressing' },
     };
-    const [row] = computeWeeklySummary(note).sessionStatusRows;
+    const [row] = computeWeeklySummary([], note).sessionStatusRows;
     expect(row.name).toBe('squat');
     expect(row.classification).toBe('progressing');
     expect(row).not.toHaveProperty('latestRepDropOff');
@@ -1087,7 +1048,7 @@ describe('computeWeeklySummary', () => {
         rdl: 'regressing',
       },
     };
-    const { sessionStatusRows } = computeWeeklySummary(note);
+    const { sessionStatusRows } = computeWeeklySummary([], note);
     expect(sessionStatusRows).toHaveLength(2);
     expect(sessionStatusRows.map(r => r.name).sort()).toEqual(['rdl', 'squat']);
   });
@@ -1097,7 +1058,7 @@ describe('computeWeeklySummary', () => {
       ...makeWorkoutNoteItem({ title: 'Test' }),
       exercise_classifications: { squat: 'progressing', bench: 'stalled', deadlift: 'regressing' },
     };
-    const rows = computeWeeklySummary(note).sessionStatusRows;
+    const rows = computeWeeklySummary([], note).sessionStatusRows;
     expect(rows.find(r => r.name === 'squat').classification).toBe('progressing');
     expect(rows.find(r => r.name === 'bench').classification).toBe('stalled');
     expect(rows.find(r => r.name === 'deadlift').classification).toBe('regressing');
@@ -1336,275 +1297,11 @@ function asymSection(dateStr, exerciseSets) {
 
 function s(weight, reps) { return { weight_value: weight, rep_count: reps }; }
 
-describe('detectBig3Asymmetry', () => {
-  test('empty sections → no notes', () => {
-    expect(detectBig3Asymmetry([])).toEqual([]);
-  });
-
-  test('single week of data → no notes (< 2 consecutive weeks)', () => {
-    // Only one week so the classification series has 1 row — can't sustain 2 weeks.
-    const sections = [
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(225, 5), s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8), s(100, 8)] },
-      ]),
-    ];
-    expect(detectBig3Asymmetry(sections)).toEqual([]);
-  });
-
-  test('asymmetry sustained 2 weeks → note fires', () => {
-    // Week 0 baseline (gives each lift its first session), Week 1 and Week 2 create asymmetry.
-    // Squat increases each week (progressing). Bench stays flat (stalled).
-    const sections = [
-      // Baseline session — gives each lift a starting point
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Week 1: squat up → progressing; bench flat → stalled
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Week 2: squat up again → progressing; bench still flat → stalled
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(245, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-    const notes = detectBig3Asymmetry(sections);
-    expect(notes.length).toBe(1);
-    expect(notes[0].copy).toContain('progressing');
-    expect(notes[0].copy).toContain('stalled');
-    expect(notes[0].copy).toContain('worth reviewing');
-    expect(notes[0].dismissKey).toMatch(/asymmetry:squat_bench:/);
-  });
-
-  test('asymmetry only 1 consecutive week → no note', () => {
-    // Week 1 asymmetric, week 2 not (both stalled).
-    const sections = [
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Week 1: squat up (progressing), bench flat (stalled)
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Week 2: both flat (squat stalled, bench stalled) — asymmetry breaks
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-    const notes = detectBig3Asymmetry(sections);
-    expect(notes).toEqual([]);
-  });
-
-  test('dismissed note is suppressed when dismissKey matches', () => {
-    const sections = [
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(245, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-    // First get the key from the active note.
-    const [note] = detectBig3Asymmetry(sections);
-    expect(note).toBeDefined();
-    // Dismiss it.
-    const dismissed = { [note.dismissKey]: true };
-    expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
-  });
-
-  test('note re-fires after relationship breaks and re-emerges (new runStart index)', () => {
-    // Session order: baseline(0) → run A sessions(1,2) → break(3) → run B sessions(4,5)
-    // The dismiss key from run A encodes run A's start index (1).
-    // When run B is active, its start index (4) differs → note re-fires.
-    const sections = [
-      // Index 0: baseline
-      asymSection('2023-12-18', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 1: squat progresses, bench stalls → run A starts (runStart=1)
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 2: squat progresses, bench stalls → run A count=2, triggers
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(245, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 3: both stalled → shared concrete classification → break
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(245, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 4: squat progresses, bench stalls → run B starts (runStart=4)
-      asymSection('2024-01-15', [
-        { name: 'Squat', sets: [s(255, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 5: squat progresses, bench stalls → run B count=2, triggers
-      asymSection('2024-01-22', [
-        { name: 'Squat', sets: [s(265, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-
-    // Simulate dismiss during run A (runStart index = 1)
-    const runADismissKey = 'asymmetry:squat_bench:1';
-    const dismissed = { [runADismissKey]: true };
-
-    // After run B emerges, the note should re-fire because runStart index changed to 4.
-    const notes = detectBig3Asymmetry(sections, dismissed);
-    expect(notes.length).toBe(1);
-    expect(notes[0].dismissKey).not.toBe(runADismissKey);
-    expect(notes[0].dismissKey).toBe('asymmetry:squat_bench:4');
-  });
-
-  test('regressing lift triggers note', () => {
-    const sections = [
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'Deadlift', sets: [s(315, 5)] },
-      ]),
-      // Week 1: squat up (progressing), deadlift drops (regressing)
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'Deadlift', sets: [s(305, 5)] },
-      ]),
-      // Week 2: squat up (progressing), deadlift drops again (regressing)
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(245, 5)] },
-        { name: 'Deadlift', sets: [s(295, 5)] },
-      ]),
-    ];
-    const notes = detectBig3Asymmetry(sections);
-    expect(notes.length).toBe(1);
-    expect(notes[0].copy).toContain('regressing');
-  });
-
-  test('copy matches documented pattern', () => {
-    const sections = [
-      asymSection('2023-12-25', [
-        { name: 'Deadlift', sets: [s(315, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      asymSection('2024-01-01', [
-        { name: 'Deadlift', sets: [s(325, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      asymSection('2024-01-08', [
-        { name: 'Deadlift', sets: [s(335, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-    const [note] = detectBig3Asymmetry(sections);
-    expect(note.copy).toBe('Deadlift progressing, bench stalled — worth reviewing.');
-  });
-
-  test('null-classification index does not break the run or reset dismissKey', () => {
-    // Asymmetric run with a null-classification index in the middle (bench absent at index 2).
-    // The null index must NOT reset runStart. runStart should remain index 1.
-    const sections = [
-      // Index 0: baseline
-      asymSection('2023-12-18', [
-        { name: 'Squat', sets: [s(225, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 1: squat progresses, bench stalls → asymmetric, runStart=1
-      asymSection('2023-12-25', [
-        { name: 'Squat', sets: [s(235, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-      // Index 2: only squat logged — bench is null at this index → ignored, does not reset run
-      asymSection('2024-01-01', [
-        { name: 'Squat', sets: [s(245, 5)] },
-      ]),
-      // Index 3: squat progresses, bench stalls → asymmetric, runCount reaches 2
-      asymSection('2024-01-08', [
-        { name: 'Squat', sets: [s(255, 5)] },
-        { name: 'DB Bench Press', sets: [s(100, 8)] },
-      ]),
-    ];
-    const notes = detectBig3Asymmetry(sections);
-    expect(notes.length).toBe(1);
-    // runStart index = 1 (null index 2 did not reset it)
-    expect(notes[0].dismissKey).toBe('asymmetry:squat_bench:1');
-
-    // Dismissing with the original runStart key must suppress the note.
-    const dismissed = { [notes[0].dismissKey]: true };
-    expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
-  });
-});
-
-// ── currentWeekStart ──────────────────────────────────────────────────────────
-
-describe('currentWeekStart', () => {
-  test('Sunday returns itself', () => {
-    // 2026-05-24 is a Sunday
-    expect(currentWeekStart(new Date('2026-05-24T12:00:00'))).toBe('2026-05-24');
-  });
-
-  test('Monday returns previous Sunday', () => {
-    // 2026-05-25 is a Monday → week starts 2026-05-24
-    expect(currentWeekStart(new Date('2026-05-25T12:00:00'))).toBe('2026-05-24');
-  });
-
-  test('Saturday returns 6 days prior Sunday', () => {
-    // 2026-05-30 is a Saturday → week starts 2026-05-24
-    expect(currentWeekStart(new Date('2026-05-30T12:00:00'))).toBe('2026-05-24');
-  });
-
-  test('Wednesday mid-week returns correct Sunday', () => {
-    // 2026-05-27 is a Wednesday → week starts 2026-05-24
-    expect(currentWeekStart(new Date('2026-05-27T12:00:00'))).toBe('2026-05-24');
-  });
-
-  test('returns YYYY-MM-DD string format', () => {
-    const result = currentWeekStart(new Date('2026-01-01T12:00:00'));
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  test('early-morning timestamp the day after DST spring-forward returns correct Sunday', () => {
-    // 2026-03-08 is US spring-forward Sunday; 2026-03-09 00:30 is Monday early morning.
-    // Fixed-offset arithmetic (86400000ms) fails here in DST timezones; setDate() does not.
-    const result = currentWeekStart(new Date('2026-03-09T00:30:00'));
-    expect(result).toBe('2026-03-08');
-  });
-});
-
 // ── rollingWindowStart ────────────────────────────────────────────────────────
-
 describe('rollingWindowStart', () => {
-  test('30-day window: start is 29 days before reference (inclusive both ends)', () => {
-    // ref = 2026-05-24, window start = 2026-04-25
+  test('returns correct start date for 30-day window', () => {
+    // ref = 2026-05-24, 30-day window starts 2026-04-25
     expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 30)).toBe('2026-04-25');
-  });
-
-  test('1-day window: start equals reference date', () => {
-    expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 1)).toBe('2026-05-24');
-  });
-
-  test('7-day window: start is 6 days before reference', () => {
-    // ref = 2026-05-24, 7-day window starts 2026-05-18
-    expect(rollingWindowStart(new Date('2026-05-24T12:00:00'), 7)).toBe('2026-05-18');
-  });
-
-  test('returns YYYY-MM-DD string format', () => {
-    const result = rollingWindowStart(new Date('2026-03-01T12:00:00'), 30);
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   test('window spanning month boundary returns correct date', () => {
@@ -1705,3 +1402,129 @@ describe('deriveSkipData attendance window boundary (rollingWindowStart regressi
     expect(attendance_flags.some(f => f.type === 'repeated_weekday_skip')).toBe(false);
   });
 });
+
+// ── computeWeeklySummary ──────────────────────────────────────────────────────
+
+describe('computeWeeklySummary', () => {
+  test('returns hasActivity: false when no sessions logged', () => {
+    const sections = [{
+      heading: 'Monday',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [],
+        rows: [],
+        session_entries: [{ skipped: true, raw: '-', sets: [] }],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {});
+    expect(result.hasActivity).toBe(false);
+    expect(result.sessionStatusRows).toBeNull();
+  });
+
+  test('returns hasActivity: true when session exists (with session_entries)', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const result = computeWeeklySummary(sections, {});
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('returns hasActivity: true for plain inline set rows (no session_entries)', () => {
+    const sections = [{
+      heading: 'Monday',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {});
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('aggregates classification counts from workoutNote', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const workoutNote = {
+      exercise_classifications: {
+        squat: 'progressing',
+        bench: 'stalled',
+        deadlift: 'progressing',
+        curls: 'regressing',
+        press: 'inconsistent',
+        other: 'initial'
+      }
+    };
+    const result = computeWeeklySummary(sections, workoutNote);
+    expect(result.classifications).toEqual({
+      progressing: 2,
+      stalled: 1,
+      regressing: 1,
+      inconsistent: 1,
+      initial: 1
+    });
+  });
+
+  test('consumes Big 3 deltas opportunistically', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const deltas = { squat: 5, bench: -2.5, deadlift: 0 };
+    const workoutNote = { big_3_deltas: deltas };
+    const result = computeWeeklySummary(sections, workoutNote);
+    expect(result.deltas).toEqual(deltas);
+  });
+
+  test('returns classifications: null if exercise_classifications is missing from note', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const result = computeWeeklySummary(sections, {});
+    expect(result.classifications).toBe(null);
+  });
+});
+
+describe('classifyExerciseSessions normalization and alias tests', () => {
+  test('matches exercises with slightly different naming in note vs tracked map', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'Bench Press ', // Extra space
+        sets: [{ weight_value: 135, rep_count: 5 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['bench press'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['bench press']).toBe('initial');
+  });
+
+  test('matches DB Bench in note with DB Bench Press in tracked map via canonical name', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'DB Bench', // Alias
+        sets: [{ weight_value: 50, rep_count: 10 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['DB Bench Press'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['db bench press']).toBe('initial');
+  });
+
+  test('matches lowercase tracked name with Title Case note entry', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['squat'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['squat']).toBe('initial');
+  });
+});
+

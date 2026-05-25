@@ -138,22 +138,21 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
 - `mobile/lib/data.js` owns native entry factories, the exercise catalog, and
-  shared recompute-only workout analytics helpers such as routine-depth and
-  canonical temporal semantics (`currentWeekStart()` for Sunday-based
-  current-week gating and `rollingWindowStart()` for inclusive attendance
-  windows)
+  shared recompute-only workout analytics helpers such as routine-depth,
+  weekly-summary shaping from persisted note fields, and canonical temporal
+  helpers such as `rollingWindowStart()` for inclusive attendance windows
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
   documents now also carry persisted `exercise_classifications`,
-  `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags`
-  alongside tracked-lift and 1k-slot selections. Rep-drop-off nudge
-  dismissals are no longer persisted; they are ephemeral screen-local state in
-  Log. The legacy session key remains only a migration source and the old
-  single-note key remains both a migration source into the notebook model and
-  a backup-compatibility fallback
+  `skip_markers`, `attendance_flags`, `big_3_deltas`, and per-session
+  `rep_drop_off_flags` alongside tracked-lift and 1k-slot selections.
+  Rep-drop-off nudge dismissals are no longer persisted; they are ephemeral
+  screen-local state in Log. The legacy session key remains only a migration
+  source and the old single-note key remains both a migration source into the
+  notebook model and a backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -518,11 +517,12 @@ recomputation at render time is permitted.
 | Field | Canonical Owner | Persistence | Allowed Consumers | Recompute at Render? |
 |-------|----------------|-------------|-------------------|---------------------|
 | `exercise_classifications` | Log save path (`LogScreen.js:191`) via `classifyExerciseSessions()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
-| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
-| `attendance_flags` | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
+| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
+| `attendance_flags` | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `rep_drop_off_flags` | Log save path (`LogScreen.js:194`) via `deriveRepDropOffFlags()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
+| `big_3_deltas` | Upstream native workout-note producer from issue `#174` | Persisted on note document | Home weekly summary (read-only) | **No** — consumers must read `workoutNote.big_3_deltas` |
 | Estimated 1RM per lift | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Kilo max per lift | `computeKiloMax()` via `deriveSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Latest top weight | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
@@ -560,7 +560,7 @@ recomputation at render time is permitted.
 │                                                                     │
 │  Reads from persisted note:                                         │
 │    • exercise_classifications (via computeWeeklySummary)            │
-│    • attendance_flags (via computeWeeklySummary)                    │
+│    • big_3_deltas (via computeWeeklySummary)                        │
 │                                                                     │
 │  Legitimately recomputes:                                           │
 │    • 1k total, weight series, weeks-in                              │

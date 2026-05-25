@@ -609,8 +609,9 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const comparable = occs.flatMap(occ => {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
         if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
+        // Plain inline rows within one occurrence are one workout unit, not separate sessions.
         const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
-        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
+        if (rows.length > 0) return [occ];
         return occ.sets && occ.sets.length > 0 ? [occ] : [];
       });
 

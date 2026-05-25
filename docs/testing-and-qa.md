@@ -77,10 +77,10 @@ Current limitation:
   including tracked-exercise persistence on the canonical workout note and a
   fixture-driven migration contract suite for legacy structured workout
   history, plus weight-goal persistence/derivation coverage, per-session
-  rep-drop-off flag derivation coverage, latest-flag selection coverage,
-  Big 3 asymmetry detection coverage including dismiss suppression and
-  break-and-re-emerge semantics, and malformed backup rejection coverage for
-  the optional `weight_goal` v2 import field.
+  rep-drop-off flag derivation coverage, weekly-summary stored-input shaping
+  coverage (session presence, persisted classification counts, and
+  opportunistic Big 3 deltas), and malformed backup rejection coverage for the
+  optional `weight_goal` v2 import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
@@ -88,11 +88,10 @@ Current limitation:
   while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
-- No automated native test yet verifies the rendered Home `Session Status`
-  surface end to end from a saved workout note, or the Log inline `hit_wall`
-  dismiss/re-fire interaction after save. The current suite covers the
-  underlying helper behavior and persisted field shaping, but not those
-  rendered-screen contracts.
+- No automated native test yet verifies the rendered Home `Weekly Summary`
+  surface end to end from a saved workout note. The current suite covers the
+  underlying helper behavior and persisted field shaping, but not the rendered
+  Home panel contract.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
