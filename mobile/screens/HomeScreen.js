@@ -99,11 +99,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const classifications = sections ? classifyExerciseSessions(sections, listTrackedLifts(trackedLifts)) : null;
     const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries, classifications });
 
-    console.log(`[Dashboard Debug] hasActivity=${weeklySummary.hasActivity}, asymmetryFlag=${weeklySummary.flags?.asymmetry}, noteCount=${asymmetryNotes.length}`);
-    if (asymmetryNotes.length > 0) {
-      console.log(`[Dashboard Debug] Active Notes:`, asymmetryNotes.map(n => n.dismissKey));
-    }
-
     return { 
       weightSeries, 
       oneK, 
@@ -170,6 +165,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
                   { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
                   { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
                   { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+                  { label: 'new', count: dashboardData.weeklySummary.classifications.initial, color: Colors.accent },
                 ].map((item, idx) => (
                   <View key={idx} style={styles.classifItem}>
                     <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
