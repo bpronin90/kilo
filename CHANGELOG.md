@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.38.1 - 2026-05-24
+
+- Issue #172: Defined canonical ownership contract for native workout analytics
+  calculations in `docs/architecture.md`, including field-by-field ownership
+  matrix, producer/consumer map, recomputation rules, and acceptance contract
+  for downstream issues. Identified Home classification dual-source violation
+  and `big_3_deltas` ownership gap as HIGH-priority follow-ups. Updated
+  `docs/current-state.md` classification semantics and `docs/testing-and-qa.md`
+  test gap documentation.
+
 ## 0.38.0 - 2026-05-24
 
 - Issue #162: Added native Big 3 cross-lift asymmetry detection so Home now
