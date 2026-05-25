@@ -2,7 +2,6 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, LineChart } from '../components/UI';
 import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
-import { formatSessionClassification } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -130,6 +129,11 @@ export function StatsScreen({ multiplier, section }) {
     // Big Three 1RM total and workout count are scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
     const workoutDayCount = countWorkoutSessions(currentNote?.raw_text || '');
+
+    // DEBUG: dump classification lookup state
+    console.log('[Analytics] exercise_classifications keys:', Object.keys(currentNote?.exercise_classifications ?? {}));
+    console.log('[Analytics] visibleTrackedNames:', visibleTrackedNames);
+    console.log('[Analytics] namesInCurrent:', [...namesInCurrent]);
 
     return { signals, oneK, workoutDayCount, nameDisplayMap };
   }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
@@ -291,23 +295,13 @@ export function StatsScreen({ multiplier, section }) {
         <View style={styles.signalList}>
           {analytics.signals.map((sig, i) => {
             const normName = normalizeLiftName(sig.name);
-            const classifLabel = formatSessionClassification(
-              currentNote?.exercise_classifications?.[normName] ?? null
-            );
             const dropOffFlag = getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[normName]);
-            const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall'
-              : dropOffFlag === 'in_reserve' ? '↑ Reserve'
-              : null;
+            const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
             return (
             <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
               <View style={styles.signalRowInner}>
                 <View style={styles.signalNameBlock}>
                   <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-                  {classifLabel ? (
-                    <Text style={[styles.classifBadge, classifBadgeColor(currentNote?.exercise_classifications?.[normName])]}>
-                      {classifLabel}
-                    </Text>
-                  ) : null}
                   {dropOffLabel ? (
                     <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
                       {dropOffLabel}
@@ -338,7 +332,6 @@ export function StatsScreen({ multiplier, section }) {
 
 function dropOffBadgeColor(flag) {
   if (flag === 'hit_wall') return { color: Colors.error };
-  if (flag === 'in_reserve') return { color: '#4ade80' };
   return {};
 }
 
