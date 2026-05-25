@@ -831,9 +831,9 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
  *
  * sections: parsed sections from current routine note
  * workoutNote: current routine object (notebook item)
- * options: { referenceDate: Date, dismissedAsymmetries: object }
+ * options: { dismissedAsymmetries: object, classifications: object }
  */
-export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries = {} } = {}) {
+export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries = {}, classifications: providedClassifs = null } = {}) {
   // A session exists if there are any non-skipped entries or sets in the sections
   const hasActivity = (sections || []).some(section =>
     section.exercises.some(ex => {
@@ -850,9 +850,11 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
 
   // 1. Classification counts (tracked exercises only)
   let classifications = null;
-  if (workoutNote?.exercise_classifications) {
-    classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0 };
-    Object.values(workoutNote.exercise_classifications).forEach(val => {
+  const sourceClassifs = providedClassifs || workoutNote?.exercise_classifications;
+  
+  if (sourceClassifs) {
+    classifications = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };
+    Object.values(sourceClassifs).forEach(val => {
       if (classifications[val] !== undefined) {
         classifications[val]++;
       }

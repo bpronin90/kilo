@@ -1339,7 +1339,8 @@ describe('computeWeeklySummary', () => {
       progressing: 2,
       stalled: 1,
       regressing: 1,
-      inconsistent: 1
+      inconsistent: 1,
+      initial: 1
     });
   });
 
@@ -1447,5 +1448,15 @@ describe('classifyExerciseSessions normalization and alias tests', () => {
     const trackedNames = ['squat'];
     const result = classifyExerciseSessions(sections, trackedNames);
     expect(result['squat']).toBe('initial');
+  });
+});
+
+describe('computeWeeklySummary classification counts tests', () => {
+  test('includes initial count and uses provided classifications', () => {
+    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
+    const classifications = { squat: 'initial', bench: 'progressing' };
+    const result = computeWeeklySummary(sections, {}, { classifications });
+    expect(result.classifications.initial).toBe(1);
+    expect(result.classifications.progressing).toBe(1);
   });
 });

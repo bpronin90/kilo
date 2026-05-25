@@ -16,7 +16,11 @@ import {
   computeWeeksIn,
   detectBig3Asymmetry,
   computeWeeklySummary,
+  normalizeLiftName,
+  classifyExerciseSessions,
+  listTrackedLifts,
 } from '../lib/data';
+import { useTrackedLifts } from '../hooks/useEntries';
 import pkg from '../package.json';
 
 const DISMISSED_ASYMMETRIES_KEY = 'kilo_dismissed_asymmetries';
@@ -46,6 +50,7 @@ function KiloWordmark({ width = 140, height = 48 }) {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
+  const { trackedLifts } = useTrackedLifts();
   // null = not yet loaded; {} = loaded with no dismissals.
   // Asymmetry notes are suppressed until load completes to prevent flash-on-mount.
   const [dismissedAsymmetries, setDismissedAsymmetries] = useState(null);
@@ -85,10 +90,11 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
       : [];
 
-    const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries });
+    const classifications = sections ? classifyExerciseSessions(sections, listTrackedLifts(trackedLifts)) : null;
+    const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries, classifications });
 
-    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes, weeklySummary };
-  }, [weightEntries, workoutNote, dismissedAsymmetries]);
+    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes, weeklySummary, classifications };
+  }, [weightEntries, workoutNote, dismissedAsymmetries, trackedLifts]);
 
   return (
     <ScreenShell
