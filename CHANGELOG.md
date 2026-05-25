@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.39.0 - 2026-05-25
+
+- Issue #174: Rebuilt the native Home weekly summary around persisted workout
+  note analytics instead of live recomputation, corrected the underlying
+  session-classification and Big 3 alignment rules from the #171 audit, fixed
+  Log save-path producer completeness plus ephemeral inline `hit_wall` nudge
+  dismissal behavior, and aligned the docs/testing notes with the new
+  canonical-input contract and removal of persisted nudge-dismiss storage.
+
 ## 0.38.2 - 2026-05-25
 
 - Issue #173: Added shared native workout temporal helpers for Sunday-based
