@@ -382,14 +382,26 @@ function _headingInfo(heading) {
   for (const day of _DAY_LABELS) {
     if (lower.includes(day)) { weekday = day; break; }
   }
+
   let date = null;
-  const m = /(\d{4}-\d{2}-\d{2})/.exec(heading);
-  if (m) {
-    date = m[1];
-    if (!weekday) {
-      const d = new Date(m[1] + 'T12:00:00');
-      if (!isNaN(d.getTime())) weekday = _DAY_LABELS[d.getDay()];
+  // Try ISO YYYY-MM-DD
+  const isoMatch = /(\d{4}-\d{2}-\d{2})/.exec(heading);
+  if (isoMatch) {
+    date = isoMatch[1];
+  } else {
+    // Try MM-DD-YYYY or MM/DD/YYYY
+    const commonMatch = /(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(heading);
+    if (commonMatch) {
+      const m = commonMatch[1].padStart(2, '0');
+      const d = commonMatch[2].padStart(2, '0');
+      const y = commonMatch[3];
+      date = `${y}-${m}-${d}`;
     }
+  }
+
+  if (date && !weekday) {
+    const d = new Date(date + 'T12:00:00');
+    if (!isNaN(d.getTime())) weekday = _DAY_LABELS[d.getDay()];
   }
   return { weekday, date };
 }

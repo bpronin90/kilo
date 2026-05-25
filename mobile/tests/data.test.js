@@ -1406,3 +1406,41 @@ describe('computeWeeklySummary regression tests', () => {
     expect(result.classifications).toBe(null);
   });
 });
+
+describe('computeWeeklySummary date robustness tests', () => {
+  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
+
+  test('reports hasActivity: true for MM-DD-YYYY headings', () => {
+    const sections = [{
+      heading: 'Sunday 05-24-2026',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+  });
+
+  test('reports hasActivity: true for MM/DD/YYYY headings', () => {
+    const sections = [{
+      heading: '05/24/2026',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+  });
+});
