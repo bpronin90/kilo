@@ -1282,23 +1282,43 @@ describe('detectBig3Asymmetry', () => {
 // ── computeWeeklySummary ──────────────────────────────────────────────────────
 
 describe('computeWeeklySummary', () => {
-  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
-
-  test('returns hasActivity: false when no sessions in current week', () => {
-    const sections = [asymSection('2026-05-23', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])]; // Saturday
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+  test('returns hasActivity: false when no sessions logged', () => {
+    const sections = [{
+      heading: 'Monday',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [],
+        rows: [],
+        session_entries: [{ skipped: true, raw: '-', sets: [] }],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {});
     expect(result.hasActivity).toBe(false);
   });
 
-  test('returns hasActivity: true when session exists on Sunday (start of week)', () => {
+  test('returns hasActivity: true when session exists (with session_entries)', () => {
     const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, {});
     expect(result.hasActivity).toBe(true);
   });
 
-  test('returns hasActivity: true when session exists on Saturday (end of week)', () => {
-    const sections = [asymSection('2026-05-30', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+  test('returns hasActivity: true for plain inline set rows (no session_entries)', () => {
+    const sections = [{
+      heading: 'Monday',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const result = computeWeeklySummary(sections, {});
     expect(result.hasActivity).toBe(true);
   });
 
@@ -1314,7 +1334,7 @@ describe('computeWeeklySummary', () => {
         other: 'initial'
       }
     };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, workoutNote);
     expect(result.classifications).toEqual({
       progressing: 2,
       stalled: 1,
@@ -1327,7 +1347,7 @@ describe('computeWeeklySummary', () => {
     const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
     const deltas = { squat: 5, bench: -2.5, deadlift: 0 };
     const workoutNote = { big_3_deltas: deltas };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, workoutNote);
     expect(result.deltas).toEqual(deltas);
   });
 
@@ -1339,7 +1359,7 @@ describe('computeWeeklySummary', () => {
         bench: { '0': 'in_reserve' }
       }
     };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, workoutNote);
     expect(result.flags.hit_wall).toBe(true);
     expect(result.flags.in_reserve).toBe(true);
   });
@@ -1349,7 +1369,7 @@ describe('computeWeeklySummary', () => {
     const workoutNote = {
       attendance_flags: [{ type: 'repeated_weekday_skip', weekday: 'Monday', skip_count: 2 }]
     };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, workoutNote);
     expect(result.flags.attendance).toBe(true);
   });
 
@@ -1370,123 +1390,18 @@ describe('computeWeeklySummary', () => {
     ];
     
     // Without dismissal
-    const result = computeWeeklySummary(sections, {}, { referenceDate: new Date('2024-01-01T12:00:00') });
+    const result = computeWeeklySummary(sections, {});
     expect(result.flags.asymmetry).toBe(true);
     
     // The runStart will be '2023-12-25' (Monday of the 12-25 week)
     const dismissed = { 'asymmetry:squat_bench:2023-12-25': true };
-    const resultDismissed = computeWeeklySummary(sections, {}, { referenceDate: new Date('2024-01-01T12:00:00'), dismissedAsymmetries: dismissed });
+    const resultDismissed = computeWeeklySummary(sections, {}, { dismissedAsymmetries: dismissed });
     expect(resultDismissed.flags.asymmetry).toBe(false);
-  });
-});
-
-describe('computeWeeklySummary regression tests', () => {
-  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
-
-  test('reports hasActivity: true for plain inline set rows (no session_entries)', () => {
-    const sections = [{
-      heading: 'Sunday 2026-05-24',
-      subheading: null,
-      kind: 'general',
-      exercises: [{
-        name: 'Squat',
-        sets: [{ weight_value: 225, rep_count: 5 }],
-        rows: [],
-        session_entries: [],
-        unparsed_rows: []
-      }]
-    }];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
-    expect(result.hasActivity).toBe(true);
   });
 
   test('returns classifications: null if exercise_classifications is missing from note', () => {
     const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
+    const result = computeWeeklySummary(sections, {});
     expect(result.classifications).toBe(null);
-  });
-});
-
-describe('computeWeeklySummary date robustness tests', () => {
-  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
-
-  test('reports hasActivity: true for MM-DD-YYYY headings', () => {
-    const sections = [{
-      heading: 'Sunday 05-24-2026',
-      subheading: null,
-      kind: 'general',
-      exercises: [{
-        name: 'Squat',
-        sets: [{ weight_value: 225, rep_count: 5 }],
-        rows: [],
-        session_entries: [],
-        unparsed_rows: []
-      }]
-    }];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
-    expect(result.hasActivity).toBe(true);
-  });
-
-  test('reports hasActivity: true for MM/DD/YYYY headings', () => {
-    const sections = [{
-      heading: '05/24/2026',
-      subheading: null,
-      kind: 'general',
-      exercises: [{
-        name: 'Squat',
-        sets: [{ weight_value: 225, rep_count: 5 }],
-        rows: [],
-        session_entries: [],
-        unparsed_rows: []
-      }]
-    }];
-    const result = computeWeeklySummary(sections, {}, { referenceDate: refDate });
-    expect(result.hasActivity).toBe(true);
-  });
-});
-
-describe('computeWeeklySummary undated activity tests', () => {
-  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
-
-  test('reports hasActivity: true if note updated this week and contains logged sessions, even if undated', () => {
-    const sections = [{
-      heading: 'Monday', // No date
-      subheading: null,
-      kind: 'general',
-      exercises: [{
-        name: 'Squat',
-        sets: [{ weight_value: 225, rep_count: 5 }],
-        rows: [],
-        session_entries: [],
-        unparsed_rows: []
-      }]
-    }];
-    const workoutNote = {
-      updated_at: '2026-05-24T10:00:00Z', // Today (Sunday)
-      exercise_classifications: { squat: 'progressing' }
-    };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
-    expect(result.hasActivity).toBe(true);
-    expect(result.classifications.progressing).toBe(1);
-  });
-
-  test('reports hasActivity: false if note updated last week and contains no dated sessions this week', () => {
-    const sections = [{
-      heading: 'Monday',
-      subheading: null,
-      kind: 'general',
-      exercises: [{
-        name: 'Squat',
-        sets: [{ weight_value: 225, rep_count: 5 }],
-        rows: [],
-        session_entries: [],
-        unparsed_rows: []
-      }]
-    }];
-    const workoutNote = {
-      updated_at: '2026-05-23T23:00:00Z', // Yesterday (Saturday, previous week)
-    };
-    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
-    expect(result.hasActivity).toBe(false);
   });
 });

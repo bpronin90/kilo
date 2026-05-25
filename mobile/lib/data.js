@@ -828,14 +828,6 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 
 // ── Weekly Assessment Summary ────────────────────────────────────────────────
 
-function _sundayWeekKey(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  const day = d.getDay(); // 0=Sun
-  const sun = new Date(+d - day * 86400000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
-}
-
 /**
  * Shapes stored weekly inputs for the assessment summary panel.
  *
@@ -843,42 +835,16 @@ function _sundayWeekKey(dateStr) {
  * workoutNote: current routine object (notebook item)
  * options: { referenceDate: Date, dismissedAsymmetries: object }
  */
-export function computeWeeklySummary(sections, workoutNote, { referenceDate = new Date(), dismissedAsymmetries = {} } = {}) {
-  const pad = n => String(n).padStart(2, '0');
-  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const weekKey = _sundayWeekKey(localStr(referenceDate));
-
-  // Extract dates for all non-skipped sessions in sections
-  const sessionDates = new Set();
-  (sections || []).forEach(section => {
-    const { date } = _headingInfo(section.heading);
-    if (!date) return;
-    const hasLogged = section.exercises.some(ex => {
+export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries = {} } = {}) {
+  // A session exists if there are any non-skipped entries or sets in the sections
+  const hasActivity = (sections || []).some(section =>
+    section.exercises.some(ex => {
       if ((ex.session_entries || []).length > 0) {
         return ex.session_entries.some(se => !se.skipped);
       }
       return (ex.sets || []).length > 0;
-    });
-    if (hasLogged) sessionDates.add(date);
-  });
-
-  // A session is in the current week if its Sunday-based weekKey matches the reference's.
-  let hasActivity = [...sessionDates].some(date => _sundayWeekKey(date) === weekKey);
-
-  // Heuristic: if no dated sessions found for this week, but the note was updated this week,
-  // assume undated logging activity.
-  if (!hasActivity && workoutNote?.updated_at) {
-    const updatedDate = workoutNote.updated_at.slice(0, 10);
-    if (_sundayWeekKey(updatedDate) === weekKey) {
-      const anyLogged = (sections || []).some(section =>
-        section.exercises.some(ex =>
-          ((ex.session_entries || []).length > 0 && ex.session_entries.some(se => !se.skipped)) ||
-          ((ex.sets || []).length > 0)
-        )
-      );
-      if (anyLogged) hasActivity = true;
-    }
-  }
+    })
+  );
 
   if (!hasActivity) {
     return { hasActivity: false };
