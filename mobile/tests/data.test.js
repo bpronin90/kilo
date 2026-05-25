@@ -1444,3 +1444,49 @@ describe('computeWeeklySummary date robustness tests', () => {
     expect(result.hasActivity).toBe(true);
   });
 });
+
+describe('computeWeeklySummary undated activity tests', () => {
+  const refDate = new Date('2026-05-24T12:00:00'); // Sunday
+
+  test('reports hasActivity: true if note updated this week and contains logged sessions, even if undated', () => {
+    const sections = [{
+      heading: 'Monday', // No date
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const workoutNote = {
+      updated_at: '2026-05-24T10:00:00Z', // Today (Sunday)
+      exercise_classifications: { squat: 'progressing' }
+    };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(true);
+    expect(result.classifications.progressing).toBe(1);
+  });
+
+  test('reports hasActivity: false if note updated last week and contains no dated sessions this week', () => {
+    const sections = [{
+      heading: 'Monday',
+      subheading: null,
+      kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [],
+        session_entries: [],
+        unparsed_rows: []
+      }]
+    }];
+    const workoutNote = {
+      updated_at: '2026-05-23T23:00:00Z', // Yesterday (Saturday, previous week)
+    };
+    const result = computeWeeklySummary(sections, workoutNote, { referenceDate: refDate });
+    expect(result.hasActivity).toBe(false);
+  });
+});

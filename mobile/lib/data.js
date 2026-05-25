@@ -863,7 +863,22 @@ export function computeWeeklySummary(sections, workoutNote, { referenceDate = ne
   });
 
   // A session is in the current week if its Sunday-based weekKey matches the reference's.
-  const hasActivity = [...sessionDates].some(date => _sundayWeekKey(date) === weekKey);
+  let hasActivity = [...sessionDates].some(date => _sundayWeekKey(date) === weekKey);
+
+  // Heuristic: if no dated sessions found for this week, but the note was updated this week,
+  // assume undated logging activity.
+  if (!hasActivity && workoutNote?.updated_at) {
+    const updatedDate = workoutNote.updated_at.slice(0, 10);
+    if (_sundayWeekKey(updatedDate) === weekKey) {
+      const anyLogged = (sections || []).some(section =>
+        section.exercises.some(ex =>
+          ((ex.session_entries || []).length > 0 && ex.session_entries.some(se => !se.skipped)) ||
+          ((ex.sets || []).length > 0)
+        )
+      );
+      if (anyLogged) hasActivity = true;
+    }
+  }
 
   if (!hasActivity) {
     return { hasActivity: false };
