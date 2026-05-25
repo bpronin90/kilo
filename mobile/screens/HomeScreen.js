@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   classifLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.text,
     textTransform: 'uppercase',
@@ -755,7 +755,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   deltaDashboardTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -781,13 +781,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.02)',
   },
   deltaDashboardValue: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: Colors.text,
     fontVariant: ['tabular-nums'],
   },
   deltaDashboardLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -815,7 +815,7 @@ const styles = StyleSheet.create({
   },
   asymmetryBadgeText: {
     color: '#fffaf2',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -825,7 +825,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   analyticsLinkText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',

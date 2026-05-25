@@ -688,7 +688,7 @@ export function getLatestRepDropOff(sessionFlags) {
 
 // ── Cross-lift asymmetry detection (Big 3) ────────────────────────────────────
 
-const _BIG3_NAMES = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
+const _BIG3_NAMES = { squat: 'Squat', bench: 'Bench Press', deadlift: 'Deadlift' };
 const _BIG3_SLOTS = ['squat', 'bench', 'deadlift'];
 const _BIG3_PAIRS = [['squat', 'bench'], ['squat', 'deadlift'], ['bench', 'deadlift']];
 
@@ -698,8 +698,11 @@ function _big3IndexEntries(sections) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const out = { squat: [], bench: [], deadlift: [] };
   for (const slot of _BIG3_SLOTS) {
-    const targetName = _BIG3_NAMES[slot];
-    const ex = _findExercise(exercises, targetName);
+    let ex = _findExercise(exercises, _BIG3_NAMES[slot]);
+    // Special case: if standard bench (barbell) not found, try DB bench
+    if (!ex && slot === 'bench') {
+      ex = _findExercise(exercises, 'DB Bench Press');
+    }
     if (!ex) continue;
     for (const occ of ex.occurrences) {
       out[slot].push(..._occurrenceEntries(occ));
