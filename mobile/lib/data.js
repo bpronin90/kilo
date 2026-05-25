@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote, _findExercise } from './parser.js';
 import { classifyWeightPace, formatAsymmetryNote } from './format.js';
 
 export const KILO_SPLIT = {
@@ -599,8 +599,7 @@ export function classifyExerciseSessions(sections, trackedNames) {
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
-    const lookupKey = normalizeLiftName(canonicalizeName(name));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    const ex = _findExercise(exercises, name);
     if (!ex) { result[normName] = null; continue; }
     // Mirror deriveProgressionSignals dual-path: occurrences with session_entries
     // expand per-entry (preserving skips for the window); plain-row occurrences
@@ -641,8 +640,7 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
-    const lookupKey = normalizeLiftName(canonicalizeName(name));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    const ex = _findExercise(exercises, name);
     if (!ex) { result[normName] = {}; continue; }
     const allEntries = ex.occurrences.flatMap(occ => {
       if ((occ.session_entries || []).length > 0) return occ.session_entries;

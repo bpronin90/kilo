@@ -130,69 +130,106 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       </View>
 
       <SectionTitle>Weekly Summary</SectionTitle>
-      <Card style={styles.weeklyCard}>
-        {!dashboardData.weeklySummary.hasActivity ? (
-          <Text style={styles.emptyText}>No sessions logged this week.</Text>
-        ) : (
-          <View style={styles.weeklyContent}>
-            {/* Classification Counts */}
-            {dashboardData.weeklySummary.classifications && (
-              <View style={styles.classifRow}>
-                {[
-                  { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-                  { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' }, // Custom gold/yellow
-                  { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
-                  { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
-                ].map((item, idx) => (
-                  <View key={idx} style={styles.classifItem}>
-                    <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                    <Text style={styles.classifText}>
-                      <Text style={styles.classifCount}>{item.count}</Text> {item.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
+      <Pressable onPress={() => onNavigate('Analytics')}>
+        <Card style={styles.weeklyCard}>
+          {!dashboardData.weeklySummary.hasActivity ? (
+            <Text style={styles.emptyText}>No sessions logged recently.</Text>
+          ) : (
+            <View style={styles.weeklyContent}>
+              {/* Classification Badges */}
+              {dashboardData.weeklySummary.classifications && (
+                <View style={styles.classifBadges}>
+                  {[
+                    { label: 'Progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success, key: 'progressing' },
+                    { label: 'Stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017', key: 'stalled' },
+                    { label: 'Regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error, key: 'regressing' },
+                    { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted, key: 'inconsistent' },
+                  ].filter(item => item.count > 0).map((item, idx) => (
+                    <View key={idx} style={styles.classifBadge}>
+                      <View style={[styles.classifBadgeDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.classifBadgeText}>
+                        <Text style={styles.classifBadgeCount}>{item.count}</Text> {item.label}
+                      </Text>
+                    </View>
+                  ))}
+                  {Object.values(dashboardData.weeklySummary.classifications).reduce((a, b) => a + b, 0) === 0 && (
+                    <Text style={styles.emptyText}>No tracked lifts classified yet.</Text>
+                  )}
+                </View>
+              )}
 
-            {/* Strength Delta */}
-            {dashboardData.weeklySummary.deltas && (
-              <View style={styles.deltaSection}>
-                <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
-                <View style={styles.deltaGrid}>
-                  <View style={styles.deltaGridItem}>
-                    <Text style={styles.deltaGridLabel}>SQUAT</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.squat)}
-                    </Text>
-                  </View>
-                  <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
-                    <Text style={styles.deltaGridLabel}>BENCH</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.bench)}
-                    </Text>
-                  </View>
-                  <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
-                    <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
-                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
-                    </Text>
+              {/* Lift Highlights */}
+              {dashboardData.weeklySummary.classifications && (
+                <View style={styles.highlightsRow}>
+                  {Object.entries(workoutNote?.exercise_classifications || {}).filter(([_, val]) => val === 'progressing').slice(0, 3).length > 0 && (
+                    <View style={styles.highlightGroup}>
+                      <Text style={styles.highlightLabel}>Top Progress</Text>
+                      <Text style={styles.highlightValue} numberOfLines={1}>
+                        {Object.entries(workoutNote.exercise_classifications)
+                          .filter(([_, val]) => val === 'progressing')
+                          .slice(0, 2)
+                          .map(([name]) => name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' '))
+                          .join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                  {Object.entries(workoutNote?.exercise_classifications || {}).filter(([_, val]) => val === 'regressing').length > 0 && (
+                    <View style={styles.highlightGroup}>
+                      <Text style={styles.highlightLabel}>Needs Review</Text>
+                      <Text style={[styles.highlightValue, { color: Colors.error }]} numberOfLines={1}>
+                        {Object.entries(workoutNote.exercise_classifications)
+                          .filter(([_, val]) => val === 'regressing')
+                          .slice(0, 2)
+                          .map(([name]) => name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' '))
+                          .join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Strength Delta Grid */}
+              {dashboardData.weeklySummary.deltas && (
+                <View style={styles.deltaSection}>
+                  <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
+                  <View style={styles.deltaGrid}>
+                    <View style={styles.deltaGridItem}>
+                      <Text style={styles.deltaGridLabel}>SQUAT</Text>
+                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
+                        {formatDelta(dashboardData.weeklySummary.deltas.squat)}
+                      </Text>
+                    </View>
+                    <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
+                      <Text style={styles.deltaGridLabel}>BENCH</Text>
+                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
+                        {formatDelta(dashboardData.weeklySummary.deltas.bench)}
+                      </Text>
+                    </View>
+                    <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
+                      <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
+                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
+                        {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Active Flags */}
-            {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
-              <View style={styles.flagsRow}>
-                {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
-                {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
-                {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
-                {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
-              </View>
-            )}
-          </View>
-        )}
-      </Card>
+              {/* Active Flags */}
+              {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
+                <View style={styles.flagsRow}>
+                  {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
+                  {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
+                  {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
+                  {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
+                </View>
+              )}
+              
+              <Text style={styles.tapForDetails}>Tap for full analytics →</Text>
+            </View>
+          )}
+        </Card>
+      </Pressable>
 
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
@@ -688,32 +725,52 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   weeklyContent: {
-    gap: 20,
-  },
-  classifRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 16,
   },
-  classifItem: {
+  classifBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  classifBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  classifDot: {
+  classifBadgeDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
-  classifText: {
+  classifBadgeText: {
     fontSize: 10,
     fontWeight: '600',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  classifCount: {
+  classifBadgeCount: {
     fontWeight: '800',
+    color: Colors.text,
+  },
+  highlightsRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  highlightGroup: {
+    flex: 1,
+    gap: 4,
+  },
+  highlightLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  highlightValue: {
+    fontSize: 14,
+    fontWeight: '700',
     color: Colors.text,
   },
   deltaSection: {
@@ -774,6 +831,14 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  tapForDetails: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    textAlign: 'right',
+    marginTop: 4,
   },
   emptyText: {
     fontSize: 14,

@@ -1405,3 +1405,47 @@ describe('computeWeeklySummary', () => {
     expect(result.classifications).toBe(null);
   });
 });
+
+describe('classifyExerciseSessions normalization and alias tests', () => {
+  test('matches exercises with slightly different naming in note vs tracked map', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'Bench Press ', // Extra space
+        sets: [{ weight_value: 135, rep_count: 5 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['bench press'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['bench press']).toBe('initial');
+  });
+
+  test('matches DB Bench in note with DB Bench Press in tracked map via canonical name', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'DB Bench', // Alias
+        sets: [{ weight_value: 50, rep_count: 10 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['DB Bench Press'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['db bench press']).toBe('initial');
+  });
+
+  test('matches lowercase tracked name with Title Case note entry', () => {
+    const sections = [{
+      heading: 'Monday',
+      exercises: [{
+        name: 'Squat',
+        sets: [{ weight_value: 225, rep_count: 5 }],
+        rows: [], session_entries: [], unparsed_rows: []
+      }]
+    }];
+    const trackedNames = ['squat'];
+    const result = classifyExerciseSessions(sections, trackedNames);
+    expect(result['squat']).toBe('initial');
+  });
+});
