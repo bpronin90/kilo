@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.37.0 - 2026-05-24
+
+- Issue #160: Added persisted intra-session rep drop-off flags for tracked
+  exercises in the native workout-note save path, surfaced the latest
+  `hit_wall` / `in_reserve` state in Log and Analytics, and moved nudge
+  dismissals to a global AsyncStorage key so they survive routine switches.
+  Reviewer closeout updated `docs/current-state.md`,
+  `docs/testing-and-qa.md`, and `docs/architecture.md` to match and bumped the
+  app version.
+
 ## 0.36.1 - 2026-05-24
 
 - Issue #161: Added persisted workout skip markers and attendance flags to the

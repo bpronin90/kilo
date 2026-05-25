@@ -76,8 +76,10 @@ Current limitation:
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
   including tracked-exercise persistence on the canonical workout note and a
   fixture-driven migration contract suite for legacy structured workout
-  history, plus weight-goal persistence/derivation coverage and malformed
-  backup rejection coverage for the optional `weight_goal` v2 import field.
+  history, plus weight-goal persistence/derivation coverage, per-session
+  rep-drop-off flag derivation coverage, latest-flag selection coverage, and
+  malformed backup rejection coverage for the optional `weight_goal` v2 import
+  field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
@@ -85,6 +87,9 @@ Current limitation:
   while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
+- The global AsyncStorage path for rep-drop-off nudge dismissals still relies
+  on manual verification; the issue-scoped Jest suite does not yet exercise
+  that persistence contract.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
@@ -267,6 +272,16 @@ Provides the global runtime contract required by the prototype:
   behavior, same-weight total-rep trend tiebreaks, and the guard that a
   multi-row plain-row block still counts as one comparable session rather than
   fabricating history
+
+### `mobile/tests/data.test.js`
+
+- helper and derivation coverage for `mobile/lib/data.js`
+- verifies intra-session `computeRepDropOff()` classification boundaries,
+  mixed-weight ambiguity handling, and working-set filtering
+- verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
+  logged session position while omitting skipped sessions
+- verifies `getLatestRepDropOff()` returns the latest persisted session flag
+  for Log and Analytics display, including null-latest and skipped-gap cases
 
 ### `mobile/tests/storage.test.js`
 
