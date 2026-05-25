@@ -1753,17 +1753,15 @@ describe('computeWeeklySummary', () => {
     expect(result.deltas).toEqual(deltas);
   });
 
-  test('detects hit-wall and in-reserve flags', () => {
+  test('detects hit-wall flag', () => {
     const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
     const workoutNote = {
       rep_drop_off_flags: {
-        squat: { '0': 'hit_wall' },
-        bench: { '0': 'in_reserve' }
+        squat: { '0': 'hit_wall' }
       }
     };
     const result = computeWeeklySummary(sections, workoutNote);
     expect(result.flags.hit_wall).toBe(true);
-    expect(result.flags.in_reserve).toBe(true);
   });
 
   test('detects attendance flags', () => {

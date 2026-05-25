@@ -144,30 +144,20 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       <SectionTitle>Weekly Summary</SectionTitle>
       <Card style={styles.weeklyCard}>
         {!dashboardData.weeklySummary.hasActivity ? (
-          <Text style={styles.emptyText}>No sessions logged recently.</Text>
+          <Text style={styles.emptyText}>No sessions logged this week.</Text>
         ) : (
           <View style={styles.weeklyContent}>
-            {/* Classification Badges */}
+            {/* Classification counts as a single line */}
             {dashboardData.weeklySummary.classifications && (
-              <View style={styles.classifBadges}>
-                {[
-                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success, key: 'progressing' },
-                  { label: 'Stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017', key: 'stalled' },
-                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error, key: 'regressing' },
-                  { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted, key: 'inconsistent' },
-                  { label: 'New', count: dashboardData.weeklySummary.classifications.initial, color: Colors.accent, key: 'initial' },
-                ].filter(item => item.count > 0).map((item, idx) => (
-                  <View key={idx} style={styles.classifBadge}>
-                    <View style={[styles.classifBadgeDot, { backgroundColor: item.color }]} />
-                    <Text style={styles.classifBadgeText}>
-                      <Text style={styles.classifBadgeCount}>{item.count}</Text> {item.label}
-                    </Text>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.classifText}>
+                <Text style={{ color: Colors.success }}>{dashboardData.weeklySummary.classifications.progressing} progressing</Text> /{' '}
+                <Text style={{ color: '#d4a017' }}>{dashboardData.weeklySummary.classifications.stalled} stalled</Text> /{' '}
+                <Text style={{ color: Colors.error }}>{dashboardData.weeklySummary.classifications.regressing} regressing</Text> /{' '}
+                <Text style={{ color: Colors.textMuted }}>{dashboardData.weeklySummary.classifications.inconsistent} inconsistent</Text>
+              </Text>
             )}
 
-            {/* Strength Delta Grid */}
+            {/* Big 3 Strength Delta */}
             {dashboardData.weeklySummary.deltas && (
               <View style={styles.deltaSection}>
                 <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
@@ -187,41 +177,24 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
                   <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
                     <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
                     <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deadlift)}
+                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
                     </Text>
                   </View>
                 </View>
               </View>
             )}
 
-            {/* Detailed Lift Status (from main) */}
-            {dashboardData.sessionStatusRows && (
-              <View style={styles.sessionStatusGrid}>
-                {dashboardData.sessionStatusRows.map(({ name, classification }) => (
-                  <View
-                    key={name}
-                    style={[styles.classificationChip, { borderColor: classificationColor(classification) }]}
-                  >
-                    <Text style={[styles.classificationChipText, { color: classificationColor(classification) }]}>
-                      {name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Active Flags */}
-            {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
+            {/* Active Flags (excluding in-reserve) */}
+            {(dashboardData.weeklySummary.flags.hit_wall || dashboardData.weeklySummary.flags.attendance || dashboardData.weeklySummary.flags.asymmetry) && (
               <View style={styles.flagsRow}>
                 {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
-                {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
                 {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
                 {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
               </View>
             )}
-            
-            <Pressable onPress={() => onNavigate('Analytics')}>
-              <Text style={styles.tapForDetails}>Full History & Insights →</Text>
+
+            <Pressable onPress={() => onNavigate('Analytics')} style={styles.analyticsLink}>
+              <Text style={styles.analyticsLinkText}>Full analytics →</Text>
             </Pressable>
           </View>
         )}
@@ -726,54 +699,15 @@ const styles = StyleSheet.create({
   weeklyContent: {
     gap: 16,
   },
-  classifBadges: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  classifBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  classifBadgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  classifBadgeText: {
-    fontSize: 10,
+  classifText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  classifBadgeCount: {
-    fontWeight: '800',
     color: Colors.text,
-  },
-  highlightsRow: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  highlightGroup: {
-    flex: 1,
-    gap: 4,
-  },
-  highlightLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  highlightValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.text,
+    lineHeight: 18,
   },
   deltaSection: {
     gap: 10,
+    marginTop: 4,
   },
   deltaSectionLabel: {
     fontSize: 10,
@@ -811,30 +745,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  sessionStatusGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    borderTopWidth: 1,
-    borderColor: Colors.cardBorder,
-    paddingTop: 12,
-  },
-  classificationChip: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'transparent',
-  },
-  classificationChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
   flagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginTop: 4,
   },
   flagChip: {
     paddingHorizontal: 8,
@@ -851,13 +766,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  tapForDetails: {
-    fontSize: 10,
+  analyticsLink: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  analyticsLinkText: {
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',
-    textAlign: 'right',
-    marginTop: 4,
+    letterSpacing: 0.5,
   },
   emptyText: {
     fontSize: 14,

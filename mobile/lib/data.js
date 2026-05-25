@@ -612,6 +612,10 @@ function _classifyEntries(allEntries) {
   return null;
 }
 
+function _isAsterisked(name) {
+  return (name || '').includes('*');
+}
+
 // Classify session trends for all tracked exercises.
 // sections: output of parseWorkoutNote(noteText).sections
 // trackedNames: string[] of exercise names to classify
@@ -620,13 +624,13 @@ export function classifyExerciseSessions(sections, trackedNames) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const result = {};
   for (const name of trackedNames) {
+    if (_isAsterisked(name)) continue;
     const normName = normalizeLiftName(name);
     const ex = _findExercise(exercises, name);
     if (!ex) { result[normName] = null; continue; }
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const classification = _classifyEntries(allEntries);
     result[normName] = classification;
-
   }
   return result;
 }
@@ -864,7 +868,6 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
   // 3. Flags
   const flags = {
     hit_wall: false,
-    in_reserve: false,
     attendance: attendanceBanners.length > 0,
     asymmetry: false,
   };
@@ -874,7 +877,6 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
   Object.values(dropOff).forEach(sessionFlags => {
     const latest = getLatestRepDropOff(sessionFlags);
     if (latest === 'hit_wall') flags.hit_wall = true;
-    if (latest === 'in_reserve') flags.in_reserve = true;
   });
 
   // Check asymmetry via existing helper (respects dismissals)
