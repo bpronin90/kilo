@@ -124,7 +124,19 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       ) : null}
 
       {dashboardData.asymmetryNotes.map(note => (
+        <View key={note.dismissKey} style={styles.asymmetryNote}>
+          <Text style={styles.asymmetryNoteText}>{note.copy}</Text>
+          <Pressable
+            onPress={() => handleDismissAsymmetry(note.dismissKey)}
+            style={styles.asymmetryDismiss}
+            hitSlop={8}
+          >
+            <Text style={styles.asymmetryDismissText}>×</Text>
+          </Pressable>
+        </View>
+      ))}
 
+      <View style={styles.summaryGrid}>
         <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Latest Weight</Text>
           <Text style={styles.summaryValue}>
