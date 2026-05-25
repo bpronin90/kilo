@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.38.0 - 2026-05-24
+
+- Issue #162: Added native Big 3 cross-lift asymmetry detection so Home now
+  surfaces a dismissible informational note when one of squat, bench, or
+  deadlift is progressing while another is stalled or regressing for 2+
+  weeks, with dismissal persistence that suppresses re-fire until the pair
+  shares a classification and the asymmetry later re-emerges. Reviewer
+  closeout updated `docs/current-state.md` and `docs/testing-and-qa.md` to
+  match and bumped the app version.
+
 ## 0.37.0 - 2026-05-24
 
 - Issue #160: Added persisted intra-session rep drop-off flags for tracked

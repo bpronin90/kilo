@@ -77,9 +77,10 @@ Current limitation:
   including tracked-exercise persistence on the canonical workout note and a
   fixture-driven migration contract suite for legacy structured workout
   history, plus weight-goal persistence/derivation coverage, per-session
-  rep-drop-off flag derivation coverage, latest-flag selection coverage, and
-  malformed backup rejection coverage for the optional `weight_goal` v2 import
-  field.
+  rep-drop-off flag derivation coverage, latest-flag selection coverage,
+  Big 3 asymmetry detection coverage including dismiss suppression and
+  break-and-re-emerge semantics, and malformed backup rejection coverage for
+  the optional `weight_goal` v2 import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
@@ -87,9 +88,9 @@ Current limitation:
   while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
-- The global AsyncStorage path for rep-drop-off nudge dismissals still relies
-  on manual verification; the issue-scoped Jest suite does not yet exercise
-  that persistence contract.
+- The global AsyncStorage paths for rep-drop-off nudge dismissals and Home-tab
+  asymmetry dismissals still rely on manual verification; the issue-scoped
+  Jest suite does not yet exercise those persistence contracts.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
