@@ -135,26 +135,56 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <Text style={styles.emptyText}>No sessions logged this week.</Text>
         ) : (
           <View style={styles.weeklyContent}>
+            {/* Classification Counts */}
             <View style={styles.classifRow}>
-              <Text style={styles.classifText}>
-                {dashboardData.weeklySummary.classifications.progressing} progressing / {dashboardData.weeklySummary.classifications.stalled} stalled / {dashboardData.weeklySummary.classifications.regressing} regressing / {dashboardData.weeklySummary.classifications.inconsistent} inconsistent
-              </Text>
+              {[
+                { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+                { label: 'stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' }, // Custom gold/yellow
+                { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+                { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+              ].map((item, idx) => (
+                <View key={idx} style={styles.classifItem}>
+                  <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.classifText}>
+                    <Text style={styles.classifCount}>{item.count}</Text> {item.label}
+                  </Text>
+                </View>
+              ))}
             </View>
 
+            {/* Strength Delta */}
             {dashboardData.weeklySummary.deltas && (
-              <View style={styles.deltaRow}>
-                <Text style={styles.deltaLabel}>Big 3 Delta (vs prev week)</Text>
-                <Text style={styles.deltaValue}>
-                  S: {formatDelta(dashboardData.weeklySummary.deltas.squat)}  ·  B: {formatDelta(dashboardData.weeklySummary.deltas.bench)}  ·  D: {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
-                </Text>
+              <View style={styles.deltaSection}>
+                <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
+                <View style={styles.deltaGrid}>
+                  <View style={styles.deltaGridItem}>
+                    <Text style={styles.deltaGridLabel}>SQUAT</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.squat)}
+                    </Text>
+                  </View>
+                  <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
+                    <Text style={styles.deltaGridLabel}>BENCH</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.bench)}
+                    </Text>
+                  </View>
+                  <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
+                    <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
+                    </Text>
+                  </View>
+                </View>
               </View>
             )}
 
+            {/* Active Flags */}
             <View style={styles.flagsRow}>
-              {dashboardData.weeklySummary.flags.hit_wall && <Chip>hit-wall</Chip>}
-              {dashboardData.weeklySummary.flags.in_reserve && <Chip>in-reserve</Chip>}
-              {dashboardData.weeklySummary.flags.attendance && <Chip>attendance issues</Chip>}
-              {dashboardData.weeklySummary.flags.asymmetry && <Chip>asymmetry notes</Chip>}
+              {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
+              {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
+              {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
+              {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
             </View>
           </View>
         )}
@@ -651,28 +681,74 @@ const styles = StyleSheet.create({
     marginBottom: -8,
   },
   weeklyCard: {
-    padding: 16,
+    padding: 18,
   },
   weeklyContent: {
-    gap: 12,
+    gap: 20,
+  },
+  classifRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  classifItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  classifDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   classifText: {
-    fontSize: 15,
+    fontSize: 10,
     fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  classifCount: {
+    fontWeight: '800',
     color: Colors.text,
   },
-  deltaRow: {
-    gap: 2,
+  deltaSection: {
+    gap: 10,
   },
-  deltaLabel: {
-    fontSize: 12,
+  deltaSectionLabel: {
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  deltaValue: {
-    fontSize: 16,
-    fontWeight: '700',
+  deltaGrid: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderColor: Colors.cardBorder,
+    paddingTop: 12,
+  },
+  deltaGridItem: {
+    flex: 1,
+    gap: 2,
+  },
+  deltaGridItemMiddle: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.cardBorder,
+    paddingHorizontal: 12,
+  },
+  deltaGridItemEnd: {
+    alignItems: 'flex-end',
+  },
+  deltaGridLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  deltaGridValue: {
+    fontSize: 20,
+    fontWeight: '800',
     color: Colors.text,
   },
   flagsRow: {
@@ -680,8 +756,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  flagChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: Colors.background,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  flagChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   emptyText: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textMuted,
     fontStyle: 'italic',
   },
