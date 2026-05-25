@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.38.2 - 2026-05-25
+
+- Issue #173: Added shared native workout temporal helpers for Sunday-based
+  current-week gating and inclusive rolling attendance windows, documented the
+  distinct `computeWeeksIn()` routine-depth contract, updated skip-attendance
+  logic to use the shared rolling-window helper, and added regression coverage
+  for plain-row vs `session_entries` semantics plus DST-adjacent date handling.
+
 ## 0.38.1 - 2026-05-24
 
 - Issue #172: Defined canonical ownership contract for native workout analytics

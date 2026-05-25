@@ -283,6 +283,13 @@ Provides the global runtime contract required by the prototype:
 ### `mobile/tests/data.test.js`
 
 - helper and derivation coverage for `mobile/lib/data.js`
+- verifies canonical temporal-helper semantics for native workout analytics,
+  including Sunday-based `currentWeekStart()`, inclusive
+  `rollingWindowStart()`, and DST-adjacent date handling
+- verifies `computeWeeksIn()` keeps its `session_entries`-only routine-depth
+  contract even when exercises still carry bare rows
+- verifies `deriveSkipData()` honors the inclusive rolling attendance-window
+  boundary when repeated weekday skips land exactly on the cutoff date
 - verifies intra-session `computeRepDropOff()` classification boundaries,
   mixed-weight ambiguity handling, and working-set filtering
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
