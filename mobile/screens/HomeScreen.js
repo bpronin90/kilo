@@ -1,5 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
@@ -8,13 +9,16 @@ import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../compon
 import { formatTimestamp } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { 
-  computeWeightRollingAverageSeries, 
-  derive1kTotal, 
+import {
+  computeWeightRollingAverageSeries,
+  derive1kTotal,
   DEFAULT_1K_EXERCISES,
-  computeWeeksIn
+  computeWeeksIn,
+  detectBig3Asymmetry,
 } from '../lib/data';
 import pkg from '../package.json';
+
+const DISMISSED_ASYMMETRIES_KEY = 'kilo_dismissed_asymmetries';
 
 const LOGO = require('../assets/brand/logo.png');
 
@@ -41,6 +45,22 @@ function KiloWordmark({ width = 140, height = 48 }) {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
+  // null = not yet loaded; {} = loaded with no dismissals.
+  // Asymmetry notes are suppressed until load completes to prevent flash-on-mount.
+  const [dismissedAsymmetries, setDismissedAsymmetries] = useState(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DISMISSED_ASYMMETRIES_KEY)
+      .then(raw => setDismissedAsymmetries(raw ? JSON.parse(raw) : {}))
+      .catch(() => setDismissedAsymmetries({}));
+  }, []);
+
+  const handleDismissAsymmetry = useCallback(async (dismissKey) => {
+    const next = { ...(dismissedAsymmetries || {}), [dismissKey]: true };
+    setDismissedAsymmetries(next);
+    await AsyncStorage.setItem(DISMISSED_ASYMMETRIES_KEY, JSON.stringify(next));
+  }, [dismissedAsymmetries]);
+
   const dashboardData = useMemo(() => {
     let oneK = null;
     let sections = null;
@@ -58,9 +78,14 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
     const weeksIn = computeWeeksIn(sections);
+    // dismissedAsymmetries=null means storage hasn't loaded yet — pass empty map
+    // so detectBig3Asymmetry produces the full list, but we suppress rendering below.
+    const asymmetryNotes = dismissedAsymmetries !== null
+      ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
+      : [];
 
-    return { weightSeries, oneK, latestWeight, weeksIn };
-  }, [weightEntries, workoutNote]);
+    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes };
+  }, [weightEntries, workoutNote, dismissedAsymmetries]);
 
   return (
     <ScreenShell
@@ -72,6 +97,19 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <Text style={styles.successText}>{successMessage}</Text>
         </Card>
       ) : null}
+
+      {dashboardData.asymmetryNotes.map(note => (
+        <View key={note.dismissKey} style={styles.asymmetryNote}>
+          <Text style={styles.asymmetryNoteText}>{note.copy}</Text>
+          <Pressable
+            onPress={() => handleDismissAsymmetry(note.dismissKey)}
+            style={styles.asymmetryDismiss}
+            hitSlop={8}
+          >
+            <Text style={styles.asymmetryDismissText}>×</Text>
+          </Pressable>
+        </View>
+      ))}
 
       <View style={styles.summaryGrid}>
         <Card style={styles.summaryCard}>
@@ -540,6 +578,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: Colors.textMuted,
+  },
+  asymmetryNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.chipBackground,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    gap: 8,
+  },
+  asymmetryNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.chipText,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  asymmetryDismiss: {
+    padding: 4,
+  },
+  asymmetryDismissText: {
+    fontSize: 18,
+    color: Colors.chipText,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   chartCard: {
     padding: 18,

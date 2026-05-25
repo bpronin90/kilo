@@ -127,8 +127,10 @@ The real native app path now has a modular React Native shell:
   `Current Routine Progress` supporting copy, top summary cards for latest
   weight plus a neutral `Weeks In` routine counter derived from the current
   routine's progression depth (the longest `session_entries` chain across all
-  exercises and days), rendered as `—` when no routine is loaded, a renamed
-  `1k Club Progress` card, a compact 7-day
+  exercises and days), rendered as `—` when no routine is loaded, a dismissible
+  informational note when the persisted Big 3 classification history shows one
+  of squat, bench, or deadlift progressing while another is stalled or
+  regressing for 2+ weeks, a renamed `1k Club Progress` card, a compact 7-day
   rolling-average weight line chart, and the exported
   More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
   `1k Club Progress` and `Weight Trend` panels are now static dashboard
@@ -258,9 +260,11 @@ The real native app path now has a modular React Native shell:
   multiplier under
   `kilo_fatigue_multiplier`, a global tracked-lift map under
   `kilo_tracked_lifts`, a global rep-drop-off nudge-dismiss map under
-  `kilo_dismissed_nudges`, and the Log-tab current-routine collapsed state
-  under `kilo_log_current_collapsed`. The legacy structured workout-session
-  key is retained only as a one-time migration source, and the older
+  `kilo_dismissed_nudges`, a Home-tab asymmetry-dismiss map under
+  `kilo_dismissed_asymmetries`, and the Log-tab current-routine collapsed
+  state under `kilo_log_current_collapsed`. The legacy structured
+  workout-session key is retained only as a one-time migration source, and the
+  older
   single-note key is now also migrated forward into the notebook model by
   synthesizing a `Routine 1` current entry. The local Data & Backup recovery
   path now exports a versioned v2 snapshot (weight entries, workout notes,

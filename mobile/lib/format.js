@@ -69,6 +69,16 @@ export function formatRepDropOffNudge(flag) {
   return null;
 }
 
+// Format the copy for a cross-lift asymmetry note.
+// progressingSlot: 'squat'|'bench'|'deadlift'
+// laggingSlot: 'squat'|'bench'|'deadlift'
+// laggingClass: 'stalled'|'regressing'
+export function formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass) {
+  const p = progressingSlot;
+  const state = laggingClass === 'regressing' ? 'regressing' : 'stalled';
+  return `${p.charAt(0).toUpperCase() + p.slice(1)} progressing, ${laggingSlot} ${state} — worth reviewing.`;
+}
+
 // Classify a weight delta (today − yesterday) into a pace flag.
 // Returns null when the change is within normal range.
 // Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.
