@@ -604,12 +604,12 @@ recomputation at render time is permitted.
    `workoutNote.big_3_deltas` but no producer writes this field. The
    `makeWorkoutNoteItem` factory does not include it. The Log save path does not
    compute or persist it.
-   **Resolution:** Either (a) add `big_3_deltas` computation to the Log save
-   path as a persisted field using `derive1kTotal` deltas between the current
-   and prior save, or (b) make `computeWeeklySummary` recompute it live from
-   sections plus prior-note state and remove the `workoutNote.big_3_deltas`
-   read. Option (a) is preferred for consistency with the other persisted
-   analytics fields.
+   **Resolution:** A downstream implementation issue must decide what
+   `big_3_deltas` means (which calculation, which inputs, which comparison
+   window), assign it a single canonical producer, and either persist it on the
+   note document or make `computeWeeklySummary` compute it live. Until that
+   issue lands, `big_3_deltas` has no owner and the weekly summary deltas
+   section will always render as empty.
 
 3. **`exercise_classifications` defaults on note creation.** When a new note is
    first created via `makeWorkoutNoteItem`, the factory does not include an
