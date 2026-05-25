@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
