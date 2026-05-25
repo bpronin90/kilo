@@ -673,6 +673,24 @@ export function getLatestRepDropOff(sessionFlags) {
   return sessionFlags[String(maxIdx)] ?? null;
 }
 
+// Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
+// fatigue formula (adjusted, rounded).
+export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
+  const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
+  const { exercises: analyticsExercises } = deriveWorkoutAnalytics(sections);
+
+  const byName = new Map(analyticsExercises.map(ex => [ex.name.toLowerCase(), ex]));
+
+  return {
+    exercises: signals.map(sig => {
+      const ex = byName.get(sig.name.toLowerCase());
+      if (!ex) return sig;
+      const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
+      return { ...sig, kilo_max: kilo_max_adjusted };
+    }),
+  };
+}
+
 // ── Weekly Assessment Summary ────────────────────────────────────────────────
 
 /**
@@ -731,4 +749,3 @@ export function computeWeeklySummary(sections, workoutNote) {
     sessionStatusRows,
   };
 }
-
