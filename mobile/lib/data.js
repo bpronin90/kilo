@@ -777,7 +777,7 @@ export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
       }
     }
 
-    if (runCount < 2) continue;
+    if (runCount < 1) continue;
 
     const last = indexSeries[indexSeries.length - 1];
     const clA = last[slotA];

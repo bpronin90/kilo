@@ -989,12 +989,12 @@ describe('computeWeeklySummary', () => {
   // Degraded / empty-state behavior
 
   test('null workoutNote → empty banners, sessionStatusRows null (fully degraded)', () => {
-    expect(computeWeeklySummary([], null)).toEqual({ hasActivity: false, attendanceBanners: [], sessionStatusRows: null });
+    expect(computeWeeklySummary([], null)).toEqual({ hasActivity: false, attendanceBanners: [], sessionStatusRows: null, flags: { hit_wall: false, attendance: false, asymmetry: false } });
   });
 
   test('note with all persisted fields null → empty banners, sessionStatusRows null (no producer yet)', () => {
     const note = makeWorkoutNoteItem({ title: 'Test' });
-    expect(computeWeeklySummary([], note)).toEqual({ hasActivity: false, attendanceBanners: [], sessionStatusRows: null });
+    expect(computeWeeklySummary([], note)).toEqual({ hasActivity: false, attendanceBanners: [], sessionStatusRows: null, flags: { hit_wall: false, attendance: false, asymmetry: false } });
   });
 
   test('exercise_classifications absent → sessionStatusRows null (section hidden)', () => {
