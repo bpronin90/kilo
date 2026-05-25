@@ -99,6 +99,11 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const classifications = sections ? classifyExerciseSessions(sections, listTrackedLifts(trackedLifts)) : null;
     const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries, classifications });
 
+    console.log(`[Dashboard Debug] hasActivity=${weeklySummary.hasActivity}, asymmetryFlag=${weeklySummary.flags.asymmetry}, noteCount=${asymmetryNotes.length}`);
+    if (asymmetryNotes.length > 0) {
+      console.log(`[Dashboard Debug] Active Notes:`, asymmetryNotes.map(n => n.dismissKey));
+    }
+
     return { 
       weightSeries, 
       oneK, 

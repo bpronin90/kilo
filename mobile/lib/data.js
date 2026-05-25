@@ -703,6 +703,11 @@ function _big3IndexEntries(sections) {
     if (!ex && slot === 'bench') {
       ex = _findExercise(exercises, 'DB Bench Press');
     }
+    if (ex) {
+      console.log(`[Big3 Debug] Matched ${slot} -> ${ex.name}`);
+    } else {
+      console.log(`[Big3 Debug] No match for ${slot}`);
+    }
     if (!ex) continue;
     for (const occ of ex.occurrences) {
       out[slot].push(..._occurrenceEntries(occ));
@@ -726,6 +731,7 @@ function _classifyBig3ByIndex(sections) {
     }
     rows.push(row);
   }
+  console.log(`[Big3 Debug] Index Series:`, JSON.stringify(rows, null, 2));
   return rows;
 }
 
@@ -758,7 +764,10 @@ function _sharedConcreteClassification(clA, clB) {
 // Returns: Array<{ copy: string, dismissKey: string }>
 export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
   const indexSeries = _classifyBig3ByIndex(sections);
-  if (indexSeries.length < 2) return [];
+  if (indexSeries.length < 2) {
+    console.log(`[Big3 Debug] indexSeries too short: ${indexSeries.length}`);
+    return [];
+  }
 
   const notes = [];
   for (const [slotA, slotB] of _BIG3_PAIRS) {
@@ -777,6 +786,8 @@ export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
       }
     }
 
+    console.log(`[Big3 Debug] Pair ${slotA}/${slotB}: runCount=${runCount}, runStart=${runStart}`);
+
     if (runCount < 2) continue;
 
     const last = indexSeries[indexSeries.length - 1];
@@ -787,10 +798,14 @@ export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
       : [slotB, slotA, clA];
 
     const dismissKey = `asymmetry:${slotA}_${slotB}:${runStart}`;
-    if (dismissedAsymmetries[dismissKey]) continue;
+    if (dismissedAsymmetries[dismissKey]) {
+      console.log(`[Big3 Debug] Note dismissed for key: ${dismissKey}`);
+      continue;
+    }
 
     notes.push({ copy: formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass), dismissKey });
   }
+  console.log(`[Big3 Debug] Final notes count: ${notes.length}`);
   return notes;
 }
 
