@@ -171,8 +171,12 @@ The real native app path now has a modular React Native shell:
   save path now also persists workout-note `skip_markers`
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of
-  recomputing it during render; Android
-  back now exits edit subviews before falling through to tab-level navigation.
+  recomputing it during render. That same save path now also persists
+  per-session `rep_drop_off_flags` for tracked exercises, while the read view
+  surfaces the latest `hit_wall` / `in_reserve` nudge inline and honors a
+  global per-exercise dismiss state stored outside the note document so the
+  dismissal survives routine switches; Android back now exits edit subviews
+  before falling through to tab-level navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card
@@ -209,8 +213,10 @@ The real native app path now has a modular React Native shell:
   save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`; `Regressing`
   remains a trend-only signal), surfaces estimated 1RM and Kilo max together,
   shows either latest top weight in pounds or best-set reps for bodyweight
-  exercises, and renders the trend column as `↑`, `↔`, `↓`, or `—` based on
-  the latest comparable session pair.
+  exercises, renders the trend column as `↑`, `↔`, `↓`, or `—` based on the
+  latest comparable session pair, and now adds a subtle `⚠ Hit wall` /
+  `↑ Reserve` badge when the latest persisted intra-session rep drop-off flag
+  exists for that tracked exercise.
   Its mount-time entry state is now stabilized so Analytics no longer visibly
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they
@@ -245,19 +251,21 @@ The real native app path now has a modular React Native shell:
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
   alongside the retained `tracked_exercises`, `one_k_exercises`,
-  `skip_markers`, and `attendance_flags` fields. It also persists a
-  lightweight weight-goal
+  `skip_markers`, `attendance_flags`, and per-session
+  `rep_drop_off_flags` fields. It also persists a lightweight weight-goal
   record under `kilo_weight_goal` with `target_weight`, `target_date`,
   optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
   multiplier under
   `kilo_fatigue_multiplier`, a global tracked-lift map under
-  `kilo_tracked_lifts`, and the Log-tab current-routine collapsed state under
-  `kilo_log_current_collapsed`. The legacy structured workout-session key is retained
-  only as a one-time migration source, and the older single-note key is now
-  also migrated forward into the notebook model by synthesizing a `Routine 1`
-  current entry. The local Data & Backup recovery path now exports a versioned
-  v2 snapshot (weight entries, workout notes, current workout id, optional
-  weight goal, and optional fatigue multiplier), validates that payload before
+  `kilo_tracked_lifts`, a global rep-drop-off nudge-dismiss map under
+  `kilo_dismissed_nudges`, and the Log-tab current-routine collapsed state
+  under `kilo_log_current_collapsed`. The legacy structured workout-session
+  key is retained only as a one-time migration source, and the older
+  single-note key is now also migrated forward into the notebook model by
+  synthesizing a `Routine 1` current entry. The local Data & Backup recovery
+  path now exports a versioned v2 snapshot (weight entries, workout notes,
+  current workout id, optional weight goal, and optional fatigue multiplier),
+  validates that payload before
   any write, restores the full multi-note model plus weight goal and fatigue
   multiplier on v2 import, and still accepts older v1 backups to restore
   weight history without wiping the newer workout-note state

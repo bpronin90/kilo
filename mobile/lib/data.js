@@ -339,6 +339,8 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     isCurrent,
     skip_markers: null,
     attendance_flags: null,
+    rep_drop_off_flags: null,
+    dismissed_nudges: null,
   };
 }
 
@@ -598,6 +600,62 @@ export function classifyExerciseSessions(sections, trackedNames) {
     result[normName] = _classifyEntries(allEntries);
   }
   return result;
+}
+
+// ── Rep drop-off flag ─────────────────────────────────────────────────────────
+
+// Compute the intra-session rep drop-off flag for one session's sets.
+// Uses working sets (weight_value > 0, rep_count > 0) only.
+// Mixed-weight: uses the heaviest-weight sets to compute first/last reps.
+// Returns 'hit_wall' | 'in_reserve' | null.
+export function computeRepDropOff(sets) {
+  const working = (sets || []).filter(s => s.weight_value > 0 && s.rep_count > 0);
+  if (working.length < 2) return null;
+  const maxWeight = Math.max(...working.map(s => s.weight_value));
+  const atMax = working.filter(s => s.weight_value === maxWeight);
+  if (atMax.length < 2) return null; // only 1 set at heaviest weight → ambiguous
+  const dropOff = atMax[0].rep_count - atMax[atMax.length - 1].rep_count;
+  if (dropOff >= 3) return 'hit_wall';
+  if (dropOff <= 1) return 'in_reserve';
+  return null; // drop_off === 2
+}
+
+// Derive rep drop-off flags for all tracked exercises, per session.
+// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null } }
+// Only logged (non-skipped) sessions are included; skipped sessions are omitted.
+// sessionIndex is the positional index in the exercise's full entry history (oldest = 0).
+export function deriveRepDropOffFlags(sections, trackedNames) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+  for (const name of trackedNames) {
+    const normName = normalizeLiftName(name);
+    const lookupKey = normalizeLiftName(canonicalizeName(name));
+    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    if (!ex) { result[normName] = {}; continue; }
+    const allEntries = ex.occurrences.flatMap(occ => {
+      if ((occ.session_entries || []).length > 0) return occ.session_entries;
+      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+    });
+    const sessionFlags = {};
+    allEntries.forEach((entry, idx) => {
+      if (!entry.skipped && !entry.unparsed && entry.sets && entry.sets.length > 0) {
+        sessionFlags[String(idx)] = computeRepDropOff(entry.sets);
+      }
+    });
+    result[normName] = sessionFlags;
+  }
+  return result;
+}
+
+// Return the flag for the most recent logged session from a per-session flags map.
+// sessionFlags: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null }
+// Returns 'hit_wall' | 'in_reserve' | null
+export function getLatestRepDropOff(sessionFlags) {
+  if (!sessionFlags || typeof sessionFlags !== 'object') return null;
+  const keys = Object.keys(sessionFlags);
+  if (keys.length === 0) return null;
+  const maxIdx = Math.max(...keys.map(Number));
+  return sessionFlags[String(maxIdx)] ?? null;
 }
 
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x

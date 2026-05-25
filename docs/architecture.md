@@ -143,10 +143,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
-  documents now also carry persisted `skip_markers` and `attendance_flags`
-  alongside tracked-lift and 1k-slot selections, while the legacy session key
-  remains only a migration source and the old single-note key remains both a
-  migration source into the notebook model and a backup-compatibility fallback
+  documents now also carry persisted `skip_markers`, `attendance_flags`, and
+  per-session `rep_drop_off_flags` alongside tracked-lift and 1k-slot
+  selections, while the separate global `kilo_dismissed_nudges` key holds
+  per-exercise nudge dismissals across routine switches. The legacy session
+  key remains only a migration source and the old single-note key remains both
+  a migration source into the notebook model and a backup-compatibility
+  fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -318,8 +321,9 @@ User types in weight input
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `skip_markers`, and `attendance_flags` fields |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
+| `kilo_dismissed_nudges` | JSON object keyed by normalized lift name for global rep-drop-off nudge dismissals |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native

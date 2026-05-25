@@ -62,6 +62,13 @@ export function formatSessionClassification(label) {
   }
 }
 
+// Return nudge copy for a rep drop-off flag, or null when no nudge applies.
+export function formatRepDropOffNudge(flag) {
+  if (flag === 'hit_wall') return 'Last time you hit a wall — stay at this weight.';
+  if (flag === 'in_reserve') return 'Last time you had reps in reserve — consider going up.';
+  return null;
+}
+
 // Classify a weight delta (today − yesterday) into a pace flag.
 // Returns null when the change is within normal range.
 // Returns { direction: 'gain'|'loss', level: 'notable'|'spike' } otherwise.

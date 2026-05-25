@@ -20,7 +20,9 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts, deriveSkipData } from '../lib/data';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts, deriveSkipData, deriveRepDropOffFlags, getLatestRepDropOff } from '../lib/data';
+import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
 export function LogScreen({
@@ -38,6 +40,7 @@ export function LogScreen({
   const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [dismissedNudges, setDismissedNudges] = useState({});
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -66,6 +69,13 @@ export function LogScreen({
     }
   };
   const keyboardExitTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem('kilo_dismissed_nudges')
+      .then(raw => raw ? JSON.parse(raw) : {})
+      .then(data => setDismissedNudges(data || {}))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (saveSuccess) {
@@ -173,6 +183,7 @@ export function LogScreen({
       const exercise_classifications = classifyExerciseSessions(savedSections, trackedNames);
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const skip_markers = { exercise_skips, day_skips };
+      const rep_drop_off_flags = deriveRepDropOffFlags(savedSections, trackedNames);
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
@@ -180,12 +191,13 @@ export function LogScreen({
           exercise_classifications,
           skip_markers,
           attendance_flags,
+          rep_drop_off_flags,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);
         await selectCurrent(result.id);
         if (result) {
-          await update(result.id, { exercise_classifications, skip_markers, attendance_flags });
+          await update(result.id, { exercise_classifications, skip_markers, attendance_flags, rep_drop_off_flags });
         }
       }
 
@@ -465,6 +477,13 @@ export function LogScreen({
     await toggleTrackedLift(key);
   };
 
+  const handleDismissNudge = async (name) => {
+    const key = normalizeLiftName(name);
+    const next = { ...dismissedNudges, [key]: true };
+    setDismissedNudges(next);
+    await AsyncStorage.setItem('kilo_dismissed_nudges', JSON.stringify(next));
+  };
+
 
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
@@ -533,11 +552,19 @@ export function LogScreen({
                             {section.subheading && (
                               <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
                             )}
-                            {section.exercises.map((ex, ei) => (
+                            {section.exercises.map((ex, ei) => {
+                              const exNormName = normalizeLiftName(ex.name);
+                              const isTracked = !!trackedLifts[exNormName];
+                              const dropOffFlag = isTracked
+                                ? getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[exNormName])
+                                : null;
+                              const isDismissed = dismissedNudges[exNormName];
+                              const nudgeCopy = (!isDismissed && dropOffFlag) ? formatRepDropOffNudge(dropOffFlag) : null;
+                              return (
                               <ExerciseBlock
                                 key={`ex-${gi}-${si}-${ei}`}
                                 name={ex.name}
-                                isTracked={!!trackedLifts[normalizeLiftName(ex.name)]}
+                                isTracked={isTracked}
                                 onToggleTrack={() => handleToggleTrack(ex.name)}
                                 selectable={true}
                               >
@@ -550,8 +577,17 @@ export function LogScreen({
                                 {ex.unparsed_rows.map((u, ui) => (
                                   <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                 ))}
+                                {nudgeCopy && (
+                                  <View style={styles.nudgeChip}>
+                                    <Text style={styles.nudgeChipText}>{nudgeCopy}</Text>
+                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss}>
+                                      <Text style={styles.nudgeDismissText}>×</Text>
+                                    </Pressable>
+                                  </View>
+                                )}
                               </ExerciseBlock>
-                            ))}
+                              );
+                            })}
                           </View>
                         ))}
                       </View>
@@ -836,5 +872,32 @@ const styles = StyleSheet.create({
   },
   createButtonText: {
     color: Colors.accent,
+  },
+  nudgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.chipBackground,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+    gap: 6,
+  },
+  nudgeChipText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.chipText,
+    lineHeight: 15,
+  },
+  nudgeDismiss: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  nudgeDismissText: {
+    fontSize: 14,
+    color: Colors.chipText,
+    fontWeight: '700',
+    lineHeight: 16,
   },
 });

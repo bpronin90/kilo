@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { formatSessionClassification } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
@@ -294,6 +294,10 @@ export function StatsScreen({ multiplier, section }) {
             const classifLabel = formatSessionClassification(
               currentNote?.exercise_classifications?.[normName] ?? null
             );
+            const dropOffFlag = getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[normName]);
+            const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall'
+              : dropOffFlag === 'in_reserve' ? '↑ Reserve'
+              : null;
             return (
             <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
               <View style={styles.signalRowInner}>
@@ -302,6 +306,11 @@ export function StatsScreen({ multiplier, section }) {
                   {classifLabel ? (
                     <Text style={[styles.classifBadge, classifBadgeColor(currentNote?.exercise_classifications?.[normName])]}>
                       {classifLabel}
+                    </Text>
+                  ) : null}
+                  {dropOffLabel ? (
+                    <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
+                      {dropOffLabel}
                     </Text>
                   ) : null}
                 </View>
@@ -325,6 +334,12 @@ export function StatsScreen({ multiplier, section }) {
       )}
     </ScrollView>
   );
+}
+
+function dropOffBadgeColor(flag) {
+  if (flag === 'hit_wall') return { color: Colors.error };
+  if (flag === 'in_reserve') return { color: '#4ade80' };
+  return {};
 }
 
 function classifBadgeColor(label) {
