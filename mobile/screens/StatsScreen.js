@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { formatSessionClassification } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, countWorkoutSessions } from '../lib/parser';
@@ -294,7 +294,7 @@ export function StatsScreen({ multiplier, section }) {
             const classifLabel = formatSessionClassification(
               currentNote?.exercise_classifications?.[normName] ?? null
             );
-            const dropOffFlag = currentNote?.rep_drop_off_flags?.[normName] ?? null;
+            const dropOffFlag = getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[normName]);
             const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall'
               : dropOffFlag === 'in_reserve' ? '↑ Reserve'
               : null;

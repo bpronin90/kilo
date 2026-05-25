@@ -620,10 +620,10 @@ export function computeRepDropOff(sets) {
   return null; // drop_off === 2
 }
 
-// Derive rep drop-off flags for all tracked exercises.
-// For each tracked exercise, uses the most recent non-skipped logged session entry.
-// Untracked exercises (not in trackedNames) are excluded (result value = null).
-// Returns { [normalizedName]: 'hit_wall' | 'in_reserve' | null }
+// Derive rep drop-off flags for all tracked exercises, per session.
+// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null } }
+// Only logged (non-skipped) sessions are included; skipped sessions are omitted.
+// sessionIndex is the positional index in the exercise's full entry history (oldest = 0).
 export function deriveRepDropOffFlags(sections, trackedNames) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const result = {};
@@ -631,17 +631,31 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
     const normName = normalizeLiftName(name);
     const lookupKey = normalizeLiftName(canonicalizeName(name));
     const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
-    if (!ex) { result[normName] = null; continue; }
+    if (!ex) { result[normName] = {}; continue; }
     const allEntries = ex.occurrences.flatMap(occ => {
       if ((occ.session_entries || []).length > 0) return occ.session_entries;
       return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
     });
-    const lastLogged = [...allEntries].reverse().find(
-      e => !e.skipped && !e.unparsed && e.sets && e.sets.length > 0
-    );
-    result[normName] = lastLogged ? computeRepDropOff(lastLogged.sets) : null;
+    const sessionFlags = {};
+    allEntries.forEach((entry, idx) => {
+      if (!entry.skipped && !entry.unparsed && entry.sets && entry.sets.length > 0) {
+        sessionFlags[String(idx)] = computeRepDropOff(entry.sets);
+      }
+    });
+    result[normName] = sessionFlags;
   }
   return result;
+}
+
+// Return the flag for the most recent logged session from a per-session flags map.
+// sessionFlags: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null }
+// Returns 'hit_wall' | 'in_reserve' | null
+export function getLatestRepDropOff(sessionFlags) {
+  if (!sessionFlags || typeof sessionFlags !== 'object') return null;
+  const keys = Object.keys(sessionFlags);
+  if (keys.length === 0) return null;
+  const maxIdx = Math.max(...keys.map(Number));
+  return sessionFlags[String(maxIdx)] ?? null;
 }
 
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x

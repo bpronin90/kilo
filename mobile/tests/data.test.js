@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -950,72 +950,55 @@ function dropOffSection(name, sessionEntries) {
 function ws(weight, rep_count) { return { weight_value: weight, rep_count }; }
 
 describe('deriveRepDropOffFlags', () => {
-  test('exercise not in note → null', () => {
+  test('exercise not in note → empty object', () => {
     const sections = [dropOffSection('Bench Press', [[ws(135, 8), ws(135, 8)]])];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBeNull();
+    expect(result['squat']).toEqual({});
   });
 
-  test('most recent session is skipped → uses prior logged session', () => {
-    // sessions: [8,4], skip → most recent logged has drop=4 → hit_wall
+  test('single logged session → keyed at index 0', () => {
+    const sections = [dropOffSection('Squat', [
+      [ws(225, 8), ws(225, 4)],
+    ])];
+    const result = deriveRepDropOffFlags(sections, ['Squat']);
+    expect(result['squat']).toEqual({ '0': 'hit_wall' });
+  });
+
+  test('skipped sessions excluded from map; logged sessions keyed by position', () => {
+    // session 0: logged (hit_wall), session 1: skip (excluded), session 2: logged (in_reserve)
     const sections = [dropOffSection('Squat', [
       [ws(225, 8), ws(225, 4)],
       'skip',
-    ])];
-    const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBe('hit_wall');
-  });
-
-  test('most recent session → hit_wall (drop ≥ 3)', () => {
-    const sections = [dropOffSection('Squat', [
-      [ws(225, 8), ws(225, 4)],
-    ])];
-    const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBe('hit_wall');
-  });
-
-  test('most recent session → in_reserve (drop ≤ 1)', () => {
-    const sections = [dropOffSection('Squat', [
       [ws(225, 8), ws(225, 8)],
     ])];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBe('in_reserve');
+    expect(result['squat']).toEqual({ '0': 'hit_wall', '2': 'in_reserve' });
   });
 
-  test('most recent session → no flag (drop = 2)', () => {
+  test('multiple logged sessions stored per-session', () => {
     const sections = [dropOffSection('Squat', [
-      [ws(225, 8), ws(225, 6)],
+      [ws(225, 8), ws(225, 4)],  // idx 0 → hit_wall
+      [ws(225, 8), ws(225, 6)],  // idx 1 → null (drop=2)
+      [ws(225, 8), ws(225, 8)],  // idx 2 → in_reserve
     ])];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBeNull();
+    expect(result['squat']).toEqual({ '0': 'hit_wall', '1': null, '2': 'in_reserve' });
   });
 
-  test('single-set most recent session → no flag', () => {
-    const sections = [dropOffSection('Squat', [
-      [ws(225, 8)],
-    ])];
+  test('all sessions skipped → empty object', () => {
+    const sections = [dropOffSection('Squat', ['skip', 'skip'])];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBeNull();
+    expect(result['squat']).toEqual({});
   });
 
-  test('uses only the most recent logged session, not an earlier one', () => {
-    // First session: hit_wall (8,4), Second session: in_reserve (8,8)
-    const sections = [dropOffSection('Squat', [
-      [ws(225, 8), ws(225, 4)],
-      [ws(225, 8), ws(225, 8)],
-    ])];
-    const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBe('in_reserve');
-  });
-
-  test('returns flags for multiple tracked exercises', () => {
+  test('returns per-session map for multiple tracked exercises', () => {
     const sections = [
       dropOffSection('Squat', [[ws(225, 8), ws(225, 4)]]),
       dropOffSection('Deadlift', [[ws(315, 8), ws(315, 8)]]),
     ];
     const result = deriveRepDropOffFlags(sections, ['Squat', 'Deadlift']);
-    expect(result['squat']).toBe('hit_wall');
-    expect(result['deadlift']).toBe('in_reserve');
+    expect(result['squat']).toEqual({ '0': 'hit_wall' });
+    expect(result['deadlift']).toEqual({ '0': 'in_reserve' });
   });
 
   test('untracked exercise not in result', () => {
@@ -1024,13 +1007,40 @@ describe('deriveRepDropOffFlags', () => {
       dropOffSection('Bench Press', [[ws(135, 8), ws(135, 4)]]),
     ];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBe('hit_wall');
+    expect(result['squat']).toEqual({ '0': 'hit_wall' });
     expect(result['bench press']).toBeUndefined();
   });
+});
 
-  test('all sessions skipped → null', () => {
-    const sections = [dropOffSection('Squat', ['skip', 'skip'])];
-    const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toBeNull();
+// ── getLatestRepDropOff ───────────────────────────────────────────────────────
+
+describe('getLatestRepDropOff', () => {
+  test('null → null', () => {
+    expect(getLatestRepDropOff(null)).toBeNull();
+  });
+
+  test('undefined → null', () => {
+    expect(getLatestRepDropOff(undefined)).toBeNull();
+  });
+
+  test('empty object → null', () => {
+    expect(getLatestRepDropOff({})).toBeNull();
+  });
+
+  test('single session returns its flag', () => {
+    expect(getLatestRepDropOff({ '0': 'hit_wall' })).toBe('hit_wall');
+  });
+
+  test('returns flag from highest-index session', () => {
+    expect(getLatestRepDropOff({ '0': 'hit_wall', '1': null, '2': 'in_reserve' })).toBe('in_reserve');
+  });
+
+  test('most recent session null (drop=2) → null', () => {
+    expect(getLatestRepDropOff({ '0': 'hit_wall', '1': null })).toBeNull();
+  });
+
+  test('skipped sessions (absent keys) do not affect result', () => {
+    // session 0 logged, session 1 skipped (absent), session 2 logged
+    expect(getLatestRepDropOff({ '0': 'hit_wall', '2': 'in_reserve' })).toBe('in_reserve');
   });
 });
