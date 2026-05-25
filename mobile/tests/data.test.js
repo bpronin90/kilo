@@ -1306,6 +1306,13 @@ describe('currentWeekStart', () => {
     const result = currentWeekStart(new Date('2026-01-01T12:00:00'));
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  test('early-morning timestamp the day after DST spring-forward returns correct Sunday', () => {
+    // 2026-03-08 is US spring-forward Sunday; 2026-03-09 00:30 is Monday early morning.
+    // Fixed-offset arithmetic (86400000ms) fails here in DST timezones; setDate() does not.
+    const result = currentWeekStart(new Date('2026-03-09T00:30:00'));
+    expect(result).toBe('2026-03-08');
+  });
 });
 
 // ── rollingWindowStart ────────────────────────────────────────────────────────
@@ -1333,6 +1340,12 @@ describe('rollingWindowStart', () => {
   test('window spanning month boundary returns correct date', () => {
     // ref = 2026-03-05, 30-day window starts 2026-02-04
     expect(rollingWindowStart(new Date('2026-03-05T12:00:00'), 30)).toBe('2026-02-04');
+  });
+
+  test('early-morning timestamp the day after DST spring-forward returns correct window start', () => {
+    // ref = 2026-03-09T00:30 (Monday after spring-forward); 30-day window starts 2026-02-08.
+    // Fixed-offset arithmetic (86400000ms) fails here in DST timezones; setDate() does not.
+    expect(rollingWindowStart(new Date('2026-03-09T00:30:00'), 30)).toBe('2026-02-08');
   });
 });
 

@@ -262,8 +262,8 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
 // Not for historical grouping — detectBig3Asymmetry uses Monday-based weeks internally.
 export function currentWeekStart(referenceDate = new Date()) {
   const pad = n => String(n).padStart(2, '0');
-  const day = referenceDate.getDay(); // 0=Sun
-  const sun = new Date(+referenceDate - day * 86400000);
+  const sun = new Date(referenceDate);
+  sun.setDate(sun.getDate() - sun.getDay()); // setDate handles DST correctly
   return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
 }
 
@@ -272,7 +272,8 @@ export function currentWeekStart(referenceDate = new Date()) {
 // Use for attendance window calculations (e.g., 30-day skip detection).
 export function rollingWindowStart(referenceDate = new Date(), days = 30) {
   const pad = n => String(n).padStart(2, '0');
-  const start = new Date(+referenceDate - (days - 1) * 86400000);
+  const start = new Date(referenceDate);
+  start.setDate(start.getDate() - (days - 1)); // setDate handles DST correctly
   return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
 }
 
