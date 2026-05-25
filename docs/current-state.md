@@ -127,10 +127,11 @@ The real native app path now has a modular React Native shell:
   `Current Routine Progress` supporting copy, top summary cards for latest
   weight plus a neutral `Weeks In` routine counter derived from the current
   routine's progression depth (the longest `session_entries` chain across all
-  exercises and days), rendered as `—` when no routine is loaded, a dismissible
-  informational note when the persisted Big 3 classification history shows one
-  of squat, bench, or deadlift progressing while another is stalled or
-  regressing for 2+ weeks, a renamed `1k Club Progress` card, a compact 7-day
+  exercises and days), rendered as `—` when no routine is loaded, persisted
+  attendance warning banners from `attendance_flags`, a compact `Session
+  Status` chip row sourced only from persisted
+  `exercise_classifications` and limited to `progressing`, `stalled`, and
+  `regressing`, a renamed `1k Club Progress` card, a compact 7-day
   rolling-average weight line chart, and the exported
   More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
   `1k Club Progress` and `Weight Trend` panels are now static dashboard
@@ -175,10 +176,10 @@ The real native app path now has a modular React Native shell:
   downstream analytics consumers read stored skip/attendance state instead of
   recomputing it during render. That same save path now also persists
   per-session `rep_drop_off_flags` for tracked exercises, while the read view
-  surfaces the latest `hit_wall` / `in_reserve` nudge inline and honors a
-  global per-exercise dismiss state stored outside the note document so the
-  dismissal survives routine switches; Android back now exits edit subviews
-  before falling through to tab-level navigation.
+  surfaces the latest `hit_wall` nudge inline and treats dismissals as
+  ephemeral local UI state, so the nudge disappears for the current render but
+  can re-fire on a later save when the persisted flag still exists; Android
+  back now exits edit subviews before falling through to tab-level navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card
@@ -212,8 +213,8 @@ The real native app path now has a modular React Native shell:
   slot selection, and a `Progressive Overload` list with a single sticky
   header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`).
   The list now keeps per-exercise session classifications persisted on note
-  save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`; `Regressing`
-  remains a trend-only signal), surfaces estimated 1RM and Kilo max together,
+  save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`, `Regressing`),
+  surfaces estimated 1RM and Kilo max together,
   shows either latest top weight in pounds or best-set reps for bodyweight
   exercises, renders the trend column as `↑`, `↔`, `↓`, or `—` based on the
   latest comparable session pair, and now adds a subtle `⚠ Hit wall` /
@@ -253,16 +254,14 @@ The real native app path now has a modular React Native shell:
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
   alongside the retained `tracked_exercises`, `one_k_exercises`,
-  `skip_markers`, `attendance_flags`, and per-session
-  `rep_drop_off_flags` fields. It also persists a lightweight weight-goal
-  record under `kilo_weight_goal` with `target_weight`, `target_date`,
-  optional `start_weight`, and `saved_at`, plus a persisted Kilo fatigue
-  multiplier under
-  `kilo_fatigue_multiplier`, a global tracked-lift map under
-  `kilo_tracked_lifts`, a global rep-drop-off nudge-dismiss map under
-  `kilo_dismissed_nudges`, a Home-tab asymmetry-dismiss map under
-  `kilo_dismissed_asymmetries`, and the Log-tab current-routine collapsed
-  state under `kilo_log_current_collapsed`. The legacy structured
+  `skip_markers`, `attendance_flags`, `exercise_classifications`, and
+  per-session `rep_drop_off_flags` fields. It also persists a lightweight
+  weight-goal record under `kilo_weight_goal` with `target_weight`,
+  `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
+  Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a global
+  tracked-lift map under `kilo_tracked_lifts`, and the Log-tab
+  current-routine collapsed state under `kilo_log_current_collapsed`. The
+  legacy structured
   workout-session key is retained only as a one-time migration source, and the
   older
   single-note key is now also migrated forward into the notebook model by

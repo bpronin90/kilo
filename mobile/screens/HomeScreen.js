@@ -1,6 +1,5 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
@@ -22,8 +21,6 @@ import {
 } from '../lib/data';
 import { useTrackedLifts } from '../hooks/useEntries';
 import pkg from '../package.json';
-
-const DISMISSED_ASYMMETRIES_KEY = 'kilo_dismissed_asymmetries';
 
 const LOGO = require('../assets/brand/logo.png');
 
@@ -47,6 +44,13 @@ function KiloWordmark({ width = 140, height = 48 }) {
       </Svg>
     </View>
   );
+}
+
+function classificationColor(cls) {
+  if (cls === 'progressing') return Colors.success;
+  if (cls === 'stalled') return Colors.accent;
+  if (cls === 'regressing') return Colors.error;
+  return Colors.textMuted;
 }
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
@@ -84,8 +88,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
     const weeksIn = computeWeeksIn(sections);
-    // dismissedAsymmetries=null means storage hasn't loaded yet — pass empty map
-    // so detectBig3Asymmetry produces the full list, but we suppress rendering below.
+
     const asymmetryNotes = dismissedAsymmetries !== null
       ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
       : [];
@@ -93,7 +96,17 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const classifications = sections ? classifyExerciseSessions(sections, listTrackedLifts(trackedLifts)) : null;
     const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries, classifications });
 
-    return { weightSeries, oneK, latestWeight, weeksIn, asymmetryNotes, weeklySummary, classifications };
+    return { 
+      weightSeries, 
+      oneK, 
+      latestWeight, 
+      weeksIn, 
+      asymmetryNotes, 
+      weeklySummary, 
+      classifications,
+      attendanceBanners: weeklySummary.attendanceBanners || [],
+      sessionStatusRows: weeklySummary.sessionStatusRows || null,
+    };
   }, [weightEntries, workoutNote, dismissedAsymmetries, trackedLifts]);
 
   return (
@@ -107,16 +120,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </Card>
       ) : null}
 
-      {dashboardData.asymmetryNotes.map(note => (
-        <View key={note.dismissKey} style={styles.asymmetryNote}>
-          <Text style={styles.asymmetryNoteText}>{note.copy}</Text>
-          <Pressable
-            onPress={() => handleDismissAsymmetry(note.dismissKey)}
-            style={styles.asymmetryDismiss}
-            hitSlop={8}
-          >
-            <Text style={styles.asymmetryDismissText}>×</Text>
-          </Pressable>
+      {dashboardData.attendanceBanners.map((copy, i) => (
+        <View key={i} style={styles.attendanceFlag}>
+          <Text style={styles.attendanceFlagText}>{copy}</Text>
         </View>
       ))}
 
@@ -136,106 +142,90 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       </View>
 
       <SectionTitle>Weekly Summary</SectionTitle>
-      <Pressable onPress={() => onNavigate('Analytics')}>
-        <Card style={styles.weeklyCard}>
-          {!dashboardData.weeklySummary.hasActivity ? (
-            <Text style={styles.emptyText}>No sessions logged recently.</Text>
-          ) : (
-            <View style={styles.weeklyContent}>
-              {/* Classification Badges */}
-              {dashboardData.weeklySummary.classifications && (
-                <View style={styles.classifBadges}>
-                  {[
-                    { label: 'Progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success, key: 'progressing' },
-                    { label: 'Stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017', key: 'stalled' },
-                    { label: 'Regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error, key: 'regressing' },
-                    { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted, key: 'inconsistent' },
-                  ].filter(item => item.count > 0).map((item, idx) => (
-                    <View key={idx} style={styles.classifBadge}>
-                      <View style={[styles.classifBadgeDot, { backgroundColor: item.color }]} />
-                      <Text style={styles.classifBadgeText}>
-                        <Text style={styles.classifBadgeCount}>{item.count}</Text> {item.label}
-                      </Text>
-                    </View>
-                  ))}
-                  {Object.values(dashboardData.weeklySummary.classifications).reduce((a, b) => a + b, 0) === 0 && (
-                    <Text style={styles.emptyText}>No tracked lifts classified yet.</Text>
-                  )}
-                </View>
-              )}
+      <Card style={styles.weeklyCard}>
+        {!dashboardData.weeklySummary.hasActivity ? (
+          <Text style={styles.emptyText}>No sessions logged recently.</Text>
+        ) : (
+          <View style={styles.weeklyContent}>
+            {/* Classification Badges */}
+            {dashboardData.weeklySummary.classifications && (
+              <View style={styles.classifBadges}>
+                {[
+                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success, key: 'progressing' },
+                  { label: 'Stalled', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017', key: 'stalled' },
+                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error, key: 'regressing' },
+                  { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted, key: 'inconsistent' },
+                  { label: 'New', count: dashboardData.weeklySummary.classifications.initial, color: Colors.accent, key: 'initial' },
+                ].filter(item => item.count > 0).map((item, idx) => (
+                  <View key={idx} style={styles.classifBadge}>
+                    <View style={[styles.classifBadgeDot, { backgroundColor: item.color }]} />
+                    <Text style={styles.classifBadgeText}>
+                      <Text style={styles.classifBadgeCount}>{item.count}</Text> {item.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
-              {/* Lift Highlights */}
-              {dashboardData.weeklySummary.classifications && (
-                <View style={styles.highlightsRow}>
-                  {Object.entries(workoutNote?.exercise_classifications || {}).filter(([_, val]) => val === 'progressing').slice(0, 3).length > 0 && (
-                    <View style={styles.highlightGroup}>
-                      <Text style={styles.highlightLabel}>Top Progress</Text>
-                      <Text style={styles.highlightValue} numberOfLines={1}>
-                        {Object.entries(workoutNote.exercise_classifications)
-                          .filter(([_, val]) => val === 'progressing')
-                          .slice(0, 2)
-                          .map(([name]) => name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' '))
-                          .join(', ')}
-                      </Text>
-                    </View>
-                  )}
-                  {Object.entries(workoutNote?.exercise_classifications || {}).filter(([_, val]) => val === 'regressing').length > 0 && (
-                    <View style={styles.highlightGroup}>
-                      <Text style={styles.highlightLabel}>Needs Review</Text>
-                      <Text style={[styles.highlightValue, { color: Colors.error }]} numberOfLines={1}>
-                        {Object.entries(workoutNote.exercise_classifications)
-                          .filter(([_, val]) => val === 'regressing')
-                          .slice(0, 2)
-                          .map(([name]) => name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' '))
-                          .join(', ')}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* Strength Delta Grid */}
-              {dashboardData.weeklySummary.deltas && (
-                <View style={styles.deltaSection}>
-                  <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
-                  <View style={styles.deltaGrid}>
-                    <View style={styles.deltaGridItem}>
-                      <Text style={styles.deltaGridLabel}>SQUAT</Text>
-                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
-                        {formatDelta(dashboardData.weeklySummary.deltas.squat)}
-                      </Text>
-                    </View>
-                    <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
-                      <Text style={styles.deltaGridLabel}>BENCH</Text>
-                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
-                        {formatDelta(dashboardData.weeklySummary.deltas.bench)}
-                      </Text>
-                    </View>
-                    <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
-                      <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
-                      <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
-                        {formatDelta(dashboardData.weeklySummary.deltas.deadlift)}
-                      </Text>
-                    </View>
+            {/* Strength Delta Grid */}
+            {dashboardData.weeklySummary.deltas && (
+              <View style={styles.deltaSection}>
+                <Text style={styles.deltaSectionLabel}>Big 3 Strength Delta</Text>
+                <View style={styles.deltaGrid}>
+                  <View style={styles.deltaGridItem}>
+                    <Text style={styles.deltaGridLabel}>SQUAT</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.squat > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.squat < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.squat)}
+                    </Text>
+                  </View>
+                  <View style={[styles.deltaGridItem, styles.deltaGridItemMiddle]}>
+                    <Text style={styles.deltaGridLabel}>BENCH</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.bench > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.bench < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deltas.bench)}
+                    </Text>
+                  </View>
+                  <View style={[styles.deltaGridItem, styles.deltaGridItemEnd]}>
+                    <Text style={styles.deltaGridLabel}>DEADLIFT</Text>
+                    <Text style={[styles.deltaGridValue, { color: dashboardData.weeklySummary.deltas.deadlift > 0 ? Colors.success : (dashboardData.weeklySummary.deltas.deadlift < 0 ? Colors.error : Colors.text) }]}>
+                      {formatDelta(dashboardData.weeklySummary.deadlift)}
+                    </Text>
                   </View>
                 </View>
-              )}
+              </View>
+            )}
 
-              {/* Active Flags */}
-              {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
-                <View style={styles.flagsRow}>
-                  {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
-                  {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
-                  {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
-                  {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
-                </View>
-              )}
-              
-              <Text style={styles.tapForDetails}>Tap for full analytics →</Text>
-            </View>
-          )}
-        </Card>
-      </Pressable>
+            {/* Detailed Lift Status (from main) */}
+            {dashboardData.sessionStatusRows && (
+              <View style={styles.sessionStatusGrid}>
+                {dashboardData.sessionStatusRows.map(({ name, classification }) => (
+                  <View
+                    key={name}
+                    style={[styles.classificationChip, { borderColor: classificationColor(classification) }]}
+                  >
+                    <Text style={[styles.classificationChipText, { color: classificationColor(classification) }]}>
+                      {name.split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Active Flags */}
+            {Object.values(dashboardData.weeklySummary.flags).some(f => f) && (
+              <View style={styles.flagsRow}>
+                {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
+                {dashboardData.weeklySummary.flags.in_reserve && <View style={styles.flagChip}><Text style={styles.flagChipText}>in-reserve</Text></View>}
+                {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
+                {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
+              </View>
+            )}
+            
+            <Pressable onPress={() => onNavigate('Analytics')}>
+              <Text style={styles.tapForDetails}>Full History & Insights →</Text>
+            </Pressable>
+          </View>
+        )}
+      </Card>
 
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
@@ -690,30 +680,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textMuted,
   },
-  asymmetryNote: {
+  sessionStatusCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    padding: 14,
+    gap: 8,
+  },
+  classificationChip: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  classificationChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  attendanceFlag: {
     backgroundColor: Colors.chipBackground,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
     marginBottom: 8,
-    gap: 8,
   },
-  asymmetryNoteText: {
-    flex: 1,
+  attendanceFlagText: {
     fontSize: 13,
     color: Colors.chipText,
     fontWeight: '600',
-    lineHeight: 18,
-  },
-  asymmetryDismiss: {
-    padding: 4,
-  },
-  asymmetryDismissText: {
-    fontSize: 18,
-    color: Colors.chipText,
-    fontWeight: '700',
     lineHeight: 18,
   },
   chartCard: {
@@ -817,6 +810,26 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
+  },
+  sessionStatusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    borderTopWidth: 1,
+    borderColor: Colors.cardBorder,
+    paddingTop: 12,
+  },
+  classificationChip: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'transparent',
+  },
+  classificationChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   flagsRow: {
     flexDirection: 'row',

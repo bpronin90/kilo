@@ -88,9 +88,11 @@ Current limitation:
   while confirming Weight history still displays `logged_at`.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
-- The global AsyncStorage paths for rep-drop-off nudge dismissals and Home-tab
-  asymmetry dismissals still rely on manual verification; the issue-scoped
-  Jest suite does not yet exercise those persistence contracts.
+- No automated native test yet verifies the rendered Home `Session Status`
+  surface end to end from a saved workout note, or the Log inline `hit_wall`
+  dismiss/re-fire interaction after save. The current suite covers the
+  underlying helper behavior and persisted field shaping, but not those
+  rendered-screen contracts.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
@@ -277,6 +279,13 @@ Provides the global runtime contract required by the prototype:
 ### `mobile/tests/data.test.js`
 
 - helper and derivation coverage for `mobile/lib/data.js`
+- verifies canonical temporal-helper semantics for native workout analytics,
+  including Sunday-based `currentWeekStart()`, inclusive
+  `rollingWindowStart()`, and DST-adjacent date handling
+- verifies `computeWeeksIn()` keeps its `session_entries`-only routine-depth
+  contract even when exercises still carry bare rows
+- verifies `deriveSkipData()` honors the inclusive rolling attendance-window
+  boundary when repeated weekday skips land exactly on the cutoff date
 - verifies intra-session `computeRepDropOff()` classification boundaries,
   mixed-weight ambiguity handling, and working-set filtering
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by

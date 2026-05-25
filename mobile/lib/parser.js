@@ -608,7 +608,10 @@ export function deriveProgressionSignals(sections, trackedNames) {
       // participate in the comparison rather than dropping inline occurrences.
       const comparable = occs.flatMap(occ => {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
-        return valid.length > 0 ? valid.map(se => ({ sets: se.sets })) : [occ];
+        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
+        const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
+        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
+        return occ.sets && occ.sets.length > 0 ? [occ] : [];
       });
 
       // Walk backward to find the two most recent comparable units with computable PRs.

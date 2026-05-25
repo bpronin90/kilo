@@ -137,19 +137,23 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
-- `mobile/lib/data.js` owns native entry factories and the exercise catalog
+- `mobile/lib/data.js` owns native entry factories, the exercise catalog, and
+  shared recompute-only workout analytics helpers such as routine-depth and
+  canonical temporal semantics (`currentWeekStart()` for Sunday-based
+  current-week gating and `rollingWindowStart()` for inclusive attendance
+  windows)
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
   key (`kilo_tracked_lifts`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
-  documents now also carry persisted `skip_markers`, `attendance_flags`, and
-  per-session `rep_drop_off_flags` alongside tracked-lift and 1k-slot
-  selections, while the separate global `kilo_dismissed_nudges` key holds
-  per-exercise nudge dismissals across routine switches. The legacy session
-  key remains only a migration source and the old single-note key remains both
-  a migration source into the notebook model and a backup-compatibility
-  fallback
+  documents now also carry persisted `exercise_classifications`,
+  `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags`
+  alongside tracked-lift and 1k-slot selections. Rep-drop-off nudge
+  dismissals are no longer persisted; they are ephemeral screen-local state in
+  Log. The legacy session key remains only a migration source and the old
+  single-note key remains both a migration source into the notebook model and
+  a backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -321,9 +325,8 @@ User types in weight input
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
-| `kilo_dismissed_nudges` | JSON object keyed by normalized lift name for global rep-drop-off nudge dismissals |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
 When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
@@ -487,6 +490,132 @@ from the canonical set shape rather than the legacy parser output.
    will break globals that depend on earlier files.
 5. There is no Supabase or backend connection in the current prototype. All
    persistence is `localStorage` in the current browser profile.
+
+## Native Workout Analytics Ownership Contract
+
+This section is the canonical source-of-truth for which layer owns each native
+workout analytics field, which consumers are allowed to read it, and whether
+recomputation at render time is permitted.
+
+### Ownership Principles
+
+1. **Single canonical producer.** Every analytics field has exactly one
+   authoritative producer path. Consumers must read from that producer's output;
+   they must not recompute the same value through a parallel path.
+2. **Persisted fields are read-only after save.** When a field is persisted on
+   the workout-note document during the Log save path, downstream consumers
+   (Home, Analytics) must read the persisted value. They must not override it
+   with a live recomputation unless an explicit exception is documented below.
+3. **Recompute-only fields have no persistence obligation.** Fields documented
+   as recompute-only are derived fresh on each render from canonical note text
+   and global state. They must not be written to storage.
+4. **Mixed ownership is a bug.** If a field appears in both the persisted note
+   document and a consumer-side recomputation with potentially different results,
+   that constitutes a source-of-truth conflict that must be resolved.
+
+### Field-by-Field Ownership Matrix
+
+| Field | Canonical Owner | Persistence | Allowed Consumers | Recompute at Render? |
+|-------|----------------|-------------|-------------------|---------------------|
+| `exercise_classifications` | Log save path (`LogScreen.js:191`) via `classifyExerciseSessions()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
+| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
+| `attendance_flags` | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | Home weekly summary (read-only) | No |
+| `rep_drop_off_flags` | Log save path (`LogScreen.js:194`) via `deriveRepDropOffFlags()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
+| `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
+| `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
+| Estimated 1RM per lift | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Kilo max per lift | `computeKiloMax()` via `deriveSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Latest top weight | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Overload trend | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| 1k total | `derive1kTotal()` in `parser.js` | Not persisted | Home 1k card, Analytics 1k card | Yes — recompute-only |
+| Weight rolling averages | `computeWeightTrends()` / `computeWeightRollingAverageSeries()` in `data.js` | Not persisted | Home chart, Weight trends card, Analytics weight section | Yes — recompute-only |
+| Weight pace level | `computeWeightPaceLevel()` in `data.js` | Not persisted | Weight trends card, Analytics weight section | Yes — recompute-only |
+| Weight goal guidance | `computeWeightGoal()` / `computeCalorieEstimate()` in `data.js` | Goal persisted; guidance recomputed | Weight goal card only | Yes — recompute-only (from persisted goal) |
+| Weeks In | `computeWeeksIn()` in `data.js` | Not persisted | Home summary card | Yes — recompute-only |
+| Session/activity count | `countWorkoutSessions()` in `parser.js` | Not persisted | Home, Analytics | Yes — recompute-only |
+| Big 3 asymmetry notes | `detectBig3Asymmetry()` in `data.js` | Not persisted | No current UI consumer after `#174`; available for future use | Yes — recompute-only |
+| Weekly summary aggregation | `computeWeeklySummary()` in `data.js` | Not persisted | Home only | Yes — recompute-only (reads persisted note fields) |
+
+### Producer/Consumer Map
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  LOG SAVE PATH (Producer)                                           │
+│  LogScreen.js:178-202                                               │
+│                                                                     │
+│  Produces on each save:                                             │
+│    • exercise_classifications                                       │
+│    • skip_markers (exercise_skips + day_skips)                      │
+│    • attendance_flags                                                │
+│    • rep_drop_off_flags                                             │
+│                                                                     │
+│  Does NOT produce:                                                  │
+│    • big_3_deltas                                                   │
+└─────────────────────────────────────────────────────────────────────┘
+        │
+        ▼  persisted on workoutNote document
+┌─────────────────────────────────────────────────────────────────────┐
+│  HOME (Consumer — read-only from persisted note)                    │
+│  HomeScreen.js                                                      │
+│                                                                     │
+│  Reads from persisted note:                                         │
+│    • exercise_classifications (via computeWeeklySummary)            │
+│    • attendance_flags (via computeWeeklySummary)                    │
+│                                                                     │
+│  Legitimately recomputes:                                           │
+│    • 1k total, weight series, weeks-in                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  ANALYTICS (Consumer — mixed-source per strength row)               │
+│  StatsScreen.js                                                     │
+│                                                                     │
+│  Reads from persisted note:                                         │
+│    • rep_drop_off_flags (badge per row: line 297)                   │
+│                                                                     │
+│  Legitimately recomputes:                                           │
+│    • estimated 1RM, kilo max, latest top weight, overload trend     │
+│    • 1k total, weight rolling averages, pace                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Recomputation Rules
+
+**Consumers MUST NOT recompute these fields:**
+- `exercise_classifications` — read from `workoutNote.exercise_classifications`
+- `skip_markers` — read from `workoutNote.skip_markers`
+- `attendance_flags` — read from `workoutNote.attendance_flags`
+- `rep_drop_off_flags` — read from `workoutNote.rep_drop_off_flags`
+
+**Consumers MAY recompute these fields (they have no persisted equivalent):**
+- Estimated 1RM, Kilo max, latest top weight, overload trend
+- 1k total
+- Weight rolling averages, pace level, goal guidance
+- Weeks In, session count
+- Weekly summary aggregation (reads persisted note fields, aggregates live)
+
+**Canonical temporal helper semantics for recompute-only consumers:**
+- `currentWeekStart()` defines the shared Sunday-based current-week gate used by
+  native workout consumers that need a current-week boundary
+- `rollingWindowStart()` defines the shared inclusive rolling-window cutoff used
+  by native workout consumers that need attendance windows
+- `detectBig3Asymmetry()` now aligns Big 3 history by session-entry index rather
+  than calendar-week buckets
+
+**`computeWeeklySummary` consumption contract:**
+- Must read `exercise_classifications` from `workoutNote.exercise_classifications` only
+- Must read `attendance_flags` from `workoutNote.attendance_flags` only
+- Does not currently consume `rep_drop_off_flags`
+
+### Acceptance Contract for Downstream Issues
+
+Any downstream implementation issue that touches workout analytics must:
+1. Identify which fields from this matrix it reads or writes.
+2. Confirm its read/write pattern matches the documented ownership.
+3. Not introduce a new parallel computation path for a field already owned by
+   the Log save path.
+4. If it needs to change ownership for a field, explicitly state which row in
+   this matrix it modifies and why.
 
 ## Testing Shape
 

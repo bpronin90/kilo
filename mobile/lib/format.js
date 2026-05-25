@@ -55,8 +55,8 @@ export function formatSessionClassification(label) {
   switch (label) {
     case 'initial':      return 'Initial';
     case 'progressing':  return '↑ Progressing';
-    case 'stalled':      return '→ Stalled';
-    case 'regressing':   return null;
+    case 'stalled':      return '↔ Steady';
+    case 'regressing':   return '↓ Regressing';
     case 'inconsistent': return '~ Inconsistent';
     default:             return null;
   }
@@ -65,7 +65,6 @@ export function formatSessionClassification(label) {
 // Return nudge copy for a rep drop-off flag, or null when no nudge applies.
 export function formatRepDropOffNudge(flag) {
   if (flag === 'hit_wall') return 'Last time you hit a wall — stay at this weight.';
-  if (flag === 'in_reserve') return 'Last time you had reps in reserve — consider going up.';
   return null;
 }
 
@@ -77,6 +76,22 @@ export function formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass) 
   const p = progressingSlot;
   const state = laggingClass === 'regressing' ? 'regressing' : 'stalled';
   return `${p.charAt(0).toUpperCase() + p.slice(1)} progressing, ${laggingSlot} ${state} — worth reviewing.`;
+}
+
+// Format display copy for a persisted attendance flag.
+// Returns a string or null when the flag type is unrecognised.
+export function formatAttendanceFlag(flag) {
+  if (!flag) return null;
+  if (flag.type === 'consecutive_exercise_skips') {
+    return `${flag.exercise_name} skipped ${flag.consecutive_count} sessions in a row.`;
+  }
+  if (flag.type === 'repeated_weekday_skip') {
+    const day = flag.weekday
+      ? flag.weekday.charAt(0).toUpperCase() + flag.weekday.slice(1)
+      : 'A weekday';
+    return `${day} skipped ${flag.skip_count} times recently.`;
+  }
+  return null;
 }
 
 // Classify a weight delta (today − yesterday) into a pace flag.

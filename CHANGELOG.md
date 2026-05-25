@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.39.0 - 2026-05-25
+
+- Issue #174: Rebuilt the native Home weekly summary around persisted workout
+  note analytics instead of live recomputation, corrected the underlying
+  session-classification and Big 3 alignment rules from the #171 audit, fixed
+  Log save-path producer completeness plus ephemeral inline `hit_wall` nudge
+  dismissal behavior, and aligned the docs/testing notes with the new
+  canonical-input contract and removal of persisted nudge-dismiss storage.
+
+## 0.38.2 - 2026-05-25
+
+- Issue #173: Added shared native workout temporal helpers for Sunday-based
+  current-week gating and inclusive rolling attendance windows, documented the
+  distinct `computeWeeksIn()` routine-depth contract, updated skip-attendance
+  logic to use the shared rolling-window helper, and added regression coverage
+  for plain-row vs `session_entries` semantics plus DST-adjacent date handling.
+
+## 0.38.1 - 2026-05-24
+
+- Issue #172: Defined canonical ownership contract for native workout analytics
+  calculations in `docs/architecture.md`, including field-by-field ownership
+  matrix, producer/consumer map, recomputation rules, and acceptance contract
+  for downstream issues. Identified Home classification dual-source violation
+  and `big_3_deltas` ownership gap as HIGH-priority follow-ups. Updated
+  `docs/current-state.md` classification semantics and `docs/testing-and-qa.md`
+  test gap documentation.
+
 ## 0.38.0 - 2026-05-24
 
 - Issue #162: Added native Big 3 cross-lift asymmetry detection so Home now

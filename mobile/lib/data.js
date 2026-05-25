@@ -1,6 +1,6 @@
 // Native entry model factories and exercise catalog
 import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote, _findExercise } from './parser.js';
-import { classifyWeightPace, formatAsymmetryNote } from './format.js';
+import { classifyWeightPace, formatAsymmetryNote, formatAttendanceFlag } from './format.js';
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -255,9 +255,35 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
 }
 
+// ── Canonical temporal helpers ────────────────────────────────────────────────
+
+// Returns the Sunday-based current week start as 'YYYY-MM-DD'.
+// Use for current-week gating (Sunday-Saturday boundary per issue #163 contract).
+// Not for historical grouping — detectBig3Asymmetry uses Monday-based weeks internally.
+export function currentWeekStart(referenceDate = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  const sun = new Date(referenceDate);
+  sun.setDate(sun.getDate() - sun.getDay()); // setDate handles DST correctly
+  return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}`;
+}
+
+// Returns the start of a rolling N-day window ending on referenceDate, as 'YYYY-MM-DD'.
+// Inclusive on both ends: rollingWindowStart(ref, 30) covers ref-date minus 29 days.
+// Use for attendance window calculations (e.g., 30-day skip detection).
+export function rollingWindowStart(referenceDate = new Date(), days = 30) {
+  const pad = n => String(n).padStart(2, '0');
+  const start = new Date(referenceDate);
+  start.setDate(start.getDate() - (days - 1)); // setDate handles DST correctly
+  return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+}
+
+// ── Routine depth ─────────────────────────────────────────────────────────────
+
 // Returns the longest session_entries chain across all exercises in sections.
 // Depth = total entry count (including skipped entries) for the deepest exercise line.
-// Returns null when sections is absent (no routine loaded). Returns 0 when no entries logged.
+// Only session_entries are counted; exercises with bare rows but no session_entries
+// contribute 0 to the depth. Returns null when sections is absent (no routine loaded).
+// Returns 0 when no entries logged.
 export function computeWeeksIn(sections) {
   if (!sections) return null;
   let max = 0;
@@ -341,6 +367,7 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     attendance_flags: null,
     rep_drop_off_flags: null,
     dismissed_nudges: null,
+    exercise_classifications: null,
   };
 }
 
@@ -406,10 +433,6 @@ function _headingInfo(heading) {
   return { weekday, date };
 }
 
-function _isAsterisked(ex) {
-  return (ex.raw_header || '').includes('*') || (ex.name || '').includes('*');
-}
-
 function _exerciseIdForName(name) {
   const norm = normalizeLiftName(canonicalizeName(name));
   const found = KILO_EXERCISES.find(e => normalizeLiftName(canonicalizeName(e.name)) === norm);
@@ -441,11 +464,10 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
   const day_skips = [];
   const attendance_flags = [];
 
-  const MS_DAY = 86400000;
   const pad = n => String(n).padStart(2, '0');
   const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const refStr = localStr(referenceDate);
-  const cutStr = localStr(new Date(+referenceDate - 29 * MS_DAY));
+  const cutStr = rollingWindowStart(referenceDate, 30);
 
   const weekdayCounts = {};
   // Keyed by exercise identity (catalog id, or canonical name for non-catalog exercises).
@@ -454,7 +476,7 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
 
   for (const section of sections) {
     const eligible = section.exercises.filter(ex =>
-      ex.session_entries.length > 0 && !_isAsterisked(ex)
+      ex.session_entries.length > 0
     );
     if (eligible.length === 0) continue;
 
@@ -525,24 +547,31 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
 
 // ── Per-exercise session classification ───────────────────────────────────────
 
-function _avgRepsAtWeight(sets, weight) {
-  const matching = sets.filter(s => s.weight_value === weight);
-  if (matching.length === 0) return 0;
-  return matching.reduce((sum, s) => sum + s.rep_count, 0) / matching.length;
+function _totalRepsAtWeight(sets, weight) {
+  return sets.filter(s => s.weight_value === weight).reduce((sum, s) => sum + s.rep_count, 0);
 }
 
-// Returns true when a majority of sets at the given weight improved vs the prior session.
-// Compares sorted rep counts positionally so set-recording order doesn't matter.
-function _majorityOfSetsImproved(latestSets, priorSets, weight) {
-  const latest = latestSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
-  const prior = priorSets.filter(s => s.weight_value === weight).map(s => s.rep_count).sort((a, b) => a - b);
-  const pairs = Math.min(latest.length, prior.length);
-  if (pairs === 0) return false;
-  let improved = 0;
-  for (let i = 0; i < pairs; i++) {
-    if (latest[i] > prior[i]) improved++;
+// Extract all session entries for an occurrence.
+// When session_entries are present, each plain row after the logged history
+// is treated as its own session unit (not merged into one blob).
+// When no session_entries exist, each row is one session unit; falls back
+// to occ.sets as one unit only when rows is empty (test/legacy path).
+function _occurrenceEntries(occ) {
+  const rows = occ.rows || [];
+  if ((occ.session_entries || []).length > 0) {
+    const loggedCount = occ.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+    const extra = rows
+      .slice(loggedCount)
+      .filter(r => r.sets && r.sets.length > 0)
+      .map(r => ({ skipped: false, sets: r.sets }));
+    return [...occ.session_entries, ...extra];
   }
-  return improved > pairs / 2;
+  if (rows.length > 0) {
+    return rows
+      .filter(r => r.sets && r.sets.length > 0)
+      .map(r => ({ skipped: false, sets: r.sets }));
+  }
+  return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
 }
 
 function _topWeight(sets) {
@@ -557,35 +586,28 @@ function _classifyEntries(allEntries) {
   const window = allEntries.slice(-3);
   const logged = window.filter(se => !se.skipped && !se.unparsed && se.sets && _topWeight(se.sets) !== null);
   if (logged.length === 0) return null;
-  if (logged.length === 1) return 'initial';
+  if (logged.length === 1) {
+    return window.some(se => se.skipped) ? 'inconsistent' : 'initial';
+  }
 
-  const hasSkip = window.some(se => se.skipped);
   const latest = logged[logged.length - 1];
   const prior = logged[logged.length - 2];
   const latestTop = _topWeight(latest.sets);
   const priorTop = _topWeight(prior.sets);
 
-  // regressing: top weight dropped, or same weight but avg reps dropped > 2
   if (latestTop < priorTop) return 'regressing';
-  if (latestTop === priorTop) {
-    const latestAvg = _avgRepsAtWeight(latest.sets, latestTop);
-    const priorAvg = _avgRepsAtWeight(prior.sets, priorTop);
-    if (priorAvg - latestAvg > 2) return 'regressing';
-  }
-
-  // progressing: top weight increased, or same weight with majority of sets showing higher reps
   if (latestTop > priorTop) return 'progressing';
-  if (latestTop === priorTop && _majorityOfSetsImproved(latest.sets, prior.sets, latestTop)) return 'progressing';
 
-  // stalled: same top weight, same rep distribution at top weight
-  if (latestTop === priorTop) {
-    const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
-    const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
-    if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
-  }
+  // Same top weight: compare total reps at top weight
+  const latestTotal = _totalRepsAtWeight(latest.sets, latestTop);
+  const priorTotal = _totalRepsAtWeight(prior.sets, priorTop);
+  if (latestTotal > priorTotal) return 'progressing';
+  if (latestTotal < priorTotal) return 'regressing';
 
-  // inconsistent: skipped sessions mixed with logged in window
-  if (hasSkip) return 'inconsistent';
+  // Same top weight and same total reps: check distribution
+  const latestReps = latest.sets.filter(s => s.weight_value === latestTop).map(s => s.rep_count).sort((a, b) => a - b);
+  const priorReps = prior.sets.filter(s => s.weight_value === priorTop).map(s => s.rep_count).sort((a, b) => a - b);
+  if (JSON.stringify(latestReps) === JSON.stringify(priorReps)) return 'stalled';
 
   return null;
 }
@@ -601,14 +623,10 @@ export function classifyExerciseSessions(sections, trackedNames) {
     const normName = normalizeLiftName(name);
     const ex = _findExercise(exercises, name);
     if (!ex) { result[normName] = null; continue; }
-    // Mirror deriveProgressionSignals dual-path: occurrences with session_entries
-    // expand per-entry (preserving skips for the window); plain-row occurrences
-    // (inline sets, no session_entries) each count as one session unit.
-    const allEntries = ex.occurrences.flatMap(occ => {
-      if ((occ.session_entries || []).length > 0) return occ.session_entries;
-      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
-    });
-    result[normName] = _classifyEntries(allEntries);
+    const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
+    const classification = _classifyEntries(allEntries);
+    result[normName] = classification;
+
   }
   return result;
 }
@@ -618,7 +636,7 @@ export function classifyExerciseSessions(sections, trackedNames) {
 // Compute the intra-session rep drop-off flag for one session's sets.
 // Uses working sets (weight_value > 0, rep_count > 0) only.
 // Mixed-weight: uses the heaviest-weight sets to compute first/last reps.
-// Returns 'hit_wall' | 'in_reserve' | null.
+// Returns 'hit_wall' | null.
 export function computeRepDropOff(sets) {
   const working = (sets || []).filter(s => s.weight_value > 0 && s.rep_count > 0);
   if (working.length < 2) return null;
@@ -627,12 +645,11 @@ export function computeRepDropOff(sets) {
   if (atMax.length < 2) return null; // only 1 set at heaviest weight → ambiguous
   const dropOff = atMax[0].rep_count - atMax[atMax.length - 1].rep_count;
   if (dropOff >= 3) return 'hit_wall';
-  if (dropOff <= 1) return 'in_reserve';
-  return null; // drop_off === 2
+  return null;
 }
 
 // Derive rep drop-off flags for all tracked exercises, per session.
-// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null } }
+// Returns { [normalizedName]: { [sessionIndex]: 'hit_wall' | null } }
 // Only logged (non-skipped) sessions are included; skipped sessions are omitted.
 // sessionIndex is the positional index in the exercise's full entry history (oldest = 0).
 export function deriveRepDropOffFlags(sections, trackedNames) {
@@ -642,10 +659,7 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
     const normName = normalizeLiftName(name);
     const ex = _findExercise(exercises, name);
     if (!ex) { result[normName] = {}; continue; }
-    const allEntries = ex.occurrences.flatMap(occ => {
-      if ((occ.session_entries || []).length > 0) return occ.session_entries;
-      return occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
-    });
+    const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const sessionFlags = {};
     allEntries.forEach((entry, idx) => {
       if (!entry.skipped && !entry.unparsed && entry.sets && entry.sets.length > 0) {
@@ -658,8 +672,8 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
 }
 
 // Return the flag for the most recent logged session from a per-session flags map.
-// sessionFlags: { [sessionIndex]: 'hit_wall' | 'in_reserve' | null }
-// Returns 'hit_wall' | 'in_reserve' | null
+// sessionFlags: { [sessionIndex]: 'hit_wall' | null }
+// Returns 'hit_wall' | null
 export function getLatestRepDropOff(sessionFlags) {
   if (!sessionFlags || typeof sessionFlags !== 'object') return null;
   const keys = Object.keys(sessionFlags);
@@ -674,18 +688,9 @@ const _BIG3_NAMES = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadli
 const _BIG3_SLOTS = ['squat', 'bench', 'deadlift'];
 const _BIG3_PAIRS = [['squat', 'bench'], ['squat', 'deadlift'], ['bench', 'deadlift']];
 
-// Monday of the week containing dateStr, as 'YYYY-MM-DD'.
-function _weekKey(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  const day = d.getDay(); // 0=Sun
-  const daysToMon = day === 0 ? -6 : 1 - day;
-  const mon = new Date(+d + daysToMon * 86400000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
-}
-
-// Returns { squat: [{date, entry}], bench: [...], deadlift: [...] }, oldest first.
-function _big3DateEntries(sections) {
+// Returns { squat: entry[], bench: entry[], deadlift: entry[] }, oldest first.
+// Aligns Big 3 lifts by session entry index (positional), not by calendar date.
+function _big3IndexEntries(sections) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const out = { squat: [], bench: [], deadlift: [] };
   for (const slot of _BIG3_SLOTS) {
@@ -693,51 +698,28 @@ function _big3DateEntries(sections) {
     const ex = exercises.find(e => normalizeLiftName(e.name) === normTarget);
     if (!ex) continue;
     for (const occ of ex.occurrences) {
-      const { date } = _headingInfo(occ.heading);
-      if (!date) continue;
-      const entries = (occ.session_entries || []).length > 0
-        ? occ.session_entries
-        : occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
-      for (const entry of entries) out[slot].push({ date, entry });
+      out[slot].push(..._occurrenceEntries(occ));
     }
   }
   return out;
 }
 
-// Returns sorted array of { week, squat, bench, deadlift } classification objects.
-function _classifyBig3ByWeek(sections) {
-  const dateEntries = _big3DateEntries(sections);
-
-  // Group entries by week for each slot.
-  const weekMap = {}; // slot → { weekKey: entry[] }
-  const allWeeks = new Set();
-  for (const slot of _BIG3_SLOTS) {
-    weekMap[slot] = {};
-    for (const { date, entry } of dateEntries[slot]) {
-      const wk = _weekKey(date);
-      allWeeks.add(wk);
-      if (!weekMap[slot][wk]) weekMap[slot][wk] = [];
-      weekMap[slot][wk].push(entry);
-    }
-  }
-
-  const sortedWeeks = [...allWeeks].sort();
-  return sortedWeeks.map(week => {
-    const row = { week };
+// Returns array of { index, squat, bench, deadlift } classification objects.
+// Each lift is classified using all entries up to and including that index.
+function _classifyBig3ByIndex(sections) {
+  const indexEntries = _big3IndexEntries(sections);
+  const maxLen = Math.max(..._BIG3_SLOTS.map(s => indexEntries[s].length), 0);
+  if (maxLen === 0) return [];
+  const rows = [];
+  for (let i = 0; i < maxLen; i++) {
+    const row = { index: i };
     for (const slot of _BIG3_SLOTS) {
-      // Only classify when the lift has a session this week; weeks with no
-      // session for this slot produce null so the forward-walk skips them.
-      if (!weekMap[slot][week]?.length) {
-        row[slot] = null;
-        continue;
-      }
-      const entriesUpTo = sortedWeeks
-        .filter(wk => wk <= week)
-        .flatMap(wk => weekMap[slot][wk] || []);
-      row[slot] = _classifyEntries(entriesUpTo);
+      if (i >= indexEntries[slot].length) { row[slot] = null; continue; }
+      row[slot] = _classifyEntries(indexEntries[slot].slice(0, i + 1));
     }
-    return row;
-  });
+    rows.push(row);
+  }
+  return rows;
 }
 
 function _isAsymmetric(clA, clB) {
@@ -768,30 +750,29 @@ function _sharedConcreteClassification(clA, clB) {
 //
 // Returns: Array<{ copy: string, dismissKey: string }>
 export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
-  const weekSeries = _classifyBig3ByWeek(sections);
-  if (weekSeries.length < 2) return [];
+  const indexSeries = _classifyBig3ByIndex(sections);
+  if (indexSeries.length < 2) return [];
 
   const notes = [];
   for (const [slotA, slotB] of _BIG3_PAIRS) {
-    // Forward walk: accumulate the current run.
+    // Forward walk: accumulate the current asymmetric run.
     // Reset only on a shared concrete classification (the break condition).
-    // Skip null/initial/inconsistent weeks without counting or resetting.
+    // Skip null/initial/inconsistent positions without counting or resetting.
     let runStart = null;
     let runCount = 0;
-    for (const { [slotA]: clA, [slotB]: clB, week } of weekSeries) {
+    for (const { [slotA]: clA, [slotB]: clB, index } of indexSeries) {
       if (_sharedConcreteClassification(clA, clB)) {
         runStart = null;
         runCount = 0;
       } else if (_isAsymmetric(clA, clB)) {
-        if (runStart === null) runStart = week;
+        if (runStart === null) runStart = index;
         runCount++;
       }
-      // null/initial/inconsistent on either side: ignored
     }
 
     if (runCount < 2) continue;
 
-    const last = weekSeries[weekSeries.length - 1];
+    const last = indexSeries[indexSeries.length - 1];
     const clA = last[slotA];
     const clB = last[slotB];
     const [progressingSlot, laggingSlot, laggingClass] = clA === 'progressing'
@@ -806,6 +787,9 @@ export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
   return notes;
 }
 
+// Shape persisted canonical analytics inputs from a workoutNote into display-ready structures.
+// Does not re-derive any analytics — reads only what is already stored on the note.
+//
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
 // fatigue formula (adjusted, rounded).
 export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
@@ -834,6 +818,10 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
  * options: { dismissedAsymmetries: object, classifications: object }
  */
 export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries = {}, classifications: providedClassifs = null } = {}) {
+  const attendanceBanners = (workoutNote && Array.isArray(workoutNote.attendance_flags))
+    ? workoutNote.attendance_flags.map(f => formatAttendanceFlag(f)).filter(Boolean)
+    : [];
+
   // A session exists if there are any non-skipped entries or sets in the sections
   const hasActivity = (sections || []).some(section =>
     section.exercises.some(ex => {
@@ -843,10 +831,6 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
       return (ex.sets || []).length > 0;
     })
   );
-
-  if (!hasActivity) {
-    return { hasActivity: false };
-  }
 
   // 1. Classification counts (tracked exercises only)
   let classifications = null;
@@ -861,6 +845,19 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
     });
   }
 
+  const DISPLAYABLE = new Set(['progressing', 'stalled', 'regressing']);
+  let sessionStatusRows = null;
+  if (sourceClassifs) {
+    const rows = Object.entries(sourceClassifs)
+      .filter(([, cls]) => DISPLAYABLE.has(cls))
+      .map(([name, classification]) => ({ name, classification }));
+    sessionStatusRows = rows.length > 0 ? rows : null;
+  }
+
+  if (!hasActivity) {
+    return { hasActivity: false, attendanceBanners, sessionStatusRows };
+  }
+
   // 2. Big 3 strength delta (consume upstream-stored data)
   const deltas = workoutNote?.big_3_deltas || null;
 
@@ -868,7 +865,7 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
   const flags = {
     hit_wall: false,
     in_reserve: false,
-    attendance: (workoutNote?.attendance_flags || []).length > 0,
+    attendance: attendanceBanners.length > 0,
     asymmetry: false,
   };
 
@@ -889,5 +886,7 @@ export function computeWeeklySummary(sections, workoutNote, { dismissedAsymmetri
     classifications,
     deltas,
     flags,
+    attendanceBanners,
+    sessionStatusRows,
   };
 }
