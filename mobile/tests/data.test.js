@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, detectBig3Asymmetry } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1042,5 +1042,203 @@ describe('getLatestRepDropOff', () => {
   test('skipped sessions (absent keys) do not affect result', () => {
     // session 0 logged, session 1 skipped (absent), session 2 logged
     expect(getLatestRepDropOff({ '0': 'hit_wall', '2': 'in_reserve' })).toBe('in_reserve');
+  });
+});
+
+// ── detectBig3Asymmetry ───────────────────────────────────────────────────────
+
+// Build a section with a dated heading and explicit session_entries per exercise.
+// sets: { weight_value, rep_count }[]
+function asymSection(dateStr, exerciseSets) {
+  // exerciseSets: { name: string, sets: { weight_value, rep_count }[] }[]
+  const exercises = exerciseSets.map(({ name, sets }) => ({
+    name,
+    rows: [],
+    sets: [],
+    session_entries: [{ skipped: false, raw: 'x', sets }],
+    unparsed_rows: [],
+  }));
+  return { heading: `Tuesday ${dateStr}`, subheading: null, kind: 'general', exercises };
+}
+
+function s(weight, reps) { return { weight_value: weight, rep_count: reps }; }
+
+describe('detectBig3Asymmetry', () => {
+  test('empty sections → no notes', () => {
+    expect(detectBig3Asymmetry([])).toEqual([]);
+  });
+
+  test('single week of data → no notes (< 2 consecutive weeks)', () => {
+    // Only one week so the classification series has 1 row — can't sustain 2 weeks.
+    const sections = [
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(225, 5), s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8), s(100, 8)] },
+      ]),
+    ];
+    expect(detectBig3Asymmetry(sections)).toEqual([]);
+  });
+
+  test('asymmetry sustained 2 weeks → note fires', () => {
+    // Week 0 baseline (gives each lift its first session), Week 1 and Week 2 create asymmetry.
+    // Squat increases each week (progressing). Bench stays flat (stalled).
+    const sections = [
+      // Baseline session — gives each lift a starting point
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 1: squat up → progressing; bench flat → stalled
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 2: squat up again → progressing; bench still flat → stalled
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    const notes = detectBig3Asymmetry(sections);
+    expect(notes.length).toBe(1);
+    expect(notes[0].copy).toContain('progressing');
+    expect(notes[0].copy).toContain('stalled');
+    expect(notes[0].copy).toContain('worth reviewing');
+    expect(notes[0].dismissKey).toMatch(/asymmetry:squat_bench:/);
+  });
+
+  test('asymmetry only 1 consecutive week → no note', () => {
+    // Week 1 asymmetric, week 2 not (both stalled).
+    const sections = [
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 1: squat up (progressing), bench flat (stalled)
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Week 2: both flat (squat stalled, bench stalled) — asymmetry breaks
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    const notes = detectBig3Asymmetry(sections);
+    expect(notes).toEqual([]);
+  });
+
+  test('dismissed note is suppressed when dismissKey matches', () => {
+    const sections = [
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    // First get the key from the active note.
+    const [note] = detectBig3Asymmetry(sections);
+    expect(note).toBeDefined();
+    // Dismiss it.
+    const dismissed = { [note.dismissKey]: true };
+    expect(detectBig3Asymmetry(sections, dismissed)).toEqual([]);
+  });
+
+  test('note re-fires after relationship breaks and re-emerges (new runStart)', () => {
+    // Session order: baseline → asymmetric run A → break → asymmetric run B
+    // The dismiss key from run A encodes run A's start week.
+    // When run B is active, its start week differs → note re-fires.
+    const sections = [
+      // Baseline
+      asymSection('2023-12-18', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Run A week 1: squat progresses, bench stalls
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Run A week 2: squat progresses, bench stalls → trigger (runStart = 2023-12-25)
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Break: squat stalls, bench progresses → both could show asymmetry the OTHER way
+      // Actually let's make both stalled → clean break
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Run B week 1: squat progresses, bench stalls again
+      asymSection('2024-01-15', [
+        { name: 'Squat', sets: [s(255, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      // Run B week 2: squat progresses, bench stalls → new trigger (runStart = 2024-01-15)
+      asymSection('2024-01-22', [
+        { name: 'Squat', sets: [s(265, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+
+    // Simulate dismiss during run A (runStart = 2023-12-25 = Monday)
+    const runADismissKey = 'asymmetry:squat_bench:2023-12-25';
+    const dismissed = { [runADismissKey]: true };
+
+    // After run B emerges, the note should re-fire because runStart changed.
+    const notes = detectBig3Asymmetry(sections, dismissed);
+    expect(notes.length).toBe(1);
+    expect(notes[0].dismissKey).not.toBe(runADismissKey);
+    expect(notes[0].dismissKey).toContain('2024-01-15');
+  });
+
+  test('regressing lift triggers note', () => {
+    const sections = [
+      asymSection('2023-12-25', [
+        { name: 'Squat', sets: [s(225, 5)] },
+        { name: 'Deadlift', sets: [s(315, 5)] },
+      ]),
+      // Week 1: squat up (progressing), deadlift drops (regressing)
+      asymSection('2024-01-01', [
+        { name: 'Squat', sets: [s(235, 5)] },
+        { name: 'Deadlift', sets: [s(305, 5)] },
+      ]),
+      // Week 2: squat up (progressing), deadlift drops again (regressing)
+      asymSection('2024-01-08', [
+        { name: 'Squat', sets: [s(245, 5)] },
+        { name: 'Deadlift', sets: [s(295, 5)] },
+      ]),
+    ];
+    const notes = detectBig3Asymmetry(sections);
+    expect(notes.length).toBe(1);
+    expect(notes[0].copy).toContain('regressing');
+  });
+
+  test('copy matches documented pattern', () => {
+    const sections = [
+      asymSection('2023-12-25', [
+        { name: 'Deadlift', sets: [s(315, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2024-01-01', [
+        { name: 'Deadlift', sets: [s(325, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+      asymSection('2024-01-08', [
+        { name: 'Deadlift', sets: [s(335, 5)] },
+        { name: 'DB Bench Press', sets: [s(100, 8)] },
+      ]),
+    ];
+    const [note] = detectBig3Asymmetry(sections);
+    expect(note.copy).toBe('Deadlift progressing, bench stalled — worth reviewing.');
   });
 });

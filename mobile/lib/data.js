@@ -1,6 +1,6 @@
 // Native entry model factories and exercise catalog
 import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
-import { classifyWeightPace } from './format.js';
+import { classifyWeightPace, formatAsymmetryNote } from './format.js';
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -656,6 +656,122 @@ export function getLatestRepDropOff(sessionFlags) {
   if (keys.length === 0) return null;
   const maxIdx = Math.max(...keys.map(Number));
   return sessionFlags[String(maxIdx)] ?? null;
+}
+
+// ── Cross-lift asymmetry detection (Big 3) ────────────────────────────────────
+
+const _BIG3_NAMES = { squat: 'Squat', bench: 'DB Bench Press', deadlift: 'Deadlift' };
+const _BIG3_SLOTS = ['squat', 'bench', 'deadlift'];
+const _BIG3_PAIRS = [['squat', 'bench'], ['squat', 'deadlift'], ['bench', 'deadlift']];
+
+// Monday of the week containing dateStr, as 'YYYY-MM-DD'.
+function _weekKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const day = d.getDay(); // 0=Sun
+  const daysToMon = day === 0 ? -6 : 1 - day;
+  const mon = new Date(+d + daysToMon * 86400000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
+}
+
+// Returns { squat: [{date, entry}], bench: [...], deadlift: [...] }, oldest first.
+function _big3DateEntries(sections) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const out = { squat: [], bench: [], deadlift: [] };
+  for (const slot of _BIG3_SLOTS) {
+    const normTarget = normalizeLiftName(canonicalizeName(_BIG3_NAMES[slot]));
+    const ex = exercises.find(e => normalizeLiftName(e.name) === normTarget);
+    if (!ex) continue;
+    for (const occ of ex.occurrences) {
+      const { date } = _headingInfo(occ.heading);
+      if (!date) continue;
+      const entries = (occ.session_entries || []).length > 0
+        ? occ.session_entries
+        : occ.sets.length > 0 ? [{ skipped: false, sets: occ.sets }] : [];
+      for (const entry of entries) out[slot].push({ date, entry });
+    }
+  }
+  return out;
+}
+
+// Returns sorted array of { week, squat, bench, deadlift } classification objects.
+function _classifyBig3ByWeek(sections) {
+  const dateEntries = _big3DateEntries(sections);
+
+  // Group entries by week for each slot.
+  const weekMap = {}; // slot → { weekKey: entry[] }
+  const allWeeks = new Set();
+  for (const slot of _BIG3_SLOTS) {
+    weekMap[slot] = {};
+    for (const { date, entry } of dateEntries[slot]) {
+      const wk = _weekKey(date);
+      allWeeks.add(wk);
+      if (!weekMap[slot][wk]) weekMap[slot][wk] = [];
+      weekMap[slot][wk].push(entry);
+    }
+  }
+
+  const sortedWeeks = [...allWeeks].sort();
+  return sortedWeeks.map(week => {
+    const row = { week };
+    for (const slot of _BIG3_SLOTS) {
+      const entriesUpTo = sortedWeeks
+        .filter(wk => wk <= week)
+        .flatMap(wk => weekMap[slot][wk] || []);
+      row[slot] = _classifyEntries(entriesUpTo);
+    }
+    return row;
+  });
+}
+
+function _isAsymmetric(clA, clB) {
+  if (clA === 'progressing' && (clB === 'stalled' || clB === 'regressing')) return true;
+  if (clB === 'progressing' && (clA === 'stalled' || clA === 'regressing')) return true;
+  return false;
+}
+
+// Detect active cross-lift asymmetry notes for the Big 3.
+//
+// A note fires when one Big 3 lift is progressing while another is stalled or
+// regressing for 2+ consecutive weeks.
+//
+// dismissedAsymmetries: { [dismissKey]: true }
+//   dismissKey encodes the pair and the week the current asymmetric run started,
+//   so a dismissed note re-fires automatically after the relationship breaks and
+//   then re-emerges (the runStart week changes, making the old key stale).
+//
+// Returns: Array<{ copy: string, dismissKey: string }>
+export function detectBig3Asymmetry(sections, dismissedAsymmetries = {}) {
+  const weekSeries = _classifyBig3ByWeek(sections);
+  if (weekSeries.length < 2) return [];
+
+  const notes = [];
+  for (const [slotA, slotB] of _BIG3_PAIRS) {
+    // Walk backward to find current consecutive asymmetric run.
+    let runLength = 0;
+    let runStart = null;
+    for (let i = weekSeries.length - 1; i >= 0; i--) {
+      const { [slotA]: clA, [slotB]: clB, week } = weekSeries[i];
+      if (!_isAsymmetric(clA, clB)) break;
+      runLength++;
+      runStart = week;
+    }
+
+    if (runLength < 2) continue;
+
+    const last = weekSeries[weekSeries.length - 1];
+    const clA = last[slotA];
+    const clB = last[slotB];
+    const [progressingSlot, laggingSlot, laggingClass] = clA === 'progressing'
+      ? [slotA, slotB, clB]
+      : [slotB, slotA, clA];
+
+    const dismissKey = `asymmetry:${slotA}_${slotB}:${runStart}`;
+    if (dismissedAsymmetries[dismissKey]) continue;
+
+    notes.push({ copy: formatAsymmetryNote(progressingSlot, laggingSlot, laggingClass), dismissKey });
+  }
+  return notes;
 }
 
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
