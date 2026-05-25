@@ -123,13 +123,8 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </Card>
       ) : null}
 
-      {dashboardData.attendanceBanners.map((copy, i) => (
-        <View key={i} style={styles.attendanceFlag}>
-          <Text style={styles.attendanceFlagText}>{copy}</Text>
-        </View>
-      ))}
+      {dashboardData.asymmetryNotes.map(note => (
 
-      <View style={styles.summaryGrid}>
         <Card style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Latest Weight</Text>
           <Text style={styles.summaryValue}>
@@ -737,7 +732,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   classifLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.text,
     textTransform: 'uppercase',
@@ -750,7 +745,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   deltaDashboardTitle: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -782,7 +777,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   deltaDashboardLabel: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -811,7 +806,7 @@ const styles = StyleSheet.create({
   },
   asymmetryBadgeText: {
     color: '#fffaf2',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -823,7 +818,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   asymmetryStatus: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -834,7 +829,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   analyticsLinkText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.accent,
     textTransform: 'uppercase',
