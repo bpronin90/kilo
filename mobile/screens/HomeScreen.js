@@ -833,6 +833,42 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textDecorationLine: 'underline',
   },
+  asymmetrySection: {
+    gap: 16,
+    marginTop: 8,
+  },
+  asymmetryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  asymmetryNotesList: {
+    gap: 12,
+  },
+  asymmetryNoteItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    padding: 12,
+    borderRadius: 4,
+    gap: 10,
+  },
+  asymmetryNoteItemText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.text,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  asymmetryNoteDismiss: {
+    padding: 2,
+  },
+  asymmetryNoteDismissText: {
+    fontSize: 18,
+    color: Colors.textMuted,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
   emptyText: {
     fontSize: 14,
     color: Colors.textMuted,
