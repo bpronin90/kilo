@@ -91,6 +91,12 @@ Current limitation:
 - The global AsyncStorage paths for rep-drop-off nudge dismissals and Home-tab
   asymmetry dismissals still rely on manual verification; the issue-scoped
   Jest suite does not yet exercise those persistence contracts.
+- No automated test verifies that Home reads `exercise_classifications` only
+  from the persisted note document rather than recomputing it live. The known
+  dual-source violation (HomeScreen live `classifyExerciseSessions()` call vs
+  persisted `workoutNote.exercise_classifications`) is documented in
+  `docs/architecture.md` under the ownership contract and awaits a follow-up
+  implementation fix.
 - The current native workout form is narrower than the browser prototype UI even
   though the native save/reload loop now persists canonical entries locally.
 
