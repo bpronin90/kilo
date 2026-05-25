@@ -187,12 +187,10 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               </View>
             )}
 
-            {/* Active Flags (excluding in-reserve) */}
-            {(dashboardData.weeklySummary.flags.hit_wall || dashboardData.weeklySummary.flags.attendance || dashboardData.weeklySummary.flags.asymmetry) && (
+            {/* Active Flags */}
+            {dashboardData.weeklySummary.flags.asymmetry && (
               <View style={styles.flagsRow}>
-                {dashboardData.weeklySummary.flags.hit_wall && <View style={styles.flagChip}><Text style={styles.flagChipText}>hit-wall</Text></View>}
-                {dashboardData.weeklySummary.flags.attendance && <View style={styles.flagChip}><Text style={styles.flagChipText}>attendance issues</Text></View>}
-                {dashboardData.weeklySummary.flags.asymmetry && <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>}
+                <View style={styles.flagChip}><Text style={styles.flagChipText}>asymmetry notes</Text></View>
               </View>
             )}
 
