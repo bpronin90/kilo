@@ -25,6 +25,8 @@ import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
 
+const DISMISSED_ASYMMETRIES_KEY = 'kilo_dismissed_asymmetries';
+
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
   return (
