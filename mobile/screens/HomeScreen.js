@@ -1,12 +1,11 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, Chip, StatCard, Button, LineChart } from '../components/UI';
-import { formatTimestamp, formatDelta } from '../lib/format';
+import { Card, SectionTitle, Button, LineChart } from '../components/UI';
+import { formatDelta } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import {
@@ -14,18 +13,11 @@ import {
   derive1kTotal,
   DEFAULT_1K_EXERCISES,
   computeWeeksIn,
-  detectBig3Asymmetry,
   computeWeeklySummary,
-  normalizeLiftName,
-  classifyExerciseSessions,
-  listTrackedLifts,
 } from '../lib/data';
-import { useTrackedLifts } from '../hooks/useEntries';
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
-
-const DISMISSED_ASYMMETRIES_KEY = 'kilo_dismissed_asymmetries';
 
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
@@ -49,31 +41,7 @@ function KiloWordmark({ width = 140, height = 48 }) {
   );
 }
 
-function classificationColor(cls) {
-  if (cls === 'progressing') return Colors.success;
-  if (cls === 'steady') return Colors.accent;
-  if (cls === 'regressing') return Colors.error;
-  return Colors.textMuted;
-}
-
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
-  const { trackedLifts } = useTrackedLifts();
-  // null = not yet loaded; {} = loaded with no dismissals.
-  // Asymmetry notes are suppressed until load completes to prevent flash-on-mount.
-  const [dismissedAsymmetries, setDismissedAsymmetries] = useState(null);
-
-  useEffect(() => {
-    AsyncStorage.getItem(DISMISSED_ASYMMETRIES_KEY)
-      .then(raw => setDismissedAsymmetries(raw ? JSON.parse(raw) : {}))
-      .catch(() => setDismissedAsymmetries({}));
-  }, []);
-
-  const handleDismissAsymmetry = useCallback(async (dismissKey) => {
-    const next = { ...(dismissedAsymmetries || {}), [dismissKey]: true };
-    setDismissedAsymmetries(next);
-    await AsyncStorage.setItem(DISMISSED_ASYMMETRIES_KEY, JSON.stringify(next));
-  }, [dismissedAsymmetries]);
-
   const dashboardData = useMemo(() => {
     let oneK = null;
     let sections = null;
@@ -92,25 +60,16 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const latestWeight = weightEntries[0]?.weight_value;
     const weeksIn = computeWeeksIn(sections);
 
-    const asymmetryNotes = dismissedAsymmetries !== null
-      ? detectBig3Asymmetry(sections || [], dismissedAsymmetries)
-      : [];
-
-    const classifications = sections ? classifyExerciseSessions(sections, listTrackedLifts(trackedLifts)) : null;
-    const weeklySummary = computeWeeklySummary(sections, workoutNote, { dismissedAsymmetries, classifications });
+    const weeklySummary = computeWeeklySummary(sections, workoutNote);
 
     return { 
       weightSeries, 
       oneK, 
       latestWeight, 
       weeksIn, 
-      asymmetryNotes, 
       weeklySummary, 
-      classifications,
-      attendanceBanners: weeklySummary.attendanceBanners || [],
-      sessionStatusRows: weeklySummary.sessionStatusRows || null,
     };
-  }, [weightEntries, workoutNote, dismissedAsymmetries, trackedLifts]);
+  }, [weightEntries, workoutNote]);
 
   return (
     <ScreenShell
@@ -186,33 +145,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
                     </Text>
                     <Text style={styles.deltaDashboardLabel}>DEADLIFT</Text>
                   </View>
-                </View>
-              </View>
-            )}
-
-            {/* Active Asymmetry Notes - Actionable technical layout */}
-            {dashboardData.asymmetryNotes.length > 0 && (
-              <View style={styles.asymmetrySection}>
-                <View style={styles.asymmetryHeader}>
-                  <View style={styles.asymmetryBadge}>
-                    <Text style={styles.asymmetryBadgeIcon}>⚠</Text>
-                    <Text style={styles.asymmetryBadgeText}>Asymmetry Notes</Text>
-                  </View>
-                  <View style={styles.asymmetryLine} />
-                </View>
-                <View style={styles.asymmetryNotesList}>
-                  {dashboardData.asymmetryNotes.map(note => (
-                    <View key={note.dismissKey} style={styles.asymmetryNoteItem}>
-                      <Text style={styles.asymmetryNoteItemText}>{note.copy}</Text>
-                      <Pressable
-                        onPress={() => handleDismissAsymmetry(note.dismissKey)}
-                        style={styles.asymmetryNoteDismiss}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.asymmetryNoteDismissText}>×</Text>
-                      </Pressable>
-                    </View>
-                  ))}
                 </View>
               </View>
             )}
@@ -677,39 +609,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textMuted,
   },
-  sessionStatusCard: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 14,
-    gap: 8,
-  },
-  classificationChip: {
-    borderWidth: 1.5,
-    borderRadius: 20,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  classificationChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  attendanceFlag: {
-    backgroundColor: Colors.chipBackground,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  attendanceFlagText: {
-    fontSize: 13,
-    color: Colors.chipText,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  chartCard: {
-    padding: 18,
-    gap: 0,
-  },
   chartLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -797,33 +696,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.5,
   },
-  asymmetryBadgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  asymmetryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: Colors.text,
-  },
-  asymmetryBadgeIcon: {
-    color: '#fffaf2',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  asymmetryBadgeText: {
-    color: '#fffaf2',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  },
   analyticsLink: {
     marginTop: 8,
     alignSelf: 'flex-end',
@@ -835,42 +707,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     textDecorationLine: 'underline',
-  },
-  asymmetrySection: {
-    gap: 16,
-    marginTop: 8,
-  },
-  asymmetryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  asymmetryNotesList: {
-    gap: 12,
-  },
-  asymmetryNoteItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    padding: 12,
-    borderRadius: 4,
-    gap: 10,
-  },
-  asymmetryNoteItemText: {
-    flex: 1,
-    fontSize: 12,
-    color: Colors.text,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  asymmetryNoteDismiss: {
-    padding: 2,
-  },
-  asymmetryNoteDismissText: {
-    fontSize: 18,
-    color: Colors.textMuted,
-    fontWeight: '700',
-    lineHeight: 18,
   },
   emptyText: {
     fontSize: 14,

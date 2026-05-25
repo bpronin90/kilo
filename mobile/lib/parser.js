@@ -512,7 +512,7 @@ function _canonicalizeName(name) {
 // Looks up a target name in an analytics exercises array using canonical keys.
 // Primary: exact match after canonicalization. Fallback: case-insensitive match
 // so tracked names stored in lowercase still resolve to title-cased analytics entries.
-export function _findExercise(exercises, targetName) {
+function _findExercise(exercises, targetName) {
   const canonical = _canonicalizeName(targetName);
   return exercises.find(e => e.name === canonical)
       || exercises.find(e => e.name.toLowerCase() === canonical.toLowerCase())
