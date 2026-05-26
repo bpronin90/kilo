@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.0 - 2026-05-25
+
+- Issue #180: Built the canonical workout analytics derivation layer
+  (`deriveWorkoutNoteAnalytics`) as the single shared entry point for
+  workout analytics consumers, migrated LogScreen to use the canonical
+  layer for cross-note classifications and rep-drop-off flags, and migrated
+  `deriveSkipData` from a 30-day calendar window to a session-depth window
+  so repeated weekday skip detection no longer requires calendar dates.
+
 ## 0.40.2 - 2026-05-25
 
 - Issue #179: Created the human-readable calculations reference framework at

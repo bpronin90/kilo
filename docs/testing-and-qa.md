@@ -286,14 +286,18 @@ Provides the global runtime contract required by the prototype:
   `rollingWindowStart()`, and DST-adjacent date handling
 - verifies `computeWeeksIn()` keeps its `session_entries`-only routine-depth
   contract even when exercises still carry bare rows
-- verifies `deriveSkipData()` honors the inclusive rolling attendance-window
-  boundary when repeated weekday skips land exactly on the cutoff date
+- verifies `deriveSkipData()` session-depth window for repeated weekday skip
+  detection, including within-window and outside-window boundaries, and
+  weekday-name-only headings without ISO dates
 - verifies intra-session `computeRepDropOff()` classification boundaries,
   mixed-weight ambiguity handling, and working-set filtering
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
   logged session position while omitting skipped sessions
 - verifies `getLatestRepDropOff()` returns the latest persisted session flag
   for Log and Analytics display, including null-latest and skipped-gap cases
+- verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
+  per-field output (weeksIn, classifications, skipData, repDropOffFlags),
+  empty-sections behavior, missing-exercise handling, and determinism
 
 ### `mobile/tests/storage.test.js`
 

@@ -137,10 +137,14 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules and now also exposes the note-derived analytics contract used by
   downstream native workout analytics work
-- `mobile/lib/data.js` owns native entry factories, the exercise catalog, and
+- `mobile/lib/data.js` owns native entry factories, the exercise catalog,
   shared recompute-only workout analytics helpers such as routine-depth,
-  weekly-summary shaping from persisted note fields, and canonical temporal
-  helpers such as `rollingWindowStart()` for inclusive attendance windows
+  weekly-summary shaping from persisted note fields, canonical temporal
+  helpers such as `rollingWindowStart()` for weight-trend rolling windows,
+  and the canonical `deriveWorkoutNoteAnalytics()` entry point that wraps
+  all shared workout analytics derivation (classifications, skip data,
+  rep-drop-off flags, and routine depth) into one call for downstream
+  consumers
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
@@ -522,10 +526,10 @@ recomputation at render time is permitted.
 
 | Field | Canonical Owner | Persistence | Allowed Consumers | Recompute at Render? |
 |-------|----------------|-------------|-------------------|---------------------|
-| `exercise_classifications` | Log save path (`LogScreen.js:191`) via `classifyExerciseSessions()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
-| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
-| `attendance_flags` | Log save path (`LogScreen.js:192`) via `deriveSkipData()` | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
-| `rep_drop_off_flags` | Log save path (`LogScreen.js:194`) via `deriveRepDropOffFlags()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
+| `exercise_classifications` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
+| `skip_markers` (`exercise_skips` + `day_skips`) | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
+| `attendance_flags` | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
+| `rep_drop_off_flags` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | Upstream native workout-note producer from issue `#174` | Persisted on note document | Home weekly summary (read-only) | **No** — consumers must read `workoutNote.big_3_deltas` |
@@ -548,13 +552,13 @@ recomputation at render time is permitted.
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  LOG SAVE PATH (Producer)                                           │
-│  LogScreen.js:178-202                                               │
+│  LogScreen.js — via deriveWorkoutNoteAnalytics() + deriveSkipData() │
 │                                                                     │
 │  Produces on each save:                                             │
-│    • exercise_classifications                                       │
-│    • skip_markers (exercise_skips + day_skips)                      │
-│    • attendance_flags                                                │
-│    • rep_drop_off_flags                                             │
+│    • exercise_classifications  (via canonical layer, all sections)   │
+│    • rep_drop_off_flags        (via canonical layer, all sections)   │
+│    • skip_markers (exercise_skips + day_skips)  (current note only)  │
+│    • attendance_flags                           (current note only)  │
 │                                                                     │
 │  Does NOT produce:                                                  │
 │    • big_3_deltas                                                   │
@@ -605,7 +609,7 @@ recomputation at render time is permitted.
 - `currentWeekStart()` defines the shared Sunday-based current-week gate used by
   native workout consumers that need a current-week boundary
 - `rollingWindowStart()` defines the shared inclusive rolling-window cutoff used
-  by native workout consumers that need attendance windows
+  by native weight-trend consumers that need calendar-based rolling windows
 - `detectBig3Asymmetry()` now aligns Big 3 history by session-entry index rather
   than calendar-week buckets
 
