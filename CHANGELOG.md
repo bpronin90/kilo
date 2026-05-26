@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.43.0 - 2026-05-26
+
+- Issue #195: Added a native `User Profile` flow under More so users can
+  locally save optional height, date of birth, biological sex, and activity
+  level inputs for the TDEE-based calorie model, including unit conversion,
+  clear-state controls, and save feedback. Reviewer closeout updated
+  `docs/current-state.md` to match and bumped the app version.
+
 ## 0.42.3 - 2026-05-26
 
 - Issue #169: Produced Progressive Overload redesign brief merging structural

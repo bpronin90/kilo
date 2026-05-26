@@ -147,9 +147,9 @@ The real native app path now has a modular React Native shell:
   and provides a discrete `Full history and insights` link into Analytics, a
   renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
   chart, and the exported
-  More/Help/About/Data & Backup/Settings surfaces used by the More tab; the
-  `1k Club Progress` and `Weight Trend` panels are now static dashboard
-  elements with no navigation, and the
+  More/Help/About/Data & Backup/Settings/User Profile surfaces used by the
+  More tab; the `1k Club Progress` and `Weight Trend` panels are now static
+  dashboard elements with no navigation, and the
   More subviews now intercept Android back presses and return to the More menu
   before falling through to tab-level navigation, and the new Settings &
   Algorithm sub-screen exposes a persisted fatigue-multiplier stepper plus
@@ -228,6 +228,14 @@ The real native app path now has a modular React Native shell:
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp
+- `mobile/screens/HomeScreen.js` now also owns a native `User Profile`
+  sub-screen under More where users can optionally save or later clear the
+  four TDEE-profile inputs stored by the shared user-profile contract:
+  height with ft/in or cm entry mapped to persisted `height_cm`, date of
+  birth, biological sex, and one of five activity-level choices with helper
+  descriptions. The flow stays local-only, allows partial profiles, and
+  surfaces explicit save feedback plus clear-state controls rather than
+  forcing onboarding or a fully populated profile
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
