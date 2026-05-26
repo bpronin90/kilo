@@ -262,3 +262,40 @@ export function useTrackedLifts() {
 
   return { trackedLifts, loading, error, save, toggle, refresh };
 }
+
+let profileListeners = [];
+const notifyProfile = () => profileListeners.forEach(l => l());
+
+export function useUserProfile() {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    Storage.loadUserProfile()
+      .then(setProfile)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    profileListeners.push(refresh);
+    return () => {
+      profileListeners = profileListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const save = useCallback(async (profile_data) => {
+    const saved = await Storage.saveUserProfile(profile_data);
+    setProfile(saved);
+    notifyProfile();
+    return saved;
+  }, []);
+
+  const clear = useCallback(async () => {
+    await Storage.clearUserProfile();
+    setProfile(null);
+    notifyProfile();
+  }, []);
+
+  return { profile, loading, save, clear };
+}

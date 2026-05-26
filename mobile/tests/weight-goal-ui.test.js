@@ -36,9 +36,10 @@ describe('WeightScreen', () => {
     saving: false,
   };
 
-  const setup = (goal, entries = []) => {
+  const setup = (goal, entries = [], profile = null) => {
     useEntries.useWeightEntries.mockReturnValue({ entries, remove: jest.fn(), update: jest.fn() });
     useEntries.useWeightGoal.mockReturnValue({ goal, save: jest.fn(), clear: jest.fn() });
+    useEntries.useUserProfile.mockReturnValue({ profile, save: jest.fn(), clear: jest.fn() });
     let component;
     render.act(() => {
       component = render.create(<WeightScreen {...defaultProps} />);
@@ -88,7 +89,7 @@ describe('WeightScreen', () => {
     expect(findText(root, '1.00 lb / week')).toBeTruthy();
     expect(findText(root, 'Suggested')).toBeTruthy();
     expect(findText(root, 'deficit')).toBeTruthy();
-    expect(findText(root, '500 cal / day')).toBeTruthy();
+    expect(findText(root, '500 cal / day (estimate)')).toBeTruthy();
   });
 
   test('renders "gain" state', () => {
@@ -100,7 +101,7 @@ describe('WeightScreen', () => {
     expect(findText(root, '1.00 lb / week')).toBeTruthy();
     expect(findText(root, 'Suggested')).toBeTruthy();
     expect(findText(root, 'surplus')).toBeTruthy();
-    expect(findText(root, '500 cal / day')).toBeTruthy();
+    expect(findText(root, '500 cal / day (estimate)')).toBeTruthy();
   });
 
   test('renders health warnings (unhealthy pace)', () => {
