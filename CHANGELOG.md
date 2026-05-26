@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.43.1 - 2026-05-26
+
+- Issue #197: Wired the stored weight goal into the native Home dashboard data
+  pipeline so `deriveWeightGoalAnalytics()` now returns `goalInfo` there for
+  the upcoming dashboard goal-status UI work, without changing current Home
+  rendering.
+
 ## 0.43.0 - 2026-05-26
 
 - Issue #195: Added a native `User Profile` flow under More so users can
