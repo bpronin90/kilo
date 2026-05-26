@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.42.3 - 2026-05-26
+
+- Issue #169: Produced Progressive Overload redesign brief merging structural
+  organization from #147 (routine-day grouping, collapsible sections, search,
+  multi-day handling) with visual treatment from #170 (tabular two-line row
+  layout, four-column metric grid, artisanal-panel container). Created
+  implementation card #198 for agent:gemini.
+
 ## 0.42.2 - 2026-05-26
 
 - Issue #188: Approved Home dashboard information hierarchy — consolidated

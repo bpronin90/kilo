@@ -77,8 +77,8 @@ This is roadmap setup, not a separate phase.
   desired product direction.
 - `#165` / `#166` — leave in backlog, explicitly outside MVP4.5. Non-weighted
   tracked-exercise expansion is not part of this pass.
-- `#169` / `#170` — merge conceptually into one later MVP4.5 UI track for
-  approved Progressive Overload redesign.
+- `#169` / `#170` — merged into one redesign brief in `#169`; `#170` closed as
+  superseded. Implementation card created as `#198`.
 - `#171` / `#175` — do not use them as the final human-readable truth artifact
   directly. MVP4.5 should create one new late-phase human-doc closeout issue
   that reflects stabilized behavior after the refactor.
@@ -522,23 +522,15 @@ Ordered tasks:
   - `type:planning`
   - `effort:default`
 
-#### Task 15: Review Progressive Overload redesign direction
+#### Task 15: Review Progressive Overload redesign direction [DONE]
 
+- **Issue:** `#169`
 - **Title:** `Phase 6 / Task 15: Review Progressive Overload redesign direction`
 - **Goal:** merge the structure concerns from `#169` and the owner-provided
   visual direction from `#170` into one approved redesign brief.
-- **Scope:**
-  - review grouped/collapsible organization
-  - use the owner-provided code as a strong directional reference, not a
-    pixel-locked mandate
-  - define final structure plus visual treatment together
-- **Out of scope:**
-  - implementation
-  - changing workout analytics rules
-  - non-weighted tracked-exercise expansion
-- **Verification:**
-  - one approved design brief replaces the split `#169` / `#170` direction
-  - the implementation issue does not need another design round
+- **Status:** Complete. Redesign brief posted on `#169` merging routine-day
+  grouping from `#147` with tabular two-line layout from `#170`. Implementation
+  card created as `#198`.
 - **Labels:**
   - `mvp4.5`
   - `agent:codex`
@@ -610,26 +602,27 @@ Ordered tasks:
 
 #### Task 18: Implement the approved Progressive Overload redesign
 
-- **Title:** `Phase 7 / Task 18: Implement approved Progressive Overload redesign`
+- **Issue:** `#198`
+- **Title:** `Phase 6 / Task 16: Redesign Progressive Overload with routine-day grouping and tabular layout`
 - **Goal:** ship the approved Progressive Overload structure and visual
   treatment using the stabilized analytics contract.
 - **Scope:**
-  - grouped/collapsible organization
-  - approved row/card treatment
-  - search and layout behavior if the design brief keeps them
+  - routine-day grouping with collapsible sections
+  - two-line tabular row layout from `#170` reference
+  - search, multi-day exercise handling, cross-day summaries
 - **Out of scope:**
   - changing analytics semantics
   - non-weighted tracked-exercise expansion
   - unrelated Analytics redesign
 - **Verification:**
-  - Progressive Overload matches the approved brief
+  - Progressive Overload matches the approved brief from `#169`
   - the implementation remains a consumer of stable shared analytics outputs
 - **Labels:**
   - `mvp4.5`
   - `agent:gemini`
   - `area:ui`
   - `type:implementation`
-  - `effort:default`
+  - `effort:heavy`
 
 ---
 
