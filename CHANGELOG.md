@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.41.2 - 2026-05-25
+
+- Issue #181: Fixed Weeks In on Home to use the canonical
+  `deriveWorkoutNoteAnalytics` derivation layer instead of calling
+  `computeWeeksIn` directly, and added a null-sections guard so
+  Home does not crash when no routine is loaded.
+
 ## 0.41.1 - 2026-05-25
 
 - Issue #182: Simplified the Home weekly summary by removing `big_3_deltas`

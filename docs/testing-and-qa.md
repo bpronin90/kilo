@@ -298,6 +298,10 @@ Provides the global runtime contract required by the prototype:
 - verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
   per-field output (weeksIn, classifications, skipData, repDropOffFlags),
   empty-sections behavior, missing-exercise handling, and determinism
+- pins HomeScreen progression-depth contract through the canonical
+  `deriveWorkoutNoteAnalytics(sections, []).weeksIn` path, covering
+  null-sections, empty-sections, single/multi-exercise depth, skipped
+  sessions, and bare-row-only exercises
 
 ### `mobile/tests/storage.test.js`
 
