@@ -287,8 +287,9 @@ Provides the global runtime contract required by the prototype:
 - verifies canonical temporal-helper semantics for native workout analytics,
   including Sunday-based `currentWeekStart()`, inclusive
   `rollingWindowStart()`, and DST-adjacent date handling
-- verifies `computeWeeksIn()` keeps its `session_entries`-only routine-depth
-  contract even when exercises still carry bare rows
+- verifies `computeWeeksIn()` keeps the mixed-format routine-depth contract by
+  counting plain rows, `session_entries`, and skipped `session_entries`
+  correctly across migrated history shapes
 - verifies `deriveSkipData()` session-depth window for repeated weekday skip
   detection, including within-window and outside-window boundaries, and
   weekday-name-only headings without ISO dates
@@ -296,8 +297,8 @@ Provides the global runtime contract required by the prototype:
   mixed-weight ambiguity handling, and working-set filtering
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
   logged session position while omitting skipped sessions
-- verifies `getLatestRepDropOff()` returns the latest persisted session flag
-  for Log and Analytics display, including null-latest and skipped-gap cases
+- verifies `getLatestRepDropOff()` returns the latest derived session flag for
+  Log and Analytics display, including null-latest and skipped-gap cases
 - verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
   per-field output (weeksIn, classifications, skipData, repDropOffFlags,
   signals, and `nameDisplayMap`), empty-sections behavior,
@@ -308,7 +309,14 @@ Provides the global runtime contract required by the prototype:
 - pins HomeScreen progression-depth contract through the canonical
   `deriveWorkoutNoteAnalytics(sections, []).weeksIn` path, covering
   null-sections, empty-sections, single/multi-exercise depth, skipped
-  sessions, and bare-row-only exercises
+  sessions, bare-row-only exercises, and mixed-format history with skipped
+  `session_entries`
+- verifies canonical alias resolution for Analytics signals so tracked
+  exercises such as `DB Bench Press` still yield overload trends when the
+  note uses an alias like `DB Bench`
+- verifies live `repDropOffFlags` returned from
+  `deriveWorkoutNoteAnalytics()` distinguish no-drop-off vs `hit_wall`
+  current-section patterns without relying on stale persisted badge state
 - verifies `deriveWeightGoalAnalytics()` canonical weight/goal return shape and
   per-field outputs across empty/null entries, saved-goal and edited-goal
   paths, `start_weight` fallback, rolling-series limit behavior, pace-level
