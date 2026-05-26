@@ -151,7 +151,7 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   key (`kilo_tracked_lifts`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
   documents now also carry persisted `exercise_classifications`,
-  `skip_markers`, `attendance_flags`, `big_3_deltas`, and per-session
+  `skip_markers`, `attendance_flags`, and per-session
   `rep_drop_off_flags` alongside tracked-lift and 1k-slot selections.
   Rep-drop-off nudge dismissals are no longer persisted; they are ephemeral
   screen-local state in Log. The legacy session key remains only a migration
@@ -532,7 +532,7 @@ recomputation at render time is permitted.
 | `rep_drop_off_flags` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
-| `big_3_deltas` | Upstream native workout-note producer from issue `#174` | Persisted on note document | Home weekly summary (read-only) | **No** — consumers must read `workoutNote.big_3_deltas` |
+| `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
 | Estimated 1RM per lift | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Kilo max per lift | `computeKiloMax()` via `deriveSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | Latest top weight | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
@@ -561,7 +561,7 @@ recomputation at render time is permitted.
 │    • attendance_flags                           (current note only)  │
 │                                                                     │
 │  Does NOT produce:                                                  │
-│    • big_3_deltas                                                   │
+│    • big_3_deltas (removed from active contract in #182)            │
 └─────────────────────────────────────────────────────────────────────┘
         │
         ▼  persisted on workoutNote document
@@ -571,7 +571,6 @@ recomputation at render time is permitted.
 │                                                                     │
 │  Reads from persisted note:                                         │
 │    • exercise_classifications (via computeWeeklySummary)            │
-│    • big_3_deltas (via computeWeeklySummary)                        │
 │                                                                     │
 │  Legitimately recomputes:                                           │
 │    • 1k total, weight series, weeks-in                              │

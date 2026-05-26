@@ -139,7 +139,7 @@ The real native app path now has a modular React Native shell:
   analytics inputs rather than re-deriving them, shows a session-based empty
   state when the current routine has no logged sessions, renders a 2x2
   classification-count grid from stored `exercise_classifications` when that
-  field exists, opportunistically renders stored `big_3_deltas` when present,
+  field exists,
   and provides a discrete `Full history and insights` link into Analytics, a
   renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
   chart, and the exported
@@ -265,7 +265,7 @@ The real native app path now has a modular React Native shell:
   current selection, and persisted note items now carry an `isCurrent` flag
   alongside the retained `tracked_exercises`, `one_k_exercises`,
   `skip_markers`, `attendance_flags`, `exercise_classifications`,
-  `big_3_deltas`, and per-session `rep_drop_off_flags` fields. It also
+  and per-session `rep_drop_off_flags` fields. It also
   persists a lightweight
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted

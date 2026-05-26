@@ -81,7 +81,7 @@ Current limitation:
   resolution coverage (latest-entry ordering plus no-entry fallback paths),
   shared weight trend-summary helper coverage, per-session rep-drop-off flag
   derivation coverage, weekly-summary stored-input shaping coverage (session
-  presence, persisted classification counts, and opportunistic Big 3 deltas),
+  presence and persisted classification counts),
   and malformed backup rejection coverage for the optional `weight_goal` v2
   import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now

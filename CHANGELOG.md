@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.1 - 2026-05-25
+
+- Issue #182: Simplified the Home weekly summary by removing `big_3_deltas`
+  from the active contract. The Home dashboard no longer renders the Big 3
+  Strength Delta panel; `computeWeeklySummary` now returns only
+  classification counts and session status rows backed by the canonical
+  workout derivation layer.
+
 ## 0.41.0 - 2026-05-25
 
 - Issue #180: Built the canonical workout analytics derivation layer
