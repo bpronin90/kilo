@@ -148,7 +148,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
-  key (`kilo_tracked_lifts`), and the multi-note workout store
+  key (`kilo_tracked_lifts`), the optional user-profile key
+  (`kilo_user_profile`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
   documents now also carry persisted `exercise_classifications`,
   `skip_markers`, `attendance_flags`, and per-session
@@ -335,6 +336,7 @@ User types in weight input
 | `kilo_weight_goal` | Optional native weight-goal object |
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
+| `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
 | `kilo_current_workout_id` | String id of the selected current native workout note |

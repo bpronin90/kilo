@@ -325,6 +325,9 @@ Provides the global runtime contract required by the prototype:
   per-field outputs across empty/null entries, saved-goal and edited-goal
   paths, `start_weight` fallback, rolling-series limit behavior, pace-level
   nullability, and maintain-goal calorie guidance
+- verifies the calorie helper's TDEE path with Mifflin-St Jeor BMR, all five
+  activity multipliers, gain/loss/maintain target outputs, and incomplete
+  profile fallback behavior
 
 ### `mobile/tests/stats-screen.test.js`
 
@@ -340,8 +343,8 @@ Provides the global runtime contract required by the prototype:
   `mobile/storage/entries.js`
 - verifies empty-load behavior, newest-first sorting, update misses, workout
   note save/overwrite/clear behavior, tracked-exercise persistence across note
-  edits, and migration of legacy structured sessions into the canonical
-  workout-note document
+  edits, optional user-profile persistence, and migration of legacy structured
+  sessions into the canonical workout-note document
 - includes a contract-driven migration suite that verifies weighted entries,
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry
