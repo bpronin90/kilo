@@ -96,7 +96,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <View style={styles.classifGrid}>
             {[
               { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-              { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: Colors.caution || '#d4a017' },
+              { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: Colors.caution },
               { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
               { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
             ].map((item, idx) => (
@@ -116,8 +116,12 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           <View style={styles.weightCurrent}>
             <Text style={styles.weightLabel}>Latest Weight</Text>
             <Text style={styles.weightValue}>
-              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
-              <Text style={styles.weightUnit}> lb</Text>
+              {dashboardData.latestWeight ? (
+                <>
+                  {dashboardData.latestWeight}
+                  <Text style={styles.weightUnit}> lb</Text>
+                </>
+              ) : '—'}
             </Text>
           </View>
           <View style={styles.sparklineContainer}>
@@ -831,7 +835,7 @@ const styles = StyleSheet.create({
   },
   weeklyHero: {
     padding: 20,
-    backgroundColor: '#fffaf2',
+    backgroundColor: Colors.card,
     gap: 20,
   },
   weekBadgeRow: {
@@ -863,7 +867,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: Colors.cardBorder,
   },
   classifItem: {
     width: '45%',
