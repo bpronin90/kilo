@@ -224,7 +224,10 @@ The real native app path now has a modular React Native shell:
   header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`).
   The list now keeps per-exercise session classifications persisted on note
   save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`, `Regressing`),
-  surfaces estimated 1RM and Kilo max together,
+  parses workout-note sections once per render path, routes visible lift
+  signals plus exercise display casing through the shared
+  `deriveWorkoutNoteAnalytics()` layer used by the broader workout analytics
+  contract, surfaces estimated 1RM and Kilo max together,
   shows either latest top weight in pounds or best-set reps for bodyweight
   exercises, renders the trend column as `↑`, `↔`, `↓`, or `—` based on the
   latest comparable session pair, and now adds a subtle `⚠ Hit wall` /
