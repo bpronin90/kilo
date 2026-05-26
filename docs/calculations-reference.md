@@ -10,11 +10,13 @@ Human-readable explanations for how Kilo computes workout, weight, and goal numb
 
 > Where you see it: Home screen summary card
 
-How many sessions deep you are into the current routine. Looks at every exercise across all days and finds the one with the most session entries (including skipped ones). That count is your Weeks In.
+How many sessions deep you are into the current routine. Looks at every exercise across all days and finds the deepest exercise history. Depth comes from logged session entries, skipped session entries, and legacy plain-row history, with the deepest count winning across the routine. That count is your Weeks In.
 
 - Returns null if no routine is loaded, 0 if no entries are logged.
 
 **Example:** A routine where Squat has 4 session entries (including skips) and Bench has 3 entries → Weeks In = 4.
+
+If an exercise has mixed legacy and current history, plain rows still count. Example: 7 older plain rows plus 6 newer `session_entries` → Weeks In = 13.
 
 ### Exercise Classifications
 
@@ -115,7 +117,7 @@ Derived on read — recomputed on the Analytics screen render.
 
 > Where you see it: Home screen — weekly assessment panel
 
-Shapes stored workout data for the Home assessment panel. This is a thin consumer — it reads persisted fields from the workout note, not raw note text.
+Shapes workout data for the Home assessment panel. It mostly reads persisted workout-note fields, but it also checks parsed sections for activity presence.
 
 - **hasActivity:** true if any exercise in the parsed sections has at least one non-skipped entry or set.
 - **sessionStatusRows:** filters stored exercise classifications to only Progressing, Steady, and Regressing. Drops Initial, Inconsistent, and null. If no displayable classifications remain, the section hides.
@@ -274,7 +276,7 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 
 | Question | Answer |
 |----------|--------|
-| What does "Weeks In" mean? | The number of session entries your deepest exercise has, including skipped ones. It measures how far into the current routine you are. |
+| What does "Weeks In" mean? | The depth of your deepest exercise history, including skipped sessions and legacy plain-row history. It measures how far into the current routine you are. |
 | Why does my classification say Steady when I feel like I'm progressing? | Classifications compare total reps at your top weight between your two most recent logged sessions. If you increased reps on some sets but decreased on others such that the total stayed the same, it reads as Steady. |
 | What triggers a "hit wall" nudge? | When the last set at your heaviest weight in a session has 3+ fewer reps than the first set at that weight. It means fatigue cost you significant reps within the same session. |
 | How is my 1k total calculated? | It sums the estimated 1-rep max (Epley formula) of your three selected compound lifts. If any of the three has no logged data, the total shows as "—". |
