@@ -317,13 +317,16 @@ export function resolveGoalCurrentWeight(entries, goal, { goalEditing = false, g
 
 // Returns the start of a rolling N-day window ending on referenceDate, as 'YYYY-MM-DD'.
 // Inclusive on both ends: rollingWindowStart(ref, 30) covers ref-date minus 29 days.
-// Use for attendance window calculations (e.g., 30-day skip detection).
 export function rollingWindowStart(referenceDate = new Date(), days = 30) {
   const pad = n => String(n).padStart(2, '0');
   const start = new Date(referenceDate);
   start.setDate(start.getDate() - (days - 1)); // setDate handles DST correctly
   return `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
 }
+
+// Session-depth window for repeated_weekday_skip detection.
+// Counts only skips within the last N session cycles for each day slot.
+export const REPEATED_WEEKDAY_SKIP_SESSION_WINDOW = 8;
 
 // ── Routine depth ─────────────────────────────────────────────────────────────
 
@@ -490,11 +493,8 @@ function _exerciseIdForName(name) {
 // Scan parsed sections for exercise-level and day-level skip markers plus
 // derived attendance flags.
 //
-// referenceDate: used as the upper bound of the 30-day rolling window for
-//   weekday attendance flags (defaults to today).
-//
 // exercise_skips: { exercise_name, exercise_id, session_index }[]
-//   One entry per skipped session_entry position, excluding asterisked exercises.
+//   One entry per skipped session_entry position.
 //
 // day_skips: { session_index, weekday: string|null, date: 'YYYY-MM-DD'|null }[]
 //   Session positions where all exercises present at that index in the same
@@ -505,19 +505,19 @@ function _exerciseIdForName(name) {
 //   { type: 'consecutive_exercise_skips', exercise_name, exercise_id, consecutive_count }
 //     — 2+ consecutive skipped session entries for one exercise
 //   { type: 'repeated_weekday_skip', weekday, skip_count }
-//     — 2+ fully-skipped sessions on the same weekday within the 30-day window;
-//       only counted when the day_skip carries a parseable ISO date
-export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
+//     — 2+ fully-skipped sessions on the same weekday within the last
+//       REPEATED_WEEKDAY_SKIP_SESSION_WINDOW session cycles for that day slot.
+//       Weekday is inferred from section heading (day name or ISO date); no
+//       calendar date required — detection is purely session-order based.
+export function deriveSkipData(sections) {
   const exercise_skips = [];
   const day_skips = [];
   const attendance_flags = [];
 
-  const pad = n => String(n).padStart(2, '0');
-  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const refStr = localStr(referenceDate);
-  const cutStr = rollingWindowStart(referenceDate, 30);
-
-  const weekdayCounts = {};
+  // weekday → session_index[] of fully-skipped day slots
+  const weekdaySkipIndices = {};
+  // weekday → max session_entries.length seen across sections for that day slot
+  const weekdayMaxDepth = {};
   // Keyed by exercise identity (catalog id, or canonical name for non-catalog exercises).
   // Accumulates session_entries in section order for cross-section consecutive detection.
   const exerciseHistories = new Map();
@@ -530,6 +530,10 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
 
     const { weekday, date: headingDate } = _headingInfo(section.heading);
     const maxLen = Math.max(...eligible.map(ex => ex.session_entries.length));
+
+    if (weekday) {
+      weekdayMaxDepth[weekday] = Math.max(weekdayMaxDepth[weekday] || 0, maxLen);
+    }
 
     for (const ex of eligible) {
       const exId = _exerciseIdForName(ex.name);
@@ -555,9 +559,9 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
 
       day_skips.push({ session_index: i, weekday, date: headingDate });
 
-      // Count toward weekday flag only when date is known and within the 30-day window.
-      if (weekday && headingDate && headingDate >= cutStr && headingDate <= refStr) {
-        weekdayCounts[weekday] = (weekdayCounts[weekday] || 0) + 1;
+      if (weekday) {
+        if (!weekdaySkipIndices[weekday]) weekdaySkipIndices[weekday] = [];
+        weekdaySkipIndices[weekday].push(i);
       }
     }
   }
@@ -584,9 +588,13 @@ export function deriveSkipData(sections, { referenceDate = new Date() } = {}) {
     }
   }
 
-  for (const [weekday, count] of Object.entries(weekdayCounts)) {
-    if (count >= 2) {
-      attendance_flags.push({ type: 'repeated_weekday_skip', weekday, skip_count: count });
+  // Repeated weekday skip: session-depth window (no calendar dates required).
+  for (const [weekday, skipIndices] of Object.entries(weekdaySkipIndices)) {
+    const maxDepth = weekdayMaxDepth[weekday] || 0;
+    const windowStart = Math.max(0, maxDepth - REPEATED_WEEKDAY_SKIP_SESSION_WINDOW);
+    const recentSkips = skipIndices.filter(idx => idx >= windowStart);
+    if (recentSkips.length >= 2) {
+      attendance_flags.push({ type: 'repeated_weekday_skip', weekday, skip_count: recentSkips.length });
     }
   }
 
@@ -746,6 +754,28 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
       const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
       return { ...sig, kilo_max: kilo_max_adjusted };
     }),
+  };
+}
+
+// ── Canonical workout analytics derivation layer ──────────────────────────────
+
+// Derives the full set of shared workout analytics from parsed sections.
+// This is the single canonical entry point for all workout analytics consumers.
+//
+// sections: output of parseWorkoutNote(noteText).sections
+// trackedNames: string[] of exercise names to classify and track
+//
+// Returns:
+//   weeksIn:         session depth (routine depth) — max session_entries.length
+//   classifications: { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
+//   skipData:        { exercise_skips, day_skips, attendance_flags }
+//   repDropOffFlags: { [normalizedName]: { [sessionIndex]: 'hit_wall'|null } }
+export function deriveWorkoutNoteAnalytics(sections, trackedNames) {
+  return {
+    weeksIn: computeWeeksIn(sections),
+    classifications: classifyExerciseSessions(sections, trackedNames),
+    skipData: deriveSkipData(sections),
+    repDropOffFlags: deriveRepDropOffFlags(sections, trackedNames),
   };
 }
 

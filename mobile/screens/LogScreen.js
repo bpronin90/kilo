@@ -20,7 +20,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
-import { normalizeLiftName, classifyExerciseSessions, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveRepDropOffFlags, getLatestRepDropOff } from '../lib/data';
+import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
 import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes } from '../hooks/useEntries';
 
@@ -188,10 +188,12 @@ export function LogScreen({
         }),
         ...(currentId ? [] : savedSections),
       ];
-      const exercise_classifications = classifyExerciseSessions(allSections, trackedNames);
+      // Cross-note analytics: classifications and rep-drop-off use full session history.
+      const { classifications: exercise_classifications, repDropOffFlags: rep_drop_off_flags } =
+        deriveWorkoutNoteAnalytics(allSections, trackedNames);
+      // Skip tracking: scoped to the current note being saved.
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const skip_markers = { exercise_skips, day_skips };
-      const rep_drop_off_flags = deriveRepDropOffFlags(allSections, trackedNames);
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
