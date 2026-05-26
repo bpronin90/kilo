@@ -233,7 +233,9 @@ The real native app path now has a modular React Native shell:
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
   summary averages, alongside a `1K Progress` card, strength-only 1k
   slot selection, and a `Progressive Overload` list with a single sticky
-  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`). Its
+  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`). It now
+  uses the shared `ScreenShell` component for a consistent layout and
+  safe-area handling across all analytics sections. Its
   weight summary card now reads the displayed latest weigh-in, pace flag, and
   rolling-series chart data from the same canonical
   `deriveWeightGoalAnalytics()` path used by Home and Weight, so backdated or
@@ -310,12 +312,12 @@ before persistence, and the native Log flow now saves through the current item
 in a local multi-note workout store instead of requiring a structured
 title-and-detail workout entry form. Saved native weight entries, workout note
 items, and the selected current workout all reload across app restarts through
-the native hook/storage layer. The shared native `ScreenShell` now owns the
-top-spacing decision across Home, Log, Weight, Analytics, and More/Help by
-wrapping the shared header in `SafeAreaView`, applying one Android
-status-bar-aware offset there, and removing the old global top container
-padding so all tabs sit slightly higher without notch or status-bar clipping.
-Its no-title header state now uses a plain text `Kilo` title plus a quiet
+the native hook/storage layer. The native app shell now owns the stable
+top/bottom safe-area boundaries in `mobile/App.js`, with an Android-aware top
+cap for the status bar/notch and an absolute bottom safe-area wrapper for the
+tab bar, while `ScreenShell` standardizes the in-screen content padding and
+header layout used across Home, Log, Weight, Analytics, and More/Help. Its
+no-title header state now uses a plain text `Kilo` title plus a quiet
 `vX.Y.Z` version label instead of the heavier logo/wordmark-and-badge
 treatment. The
 native Log and Weight flows now keep save actions responsive on the first tap

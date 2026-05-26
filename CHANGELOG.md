@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.42.2 - 2026-05-26
+
+- Issue #187: Standardized the native app shell safe-area and screen-container
+  rules by moving stable top/bottom safe-area ownership into `mobile/App.js`,
+  migrating Analytics onto the shared `ScreenShell` layout contract, and
+  aligning current-state documentation during reviewer closeout.
+
 ## 0.42.1 - 2026-05-26
 
 - Issue #186: Added native canonical data-contract coverage for the stabilized
