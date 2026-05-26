@@ -757,6 +757,54 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
   };
 }
 
+// ── Canonical weight and goal derivation layer ────────────────────────────────
+
+// Derives the full set of shared weight and goal analytics from raw entries and persisted goal state.
+// This is the single canonical entry point for all weight/goal consumers (Weight, Home, Stats).
+//
+// entries:      weight entries sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }
+// goal:         persisted goal state { target_weight, target_date, start_weight } or null
+// editState:    optional { goalEditing: bool, goalTargetWeight: string, goalTargetDate: string, goalStartWeight: string }
+// referenceDate: optional Date for testability (defaults to today)
+//
+// Returns:
+//   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight }
+//   paceLevel:       'notable' | 'spike' | null
+//   rollingSeries:   { value, label, unit }[]
+//   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings } | null
+//   calorieEstimate: { calories_per_day, label } | null
+export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referenceDate = new Date()) {
+  const {
+    goalEditing = false,
+    goalTargetWeight = '',
+    goalTargetDate = '',
+    goalStartWeight = '',
+  } = editState;
+
+  const safeEntries = entries || [];
+  const trendSummary = computeWeightTrendSummary(safeEntries, referenceDate);
+  const paceLevel = computeWeightPaceLevel(safeEntries);
+  const rollingSeries = computeWeightRollingAverageSeries(safeEntries, 7);
+
+  const resolvedCurrentWeight = resolveGoalCurrentWeight(safeEntries, goal, { goalEditing, goalStartWeight });
+  const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
+  const td = !goalEditing && goal ? goal.target_date : goalTargetDate;
+
+  let goalInfo = null;
+  let calorieEstimate = null;
+  if (resolvedCurrentWeight !== null && !isNaN(tw) && td) {
+    try {
+      goalInfo = computeWeightGoal({ currentWeight: resolvedCurrentWeight, targetWeight: tw, targetDate: td, referenceDate });
+      calorieEstimate = computeCalorieEstimate(goalInfo.required_weekly_pace, goalInfo.direction);
+    } catch {
+      goalInfo = null;
+      calorieEstimate = null;
+    }
+  }
+
+  return { trendSummary, paceLevel, rollingSeries, goalInfo, calorieEstimate };
+}
+
 // ── Canonical workout analytics derivation layer ──────────────────────────────
 
 // Derives the full set of shared workout analytics from parsed sections.

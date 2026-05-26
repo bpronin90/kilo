@@ -7,20 +7,7 @@ import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
 import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
-
-const MS_DAY = 86400000;
-
-function formatDayKey(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function meanWeight(entries) {
-  return entries.length === 0
-    ? null
-    : entries.reduce((sum, entry) => sum + entry.weight_value, 0) / entries.length;
-}
+import { deriveWeightGoalAnalytics } from '../lib/data';
 
 function formatTrendValue(value) {
   return value !== null ? `${value.toFixed(1)} lb` : '-';
@@ -37,32 +24,6 @@ function formatTrendCue(currentValue, priorValue) {
   if (currentValue > priorValue) return '↑ Gaining';
   if (currentValue < priorValue) return '↓ Losing';
   return '→ Stable';
-}
-
-function deriveTrendSummary(entries, referenceDate = new Date()) {
-  const base = computeWeightTrends(entries, referenceDate);
-
-  // Trend windows operate on entry.date, the normalized YYYY-MM-DD day key
-  // already used by the shared weight-trend helpers. History rows still
-  // display entry.logged_at as the recorded timestamp shown to the user.
-  // This screen only derives the additional comparison fields the merged
-  // Trends card needs while staying within #156's Allowed Files scope.
-  const prior7Start = formatDayKey(new Date(referenceDate - 13 * MS_DAY));
-  const prior7End = formatDayKey(new Date(referenceDate - 7 * MS_DAY));
-  const prior30Start = formatDayKey(new Date(referenceDate - 59 * MS_DAY));
-  const prior30End = formatDayKey(new Date(referenceDate - 30 * MS_DAY));
-
-  const prior7Entries = entries.filter((entry) => entry.date >= prior7Start && entry.date <= prior7End);
-  const prior30Entries = entries.filter((entry) => entry.date >= prior30Start && entry.date <= prior30End);
-  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-
-  return {
-    ...base,
-    priorAvg7: meanWeight(prior7Entries),
-    priorAvg30: meanWeight(prior30Entries),
-    currentWeight: byDate[0]?.weight_value ?? null,
-    priorDayWeight: byDate[1]?.weight_value ?? null,
-  };
 }
 
 function buildTrendSections(trends, paceLevel) {
@@ -90,12 +51,13 @@ function buildTrendSections(trends, paceLevel) {
   ];
 }
 
-function GoalDerived({ info }) {
+function GoalDerived({ info, calorieEstimate }) {
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
 
   const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
-  const { calories_per_day, label: calLabel } = computeCalorieEstimate(required_weekly_pace, direction);
+  const calories_per_day = calorieEstimate?.calories_per_day ?? null;
+  const calLabel = calorieEstimate?.label ?? null;
 
   const isMaintain = direction === 'maintain';
   const hasPace = required_weekly_pace !== null;
@@ -178,8 +140,15 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const trends = useMemo(() => deriveTrendSummary(entries), [entries]);
-  const paceLevel = useMemo(() => computeWeightPaceLevel(entries), [entries]);
+  const {
+    trendSummary: trends,
+    paceLevel,
+    goalInfo,
+    calorieEstimate,
+  } = useMemo(
+    () => deriveWeightGoalAnalytics(entries, goal, { goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight }),
+    [entries, goal, goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight]
+  );
   const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
 
   useEffect(() => {
@@ -190,21 +159,6 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     }
   }, [goal, goalEditing]);
 
-  const currentWeight = entries.length > 0 ? entries[0].weight_value : null;
-
-  const goalInfo = useMemo(() => {
-    const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
-    const td = !goalEditing && goal ? goal.target_date : goalTargetDate;
-    const cw = currentWeight
-      ?? (!goalEditing && goal ? (goal.start_weight ?? null) : (parseFloat(goalStartWeight) || null));
-    if (!cw || isNaN(tw) || !td) return null;
-    try {
-      return computeWeightGoal({ currentWeight: cw, targetWeight: tw, targetDate: td });
-    } catch {
-      return null;
-    }
-  }, [currentWeight, goalTargetWeight, goalTargetDate, goalStartWeight, goal, goalEditing]);
-
   const handleSaveGoal = async () => {
     setGoalError('');
     const tw = parseFloat(goalTargetWeight);
@@ -212,8 +166,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalError('Enter a valid target weight.');
       return;
     }
-    const startW = currentWeight ?? parseFloat(goalStartWeight);
-    if (!currentWeight && (isNaN(startW) || startW <= 0)) {
+    const startW = trends.currentWeight ?? parseFloat(goalStartWeight);
+    if (!trends.currentWeight && (isNaN(startW) || startW <= 0)) {
       setGoalError('Enter your current weight.');
       return;
     }
@@ -403,7 +357,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         {(!goal || goalEditing) ? (
           <View style={styles.goalForm}>
             {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
-            {!currentWeight && (
+            {!trends.currentWeight && (
               <>
                 <Text style={styles.inputLabel}>Current weight (lb)</Text>
                 <TextInput
@@ -446,7 +400,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             {goalInfo && (
               <View style={styles.formDerived}>
                 <View style={styles.goalDivider} />
-                <GoalDerived info={goalInfo} />
+                <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
                 <View style={[styles.goalDivider, { marginBottom: 8 }]} />
               </View>
             )}
@@ -467,7 +421,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
             
             <View style={styles.goalDivider} />
             
-            {goalInfo && <GoalDerived info={goalInfo} />}
+            {goalInfo && <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />}
           </View>
         )}
       </Card>

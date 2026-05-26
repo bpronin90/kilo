@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
+import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -63,34 +63,26 @@ export function StatsScreen({ multiplier, section }) {
     }
   }
 
-  // ... weightSummary and rollingSeries remain same but use weightEntries
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries } = useMemo(
+    () => deriveWeightGoalAnalytics(weightEntries, null),
+    [weightEntries]
+  );
+
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
-      return {
-        latestWeight: '—',
-        weightCount: '0',
-        avg7: '—',
-        avg30: '—',
-        paceFlag: null,
-        paceLevel: null,
-      };
+      return { latestWeight: '—', weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
     }
-    const trends = computeWeightTrends(weightEntries);
-    const latest = weightEntries[0];
-    const unit = latest?.weight_unit || 'lb';
+    const canonicalLatest = [...weightEntries].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const unit = canonicalLatest?.weight_unit || 'lb';
     return {
-      latestWeight: latest ? `${latest.weight_value} ${unit}` : '—',
+      latestWeight: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight} ${unit}` : '—',
       weightCount: String(weightEntries.length),
-      avg7:  trends.avg7  !== null ? `${trends.avg7.toFixed(1)} ${unit}`  : '—',
-      avg30: trends.avg30 !== null ? `${trends.avg30.toFixed(1)} ${unit}` : '—',
-      paceFlag: trends.paceFlag,
-      paceLevel: computeWeightPaceLevel(weightEntries),
+      avg7:  weightTrends.avg7  !== null ? `${weightTrends.avg7.toFixed(1)} ${unit}`  : '—',
+      avg30: weightTrends.avg30 !== null ? `${weightTrends.avg30.toFixed(1)} ${unit}` : '—',
+      paceFlag: weightTrends.paceFlag,
+      paceLevel: weightPaceLevel,
     };
-  }, [weightEntries]);
-
-  const rollingSeries = useMemo(() => {
-    return computeWeightRollingAverageSeries(weightEntries, 7);
-  }, [weightEntries]);
+  }, [weightEntries, weightTrends, weightPaceLevel]);
 
   const oneKSelections = useMemo(() => ({
     ...DEFAULT_1K_EXERCISES,

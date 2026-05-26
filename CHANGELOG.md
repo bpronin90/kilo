@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.4 - 2026-05-25
+
+- Issue #184: Added `deriveWeightGoalAnalytics()` as the canonical native
+  weight/goal derivation layer, migrated Home, Weight, and Analytics to the
+  shared contract for latest weight, trends, pace, rolling averages, and goal
+  guidance, and extended the native data-suite coverage to pin the shared
+  output shape.
+
 ## 0.41.3 - 2026-05-25
 
 - Issue #183: Finished the workout-consumer migration by routing Analytics
