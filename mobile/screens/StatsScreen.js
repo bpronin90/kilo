@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, LineChart } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
@@ -138,12 +139,12 @@ export function StatsScreen({ multiplier, section }) {
   const hasSignals = !isNotesLoading && !isTrackedLoading && analytics?.signals?.length > 0;
 
   return (
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.container} stickyHeaderIndices={[4]}>
-      <View style={styles.shellHeader}>
-        <Text style={styles.shellTitle}>Analytics</Text>
-        <Text style={styles.shellSubtitle}>Insights derived from your logs.</Text>
-      </View>
-
+    <ScreenShell
+      ref={scrollRef}
+      title="Analytics"
+      subtitle="Insights derived from your logs."
+      stickyHeaderIndices={[4]}
+    >
       <View onLayout={handleWeightLayout}>
         <SectionTitle>Weight Trends</SectionTitle>
       </View>
@@ -310,7 +311,7 @@ export function StatsScreen({ multiplier, section }) {
           Tap the bookmark on any exercise in your note to track it here.
         </Text>
       )}
-    </ScrollView>
+    </ScreenShell>
   );
 }
 
@@ -347,26 +348,6 @@ function overloadColor(trend) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    paddingBottom: 120,
-    gap: 16,
-  },
-  shellHeader: {
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 8 : 16,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  shellTitle: {
-    fontSize: 34,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  shellSubtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.textMuted,
-  },
   strengthSection: {
     gap: 16,
   },
@@ -552,7 +533,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   signalStickyHeader: {
-    backgroundColor: '#f4efe5',
+    backgroundColor: Colors.background,
     paddingBottom: 2,
   },
   signalColumnHeader: {

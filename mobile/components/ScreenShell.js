@@ -5,7 +5,14 @@ import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
 
-export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children }, ref) => {
+/**
+ * Shared Shell Contract:
+ * - Horizontal padding: 16px (standard boundary for all screen content)
+ * - Vertical gap: 16px (consistent spacing between top-level components/cards)
+ * - Bottom padding: 120px (ensures content clears the absolute TabBar and bottom safe area)
+ * - Top safe area: Handled via localized SafeAreaView in the headerWrapper
+ */
+export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices }, ref) => {
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
 
@@ -17,13 +24,14 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   return (
     <ScrollView 
       ref={ref}
-      style={style}
+      style={[styles.scroll, style]}
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
       onScroll={handleScroll}
       scrollEventThrottle={16}
+      stickyHeaderIndices={stickyHeaderIndices}
     >
-      <SafeAreaView style={styles.headerWrapper}>
+      <View style={styles.headerWrapper}>
         <View style={styles.header}>
           {!title && (
             <View style={styles.titleRow}>
@@ -34,27 +42,30 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
           {title && (
             <View style={styles.titleRow}>
               <View style={styles.titleGroup}>
-                <Text style={styles.title}>{title}</Text>
+                {typeof title === 'string' ? <Text style={styles.title}>{title}</Text> : title}
               </View>
               {headerRight}
             </View>
           )}
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
-      </SafeAreaView>
+      </View>
       {children}
     </ScrollView>
   );
 });
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
   container: {
     paddingHorizontal: 16,
-    paddingBottom: 120, // Space for tab bar
+    paddingBottom: 120, // Space for tab bar + safe area
     gap: 16,
   },
   headerWrapper: {
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
+    // Spacing handled by App.js safe area cap
   },
   header: {
     paddingTop: 8,

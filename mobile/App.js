@@ -1,6 +1,6 @@
-import { StatusBar } from 'expo-status-bar';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useState, useRef } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert, StatusBar } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -235,34 +235,48 @@ export default function App() {
 
   return (
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar style="dark" />
+      <View style={styles.appContainer}>
+        <SafeAreaView style={styles.topSafeArea} />
+        <ExpoStatusBar style="dark" />
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'height' : undefined}
         >
           <View style={styles.content}>{renderContent()}</View>
+        </KeyboardAvoidingView>
+        <SafeAreaView style={styles.tabBarSafeArea} pointerEvents="box-none">
           <TabBar
             tabs={TABS}
             activeTab={activeTab}
             onTabPress={handleTabPress}
             isScrolling={isScrolling}
           />
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     </ScrollContext.Provider>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  appContainer: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  topSafeArea: {
+    flex: 0,
+    backgroundColor: Colors.background,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 30) : 0,
   },
   container: {
     flex: 1,
   },
   content: {
     flex: 1,
+  },
+  tabBarSafeArea: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
 });
