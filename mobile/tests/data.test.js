@@ -1771,3 +1771,74 @@ describe('deriveWorkoutNoteAnalytics', () => {
   });
 });
 
+// ── deriveWorkoutNoteAnalytics weeksIn — progression-depth contract (HomeScreen path) ──
+//
+// HomeScreen consumes weeksIn via deriveWorkoutNoteAnalytics(sections, []).
+// These cases pin the session-depth semantics at the canonical entry point.
+
+describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth contract', () => {
+  function depthSection(name, sessionCount) {
+    const session_entries = Array.from({ length: sessionCount }, () => ({
+      skipped: false, raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }],
+    }));
+    return {
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name, rows: [], sets: [], unparsed_rows: [], session_entries }],
+    };
+  }
+
+  test('null sections → null (no routine loaded)', () => {
+    const { weeksIn } = deriveWorkoutNoteAnalytics(null, []);
+    expect(weeksIn).toBeNull();
+  });
+
+  test('empty sections → 0 (routine loaded, nothing logged)', () => {
+    const { weeksIn } = deriveWorkoutNoteAnalytics([], []);
+    expect(weeksIn).toBe(0);
+  });
+
+  test('single exercise, 1 session → depth 1', () => {
+    const { weeksIn } = deriveWorkoutNoteAnalytics([depthSection('Squat', 1)], []);
+    expect(weeksIn).toBe(1);
+  });
+
+  test('single exercise, 8 sessions → depth 8', () => {
+    const { weeksIn } = deriveWorkoutNoteAnalytics([depthSection('Squat', 8)], []);
+    expect(weeksIn).toBe(8);
+  });
+
+  test('multiple exercises — weeksIn is the max session depth across all', () => {
+    const sections = [
+      { heading: null, subheading: null, kind: 'general', exercises: [
+        { name: 'Squat', rows: [], sets: [], unparsed_rows: [], session_entries: Array(5).fill({ skipped: false, raw: 'x', sets: [] }) },
+        { name: 'Bench Press', rows: [], sets: [], unparsed_rows: [], session_entries: Array(9).fill({ skipped: false, raw: 'x', sets: [] }) },
+        { name: 'Deadlift', rows: [], sets: [], unparsed_rows: [], session_entries: Array(3).fill({ skipped: false, raw: 'x', sets: [] }) },
+      ]},
+    ];
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
+    expect(weeksIn).toBe(9);
+  });
+
+  test('skipped sessions count toward depth', () => {
+    const session_entries = [
+      { skipped: true, raw: '-', sets: [] },
+      { skipped: false, raw: '135x5', sets: [] },
+      { skipped: true, raw: '-', sets: [] },
+    ];
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name: 'Squat', rows: [], sets: [], unparsed_rows: [], session_entries }],
+    }];
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
+    expect(weeksIn).toBe(3);
+  });
+
+  test('exercise with only bare rows (no session_entries) contributes 0', () => {
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name: 'Squat', rows: [{ raw: '135x5' }], sets: [], unparsed_rows: [], session_entries: [] }],
+    }];
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
+    expect(weeksIn).toBe(0);
+  });
+});

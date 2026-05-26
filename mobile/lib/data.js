@@ -771,6 +771,16 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 //   skipData:        { exercise_skips, day_skips, attendance_flags }
 //   repDropOffFlags: { [normalizedName]: { [sessionIndex]: 'hit_wall'|null } }
 export function deriveWorkoutNoteAnalytics(sections, trackedNames) {
+  if (!sections) {
+    const emptyClassif = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), null]));
+    const emptyFlags = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), {}]));
+    return {
+      weeksIn: null,
+      classifications: emptyClassif,
+      skipData: { exercise_skips: [], day_skips: [], attendance_flags: [] },
+      repDropOffFlags: emptyFlags,
+    };
+  }
   return {
     weeksIn: computeWeeksIn(sections),
     classifications: classifyExerciseSessions(sections, trackedNames),

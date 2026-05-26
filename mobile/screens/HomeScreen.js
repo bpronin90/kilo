@@ -11,7 +11,7 @@ import {
   computeWeightRollingAverageSeries,
   derive1kTotal,
   DEFAULT_1K_EXERCISES,
-  computeWeeksIn,
+  deriveWorkoutNoteAnalytics,
   computeWeeklySummary,
 } from '../lib/data';
 import pkg from '../package.json';
@@ -57,7 +57,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
     const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
     const latestWeight = weightEntries[0]?.weight_value;
-    const weeksIn = computeWeeksIn(sections);
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
 
