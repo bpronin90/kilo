@@ -1,6 +1,7 @@
 # MVP4.5 Roadmap
 
-Status: active planning draft.
+Status: active stabilization roadmap. Phase 3 / Task 9 is complete; Phase 4
+contract hardening remains in progress.
 
 This roadmap starts after MVP4.0 and is intentionally narrower in one sense
 and deeper in another:
@@ -331,6 +332,8 @@ Ordered tasks:
   - `effort:heavy`
 
 #### Task 9: Migrate Weight, Home, and Analytics to the shared weight layer
+
+Status: complete via issue `#185`.
 
 - **Title:** `Phase 3 / Task 9: Migrate Weight, Home, and Analytics to shared weight derivations`
 - **Goal:** finish the weight-side refactor by making all consumers read the

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.7 - 2026-05-26
+
+- Issue #185: Finished the native weight-consumer migration by removing the
+  last `StatsScreen` screen-local weight reshaping path so Weight, Home, and
+  Analytics all render from the shared `deriveWeightGoalAnalytics()` contract,
+  added targeted rendered-screen regression coverage for the Analytics weight
+  summary path, and aligned the architecture, testing, calculations-reference,
+  and MVP4.5 roadmap docs during reviewer closeout.
+
 ## 0.41.6 - 2026-05-26
 
 - Issue #171: Published the human-readable calculations reference with verified

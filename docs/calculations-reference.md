@@ -127,7 +127,7 @@ Shapes stored workout data for the Home assessment panel. This is a thin consume
 
 ### Weight Trends
 
-> Where you see it: Home screen weight display, Weight screen
+> Where you see it: Home screen weight display, Weight screen, Analytics screen weight card
 
 Computes rolling averages from weight entries (sorted newest-first):
 
@@ -157,7 +157,7 @@ Direction is `gain` or `loss` based on sign.
 
 ### Rolling Average Series
 
-> Where you see it: Home screen weight chart (sparkline)
+> Where you see it: Home screen weight chart (sparkline), Analytics screen weight chart
 
 Computes a 7-day rolling average anchored at each of the last 7 distinct weigh-in dates. Each point represents the 7-day average as of that date. Points with no average (no entries in window) are omitted.
 
