@@ -79,9 +79,12 @@ Current limitation:
   history, plus weight-goal persistence/derivation coverage, explicit
   weight-pace threshold boundary coverage, canonical goal current-weight
   resolution coverage (latest-entry ordering plus no-entry fallback paths),
-  shared weight trend-summary helper coverage, per-session rep-drop-off flag
-  derivation coverage, weekly-summary stored-input shaping coverage (session
-  presence and persisted classification counts),
+  shared weight trend-summary helper coverage, direct
+  `deriveWeightGoalAnalytics()` canonical contract coverage for empty/null
+  entries, saved-goal/edit-state paths, rolling-series limits, and maintain
+  handling, per-session rep-drop-off flag derivation coverage, weekly-summary
+  stored-input shaping coverage (session presence and persisted
+  classification counts),
   and malformed backup rejection coverage for the optional `weight_goal` v2
   import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
@@ -306,6 +309,10 @@ Provides the global runtime contract required by the prototype:
   `deriveWorkoutNoteAnalytics(sections, []).weeksIn` path, covering
   null-sections, empty-sections, single/multi-exercise depth, skipped
   sessions, and bare-row-only exercises
+- verifies `deriveWeightGoalAnalytics()` canonical weight/goal return shape and
+  per-field outputs across empty/null entries, saved-goal and edited-goal
+  paths, `start_weight` fallback, rolling-series limit behavior, pace-level
+  nullability, and maintain-goal calorie guidance
 
 ### `mobile/tests/storage.test.js`
 

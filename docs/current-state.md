@@ -139,7 +139,9 @@ The real native app path now has a modular React Native shell:
   analytics inputs rather than re-deriving them, shows a session-based empty
   state when the current routine has no logged sessions, renders a 2x2
   classification-count grid from stored `exercise_classifications` when that
-  field exists,
+  field exists, and now reads its latest-weight summary plus weight-trend card
+  data from the shared `deriveWeightGoalAnalytics()` layer used by the broader
+  native weight/goal contract,
   and provides a discrete `Full history and insights` link into Analytics, a
   renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
   chart, and the exported
@@ -212,6 +214,9 @@ The real native app path now has a modular React Native shell:
   render from the saved goal state. The Weight tab now reads top-to-bottom as
   weight entry, `Goals`, `Trends`, and `History`, with `Goals` / `Trends`
   using the shared section-heading treatment and a merged Trends card that
+  now consumes the same canonical `deriveWeightGoalAnalytics()` output used by
+  Home and Analytics for trend summary, pace severity, goal guidance, and
+  calorie guidance, and
   surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
@@ -221,7 +226,12 @@ The real native app path now has a modular React Native shell:
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
   summary averages, alongside a `1K Progress` card, strength-only 1k
   slot selection, and a `Progressive Overload` list with a single sticky
-  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`).
+  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`). Its
+  weight summary card now reads the displayed latest weigh-in, pace flag, and
+  rolling-series chart data from the same canonical
+  `deriveWeightGoalAnalytics()` path used by Home and Weight, so backdated or
+  out-of-order weight entries resolve consistently across all three native
+  consumers.
   The list now keeps per-exercise session classifications persisted on note
   save (`Initial`, `Progressing`, `Stalled`, `Inconsistent`, `Regressing`),
   parses workout-note sections once per render path, routes visible lift
