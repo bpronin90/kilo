@@ -80,69 +80,75 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       title={<KiloWordmark />}
       subtitle="Current routine progress."
     >
-      {/* 1. Weekly Summary — consolidated hero panel */}
+      {/* ══ TIER 1: Weekly Summary ══ */}
       <Card style={styles.weeklyHero}>
-        <View style={styles.weekBadgeRow}>
-          <View style={styles.weekBadge}>
-            <Text style={styles.weekBadgeText}>
-              WEEK <Text style={styles.weekBadgeNum}>{dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}</Text>
+        {/* Unified Hero: Week + Weight Focal Point */}
+        <View style={styles.heroMain}>
+          <View style={styles.heroHeader}>
+            <Text style={styles.weekLabel}>
+              Week <Text style={styles.weekValueNum}>{dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}</Text>
             </Text>
+          </View>
+          
+          <View style={styles.weightHeroRow}>
+            <View style={styles.weightFocal}>
+              <Text style={styles.weightValue}>
+                {dashboardData.latestWeight ? (
+                  <>
+                    {dashboardData.latestWeight}
+                    <Text style={styles.weightUnit}> lb</Text>
+                  </>
+                ) : (
+                  <Text style={styles.placeholderText}>—</Text>
+                )}
+              </Text>
+              <Text style={styles.weightCaption}>Current Body Weight</Text>
+            </View>
+            <View style={styles.trendFocal}>
+              <LineChart
+                data={dashboardData.weightSeries}
+                color={Colors.success}
+                height={48}
+                paddingVertical={4}
+                paddingHorizontal={0}
+                hideHeader
+              />
+              <Text style={styles.trendLabel}>7-Day Trend</Text>
+            </View>
           </View>
         </View>
 
+        {/* Supporting Context: Classifications */}
         {!dashboardData.weeklySummary.hasActivity ? (
-          <Text style={styles.emptyText}>No sessions logged yet.</Text>
+          <View style={styles.heroEmpty}>
+            <Text style={styles.emptyText}>No sessions logged this week.</Text>
+          </View>
         ) : (
-          <View style={styles.classifGrid}>
-            {[
-              { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-              { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: Colors.caution },
-              { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
-              { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
-            ].map((item, idx) => (
-              <View key={idx} style={styles.classifItem}>
-                <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
-                <Text style={styles.classifLabel}>
-                  <Text style={styles.classifCount}>{item.count}</Text> {item.label}
-                </Text>
-              </View>
-            ))}
+          <View style={styles.classifSection}>
+            <View style={styles.classifGrid}>
+              {[
+                { label: 'Progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+                { label: 'Steady', count: dashboardData.weeklySummary.classifications.stalled, color: Colors.caution },
+                { label: 'Regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+                { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+              ].map((item, idx) => (
+                <View key={idx} style={styles.classifItem}>
+                  <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.classifLabel}>
+                    <Text style={styles.classifCount}>{item.count}</Text> {item.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
-        <View style={styles.divider} />
-
-        <View style={styles.weightRow}>
-          <View style={styles.weightCurrent}>
-            <Text style={styles.weightLabel}>Latest Weight</Text>
-            <Text style={styles.weightValue}>
-              {dashboardData.latestWeight ? (
-                <>
-                  {dashboardData.latestWeight}
-                  <Text style={styles.weightUnit}> lb</Text>
-                </>
-              ) : '—'}
-            </Text>
-          </View>
-          <View style={styles.sparklineContainer}>
-            <Text style={styles.sparklineLabel}>7-Day Trend</Text>
-            <LineChart
-              data={dashboardData.weightSeries}
-              color={Colors.success}
-              height={40}
-              paddingVertical={4}
-              paddingHorizontal={0}
-              hideHeader
-            />
-          </View>
-        </View>
-
-        <Pressable onPress={() => onNavigate('Stats')} style={styles.analyticsLink}>
+        <Pressable onPress={() => onNavigate('Stats')} style={styles.heroFooter}>
           <Text style={styles.analyticsLinkText}>Full history and insights →</Text>
         </Pressable>
       </Card>
 
-      {/* 2. Weight Goal — conditional panel */}
+      {/* ══ TIER 2: Weight Goal ══ */}
       {dashboardData.goalInfo ? (
         <>
           <SectionTitle>Weight Goal</SectionTitle>
@@ -154,13 +160,13 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               <Text style={styles.goalWeeks}>{dashboardData.goalInfo.weeks_remaining} weeks left</Text>
             </View>
             <View style={styles.goalStats}>
-              <View>
+              <View style={styles.goalStatItem}>
                 <Text style={styles.goalStatLabel}>Target</Text>
                 <Text style={styles.goalStatValue}>
                   {weightGoal?.target_weight} <Text style={styles.goalStatUnit}>lb</Text>
                 </Text>
               </View>
-              <View>
+              <View style={styles.goalStatItem}>
                 <Text style={styles.goalStatLabel}>Weekly Pace</Text>
                 <Text style={styles.goalStatValue}>
                   {dashboardData.goalInfo.required_weekly_pace > 0 ? '+' : ''}
@@ -173,7 +179,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </>
       ) : null}
 
-      {/* 3. 1k Club Progress */}
+      {/* ══ TIER 3: 1k Club Progress ══ */}
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
         <View style={styles.oneKHeader}>
@@ -206,6 +212,9 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
         </View>
       </Card>
     </ScreenShell>
+
+
+
   );
 }
 
@@ -834,183 +843,170 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   weeklyHero: {
-    padding: 20,
+    padding: 0,
     backgroundColor: Colors.card,
-    gap: 20,
+    borderRadius: 24,
+    overflow: 'hidden',
   },
-  weekBadgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  weekBadge: {
-    backgroundColor: Colors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  weekBadgeText: {
-    color: Colors.textLight,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  weekBadgeNum: {
-    color: Colors.accent,
-    fontSize: 14,
-  },
-  classifGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    opacity: 0.9,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  classifItem: {
-    width: '45%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  classifSquare: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-  },
-  classifLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  classifCount: {
-    fontWeight: '900',
-    fontSize: 14,
-  },
-  weightRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
+  heroMain: {
+    padding: 24,
+    paddingBottom: 20,
     gap: 12,
   },
-  weightCurrent: {
-    flexShrink: 0,
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
-  weightLabel: {
-    fontSize: 12,
+  weekLabel: {
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+  },
+  weekValueNum: {
+    color: Colors.accent,
+    fontWeight: '800',
+  },
+  weightHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  weightFocal: {
+    flex: 1,
   },
   weightValue: {
-    fontSize: 32,
-    fontWeight: '900',
+    fontSize: 36,
+    fontWeight: '800',
     color: Colors.text,
-    lineHeight: 36,
+    lineHeight: 40,
   },
   weightUnit: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.textMuted,
   },
-  sparklineContainer: {
-    flex: 1,
-    paddingBottom: 4,
+  weightCaption: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
-  sparklineLabel: {
-    fontSize: 12,
+  trendFocal: {
+    width: 100,
+    alignItems: 'center',
+    gap: 4,
+  },
+  trendLabel: {
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textAlign: 'right',
-    marginBottom: 8,
+    textAlign: 'center',
   },
-  analyticsLink: {
-    alignSelf: 'center',
+  heroEmpty: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  classifSection: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  classifGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  classifItem: {
+    width: '46%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  classifDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 2,
+  },
+  classifLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  classifCount: {
+    fontWeight: '800',
+  },
+  heroFooter: {
+    backgroundColor: Colors.chipBackground,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
   },
   analyticsLinkText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    textDecorationLine: 'underline',
+    color: Colors.chipText,
   },
   goalCard: {
     padding: 20,
-    gap: 16,
+    borderRadius: 24,
   },
   goalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 14,
   },
   goalDirection: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   goalWeeks: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
   },
   goalStats: {
     flexDirection: 'row',
     gap: 32,
   },
   goalStatItem: {
-    gap: 4,
+    gap: 2,
   },
   goalStatLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   goalStatValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: Colors.text,
   },
   goalStatUnit: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.textMuted,
   },
   oneKCard: {
     padding: 24,
-    gap: 20,
+    borderRadius: 24,
   },
   oneKHeader: {
     alignItems: 'center',
-    gap: 4,
-  },
-  oneKLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    marginBottom: 16,
   },
   oneKValue: {
-    fontSize: 48,
-    fontWeight: '900',
+    fontSize: 32,
+    fontWeight: '800',
     color: Colors.accent,
-    lineHeight: 52,
+    lineHeight: 32,
   },
   oneKUnit: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '600',
     color: Colors.textMuted,
   },
@@ -1019,6 +1015,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardBorder,
     borderRadius: 4,
     overflow: 'hidden',
+    marginBottom: 20,
   },
   progressFill: {
     height: '100%',
@@ -1027,10 +1024,6 @@ const styles = StyleSheet.create({
   oneKBreakdown: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-    paddingTop: 16,
   },
   oneKItem: {
     alignItems: 'center',
@@ -1048,10 +1041,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textMuted,
     fontStyle: 'italic',
   },
+  placeholderText: {
+    fontSize: 36,
+    color: Colors.textMuted,
+    fontWeight: '400',
+  },
+
+
+
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1391,7 +1392,7 @@ const styles = StyleSheet.create({
   },
   activityCardActive: {
     borderColor: Colors.accent,
-    backgroundColor: '#fffaf2',
+    backgroundColor: Colors.card,
   },
   activityLabel: {
     fontSize: 16,
