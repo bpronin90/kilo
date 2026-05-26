@@ -76,11 +76,14 @@ Current limitation:
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
   including tracked-exercise persistence on the canonical workout note and a
   fixture-driven migration contract suite for legacy structured workout
-  history, plus weight-goal persistence/derivation coverage, per-session
-  rep-drop-off flag derivation coverage, weekly-summary stored-input shaping
-  coverage (session presence, persisted classification counts, and
-  opportunistic Big 3 deltas), and malformed backup rejection coverage for the
-  optional `weight_goal` v2 import field.
+  history, plus weight-goal persistence/derivation coverage, explicit
+  weight-pace threshold boundary coverage, canonical goal current-weight
+  resolution coverage (latest-entry ordering plus no-entry fallback paths),
+  shared weight trend-summary helper coverage, per-session rep-drop-off flag
+  derivation coverage, weekly-summary stored-input shaping coverage (session
+  presence, persisted classification counts, and opportunistic Big 3 deltas),
+  and malformed backup rejection coverage for the optional `weight_goal` v2
+  import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends

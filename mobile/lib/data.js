@@ -1,6 +1,17 @@
 // Native entry model factories and exercise catalog
 import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote } from './parser.js';
-import { classifyWeightPace } from './format.js';
+
+// Canonical thresholds for weight-pace classification.
+// All weight-pace helpers in this module derive direction and severity from these values.
+export const WEIGHT_PACE_NOTABLE_THRESHOLD = 1.5; // lb — delta at or above this triggers a notable flag
+export const WEIGHT_PACE_SPIKE_THRESHOLD   = 2.3; // lb — delta at or above this upgrades to spike
+
+function _classifyWeightPaceDelta(delta) {
+  if (delta === null || delta === undefined) return null;
+  const abs = Math.abs(delta);
+  if (abs < WEIGHT_PACE_NOTABLE_THRESHOLD) return null;
+  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= WEIGHT_PACE_SPIKE_THRESHOLD ? 'spike' : 'notable' };
+}
 
 export const KILO_SPLIT = {
   monday:    { label: 'Push',       sub: 'Chest · Shoulders · Tris' },
@@ -164,7 +175,7 @@ export function computeWeightTrends(entries, referenceDate = new Date()) {
     // Sort by date so backdated entries logged out of order don't flip the delta.
     const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
     const delta = byDate[0].weight_value - byDate[1].weight_value;
-    const classified = classifyWeightPace(delta);
+    const classified = _classifyWeightPaceDelta(delta);
     paceFlag = classified ? classified.direction : null;
   }
 
@@ -178,8 +189,38 @@ export function computeWeightPaceLevel(entries) {
   if (!entries || entries.length < 2) return null;
   const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
   const delta = byDate[0].weight_value - byDate[1].weight_value;
-  const classified = classifyWeightPace(delta);
+  const classified = _classifyWeightPaceDelta(delta);
   return classified ? classified.level : null;
+}
+
+// Compute full trend summary including prior-window averages for comparison.
+// Extends computeWeightTrends with priorAvg7, priorAvg30, currentWeight, and priorDayWeight.
+// entries must be sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }.
+export function computeWeightTrendSummary(entries, referenceDate = new Date()) {
+  const base = computeWeightTrends(entries, referenceDate);
+  const MS_DAY = 86400000;
+  const pad = n => String(n).padStart(2, '0');
+  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  const prior7Start  = localStr(new Date(referenceDate - 13 * MS_DAY));
+  const prior7End    = localStr(new Date(referenceDate -  7 * MS_DAY));
+  const prior30Start = localStr(new Date(referenceDate - 59 * MS_DAY));
+  const prior30End   = localStr(new Date(referenceDate - 30 * MS_DAY));
+
+  const mean = arr =>
+    arr.length === 0 ? null : arr.reduce((s, e) => s + e.weight_value, 0) / arr.length;
+
+  const prior7Entries  = entries.filter(e => e.date >= prior7Start  && e.date <= prior7End);
+  const prior30Entries = entries.filter(e => e.date >= prior30Start && e.date <= prior30End);
+  const byDate = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+
+  return {
+    ...base,
+    priorAvg7:      mean(prior7Entries),
+    priorAvg30:     mean(prior30Entries),
+    currentWeight:  byDate[0]?.weight_value ?? null,
+    priorDayWeight: byDate[1]?.weight_value ?? null,
+  };
 }
 
 // Derive direction, required weekly pace, and advisory warnings from a weight goal.
@@ -253,6 +294,23 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
     return { calories_per_day: 0, label: 'maintain' };
   }
   return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
+}
+
+// Resolve the current-weight input for goal-guidance calculations.
+// Prefers the most recent weigh-in when entries exist.
+// Falls back to the saved goal start_weight when no entries are present and the goal
+// is not actively being edited by the user (goalEditing: false).
+// When the goal is being edited and no entries exist, uses the user-typed goalStartWeight string.
+// Returns a number (lb) or null when no weight can be determined.
+export function resolveGoalCurrentWeight(entries, goal, { goalEditing = false, goalStartWeight = '' } = {}) {
+  const byDate = entries && entries.length > 0
+    ? [...entries].sort((a, b) => b.date.localeCompare(a.date))
+    : [];
+  const latest = byDate.length > 0 ? byDate[0].weight_value : null;
+  if (latest !== null) return latest;
+  if (!goalEditing && goal && goal.start_weight != null) return goal.start_weight;
+  const parsed = parseFloat(goalStartWeight);
+  return (!isNaN(parsed) && parsed > 0) ? parsed : null;
 }
 
 // ── Canonical temporal helpers ────────────────────────────────────────────────
