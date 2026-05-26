@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useUserProfile } from '../hooks/useEntries';
+import { useUserProfile, useWeightGoal } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -43,6 +43,8 @@ function KiloWordmark({ width = 140, height = 48 }) {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
+  const { goal: weightGoal } = useWeightGoal();
+
   const dashboardData = useMemo(() => {
     let oneK = null;
     let sections = null;
@@ -57,20 +59,21 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       oneK = derive1kTotal(sections, oneKSelections);
     }
 
-    const { rollingSeries: weightSeries, trendSummary: weightTrends } = deriveWeightGoalAnalytics(weightEntries, null);
+    const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
     const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
 
-    return { 
-      weightSeries, 
-      oneK, 
-      latestWeight, 
-      weeksIn, 
-      weeklySummary, 
+    return {
+      weightSeries,
+      oneK,
+      latestWeight,
+      weeksIn,
+      weeklySummary,
+      goalInfo,
     };
-  }, [weightEntries, workoutNote]);
+  }, [weightEntries, workoutNote, weightGoal]);
 
   return (
     <ScreenShell
