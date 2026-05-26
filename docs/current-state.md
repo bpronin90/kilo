@@ -133,8 +133,10 @@ The real native app path now has a modular React Native shell:
   component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`),
   `Current Routine Progress` supporting copy, top summary cards for latest
   weight plus a neutral `Weeks In` routine counter derived from the current
-  routine's progression depth (the longest `session_entries` chain across all
-  exercises and days), rendered as `—` when no routine is loaded, a `Weekly
+  routine's progression depth (the deepest per-exercise session history across
+  mixed plain-row and `session_entries` note formats, with skipped
+  `session_entries` still counting toward depth), rendered as `—` when no
+  routine is loaded, a `Weekly
   Summary` panel beneath those cards that consumes persisted workout-note
   analytics inputs rather than re-deriving them, shows a session-based empty
   state when the current routine has no logged sessions, renders a 2x2
@@ -241,8 +243,9 @@ The real native app path now has a modular React Native shell:
   shows either latest top weight in pounds or best-set reps for bodyweight
   exercises, renders the trend column as `↑`, `↔`, `↓`, or `—` based on the
   latest comparable session pair, and now adds a subtle `⚠ Hit wall` /
-  `↑ Reserve` badge when the latest persisted intra-session rep drop-off flag
-  exists for that tracked exercise.
+  `↑ Reserve` badge when the latest live intra-session rep drop-off flag
+  derived from the canonical workout sections exists for that tracked
+  exercise, rather than trusting a potentially stale persisted badge value.
   Its mount-time entry state is now stabilized so Analytics no longer visibly
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they

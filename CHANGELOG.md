@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.5 - 2026-05-26
+
+- Issue #193: Repaired workout-data trust regressions by fixing `Weeks In`
+  depth for mixed plain-row and `session_entries` history including skipped
+  sessions, restoring alias-aware Progressive Overload signal matching,
+  switching Analytics rep-drop-off badges to live canonical derivation instead
+  of stale persisted badge state, and extending the native Jest suite to pin
+  the skipped-session, alias-resolution, and live `hit_wall` regression cases.
+
 ## 0.41.4 - 2026-05-25
 
 - Issue #184: Added `deriveWeightGoalAnalytics()` as the canonical native

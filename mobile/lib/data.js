@@ -330,17 +330,19 @@ export const REPEATED_WEEKDAY_SKIP_SESSION_WINDOW = 8;
 
 // ── Routine depth ─────────────────────────────────────────────────────────────
 
-// Returns the longest session_entries chain across all exercises in sections.
-// Depth = total entry count (including skipped entries) for the deepest exercise line.
-// Only session_entries are counted; exercises with bare rows but no session_entries
-// contribute 0 to the depth. Returns null when sections is absent (no routine loaded).
-// Returns 0 when no entries logged.
+// Returns the longest session chain across all exercises in sections.
+// Per exercise: rows.length (plain rows + non-skipped session entries) plus the count
+// of skipped session_entries (which appear in session_entries but not in rows). This
+// handles mixed-format history and correctly counts skipped sessions in the depth total.
+// Returns null when sections is absent (no routine loaded). Returns 0 when no entries logged.
 export function computeWeeksIn(sections) {
   if (!sections) return null;
   let max = 0;
   for (const section of sections) {
     for (const ex of section.exercises) {
-      if (ex.session_entries.length > max) max = ex.session_entries.length;
+      const skippedCount = (ex.session_entries || []).filter(se => se.skipped).length;
+      const depth = Math.max(ex.session_entries.length, (ex.rows || []).length + skippedCount);
+      if (depth > max) max = depth;
     }
   }
   return max;

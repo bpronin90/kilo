@@ -530,7 +530,7 @@ recomputation at render time is permitted.
 | `exercise_classifications` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
 | `skip_markers` (`exercise_skips` + `day_skips`) | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `attendance_flags` | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
-| `rep_drop_off_flags` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Analytics badges (read-only), Log inline nudges (read-only) | No |
+| `rep_drop_off_flags` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Log inline nudges (read-only); Analytics may derive an equivalent live badge view from canonical sections | Log: No; Analytics badge path: allowed live recompute |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
@@ -578,14 +578,12 @@ recomputation at render time is permitted.
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│  ANALYTICS (Consumer — canonical + persisted per strength row)      │
+│  ANALYTICS (Consumer — canonical live derivation)                   │
 │  StatsScreen.js                                                     │
-│                                                                     │
-│  Reads from persisted note:                                         │
-│    • rep_drop_off_flags (badge per row: line 297)                   │
 │                                                                     │
 │  Legitimately recomputes:                                           │
 │    • signal rows + display casing via deriveWorkoutNoteAnalytics()  │
+│    • latest rep-drop-off badge state via deriveWorkoutNoteAnalytics()│
 │    • 1k total, weight rolling averages, pace                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -596,11 +594,15 @@ recomputation at render time is permitted.
 - `exercise_classifications` — read from `workoutNote.exercise_classifications`
 - `skip_markers` — read from `workoutNote.skip_markers`
 - `attendance_flags` — read from `workoutNote.attendance_flags`
-- `rep_drop_off_flags` — read from `workoutNote.rep_drop_off_flags`
+- `rep_drop_off_flags` — read from `workoutNote.rep_drop_off_flags` unless the
+  consumer is explicitly deriving the live Analytics badge state from canonical
+  parsed sections as in issue `#193`
 
 **Consumers MAY recompute these fields (they have no persisted equivalent):**
 - Estimated 1RM, Kilo max, latest top weight, overload trend, and signal-row
   display casing via `deriveWorkoutNoteAnalytics()`
+- latest Analytics rep-drop-off badge state via
+  `deriveWorkoutNoteAnalytics()`
 - 1k total
 - Weight rolling averages, pace level, goal guidance
 - Weeks In, session count
