@@ -303,7 +303,10 @@ export function computeCalorieEstimate(required_weekly_pace, direction) {
 // When the goal is being edited and no entries exist, uses the user-typed goalStartWeight string.
 // Returns a number (lb) or null when no weight can be determined.
 export function resolveGoalCurrentWeight(entries, goal, { goalEditing = false, goalStartWeight = '' } = {}) {
-  const latest = entries && entries.length > 0 ? entries[0].weight_value : null;
+  const byDate = entries && entries.length > 0
+    ? [...entries].sort((a, b) => b.date.localeCompare(a.date))
+    : [];
+  const latest = byDate.length > 0 ? byDate[0].weight_value : null;
   if (latest !== null) return latest;
   if (!goalEditing && goal && goal.start_weight != null) return goal.start_weight;
   const parsed = parseFloat(goalStartWeight);

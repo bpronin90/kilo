@@ -1613,6 +1613,14 @@ describe('resolveGoalCurrentWeight', () => {
     expect(resolveGoalCurrentWeight(null, null)).toBeNull();
     expect(resolveGoalCurrentWeight(undefined, null)).toBeNull();
   });
+
+  test('returns the most recent entry by date when entries are unsorted', () => {
+    const entries = [
+      { date: '2026-05-19', weight_value: 185.0 },
+      { date: '2026-05-20', weight_value: 186.0 },
+    ];
+    expect(resolveGoalCurrentWeight(entries, null)).toBe(186.0);
+  });
 });
 
 // ── computeWeightTrendSummary ─────────────────────────────────────────────────
