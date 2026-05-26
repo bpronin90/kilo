@@ -199,6 +199,8 @@ Ordered tasks:
   - expose shared outputs for session depth, classifications, summary counts,
     and supported workout analytics
   - eliminate consumer-side parallel interpretation rules
+  - migrate `deriveSkipData` attendance window from 30-day calendar to
+    session-depth per the session-semantics contract (#178)
 - **Out of scope:**
   - Home redesign
   - Weight/goal derivations
