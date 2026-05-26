@@ -821,19 +821,15 @@ export function computeWeeklySummary(sections, workoutNote) {
   }
 
   if (!hasActivity) {
-    return { 
-      hasActivity: false, 
+    return {
+      hasActivity: false,
       sessionStatusRows,
     };
   }
 
-  // 2. Big 3 strength delta (consume upstream-stored data)
-  const deltas = workoutNote?.big_3_deltas || null;
-
   return {
     hasActivity: true,
     classifications,
-    deltas,
     sessionStatusRows,
   };
 }

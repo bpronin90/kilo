@@ -5,7 +5,6 @@ import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
-import { formatDelta } from '../lib/format';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import {
@@ -119,33 +118,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
                     </Text>
                   </View>
                 ))}
-              </View>
-            )}
-
-            {/* Big 3 Strength Delta Dashboard */}
-            {dashboardData.weeklySummary.deltas && (
-              <View style={styles.deltaDashboard}>
-                <Text style={styles.deltaDashboardTitle}>Big 3 Strength Delta</Text>
-                <View style={styles.deltaDashboardGrid}>
-                  <View style={styles.deltaDashboardItem}>
-                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.squat || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.squat || 0) < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.squat) || '0'}
-                    </Text>
-                    <Text style={styles.deltaDashboardLabel}>SQUAT</Text>
-                  </View>
-                  <View style={[styles.deltaDashboardItem, styles.deltaDashboardItemMiddle]}>
-                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.bench || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.bench || 0) < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.bench) || '0'}
-                    </Text>
-                    <Text style={styles.deltaDashboardLabel}>BENCH</Text>
-                  </View>
-                  <View style={styles.deltaDashboardItem}>
-                    <Text style={[styles.deltaDashboardValue, { color: (dashboardData.weeklySummary.deltas.deadlift || 0) > 0 ? Colors.success : ((dashboardData.weeklySummary.deltas.deadlift || 0) < 0 ? Colors.error : Colors.text) }]}>
-                      {formatDelta(dashboardData.weeklySummary.deltas.deadlift) || '0'}
-                    </Text>
-                    <Text style={styles.deltaDashboardLabel}>DEADLIFT</Text>
-                  </View>
-                </View>
               </View>
             )}
 
@@ -653,48 +625,6 @@ const styles = StyleSheet.create({
   },
   classifCount: {
     fontWeight: '800',
-  },
-  deltaDashboard: {
-    gap: 16,
-  },
-  deltaDashboardTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    opacity: 0.6,
-  },
-  deltaDashboardGrid: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  deltaDashboardItem: {
-    flex: 1,
-    paddingVertical: 20,
-    alignItems: 'center',
-    gap: 4,
-  },
-  deltaDashboardItemMiddle: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: Colors.cardBorder,
-    backgroundColor: 'rgba(0,0,0,0.02)',
-  },
-  deltaDashboardValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  deltaDashboardLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
   },
   analyticsLink: {
     marginTop: 8,

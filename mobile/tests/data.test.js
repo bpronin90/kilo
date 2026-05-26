@@ -1479,14 +1479,6 @@ describe('computeWeeklySummary', () => {
     });
   });
 
-  test('consumes Big 3 deltas opportunistically', () => {
-    const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
-    const deltas = { squat: 5, bench: -2.5, deadlift: 0 };
-    const workoutNote = { big_3_deltas: deltas };
-    const result = computeWeeklySummary(sections, workoutNote);
-    expect(result.deltas).toEqual(deltas);
-  });
-
   test('returns classifications: null if exercise_classifications is missing from note', () => {
     const sections = [asymSection('2026-05-24', [{ name: 'Squat', sets: [{ weight_value: 225, rep_count: 5 }] }])];
     const result = computeWeeklySummary(sections, {});
