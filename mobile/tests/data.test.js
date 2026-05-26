@@ -1319,9 +1319,9 @@ describe('rollingWindowStart', () => {
 
 // ── computeWeeksIn session semantics ──────────────────────────────────────────
 // Regression coverage for the session/routine-depth distinction.
-// computeWeeksIn counts session_entries depth only; exercises with bare rows
-// but no session_entries contribute 0. This differs from day-aware session
-// counting (countWorkoutSessionsFromSections in parser.js) which uses rows too.
+// computeWeeksIn uses max(session_entries.length, rows.length + skippedCount) per
+// exercise so plain-row history, session-entry history, and skipped sessions in
+// mixed-format notes are all counted toward depth.
 
 describe('computeWeeksIn plain-row vs session-entry distinction', () => {
   test('exercise with bare rows only and no session_entries contributes rows.length to depth', () => {
@@ -1359,6 +1359,34 @@ describe('computeWeeksIn plain-row vs session-entry distinction', () => {
       exercises: [{ name: 'Squat', rows: [], session_entries: [{ skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }, { skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }, { skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] }], unparsed_rows: [] }],
     }];
     expect(computeWeeksIn(sections)).toBe(3);
+  });
+
+  test('mixed-format with skipped session: 7 plain rows + 2 non-skipped + 1 skipped entry → depth 10', () => {
+    // Regression: skipped session_entries do not appear in rows, so
+    // max(session_entries.length, rows.length) = max(3, 9) = 9 is wrong.
+    // Correct: rows.length + skipped_count = 9 + 1 = 10.
+    const plainRows = Array.from({ length: 7 }, (_, i) => ({
+      raw: `${225 + i * 5}x5`,
+      sets: [{ weight_value: 225 + i * 5, rep_count: 5 }],
+    }));
+    const nonSkippedEntryRows = [
+      { raw: '260x5', sets: [{ weight_value: 260, rep_count: 5 }] },
+      { raw: '265x5', sets: [{ weight_value: 265, rep_count: 5 }] },
+    ];
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        rows: [...plainRows, ...nonSkippedEntryRows],
+        sets: [],
+        unparsed_rows: [],
+        session_entries: [
+          ...nonSkippedEntryRows.map(r => ({ skipped: false, raw: r.raw, sets: r.sets })),
+          { skipped: true, raw: '-', sets: [] },
+        ],
+      }],
+    }];
+    expect(computeWeeksIn(sections)).toBe(10);
   });
 });
 
@@ -1925,7 +1953,7 @@ describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth co
     expect(weeksIn).toBe(1);
   });
 
-  test('mixed-format history: exercise with plain-row history plus session-entry history', () => {
+  test('mixed-format history: exercise with plain-row history plus session-entry history (no skips)', () => {
     // Regression: user migrated partway through — 7 older sessions as plain rows,
     // 6 newer sessions as '- entry' format. rows.length = 13, session_entries.length = 6.
     // Before fix: computeWeeksIn returned 6 (only session_entries). After fix: 13.
@@ -1952,6 +1980,90 @@ describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth co
     }];
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
     expect(weeksIn).toBe(13);
+  });
+});
+
+// ── deriveWorkoutNoteAnalytics — alias canonicalization and live repDropOffFlags ─
+
+describe('deriveWorkoutNoteAnalytics — alias canonicalization', () => {
+  test('exercise with alias name in note matches canonical tracked name — signal returned', () => {
+    // 'DB Bench' in the note is an alias for 'DB Bench Press'.
+    // When tracked as 'DB Bench Press', deriveWorkoutNoteAnalytics must still
+    // find and return a signal via deriveWorkoutAnalytics canonicalization.
+    const sessionEntries = [
+      { skipped: false, raw: '70x10', sets: [{ weight_value: 70, rep_count: 10 }] },
+      { skipped: false, raw: '75x8',  sets: [{ weight_value: 75, rep_count: 8 }] },
+    ];
+    const rows = sessionEntries.map(se => ({ raw: se.raw, sets: se.sets }));
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'DB Bench',
+        rows,
+        sets: sessionEntries.flatMap(se => se.sets),
+        unparsed_rows: [],
+        session_entries: sessionEntries,
+      }],
+    }];
+    const { signals } = deriveWorkoutNoteAnalytics(sections, ['DB Bench Press']);
+    expect(signals).toHaveLength(1);
+    // With 2 comparable sessions, overload_trend must be computed (not null and not 'first_session').
+    expect(signals[0].overload_trend).not.toBeNull();
+    expect(signals[0].overload_trend).not.toBe('first_session');
+  });
+
+  test('alias exercise absent from note → null signal, not a crash', () => {
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name: 'Squat', rows: [], sets: [], unparsed_rows: [], session_entries: [] }],
+    }];
+    const { signals } = deriveWorkoutNoteAnalytics(sections, ['DB Bench Press']);
+    expect(signals).toHaveLength(1);
+    expect(signals[0].overload_trend).toBeNull();
+  });
+});
+
+describe('deriveWorkoutNoteAnalytics — live repDropOffFlags', () => {
+  test('sections with no drop-off pattern → getLatestRepDropOff returns null', () => {
+    // Demonstrates repDropOffFlags is derived live from sections.
+    // Consistent reps across all sets → no hit_wall flag.
+    const sets = Array(4).fill({ weight_value: 100, rep_count: 8 });
+    const session_entries = [{ skipped: false, raw: '100x8,8,8,8', sets }];
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Bench Press',
+        rows: [{ raw: '100x8,8,8,8', sets }],
+        sets,
+        unparsed_rows: [],
+        session_entries,
+      }],
+    }];
+    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Bench Press']);
+    expect(getLatestRepDropOff(repDropOffFlags['bench press'])).toBeNull();
+  });
+
+  test('sections with a drop-off pattern → getLatestRepDropOff returns hit_wall', () => {
+    // Live derivation picks up a real hit_wall from current section state.
+    const sets = [
+      { weight_value: 100, rep_count: 8 },
+      { weight_value: 100, rep_count: 8 },
+      { weight_value: 100, rep_count: 8 },
+      { weight_value: 100, rep_count: 4 }, // 4-rep drop at max weight → hit_wall
+    ];
+    const session_entries = [{ skipped: false, raw: '100x8,8,8,4', sets }];
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Bench Press',
+        rows: [{ raw: '100x8,8,8,4', sets }],
+        sets,
+        unparsed_rows: [],
+        session_entries,
+      }],
+    }];
+    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Bench Press']);
+    expect(getLatestRepDropOff(repDropOffFlags['bench press'])).toBe('hit_wall');
   });
 });
 
