@@ -72,10 +72,10 @@ export function StatsScreen({ multiplier, section }) {
     if (weightEntries.length === 0) {
       return { latestWeight: '—', weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
     }
-    const latest = weightEntries[0];
-    const unit = latest?.weight_unit || 'lb';
+    const canonicalLatest = [...weightEntries].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const unit = canonicalLatest?.weight_unit || 'lb';
     return {
-      latestWeight: latest ? `${latest.weight_value} ${unit}` : '—',
+      latestWeight: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight} ${unit}` : '—',
       weightCount: String(weightEntries.length),
       avg7:  weightTrends.avg7  !== null ? `${weightTrends.avg7.toFixed(1)} ${unit}`  : '—',
       avg30: weightTrends.avg30 !== null ? `${weightTrends.avg30.toFixed(1)} ${unit}` : '—',
