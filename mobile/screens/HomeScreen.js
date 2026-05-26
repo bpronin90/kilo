@@ -259,12 +259,19 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
 }
 
 function ProfileScreen({ onBack }) {
-  const { profile, save, loading } = useUserProfile();
+  const { profile, save, loading, clear: clearAll } = useUserProfile();
   const [localProfile, setLocalProfile] = useState(null);
   const [heightUnit, setHeightUnit] = useState('ft'); // 'ft' or 'cm'
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const saveTimeoutRef = React.useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (profile && !localProfile) {
@@ -281,15 +288,47 @@ function ProfileScreen({ onBack }) {
     if (saving) return;
     setSaving(true);
     setSaveSuccess(false);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    
     try {
       Keyboard.dismiss();
       await save(localProfile);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveSuccess(false);
+        saveTimeoutRef.current = null;
+      }, 3000);
     } catch (e) {
       Alert.alert('Error', 'Failed to save profile.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearProfile = () => {
+    Alert.alert('Clear Profile', 'Are you sure you want to clear all profile data?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear All', style: 'destructive', onPress: async () => {
+        await clearAll();
+        setLocalProfile({});
+        setSaveSuccess(false);
+      }}
+    ]);
+  };
+
+  const toggleSex = (val) => {
+    if (localProfile?.sex === val) {
+      updateField('sex', null);
+    } else {
+      updateField('sex', val);
+    }
+  };
+
+  const toggleActivity = (id) => {
+    if (localProfile?.activity_level === id) {
+      updateField('activity_level', null);
+    } else {
+      updateField('activity_level', id);
     }
   };
 
@@ -351,6 +390,9 @@ function ProfileScreen({ onBack }) {
     <ScreenShell title="User Profile" subtitle="Personal details for calorie estimation.">
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+        <Pressable onPress={handleClearProfile}>
+          <Text style={{ color: Colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
+        </Pressable>
       </View>
 
       <SectionTitle>Biometrics</SectionTitle>
@@ -359,13 +401,13 @@ function ProfileScreen({ onBack }) {
         <View style={styles.toggleRow}>
           <Pressable 
             style={[styles.toggleButton, localProfile?.sex === 'male' && styles.toggleButtonActive]}
-            onPress={() => updateField('sex', 'male')}
+            onPress={() => toggleSex('male')}
           >
             <Text style={[styles.toggleButtonText, localProfile?.sex === 'male' && styles.toggleButtonTextActive]}>Male</Text>
           </Pressable>
           <Pressable 
             style={[styles.toggleButton, localProfile?.sex === 'female' && styles.toggleButtonActive]}
-            onPress={() => updateField('sex', 'female')}
+            onPress={() => toggleSex('female')}
           >
             <Text style={[styles.toggleButtonText, localProfile?.sex === 'female' && styles.toggleButtonTextActive]}>Female</Text>
           </Pressable>
@@ -423,9 +465,16 @@ function ProfileScreen({ onBack }) {
 
         <View style={{ height: 16 }} />
 
-        <Text style={styles.inputLabel}>Date of Birth</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={styles.inputLabel}>Date of Birth</Text>
+          {localProfile?.date_of_birth && (
+            <Pressable onPress={() => updateField('date_of_birth', null)}>
+              <Text style={{ color: Colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Clear</Text>
+            </Pressable>
+          )}
+        </View>
         <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-          <Text style={styles.datePickerText}>
+          <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: Colors.textMuted }]}>
             {localProfile?.date_of_birth || 'Select Date'}
           </Text>
         </Pressable>
@@ -446,7 +495,7 @@ function ProfileScreen({ onBack }) {
           <Pressable 
             key={level.id}
             style={[styles.activityCard, localProfile?.activity_level === level.id && styles.activityCardActive]}
-            onPress={() => updateField('activity_level', level.id)}
+            onPress={() => toggleActivity(level.id)}
           >
             <View style={{ flex: 1 }}>
               <Text style={[styles.activityLabel, localProfile?.activity_level === level.id && styles.activityLabelActive]}>
