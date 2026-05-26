@@ -8,7 +8,7 @@ import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import {
-  computeWeightRollingAverageSeries,
+  deriveWeightGoalAnalytics,
   derive1kTotal,
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
@@ -55,8 +55,8 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       oneK = derive1kTotal(sections, oneKSelections);
     }
 
-    const weightSeries = computeWeightRollingAverageSeries(weightEntries, 7);
-    const latestWeight = weightEntries[0]?.weight_value;
+    const { rollingSeries: weightSeries, trendSummary: weightTrends } = deriveWeightGoalAnalytics(weightEntries, null);
+    const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);

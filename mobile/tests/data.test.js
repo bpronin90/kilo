@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1921,5 +1921,99 @@ describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth co
     }];
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
     expect(weeksIn).toBe(0);
+  });
+});
+
+// ── deriveWeightGoalAnalytics ─────────────────────────────────────────────────
+
+describe('deriveWeightGoalAnalytics', () => {
+  const REF = new Date('2026-05-25T12:00:00');
+
+  test('empty entries, no goal → safe empty outputs', () => {
+    const result = deriveWeightGoalAnalytics([], null, {}, REF);
+    expect(result.trendSummary.avg7).toBeNull();
+    expect(result.trendSummary.avg30).toBeNull();
+    expect(result.trendSummary.currentWeight).toBeNull();
+    expect(result.paceLevel).toBeNull();
+    expect(result.rollingSeries).toEqual([]);
+    expect(result.goalInfo).toBeNull();
+    expect(result.calorieEstimate).toBeNull();
+  });
+
+  test('null entries → same as empty', () => {
+    const result = deriveWeightGoalAnalytics(null, null, {}, REF);
+    expect(result.trendSummary.avg7).toBeNull();
+    expect(result.rollingSeries).toEqual([]);
+    expect(result.goalInfo).toBeNull();
+  });
+
+  test('entries, no goal → trendSummary populated, goalInfo null', () => {
+    const entries = [
+      { date: '2026-05-25', weight_value: 185 },
+      { date: '2026-05-24', weight_value: 184 },
+    ];
+    const result = deriveWeightGoalAnalytics(entries, null, {}, REF);
+    expect(result.trendSummary.currentWeight).toBe(185);
+    expect(result.trendSummary.avg7).not.toBeNull();
+    expect(result.goalInfo).toBeNull();
+    expect(result.calorieEstimate).toBeNull();
+  });
+
+  test('entries + goal → goalInfo and calorieEstimate populated', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 185 }];
+    const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 185 };
+    const result = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(result.goalInfo).not.toBeNull();
+    expect(result.goalInfo.direction).toBe('loss');
+    expect(result.goalInfo.required_weekly_pace).toBeLessThan(0);
+    expect(result.calorieEstimate).not.toBeNull();
+    expect(result.calorieEstimate.label).toBe('deficit');
+  });
+
+  test('goal editing state → uses edited target values', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 185 }];
+    const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 185 };
+    const editState = { goalEditing: true, goalTargetWeight: '180', goalTargetDate: '2026-12-01', goalStartWeight: '' };
+    const result = deriveWeightGoalAnalytics(entries, goal, editState, REF);
+    expect(result.goalInfo.direction).toBe('loss');
+    // target 180 from edited value, not 175 from saved goal
+    const delta = 180 - 185;
+    expect(result.goalInfo.required_weekly_pace).toBeCloseTo(delta / result.goalInfo.weeks_remaining, 5);
+  });
+
+  test('no entries, goal with start_weight → uses start_weight for goal guidance', () => {
+    const goal = { target_weight: 170, target_date: '2026-10-01', start_weight: 190 };
+    const result = deriveWeightGoalAnalytics([], goal, { goalEditing: false }, REF);
+    expect(result.goalInfo).not.toBeNull();
+    expect(result.goalInfo.direction).toBe('loss');
+  });
+
+  test('no entries, no goal start_weight → goalInfo null', () => {
+    const goal = { target_weight: 170, target_date: '2026-10-01', start_weight: null };
+    const result = deriveWeightGoalAnalytics([], goal, {}, REF);
+    expect(result.goalInfo).toBeNull();
+  });
+
+  test('rollingSeries has at most 7 points', () => {
+    const entries = Array.from({ length: 20 }, (_, i) => ({
+      date: `2026-05-${String(i + 1).padStart(2, '0')}`,
+      weight_value: 180 + i * 0.1,
+    }));
+    const result = deriveWeightGoalAnalytics(entries, null, {}, REF);
+    expect(result.rollingSeries.length).toBeLessThanOrEqual(7);
+  });
+
+  test('paceLevel is null with fewer than 2 entries', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 185 }];
+    const result = deriveWeightGoalAnalytics(entries, null, {}, REF);
+    expect(result.paceLevel).toBeNull();
+  });
+
+  test('maintain goal → calorieEstimate label is maintain', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 185 }];
+    const goal = { target_weight: 185.1, target_date: '2026-09-01', start_weight: 185 };
+    const result = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(result.goalInfo?.direction).toBe('maintain');
+    expect(result.calorieEstimate?.label).toBe('maintain');
   });
 });
