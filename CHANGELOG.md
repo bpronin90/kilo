@@ -2,6 +2,11 @@
 
 ## 0.42.2 - 2026-05-26
 
+- Issue #188: Approved Home dashboard information hierarchy — consolidated
+  weekly signals (week badge, classifications, latest weight, 7-day sparkline)
+  into a single hero panel, added conditional weight goal panel, demoted 1k Club
+  to last position, and removed unreachable success toast. Spun off #197
+  (data wiring) and #196 (UI implementation) as follow-ups.
 - Issue #187: Standardized the native app shell safe-area and screen-container
   rules by moving stable top/bottom safe-area ownership into `mobile/App.js`,
   migrating Analytics onto the shared `ScreenShell` layout contract, and
