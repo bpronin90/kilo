@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.40.1 - 2026-05-25
+
+- Issue #192: Made native weight/goal calculation ownership explicit by moving
+  weight-pace threshold ownership into `mobile/lib/data.js`, centralizing
+  goal-guidance current-weight resolution for latest-entry and no-entry
+  fallback paths, adding a shared weight trend-summary helper for prior-window
+  comparisons, and extending native data-suite coverage to lock the contract.
+
 ## 0.40.0 - 2026-05-25
 
 - Issue #163: Added the native Home weekly summary panel beneath the existing
