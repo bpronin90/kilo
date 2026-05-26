@@ -307,6 +307,10 @@ Provides the global runtime contract required by the prototype:
   per-field output (weeksIn, classifications, skipData, repDropOffFlags,
   signals, and `nameDisplayMap`), empty-sections behavior,
   missing-exercise handling, and determinism
+- pins direct helper parity for the canonical workout path by asserting
+  `deriveWorkoutNoteAnalytics()` matches `computeWeeksIn()`,
+  `classifyExerciseSessions()`, `deriveSkipData()`,
+  `deriveRepDropOffFlags()`, and `deriveSignals()` for the same inputs
 - pins the canonical Analytics migration contract by asserting that
   `deriveWorkoutNoteAnalytics(...).signals` matches `deriveSignals(...)` for
   the same sections, tracked lifts, and multiplier inputs
@@ -325,6 +329,13 @@ Provides the global runtime contract required by the prototype:
   per-field outputs across empty/null entries, saved-goal and edited-goal
   paths, `start_weight` fallback, rolling-series limit behavior, pace-level
   nullability, and maintain-goal calorie guidance
+- pins direct helper parity for the canonical weight/goal path by asserting
+  `deriveWeightGoalAnalytics()` matches `computeWeightTrendSummary()`,
+  `computeWeightPaceLevel()`, `computeWeightRollingAverageSeries()`,
+  `computeWeightGoal()`, and `computeCalorieEstimate()` for the same inputs,
+  including a manual BMR -> TDEE -> calorie-target chain check
+- verifies cross-consumer consistency for shared workout and weight inputs so
+  canonical outputs stay aligned across repeated calls and downstream surfaces
 - verifies the calorie helper's TDEE path with Mifflin-St Jeor BMR, all five
   activity multipliers, gain/loss/maintain target outputs, and incomplete
   profile fallback behavior

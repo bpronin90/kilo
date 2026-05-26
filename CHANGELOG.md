@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.42.1 - 2026-05-26
+
+- Issue #186: Added native canonical data-contract coverage for the stabilized
+  workout and weight derivation layers, pinning `deriveWorkoutNoteAnalytics()`
+  and `deriveWeightGoalAnalytics()` against their underlying helpers, adding
+  representative cross-consumer consistency checks, and locking trust-critical
+  `computeWeeksIn()` depth cases against regression.
+
 ## 0.42.0 - 2026-05-26
 
 - Issue #194: Replaced the native Weight goal card's flat 3500 cal/lb helper
