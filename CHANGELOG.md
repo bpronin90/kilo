@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.40.2 - 2026-05-25
+
+- Issue #179: Created the human-readable calculations reference framework at
+  `docs/calculations-reference.md`. Organized by calculation type (weight,
+  goals, workouts) with "where you see it" surface tags and a FAQ table,
+  ready to be filled as MVP4.5 stabilization completes.
+
 ## 0.40.1 - 2026-05-25
 
 - Issue #192: Made native weight/goal calculation ownership explicit by moving
