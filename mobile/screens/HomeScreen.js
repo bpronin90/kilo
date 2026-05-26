@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
+import { useUserProfile } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -218,9 +220,17 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
     );
   }
 
+  if (activeView === 'profile') {
+    return <ProfileScreen onBack={() => setActiveView('menu')} />;
+  }
+
   return (
     <ScreenShell title="More" subtitle="Help, about, and application info.">
       <View style={styles.list}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')}>
+          <Text style={styles.menuItemText}>User Profile</Text>
+          <Text style={styles.menuItemChevron}>→</Text>
+        </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
           <Text style={styles.menuItemText}>Help & Terminology</Text>
           <Text style={styles.menuItemChevron}>→</Text>
@@ -244,6 +254,208 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
         <Button title="Log Workout" onPress={() => onNavigate('Log')} style={{ flex: 1 }} />
         <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={{ flex: 1 }} />
       </View>
+    </ScreenShell>
+  );
+}
+
+function ProfileScreen({ onBack }) {
+  const { profile, save, loading } = useUserProfile();
+  const [localProfile, setLocalProfile] = useState(null);
+  const [heightUnit, setHeightUnit] = useState('ft'); // 'ft' or 'cm'
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (profile && !localProfile) {
+      setLocalProfile(profile);
+    }
+  }, [profile, localProfile]);
+
+  const updateField = useCallback((field, value) => {
+    setLocalProfile(prev => ({ ...(prev || {}), [field]: value }));
+    setSaveSuccess(false);
+  }, []);
+
+  const handleSave = async () => {
+    await save(localProfile);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
+  const getDobDate = () => {
+    if (localProfile?.date_of_birth) {
+      const [y, m, d] = localProfile.date_of_birth.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    return new Date(1990, 0, 1);
+  };
+
+  const handleDobChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      updateField('date_of_birth', `${y}-${m}-${d}`);
+    }
+  };
+
+  const heightCm = localProfile?.height_cm || null;
+  const totalInches = heightCm ? heightCm / 2.54 : 0;
+  const roundedInches = Math.round(totalInches);
+  const feet = heightCm ? Math.floor(roundedInches / 12) : '';
+  const inches = heightCm ? roundedInches % 12 : '';
+
+  const handleHeightChange = (val, type) => {
+    if (type === 'cm') {
+      updateField('height_cm', val ? parseFloat(val) : null);
+    } else if (type === 'ft') {
+      const f = parseFloat(val) || 0;
+      const i = parseFloat(inches) || 0;
+      updateField('height_cm', (f * 12 + i) * 2.54);
+    } else if (type === 'in') {
+      const f = parseFloat(feet) || 0;
+      const i = parseFloat(val) || 0;
+      updateField('height_cm', (f * 12 + i) * 2.54);
+    }
+  };
+
+  const activityLevels = [
+    { id: 'sedentary', label: 'Sedentary', desc: 'Little or no exercise, desk job' },
+    { id: 'lightly_active', label: 'Lightly active', desc: 'Light exercise 1–3 days/week' },
+    { id: 'moderately_active', label: 'Moderately active', desc: 'Moderate exercise 3–5 days/week' },
+    { id: 'very_active', label: 'Very active', desc: 'Hard exercise 6–7 days/week' },
+    { id: 'extra_active', label: 'Extra active', desc: 'Very hard exercise, physical job, or training twice/day' },
+  ];
+
+  if (loading && !localProfile) {
+    return (
+      <ScreenShell title="User Profile" subtitle="Loading...">
+        <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+      </ScreenShell>
+    );
+  }
+
+  return (
+    <ScreenShell title="User Profile" subtitle="Personal details for calorie estimation.">
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+        {saveSuccess && <Text style={{ color: Colors.success, fontWeight: '700' }}>Saved!</Text>}
+      </View>
+
+      <SectionTitle>Biometrics</SectionTitle>
+      <Card>
+        <Text style={styles.inputLabel}>Biological Sex</Text>
+        <View style={styles.toggleRow}>
+          <Pressable 
+            style={[styles.toggleButton, localProfile?.sex === 'male' && styles.toggleButtonActive]}
+            onPress={() => updateField('sex', 'male')}
+          >
+            <Text style={[styles.toggleButtonText, localProfile?.sex === 'male' && styles.toggleButtonTextActive]}>Male</Text>
+          </Pressable>
+          <Pressable 
+            style={[styles.toggleButton, localProfile?.sex === 'female' && styles.toggleButtonActive]}
+            onPress={() => updateField('sex', 'female')}
+          >
+            <Text style={[styles.toggleButtonText, localProfile?.sex === 'female' && styles.toggleButtonTextActive]}>Female</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ height: 16 }} />
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.inputLabel}>Height</Text>
+          <View style={styles.unitToggle}>
+            <Pressable onPress={() => setHeightUnit('ft')} style={[styles.unitTab, heightUnit === 'ft' && styles.unitTabActive]}>
+              <Text style={[styles.unitTabText, heightUnit === 'ft' && styles.unitTabTextActive]}>ft/in</Text>
+            </Pressable>
+            <Pressable onPress={() => setHeightUnit('cm')} style={[styles.unitTab, heightUnit === 'cm' && styles.unitTabActive]}>
+              <Text style={[styles.unitTabText, heightUnit === 'cm' && styles.unitTabTextActive]}>cm</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {heightUnit === 'ft' ? (
+          <View style={styles.heightRow}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <TextInput
+                style={styles.profileInput}
+                placeholder="ft"
+                keyboardType="numeric"
+                value={feet ? String(feet) : ''}
+                onChangeText={(v) => handleHeightChange(v, 'ft')}
+              />
+              <Text style={styles.inputSublabel}>Feet</Text>
+            </View>
+            <View style={{ flex: 1, gap: 4 }}>
+              <TextInput
+                style={styles.profileInput}
+                placeholder="in"
+                keyboardType="numeric"
+                value={inches ? String(inches) : ''}
+                onChangeText={(v) => handleHeightChange(v, 'in')}
+              />
+              <Text style={styles.inputSublabel}>Inches</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: 4 }}>
+            <TextInput
+              style={styles.profileInput}
+              placeholder="cm"
+              keyboardType="numeric"
+              value={heightCm ? String(heightCm) : ''}
+              onChangeText={(v) => handleHeightChange(v, 'cm')}
+            />
+            <Text style={styles.inputSublabel}>Centimeters</Text>
+          </View>
+        )}
+
+        <View style={{ height: 16 }} />
+
+        <Text style={styles.inputLabel}>Date of Birth</Text>
+        <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
+          <Text style={styles.datePickerText}>
+            {localProfile?.date_of_birth || 'Select Date'}
+          </Text>
+        </Pressable>
+        {showDatePicker && (
+          <DateTimePicker
+            value={getDobDate()}
+            mode="date"
+            display="default"
+            onChange={handleDobChange}
+            maximumDate={new Date()}
+          />
+        )}
+      </Card>
+
+      <SectionTitle>Activity Level</SectionTitle>
+      <View style={{ gap: 12, marginTop: 8 }}>
+        {activityLevels.map(level => (
+          <Pressable 
+            key={level.id}
+            style={[styles.activityCard, localProfile?.activity_level === level.id && styles.activityCardActive]}
+            onPress={() => updateField('activity_level', level.id)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.activityLabel, localProfile?.activity_level === level.id && styles.activityLabelActive]}>
+                {level.label}
+              </Text>
+              <Text style={[styles.activityDesc, localProfile?.activity_level === level.id && styles.activityDescActive]}>
+                {level.desc}
+              </Text>
+            </View>
+            {localProfile?.activity_level === level.id && (
+              <View style={styles.checkCircle}>
+                <Text style={styles.checkText}>✓</Text>
+              </View>
+            )}
+          </Pressable>
+        ))}
+      </View>
+
+      <Button title="Save Profile" onPress={handleSave} style={{ marginTop: 24, marginBottom: 40 }} />
     </ScreenShell>
   );
 }
@@ -878,5 +1090,140 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  inputSublabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: Colors.inputBackground,
+  },
+  toggleButtonActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  toggleButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  toggleButtonTextActive: {
+    color: Colors.textLight,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
+  },
+  unitTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  unitTabActive: {
+    backgroundColor: Colors.accent,
+  },
+  unitTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  unitTabTextActive: {
+    color: Colors.textLight,
+  },
+  heightRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  profileInput: {
+    backgroundColor: Colors.inputBackground,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  datePickerButton: {
+    backgroundColor: Colors.inputBackground,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  datePickerText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  activityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.card,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    gap: 12,
+  },
+  activityCardActive: {
+    borderColor: Colors.accent,
+    backgroundColor: '#fffaf2',
+  },
+  activityLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  activityLabelActive: {
+    color: Colors.accent,
+  },
+  activityDesc: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  activityDescActive: {
+    color: Colors.text,
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkText: {
+    color: Colors.textLight,
+    fontSize: 14,
+    fontWeight: '800',
   },
 });
