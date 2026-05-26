@@ -561,9 +561,9 @@ describe('computeWeeksIn', () => {
     expect(computeWeeksIn([])).toBe(0);
   });
 
-  test('routine with no session_entries returns 0', () => {
+  test('routine with no session_entries but with plain rows returns rows.length', () => {
     const sections = [makeSection([{ name: 'Squat', rows: [{ raw: '225x5', sets: [] }], session_entries: [], unparsed_rows: [] }])];
-    expect(computeWeeksIn(sections)).toBe(0);
+    expect(computeWeeksIn(sections)).toBe(1);
   });
 
   test('single exercise with 1 session entry returns 1', () => {
@@ -1324,15 +1324,16 @@ describe('rollingWindowStart', () => {
 // counting (countWorkoutSessionsFromSections in parser.js) which uses rows too.
 
 describe('computeWeeksIn plain-row vs session-entry distinction', () => {
-  test('exercise with bare rows only and no session_entries contributes 0 depth', () => {
+  test('exercise with bare rows only and no session_entries contributes rows.length to depth', () => {
+    // Plain rows represent sessions too — even without the '- ' history format they count.
     const sections = [{
       heading: null, subheading: null, kind: 'general',
       exercises: [{ name: 'Squat', rows: [{ raw: '225x5', sets: [] }], session_entries: [], unparsed_rows: [] }],
     }];
-    expect(computeWeeksIn(sections)).toBe(0);
+    expect(computeWeeksIn(sections)).toBe(1);
   });
 
-  test('mixed: one exercise with session_entries, one with only bare rows — uses session_entries depth', () => {
+  test('mixed: session_entries and bare-row exercises — depth is max across both', () => {
     const sections = [{
       heading: null, subheading: null, kind: 'general',
       exercises: [
@@ -1340,7 +1341,7 @@ describe('computeWeeksIn plain-row vs session-entry distinction', () => {
         { name: 'Deadlift', rows: [{ raw: '315x5', sets: [] }], session_entries: [], unparsed_rows: [] },
       ],
     }];
-    // Squat has depth 2; Deadlift has depth 0 (bare rows only)
+    // Squat has session_entries depth 2; Deadlift has rows depth 1 — max is 2
     expect(computeWeeksIn(sections)).toBe(2);
   });
 
@@ -1914,13 +1915,43 @@ describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth co
     expect(weeksIn).toBe(3);
   });
 
-  test('exercise with only bare rows (no session_entries) contributes 0', () => {
+  test('exercise with only bare rows (no session_entries) contributes rows.length', () => {
+    // Plain-row format represents real sessions and must not be invisible to weeksIn.
     const sections = [{
       heading: null, subheading: null, kind: 'general',
       exercises: [{ name: 'Squat', rows: [{ raw: '135x5' }], sets: [], unparsed_rows: [], session_entries: [] }],
     }];
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
-    expect(weeksIn).toBe(0);
+    expect(weeksIn).toBe(1);
+  });
+
+  test('mixed-format history: exercise with plain-row history plus session-entry history', () => {
+    // Regression: user migrated partway through — 7 older sessions as plain rows,
+    // 6 newer sessions as '- entry' format. rows.length = 13, session_entries.length = 6.
+    // Before fix: computeWeeksIn returned 6 (only session_entries). After fix: 13.
+    const plainRows = Array.from({ length: 7 }, (_, i) => ({
+      raw: `${225 + i * 5}x5,5,5`,
+      sets: [{ weight_value: 225 + i * 5, rep_count: 5 }],
+    }));
+    const sessionEntryRows = Array.from({ length: 6 }, (_, i) => ({
+      raw: `${260 + i * 5}x5,5,5`,
+      sets: [{ weight_value: 260 + i * 5, rep_count: 5 }],
+    }));
+    const sessionEntries = sessionEntryRows.map(r => ({
+      skipped: false, raw: r.raw, sets: r.sets,
+    }));
+    const sections = [{
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        rows: [...plainRows, ...sessionEntryRows],
+        sets: [],
+        unparsed_rows: [],
+        session_entries: sessionEntries,
+      }],
+    }];
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
+    expect(weeksIn).toBe(13);
   });
 });
 

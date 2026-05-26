@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, Act
 import { Card, SectionTitle, LineChart } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen({ multiplier, section }) {
@@ -104,18 +104,24 @@ export function StatsScreen({ multiplier, section }) {
   const analytics = useMemo(() => {
     const { allSections, currentSections } = parsedSections;
 
-    // Tracked lifts visible in the current routine — filters signal derivation to relevant exercises
-    const namesInCurrent = new Set(currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(e.name))));
+    // Tracked lifts visible in the current routine — canonicalize exercise names so
+    // alias variants in the note (e.g. 'DB Bench' for 'DB Bench Press') still match
+    // tracked lift names stored under the canonical form.
+    const namesInCurrent = new Set(
+      currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
+    );
     const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
-    const visibleTrackedNames = globallyTrackedNames.filter(name => namesInCurrent.has(normalizeLiftName(name)));
+    const visibleTrackedNames = globallyTrackedNames.filter(
+      name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
+    );
 
-    // Canonical derivation: signals and nameDisplayMap from shared sections
-    const { signals, nameDisplayMap } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
+    // Canonical derivation: signals, nameDisplayMap, and live repDropOffFlags from shared sections
+    const { signals, nameDisplayMap, repDropOffFlags } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
 
-    return { signals, oneK, nameDisplayMap };
+    return { signals, oneK, nameDisplayMap, repDropOffFlags };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   function handleSlotTap(slot) {
@@ -275,7 +281,7 @@ export function StatsScreen({ multiplier, section }) {
         <View style={styles.signalList}>
           {analytics.signals.map((sig, i) => {
             const normName = normalizeLiftName(sig.name);
-            const dropOffFlag = getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[normName]);
+            const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
             const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
             return (
             <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
