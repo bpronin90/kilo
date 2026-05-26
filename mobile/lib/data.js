@@ -351,14 +351,9 @@ export function computeCalorieEstimate(required_weekly_pace, direction, profile 
   if (required_weekly_pace === null || required_weekly_pace === undefined) {
     return { calories_per_day: null, label: null, tdee_based: false };
   }
-  if (direction === 'maintain') {
-    return { calories_per_day: 0, label: 'maintain', tdee_based: false };
-  }
 
-  const dailyAdjustment = Math.round((required_weekly_pace * 3500) / 7);
-  if (Math.abs(dailyAdjustment) < 10) {
-    return { calories_per_day: 0, label: 'maintain', tdee_based: false };
-  }
+  const dailyAdjustment = direction === 'maintain' ? 0 : Math.round((required_weekly_pace * 3500) / 7);
+  const isMaintainByAdjustment = direction === 'maintain' || Math.abs(dailyAdjustment) < 10;
 
   if (isProfileComplete(profile) && weight_lb != null) {
     const age = ageFromDateOfBirth(profile.date_of_birth, referenceDate);
@@ -367,12 +362,15 @@ export function computeCalorieEstimate(required_weekly_pace, direction, profile 
       const tdee = computeTDEE(bmr, profile.activity_level);
       if (tdee != null) {
         const target = Math.round(tdee + dailyAdjustment);
-        const label = dailyAdjustment > 0 ? 'surplus' : 'deficit';
+        const label = isMaintainByAdjustment ? 'maintain' : (dailyAdjustment > 0 ? 'surplus' : 'deficit');
         return { calories_per_day: target, label, tdee_based: true };
       }
     }
   }
 
+  if (isMaintainByAdjustment) {
+    return { calories_per_day: 0, label: 'maintain', tdee_based: false };
+  }
   return { calories_per_day: Math.abs(dailyAdjustment), label: dailyAdjustment > 0 ? 'surplus' : 'deficit', tdee_based: false };
 }
 

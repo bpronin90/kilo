@@ -2266,9 +2266,21 @@ describe('computeCalorieEstimate', () => {
     expect(result.calories_per_day).toBeGreaterThan(0);
   });
 
-  test('maintain direction → legacy maintain regardless of profile', () => {
+  test('maintain direction + complete profile → tdee_based maintain target', () => {
     const result = computeCalorieEstimate(0, 'maintain', profile, 200, REF_DATE);
     expect(result.label).toBe('maintain');
+    expect(result.tdee_based).toBe(true);
+    // calories_per_day = TDEE (daily adjustment is 0 for maintain)
+    const age = ageFromDateOfBirth(profile.date_of_birth, REF_DATE);
+    const bmr = computeBMR({ weight_lb: 200, height_cm: 178, age, sex: 'male' });
+    const tdee = computeTDEE(bmr, 'moderately_active');
+    expect(result.calories_per_day).toBe(Math.round(tdee));
+  });
+
+  test('maintain direction + no profile → legacy maintain (0 cal)', () => {
+    const result = computeCalorieEstimate(0, 'maintain', null, 200, REF_DATE);
+    expect(result.label).toBe('maintain');
+    expect(result.tdee_based).toBe(false);
     expect(result.calories_per_day).toBe(0);
   });
 

@@ -74,7 +74,7 @@ function GoalDerived({ info, calorieEstimate }) {
         {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>}
       </View>
 
-      {hasPace && !isMaintain && calLabel !== 'maintain' && (
+      {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
             {tdeeBased ? 'Est. daily target' : 'Suggested '}
@@ -89,7 +89,7 @@ function GoalDerived({ info, calorieEstimate }) {
       {!hasPace && (
         <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
       )}
-      {hasPace && isMaintain && (
+      {hasPace && isMaintain && !tdeeBased && (
         <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
       )}
       {hasPace && !isMaintain && isUnrealistic && (
@@ -135,7 +135,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   const { entries, remove, update } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
-  const { profile } = useUserProfile();
+  const profile = useUserProfile()?.profile ?? null;
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
   const [goalEditing, setGoalEditing] = useState(false);
