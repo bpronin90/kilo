@@ -78,64 +78,101 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
   return (
     <ScreenShell
       title={<KiloWordmark />}
-      subtitle="Current Routine Progress"
+      subtitle="Current routine progress."
     >
-      {successMessage ? (
-        <Card style={styles.successCard}>
-          <Text style={styles.successText}>{successMessage}</Text>
-        </Card>
-      ) : null}
+      {/* 1. Weekly Summary — consolidated hero panel */}
+      <Card style={styles.weeklyHero}>
+        <View style={styles.weekBadgeRow}>
+          <View style={styles.weekBadge}>
+            <Text style={styles.weekBadgeText}>
+              WEEK <Text style={styles.weekBadgeNum}>{dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}</Text>
+            </Text>
+          </View>
+        </View>
 
-      <View style={styles.summaryGrid}>
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Latest Weight</Text>
-          <Text style={styles.summaryValue}>
-            {dashboardData.latestWeight ? `${dashboardData.latestWeight} lb` : '—'}
-          </Text>
-        </Card>
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Weeks In</Text>
-          <Text style={styles.summaryValue}>
-            {dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}
-          </Text>
-        </Card>
-      </View>
-
-      <SectionTitle>Weekly Summary</SectionTitle>
-      <Card style={styles.weeklyCard}>
         {!dashboardData.weeklySummary.hasActivity ? (
           <Text style={styles.emptyText}>No sessions logged yet.</Text>
         ) : (
-          <View style={styles.weeklyContent}>
-            {/* Classification Counts Grid */}
-            {dashboardData.weeklySummary.classifications && (
-              <View style={styles.classifGrid}>
-                {[
-                  { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
-                  { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: '#d4a017' },
-                  { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
-                  { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
-                ].map((item, idx) => (
-                  <View key={idx} style={styles.classifItem}>
-                    <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
-                    <Text style={styles.classifLabel}>
-                      <Text style={styles.classifCount}>{item.count}</Text> {item.label.toUpperCase()}
-                    </Text>
-                  </View>
-                ))}
+          <View style={styles.classifGrid}>
+            {[
+              { label: 'progressing', count: dashboardData.weeklySummary.classifications.progressing, color: Colors.success },
+              { label: 'steady', count: dashboardData.weeklySummary.classifications.stalled, color: Colors.caution || '#d4a017' },
+              { label: 'regressing', count: dashboardData.weeklySummary.classifications.regressing, color: Colors.error },
+              { label: 'inconsistent', count: dashboardData.weeklySummary.classifications.inconsistent, color: Colors.textMuted },
+            ].map((item, idx) => (
+              <View key={idx} style={styles.classifItem}>
+                <View style={[styles.classifSquare, { backgroundColor: item.color }]} />
+                <Text style={styles.classifLabel}>
+                  <Text style={styles.classifCount}>{item.count}</Text> {item.label}
+                </Text>
               </View>
-            )}
-
-            <Pressable onPress={() => onNavigate('Analytics')} style={styles.analyticsLink}>
-              <Text style={styles.analyticsLinkText}>Full history and insights →</Text>
-            </Pressable>
+            ))}
           </View>
         )}
+
+        <View style={styles.divider} />
+
+        <View style={styles.weightRow}>
+          <View style={styles.weightCurrent}>
+            <Text style={styles.weightLabel}>Latest Weight</Text>
+            <Text style={styles.weightValue}>
+              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
+              <Text style={styles.weightUnit}> lb</Text>
+            </Text>
+          </View>
+          <View style={styles.sparklineContainer}>
+            <Text style={styles.sparklineLabel}>7-Day Trend</Text>
+            <LineChart
+              data={dashboardData.weightSeries}
+              color={Colors.success}
+              height={40}
+              paddingVertical={4}
+              paddingHorizontal={0}
+              hideHeader
+            />
+          </View>
+        </View>
+
+        <Pressable onPress={() => onNavigate('Stats')} style={styles.analyticsLink}>
+          <Text style={styles.analyticsLinkText}>Full history and insights →</Text>
+        </Pressable>
       </Card>
 
+      {/* 2. Weight Goal — conditional panel */}
+      {dashboardData.goalInfo ? (
+        <>
+          <SectionTitle>Weight Goal</SectionTitle>
+          <Card style={styles.goalCard}>
+            <View style={styles.goalHeader}>
+              <Text style={[styles.goalDirection, { color: dashboardData.goalInfo.direction.includes('↑') ? Colors.accent : Colors.success }]}>
+                {dashboardData.goalInfo.direction}
+              </Text>
+              <Text style={styles.goalWeeks}>{dashboardData.goalInfo.weeks_remaining} weeks left</Text>
+            </View>
+            <View style={styles.goalStats}>
+              <View>
+                <Text style={styles.goalStatLabel}>Target</Text>
+                <Text style={styles.goalStatValue}>
+                  {weightGoal?.target_weight} <Text style={styles.goalStatUnit}>lb</Text>
+                </Text>
+              </View>
+              <View>
+                <Text style={styles.goalStatLabel}>Weekly Pace</Text>
+                <Text style={styles.goalStatValue}>
+                  {dashboardData.goalInfo.required_weekly_pace > 0 ? '+' : ''}
+                  {dashboardData.goalInfo.required_weekly_pace.toFixed(1)}
+                  <Text style={styles.goalStatUnit}> lb/wk</Text>
+                </Text>
+              </View>
+            </View>
+          </Card>
+        </>
+      ) : null}
+
+      {/* 3. 1k Club Progress */}
       <SectionTitle>1k Club Progress</SectionTitle>
       <Card style={styles.oneKCard}>
-        <View style={styles.oneKTotalTarget}>
+        <View style={styles.oneKHeader}>
           <Text style={styles.oneKValue}>
             {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
             <Text style={styles.oneKUnit}> lb</Text>
@@ -150,23 +187,18 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
           />
         </View>
         <View style={styles.oneKBreakdown}>
-          <Text style={styles.oneKBreakdownText}>
-            S: {dashboardData.oneK?.squat?.toFixed(0) || '—'}  ·
-            B: {dashboardData.oneK?.bench?.toFixed(0) || '—'}  ·
-            D: {dashboardData.oneK?.deadlift?.toFixed(0) || '—'}
-          </Text>
-        </View>
-      </Card>
-
-      <SectionTitle>Weight Trend</SectionTitle>
-      <Card style={styles.chartCard}>
-        <View>
-          <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
-          <LineChart
-            data={dashboardData.weightSeries}
-            color={Colors.success}
-            height={100}
-          />
+          <View style={styles.oneKItem}>
+            <Text style={styles.oneKItemValue}>{dashboardData.oneK?.squat?.toFixed(0) || '—'}</Text>
+            <Text style={styles.oneKItemLabel}>Squats</Text>
+          </View>
+          <View style={styles.oneKItem}>
+            <Text style={styles.oneKItemValue}>{dashboardData.oneK?.bench?.toFixed(0) || '—'}</Text>
+            <Text style={styles.oneKItemLabel}>Bench</Text>
+          </View>
+          <View style={styles.oneKItem}>
+            <Text style={styles.oneKItemValue}>{dashboardData.oneK?.deadlift?.toFixed(0) || '—'}</Text>
+            <Text style={styles.oneKItemLabel}>Deadlifts</Text>
+          </View>
         </View>
       </Card>
     </ScreenShell>
@@ -793,65 +825,195 @@ function AboutScreen({ onBack }) {
 }
 
 const styles = StyleSheet.create({
-  successCard: {
-    backgroundColor: Colors.success,
-    borderColor: Colors.success,
-    marginBottom: 12,
-  },
-  successText: {
-    color: Colors.textLight,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
   grid: {
     flexDirection: 'row',
     gap: 12,
   },
-  summaryGrid: {
+  weeklyHero: {
+    padding: 20,
+    backgroundColor: '#fffaf2',
+    gap: 20,
+  },
+  weekBadgeRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  weekBadge: {
+    backgroundColor: Colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  weekBadgeText: {
+    color: Colors.textLight,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  weekBadgeNum: {
+    color: Colors.accent,
+    fontSize: 14,
+  },
+  classifGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    opacity: 0.9,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  classifItem: {
+    width: '45%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  classifSquare: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+  },
+  classifLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  classifCount: {
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  summaryCard: {
+  weightCurrent: {
+    flexShrink: 0,
+  },
+  weightLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  weightValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: Colors.text,
+    lineHeight: 36,
+  },
+  weightUnit: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  sparklineContainer: {
     flex: 1,
-    minWidth: '45%',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  sparklineLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'right',
+    marginBottom: 8,
+  },
+  analyticsLink: {
+    alignSelf: 'center',
+  },
+  analyticsLinkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textDecorationLine: 'underline',
+  },
+  goalCard: {
+    padding: 20,
+    gap: 16,
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalDirection: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  goalWeeks: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  goalStats: {
+    flexDirection: 'row',
+    gap: 32,
+  },
+  goalStatItem: {
     gap: 4,
   },
-  summaryLabel: {
-    fontSize: 13,
+  goalStatLabel: {
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  summaryValue: {
-    fontSize: 28,
+  goalStatValue: {
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
   },
-  oneKCard: {
-    padding: 18,
-    gap: 12,
-  },
-  oneKTotalTarget: {
-    alignSelf: 'flex-start',
-  },
-  oneKValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.accent,
-  },
-  oneKUnit: {
+  goalStatUnit: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.textMuted,
   },
+  oneKCard: {
+    padding: 24,
+    gap: 20,
+  },
+  oneKHeader: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  oneKLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  oneKValue: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: Colors.accent,
+    lineHeight: 52,
+  },
+  oneKUnit: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
   progressBar: {
-    height: 6,
+    height: 8,
     backgroundColor: Colors.cardBorder,
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: 'hidden',
   },
   progressFill: {
@@ -859,72 +1021,30 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   oneKBreakdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+    paddingTop: 16,
+  },
+  oneKItem: {
     alignItems: 'center',
+    gap: 2,
   },
-  oneKBreakdownText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  chartLabel: {
-    fontSize: 12,
+  oneKItemValue: {
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: -8,
-  },
-  weeklyCard: {
-    padding: 24,
-    borderRadius: 0,
-    backgroundColor: '#fffaf2',
-  },
-  weeklyContent: {
-    gap: 32,
-  },
-  classifGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderColor: Colors.cardBorder,
-    opacity: 0.8,
-  },
-  classifItem: {
-    width: '45%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  classifSquare: {
-    width: 6,
-    height: 6,
-    borderRadius: 0,
-  },
-  classifLabel: {
-    fontSize: 11,
-    fontWeight: '600',
     color: Colors.text,
+  },
+  oneKItemLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  classifCount: {
-    fontWeight: '800',
-  },
-  analyticsLink: {
-    marginTop: 8,
-    alignSelf: 'flex-end',
-  },
-  analyticsLinkText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    textDecorationLine: 'underline',
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 16,
     color: Colors.textMuted,
     fontStyle: 'italic',
   },
