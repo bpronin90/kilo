@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kilo — Home Dashboard Mockup</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #1a1714;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 40px 20px;
+    gap: 48px;
+  }
+
+  .label-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: #1a1714;
+    border-bottom: 1px solid #2a2520;
+    padding: 12px 40px;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .label-bar h1 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #FF5C00;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .label-bar span {
+    font-size: 12px;
+    color: #7a756e;
+    letter-spacing: 0.5px;
+  }
+
+  .phone {
+    width: 390px;
+    min-height: 844px;
+    background: #faf6f0;
+    border-radius: 40px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.08),
+      0 25px 80px rgba(0,0,0,0.4),
+      0 4px 12px rgba(0,0,0,0.15);
+    flex-shrink: 0;
+    margin-top: 50px;
+    position: relative;
+  }
+
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 150px;
+    height: 34px;
+    background: #1a1714;
+    border-radius: 0 0 20px 20px;
+    z-index: 10;
+  }
+
+  .screen {
+    padding: 56px 20px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Header */
+  .header {
+    padding: 8px 0 4px;
+  }
+  .wordmark {
+    font-size: 36px;
+    font-weight: 800;
+    color: #1a1714;
+    letter-spacing: -1px;
+  }
+  .wordmark .dot-i { color: #FF5C00; }
+  .wordmark .dot-o { color: #FF5C00; }
+  .subtitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9a9590;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 2px;
+  }
+
+  /* Tier labels */
+  .tier-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #b0aaa3;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 8px;
+    padding-left: 2px;
+  }
+
+  /* ═══ WEEKLY SUMMARY — Hero Panel ═══ */
+  .weekly-hero {
+    background: #fffaf2;
+    border: 1px solid #e8e2d9;
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  .week-badge-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 0;
+  }
+  .week-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a1714;
+    color: #faf6f0;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 6px;
+  }
+  .week-badge .num { color: #FF5C00; font-size: 13px; }
+
+  .classif-section {
+    padding: 16px 20px 0;
+  }
+  .classif-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+  }
+  .classif-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .classif-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .classif-dot.green { background: #2d9d4e; }
+  .classif-dot.yellow { background: #d4a017; }
+  .classif-dot.red { background: #d94040; }
+  .classif-dot.gray { background: #b0aaa3; }
+  .classif-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: #1a1714;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .classif-count {
+    font-weight: 800;
+  }
+
+  .divider {
+    height: 1px;
+    background: #e8e2d9;
+    margin: 16px 20px;
+  }
+
+  .weight-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 20px;
+    gap: 12px;
+  }
+  .weight-current {
+    flex-shrink: 0;
+  }
+  .weight-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #9a9590;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+  }
+  .weight-value {
+    font-size: 32px;
+    font-weight: 800;
+    color: #1a1714;
+    line-height: 1;
+  }
+  .weight-unit {
+    font-size: 14px;
+    font-weight: 600;
+    color: #9a9590;
+  }
+
+  .sparkline-container {
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 6px;
+  }
+  .sparkline-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #b0aaa3;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-align: right;
+    margin-bottom: 4px;
+  }
+  .sparkline {
+    width: 100%;
+    height: 36px;
+  }
+
+  .hero-footer {
+    padding: 14px 20px 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .insights-link {
+    font-size: 10px;
+    font-weight: 700;
+    color: #FF5C00;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  /* ═══ WEIGHT GOAL Panel ═══ */
+  .goal-card {
+    background: #fffaf2;
+    border: 1px solid #e8e2d9;
+    border-radius: 20px;
+    padding: 18px 20px;
+  }
+  .goal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .goal-direction {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #2d9d4e;
+  }
+  .goal-direction .arrow { font-size: 14px; }
+  .goal-weeks {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9a9590;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .goal-stats {
+    display: flex;
+    gap: 24px;
+  }
+  .goal-stat-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #b0aaa3;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+  }
+  .goal-stat-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: #1a1714;
+    line-height: 1.1;
+  }
+  .goal-stat-unit {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9a9590;
+  }
+
+  /* ═══ 1K CLUB Panel ═══ */
+  .onek-card {
+    background: #fffaf2;
+    border: 1px solid #e8e2d9;
+    border-radius: 20px;
+    padding: 18px 20px;
+  }
+  .onek-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .onek-value {
+    font-size: 28px;
+    font-weight: 800;
+    color: #FF5C00;
+    line-height: 1;
+  }
+  .onek-unit {
+    font-size: 13px;
+    font-weight: 600;
+    color: #9a9590;
+  }
+  .onek-target {
+    font-size: 11px;
+    font-weight: 700;
+    color: #b0aaa3;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .progress-bar {
+    height: 6px;
+    background: #e8e2d9;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #FF5C00;
+    border-radius: 3px;
+    width: 72.5%;
+  }
+  .onek-breakdown {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #9a9590;
+    letter-spacing: 0.3px;
+  }
+
+  /* Section titles */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1a1714;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding-left: 2px;
+    margin-top: 4px;
+  }
+
+  /* Annotations overlay */
+  .annotation {
+    position: absolute;
+    right: -12px;
+    transform: translateX(100%);
+    font-size: 10px;
+    font-weight: 600;
+    color: #7a756e;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .annotation::before {
+    content: '';
+    width: 20px;
+    height: 1px;
+    background: #3a3530;
+  }
+
+  /* Bottom nav hint */
+  .bottom-nav {
+    display: flex;
+    justify-content: space-around;
+    padding: 12px 20px 8px;
+    border-top: 1px solid #e8e2d9;
+    margin-top: 8px;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .nav-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: #e8e2d9;
+  }
+  .nav-dot.active { background: #FF5C00; }
+  .nav-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #b0aaa3;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .nav-label.active { color: #FF5C00; }
+</style>
+</head>
+<body>
+
+<div class="label-bar">
+  <h1>Kilo</h1>
+  <span>Home Dashboard — Information Hierarchy Mockup</span>
+</div>
+
+<div class="phone">
+  <div class="screen">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="wordmark">K<span class="dot-i">i</span>lo<span class="dot-o">.</span></div>
+      <div class="subtitle">Current Routine Progress</div>
+    </div>
+
+    <!-- ══ TIER 1: Weekly Summary ══ -->
+    <div class="weekly-hero">
+
+      <!-- Week badge -->
+      <div class="week-badge-row">
+        <div class="week-badge">Week <span class="num">12</span></div>
+      </div>
+
+      <!-- Classifications -->
+      <div class="classif-section">
+        <div class="classif-grid">
+          <div class="classif-item">
+            <div class="classif-dot green"></div>
+            <span class="classif-text"><span class="classif-count">3</span> progressing</span>
+          </div>
+          <div class="classif-item">
+            <div class="classif-dot yellow"></div>
+            <span class="classif-text"><span class="classif-count">2</span> steady</span>
+          </div>
+          <div class="classif-item">
+            <div class="classif-dot red"></div>
+            <span class="classif-text"><span class="classif-count">1</span> regressing</span>
+          </div>
+          <div class="classif-item">
+            <div class="classif-dot gray"></div>
+            <span class="classif-text"><span class="classif-count">0</span> inconsistent</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Weight + Sparkline -->
+      <div class="weight-row">
+        <div class="weight-current">
+          <div class="weight-label">Latest</div>
+          <div class="weight-value">182.4 <span class="weight-unit">lb</span></div>
+        </div>
+        <div class="sparkline-container">
+          <div class="sparkline-label">7-Day Avg</div>
+          <svg class="sparkline" viewBox="0 0 160 36" preserveAspectRatio="none">
+            <polyline
+              fill="none"
+              stroke="#2d9d4e"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              points="4,28 24,26 48,30 72,24 96,20 120,18 140,14 156,12"
+            />
+            <circle cx="156" cy="12" r="3" fill="#2d9d4e" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Footer link -->
+      <div class="hero-footer">
+        <span class="insights-link">Full history and insights →</span>
+      </div>
+    </div>
+
+    <!-- ══ TIER 2: Longer Horizon ══ -->
+    <div class="section-title">Weight Goal</div>
+
+    <div class="goal-card">
+      <div class="goal-header">
+        <div class="goal-direction"><span class="arrow">↓</span> Cutting</div>
+        <div class="goal-weeks">8 weeks left</div>
+      </div>
+      <div class="goal-stats">
+        <div>
+          <div class="goal-stat-label">Target</div>
+          <div class="goal-stat-value">175 <span class="goal-stat-unit">lb</span></div>
+        </div>
+        <div>
+          <div class="goal-stat-label">Weekly Pace</div>
+          <div class="goal-stat-value">−0.9 <span class="goal-stat-unit">lb/wk</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">1k Club Progress</div>
+
+    <div class="onek-card">
+      <div class="onek-top">
+        <div class="onek-value">725 <span class="onek-unit">lb</span></div>
+        <div class="onek-target">/ 1,000 lb</div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <div class="onek-breakdown">S: 275  ·  B: 200  ·  D: 250</div>
+    </div>
+
+    <!-- Bottom nav hint -->
+    <div class="bottom-nav">
+      <div class="nav-item">
+        <div class="nav-dot active"></div>
+        <span class="nav-label active">Home</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>
+        <span class="nav-label">Log</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>
+        <span class="nav-label">Weight</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>
+        <span class="nav-label">Stats</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>
+        <span class="nav-label">More</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
