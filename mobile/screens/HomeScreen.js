@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Image, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Keyboard, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
@@ -264,6 +264,7 @@ function ProfileScreen({ onBack }) {
   const [heightUnit, setHeightUnit] = useState('ft'); // 'ft' or 'cm'
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile && !localProfile) {
@@ -277,9 +278,19 @@ function ProfileScreen({ onBack }) {
   }, []);
 
   const handleSave = async () => {
-    await save(localProfile);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    if (saving) return;
+    setSaving(true);
+    setSaveSuccess(false);
+    try {
+      Keyboard.dismiss();
+      await save(localProfile);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save profile.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getDobDate = () => {
@@ -340,7 +351,6 @@ function ProfileScreen({ onBack }) {
     <ScreenShell title="User Profile" subtitle="Personal details for calorie estimation.">
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-        {saveSuccess && <Text style={{ color: Colors.success, fontWeight: '700' }}>Saved!</Text>}
       </View>
 
       <SectionTitle>Biometrics</SectionTitle>
@@ -455,7 +465,18 @@ function ProfileScreen({ onBack }) {
         ))}
       </View>
 
-      <Button title="Save Profile" onPress={handleSave} style={{ marginTop: 24, marginBottom: 40 }} />
+      <View style={{ marginTop: 24, marginBottom: 40, gap: 12 }}>
+        <Button 
+          title="Save Profile" 
+          onPress={handleSave} 
+          disabled={saving}
+        />
+        {saveSuccess && (
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: Colors.success, fontWeight: '700' }}>Profile saved successfully!</Text>
+          </View>
+        )}
+      </View>
     </ScreenShell>
   );
 }
