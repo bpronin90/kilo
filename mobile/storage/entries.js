@@ -9,6 +9,7 @@ const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
+const USER_PROFILE_KEY = 'kilo_user_profile';
 
 async function readList(key) {
   try {
@@ -231,6 +232,27 @@ export async function saveCurrentWorkoutId(id) {
 
 export async function clearCurrentWorkoutId() {
   await AsyncStorage.removeItem(CURRENT_WORKOUT_ID_KEY);
+}
+
+// ── user profile ─────────────────────────────────────────────────────────────
+
+export async function loadUserProfile() {
+  try {
+    const raw = await AsyncStorage.getItem(USER_PROFILE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveUserProfile(profile) {
+  const record = { ...profile, saved_at: new Date().toISOString() };
+  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(record));
+  return record;
+}
+
+export async function clearUserProfile() {
+  await AsyncStorage.removeItem(USER_PROFILE_KEY);
 }
 
 // ── backup / restore ──────────────────────────────────────────────────────────

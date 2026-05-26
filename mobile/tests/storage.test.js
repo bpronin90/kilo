@@ -26,6 +26,9 @@ import {
   clearWeightGoal,
   migrateToNotebook,
   setCurrentWorkoutNote,
+  loadUserProfile,
+  saveUserProfile,
+  clearUserProfile,
 } from '../storage/entries';
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -1504,5 +1507,34 @@ describe('setCurrentWorkoutNote', () => {
     const entries = await loadWeightEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe(W1.id);
+  });
+});
+
+// ── user profile ──────────────────────────────────────────────────────────────
+
+describe('user profile storage', () => {
+  beforeEach(() => AsyncStorage.clear());
+
+  test('loadUserProfile returns null when nothing stored', async () => {
+    const profile = await loadUserProfile();
+    expect(profile).toBeNull();
+  });
+
+  test('saveUserProfile persists and loadUserProfile returns it', async () => {
+    const input = { height_cm: 178, date_of_birth: '1990-06-15', sex: 'male', activity_level: 'moderately_active' };
+    const saved = await saveUserProfile(input);
+    expect(saved.height_cm).toBe(178);
+    expect(saved.date_of_birth).toBe('1990-06-15');
+    expect(typeof saved.saved_at).toBe('string');
+
+    const loaded = await loadUserProfile();
+    expect(loaded).toEqual(saved);
+  });
+
+  test('clearUserProfile removes stored profile', async () => {
+    await saveUserProfile({ height_cm: 165, date_of_birth: '1995-01-01', sex: 'female', activity_level: 'sedentary' });
+    await clearUserProfile();
+    const profile = await loadUserProfile();
+    expect(profile).toBeNull();
   });
 });

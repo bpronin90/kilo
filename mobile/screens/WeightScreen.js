@@ -4,7 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useWeightEntries, useWeightGoal } from '../hooks/useEntries';
+import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
@@ -58,6 +58,7 @@ function GoalDerived({ info, calorieEstimate }) {
   const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
   const calories_per_day = calorieEstimate?.calories_per_day ?? null;
   const calLabel = calorieEstimate?.label ?? null;
+  const tdeeBased = calorieEstimate?.tdee_based ?? false;
 
   const isMaintain = direction === 'maintain';
   const hasPace = required_weekly_pace !== null;
@@ -73,19 +74,22 @@ function GoalDerived({ info, calorieEstimate }) {
         {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>}
       </View>
 
-      {hasPace && !isMaintain && calLabel !== 'maintain' && (
+      {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
-            Suggested <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>
+            {tdeeBased ? 'Est. daily target' : 'Suggested '}
+            {!tdeeBased && <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>}
           </Text>
-          <Text style={styles.derivedValue}>{calories_per_day} cal / day</Text>
+          <Text style={styles.derivedValue}>
+            {calories_per_day} cal / day{tdeeBased ? ' (approximate)' : ' (estimate)'}
+          </Text>
         </View>
       )}
 
       {!hasPace && (
         <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
       )}
-      {hasPace && isMaintain && (
+      {hasPace && isMaintain && !tdeeBased && (
         <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
       )}
       {hasPace && !isMaintain && isUnrealistic && (
@@ -131,6 +135,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
   const { entries, remove, update } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
+  const profile = useUserProfile()?.profile ?? null;
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
   const [goalEditing, setGoalEditing] = useState(false);
@@ -146,8 +151,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     goalInfo,
     calorieEstimate,
   } = useMemo(
-    () => deriveWeightGoalAnalytics(entries, goal, { goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight }),
-    [entries, goal, goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight]
+    () => deriveWeightGoalAnalytics(entries, goal, { goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight }, new Date(), profile),
+    [entries, goal, goalEditing, goalTargetWeight, goalTargetDate, goalStartWeight, profile]
   );
   const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
 

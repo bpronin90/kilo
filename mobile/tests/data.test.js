@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -2158,5 +2158,148 @@ describe('deriveWeightGoalAnalytics', () => {
     const result = deriveWeightGoalAnalytics(entries, goal, {}, REF);
     expect(result.goalInfo?.direction).toBe('maintain');
     expect(result.calorieEstimate?.label).toBe('maintain');
+  });
+
+  test('complete profile → tdee_based calorie estimate', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 200 }];
+    const goal = { target_weight: 185, target_date: '2026-10-01', start_weight: 200 };
+    const profile = { height_cm: 178, date_of_birth: '1990-01-01', sex: 'male', activity_level: 'moderately_active' };
+    const result = deriveWeightGoalAnalytics(entries, goal, {}, REF, profile);
+    expect(result.calorieEstimate).not.toBeNull();
+    expect(result.calorieEstimate.tdee_based).toBe(true);
+    expect(result.calorieEstimate.label).toBe('deficit');
+    expect(typeof result.calorieEstimate.calories_per_day).toBe('number');
+  });
+
+  test('incomplete profile → falls back to legacy estimate', () => {
+    const entries = [{ date: '2026-05-25', weight_value: 200 }];
+    const goal = { target_weight: 185, target_date: '2026-10-01', start_weight: 200 };
+    const profile = { height_cm: 178 }; // missing fields
+    const result = deriveWeightGoalAnalytics(entries, goal, {}, REF, profile);
+    expect(result.calorieEstimate).not.toBeNull();
+    expect(result.calorieEstimate.tdee_based).toBe(false);
+  });
+});
+
+// ── computeBMR ────────────────────────────────────────────────────────────────
+
+describe('computeBMR', () => {
+  test('male BMR calculation', () => {
+    // weight 200 lb = 90.718 kg; height 178 cm; age 35
+    // 10*90.718 + 6.25*178 - 5*35 + 5 = 907.18 + 1112.5 - 175 + 5 = 1849.68
+    const bmr = computeBMR({ weight_lb: 200, height_cm: 178, age: 35, sex: 'male' });
+    expect(bmr).toBeCloseTo(1849.68, 0);
+  });
+
+  test('female BMR calculation', () => {
+    // weight 140 lb = 63.503 kg; height 165 cm; age 30
+    // 10*63.503 + 6.25*165 - 5*30 - 161 = 635.03 + 1031.25 - 150 - 161 = 1355.28
+    const bmr = computeBMR({ weight_lb: 140, height_cm: 165, age: 30, sex: 'female' });
+    expect(bmr).toBeCloseTo(1355.28, 0);
+  });
+
+  test('returns null when weight_lb is null', () => {
+    expect(computeBMR({ weight_lb: null, height_cm: 178, age: 35, sex: 'male' })).toBeNull();
+  });
+
+  test('returns null when height_cm is null', () => {
+    expect(computeBMR({ weight_lb: 200, height_cm: null, age: 35, sex: 'male' })).toBeNull();
+  });
+
+  test('returns null when age is null', () => {
+    expect(computeBMR({ weight_lb: 200, height_cm: 178, age: null, sex: 'male' })).toBeNull();
+  });
+
+  test('returns null when sex is missing', () => {
+    expect(computeBMR({ weight_lb: 200, height_cm: 178, age: 35, sex: null })).toBeNull();
+  });
+});
+
+// ── computeTDEE ───────────────────────────────────────────────────────────────
+
+describe('computeTDEE', () => {
+  const bmr = 1850;
+
+  test.each([
+    ['sedentary',         1850 * 1.2],
+    ['lightly_active',    1850 * 1.375],
+    ['moderately_active', 1850 * 1.55],
+    ['very_active',       1850 * 1.725],
+    ['extra_active',      1850 * 1.9],
+  ])('%s activity level', (level, expected) => {
+    expect(computeTDEE(bmr, level)).toBeCloseTo(expected, 0);
+  });
+
+  test('returns null for unrecognized activity level', () => {
+    expect(computeTDEE(bmr, 'unknown')).toBeNull();
+  });
+
+  test('returns null when bmr is null', () => {
+    expect(computeTDEE(null, 'sedentary')).toBeNull();
+  });
+});
+
+// ── computeCalorieEstimate (TDEE path) ────────────────────────────────────────
+
+describe('computeCalorieEstimate', () => {
+  const REF_DATE = new Date('2026-05-26');
+  // Birthday in January — clearly already passed relative to REF_DATE regardless of timezone
+  const profile = { height_cm: 178, date_of_birth: '1991-01-15', sex: 'male', activity_level: 'moderately_active' };
+
+  test('loss scenario with complete profile → tdee_based deficit target', () => {
+    // -1 lb/week → daily adjustment = -500
+    const result = computeCalorieEstimate(-1, 'loss', profile, 200, REF_DATE);
+    expect(result.tdee_based).toBe(true);
+    expect(result.label).toBe('deficit');
+    expect(result.calories_per_day).toBeGreaterThan(0);
+    // age = 35; verify against directly computed TDEE
+    const age = ageFromDateOfBirth(profile.date_of_birth, REF_DATE);
+    const bmr = computeBMR({ weight_lb: 200, height_cm: 178, age, sex: 'male' });
+    const tdee = computeTDEE(bmr, 'moderately_active');
+    expect(result.calories_per_day).toBe(Math.round(tdee - 500));
+  });
+
+  test('gain scenario with complete profile → tdee_based surplus target', () => {
+    const result = computeCalorieEstimate(0.5, 'gain', profile, 200, REF_DATE);
+    expect(result.tdee_based).toBe(true);
+    expect(result.label).toBe('surplus');
+    expect(result.calories_per_day).toBeGreaterThan(0);
+  });
+
+  test('maintain direction + complete profile → tdee_based maintain target', () => {
+    const result = computeCalorieEstimate(0, 'maintain', profile, 200, REF_DATE);
+    expect(result.label).toBe('maintain');
+    expect(result.tdee_based).toBe(true);
+    // calories_per_day = TDEE (daily adjustment is 0 for maintain)
+    const age = ageFromDateOfBirth(profile.date_of_birth, REF_DATE);
+    const bmr = computeBMR({ weight_lb: 200, height_cm: 178, age, sex: 'male' });
+    const tdee = computeTDEE(bmr, 'moderately_active');
+    expect(result.calories_per_day).toBe(Math.round(tdee));
+  });
+
+  test('maintain direction + no profile → legacy maintain (0 cal)', () => {
+    const result = computeCalorieEstimate(0, 'maintain', null, 200, REF_DATE);
+    expect(result.label).toBe('maintain');
+    expect(result.tdee_based).toBe(false);
+    expect(result.calories_per_day).toBe(0);
+  });
+
+  test('null pace → null result', () => {
+    const result = computeCalorieEstimate(null, 'loss', profile, 200, REF_DATE);
+    expect(result.calories_per_day).toBeNull();
+    expect(result.label).toBeNull();
+  });
+
+  test('incomplete profile → falls back to legacy deficit/surplus', () => {
+    const result = computeCalorieEstimate(-1, 'loss', { height_cm: 178 }, 200, REF_DATE);
+    expect(result.tdee_based).toBe(false);
+    expect(result.calories_per_day).toBe(500);
+    expect(result.label).toBe('deficit');
+  });
+
+  test('null profile → falls back to legacy deficit/surplus', () => {
+    const result = computeCalorieEstimate(-1, 'loss', null, 200, REF_DATE);
+    expect(result.tdee_based).toBe(false);
+    expect(result.calories_per_day).toBe(500);
   });
 });

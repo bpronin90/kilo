@@ -187,11 +187,37 @@ If the target date is in the past or invalid, returns direction null, 0 weeks re
 
 > Where you see it: Goal detail view
 
-Estimates the daily calorie adjustment needed to reach the weight goal, using the 3500 cal/lb convention:
+When a complete user profile is available (height, date of birth, biological sex, activity level), the app uses the **Mifflin-St Jeor BMR formula** to produce a TDEE-anchored absolute daily calorie target. Without a complete profile, it falls back to the legacy 3500 cal/lb deficit/surplus display.
+
+#### Mifflin-St Jeor BMR
 
 ```
-Daily adjustment = |required_weekly_pace × 3500| / 7
+Male:   10 × weight(kg) + 6.25 × height(cm) − 5 × age + 5
+Female: 10 × weight(kg) + 6.25 × height(cm) − 5 × age − 161
 ```
+
+Weight is converted from lb to kg using the factor 0.453592.
+
+#### Activity Multipliers
+
+| Level | Multiplier |
+|-------|-----------|
+| Sedentary | 1.2 |
+| Lightly active | 1.375 |
+| Moderately active | 1.55 |
+| Very active | 1.725 |
+| Extra active | 1.9 |
+
+**TDEE** = BMR × activity multiplier
+
+#### Daily Calorie Target (TDEE path)
+
+```
+Daily adjustment = required_weekly_pace × 3500 / 7
+Daily calorie target = TDEE + daily adjustment
+```
+
+Displayed as "Est. daily target … (approximate)". The result is an estimate only — it does not account for adaptive thermogenesis, body composition, medical conditions, or non-exercise activity variation.
 
 | Direction | Label |
 |-----------|-------|
@@ -199,9 +225,19 @@ Daily adjustment = |required_weekly_pace × 3500| / 7
 | Gain (positive pace) | surplus |
 | Maintain | maintain (0 cal/day) |
 
-If the result is less than 10 cal/day, it rounds to 0 and labels as maintain.
+#### Legacy fallback (no profile)
 
-**Example:** Required pace −1 lb/week → 3500 / 7 = 500 cal/day deficit.
+Without a complete profile, only the 3500 cal/lb adjustment is shown:
+
+```
+Daily adjustment = |required_weekly_pace × 3500| / 7
+```
+
+Displayed as "Suggested deficit/surplus … (estimate)".
+
+If the daily adjustment is less than 10 cal/day, it rounds to 0 and labels as maintain.
+
+**Example:** Required pace −1 lb/week, moderately active 35-year-old male, 200 lb, 178 cm → TDEE ≈ 2865 kcal, daily adjustment −500 kcal → Est. daily target ≈ 2365 cal/day (approximate).
 
 ### Current Weight Resolution
 
@@ -246,7 +282,7 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | What does Kilo Max measure? | It averages all your working-set Epley 1RM estimates for an exercise, then multiplies by a fatigue multiplier (default 1.07). It's a fatigue-adjusted strength estimate, not a true max. |
 | Why does my current weight differ from my last weigh-in? | If goal calculations show a different "current weight," it may be using a saved goal start weight (when no recent entries exist) or a user-typed value during editing. The priority is: latest entry → saved start weight → typed value. |
 | How is my goal pace calculated? | Total weight change needed divided by weeks until your target date. Warnings appear if the pace exceeds 1 lb/week (unhealthy) or 2 lb/week (unrealistic). |
-| How are daily calories estimated? | Using the 3500 cal/lb convention: your required weekly pace × 3500 ÷ 7 = daily calorie surplus or deficit. |
+| How are daily calories estimated? | When you have a complete profile (height, date of birth, sex, activity level), the app uses Mifflin-St Jeor BMR × activity multiplier (TDEE), then adds your required daily pace adjustment to produce an absolute daily calorie target. Without a profile it falls back to the 3500 cal/lb convention (weekly pace × 3500 ÷ 7). All values are approximate estimates. |
 
 ---
 

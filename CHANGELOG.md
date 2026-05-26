@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.42.0 - 2026-05-26
+
+- Issue #194: Replaced the native Weight goal card's flat 3500 cal/lb helper
+  with a TDEE-anchored daily calorie target when a complete stored user
+  profile is available, using Mifflin-St Jeor BMR plus activity multipliers
+  with a legacy estimated deficit/surplus fallback when profile data is
+  incomplete. Added local user-profile AsyncStorage support plus a shared
+  `useUserProfile()` hook, extended data/storage tests to pin the new
+  calorie-model contract, and aligned current-state, testing, and
+  architecture docs during reviewer closeout.
+
 ## 0.41.7 - 2026-05-26
 
 - Issue #185: Finished the native weight-consumer migration by removing the

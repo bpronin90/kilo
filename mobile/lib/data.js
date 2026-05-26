@@ -277,23 +277,101 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
   return { direction, weeks_remaining, required_weekly_pace, warnings };
 }
 
+// Activity level multipliers for TDEE calculation (Mifflin-St Jeor).
+export const ACTIVITY_MULTIPLIERS = {
+  sedentary:         1.2,
+  lightly_active:    1.375,
+  moderately_active: 1.55,
+  very_active:       1.725,
+  extra_active:      1.9,
+};
+
+// Compute Mifflin-St Jeor BMR.
+// weight_lb: current weight in pounds, height_cm: height in centimeters,
+// age: integer years, sex: 'male'|'female'.
+// Returns BMR in kcal/day, or null if inputs are invalid.
+export function computeBMR({ weight_lb, height_cm, age, sex }) {
+  if (weight_lb == null || height_cm == null || age == null || !sex) return null;
+  const weight_kg = weight_lb * 0.453592;
+  const base = 10 * weight_kg + 6.25 * height_cm - 5 * age;
+  return sex === 'male' ? base + 5 : base - 161;
+}
+
+// Compute TDEE from BMR and activity level.
+// Returns kcal/day, or null if BMR is null or activity_level is unrecognized.
+export function computeTDEE(bmr, activity_level) {
+  if (bmr == null) return null;
+  const multiplier = ACTIVITY_MULTIPLIERS[activity_level];
+  if (multiplier == null) return null;
+  return bmr * multiplier;
+}
+
+// Derive age in whole years from a YYYY-MM-DD date string and reference date.
+export function ageFromDateOfBirth(date_of_birth, referenceDate = new Date()) {
+  if (!date_of_birth) return null;
+  const [y, m, d] = date_of_birth.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const ref = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  let age = ref.getFullYear() - y;
+  const hasBirthdayPassed =
+    ref.getMonth() + 1 > m || (ref.getMonth() + 1 === m && ref.getDate() >= d);
+  if (!hasBirthdayPassed) age -= 1;
+  return age;
+}
+
+// Returns true when a user profile has all fields needed for TDEE calculation.
+export function isProfileComplete(profile) {
+  if (!profile) return false;
+  return (
+    typeof profile.height_cm === 'number' &&
+    typeof profile.date_of_birth === 'string' &&
+    (profile.sex === 'male' || profile.sex === 'female') &&
+    typeof profile.activity_level === 'string' &&
+    ACTIVITY_MULTIPLIERS[profile.activity_level] != null
+  );
+}
+
 // Estimate the daily calorie adjustment needed to hit a weight goal.
-// Uses the 3500 cal/lb convention (1 lb ≈ 3500 kcal).
+//
+// When profile is complete, returns a TDEE-anchored absolute daily calorie target.
+// When profile is incomplete or absent, falls back to the 3500 cal/lb deficit/surplus display.
+//
 // required_weekly_pace: lb/week from computeWeightGoal (negative = loss, positive = gain).
-// direction: 'gain'|'loss'|'maintain'|null from computeWeightGoal — maintain goals return no estimate.
-// Returns { calories_per_day: number|null, label: 'deficit'|'surplus'|'maintain'|null }.
-export function computeCalorieEstimate(required_weekly_pace, direction) {
+// direction: 'gain'|'loss'|'maintain'|null from computeWeightGoal.
+// profile: optional user profile object ({ height_cm, date_of_birth, sex, activity_level }).
+// weight_lb: current weight in lb (needed for BMR when profile is present).
+// referenceDate: used to compute age from date_of_birth.
+//
+// Returns {
+//   calories_per_day: number|null,
+//   label: 'deficit'|'surplus'|'maintain'|null,
+//   tdee_based: boolean  — true when anchored to TDEE; false for legacy 3500 mode
+// }.
+export function computeCalorieEstimate(required_weekly_pace, direction, profile = null, weight_lb = null, referenceDate = new Date()) {
   if (required_weekly_pace === null || required_weekly_pace === undefined) {
-    return { calories_per_day: null, label: null };
+    return { calories_per_day: null, label: null, tdee_based: false };
   }
-  if (direction === 'maintain') {
-    return { calories_per_day: 0, label: 'maintain' };
+
+  const dailyAdjustment = direction === 'maintain' ? 0 : Math.round((required_weekly_pace * 3500) / 7);
+  const isMaintainByAdjustment = direction === 'maintain' || Math.abs(dailyAdjustment) < 10;
+
+  if (isProfileComplete(profile) && weight_lb != null) {
+    const age = ageFromDateOfBirth(profile.date_of_birth, referenceDate);
+    if (age != null && age > 0) {
+      const bmr = computeBMR({ weight_lb, height_cm: profile.height_cm, age, sex: profile.sex });
+      const tdee = computeTDEE(bmr, profile.activity_level);
+      if (tdee != null) {
+        const target = Math.round(tdee + dailyAdjustment);
+        const label = isMaintainByAdjustment ? 'maintain' : (dailyAdjustment > 0 ? 'surplus' : 'deficit');
+        return { calories_per_day: target, label, tdee_based: true };
+      }
+    }
   }
-  const raw = Math.round((required_weekly_pace * 3500) / 7);
-  if (Math.abs(raw) < 10) {
-    return { calories_per_day: 0, label: 'maintain' };
+
+  if (isMaintainByAdjustment) {
+    return { calories_per_day: 0, label: 'maintain', tdee_based: false };
   }
-  return { calories_per_day: Math.abs(raw), label: raw > 0 ? 'surplus' : 'deficit' };
+  return { calories_per_day: Math.abs(dailyAdjustment), label: dailyAdjustment > 0 ? 'surplus' : 'deficit', tdee_based: false };
 }
 
 // Resolve the current-weight input for goal-guidance calculations.
@@ -768,14 +846,15 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 // goal:         persisted goal state { target_weight, target_date, start_weight } or null
 // editState:    optional { goalEditing: bool, goalTargetWeight: string, goalTargetDate: string, goalStartWeight: string }
 // referenceDate: optional Date for testability (defaults to today)
+// profile: optional user profile object for TDEE-based calorie estimate
 //
 // Returns:
 //   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight }
 //   paceLevel:       'notable' | 'spike' | null
 //   rollingSeries:   { value, label, unit }[]
 //   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings } | null
-//   calorieEstimate: { calories_per_day, label } | null
-export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referenceDate = new Date()) {
+//   calorieEstimate: { calories_per_day, label, tdee_based } | null
+export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referenceDate = new Date(), profile = null) {
   const {
     goalEditing = false,
     goalTargetWeight = '',
@@ -797,7 +876,7 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
   if (resolvedCurrentWeight !== null && !isNaN(tw) && td) {
     try {
       goalInfo = computeWeightGoal({ currentWeight: resolvedCurrentWeight, targetWeight: tw, targetDate: td, referenceDate });
-      calorieEstimate = computeCalorieEstimate(goalInfo.required_weekly_pace, goalInfo.direction);
+      calorieEstimate = computeCalorieEstimate(goalInfo.required_weekly_pace, goalInfo.direction, profile, resolvedCurrentWeight, referenceDate);
     } catch {
       goalInfo = null;
       calorieEstimate = null;

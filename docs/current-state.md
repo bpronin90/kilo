@@ -208,12 +208,17 @@ The real native app path now has a modular React Native shell:
   ISO, and a prominent top-level goal card with a native target-date picker,
   MM-DD-YYYY visible goal-date formatting, `Target` and `By Date` as the
   primary anchors, and row-based derived guidance for `Target pace` plus
-  suggested calorie deficit/surplus alongside advisory warnings; maintain-goal
-  cases render semantic maintenance guidance instead of gain/loss math, the
-  no-estimate state keeps the panel hierarchy visible with neutral fallback
-  messaging, and when no saved weight entries exist the goal form still
-  requires a current-weight fallback so the pace and calorie guidance can
-  render from the saved goal state. The Weight tab now reads top-to-bottom as
+  advisory calorie guidance alongside warnings; when a complete stored user
+  profile exists (`height_cm`, `date_of_birth`, `sex`, `activity_level`), the
+  calorie row now shows an approximate TDEE-anchored daily target using the
+  Mifflin-St Jeor BMR formula and activity multipliers, including maintenance
+  targets. Without a complete profile, it falls back to the legacy estimated
+  deficit/surplus helper. Maintain-goal fallback cases still render semantic
+  maintenance guidance instead of gain/loss math, the no-estimate state keeps
+  the panel hierarchy visible with neutral fallback messaging, and when no
+  saved weight entries exist the goal form still requires a current-weight
+  fallback so the pace and calorie guidance can render from the saved goal
+  state. The Weight tab now reads top-to-bottom as
   weight entry, `Goals`, `Trends`, and `History`, with `Goals` / `Trends`
   using the shared section-heading treatment and a merged Trends card that
   now consumes the same canonical `deriveWeightGoalAnalytics()` output used by
@@ -337,9 +342,10 @@ The native Weight screen now also supports
 a lightweight saved goal with target weight and target date, derives gain,
 loss, or maintain direction plus required weekly pace from the latest saved
 weight entry, surfaces unrealistic or unhealthy pace warnings as advisory-only
-feedback rather than hard validation, and now adds a narrow advisory calorie
-helper for gain/loss goals using the saved goal direction plus derived weekly
-pace without storing any extra profile or nutrition settings.
+feedback rather than hard validation, and now stores an optional local user
+profile for calorie guidance. When that profile is complete, the screen uses a
+TDEE-anchored daily target; otherwise it falls back to the legacy estimated
+deficit/surplus helper without introducing nutrition tracking or onboarding.
 The v2 parser groundwork for one long workout note now exists alongside the
 raw-note editor, a formatted read-mode mirror that preserves headings,
 exercise blocks, mixed-weight rows, and unparsed history lines, and a stable
