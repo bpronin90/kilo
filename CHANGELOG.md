@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.6 - 2026-05-26
+
+- Issue #171: Published the human-readable calculations reference with verified
+  descriptions of all workout analytics (classifications, skip markers,
+  attendance flags, rep drop-off, 1k total, Kilo Max, weekly summary), weight
+  analytics (trends, pace, rolling averages), goal guidance (direction, pace,
+  calorie estimate, weight resolution), and user configuration (tracked lifts,
+  1k selections). Includes FAQ and data lifecycle summary.
+
 ## 0.41.5 - 2026-05-26
 
 - Issue #193: Repaired workout-data trust regressions by fixing `Weeks In`

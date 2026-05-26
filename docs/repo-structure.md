@@ -237,7 +237,7 @@ npm test
 | `docs/mvp-v2-roadmap.md` | Roadmap for MVP v2, which redefines the product around a freeform logging model rather than the rigid tracker model. Extends and supersedes portions of `docs/mvp-roadmap.md` for post-v1 work. |
 | `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
 | `docs/repo-structure.md` | This file. |
-| `docs/calculations-reference.md` | Human-readable framework for layman-facing calculation explanations (weight, goals, workouts). Content filled as calculations stabilize through MVP4.5. |
+| `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |
 | `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by `docs/mvp-roadmap.md` and `docs/current-state.md`. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |
 
