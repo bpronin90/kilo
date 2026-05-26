@@ -212,9 +212,10 @@ resolution contract in `mobile/lib/data.js` (latest saved entry by date when
 present, otherwise the saved goal `start_weight`, or the in-progress typed
 fallback while editing), and renders advisory warnings without blocking the
 save path. Shared prior-window comparison ownership for weight trends also now
-lives in `computeWeightTrendSummary()` in `mobile/lib/data.js`, even though the
-existing Weight-specific presentation can be migrated to that helper in a later
-follow-up.
+lives in `computeWeightTrendSummary()` in `mobile/lib/data.js`, and Weight,
+Home, and Analytics now all consume that shared weight/goal derivation contract
+through `deriveWeightGoalAnalytics()` instead of carrying screen-local
+reshaping.
 
 Tracked-lift visibility now follows a similar shared-hook pattern. Log toggles
 persist through the global `kilo_tracked_lifts` map, `useTrackedLifts()`
@@ -540,7 +541,7 @@ recomputation at render time is permitted.
 | Overload trend | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | 1k total | `derive1kTotal()` in `parser.js` | Not persisted | Home 1k card, Analytics 1k card | Yes — recompute-only |
 | Weight rolling averages | `computeWeightTrends()` / `computeWeightRollingAverageSeries()` in `data.js` | Not persisted | Home chart, Weight trends card, Analytics weight section | Yes — recompute-only |
-| Weight trend prior-window summary | `computeWeightTrendSummary()` in `data.js` | Not persisted | Shared contract for Weight/Home/Analytics follow-up consumers; current Weight presentation can adopt it in a later pass | Yes — recompute-only |
+| Weight trend prior-window summary | `computeWeightTrendSummary()` via `deriveWeightGoalAnalytics()` in `data.js` | Not persisted | Weight trends card, Home weight summary, Analytics weight section | Yes — recompute-only |
 | Weight pace level | `computeWeightPaceLevel()` in `data.js` | Not persisted | Weight trends card, Analytics weight section | Yes — recompute-only |
 | Weight goal guidance | `resolveGoalCurrentWeight()` / `computeWeightGoal()` / `computeCalorieEstimate()` in `data.js` | Goal persisted; guidance recomputed | Weight goal card only | Yes — recompute-only (from persisted goal plus latest-entry/start-weight fallback contract) |
 | Weeks In | `computeWeeksIn()` in `data.js` | Not persisted | Home summary card | Yes — recompute-only |
