@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -2301,5 +2301,397 @@ describe('computeCalorieEstimate', () => {
     const result = computeCalorieEstimate(-1, 'loss', null, 200, REF_DATE);
     expect(result.tdee_based).toBe(false);
     expect(result.calories_per_day).toBe(500);
+  });
+});
+
+// ── Canonical workout contract ────────────────────────────────────────────────
+//
+// These tests assert that deriveWorkoutNoteAnalytics is the single shared
+// derivation path: its outputs match the individual helpers when called with
+// the same sections, guaranteeing there is one answer per input across
+// all workout consumers (WorkoutScreen, HomeScreen, StatsScreen).
+
+describe('deriveWorkoutNoteAnalytics — canonical contract: output consistent with individual helpers', () => {
+  // Reusable fixture builder: two exercises with session_entries histories.
+  function makeContractSections({ squatEntries, benchEntries }) {
+    function toSessionEntry(sets) {
+      return { skipped: false, raw: 'x', sets };
+    }
+    return [{
+      heading: 'Monday 2026-05-26', subheading: null, kind: 'general',
+      exercises: [
+        {
+          name: 'Squat',
+          rows: squatEntries.map(sets => ({ raw: 'x', sets })),
+          sets: squatEntries.flat(),
+          unparsed_rows: [],
+          session_entries: squatEntries.map(toSessionEntry),
+        },
+        {
+          name: 'Bench Press',
+          rows: benchEntries.map(sets => ({ raw: 'x', sets })),
+          sets: benchEntries.flat(),
+          unparsed_rows: [],
+          session_entries: benchEntries.map(toSessionEntry),
+        },
+      ],
+    }];
+  }
+
+  const squatEntries = [
+    [{ weight_value: 225, rep_count: 5 }, { weight_value: 225, rep_count: 5 }],
+    [{ weight_value: 235, rep_count: 5 }, { weight_value: 235, rep_count: 5 }],
+    [{ weight_value: 245, rep_count: 5 }, { weight_value: 245, rep_count: 5 }],
+  ];
+  const benchEntries = [
+    [{ weight_value: 70, rep_count: 8 }],
+    [{ weight_value: 75, rep_count: 8 }],
+  ];
+  const trackedNames = ['Squat', 'Bench Press'];
+
+  test('weeksIn matches computeWeeksIn(sections) directly', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    expect(weeksIn).toBe(computeWeeksIn(sections));
+  });
+
+  test('classifications match classifyExerciseSessions(sections, trackedNames) directly', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const { classifications } = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    const direct = classifyExerciseSessions(sections, trackedNames);
+    expect(classifications).toEqual(direct);
+  });
+
+  test('skipData matches deriveSkipData(sections) directly', () => {
+    const skipSquat = [
+      [{ weight_value: 225, rep_count: 5 }],
+      [], // skipped slot — represented as a skipped session_entry
+    ];
+    const sections = [{
+      heading: 'Tuesday', subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Squat',
+        rows: [],
+        sets: [],
+        unparsed_rows: [],
+        session_entries: [
+          { skipped: false, raw: '225x5', sets: [{ weight_value: 225, rep_count: 5 }] },
+          { skipped: true,  raw: '-',     sets: [] },
+        ],
+      }],
+    }];
+    const { skipData } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
+    const direct = deriveSkipData(sections);
+    expect(skipData).toEqual(direct);
+  });
+
+  test('repDropOffFlags match deriveRepDropOffFlags(sections, trackedNames) directly', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    const direct = deriveRepDropOffFlags(sections, trackedNames);
+    expect(repDropOffFlags).toEqual(direct);
+  });
+
+  test('signals match deriveSignals(sections, trackedNames) directly', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const multiplier = 1.07;
+    const { signals } = deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier);
+    const { exercises: direct } = deriveSignals(sections, trackedNames, multiplier);
+    expect(signals).toHaveLength(direct.length);
+    signals.forEach((sig, i) => {
+      expect(sig.name).toBe(direct[i].name);
+      expect(sig.progression_status).toBe(direct[i].progression_status);
+      expect(sig.kilo_max).toBe(direct[i].kilo_max);
+    });
+  });
+
+  test('representative fixture: squat 3 sessions progressing → weeksIn 3, classification progressing', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const { weeksIn, classifications } = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    expect(weeksIn).toBe(3);
+    expect(classifications[normalizeLiftName('Squat')]).toBe('progressing');
+  });
+
+  test('representative fixture: bench 2 sessions progressing → classification progressing', () => {
+    const sections = makeContractSections({ squatEntries, benchEntries });
+    const { classifications } = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    expect(classifications[normalizeLiftName('Bench Press')]).toBe('progressing');
+  });
+});
+
+// ── computeWeeksIn — pinned contract cases ────────────────────────────────────
+//
+// Trust-critical: Weeks In is the primary progression-depth display on HomeScreen.
+// These cases pin known-correct answers for representative fixture patterns so
+// that any regression in the depth semantics is caught immediately.
+
+describe('computeWeeksIn — pinned contract cases', () => {
+  function makeSection(exercises) {
+    return {
+      heading: null, subheading: null, kind: 'general',
+      exercises,
+    };
+  }
+
+  function makeExercise(name, sessionEntryCount, rowCount) {
+    const session_entries = Array.from({ length: sessionEntryCount }, () => ({
+      skipped: false, raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }],
+    }));
+    const rows = Array.from({ length: rowCount }, () => ({
+      raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }],
+    }));
+    return { name, rows, sets: [], unparsed_rows: [], session_entries };
+  }
+
+  test('12 sessions in a single exercise → weeksIn 12', () => {
+    const sections = [makeSection([makeExercise('Squat', 12, 12)])];
+    expect(computeWeeksIn(sections)).toBe(12);
+  });
+
+  test('two exercises at depth 8 and 12 → weeksIn 12', () => {
+    const sections = [makeSection([makeExercise('Squat', 12, 12), makeExercise('Bench Press', 8, 8)])];
+    expect(computeWeeksIn(sections)).toBe(12);
+  });
+
+  test('exercises split across two sections (days) → weeksIn uses global max', () => {
+    const sections = [
+      makeSection([makeExercise('Squat', 5, 5)]),
+      makeSection([makeExercise('Deadlift', 9, 9)]),
+    ];
+    expect(computeWeeksIn(sections)).toBe(9);
+  });
+
+  test('4 logged + 2 skipped → weeksIn 6 (skipped count toward depth)', () => {
+    // rows contains only the 4 non-skipped entries (rows do not capture skips)
+    const session_entries = [
+      ...Array.from({ length: 4 }, () => ({ skipped: false, raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }] })),
+      { skipped: true, raw: '-', sets: [] },
+      { skipped: true, raw: '-', sets: [] },
+    ];
+    const rows = Array.from({ length: 4 }, () => ({ raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }] }));
+    const sections = [makeSection([{ name: 'Squat', rows, sets: [], unparsed_rows: [], session_entries }])];
+    expect(computeWeeksIn(sections)).toBe(6);
+  });
+
+  test('7 plain rows, no session_entries → weeksIn 7', () => {
+    const rows = Array.from({ length: 7 }, () => ({ raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }] }));
+    const sections = [makeSection([{ name: 'Squat', rows, sets: [], unparsed_rows: [], session_entries: [] }])];
+    expect(computeWeeksIn(sections)).toBe(7);
+  });
+
+  test('session_entries=6, rows=13 (7 legacy + 6 new) → weeksIn 13', () => {
+    const legacyRows = Array.from({ length: 7 }, () => ({ raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }] }));
+    const newRows    = Array.from({ length: 6 }, () => ({ raw: '140x5', sets: [{ weight_value: 140, rep_count: 5 }] }));
+    const sessionEntries = newRows.map(r => ({ skipped: false, raw: r.raw, sets: r.sets }));
+    const sections = [makeSection([{
+      name: 'Squat',
+      rows: [...legacyRows, ...newRows],
+      sets: [],
+      unparsed_rows: [],
+      session_entries: sessionEntries,
+    }])];
+    expect(computeWeeksIn(sections)).toBe(13);
+  });
+
+  test('null sections → null', () => {
+    expect(computeWeeksIn(null)).toBeNull();
+  });
+
+  test('empty sections array → 0', () => {
+    expect(computeWeeksIn([])).toBe(0);
+  });
+
+  test('sections with no session_entries and no rows → 0', () => {
+    const sections = [makeSection([{ name: 'Squat', rows: [], sets: [], unparsed_rows: [], session_entries: [] }])];
+    expect(computeWeeksIn(sections)).toBe(0);
+  });
+});
+
+// ── Canonical weight/goal contract ────────────────────────────────────────────
+//
+// These tests assert that deriveWeightGoalAnalytics (the single canonical entry
+// point for Weight, Home, and Stats consumers) produces each field using exactly
+// the same derivation as the individual helpers — so that no consumer can
+// diverge by calling a helper directly.
+
+describe('deriveWeightGoalAnalytics — canonical contract: output consistent with individual helpers', () => {
+  const REF = new Date('2026-05-26T12:00:00');
+
+  const entries = [
+    { date: '2026-05-26', weight_value: 186.0 },
+    { date: '2026-05-25', weight_value: 185.0 },
+    { date: '2026-05-24', weight_value: 184.5 },
+    { date: '2026-05-20', weight_value: 183.0 },
+    { date: '2026-05-15', weight_value: 182.0 },
+    { date: '2026-05-10', weight_value: 181.0 },
+    { date: '2026-05-05', weight_value: 180.0 },
+    { date: '2026-04-28', weight_value: 179.0 },
+  ];
+
+  const goal = { target_weight: 175, target_date: '2026-10-01', start_weight: 186 };
+
+  test('trendSummary matches computeWeightTrendSummary(entries, ref) directly', () => {
+    const { trendSummary } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const direct = computeWeightTrendSummary(entries, REF);
+    expect(trendSummary).toEqual(direct);
+  });
+
+  test('paceLevel matches computeWeightPaceLevel(entries) directly', () => {
+    const { paceLevel } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const direct = computeWeightPaceLevel(entries);
+    expect(paceLevel).toBe(direct);
+  });
+
+  test('rollingSeries matches computeWeightRollingAverageSeries(entries, 7) directly', () => {
+    const { rollingSeries } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const direct = computeWeightRollingAverageSeries(entries, 7);
+    expect(rollingSeries).toEqual(direct);
+  });
+
+  test('goalInfo matches computeWeightGoal called with resolved current weight directly', () => {
+    const { goalInfo } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const resolvedCurrent = resolveGoalCurrentWeight(entries, goal, { goalEditing: false });
+    const direct = computeWeightGoal({
+      currentWeight: resolvedCurrent,
+      targetWeight: goal.target_weight,
+      targetDate: goal.target_date,
+      referenceDate: REF,
+    });
+    expect(goalInfo).toEqual(direct);
+  });
+
+  test('calorieEstimate matches computeCalorieEstimate called with goalInfo outputs directly', () => {
+    const { goalInfo, calorieEstimate } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const resolvedCurrent = resolveGoalCurrentWeight(entries, goal, { goalEditing: false });
+    const direct = computeCalorieEstimate(goalInfo.required_weekly_pace, goalInfo.direction, null, resolvedCurrent, REF);
+    expect(calorieEstimate).toEqual(direct);
+  });
+
+  test('TDEE-based calorieEstimate: full chain matches manual BMR → TDEE → calories_per_day', () => {
+    const profile = { height_cm: 178, date_of_birth: '1991-01-15', sex: 'male', activity_level: 'moderately_active' };
+    const { goalInfo, calorieEstimate } = deriveWeightGoalAnalytics(entries, goal, {}, REF, profile);
+
+    // Manually compute expected value
+    const age = ageFromDateOfBirth(profile.date_of_birth, REF);
+    const resolvedCurrent = resolveGoalCurrentWeight(entries, goal, { goalEditing: false });
+    const bmr = computeBMR({ weight_lb: resolvedCurrent, height_cm: profile.height_cm, age, sex: profile.sex });
+    const tdee = computeTDEE(bmr, profile.activity_level);
+    const dailyAdjustment = Math.round((goalInfo.required_weekly_pace * 3500) / 7);
+    const expected = Math.round(tdee + dailyAdjustment);
+
+    expect(calorieEstimate.tdee_based).toBe(true);
+    expect(calorieEstimate.calories_per_day).toBe(expected);
+  });
+});
+
+// ── Cross-consumer consistency ────────────────────────────────────────────────
+//
+// Same input must yield the same answer regardless of which consumer requests it.
+// All weight/goal consumers (Weight tab, Home tab, Stats tab) share the canonical
+// deriveWeightGoalAnalytics layer. These tests verify there is one answer per input
+// by cross-checking that the canonical output fields are internally consistent.
+
+describe('cross-consumer consistency — weight/goal', () => {
+  const REF = new Date('2026-05-26T12:00:00');
+
+  test('currentWeight from trendSummary equals resolveGoalCurrentWeight for same inputs', () => {
+    const entries = [
+      { date: '2026-05-26', weight_value: 185 },
+      { date: '2026-05-24', weight_value: 184 },
+    ];
+    const goal = { target_weight: 175, target_date: '2026-10-01', start_weight: 185 };
+    const { trendSummary } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const resolved = resolveGoalCurrentWeight(entries, goal, { goalEditing: false });
+    expect(trendSummary.currentWeight).toBe(resolved);
+  });
+
+  test('goalInfo.direction is consistent with calorieEstimate.label for loss goal', () => {
+    const entries = [{ date: '2026-05-26', weight_value: 185 }];
+    const goal = { target_weight: 175, target_date: '2026-10-01', start_weight: 185 };
+    const { goalInfo, calorieEstimate } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(goalInfo.direction).toBe('loss');
+    expect(calorieEstimate.label).toBe('deficit');
+  });
+
+  test('goalInfo.direction is consistent with calorieEstimate.label for gain goal', () => {
+    const entries = [{ date: '2026-05-26', weight_value: 150 }];
+    const goal = { target_weight: 165, target_date: '2026-10-01', start_weight: 150 };
+    const { goalInfo, calorieEstimate } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(goalInfo.direction).toBe('gain');
+    expect(calorieEstimate.label).toBe('surplus');
+  });
+
+  test('goalInfo.direction is consistent with calorieEstimate.label for maintain goal', () => {
+    const entries = [{ date: '2026-05-26', weight_value: 175 }];
+    const goal = { target_weight: 175.2, target_date: '2026-10-01', start_weight: 175 };
+    const { goalInfo, calorieEstimate } = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(goalInfo.direction).toBe('maintain');
+    expect(calorieEstimate.label).toBe('maintain');
+  });
+
+  test('paceLevel is computed from the same entry set as trendSummary', () => {
+    const entries = [
+      { date: '2026-05-26', weight_value: 188 },
+      { date: '2026-05-25', weight_value: 185 },
+    ];
+    const { trendSummary, paceLevel } = deriveWeightGoalAnalytics(entries, null, {}, REF);
+    // delta = 3 lb → spike
+    expect(paceLevel).toBe('spike');
+    // trendSummary.paceFlag tracks direction; paceLevel tracks severity — both from same entries
+    expect(trendSummary.paceFlag).toBe('gain');
+  });
+
+  test('two independent deriveWeightGoalAnalytics calls with same inputs yield identical results', () => {
+    const entries = [
+      { date: '2026-05-26', weight_value: 185 },
+      { date: '2026-05-20', weight_value: 184 },
+    ];
+    const goal = { target_weight: 170, target_date: '2026-10-01', start_weight: 185 };
+    const result1 = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    const result2 = deriveWeightGoalAnalytics(entries, goal, {}, REF);
+    expect(result1.trendSummary).toEqual(result2.trendSummary);
+    expect(result1.paceLevel).toBe(result2.paceLevel);
+    expect(result1.goalInfo).toEqual(result2.goalInfo);
+    expect(result1.calorieEstimate).toEqual(result2.calorieEstimate);
+  });
+});
+
+// ── Cross-consumer consistency — workout ─────────────────────────────────────
+
+describe('cross-consumer consistency — workout', () => {
+  function makeWorkoutSections(sessionCounts) {
+    return sessionCounts.map(({ name, count }) => ({
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{
+        name,
+        rows: Array.from({ length: count }, () => ({ raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }] })),
+        sets: [],
+        unparsed_rows: [],
+        session_entries: Array.from({ length: count }, () => ({
+          skipped: false, raw: '135x5', sets: [{ weight_value: 135, rep_count: 5 }],
+        })),
+      }],
+    }));
+  }
+
+  test('weeksIn is consistent: canonical path equals computeWeeksIn for same sections', () => {
+    const sections = makeWorkoutSections([{ name: 'Squat', count: 5 }, { name: 'Deadlift', count: 8 }]);
+    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, ['Squat', 'Deadlift']);
+    expect(weeksIn).toBe(computeWeeksIn(sections));
+    expect(weeksIn).toBe(8);
+  });
+
+  test('two independent deriveWorkoutNoteAnalytics calls with same inputs yield identical weeksIn', () => {
+    const sections = makeWorkoutSections([{ name: 'Squat', count: 6 }]);
+    const trackedNames = ['Squat'];
+    const a = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    const b = deriveWorkoutNoteAnalytics(sections, trackedNames);
+    expect(a.weeksIn).toBe(b.weeksIn);
+    expect(a.classifications).toEqual(b.classifications);
+  });
+
+  test('weeksIn from null sections is null regardless of trackedNames', () => {
+    expect(deriveWorkoutNoteAnalytics(null, ['Squat', 'Deadlift']).weeksIn).toBeNull();
+    expect(deriveWorkoutNoteAnalytics(null, []).weeksIn).toBeNull();
   });
 });
