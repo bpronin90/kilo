@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.3 - 2026-05-25
+
+- Issue #183: Finished the workout-consumer migration by routing Analytics
+  signal rows and display-name casing through the canonical
+  `deriveWorkoutNoteAnalytics()` layer, removing the remaining screen-local
+  signal derivation path, and adding contract tests that pin canonical signal
+  outputs against `deriveSignals()` for the same inputs.
+
 ## 0.41.2 - 2026-05-25
 
 - Issue #181: Fixed Weeks In on Home to use the canonical

@@ -143,8 +143,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   helpers such as `rollingWindowStart()` for weight-trend rolling windows,
   and the canonical `deriveWorkoutNoteAnalytics()` entry point that wraps
   all shared workout analytics derivation (classifications, skip data,
-  rep-drop-off flags, and routine depth) into one call for downstream
-  consumers
+  rep-drop-off flags, routine depth, visible-lift signal rows, and
+  display-name casing) into one call for downstream consumers
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
@@ -220,7 +220,8 @@ Tracked-lift visibility now follows a similar shared-hook pattern. Log toggles
 persist through the global `kilo_tracked_lifts` map, `useTrackedLifts()`
 fanouts the updated in-memory state to all mounted consumers immediately, and
 Analytics filters that global tracked set down to lifts present in the current
-routine while still deriving each visible lift's trend from all routine notes.
+routine while still deriving each visible lift's trend and exercise display
+casing from all routine notes through `deriveWorkoutNoteAnalytics()`.
 
 ## Native Parse-to-Persistence Flow
 
@@ -577,14 +578,14 @@ recomputation at render time is permitted.
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│  ANALYTICS (Consumer — mixed-source per strength row)               │
+│  ANALYTICS (Consumer — canonical + persisted per strength row)      │
 │  StatsScreen.js                                                     │
 │                                                                     │
 │  Reads from persisted note:                                         │
 │    • rep_drop_off_flags (badge per row: line 297)                   │
 │                                                                     │
 │  Legitimately recomputes:                                           │
-│    • estimated 1RM, kilo max, latest top weight, overload trend     │
+│    • signal rows + display casing via deriveWorkoutNoteAnalytics()  │
 │    • 1k total, weight rolling averages, pace                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -598,7 +599,8 @@ recomputation at render time is permitted.
 - `rep_drop_off_flags` — read from `workoutNote.rep_drop_off_flags`
 
 **Consumers MAY recompute these fields (they have no persisted equivalent):**
-- Estimated 1RM, Kilo max, latest top weight, overload trend
+- Estimated 1RM, Kilo max, latest top weight, overload trend, and signal-row
+  display casing via `deriveWorkoutNoteAnalytics()`
 - 1k total
 - Weight rolling averages, pace level, goal guidance
 - Weeks In, session count

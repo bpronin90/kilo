@@ -296,8 +296,12 @@ Provides the global runtime contract required by the prototype:
 - verifies `getLatestRepDropOff()` returns the latest persisted session flag
   for Log and Analytics display, including null-latest and skipped-gap cases
 - verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
-  per-field output (weeksIn, classifications, skipData, repDropOffFlags),
-  empty-sections behavior, missing-exercise handling, and determinism
+  per-field output (weeksIn, classifications, skipData, repDropOffFlags,
+  signals, and `nameDisplayMap`), empty-sections behavior,
+  missing-exercise handling, and determinism
+- pins the canonical Analytics migration contract by asserting that
+  `deriveWorkoutNoteAnalytics(...).signals` matches `deriveSignals(...)` for
+  the same sections, tracked lifts, and multiplier inputs
 - pins HomeScreen progression-depth contract through the canonical
   `deriveWorkoutNoteAnalytics(sections, []).weeksIn` path, covering
   null-sections, empty-sections, single/multi-exercise depth, skipped

@@ -762,15 +762,19 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 // Derives the full set of shared workout analytics from parsed sections.
 // This is the single canonical entry point for all workout analytics consumers.
 //
-// sections: output of parseWorkoutNote(noteText).sections
-// trackedNames: string[] of exercise names to classify and track
+// sections:      output of parseWorkoutNote(noteText).sections
+// trackedNames:  string[] of exercise names to classify, track, and derive signals for
+// multiplier:    optional fatigue multiplier for signal derivation (defaults to getKiloFatigueMultiplier())
 //
 // Returns:
 //   weeksIn:         session depth (routine depth) — max session_entries.length
 //   classifications: { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
 //   skipData:        { exercise_skips, day_skips, attendance_flags }
 //   repDropOffFlags: { [normalizedName]: { [sessionIndex]: 'hit_wall'|null } }
-export function deriveWorkoutNoteAnalytics(sections, trackedNames) {
+//   signals:         exercise[] — progression signals for trackedNames
+//   nameDisplayMap:  Map<normalizedName, displayName> — last-seen user-typed casing
+export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
+  const _multiplier = multiplier !== undefined ? multiplier : getKiloFatigueMultiplier();
   if (!sections) {
     const emptyClassif = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), null]));
     const emptyFlags = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), {}]));
@@ -779,13 +783,21 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames) {
       classifications: emptyClassif,
       skipData: { exercise_skips: [], day_skips: [], attendance_flags: [] },
       repDropOffFlags: emptyFlags,
+      signals: [],
+      nameDisplayMap: new Map(),
     };
   }
+  const nameDisplayMap = new Map();
+  sections.forEach(s => s.exercises.forEach(e => {
+    nameDisplayMap.set(normalizeLiftName(e.name), e.name);
+  }));
   return {
     weeksIn: computeWeeksIn(sections),
     classifications: classifyExerciseSessions(sections, trackedNames),
     skipData: deriveSkipData(sections),
     repDropOffFlags: deriveRepDropOffFlags(sections, trackedNames),
+    signals: deriveSignals(sections, trackedNames, _multiplier).exercises,
+    nameDisplayMap,
   };
 }
 

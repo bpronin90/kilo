@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Card, SectionTitle, LineChart } from '../components/UI';
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveSignals, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightRollingAverageSeries, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import { Colors } from '../theme/colors';
@@ -97,40 +97,34 @@ export function StatsScreen({ multiplier, section }) {
     ...(currentNote?.one_k_exercises || {}),
   }), [currentNote]);
 
+  // Parse sections once — single canonical source for all workout consumers in this screen
+  const parsedSections = useMemo(() => {
+    const allSections = notes.flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
+    const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
+    return { allSections, currentSections };
+  }, [notes, currentNote]);
+
   const noteExerciseNames = useMemo(() => {
-    if (!currentNote?.raw_text) return [];
-    const { sections } = parseWorkoutNote(currentNote.raw_text);
-    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    const names = parsedSections.currentSections.flatMap(s => s.exercises.map(e => e.name));
     return [...new Set(names)].filter(isStrengthExerciseName);
-  }, [currentNote]);
+  }, [parsedSections]);
 
   const analytics = useMemo(() => {
-    // Collect sections from all routines for full history of tracked lifts
-    const allSections = notes.flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
-    
-    // Identify lifts present in the current routine
-    const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
+    const { allSections, currentSections } = parsedSections;
+
+    // Tracked lifts visible in the current routine — filters signal derivation to relevant exercises
     const namesInCurrent = new Set(currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(e.name))));
-    
-    // Tracked lifts from the global store
     const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
-    
-    // Filter to tracked lifts that also appear in current routine
     const visibleTrackedNames = globallyTrackedNames.filter(name => namesInCurrent.has(normalizeLiftName(name)));
 
-    const { exercises: signals } = deriveSignals(allSections, visibleTrackedNames, multiplier);
-
-    // Preserve original user-typed casing for display (last occurrence wins)
-    const nameDisplayMap = new Map();
-    allSections.forEach(s => s.exercises.forEach(e => {
-      nameDisplayMap.set(normalizeLiftName(e.name), e.name);
-    }));
+    // Canonical derivation: signals and nameDisplayMap from shared sections
+    const { signals, nameDisplayMap } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
 
     return { signals, oneK, nameDisplayMap };
-  }, [notes, currentNote, trackedLifts, oneKSelections, multiplier]);
+  }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));

@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1768,6 +1768,87 @@ describe('deriveWorkoutNoteAnalytics', () => {
     const r2 = deriveWorkoutNoteAnalytics(sections, ['Squat']);
     expect(r1.weeksIn).toBe(r2.weeksIn);
     expect(r1.classifications['squat']).toBe(r2.classifications['squat']);
+  });
+
+  test('returns signals array for tracked names', () => {
+    const sections = [analyticsSection('Squat', [aw(225, 5), aw(235, 5)])];
+    const { signals } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
+    expect(Array.isArray(signals)).toBe(true);
+    expect(signals).toHaveLength(1);
+    expect(signals[0].name).toBe('Squat');
+  });
+
+  test('returns nameDisplayMap with user-typed casing', () => {
+    const sections = [analyticsSection('Bench Press', [aw(135, 5)])];
+    const { nameDisplayMap } = deriveWorkoutNoteAnalytics(sections, ['Bench Press']);
+    expect(nameDisplayMap instanceof Map).toBe(true);
+    expect(nameDisplayMap.get('bench press')).toBe('Bench Press');
+  });
+
+  test('null sections → signals empty array, nameDisplayMap empty', () => {
+    const { signals, nameDisplayMap } = deriveWorkoutNoteAnalytics(null, ['Squat']);
+    expect(signals).toEqual([]);
+    expect(nameDisplayMap instanceof Map).toBe(true);
+    expect(nameDisplayMap.size).toBe(0);
+  });
+});
+
+// ── Cross-consumer contract: deriveWorkoutNoteAnalytics signals match deriveSignals ──
+//
+// Pins that Analytics consumers routed through deriveWorkoutNoteAnalytics receive
+// the same signal outputs as calling deriveSignals directly with the same inputs.
+// Regression guard: prevents divergence when consumers are migrated to the canonical path.
+
+describe('deriveWorkoutNoteAnalytics signals — cross-consumer contract', () => {
+  function signalSection(name, entries) {
+    const session_entries = entries.map(e => ({
+      skipped: false, raw: 'x', sets: Array.isArray(e) ? e : [e],
+    }));
+    return {
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name, rows: [], sets: [], unparsed_rows: [], session_entries }],
+    };
+  }
+
+  function sw(weight, reps) { return { weight_value: weight, rep_count: reps }; }
+
+  test('signals from canonical path match deriveSignals for same inputs', () => {
+    const sections = [signalSection('Squat', [sw(225, 5), sw(235, 5), sw(245, 5)])];
+    const trackedNames = ['Squat'];
+    const multiplier = 1;
+
+    const { signals } = deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier);
+    const { exercises: directSignals } = deriveSignals(sections, trackedNames, multiplier);
+
+    expect(signals).toHaveLength(directSignals.length);
+    signals.forEach((sig, i) => {
+      expect(sig.name).toBe(directSignals[i].name);
+      expect(sig.progression_status).toBe(directSignals[i].progression_status);
+      expect(sig.latest_top_weight).toBe(directSignals[i].latest_top_weight);
+    });
+  });
+
+  test('absent exercise yields consistent null signal across both paths', () => {
+    const sections = [signalSection('Bench Press', [sw(135, 5)])];
+    const trackedNames = ['Squat'];
+    const multiplier = 1;
+
+    const { signals } = deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier);
+    const { exercises: directSignals } = deriveSignals(sections, trackedNames, multiplier);
+
+    expect(signals[0].progression_status).toBe(directSignals[0].progression_status);
+    expect(signals[0].progression_status).toBeNull();
+  });
+
+  test('empty sections → consistent empty/null signals across both paths', () => {
+    const trackedNames = ['Squat'];
+    const multiplier = 1;
+
+    const { signals } = deriveWorkoutNoteAnalytics([], trackedNames, multiplier);
+    const { exercises: directSignals } = deriveSignals([], trackedNames, multiplier);
+
+    expect(signals).toHaveLength(directSignals.length);
+    expect(signals[0].progression_status).toBe(directSignals[0].progression_status);
   });
 });
 
