@@ -1,6 +1,6 @@
 # MVP4.0 Roadmap
 
-Status: draft for planning.
+Status: completed as a roadmap pass.
 
 This roadmap translates the post-MVP3.5 findings into a phased MVP4.0 issue
 stack. It keeps the same discipline as prior roadmap passes:
@@ -22,6 +22,11 @@ Agent routing follows repo policy:
 - `agent:gemini` for frontend / UI implementation
 - `agent:claude` for backend / data / parser / logic implementation
 - `agent:codex` for planning, review, investigation, and issue writing
+
+MVP4.0 is now considered complete for roadmap purposes. Shipped work stays
+documented here, while unresolved or deferred items should be carried forward
+into `docs/mvp-v4.5-roadmap.md` or moved to backlog/MVP5 rather than keeping
+MVP4.0 open indefinitely.
 
 ---
 

@@ -22,6 +22,13 @@ remains local-only in the current implementation paths: the browser prototype
 persists via `localStorage`, while the native app now persists user-created
 entries via AsyncStorage-backed modules under `mobile/storage/`.
 
+Roadmap status:
+
+- MVP4.0 is complete as a roadmap pass.
+- The active follow-up planning pass is MVP4.5, focused on data stability,
+  shared derivation ownership, test hardening, app-shell consistency, and only
+  then later UI redesign.
+
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
 entries are layered on top of this seed via `localStorage` merge on each page
