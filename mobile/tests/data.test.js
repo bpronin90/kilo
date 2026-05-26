@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1525,6 +1525,152 @@ describe('classifyExerciseSessions normalization and alias tests', () => {
     const trackedNames = ['squat'];
     const result = classifyExerciseSessions(sections, trackedNames);
     expect(result['squat']).toBe('initial');
+  });
+});
+
+// ── WEIGHT_PACE thresholds ────────────────────────────────────────────────────
+
+describe('WEIGHT_PACE thresholds', () => {
+  test('WEIGHT_PACE_NOTABLE_THRESHOLD is 1.5', () => {
+    expect(WEIGHT_PACE_NOTABLE_THRESHOLD).toBe(1.5);
+  });
+
+  test('WEIGHT_PACE_SPIKE_THRESHOLD is 2.3', () => {
+    expect(WEIGHT_PACE_SPIKE_THRESHOLD).toBe(2.3);
+  });
+
+  test('delta exactly at notable threshold triggers paceFlag', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 185.0 + WEIGHT_PACE_NOTABLE_THRESHOLD },
+      { date: '2026-05-19', weight_value: 185.0 },
+    ];
+    expect(computeWeightTrends(entries).paceFlag).toBe('gain');
+    expect(computeWeightPaceLevel(entries)).toBe('notable');
+  });
+
+  test('delta just below notable threshold returns null', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 185.0 + WEIGHT_PACE_NOTABLE_THRESHOLD - 0.1 },
+      { date: '2026-05-19', weight_value: 185.0 },
+    ];
+    expect(computeWeightTrends(entries).paceFlag).toBeNull();
+    expect(computeWeightPaceLevel(entries)).toBeNull();
+  });
+
+  test('delta exactly at spike threshold triggers spike level', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 185.0 + WEIGHT_PACE_SPIKE_THRESHOLD },
+      { date: '2026-05-19', weight_value: 185.0 },
+    ];
+    expect(computeWeightPaceLevel(entries)).toBe('spike');
+  });
+
+  test('delta between notable and spike thresholds is notable', () => {
+    const mid = (WEIGHT_PACE_NOTABLE_THRESHOLD + WEIGHT_PACE_SPIKE_THRESHOLD) / 2;
+    const entries = [
+      { date: '2026-05-20', weight_value: 185.0 + mid },
+      { date: '2026-05-19', weight_value: 185.0 },
+    ];
+    expect(computeWeightPaceLevel(entries)).toBe('notable');
+  });
+});
+
+// ── resolveGoalCurrentWeight ──────────────────────────────────────────────────
+
+describe('resolveGoalCurrentWeight', () => {
+  test('returns latest entry weight when entries are present', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 186.0 },
+      { date: '2026-05-19', weight_value: 185.0 },
+    ];
+    expect(resolveGoalCurrentWeight(entries, null)).toBe(186.0);
+  });
+
+  test('prefers entry weight over saved start_weight when entries exist', () => {
+    const entries = [{ date: '2026-05-20', weight_value: 186.0 }];
+    const goal = { start_weight: 190.0 };
+    expect(resolveGoalCurrentWeight(entries, goal)).toBe(186.0);
+  });
+
+  test('falls back to saved start_weight when no entries and not editing', () => {
+    const goal = { start_weight: 190.0 };
+    expect(resolveGoalCurrentWeight([], goal, { goalEditing: false })).toBe(190.0);
+  });
+
+  test('ignores saved start_weight when goal is being edited, uses goalStartWeight string', () => {
+    const goal = { start_weight: 190.0 };
+    expect(resolveGoalCurrentWeight([], goal, { goalEditing: true, goalStartWeight: '188.5' })).toBe(188.5);
+  });
+
+  test('returns null when no entries, no goal, and no valid goalStartWeight', () => {
+    expect(resolveGoalCurrentWeight([], null)).toBeNull();
+    expect(resolveGoalCurrentWeight([], null, { goalStartWeight: '' })).toBeNull();
+    expect(resolveGoalCurrentWeight([], null, { goalStartWeight: 'abc' })).toBeNull();
+    expect(resolveGoalCurrentWeight([], null, { goalStartWeight: '0' })).toBeNull();
+  });
+
+  test('returns null when entries array is null or undefined', () => {
+    expect(resolveGoalCurrentWeight(null, null)).toBeNull();
+    expect(resolveGoalCurrentWeight(undefined, null)).toBeNull();
+  });
+});
+
+// ── computeWeightTrendSummary ─────────────────────────────────────────────────
+
+describe('computeWeightTrendSummary', () => {
+  const REF = new Date('2026-05-20T12:00:00');
+
+  test('includes all base fields from computeWeightTrends', () => {
+    const entries = [
+      { date: '2026-05-20', weight_value: 186.0 },
+      { date: '2026-05-18', weight_value: 185.0 },
+    ];
+    const summary = computeWeightTrendSummary(entries, REF);
+    expect(summary).toHaveProperty('avg7');
+    expect(summary).toHaveProperty('avg30');
+    expect(summary).toHaveProperty('paceFlag');
+  });
+
+  test('currentWeight is the most recent entry by date', () => {
+    const entries = [
+      { date: '2026-05-18', weight_value: 185.0 },
+      { date: '2026-05-20', weight_value: 186.0 },
+    ];
+    const { currentWeight } = computeWeightTrendSummary(entries, REF);
+    expect(currentWeight).toBe(186.0);
+  });
+
+  test('priorDayWeight is the second most recent entry by date', () => {
+    const entries = [
+      { date: '2026-05-18', weight_value: 183.0 },
+      { date: '2026-05-19', weight_value: 185.0 },
+      { date: '2026-05-20', weight_value: 186.0 },
+    ];
+    const { priorDayWeight } = computeWeightTrendSummary(entries, REF);
+    expect(priorDayWeight).toBe(185.0);
+  });
+
+  test('priorAvg7 averages entries in the prior 7-day window (days 7–13 before ref)', () => {
+    // prior 7-day window: 2026-05-07 to 2026-05-13
+    const entries = [
+      { date: '2026-05-20', weight_value: 190.0 },
+      { date: '2026-05-08', weight_value: 182.0 },
+      { date: '2026-05-09', weight_value: 184.0 },
+    ];
+    const { priorAvg7 } = computeWeightTrendSummary(entries, REF);
+    expect(priorAvg7).toBeCloseTo(183.0);
+  });
+
+  test('priorAvg7 is null when no entries fall in the prior 7-day window', () => {
+    const entries = [{ date: '2026-05-20', weight_value: 190.0 }];
+    const { priorAvg7 } = computeWeightTrendSummary(entries, REF);
+    expect(priorAvg7).toBeNull();
+  });
+
+  test('currentWeight and priorDayWeight are null when fewer than 2 entries', () => {
+    const { currentWeight, priorDayWeight } = computeWeightTrendSummary([], REF);
+    expect(currentWeight).toBeNull();
+    expect(priorDayWeight).toBeNull();
   });
 });
 
