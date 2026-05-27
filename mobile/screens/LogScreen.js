@@ -545,6 +545,7 @@ export function LogScreen({
                     onPress={handleNoteBodyPress}
                     style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
                   >
+                    <Text style={styles.editHint}>Double-tap to edit</Text>
                     {dayGroups.map((group, gi) => (
                       <View key={`day-${gi}`}>
                         {group.heading && (
@@ -861,6 +862,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  editHint: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginBottom: 8,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
