@@ -146,7 +146,9 @@ The real native app path now has a modular React Native shell:
   native weight/goal contract,
   and provides a discrete `Full history and insights` link into Analytics, a
   renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
-  chart, and the exported
+  chart whose Home layout now mirrors the working Analytics measurement
+  contract so the sparkline renders reliably when sufficient weight history is
+  present, and the exported
   More/Help/About/Data & Backup/Settings/User Profile surfaces used by the
   More tab; the `1k Club Progress` and `Weight Trend` panels are now static
   dashboard elements with no navigation, and the
