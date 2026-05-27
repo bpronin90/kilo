@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.44.0 - 2026-05-27
+
+- Issue #196: Redesigned the Home dashboard to an approved information
+  hierarchy. Weekly Summary is now a unified hero card with inline week label,
+  dominant 48px weight value, full-width sparkline strip, and semantic
+  classification band. Weight Goal card is conditional and visually subordinate.
+  1K Club card is tertiary with centered total and canonical breakdown. Removed
+  floating badge, section title labels between cards, hero divider, and
+  nonfunctional goal chevron. Restricted orange to the weight value and
+  wordmark. Added `Colors.caution` token for steady-state classifications.
+  Added `docs/design-system-map.md` cross-screen style audit.
+
 ## 0.43.2 - 2026-05-26
 
 - Issue #203: Fixed the native Home weight sparkline render path so the

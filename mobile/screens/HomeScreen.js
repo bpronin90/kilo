@@ -98,13 +98,10 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
             {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
           </Text>
 
-          {/* #4 weight block, full-width */}
-          <View style={styles.heroWeightBlock}>
-            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
-              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
-            </Text>
-          </View>
+          <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
+            {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
+            {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
+          </Text>
 
           {/* #4 sparkline strip below weight */}
           <View style={styles.heroSparklineStrip}>
@@ -856,9 +853,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textMuted,
     marginBottom: 12,
-  },
-  heroWeightBlock: {
-    marginBottom: 0,
   },
   heroWeightValue: {
     fontSize: 48,
