@@ -130,32 +130,26 @@ The real native app path now has a modular React Native shell:
   sub-screen
 - `mobile/screens/HomeScreen.js` renders a native dashboard with a resolution-
   independent Kilo wordmark header drawn as an inline `react-native-svg`
-  component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`),
-  `Current Routine Progress` supporting copy, top summary cards for latest
-  weight plus a neutral `Weeks In` routine counter derived from the current
-  routine's progression depth (the deepest per-exercise session history across
-  mixed plain-row and `session_entries` note formats, with skipped
-  `session_entries` still counting toward depth), rendered as `—` when no
-  routine is loaded, a `Weekly
-  Summary` panel beneath those cards that consumes persisted workout-note
-  analytics inputs rather than re-deriving them, shows a session-based empty
-  state when the current routine has no logged sessions, renders a 2x2
-  classification-count grid from stored `exercise_classifications` when that
-  field exists, and now reads its latest-weight summary plus weight-trend card
-  data from the shared `deriveWeightGoalAnalytics()` layer used by the broader
-  native weight/goal contract,
-  and provides a discrete `Full history and insights` link into Analytics, a
-  renamed `1k Club Progress` card, a compact 7-day rolling-average weight line
-  chart whose Home layout now mirrors the working Analytics measurement
-  contract so the sparkline renders reliably when sufficient weight history is
-  present, and the exported
-  More/Help/About/Data & Backup/Settings/User Profile surfaces used by the
-  More tab; the `1k Club Progress` and `Weight Trend` panels are now static
-  dashboard elements with no navigation, and the
-  More subviews now intercept Android back presses and return to the More menu
-  before falling through to tab-level navigation, and the new Settings &
-  Algorithm sub-screen exposes a persisted fatigue-multiplier stepper plus
-  reset control
+  component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`)
+  and sentence-case `Current routine progress.` subtitle. The screen uses a
+  three-panel hierarchy: a Weekly Summary hero card, a conditional Weight Goal
+  card, and a 1K Club Progress card. The hero card contains an inline week
+  label, a dominant 48px latest-weight value (the only accent-colored text
+  element on the screen besides the wordmark), a full-width 7-day sparkline
+  strip, a four-column classification band with semantic color dots
+  (green/yellow/red/gray), and a quiet `Full history and insights` link into
+  Analytics. The Weight Goal card renders only when a goal is set
+  (`dashboardData.goalInfo !== null`) and shows direction, weeks remaining,
+  target weight, and required pace. The 1K Club card uses a centered total,
+  progress bar, and three-column breakdown with full exercise names
+  (Squats/Bench/Deadlifts) matching the canonical structure on Analytics. All
+  dashboard data comes from existing shared derivation functions; no Home-only
+  calculations exist. The success toast is removed from the render. The file
+  also exports the More/Help/About/Data & Backup/Settings/User Profile
+  surfaces used by the More tab; More subviews intercept Android back presses
+  and return to the More menu before falling through to tab-level navigation,
+  and the Settings & Algorithm sub-screen exposes a persisted
+  fatigue-multiplier stepper plus reset control
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks

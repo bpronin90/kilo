@@ -94,6 +94,7 @@ docs/
   testing-and-qa.md
   mvp-roadmap.md
   mvp-v2-roadmap.md
+  design-system-map.md ← cross-screen style audit: every color, font, spacing token with file and line
   phone-runbook.md
   repo-structure.md    ← this file
   archive/
@@ -235,6 +236,7 @@ npm test
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
 | `docs/mvp-roadmap.md` | Full ordered roadmap from Phase 1 through launch. Includes the Pre-Launch Repo Readiness Sequence and the hold statement for issue #17. Covers the original MVP scope. |
 | `docs/mvp-v2-roadmap.md` | Roadmap for MVP v2, which redefines the product around a freeform logging model rather than the rigid tracker model. Extends and supersedes portions of `docs/mvp-roadmap.md` for post-v1 work. |
+| `docs/design-system-map.md` | Cross-screen style audit: every color token, font size, spacing value, and card treatment with file paths and line numbers. Reference for manual visual refinement. |
 | `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
 | `docs/repo-structure.md` | This file. |
 | `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |

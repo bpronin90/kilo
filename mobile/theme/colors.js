@@ -14,4 +14,5 @@ export const Colors = {
   chipText: '#96571c',
   success: '#4a7c44',
   error: '#b03a2e',
+  caution: '#d4a017',
 };
