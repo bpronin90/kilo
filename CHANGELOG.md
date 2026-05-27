@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.43.3 - 2026-05-27
+
+- Issue #201: Added a small muted `Double-tap to edit` helper line at the top
+  of the current Log routine card so the current-note edit gesture is more
+  discoverable without changing the established card treatment.
+
 ## 0.43.2 - 2026-05-26
 
 - Issue #203: Fixed the native Home weight sparkline render path so the
