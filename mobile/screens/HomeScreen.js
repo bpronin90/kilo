@@ -92,34 +92,31 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     >
       {/* ══ TIER 1: Weekly Summary ══ */}
       <Card style={styles.weeklyHero}>
-        {/* Floating Week Badge */}
-        <View style={styles.floatingBadge}>
-          <Text style={styles.floatingBadgeText}>
-            WEEK <Text style={styles.floatingBadgeNum}>{dashboardData.weeksIn !== null ? dashboardData.weeksIn : '—'}</Text>
-          </Text>
-        </View>
-
         <View style={styles.heroContent}>
-          {/* Weight + Sparkline paired row */}
-          <View style={styles.heroMetricRow}>
-            <View style={styles.heroWeightBlock}>
-              <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-                {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
-                {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
-              </Text>
-              <Text style={styles.heroMetricSublabel}>current weight</Text>
-            </View>
-            <View style={styles.heroSparklineBlock}>
-              <LineChart
-                data={dashboardData.weightSeries}
-                color={Colors.accent}
-                height={40}
-                paddingVertical={0}
-                paddingHorizontal={0}
-                hideHeader
-              />
-              <Text style={[styles.heroMetricSublabel, { textAlign: 'right' }]}>7-day trend</Text>
-            </View>
+          {/* #2 inline week label */}
+          <Text style={styles.heroWeekLabel}>
+            {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
+          </Text>
+
+          {/* #4 weight block, full-width */}
+          <View style={styles.heroWeightBlock}>
+            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
+              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
+              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
+            </Text>
+          </View>
+
+          {/* #4 sparkline strip below weight */}
+          <View style={styles.heroSparklineStrip}>
+            <LineChart
+              data={dashboardData.weightSeries}
+              color={Colors.textMuted}
+              height={32}
+              paddingVertical={0}
+              paddingHorizontal={0}
+              hideHeader
+            />
+            <Text style={styles.heroSparklineSublabel}>7-day trend</Text>
           </View>
 
           {/* Classification band */}
@@ -138,13 +135,11 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
             ))}
           </View>
 
-          <View style={styles.heroDivider} />
-
-          {/* Centered Action */}
+          {/* #7 quiet CTA */}
           <View style={styles.heroFooter}>
             <Pressable onPress={() => onNavigate('Stats')} style={styles.insightsLink}>
               <Text style={styles.insightsLinkText}>Full history and insights</Text>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
             </Pressable>
           </View>
         </View>
@@ -152,47 +147,41 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
 
       {/* ══ TIER 2: Weight Goal ══ */}
       {dashboardData.goalInfo ? (
-        <>
-          <SectionTitle>Weight goal</SectionTitle>
-          <Card style={styles.goalCard}>
-            <View style={styles.goalHeader}>
-              <Text style={[styles.goalDirectionText, {
-                color: dashboardData.goalInfo.direction === 'gain' ? Colors.success
-                  : dashboardData.goalInfo.direction === 'loss' ? Colors.accent
-                  : Colors.textMuted
-              }]}>
-                {dashboardData.goalInfo.direction === 'loss' ? 'Cutting' : dashboardData.goalInfo.direction === 'gain' ? 'Bulking' : 'Maintaining'}
-              </Text>
-              <View style={styles.goalWeeksContainer}>
-                <Text style={styles.goalWeeksText}>{dashboardData.goalInfo.weeks_remaining} weeks left</Text>
-                <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={Colors.cardBorder} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+        <Card style={styles.goalCard}>
+          <View style={styles.goalHeader}>
+            <Text style={[styles.goalDirectionText, {
+              color: dashboardData.goalInfo.direction === 'gain' ? Colors.success
+                : dashboardData.goalInfo.direction === 'loss' ? Colors.accent
+                : Colors.textMuted
+            }]}>
+              {dashboardData.goalInfo.direction === 'loss' ? 'Cutting' : dashboardData.goalInfo.direction === 'gain' ? 'Bulking' : 'Maintaining'}
+            </Text>
+            {/* #8 no chevron — weeks is display only */}
+            <Text style={styles.goalWeeksText}>{dashboardData.goalInfo.weeks_remaining} weeks left</Text>
+          </View>
+          <View style={styles.goalStatsGrid}>
+            <View style={styles.goalStatCol}>
+              <Text style={styles.goalStatLabel}>Target</Text>
+              <View style={styles.goalStatValueRow}>
+                <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
+                <Text style={styles.goalStatUnitLabel}>lb</Text>
               </View>
             </View>
-            <View style={styles.goalStatsGrid}>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Target</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
-                  <Text style={styles.goalStatUnitLabel}>lb</Text>
-                </View>
-              </View>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Pace</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>
-                    {dashboardData.goalInfo.required_weekly_pace > 0 ? '+' : ''}
-                    {dashboardData.goalInfo.required_weekly_pace.toFixed(1)}
-                  </Text>
-                  <Text style={styles.goalStatUnitLabel}>lb/wk</Text>
-                </View>
+            <View style={styles.goalStatCol}>
+              <Text style={styles.goalStatLabel}>Pace</Text>
+              <View style={styles.goalStatValueRow}>
+                <Text style={styles.goalStatValueLarge}>
+                  {dashboardData.goalInfo.required_weekly_pace > 0 ? '+' : ''}
+                  {dashboardData.goalInfo.required_weekly_pace.toFixed(1)}
+                </Text>
+                <Text style={styles.goalStatUnitLabel}>lb/wk</Text>
               </View>
             </View>
-          </Card>
-        </>
+          </View>
+        </Card>
       ) : null}
 
       {/* ══ TIER 3: 1k Club Progress ══ */}
-      <SectionTitle>1k club progress</SectionTitle>
       <Card style={styles.oneKCard}>
         <View style={styles.oneKHero}>
           <Text style={styles.oneKHeroValue}>
@@ -859,41 +848,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.cardBorder,
     marginTop: 12,
   },
-  floatingBadge: {
-    position: 'absolute',
-    top: -12,
-    left: '50%',
-    transform: [{ translateX: -40 }],
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  floatingBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  floatingBadgeNum: {
-    color: Colors.text,
-  },
   heroContent: {
     padding: 24,
-    paddingTop: 32,
   },
-  heroMetricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 16,
+  heroWeekLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    marginBottom: 12,
   },
   heroWeightBlock: {
-    flexShrink: 0,
+    marginBottom: 0,
   },
   heroWeightValue: {
     fontSize: 48,
@@ -909,23 +874,23 @@ const styles = StyleSheet.create({
   },
   heroWeightUnit: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.textMuted,
   },
-  heroMetricSublabel: {
+  heroSparklineStrip: {
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  heroSparklineSublabel: {
     fontSize: 11,
     fontWeight: '600',
     color: Colors.textMuted,
+    textAlign: 'right',
     marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  heroSparklineBlock: {
-    flex: 1,
   },
   classifRow: {
     flexDirection: 'row',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   classifCol: {
     flex: 1,
@@ -943,20 +908,15 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   classifLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.textMuted,
     textAlign: 'center',
-    lineHeight: 13,
-  },
-  heroDivider: {
-    height: 1,
-    backgroundColor: Colors.cardBorder,
-    marginHorizontal: -24,
-    marginBottom: 16,
+    lineHeight: 14,
   },
   heroFooter: {
     alignItems: 'center',
+    marginTop: 12,
   },
   insightsLink: {
     flexDirection: 'row',
@@ -965,8 +925,8 @@ const styles = StyleSheet.create({
   },
   insightsLinkText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: Colors.accent,
+    fontWeight: '600',
+    color: Colors.textMuted,
   },
   goalCard: {
     padding: 24,
@@ -982,11 +942,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: Colors.text,
-  },
-  goalWeeksContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
   },
   goalWeeksText: {
     fontSize: 14,
@@ -1011,7 +966,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   goalStatValueLarge: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
   },
@@ -1030,8 +985,8 @@ const styles = StyleSheet.create({
   },
   oneKHeroValue: {
     fontSize: 32,
-    fontWeight: '800',
-    color: Colors.accent,
+    fontWeight: '700',
+    color: Colors.text,
   },
   oneKHeroUnit: {
     fontSize: 14,
