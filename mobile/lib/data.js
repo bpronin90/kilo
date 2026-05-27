@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName, parseWorkoutNote } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.

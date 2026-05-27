@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, LineChart } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
@@ -318,16 +318,6 @@ export function StatsScreen({ multiplier, section }) {
 function dropOffBadgeColor(flag) {
   if (flag === 'hit_wall') return { color: Colors.error };
   return {};
-}
-
-function classifBadgeColor(label) {
-  switch (label) {
-    case 'progressing':  return { color: '#4ade80' };
-    case 'initial':
-    case 'stalled':
-    case 'inconsistent': return { color: Colors.textMuted };
-    default:             return {};
-  }
 }
 
 function formatOverload(trend) {
