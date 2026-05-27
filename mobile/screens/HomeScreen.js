@@ -159,13 +159,14 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       </Card>
 
       <SectionTitle>Weight Trend</SectionTitle>
-      <Card style={styles.chartCard}>
-        <View>
-          <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
+      <Card>
+        <Text style={styles.chartLabel}>7-Day Rolling Average</Text>
+        <View style={styles.chartContainer}>
           <LineChart
             data={dashboardData.weightSeries}
             color={Colors.success}
             height={100}
+            hideHeader
           />
         </View>
       </Card>
@@ -871,7 +872,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    marginBottom: -8,
+  },
+  chartContainer: {
+    height: 100,
+    justifyContent: 'center',
   },
   weeklyCard: {
     padding: 24,
