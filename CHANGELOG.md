@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.43.2 - 2026-05-26
+
+- Issue #203: Fixed the native Home weight sparkline render path so the
+  7-day rolling-average chart now mounts inside a measured explicit-height
+  container with the redundant in-chart header suppressed, matching the
+  working Analytics layout contract and preventing blank charts when weight
+  history is present.
+
 ## 0.43.1 - 2026-05-26
 
 - Issue #197: Wired the stored weight goal into the native Home dashboard data
