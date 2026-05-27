@@ -6,13 +6,6 @@
 // visual tweaks. Change Log-tab styling ONLY when the repo owner explicitly
 // asks for that specific change.
 
-/**
- * LOG TAB STYLE LOCK
- * ------------------
- * Fonts, sizes, colors, and spacing in this file (and related WorkoutHeading/WorkoutSubheading 
- * typography in UI.js) must not change unless the repo owner explicitly requests it.
- */
-
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';

@@ -932,27 +932,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontStyle: 'italic',
   },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  entryTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  entryMeta: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  entryBody: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.textMuted,
-  },
   list: {
     gap: 12,
   },
