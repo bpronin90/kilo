@@ -84,18 +84,28 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const visibleTrackedNames = globallyTracked.filter(
       name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
     );
-    const { signals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
+    const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
+    const sigMap = new Map(signals.map(s => [normalizeLiftName(canonicalizeName(s.name)), s]));
 
+    // Count per visible exercise-day row, mirroring how the analytics panel renders.
+    // Multi-day exercises (e.g. Hammer Curl on Monday + Wednesday) contribute one count
+    // per appearance using the per-day trend, just like the panel shows two separate arrows.
     const counts = { progressing: 0, stalled: 0, regressing: 0 };
-    signals.forEach(sig => {
-      if (sig.overload_trend === 'up')   counts.progressing++;
-      if (sig.overload_trend === 'flat') counts.stalled++;
-      if (sig.overload_trend === 'down') counts.regressing++;
+    (sections || []).forEach(sec => {
+      sec.exercises.forEach(ex => {
+        const key = normalizeLiftName(canonicalizeName(ex.name));
+        const sig = sigMap.get(key);
+        if (!sig) return;
+        const dayRow = perDaySignals?.[canonicalizeName(ex.name)]?.[sec.heading];
+        const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+        if (rowTrend === 'up')   counts.progressing++;
+        if (rowTrend === 'flat') counts.stalled++;
+        if (rowTrend === 'down') counts.regressing++;
+      });
     });
 
     if (__DEV__) {
       console.log('[HOME DEBUG] notes:', (notes || []).length, '| allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames.length);
-      console.log('[HOME DEBUG] signal trends:', signals.map(s => `${s.name}:${s.overload_trend}`).join(', '));
       console.log('[HOME DEBUG] counts:', JSON.stringify(counts));
     }
 
