@@ -377,7 +377,7 @@ export function StatsScreen({ multiplier, section }) {
                       const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
                       const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
                       const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
-                      const rowTrend = dayRow ? dayRow.overload_trend : sig.overload_trend;
+                      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
                       const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
 
                       return (

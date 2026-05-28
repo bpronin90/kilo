@@ -204,6 +204,41 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     expect(allText.some(s => s === '225')).toBe(false);
   });
 
+  test('multi-day exercises fall back to global trend when per-day trend is null', () => {
+    // When per-day signal exists but has null overload_trend (only one comparable
+    // unit for that day-slot), the row should show the global trend, not —.
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. bench press',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'bench press': true },
+    };
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['bench press', 'Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {
+        'Bench Press': {
+          'Monday': { latest_top_weight: 185, overload_trend: null, latest_pr: 210 },
+          'Friday': { latest_top_weight: 175, overload_trend: null, latest_pr: 198 },
+        },
+      },
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+    const allText = findAllText(root);
+
+    // Global trend 'up' → '↑' must appear in the panel (once per day-row = twice)
+    expect(allText.filter(s => s === '↑').length).toBeGreaterThanOrEqual(2);
+  });
+
   test('multi-day exercises fall back to Also on text when perDaySignals absent', () => {
     const currentNote = {
       id: 'n1',
