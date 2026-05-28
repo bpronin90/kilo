@@ -592,14 +592,6 @@ Issue #36 review approved the native UI structure, but the approval was based on
 static inspection of the `mobile/**` diff. The Expo app has not yet been
 validated end-to-end on a device or emulator as part of the issue closeout.
 
-### `KILO_TODAY` was hardcoded in the archived browser prototype
-
-`window.KILO_TODAY` was set to `'2026-05-05'` by the archived `data.jsx`. The
-native app does not use this hardcode. This known gap applies only to the
-archived prototype and is no longer relevant to the active codebase.
-
----
-
 ## Launch Prerequisite Checklist
 
 These were the prerequisites for manual launch validation on issue #17.
@@ -623,7 +615,6 @@ These were the prerequisites for manual launch validation on issue #17.
 **Known non-blockers for launch** (acceptable prototype limitations)
 - PT checklist items are toggle-only; not persisted across reloads
 - Stats screen is read-only and has no correction flows
-- `KILO_TODAY` is hardcoded; real-date behavior is a post-MVP concern
 - Seeded entries cannot be corrected via the product UI
 - Home quick-log is not manually reachable in the seeded prototype state (covered
   by automated tests)

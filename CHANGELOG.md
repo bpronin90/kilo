@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.9 - 2026-05-28
+
+- Issue #209: Removed stale `KILO_TODAY` references from
+  `docs/current-state.md` and marked legacy roadmap files as historical,
+  directing readers to `docs/roadmap-mvp-refine.md` as the active roadmap.
+
 ## 0.46.8 - 2026-05-28
 
 - Issue #204: Fixed intermittent tab-switch flicker by replacing conditional
