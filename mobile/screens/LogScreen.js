@@ -29,7 +29,7 @@ export function LogScreen({
   const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
-  const [mode, setMode] = useState(workoutNoteText ? 'read' : 'edit');
+  const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [dismissedNudges, setDismissedNudges] = useState({});

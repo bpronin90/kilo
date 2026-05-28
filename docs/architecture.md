@@ -113,7 +113,9 @@ The native path uses its own parser/data/storage modules.
 ## Screen Routing
 
 `mobile/App.js` owns a separate `activeTab` state string initialized to
-`'Home'`. A `switch` statement maps it to one of five native screens:
+`'Home'`. All five native screens are mounted persistently and visibility is
+toggled via `display: 'none'` / `display: 'flex'` based on `activeTab`,
+eliminating remount flicker on tab switch:
 
 ```
 activeTab: 'Home' | 'Log' | 'Weight' | 'Analytics' | 'More'

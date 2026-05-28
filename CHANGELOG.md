@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.46.8 - 2026-05-28
+
+- Issue #204: Fixed intermittent tab-switch flicker by replacing conditional
+  screen rendering with a persistent keep-alive pattern in `App.js`. All main
+  screens are now mounted once and visibility is toggled via `display` style,
+  eliminating remount cycles during tab navigation.
+
 ## 0.46.7 - 2026-05-28
 
 - Issue #213: Archived the frozen browser prototype (`Kilo.html`, `src/`,

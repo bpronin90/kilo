@@ -179,9 +179,9 @@ export default function App() {
   }, [workoutSaving, workoutNoteText, noteHook]);
 
   const renderContent = () => {
-    switch (activeTab) {
-      case 'Home':
-        return (
+    return (
+      <>
+        <View style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}>
           <HomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
@@ -189,9 +189,8 @@ export default function App() {
             successMessage={saveSuccess}
             onNavigate={handleTabPress}
           />
-        );
-      case 'Log':
-        return (
+        </View>
+        <View style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
           <LogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
@@ -201,9 +200,8 @@ export default function App() {
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
           />
-        );
-      case 'Weight':
-        return (
+        </View>
+        <View style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
           <WeightScreen
             weightValue={weightValue}
             setWeightValue={setWeightValue}
@@ -213,12 +211,11 @@ export default function App() {
             errorMessage={saveError}
             saving={weightSaving}
           />
-        );
-      case 'Stats':
-      case 'Analytics':
-        return <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />;
-      case 'More':
-        return (
+        </View>
+        <View style={[styles.tabContent, (activeTab === 'Stats' || activeTab === 'Analytics') && styles.activeTabContent]}>
+          <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
+        </View>
+        <View style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MoreScreen
             onNavigate={handleTabPress}
             onExport={handleExport}
@@ -229,10 +226,9 @@ export default function App() {
               await saveFatigueMultiplier(val);
             }}
           />
-        );
-      default:
-        return null;
-    }
+        </View>
+      </>
+    );
   };
 
   return (
@@ -273,6 +269,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    flex: 1,
+  },
+  tabContent: {
+    display: 'none',
+  },
+  activeTabContent: {
+    display: 'flex',
     flex: 1,
   },
   tabBarSafeArea: {
