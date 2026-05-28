@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.46.10 - 2026-05-28
+
+- Issue #212: Extracted the per-note `parseWorkoutNote` flatMap from the
+  `dashboardData` useMemo into a dedicated memo gated only on `notes`, so
+  weight entry and tracked lift changes no longer trigger a full notebook
+  reparse on HomeScreen.
+
 ## 0.46.9 - 2026-05-28
 
 - Issue #209: Removed stale `KILO_TODAY` references from
