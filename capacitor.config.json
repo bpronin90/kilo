@@ -1,8 +1,0 @@
-{
-  "appId": "com.benpronin.kilo",
-  "appName": "Kilo",
-  "webDir": "www",
-  "server": {
-    "androidScheme": "https"
-  }
-}

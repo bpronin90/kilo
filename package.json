@@ -3,30 +3,10 @@
   "private": true,
   "version": "0.46.6",
   "scripts": {
-    "build": "rm -rf www && mkdir -p www && cp Kilo.html www/index.html && cp -r src www/src",
-    "cap:sync": "cap sync android",
-    "cap:run": "cap run android",
-    "cap:open": "cap open android",
     "mobile:start": "npm --prefix mobile start",
     "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
-    "preview": "npm run build && npm run cap:sync && npm run cap:run",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "audit": "npm audit --audit-level=high"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.3.3",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.1.0",
-    "jsdom": "^25.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "vitest": "^2.1.8"
-  },
-  "dependencies": {
-    "@capacitor/android": "^8.3.3",
-    "@capacitor/core": "^8.3.3"
   }
 }
