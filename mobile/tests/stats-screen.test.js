@@ -4,6 +4,7 @@ import { StatsScreen } from '../screens/StatsScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -15,6 +16,11 @@ jest.mock('../components/LineChart', () => {
   return { LineChart: () => null };
 });
 
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  return { MaterialIcons: () => null };
+}, { virtual: true });
+
 jest.mock('../hooks/useEntries');
 
 const MOCK_NOW = new Date('2026-05-26T12:00:00Z');
@@ -22,7 +28,10 @@ jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
 function setup({ entries = [], hookOverrides = {} } = {}) {
   useEntries.useWeightEntries.mockReturnValue({ entries, loading: false, error: null });
-  useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+  useEntries.useTrackedLifts.mockReturnValue({ 
+    trackedLifts: hookOverrides.trackedLifts || {}, 
+    loading: false 
+  });
   useEntries.useWorkoutNotes.mockReturnValue({
     notes: [],
     currentNote: null,
@@ -30,6 +39,7 @@ function setup({ entries = [], hookOverrides = {} } = {}) {
     update: jest.fn(),
     ...hookOverrides,
   });
+
   let component;
   render.act(() => {
     component = render.create(<StatsScreen multiplier={1.07} section={null} />);
@@ -118,5 +128,89 @@ describe('StatsScreen weight summary — sourced from deriveWeightGoalAnalytics'
 
     expect(hasText(root, '188.8 lb')).toBe(true);
     expect(hasText(root, '177.7 lb')).toBe(true);
+  });
+});
+
+describe('StatsScreen Progressive Overload — grouping and layout', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('exercises are grouped by routine day', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nWednesday\n+ lifting\n1. squat',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'bench press': true, 'squat': true },
+    };
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      { name: 'Squat', latest_pr: 315, kilo_max: 280, latest_top_weight: 225, overload_trend: 'flat' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['bench press', 'Bench Press'], ['squat', 'Squat']]),
+      repDropOffFlags: {},
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'Monday')).toBe(true);
+    expect(hasText(root, 'Wednesday')).toBe(true);
+    expect(hasText(root, 'Bench Press')).toBe(true);
+    expect(hasText(root, 'Squat')).toBe(true);
+  });
+
+  test('multi-day exercises show cross-day summary', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. bench press',
+    };
+
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'bench press': true },
+    };
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['bench press', 'Bench Press']]),
+      repDropOffFlags: {},
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(findAllText(root).some(s => s.includes('Also on Friday'))).toBe(true);
+  });
+});
+
+describe('StatsScreen 1K Progress Card', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('displays redesigned 1K progress with full labels', () => {
+    const oneK = { total: 1000, squat: 400, bench: 300, deadlift: 300 };
+    
+    // Setup analytics to return the mocked oneK
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotal').mockReturnValue(oneK);
+
+    const component = setup();
+    const root = component.root;
+
+    expect(hasText(root, '1K Progress')).toBe(true);
+    expect(hasText(root, '1000')).toBe(true);
+    expect(hasText(root, 'Squats')).toBe(true);
+    expect(hasText(root, 'Bench')).toBe(true);
+    expect(hasText(root, 'Deadlifts')).toBe(true);
   });
 });

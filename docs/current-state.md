@@ -237,9 +237,17 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/StatsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
-  summary averages, alongside a `1K Progress` card, strength-only 1k
-  slot selection, and a `Progressive Overload` list with a single sticky
-  header row (`Exercise`, `1 Rep Max`, `Kilo Max`, `Top Wt`, `Trend`). It now
+  summary averages, alongside a redesigned `1K Progress` card (hero total,
+  progress bar, full breakdown labels: Squats/Bench/Deadlifts) in an
+  artisanal-panel container, strength-only 1k slot selection, and a
+  `Progressive Overload` section with routine-day grouping, collapsible
+  group headers, search filtering, and a tabular two-line row layout
+  (exercise name + 4-column metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
+  Multi-day exercises appear in each relevant group with an inline cross-day
+  summary noting the other day(s). Trend arrows use MaterialIcons with
+  semantic color mapping (`Colors.success`, `Colors.caution`, `Colors.error`).
+  Per-day metric breakdown for multi-day exercises is deferred (#205) because
+  signals are currently global per-exercise. It now
   uses the shared `ScreenShell` component for a consistent layout and
   safe-area handling across all analytics sections. Its
   weight summary card now reads the displayed latest weigh-in, pace flag, and

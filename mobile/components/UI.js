@@ -153,6 +153,10 @@ export function SetLine({ sets, selectable }) {
   );
 }
 
+export function ArtisanalPanel({ children, style }) {
+  return <View style={[styles.artisanalPanel, style]}>{children}</View>;
+}
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.card,
@@ -161,6 +165,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
     gap: 10,
+  },
+  artisanalPanel: {
+    backgroundColor: Colors.panelBackground,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    shadowColor: Colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'hidden',
   },
   cardAccent: {
     backgroundColor: Colors.accent,

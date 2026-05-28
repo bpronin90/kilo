@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.45.0 - 2026-05-27
+
+- Issue #198: Redesigned the Analytics Progressive Overload section with
+  routine-day grouping, collapsible group headers, search filtering, and a
+  tabular two-line row layout (exercise name + 4-column metric grid). Multi-day
+  exercises appear in each relevant group with an inline cross-day summary.
+  Trend arrows now use MaterialIcons with semantic color mapping. Redesigned
+  the 1K Progress card with hero total, progress bar, and full breakdown
+  labels (Squats/Bench/Deadlifts) in an artisanal-panel container.
+  Standardized color tokens (`Colors.divider`, `Colors.subtleBg`,
+  `Colors.panelBackground`) and eliminated hardcoded color leaks within scope.
+  Added `ArtisanalPanel` shared component to `UI.js`. Per-day signal
+  breakdown for multi-day exercises deferred to #205.
+
 ## 0.44.0 - 2026-05-27
 
 - Issue #196: Redesigned the Home dashboard to an approved information
