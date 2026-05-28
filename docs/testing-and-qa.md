@@ -84,8 +84,9 @@ Current limitation:
   entries, saved-goal/edit-state paths, rolling-series limits, and maintain
   handling, per-session rep-drop-off flag derivation coverage, weekly-summary
   stored-input shaping coverage (session presence and persisted
-  classification counts),
-  and malformed backup rejection coverage for the optional `weight_goal` v2
+  classification counts), plain-row progression comparables for note-based
+  sessions, lowercase canonical `perDaySignals` key coverage, and malformed
+  backup rejection coverage for the optional `weight_goal` v2
   import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `react-test-renderer` suite for the Weight goal card's loss,
@@ -348,7 +349,11 @@ Provides the global runtime contract required by the prototype:
 - verifies the rendered `7-day` and `30-day` weight averages come from the
   shared-layer `avg7` / `avg30` outputs
 - verifies exercises are grouped by routine day with correct group headers
-- verifies multi-day exercises show cross-day summary text
+- verifies multi-day exercises render per-day row metrics from
+  `perDaySignals`, including null-trend fallback to the global signal and
+  bodyweight `reps` units in cross-day chips
+- verifies alias exercise names in the note still resolve to the canonical
+  tracked signal row
 - verifies redesigned 1K Progress card renders hero total, progress bar,
   and full breakdown labels (Squats, Bench, Deadlifts)
 

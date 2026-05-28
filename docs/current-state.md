@@ -136,9 +136,11 @@ The real native app path now has a modular React Native shell:
   card, and a 1K Club Progress card. The hero card contains an inline week
   label, a dominant 48px latest-weight value (the only accent-colored text
   element on the screen besides the wordmark), a full-width 7-day sparkline
-  strip, a four-column classification band with semantic color dots
-  (green/yellow/red/gray), and a quiet `Full history and insights` link into
-  Analytics. The Weight Goal card renders only when a goal is set
+  strip, a three-column classification band with semantic color dots
+  (green/yellow/red) for live `Progressing`, `Steady`, and `Regressing`
+  overload counts mirrored from the current Analytics row contract, and a
+  quiet `Full history and insights` link into Analytics. The Weight Goal card
+  renders only when a goal is set
   (`dashboardData.goalInfo !== null`) and shows direction, weeks remaining,
   target weight, and required pace. The 1K Club card uses a centered total,
   progress bar, and three-column breakdown with full exercise names
@@ -243,11 +245,15 @@ The real native app path now has a modular React Native shell:
   `Progressive Overload` section with routine-day grouping, collapsible
   group headers, search filtering, and a tabular two-line row layout
   (exercise name + 4-column metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
-  Multi-day exercises appear in each relevant group with an inline cross-day
-  summary noting the other day(s). Trend arrows use MaterialIcons with
-  semantic color mapping (`Colors.success`, `Colors.caution`, `Colors.error`).
-  Per-day metric breakdown for multi-day exercises is deferred (#205) because
-  signals are currently global per-exercise. It now
+  Multi-day exercises appear in each relevant group and now render their row
+  metrics from the matching per-day signal payload for that weekday slot
+  (`latest_pr`, `latest_top_weight`, `overload_trend`, `is_bodyweight`) while
+  the inline cross-day comparison chips summarize the other day-specific
+  values. Trend arrows use MaterialIcons for up/down plus a text `↔` steady
+  marker with semantic color mapping (`Colors.success`, `Colors.caution`,
+  `Colors.error`), alias variants resolve through canonical exercise-name
+  mapping, and plain note rows now count as separate comparable sessions for
+  progression derivation. It now
   uses the shared `ScreenShell` component for a consistent layout and
   safe-area handling across all analytics sections. Its
   weight summary card now reads the displayed latest weigh-in, pace flag, and
