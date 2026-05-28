@@ -568,6 +568,79 @@ function _occurrenceTopWeight(occurrence) {
   return Math.max(...weighted.map(s => s.weight_value));
 }
 
+// Build the session-level comparable list from an occurrences array.
+// Each occurrence is expanded per-session-entry when present, then per-row, then falls back to the occurrence itself.
+function _buildComparable(occs) {
+  return occs.flatMap(occ => {
+    const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
+    if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
+    const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
+    if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
+    return occ.sets && occ.sets.length > 0 ? [occ] : [];
+  });
+}
+
+// Derive signal fields from a comparable list (session-level units with .sets).
+// Returns { latest_pr, prior_pr, latest_top_weight, overload_trend, progression_status, is_bodyweight, repeatability_score }
+// or null when the comparable list is empty or carries no usable data.
+function _deriveSignalForComparables(comparable) {
+  if (comparable.length === 0) return null;
+
+  // Walk backward to find the two most recent units with computable PRs.
+  let latestIdx = -1;
+  let priorIdx = -1;
+  for (let i = comparable.length - 1; i >= 0; i--) {
+    if (_occurrencePR(comparable[i]) !== null) {
+      if (latestIdx === -1) latestIdx = i;
+      else { priorIdx = i; break; }
+    }
+  }
+
+  if (latestIdx === -1) {
+    // Rep-only (bodyweight) fallback: use total reps per session as the comparable metric.
+    const repTotals = comparable.map(unit =>
+      unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
+    );
+    const latestReps = repTotals[repTotals.length - 1];
+    if (!latestReps) return null;
+    const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
+    const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
+    const progression_status = priorReps === null ? 'first_session'
+      : latestReps > priorReps ? 'improved' : latestReps < priorReps ? 'regressed' : 'held';
+    const overload_trend = priorReps === null ? null
+      : latestReps > priorReps ? 'up' : latestReps < priorReps ? 'down' : 'flat';
+    return { latest_pr: null, prior_pr: null, latest_top_weight: latestBestSet || null, overload_trend, progression_status, is_bodyweight: true, repeatability_score: null };
+  }
+
+  const latestOcc = comparable[latestIdx];
+  const latest_pr = _occurrencePR(latestOcc);
+  const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
+  const latest_top_weight = _occurrenceTopWeight(latestOcc);
+
+  if (priorIdx === -1) {
+    return { latest_pr, prior_pr: null, latest_top_weight, overload_trend: 'first_session', progression_status: 'first_session', is_bodyweight: false, repeatability_score };
+  }
+
+  const prior_pr = _occurrencePR(comparable[priorIdx]);
+  const prior_top_weight = _occurrenceTopWeight(comparable[priorIdx]);
+  const progression_status = latest_pr > prior_pr ? 'improved'
+                            : latest_pr < prior_pr ? 'regressed'
+                            : 'held';
+
+  const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+  const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+  const weight_diff = latest_top_weight !== null && prior_top_weight !== null
+    ? latest_top_weight - prior_top_weight : null;
+  const overload_trend = weight_diff === null ? null
+    : weight_diff > 0 ? 'up'
+    : weight_diff < 0 ? 'down'
+    : latest_total_reps > prior_total_reps ? 'up'
+    : latest_total_reps < prior_total_reps ? 'down'
+    : 'flat';
+
+  return { latest_pr, prior_pr, latest_top_weight, overload_trend, progression_status, is_bodyweight: false, repeatability_score };
+}
+
 // deriveProgressionSignals: progression status and repeatability context for tracked exercises.
 //
 // Compares the latest occurrence against the most recent prior occurrence with a computable PR.
@@ -600,70 +673,14 @@ export function deriveProgressionSignals(sections, trackedNames) {
       if (occs.length === 0) return absent;
 
       const kilo_max = ex.estimated_pr;
+      const comparable = _buildComparable(occs);
+      const signal = _deriveSignalForComparables(comparable);
+      if (!signal) return absent;
 
-      // Build a session-level comparable list. Each occurrence is expanded
-      // per-session-entry when it has them (the `- date sets` format). Plain rows
-      // are also expanded individually — each row represents one logged workout day.
-      const comparable = occs.flatMap(occ => {
-        const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
-        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
-        const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
-        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
-        return occ.sets && occ.sets.length > 0 ? [occ] : [];
-      });
-
-      // Walk backward to find the two most recent comparable units with computable PRs.
-      let latestIdx = -1;
-      let priorIdx = -1;
-      for (let i = comparable.length - 1; i >= 0; i--) {
-        if (_occurrencePR(comparable[i]) !== null) {
-          if (latestIdx === -1) latestIdx = i;
-          else { priorIdx = i; break; }
-        }
+      const { latest_pr, prior_pr, latest_top_weight, overload_trend, progression_status, is_bodyweight, repeatability_score } = signal;
+      if (is_bodyweight) {
+        return { name, progression_status, latest_pr: null, prior_pr: null, kilo_max: null, repeatability_score: null, latest_top_weight, overload_trend, is_bodyweight: true };
       }
-
-      if (latestIdx === -1) {
-        // Rep-only (bodyweight) fallback: use total reps per session as the comparable metric.
-        const repTotals = comparable.map(unit =>
-          unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
-        );
-        const latestReps = repTotals[repTotals.length - 1];
-        if (!latestReps) return absent;
-        const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
-        const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
-        const bw_status = priorReps === null ? 'first_session'
-          : latestReps > priorReps ? 'improved' : latestReps < priorReps ? 'regressed' : 'held';
-        const bw_trend = priorReps === null ? null
-          : latestReps > priorReps ? 'up' : latestReps < priorReps ? 'down' : 'flat';
-        return { name, progression_status: bw_status, latest_pr: null, prior_pr: null, kilo_max: null, repeatability_score: null, latest_top_weight: latestBestSet || null, overload_trend: bw_trend, is_bodyweight: true };
-      }
-
-      const latestOcc = comparable[latestIdx];
-      const latest_pr = _occurrencePR(latestOcc);
-      const repeatability_score = _occurrenceRepeatabilityScore(latestOcc);
-      const latest_top_weight = _occurrenceTopWeight(latestOcc);
-
-      if (priorIdx === -1) {
-        return { name, progression_status: 'first_session', latest_pr, prior_pr: null, kilo_max, repeatability_score, latest_top_weight, overload_trend: 'first_session' };
-      }
-
-      const prior_pr = _occurrencePR(comparable[priorIdx]);
-      const prior_top_weight = _occurrenceTopWeight(comparable[priorIdx]);
-      const progression_status = latest_pr > prior_pr ? 'improved'
-                                : latest_pr < prior_pr ? 'regressed'
-                                : 'held';
-
-      const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
-      const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
-      const weight_diff = latest_top_weight !== null && prior_top_weight !== null
-        ? latest_top_weight - prior_top_weight : null;
-      const overload_trend = weight_diff === null ? null
-        : weight_diff > 0 ? 'up'
-        : weight_diff < 0 ? 'down'
-        : latest_total_reps > prior_total_reps ? 'up'
-        : latest_total_reps < prior_total_reps ? 'down'
-        : 'flat';
-
       return { name, progression_status, latest_pr, prior_pr, kilo_max, repeatability_score, latest_top_weight, overload_trend };
     }),
   };
@@ -699,63 +716,15 @@ export function derivePerDaySignals(sections, trackedNames) {
 
     const dayMap = {};
     for (const [heading, occs] of byHeading) {
-      const comparable = occs.flatMap(occ => {
-        const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
-        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
-        const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
-        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
-        return occ.sets && occ.sets.length > 0 ? [occ] : [];
-      });
-
-      let latestIdx = -1;
-      let priorIdx = -1;
-      for (let i = comparable.length - 1; i >= 0; i--) {
-        if (_occurrencePR(comparable[i]) !== null) {
-          if (latestIdx === -1) latestIdx = i;
-          else { priorIdx = i; break; }
-        }
-      }
-
-      if (latestIdx === -1) {
-        // Rep-only/bodyweight fallback: mirror semantics from deriveProgressionSignals.
-        const repTotals = comparable.map(unit =>
-          unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
-        );
-        const latestReps = repTotals[repTotals.length - 1];
-        if (!latestReps) {
-          dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null, is_bodyweight: false };
-          continue;
-        }
-        const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
-        const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
-        const bw_trend = priorReps === null ? null
-          : latestReps > priorReps ? 'up'
-          : latestReps < priorReps ? 'down'
-          : 'flat';
-        dayMap[heading] = { latest_pr: null, latest_top_weight: latestBestSet || null, overload_trend: bw_trend, is_bodyweight: true };
+      const comparable = _buildComparable(occs);
+      const signal = _deriveSignalForComparables(comparable);
+      if (!signal) {
+        dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null, is_bodyweight: false };
         continue;
       }
-
-      const latestOcc = comparable[latestIdx];
-      const latest_pr = _occurrencePR(latestOcc);
-      const latest_top_weight = _occurrenceTopWeight(latestOcc);
-
-      let overload_trend = null;
-      if (priorIdx !== -1) {
-        const prior_top_weight = _occurrenceTopWeight(comparable[priorIdx]);
-        const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
-        const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
-        const weight_diff = latest_top_weight !== null && prior_top_weight !== null
-          ? latest_top_weight - prior_top_weight : null;
-        overload_trend = weight_diff === null ? null
-          : weight_diff > 0 ? 'up'
-          : weight_diff < 0 ? 'down'
-          : latest_total_reps > prior_total_reps ? 'up'
-          : latest_total_reps < prior_total_reps ? 'down'
-          : 'flat';
-      }
-
-      dayMap[heading] = { latest_pr, latest_top_weight, overload_trend, is_bodyweight: false };
+      const { latest_pr, latest_top_weight, overload_trend, is_bodyweight } = signal;
+      // derivePerDaySignals does not expose 'first_session' for overload_trend — callers use null there.
+      dayMap[heading] = { latest_pr, latest_top_weight, overload_trend: overload_trend === 'first_session' ? null : overload_trend, is_bodyweight };
     }
 
     result[_canonicalizeName(name).toLowerCase()] = dayMap;

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.6 - 2026-05-28
+
+- Issue #211: Deduplicated progression signal logic by extracting
+  `_buildComparable` and `_deriveSignalForComparables` helpers from
+  `deriveProgressionSignals` and `derivePerDaySignals`, eliminating ~80 lines
+  of near-identical code that previously caused the #207 regression when the
+  two copies diverged.
+
 ## 0.46.5 - 2026-05-28
 
 - Issue #210: Extracted MoreScreen and its five sub-screens (ProfileScreen,
