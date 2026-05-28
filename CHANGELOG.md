@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.2 - 2026-05-27
+
+- Issue #206: Rounded the native Home weight-goal `weeks left` display to the
+  nearest whole number at the `HomeScreen` render site so goal timelines no
+  longer expose raw fractional week values.
+
 ## 0.46.1 - 2026-05-27
 
 - Issue #205: Fixed the per-day multi-day comparison regression for

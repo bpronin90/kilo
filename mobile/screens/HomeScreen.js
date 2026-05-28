@@ -154,7 +154,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               {dashboardData.goalInfo.direction === 'loss' ? 'Cutting' : dashboardData.goalInfo.direction === 'gain' ? 'Bulking' : 'Maintaining'}
             </Text>
             {/* #8 no chevron — weeks is display only */}
-            <Text style={styles.goalWeeksText}>{dashboardData.goalInfo.weeks_remaining} weeks left</Text>
+            <Text style={styles.goalWeeksText}>{Math.round(dashboardData.goalInfo.weeks_remaining)} weeks left</Text>
           </View>
           <View style={styles.goalStatsGrid}>
             <View style={styles.goalStatCol}>
