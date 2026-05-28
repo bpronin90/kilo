@@ -385,13 +385,15 @@ export function StatsScreen({ multiplier, section }) {
                   <View style={styles.exerciseList}>
                     {group.exercises.map((sig) => {
                       const normName = normalizeLiftName(sig.name);
-                      const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
-                      const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
                       // For multi-day exercises, use per-day metrics for this row's heading.
                       const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
                       const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
                       const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
                       const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+                      const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
+                      // Suppress hit_wall when the row is progressing — a rep drop-off
+                      // while still hitting a new top weight is not a warning to surface.
+                      const dropOffLabel = dropOffFlag === 'hit_wall' && rowTrend !== 'up' ? '⚠ Hit wall' : null;
                       const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
 
                       return (
