@@ -318,7 +318,10 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <View style={styles.signalStickyHeader} testID="sticky-header">
+      <View 
+        style={styles.signalStickyHeader} 
+        testID="sticky-header" // Note: testID is used at runtime by stickyHeaderIndex calculation below
+      >
         <SectionTitle>Progressive Overload</SectionTitle>
         <View style={styles.searchContainer}>
           <TextInput
@@ -439,17 +442,17 @@ export function StatsScreen({ multiplier, section }) {
     </>
   );
 
-  const stickyHeaderIndex = Math.max(
-    0,
-    screenContent.findIndex(child => child?.props?.testID === 'sticky-header')
-  ) + 1; // +1 to account for ScreenShell's internal headerWrapper
+  const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
+  // foundIndex + 1 to account for ScreenShell's internal headerWrapper.
+  // If not found, we pass an empty array to disable sticky behavior rather than sticking a random element.
+  const stickyHeaderIndices = foundIndex !== -1 ? [foundIndex + 1] : [];
 
   return (
     <ScreenShell
       ref={scrollRef}
       title="Analytics"
       subtitle="Insights derived from your logs."
-      stickyHeaderIndices={[stickyHeaderIndex]}
+      stickyHeaderIndices={stickyHeaderIndices}
     >
       {screenContent}
     </ScreenShell>
