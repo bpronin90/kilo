@@ -692,7 +692,7 @@ export function derivePerDaySignals(sections, trackedNames) {
 
     const byHeading = new Map();
     for (const occ of ex.occurrences) {
-      const heading = occ.heading ?? '__no_day__';
+      const heading = occ.heading;
       if (!byHeading.has(heading)) byHeading.set(heading, []);
       byHeading.get(heading).push(occ);
     }

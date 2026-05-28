@@ -454,7 +454,7 @@ function CrossDayComparison({ daySignals, currentDay, otherDays }) {
             {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
             <View style={styles.crossDayChip}>
               <Text style={[styles.crossDayChipLabel, day === currentDay && styles.crossDayChipLabelCurrent]}>
-                {day ? day.slice(0, 3).toUpperCase() : '?'}
+                {day ? day.slice(0, 3).toUpperCase() : '—'}
               </Text>
               <Text style={styles.crossDayChipValue}>
                 {d?.latest_top_weight != null ? `${d.latest_top_weight}` : '—'}
