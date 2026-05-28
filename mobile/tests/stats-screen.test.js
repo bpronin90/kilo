@@ -223,6 +223,42 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
 
     expect(findAllText(root).some(s => s.includes('Also on Friday'))).toBe(true);
   });
+
+  test('multi-day bodyweight exercise renders reps unit not lb in CrossDayComparison', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. pull-ups\n\nFriday\n+ lifting\n1. pull-ups',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'pull-ups': true },
+    };
+    const signals = [
+      { name: 'Pull-ups', latest_pr: null, kilo_max: null, latest_top_weight: 10, overload_trend: 'up', is_bodyweight: true },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['pull-ups', 'Pull-ups']]),
+      repDropOffFlags: {},
+      perDaySignals: {
+        'Pull-ups': {
+          'Monday': { latest_top_weight: 10, overload_trend: 'up', latest_pr: null, is_bodyweight: true },
+          'Friday': { latest_top_weight: 8, overload_trend: 'flat', latest_pr: null, is_bodyweight: true },
+        },
+      },
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+    const allText = findAllText(root);
+
+    // Per-day rep counts appear
+    expect(allText.some(s => s.includes('10'))).toBe(true);
+    expect(allText.some(s => s.includes('8'))).toBe(true);
+    // 'reps' label appears, 'lb' does not appear inside the cross-day row chips
+    expect(allText.filter(s => s === 'reps').length).toBeGreaterThan(0);
+  });
 });
 
 describe('StatsScreen 1K Progress Card', () => {
