@@ -198,13 +198,8 @@ export function StatsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  return (
-    <ScreenShell
-      ref={scrollRef}
-      title="Analytics"
-      subtitle="Insights derived from your logs."
-      stickyHeaderIndices={[4]}
-    >
+  const screenContent = React.Children.toArray(
+    <>
       <View onLayout={handleWeightLayout}>
         <SectionTitle>Weight Trends</SectionTitle>
       </View>
@@ -323,7 +318,7 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <View style={styles.signalStickyHeader}>
+      <View style={styles.signalStickyHeader} testID="sticky-header">
         <SectionTitle>Progressive Overload</SectionTitle>
         <View style={styles.searchContainer}>
           <TextInput
@@ -441,6 +436,22 @@ export function StatsScreen({ multiplier, section }) {
           Tap the bookmark on any exercise in your note to track it here.
         </Text>
       )}
+    </>
+  );
+
+  const stickyHeaderIndex = Math.max(
+    0,
+    screenContent.findIndex(child => child?.props?.testID === 'sticky-header')
+  ) + 1; // +1 to account for ScreenShell's internal headerWrapper
+
+  return (
+    <ScreenShell
+      ref={scrollRef}
+      title="Analytics"
+      subtitle="Insights derived from your logs."
+      stickyHeaderIndices={[stickyHeaderIndex]}
+    >
+      {screenContent}
     </ScreenShell>
   );
 }
