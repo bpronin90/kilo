@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
 
+const safeNotify = (listeners) =>
+  listeners.forEach(l => { try { l(); } catch (e) { console.warn('[useEntries] listener error', e); } });
+
 let goalListeners = [];
-const notifyGoal = () => goalListeners.forEach(l => l());
+const notifyGoal = () => safeNotify(goalListeners);
 
 export function useWeightGoal() {
   const [goal, setGoal] = useState(null);
@@ -40,10 +43,10 @@ export function useWeightGoal() {
 }
 
 let weightListeners = [];
-const notifyWeight = () => weightListeners.forEach(l => l());
+const notifyWeight = () => safeNotify(weightListeners);
 
 let noteListeners = [];
-const notifyNote = () => noteListeners.forEach(l => l());
+const notifyNote = () => safeNotify(noteListeners);
 
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
@@ -138,10 +141,10 @@ export function useWorkoutNote() {
 }
 
 let workoutNotesListeners = [];
-const notifyWorkoutNotes = () => workoutNotesListeners.forEach(l => l());
+const notifyWorkoutNotes = () => safeNotify(workoutNotesListeners);
 
 let trackedLiftsListeners = [];
-const notifyTrackedLifts = () => trackedLiftsListeners.forEach(l => l());
+const notifyTrackedLifts = () => safeNotify(trackedLiftsListeners);
 
 let currentTrackedLifts = {};
 // Seed the write queue with the initial load so toggle/save always derive from
@@ -264,7 +267,7 @@ export function useTrackedLifts() {
 }
 
 let profileListeners = [];
-const notifyProfile = () => profileListeners.forEach(l => l());
+const notifyProfile = () => safeNotify(profileListeners);
 
 export function useUserProfile() {
   const [profile, setProfile] = useState(null);
