@@ -2081,24 +2081,24 @@ describe('derivePerDaySignals', () => {
   test('single-day exercise returns its heading as the only key', () => {
     const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
     const result = derivePerDaySignals(sections, ['Squat']);
-    expect(result).toHaveProperty('Squat');
-    expect(Object.keys(result['Squat'])).toEqual(['Monday']);
+    expect(result).toHaveProperty('squat');
+    expect(Object.keys(result['squat'])).toEqual(['Monday']);
   });
 
   test('single day with one session: latest_top_weight present, overload_trend null (no prior)', () => {
     const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
-    const { Squat } = derivePerDaySignals(sections, ['Squat']);
-    expect(Squat['Monday'].latest_top_weight).toBe(225);
-    expect(Squat['Monday'].overload_trend).toBeNull();
+    const { squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(squat['Monday'].latest_top_weight).toBe(225);
+    expect(squat['Monday'].overload_trend).toBeNull();
   });
 
   test('single day two sessions: overload_trend reflects weight progression', () => {
     const sections = [
       makePerDaySection('Monday', 'Squat', [pds(225, 5), pds(235, 5)]),
     ];
-    const { Squat } = derivePerDaySignals(sections, ['Squat']);
-    expect(Squat['Monday'].latest_top_weight).toBe(235);
-    expect(Squat['Monday'].overload_trend).toBe('up');
+    const { squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(squat['Monday'].latest_top_weight).toBe(235);
+    expect(squat['Monday'].overload_trend).toBe('up');
   });
 
   test('multi-day exercise: each day gets independent metrics', () => {
@@ -2108,7 +2108,7 @@ describe('derivePerDaySignals', () => {
       makePerDaySection('Monday', 'Hammer Curl', [pds(35, 10), pds(40, 10)]),
       makePerDaySection('Wednesday', 'Hammer Curl', [pds(30, 10), pds(30, 10)]),
     ];
-    const { 'Hammer Curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
+    const { 'hammer curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
     expect(hc['Monday'].latest_top_weight).toBe(40);
     expect(hc['Monday'].overload_trend).toBe('up');
     expect(hc['Wednesday'].latest_top_weight).toBe(30);
@@ -2120,7 +2120,7 @@ describe('derivePerDaySignals', () => {
       makePerDaySection('Monday', 'Hammer Curl', [pds(35, 8), pds(35, 8)]),
       makePerDaySection('Friday', 'Hammer Curl', [pds(30, 8), pds(30, 8)]),
     ];
-    const { 'Hammer Curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
+    const { 'hammer curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
     expect(hc['Monday'].latest_top_weight).not.toBe(hc['Friday'].latest_top_weight);
     expect(hc['Monday'].latest_top_weight).toBe(35);
     expect(hc['Friday'].latest_top_weight).toBe(30);
@@ -2137,16 +2137,16 @@ describe('derivePerDaySignals', () => {
     expect(signals[0]).toHaveProperty('latest_top_weight');
     // Per-day signals are independent
     const perDay = derivePerDaySignals(sections, ['Hammer Curl']);
-    expect(perDay['Hammer Curl']['Monday'].latest_top_weight).toBe(40);
-    expect(perDay['Hammer Curl']['Wednesday'].latest_top_weight).toBe(32);
+    expect(perDay['hammer curl']['Monday'].latest_top_weight).toBe(40);
+    expect(perDay['hammer curl']['Wednesday'].latest_top_weight).toBe(32);
   });
 
   // ── bodyweight/rep-only regression ───────────────────────────────────────────
 
   test('weighted day: is_bodyweight false', () => {
     const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
-    const { Squat } = derivePerDaySignals(sections, ['Squat']);
-    expect(Squat['Monday'].is_bodyweight).toBe(false);
+    const { squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(squat['Monday'].is_bodyweight).toBe(false);
   });
 
   test('rep-only day (no weight_value): is_bodyweight true and latest_top_weight is best rep count', () => {
@@ -2159,8 +2159,8 @@ describe('derivePerDaySignals', () => {
       }],
     }];
     const result = derivePerDaySignals(sections, ['Pull-ups']);
-    expect(result['Pull-ups']['Monday'].is_bodyweight).toBe(true);
-    expect(result['Pull-ups']['Monday'].latest_top_weight).toBe(10);
+    expect(result['pull-ups']['Monday'].is_bodyweight).toBe(true);
+    expect(result['pull-ups']['Monday'].latest_top_weight).toBe(10);
   });
 
   test('multi-day bodyweight exercise: each day gets independent rep-based metrics', () => {
@@ -2177,8 +2177,8 @@ describe('derivePerDaySignals', () => {
 
     const sections = [makeBwSection('Monday', [8, 10]), makeBwSection('Friday', [6, 6])];
     const result = derivePerDaySignals(sections, ['Pull-ups']);
-    const mon = result['Pull-ups']['Monday'];
-    const fri = result['Pull-ups']['Friday'];
+    const mon = result['pull-ups']['Monday'];
+    const fri = result['pull-ups']['Friday'];
 
     expect(mon.is_bodyweight).toBe(true);
     expect(mon.latest_top_weight).toBe(10);
@@ -2200,8 +2200,8 @@ describe('derivePerDaySignals', () => {
       }],
     }];
     const result = derivePerDaySignals(sections, ['Pull-ups']);
-    expect(result['Pull-ups']['Monday'].latest_top_weight).toBeNull();
-    expect(result['Pull-ups']['Monday'].is_bodyweight).toBe(false);
+    expect(result['pull-ups']['Monday'].latest_top_weight).toBeNull();
+    expect(result['pull-ups']['Monday'].is_bodyweight).toBe(false);
   });
 });
 

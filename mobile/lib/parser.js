@@ -758,7 +758,7 @@ export function derivePerDaySignals(sections, trackedNames) {
       dayMap[heading] = { latest_pr, latest_top_weight, overload_trend, is_bodyweight: false };
     }
 
-    result[_canonicalizeName(name)] = dayMap;
+    result[_canonicalizeName(name).toLowerCase()] = dayMap;
   }
 
   return result;

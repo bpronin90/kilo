@@ -120,20 +120,6 @@ export function StatsScreen({ multiplier, section }) {
     // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
     const { signals, nameDisplayMap, repDropOffFlags, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
-    if (__DEV__) {
-      console.log('[ANALYTICS DEBUG] allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames);
-      signals.forEach(sig => {
-        const perDay = perDaySignals?.[canonicalizeName(sig.name)];
-        console.log(
-          `  ${sig.name}`,
-          `| trend:${sig.overload_trend ?? 'null'}`,
-          `| pr:${sig.latest_pr != null ? Math.round(sig.latest_pr) : 'null'}`,
-          `| top:${sig.latest_top_weight ?? 'null'}`,
-          perDay ? `| perDay:${JSON.stringify(Object.fromEntries(Object.entries(perDay).map(([d, v]) => [d, v?.overload_trend ?? 'null'])))}` : '| perDay:none',
-        );
-      });
-    }
-
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
 
@@ -172,7 +158,7 @@ export function StatsScreen({ multiplier, section }) {
           exercises: groupExercises.map(sig => {
             const norm = normCanon(sig.name);
             const isMultiDay = exerciseGroupCount.get(norm) > 1;
-            const canonName = canonicalizeName(sig.name);
+            const canonName = canonicalizeName(sig.name).toLowerCase();
 
             return {
               ...sig,

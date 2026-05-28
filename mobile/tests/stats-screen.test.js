@@ -182,7 +182,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       nameDisplayMap: new Map([['bench press', 'Bench Press']]),
       repDropOffFlags: {},
       perDaySignals: {
-        'Bench Press': {
+        'bench press': {
           'Monday': { latest_top_weight: 185, overload_trend: 'up', latest_pr: 210 },
           'Friday': { latest_top_weight: 175, overload_trend: 'flat', latest_pr: 198 },
         },
@@ -224,7 +224,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       nameDisplayMap: new Map([['bench press', 'Bench Press']]),
       repDropOffFlags: {},
       perDaySignals: {
-        'Bench Press': {
+        'bench press': {
           'Monday': { latest_top_weight: 185, overload_trend: null, latest_pr: 210 },
           'Friday': { latest_top_weight: 175, overload_trend: null, latest_pr: 198 },
         },
@@ -288,7 +288,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       nameDisplayMap: new Map([['pull-ups', 'Pull-ups']]),
       repDropOffFlags: {},
       perDaySignals: {
-        'Pull-ups': {
+        'pull-ups': {
           'Monday': { latest_top_weight: 10, overload_trend: 'up', latest_pr: null, is_bodyweight: true },
           'Friday': { latest_top_weight: 8, overload_trend: 'flat', latest_pr: null, is_bodyweight: true },
         },

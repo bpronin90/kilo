@@ -132,29 +132,7 @@ export function LogScreen({
 
   const otherNotes = notes.filter(n => n.id !== currentId);
 
-  const parsed = useMemo(() => {
-    const result = parseWorkoutNote(workoutNoteText);
-    if (__DEV__) {
-      console.log('[LOG DEBUG] parsed note —', result.sections.length, 'sections');
-      result.sections.forEach(sec => {
-        sec.exercises.forEach(ex => {
-          const valid   = (ex.session_entries || []).filter(e => !e.skipped && !e.unparsed);
-          const skipped = (ex.session_entries || []).filter(e => e.skipped);
-          const unparsed = (ex.session_entries || []).filter(e => !e.skipped && e.unparsed);
-          const plainRows = (ex.rows || []).filter(r => r.sets && r.sets.length > 0);
-          const comparable = valid.length > 0 ? valid.length : plainRows.length > 0 ? 1 : 0;
-          console.log(
-            `  [${sec.heading ?? 'no-day'}] ${ex.name}`,
-            `| entries: ${valid.length}v / ${skipped.length}s / ${unparsed.length}u`,
-            `| plain-rows: ${plainRows.length}`,
-            `| comparable: ${comparable}`,
-            unparsed.length ? `| UNPARSED: ${unparsed.map(e => JSON.stringify(e.raw)).join(', ')}` : '',
-          );
-        });
-      });
-    }
-    return result;
-  }, [workoutNoteText]);
+  const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.

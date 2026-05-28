@@ -88,11 +88,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
     const counts = deriveOverloadCounts(sections, signals, perDaySignals);
 
-    if (__DEV__) {
-      console.log('[HOME DEBUG] notes:', (notes || []).length, '| allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames.length);
-      console.log('[HOME DEBUG] counts:', JSON.stringify(counts));
-    }
-
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
     weeklySummary.classifications = counts;
 
@@ -143,7 +138,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
               { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
               { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
-              { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications?.inconsistent ?? 0, color: Colors.textMuted },
             ].map((item, idx) => (
               <View key={idx} style={styles.classifCol}>
                 <View style={[styles.classifDot, { backgroundColor: item.color }]} />
