@@ -1820,6 +1820,18 @@ describe('deriveWorkoutNoteAnalytics', () => {
     expect(nameDisplayMap instanceof Map).toBe(true);
     expect(nameDisplayMap.size).toBe(0);
   });
+
+  test('returns perDaySignals keyed by canonical name', () => {
+    const sections = [analyticsSection('Squat', [aw(225, 5)])];
+    const { perDaySignals } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
+    expect(typeof perDaySignals).toBe('object');
+    expect(perDaySignals).toHaveProperty('Squat');
+  });
+
+  test('null sections → perDaySignals is empty object', () => {
+    const { perDaySignals } = deriveWorkoutNoteAnalytics(null, ['Squat']);
+    expect(perDaySignals).toEqual({});
+  });
 });
 
 // ── Cross-consumer contract: deriveWorkoutNoteAnalytics signals match deriveSignals ──

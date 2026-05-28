@@ -163,7 +163,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     expect(hasText(root, 'Squat')).toBe(true);
   });
 
-  test('multi-day exercises show cross-day summary', () => {
+  test('multi-day exercises render per-day top weights from perDaySignals', () => {
     const currentNote = {
       id: 'n1',
       raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. bench press',
@@ -181,6 +181,41 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       signals,
       nameDisplayMap: new Map([['bench press', 'Bench Press']]),
       repDropOffFlags: {},
+      perDaySignals: {
+        'Bench Press': {
+          'Monday': { latest_top_weight: 185, overload_trend: 'up', latest_pr: 210 },
+          'Friday': { latest_top_weight: 175, overload_trend: 'flat', latest_pr: 198 },
+        },
+      },
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    const allText = findAllText(root);
+    expect(allText.some(s => s.includes('185'))).toBe(true);
+    expect(allText.some(s => s.includes('175'))).toBe(true);
+  });
+
+  test('multi-day exercises fall back to Also on text when perDaySignals absent', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. bench press',
+    };
+
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'bench press': true },
+    };
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['bench press', 'Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {},
     });
 
     const component = setup({ hookOverrides });

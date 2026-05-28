@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, epleyPR, canonicalizeName } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, canonicalizeName } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -914,6 +914,7 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
       repDropOffFlags: emptyFlags,
       signals: [],
       nameDisplayMap: new Map(),
+      perDaySignals: {},
     };
   }
   const nameDisplayMap = new Map();
@@ -927,6 +928,7 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
     repDropOffFlags: deriveRepDropOffFlags(sections, trackedNames),
     signals: deriveSignals(sections, trackedNames, _multiplier).exercises,
     nameDisplayMap,
+    perDaySignals: derivePerDaySignals(sections, trackedNames),
   };
 }
 
