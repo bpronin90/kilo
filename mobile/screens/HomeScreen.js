@@ -417,4 +417,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     fontStyle: 'italic',
+  },
 });
