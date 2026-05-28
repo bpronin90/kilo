@@ -74,21 +74,22 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
-    // Compute classifications live from all notes (same source as StatsScreen).
+    // Compute counts from overload_trend signals — same source as the analytics panel.
     const allSections = (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
     const trackedNames = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
-    const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
+    const { signals } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
 
-    const counts = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };
-    Object.values(liveClassifications).forEach(val => {
-      if (val && counts[val] !== undefined) counts[val]++;
+    const counts = { progressing: 0, stalled: 0, regressing: 0 };
+    signals.forEach(sig => {
+      if (sig.overload_trend === 'up')   counts.progressing++;
+      if (sig.overload_trend === 'flat') counts.stalled++;
+      if (sig.overload_trend === 'down') counts.regressing++;
     });
 
     if (__DEV__) {
       console.log('[HOME DEBUG] notes:', (notes || []).length, '| trackedNames:', trackedNames.length, '| allSections:', allSections.length);
-      console.log('[HOME DEBUG] liveClassifications:', JSON.stringify(liveClassifications));
+      console.log('[HOME DEBUG] signal trends:', signals.map(s => `${s.name}:${s.overload_trend}`).join(', '));
       console.log('[HOME DEBUG] counts:', JSON.stringify(counts));
-      console.log('[HOME DEBUG] stored exercise_classifications:', JSON.stringify(workoutNote?.exercise_classifications ?? null));
     }
 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
