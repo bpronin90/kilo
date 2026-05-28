@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.46.4 - 2026-05-28
+
+- Issue #208: Fixed vitest config to exclude `mobile/**` by spreading
+  `defaultExclude` from `vitest/config` and appending the mobile glob, so the
+  root `npm test` no longer picks up mobile Jest test files or drops vitest's
+  built-in exclusions.
+
 ## 0.46.3 - 2026-05-28
 
 - Issue #207: Fixed the native Analytics Progressive Overload regression by
