@@ -945,7 +945,7 @@ export function deriveOverloadCounts(sections, signals, perDaySignals) {
       const key = normalizeLiftName(canonicalizeName(ex.name));
       const sig = sigMap.get(key);
       if (!sig) return;
-      const dayRow = perDaySignals?.[canonicalizeName(ex.name)]?.[sec.heading];
+      const dayRow = perDaySignals?.[key]?.[sec.heading];
       const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
       if (rowTrend === 'up')   counts.progressing++;
       if (rowTrend === 'flat') counts.stalled++;
