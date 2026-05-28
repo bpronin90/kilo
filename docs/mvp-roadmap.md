@@ -2,10 +2,9 @@
 
 Status: historical and superseded.
 
-This foundational roadmap has been superseded by later roadmap passes in
-`docs/mvp-v2-roadmap.md`, `docs/mvp-v3-roadmap.md`, and
-`docs/mvp-v3.5-roadmap.md`. Keep it for reference only and create a new roadmap
-doc for future planning instead of extending this one.
+This foundational roadmap is historical only. The active roadmap lives in
+`docs/roadmap-mvp-refine.md`; keep this file for reference and do not extend
+it.
 
 ## MVP Definition
 Kilo MVP is a single-user logging product for workouts and bodyweight with a reliable path from input to saved record to visible history. The MVP should let a user enter a workout or weight entry, have the system parse and validate it well enough to prevent obvious bad data, persist it in Supabase, and show the saved results back in a simple UI with basic correction flows.
