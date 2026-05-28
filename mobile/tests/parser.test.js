@@ -1317,13 +1317,13 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
     expect(sig.overload_trend).toBe('first_session');
   });
 
-  test('multi-row plain-row block does not fabricate sessions — still first_session', () => {
-    // Two rows within one occurrence (e.g. progressive sets in one workout) must not be
-    // compared as separate sessions. Without date markers, the whole occurrence is one unit.
+  test('multi-row plain-row block treats each row as a separate session', () => {
+    // Each plain row is one logged workout day. Two rows = two comparables; the
+    // second row (90 lb) is heavier than the first (80 lb) → 'up' trend.
     const { sections } = parseWorkoutNote('-Bench\n80 8\n90 6');
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
-    expect(sig.overload_trend).toBe('first_session');
-    expect(sig.progression_status).toBe('first_session');
+    expect(sig.overload_trend).toBe('up');
+    expect(sig.progression_status).toBe('improved');
   });
 
   test('overload_trend up when latest top weight exceeds prior', () => {
