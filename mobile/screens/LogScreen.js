@@ -531,6 +531,12 @@ export function LogScreen({
                       <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
                       <Text style={styles.otherNoteSub}>Current routine</Text>
                     </View>
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
+                      style={styles.inlineSwitchButton}
+                    >
+                      <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+                    </Pressable>
                   </Pressable>
 
                   <Pressable 
