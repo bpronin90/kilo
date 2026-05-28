@@ -259,6 +259,34 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     // 'reps' label appears, 'lb' does not appear inside the cross-day row chips
     expect(allText.filter(s => s === 'reps').length).toBeGreaterThan(0);
   });
+  test('alias exercise names in note match tracked canonical signal', () => {
+    // Note uses alias 'DB Bench' but tracked lift is 'db bench press' (canonical form).
+    // groupedSignals must canonicalize both sides so the signal resolves and the
+    // exercise appears with its correct overload arrow.
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. db bench',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'db bench press': true },
+    };
+    const signals = [
+      { name: 'db bench press', latest_pr: 200, kilo_max: 190, latest_top_weight: 150, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['db bench press', 'DB Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'DB Bench Press')).toBe(true);
+  });
 });
 
 describe('StatsScreen 1K Progress Card', () => {

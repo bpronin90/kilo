@@ -131,18 +131,19 @@ export function StatsScreen({ multiplier, section }) {
     const sections = parsedSections.currentSections;
     const signals = analytics.signals || [];
     const perDaySignals = analytics.perDaySignals || {};
-    const nameToSignal = new Map(signals.map(s => [normalizeLiftName(s.name), s]));
+    const normCanon = (name) => normalizeLiftName(canonicalizeName(name));
+    const nameToSignal = new Map(signals.map(s => [normCanon(s.name), s]));
 
     // To detect multi-day exercises
     const exerciseGroupCount = new Map();
     sections.forEach(s => s.exercises.forEach(e => {
-      const norm = normalizeLiftName(e.name);
+      const norm = normCanon(e.name);
       exerciseGroupCount.set(norm, (exerciseGroupCount.get(norm) || 0) + 1);
     }));
 
     sections.forEach(section => {
       let groupExercises = section.exercises
-        .map(e => nameToSignal.get(normalizeLiftName(e.name)))
+        .map(e => nameToSignal.get(normCanon(e.name)))
         .filter(Boolean);
 
       if (searchQuery) {
@@ -155,7 +156,7 @@ export function StatsScreen({ multiplier, section }) {
         groups.push({
           name: section.heading,
           exercises: groupExercises.map(sig => {
-            const norm = normalizeLiftName(sig.name);
+            const norm = normCanon(sig.name);
             const isMultiDay = exerciseGroupCount.get(norm) > 1;
             const canonName = canonicalizeName(sig.name);
 
@@ -164,7 +165,7 @@ export function StatsScreen({ multiplier, section }) {
               isMultiDay,
               currentDayHeading: section.heading,
               otherDays: sections
-                .filter(s => s !== section && s.exercises.some(e => normalizeLiftName(e.name) === norm))
+                .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
                 .map(s => s.heading),
               daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
             };
