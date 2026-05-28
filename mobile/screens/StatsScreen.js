@@ -16,6 +16,7 @@ export function StatsScreen({ multiplier, section }) {
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [debugMode, setDebugMode] = useState(false);
 
   const scrollRef = useRef(null);
   const weightSectionY = useRef(0);
@@ -340,7 +341,9 @@ export function StatsScreen({ multiplier, section }) {
             <Text style={styles.signalColumnLabel}>1RM</Text>
             <Text style={styles.signalColumnLabel}>Kilo</Text>
             <Text style={styles.signalColumnLabel}>Best</Text>
-            <Text style={styles.signalColumnLabel}>Trend</Text>
+            <Pressable onPress={() => setDebugMode(d => !d)}>
+              <Text style={[styles.signalColumnLabel, debugMode && { color: Colors.accent }]}>Trend{debugMode ? ' ●' : ''}</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -419,6 +422,16 @@ export function StatsScreen({ multiplier, section }) {
                             sig.daySignals
                               ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
                               : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
+                          )}
+                          {debugMode && (
+                            <View style={styles.debugRow}>
+                              <Text style={styles.debugText}>
+                                trend:{rowTrend ?? 'null'}
+                                {sig.isMultiDay ? `  day:${dayRow?.overload_trend ?? 'null'}  global:${sig.overload_trend ?? 'null'}` : `  global:${sig.overload_trend ?? 'null'}`}
+                                {'  pr:'}{rowPr != null ? Math.round(rowPr) : 'null'}
+                                {'  top:'}{rowTopWeight ?? 'null'}
+                              </Text>
+                            </View>
                           )}
                         </View>
                       );
@@ -859,5 +872,17 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  debugRow: {
+    marginTop: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255,200,0,0.12)',
+    borderRadius: 4,
+  },
+  debugText: {
+    fontSize: 10,
+    color: Colors.caution,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
 });

@@ -33,6 +33,7 @@ export function LogScreen({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [dismissedNudges, setDismissedNudges] = useState({});
+  const [debugMode, setDebugMode] = useState(false);
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -613,6 +614,38 @@ export function LogScreen({
               </View>
             )}
 
+            {hasContent && (
+              <View style={styles.debugSection}>
+                <Pressable onPress={() => setDebugMode(d => !d)} style={styles.debugToggle}>
+                  <Text style={styles.debugToggleText}>{debugMode ? '▼ Hide parse debug' : '▶ Show parse debug'}</Text>
+                </Pressable>
+                {debugMode && parsed.sections.flatMap(sec =>
+                  sec.exercises.map(ex => {
+                    const validEntries = (ex.session_entries || []).filter(e => !e.skipped && !e.unparsed);
+                    const skippedEntries = (ex.session_entries || []).filter(e => e.skipped);
+                    const unparsedEntries = (ex.session_entries || []).filter(e => !e.skipped && e.unparsed);
+                    const plainRows = (ex.rows || []).filter(r => r.sets && r.sets.length > 0);
+                    const comparableCount = validEntries.length > 0 ? validEntries.length : plainRows.length > 0 ? 1 : 0;
+                    return (
+                      <View key={`${sec.heading}-${ex.name}`} style={styles.debugExRow}>
+                        <Text style={styles.debugExName}>{sec.heading ? `[${sec.heading}] ` : ''}{ex.name}</Text>
+                        <Text style={styles.debugExDetail}>
+                          {`entries: ${validEntries.length} valid / ${skippedEntries.length} skip / ${unparsedEntries.length} unparsed`}
+                          {`  plain-rows: ${plainRows.length}`}
+                          {`  comparable: ${comparableCount}`}
+                        </Text>
+                        {unparsedEntries.length > 0 && (
+                          <Text style={styles.debugExWarn}>
+                            {`unparsed: ${unparsedEntries.map(e => e.raw).join(' | ')}`}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            )}
+
             <View style={styles.previousRoutines}>
               {otherNotes.length > 0 && (
                 <>
@@ -917,5 +950,42 @@ const styles = StyleSheet.create({
     color: Colors.chipText,
     fontWeight: '700',
     lineHeight: 16,
+  },
+  debugSection: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+  },
+  debugToggle: {
+    paddingVertical: 6,
+  },
+  debugToggleText: {
+    fontSize: 11,
+    color: Colors.caution,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  debugExRow: {
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    backgroundColor: 'rgba(255,200,0,0.08)',
+    borderRadius: 4,
+  },
+  debugExName: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.caution,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  debugExDetail: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    marginTop: 1,
+  },
+  debugExWarn: {
+    fontSize: 10,
+    color: Colors.error,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+    marginTop: 1,
   },
 });
