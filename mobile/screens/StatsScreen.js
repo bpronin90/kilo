@@ -373,9 +373,15 @@ export function StatsScreen({ multiplier, section }) {
                       const normName = normalizeLiftName(sig.name);
                       const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
                       const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
-                      
+                      // For multi-day exercises, use per-day metrics for this row's heading.
+                      const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
+                      const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
+                      const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
+                      const rowTrend = dayRow ? dayRow.overload_trend : sig.overload_trend;
+                      const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
+
                       return (
-                        <View key={normName} style={[styles.signalRow, styles.signalRowBorder]}>
+                        <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
                           <View style={styles.signalNameRow}>
                             <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
                             {dropOffLabel && (
@@ -384,12 +390,12 @@ export function StatsScreen({ multiplier, section }) {
                               </Text>
                             )}
                           </View>
-                          
+
                           <View style={styles.signalMetricsGrid}>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {sig.latest_pr ? Math.round(sig.latest_pr) : '—'}
-                                {sig.latest_pr ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                                {rowPr ? Math.round(rowPr) : '—'}
+                                {rowPr ? <Text style={styles.unitSuffix}>lb</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
@@ -400,13 +406,13 @@ export function StatsScreen({ multiplier, section }) {
                             </View>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {sig.latest_top_weight ? sig.latest_top_weight : '—'}
-                                {sig.latest_top_weight ? <Text style={styles.unitSuffix}>{sig.is_bodyweight ? 'reps' : 'lb'}</Text> : null}
+                                {rowTopWeight ? rowTopWeight : '—'}
+                                {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : 'lb'}</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {formatOverload(sig.overload_trend)}
+                                {formatOverload(rowTrend)}
                               </Text>
                             </View>
                           </View>

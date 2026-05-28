@@ -193,8 +193,15 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     const root = component.root;
 
     const allText = findAllText(root);
+    // Per-day top weights appear (CrossDayComparison shows them)
     expect(allText.some(s => s.includes('185'))).toBe(true);
     expect(allText.some(s => s.includes('175'))).toBe(true);
+    // Per-day latest_pr values appear in the main row (only shown there, not in CrossDayComparison).
+    // Before the fix, both rows used the global latest_pr (225) and neither 210 nor 198 appeared.
+    expect(allText.some(s => s.includes('210'))).toBe(true);
+    expect(allText.some(s => s.includes('198'))).toBe(true);
+    // Global latest_pr (225) must NOT appear — both rows use their per-day pr instead.
+    expect(allText.some(s => s === '225')).toBe(false);
   });
 
   test('multi-day exercises fall back to Also on text when perDaySignals absent', () => {
