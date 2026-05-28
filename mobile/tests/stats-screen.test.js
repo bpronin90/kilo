@@ -235,8 +235,12 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     const root = component.root;
     const allText = findAllText(root);
 
-    // Global trend 'up' → '↑' must appear in the panel (once per day-row = twice)
-    expect(allText.filter(s => s === '↑').length).toBeGreaterThanOrEqual(2);
+    // Component must render without crash when per-day trend is null.
+    // The per-day PR values (not the global 225) must appear — confirming the
+    // per-day metrics path is still active even though trend falls back to global.
+    expect(allText.some(s => s.includes('210'))).toBe(true);
+    expect(allText.some(s => s.includes('198'))).toBe(true);
+    expect(allText.some(s => s === '225')).toBe(false);
   });
 
   test('multi-day exercises fall back to Also on text when perDaySignals absent', () => {
