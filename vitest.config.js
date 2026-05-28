@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, defaultExclude } from 'vitest/config'
 
 export default defineConfig({
   esbuild: {
@@ -9,6 +9,6 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.js'],
-    exclude: ['mobile/**', 'node_modules/**'],
+    exclude: [...defaultExclude, 'mobile/**'],
   },
 })
