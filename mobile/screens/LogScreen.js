@@ -33,7 +33,7 @@ export function LogScreen({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [dismissedNudges, setDismissedNudges] = useState({});
-  const [debugMode, setDebugMode] = useState(false);
+
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -133,7 +133,27 @@ export function LogScreen({
   const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => {
-    return parseWorkoutNote(workoutNoteText);
+    const result = parseWorkoutNote(workoutNoteText);
+    if (__DEV__) {
+      console.log('[LOG DEBUG] parsed note —', result.sections.length, 'sections');
+      result.sections.forEach(sec => {
+        sec.exercises.forEach(ex => {
+          const valid   = (ex.session_entries || []).filter(e => !e.skipped && !e.unparsed);
+          const skipped = (ex.session_entries || []).filter(e => e.skipped);
+          const unparsed = (ex.session_entries || []).filter(e => !e.skipped && e.unparsed);
+          const plainRows = (ex.rows || []).filter(r => r.sets && r.sets.length > 0);
+          const comparable = valid.length > 0 ? valid.length : plainRows.length > 0 ? 1 : 0;
+          console.log(
+            `  [${sec.heading ?? 'no-day'}] ${ex.name}`,
+            `| entries: ${valid.length}v / ${skipped.length}s / ${unparsed.length}u`,
+            `| plain-rows: ${plainRows.length}`,
+            `| comparable: ${comparable}`,
+            unparsed.length ? `| UNPARSED: ${unparsed.map(e => JSON.stringify(e.raw)).join(', ')}` : '',
+          );
+        });
+      });
+    }
+    return result;
   }, [workoutNoteText]);
 
   // Group consecutive sections that share the same day heading so each day
@@ -614,37 +634,6 @@ export function LogScreen({
               </View>
             )}
 
-            {hasContent && (
-              <View style={styles.debugSection}>
-                <Pressable onPress={() => setDebugMode(d => !d)} style={styles.debugToggle}>
-                  <Text style={styles.debugToggleText}>{debugMode ? '▼ Hide parse debug' : '▶ Show parse debug'}</Text>
-                </Pressable>
-                {debugMode && parsed.sections.flatMap(sec =>
-                  sec.exercises.map(ex => {
-                    const validEntries = (ex.session_entries || []).filter(e => !e.skipped && !e.unparsed);
-                    const skippedEntries = (ex.session_entries || []).filter(e => e.skipped);
-                    const unparsedEntries = (ex.session_entries || []).filter(e => !e.skipped && e.unparsed);
-                    const plainRows = (ex.rows || []).filter(r => r.sets && r.sets.length > 0);
-                    const comparableCount = validEntries.length > 0 ? validEntries.length : plainRows.length > 0 ? 1 : 0;
-                    return (
-                      <View key={`${sec.heading}-${ex.name}`} style={styles.debugExRow}>
-                        <Text style={styles.debugExName}>{sec.heading ? `[${sec.heading}] ` : ''}{ex.name}</Text>
-                        <Text style={styles.debugExDetail}>
-                          {`entries: ${validEntries.length} valid / ${skippedEntries.length} skip / ${unparsedEntries.length} unparsed`}
-                          {`  plain-rows: ${plainRows.length}`}
-                          {`  comparable: ${comparableCount}`}
-                        </Text>
-                        {unparsedEntries.length > 0 && (
-                          <Text style={styles.debugExWarn}>
-                            {`unparsed: ${unparsedEntries.map(e => e.raw).join(' | ')}`}
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  })
-                )}
-              </View>
-            )}
 
             <View style={styles.previousRoutines}>
               {otherNotes.length > 0 && (
@@ -951,41 +940,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 16,
   },
-  debugSection: {
-    marginTop: 12,
-    paddingHorizontal: 16,
-  },
-  debugToggle: {
-    paddingVertical: 6,
-  },
-  debugToggleText: {
-    fontSize: 11,
-    color: Colors.caution,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-  debugExRow: {
-    marginTop: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    backgroundColor: 'rgba(255,200,0,0.08)',
-    borderRadius: 4,
-  },
-  debugExName: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.caution,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-  debugExDetail: {
-    fontSize: 10,
-    color: Colors.textMuted,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    marginTop: 1,
-  },
-  debugExWarn: {
-    fontSize: 10,
-    color: Colors.error,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    marginTop: 1,
-  },
+
 });

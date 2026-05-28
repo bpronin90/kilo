@@ -16,7 +16,6 @@ export function StatsScreen({ multiplier, section }) {
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
-  const [debugMode, setDebugMode] = useState(false);
 
   const scrollRef = useRef(null);
   const weightSectionY = useRef(0);
@@ -120,6 +119,20 @@ export function StatsScreen({ multiplier, section }) {
 
     // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
     const { signals, nameDisplayMap, repDropOffFlags, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
+
+    if (__DEV__) {
+      console.log('[ANALYTICS DEBUG] allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames);
+      signals.forEach(sig => {
+        const perDay = perDaySignals?.[canonicalizeName(sig.name)];
+        console.log(
+          `  ${sig.name}`,
+          `| trend:${sig.overload_trend ?? 'null'}`,
+          `| pr:${sig.latest_pr != null ? Math.round(sig.latest_pr) : 'null'}`,
+          `| top:${sig.latest_top_weight ?? 'null'}`,
+          perDay ? `| perDay:${JSON.stringify(Object.fromEntries(Object.entries(perDay).map(([d, v]) => [d, v?.overload_trend ?? 'null'])))}` : '| perDay:none',
+        );
+      });
+    }
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
@@ -341,9 +354,7 @@ export function StatsScreen({ multiplier, section }) {
             <Text style={styles.signalColumnLabel}>1RM</Text>
             <Text style={styles.signalColumnLabel}>Kilo</Text>
             <Text style={styles.signalColumnLabel}>Best</Text>
-            <Pressable onPress={() => setDebugMode(d => !d)}>
-              <Text style={[styles.signalColumnLabel, debugMode && { color: Colors.accent }]}>Trend{debugMode ? ' ●' : ''}</Text>
-            </Pressable>
+            <Text style={styles.signalColumnLabel}>Trend</Text>
           </View>
         </View>
       </View>
@@ -423,16 +434,7 @@ export function StatsScreen({ multiplier, section }) {
                               ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
                               : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
                           )}
-                          {debugMode && (
-                            <View style={styles.debugRow}>
-                              <Text style={styles.debugText}>
-                                trend:{rowTrend ?? 'null'}
-                                {sig.isMultiDay ? `  day:${dayRow?.overload_trend ?? 'null'}  global:${sig.overload_trend ?? 'null'}` : `  global:${sig.overload_trend ?? 'null'}`}
-                                {'  pr:'}{rowPr != null ? Math.round(rowPr) : 'null'}
-                                {'  top:'}{rowTopWeight ?? 'null'}
-                              </Text>
-                            </View>
-                          )}
+
                         </View>
                       );
                     })}
@@ -873,16 +875,5 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 15,
   },
-  debugRow: {
-    marginTop: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    backgroundColor: 'rgba(255,200,0,0.12)',
-    borderRadius: 4,
-  },
-  debugText: {
-    fontSize: 10,
-    color: Colors.caution,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
+
 });
