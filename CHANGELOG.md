@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.46.0 - 2026-05-27
+
+- Issue #205: Implemented per-day signal plumbing for multi-day exercise
+  comparison. Added `derivePerDaySignals` to `parser.js` which groups
+  occurrences by routine-day heading and computes `latest_top_weight`,
+  `latest_pr`, and `overload_trend` independently per day. Threaded
+  `perDaySignals` through `deriveWorkoutNoteAnalytics`. Analytics Progressive
+  Overload section now renders a `CrossDayComparison` row (`MON 185lb ↑ ·
+  FRI 175lb →`) for multi-day exercises instead of the static "Also on X"
+  text. Global signal contract from #159 unchanged; single-day exercises
+  unaffected.
+
 ## 0.45.0 - 2026-05-27
 
 - Issue #198: Redesigned the Analytics Progressive Overload section with
