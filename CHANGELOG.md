@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.12 - 2026-05-28
+
+- Issue #215: Wrapped all useEntries pub/sub listener calls in try-catch so
+  one failing listener no longer silently drops notifications to subsequent
+  listeners.
+
 ## 0.46.11 - 2026-05-28
 
 - Issue #214: Added an explicit Edit button to the current routine card
