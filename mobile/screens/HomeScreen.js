@@ -84,6 +84,13 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       if (val && counts[val] !== undefined) counts[val]++;
     });
 
+    if (__DEV__) {
+      console.log('[HOME DEBUG] notes:', (notes || []).length, '| trackedNames:', trackedNames.length, '| allSections:', allSections.length);
+      console.log('[HOME DEBUG] liveClassifications:', JSON.stringify(liveClassifications));
+      console.log('[HOME DEBUG] counts:', JSON.stringify(counts));
+      console.log('[HOME DEBUG] stored exercise_classifications:', JSON.stringify(workoutNote?.exercise_classifications ?? null));
+    }
+
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
     weeklySummary.classifications = counts;
 
