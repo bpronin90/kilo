@@ -442,9 +442,9 @@ export function deriveWorkoutAnalytics(sections) {
   for (const section of sections) {
     const { heading, subheading, kind, exercises } = section;
     for (const ex of exercises) {
-      const key = _canonicalizeName(ex.name);
+      const key = normalizeExerciseKey(ex.name);
       if (!byName.has(key)) {
-        byName.set(key, { name: key, occurrences: [], sets: [], rows: [], unparsed_rows: [] });
+        byName.set(key, { name: _canonicalizeName(ex.name), occurrences: [], sets: [], rows: [], unparsed_rows: [] });
       }
       const derived = byName.get(key);
       derived.occurrences.push({ heading, subheading, kind, rows: ex.rows, sets: ex.sets, unparsed_rows: ex.unparsed_rows, session_entries: ex.session_entries });
@@ -509,14 +509,17 @@ function _canonicalizeName(name) {
   return name;
 }
 
+// Full normalization chain: resolve aliases then lowercase+trim+collapse whitespace.
+// Use this as the single canonical key for all exercise name comparisons and map keys.
+export function normalizeExerciseKey(name) {
+  if (!name) return '';
+  return _canonicalizeName(name).trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 // Looks up a target name in an analytics exercises array using canonical keys.
-// Primary: exact match after canonicalization. Fallback: case-insensitive match
-// so tracked names stored in lowercase still resolve to title-cased analytics entries.
 function _findExercise(exercises, targetName) {
-  const canonical = _canonicalizeName(targetName);
-  return exercises.find(e => e.name === canonical)
-      || exercises.find(e => e.name.toLowerCase() === canonical.toLowerCase())
-      || null;
+  const key = normalizeExerciseKey(targetName);
+  return exercises.find(e => normalizeExerciseKey(e.name) === key) || null;
 }
 
 // deriveTrackedPRs: filter deriveWorkoutAnalytics output to a caller-supplied
@@ -727,7 +730,7 @@ export function derivePerDaySignals(sections, trackedNames) {
       dayMap[heading] = { latest_pr, latest_top_weight, overload_trend: overload_trend === 'first_session' ? null : overload_trend, is_bodyweight };
     }
 
-    result[_canonicalizeName(name).toLowerCase()] = dayMap;
+    result[normalizeExerciseKey(name)] = dayMap;
   }
 
   return result;

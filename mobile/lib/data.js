@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, canonicalizeName } from './parser.js';
+import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -565,8 +565,8 @@ function _headingInfo(heading) {
 }
 
 function _exerciseIdForName(name) {
-  const norm = normalizeLiftName(canonicalizeName(name));
-  const found = KILO_EXERCISES.find(e => normalizeLiftName(canonicalizeName(e.name)) === norm);
+  const norm = normalizeExerciseKey(name);
+  const found = KILO_EXERCISES.find(e => normalizeExerciseKey(e.name) === norm);
   return found ? found.id : null;
 }
 
@@ -617,7 +617,7 @@ export function deriveSkipData(sections) {
 
     for (const ex of eligible) {
       const exId = _exerciseIdForName(ex.name);
-      const histKey = exId ?? normalizeLiftName(canonicalizeName(ex.name));
+      const histKey = exId ?? normalizeExerciseKey(ex.name);
 
       if (!exerciseHistories.has(histKey)) {
         exerciseHistories.set(histKey, { exercise_name: ex.name, exercise_id: exId, entries: [] });
@@ -757,8 +757,8 @@ export function classifyExerciseSessions(sections, trackedNames) {
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
-    const lookupKey = normalizeLiftName(canonicalizeName(name));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    const key = normalizeExerciseKey(name);
+    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
     if (!ex) { result[normName] = null; continue; }
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const classification = _classifyEntries(allEntries);
@@ -793,8 +793,8 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
-    const lookupKey = normalizeLiftName(canonicalizeName(name));
-    const ex = exercises.find(e => normalizeLiftName(e.name) === lookupKey);
+    const key = normalizeExerciseKey(name);
+    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
     if (!ex) { result[normName] = {}; continue; }
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const sessionFlags = {};
@@ -825,11 +825,11 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
   const { exercises: signals } = deriveProgressionSignals(sections, trackedNames);
   const { exercises: analyticsExercises } = deriveWorkoutAnalytics(sections);
 
-  const byName = new Map(analyticsExercises.map(ex => [ex.name.toLowerCase(), ex]));
+  const byName = new Map(analyticsExercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
 
   return {
     exercises: signals.map(sig => {
-      const ex = byName.get(sig.name.toLowerCase());
+      const ex = byName.get(normalizeExerciseKey(sig.name));
       if (!ex) return sig;
       const { kilo_max_adjusted } = computeKiloMax(ex.occurrences, multiplier);
       return { ...sig, kilo_max: kilo_max_adjusted };
@@ -919,7 +919,7 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
   }
   const nameDisplayMap = new Map();
   sections.forEach(s => s.exercises.forEach(e => {
-    nameDisplayMap.set(normalizeLiftName(e.name), e.name);
+    nameDisplayMap.set(normalizeExerciseKey(e.name), e.name);
   }));
   return {
     weeksIn: computeWeeksIn(sections),
@@ -937,12 +937,12 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
 // per day using the per-day trend (falling back to global signal trend).
 export function deriveOverloadCounts(sections, signals, perDaySignals) {
   const sigMap = new Map(
-    signals.map(s => [normalizeLiftName(canonicalizeName(s.name)), s])
+    signals.map(s => [normalizeExerciseKey(s.name), s])
   );
   const counts = { progressing: 0, stalled: 0, regressing: 0 };
   (sections || []).forEach(sec => {
     sec.exercises.forEach(ex => {
-      const key = normalizeLiftName(canonicalizeName(ex.name));
+      const key = normalizeExerciseKey(ex.name);
       const sig = sigMap.get(key);
       if (!sig) return;
       const dayRow = perDaySignals?.[key]?.[sec.heading];
