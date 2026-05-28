@@ -932,6 +932,29 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
   };
 }
 
+// Count progressing/stalled/regressing rows exactly as the analytics panel renders.
+// Iterates each exercise-per-section appearance; multi-day exercises contribute once
+// per day using the per-day trend (falling back to global signal trend).
+export function deriveOverloadCounts(sections, signals, perDaySignals) {
+  const sigMap = new Map(
+    signals.map(s => [normalizeLiftName(canonicalizeName(s.name)), s])
+  );
+  const counts = { progressing: 0, stalled: 0, regressing: 0 };
+  (sections || []).forEach(sec => {
+    sec.exercises.forEach(ex => {
+      const key = normalizeLiftName(canonicalizeName(ex.name));
+      const sig = sigMap.get(key);
+      if (!sig) return;
+      const dayRow = perDaySignals?.[canonicalizeName(ex.name)]?.[sec.heading];
+      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+      if (rowTrend === 'up')   counts.progressing++;
+      if (rowTrend === 'flat') counts.stalled++;
+      if (rowTrend === 'down') counts.regressing++;
+    });
+  });
+  return counts;
+}
+
 // ── Weekly Assessment Summary ────────────────────────────────────────────────
 
 /**

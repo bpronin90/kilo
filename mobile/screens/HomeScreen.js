@@ -9,13 +9,14 @@ import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useUserProfile, useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
 import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
-import { normalizeLiftName } from '../lib/data';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
+  deriveOverloadCounts,
   computeWeeklySummary,
+  normalizeLiftName,
 } from '../lib/data';
 import pkg from '../package.json';
 
@@ -85,24 +86,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
     );
     const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
-    const sigMap = new Map(signals.map(s => [normalizeLiftName(canonicalizeName(s.name)), s]));
-
-    // Count per visible exercise-day row, mirroring how the analytics panel renders.
-    // Multi-day exercises (e.g. Hammer Curl on Monday + Wednesday) contribute one count
-    // per appearance using the per-day trend, just like the panel shows two separate arrows.
-    const counts = { progressing: 0, stalled: 0, regressing: 0 };
-    (sections || []).forEach(sec => {
-      sec.exercises.forEach(ex => {
-        const key = normalizeLiftName(canonicalizeName(ex.name));
-        const sig = sigMap.get(key);
-        if (!sig) return;
-        const dayRow = perDaySignals?.[canonicalizeName(ex.name)]?.[sec.heading];
-        const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-        if (rowTrend === 'up')   counts.progressing++;
-        if (rowTrend === 'flat') counts.stalled++;
-        if (rowTrend === 'down') counts.regressing++;
-      });
-    });
+    const counts = deriveOverloadCounts(sections, signals, perDaySignals);
 
     if (__DEV__) {
       console.log('[HOME DEBUG] notes:', (notes || []).length, '| allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames.length);
