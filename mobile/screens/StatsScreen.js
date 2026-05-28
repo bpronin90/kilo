@@ -497,7 +497,7 @@ function dropOffBadgeColor(flag) {
 function formatOverload(trend) {
   switch (trend) {
     case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
-    case 'flat': return <MaterialIcons name="compare-arrows"  size={16} color={Colors.caution} />;
+    case 'flat': return <Text style={{ color: Colors.caution, fontSize: 14 }}>↔</Text>;
     case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
     default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
   }

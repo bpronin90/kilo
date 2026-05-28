@@ -184,6 +184,7 @@ export default function App() {
           <HomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
+            notes={noteHook.notes}
             successMessage={saveSuccess}
             onNavigate={handleTabPress}
           />

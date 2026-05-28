@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useUserProfile, useWeightGoal, useWorkoutNotes, useTrackedLifts } from '../hooks/useEntries';
+import { useUserProfile, useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -52,9 +52,8 @@ const formatGoalDirection = (direction) => {
   }
 };
 
-export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
+export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate }) {
   const { goal: weightGoal } = useWeightGoal();
-  const { notes } = useWorkoutNotes();
   const { trackedLifts } = useTrackedLifts();
 
   const dashboardData = useMemo(() => {
