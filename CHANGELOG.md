@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.5 - 2026-05-28
+
+- Issue #210: Extracted MoreScreen and its five sub-screens (ProfileScreen,
+  BackupScreen, SettingsScreen, HelpScreen, AboutScreen) from HomeScreen.js
+  into a dedicated MoreScreen.js file, reducing HomeScreen from 1401 to 420
+  lines and eliminating cross-concern coupling between the Home dashboard and
+  More tab surfaces.
+
 ## 0.46.4 - 2026-05-28
 
 - Issue #208: Fixed vitest config to exclude `mobile/**` by spreading

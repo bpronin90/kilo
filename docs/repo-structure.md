@@ -122,6 +122,7 @@ mobile/
     useEntries.js      ← native read/write hooks for weight/workout entries
   screens/
     HomeScreen.js
+    MoreScreen.js
     LogScreen.js
     WeightScreen.js
     StatsScreen.js
@@ -183,7 +184,8 @@ These files define the current real native app path.
 | `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
 | `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries and workout sessions. |
 | `mobile/lib/data.js` | Native exercise catalog plus `makeWeightEntry` / `makeWorkoutSession` factories. |
-| `mobile/screens/HomeScreen.js` | Native dashboard plus the exported More / Help / About surfaces used by the More tab. |
+| `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
+| `mobile/screens/MoreScreen.js` | Native More tab menu plus Profile, Backup, Settings, Help, and About sub-screens. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/StatsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
