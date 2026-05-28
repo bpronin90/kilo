@@ -672,6 +672,83 @@ export function deriveProgressionSignals(sections, trackedNames) {
   };
 }
 
+// derivePerDaySignals: per-day progression metrics for multi-day exercises.
+//
+// For each tracked exercise, computes latest_top_weight, latest_pr, and
+// overload_trend separately for each routine-day heading where the exercise
+// appears. Single-day exercises also get an entry so callers can use this
+// uniformly without special-casing.
+//
+// Input: sections from parseWorkoutNote, trackedNames string[]
+// Output: { [canonicalName]: { [heading]: { latest_pr, latest_top_weight, overload_trend } } }
+export function derivePerDaySignals(sections, trackedNames) {
+  const uniqueNames = [...new Set(trackedNames)];
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+
+  for (const name of uniqueNames) {
+    const ex = _findExercise(exercises, name);
+    if (!ex) continue;
+
+    const byHeading = new Map();
+    for (const occ of ex.occurrences) {
+      const heading = occ.heading ?? '__no_day__';
+      if (!byHeading.has(heading)) byHeading.set(heading, []);
+      byHeading.get(heading).push(occ);
+    }
+
+    const dayMap = {};
+    for (const [heading, occs] of byHeading) {
+      const comparable = occs.flatMap(occ => {
+        const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
+        if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
+        const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
+        if (rows.length > 0) return [occ];
+        return occ.sets && occ.sets.length > 0 ? [occ] : [];
+      });
+
+      let latestIdx = -1;
+      let priorIdx = -1;
+      for (let i = comparable.length - 1; i >= 0; i--) {
+        if (_occurrencePR(comparable[i]) !== null) {
+          if (latestIdx === -1) latestIdx = i;
+          else { priorIdx = i; break; }
+        }
+      }
+
+      if (latestIdx === -1) {
+        dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null };
+        continue;
+      }
+
+      const latestOcc = comparable[latestIdx];
+      const latest_pr = _occurrencePR(latestOcc);
+      const latest_top_weight = _occurrenceTopWeight(latestOcc);
+
+      let overload_trend = null;
+      if (priorIdx !== -1) {
+        const prior_top_weight = _occurrenceTopWeight(comparable[priorIdx]);
+        const latest_total_reps = latestOcc.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+        const prior_total_reps = comparable[priorIdx].sets.reduce((sum, s) => sum + (s.rep_count || 0), 0);
+        const weight_diff = latest_top_weight !== null && prior_top_weight !== null
+          ? latest_top_weight - prior_top_weight : null;
+        overload_trend = weight_diff === null ? null
+          : weight_diff > 0 ? 'up'
+          : weight_diff < 0 ? 'down'
+          : latest_total_reps > prior_total_reps ? 'up'
+          : latest_total_reps < prior_total_reps ? 'down'
+          : 'flat';
+      }
+
+      dayMap[heading] = { latest_pr, latest_top_weight, overload_trend };
+    }
+
+    result[_canonicalizeName(name)] = dayMap;
+  }
+
+  return result;
+}
+
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 // items: array of { exerciseName: string, raw: string }
 // workout_date: YYYY-MM-DD; defaults to today's UTC date if omitted

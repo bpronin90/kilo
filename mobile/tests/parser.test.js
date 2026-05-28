@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2042,3 +2042,103 @@ describe('parseWorkoutNote — warmup+lifting heading consistency', () => {
     expect(sections.find(s => s.heading === 'Wednesday')).toBeDefined();
   });
 });
+
+// ── derivePerDaySignals — per-day analytics for multi-day exercises ───────────
+
+function makePerDaySection(heading, name, sessionEntries) {
+  return {
+    heading,
+    subheading: null,
+    kind: 'general',
+    exercises: [{
+      name,
+      rows: [],
+      sets: [],
+      unparsed_rows: [],
+      session_entries: sessionEntries.map(e =>
+        e === 'skip'
+          ? { skipped: true, raw: '-', sets: [] }
+          : { skipped: false, raw: 'x', sets: Array.isArray(e) ? e : [e] }
+      ),
+    }],
+  };
+}
+
+function pds(weight, reps) { return { weight_value: weight, rep_count: reps }; }
+
+describe('derivePerDaySignals', () => {
+  test('returns empty object for empty sections', () => {
+    const result = derivePerDaySignals([], ['Squat']);
+    expect(result).toEqual({});
+  });
+
+  test('returns empty object for exercise absent from sections', () => {
+    const sections = [makePerDaySection('Monday', 'Bench Press', [pds(135, 5)])];
+    const result = derivePerDaySignals(sections, ['Squat']);
+    expect(result).toEqual({});
+  });
+
+  test('single-day exercise returns its heading as the only key', () => {
+    const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
+    const result = derivePerDaySignals(sections, ['Squat']);
+    expect(result).toHaveProperty('Squat');
+    expect(Object.keys(result['Squat'])).toEqual(['Monday']);
+  });
+
+  test('single day with one session: latest_top_weight present, overload_trend null (no prior)', () => {
+    const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
+    const { Squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(Squat['Monday'].latest_top_weight).toBe(225);
+    expect(Squat['Monday'].overload_trend).toBeNull();
+  });
+
+  test('single day two sessions: overload_trend reflects weight progression', () => {
+    const sections = [
+      makePerDaySection('Monday', 'Squat', [pds(225, 5), pds(235, 5)]),
+    ];
+    const { Squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(Squat['Monday'].latest_top_weight).toBe(235);
+    expect(Squat['Monday'].overload_trend).toBe('up');
+  });
+
+  test('multi-day exercise: each day gets independent metrics', () => {
+    // Monday: two sessions at 35 then 40 → overload_trend up
+    // Wednesday: two sessions at 30 then 30 (same reps) → overload_trend flat
+    const sections = [
+      makePerDaySection('Monday', 'Hammer Curl', [pds(35, 10), pds(40, 10)]),
+      makePerDaySection('Wednesday', 'Hammer Curl', [pds(30, 10), pds(30, 10)]),
+    ];
+    const { 'Hammer Curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
+    expect(hc['Monday'].latest_top_weight).toBe(40);
+    expect(hc['Monday'].overload_trend).toBe('up');
+    expect(hc['Wednesday'].latest_top_weight).toBe(30);
+    expect(hc['Wednesday'].overload_trend).toBe('flat');
+  });
+
+  test('multi-day exercise Monday vs Friday: different top weights produce distinct rows', () => {
+    const sections = [
+      makePerDaySection('Monday', 'Hammer Curl', [pds(35, 8), pds(35, 8)]),
+      makePerDaySection('Friday', 'Hammer Curl', [pds(30, 8), pds(30, 8)]),
+    ];
+    const { 'Hammer Curl': hc } = derivePerDaySignals(sections, ['Hammer Curl']);
+    expect(hc['Monday'].latest_top_weight).not.toBe(hc['Friday'].latest_top_weight);
+    expect(hc['Monday'].latest_top_weight).toBe(35);
+    expect(hc['Friday'].latest_top_weight).toBe(30);
+  });
+
+  test('global aggregate via deriveProgressionSignals is unchanged when adding per-day plumbing', () => {
+    const sections = [
+      makePerDaySection('Monday', 'Hammer Curl', [pds(35, 8), pds(40, 8)]),
+      makePerDaySection('Wednesday', 'Hammer Curl', [pds(30, 8), pds(32, 8)]),
+    ];
+    const { exercises: signals } = deriveProgressionSignals(sections, ['Hammer Curl']);
+    // Global signal should use the latest occurrence (Wednesday day 2 = 32lb)
+    // or Monday day 2 = 40lb depending on order — the point is it computes globally
+    expect(signals[0]).toHaveProperty('latest_top_weight');
+    // Per-day signals are independent
+    const perDay = derivePerDaySignals(sections, ['Hammer Curl']);
+    expect(perDay['Hammer Curl']['Monday'].latest_top_weight).toBe(40);
+    expect(perDay['Hammer Curl']['Wednesday'].latest_top_weight).toBe(32);
+  });
+});
+

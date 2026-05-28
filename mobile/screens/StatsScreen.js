@@ -117,19 +117,20 @@ export function StatsScreen({ multiplier, section }) {
       name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
     );
 
-    // Canonical derivation: signals, nameDisplayMap, and live repDropOffFlags from shared sections
-    const { signals, nameDisplayMap, repDropOffFlags } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
+    // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
+    const { signals, nameDisplayMap, repDropOffFlags, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
 
-    return { signals, oneK, nameDisplayMap, repDropOffFlags };
+    return { signals, oneK, nameDisplayMap, repDropOffFlags, perDaySignals };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   const groupedSignals = useMemo(() => {
     const groups = [];
     const sections = parsedSections.currentSections;
     const signals = analytics.signals || [];
+    const perDaySignals = analytics.perDaySignals || {};
     const nameToSignal = new Map(signals.map(s => [normalizeLiftName(s.name), s]));
 
     // To detect multi-day exercises
@@ -145,7 +146,7 @@ export function StatsScreen({ multiplier, section }) {
         .filter(Boolean);
 
       if (searchQuery) {
-        groupExercises = groupExercises.filter(sig => 
+        groupExercises = groupExercises.filter(sig =>
           sig.name.toLowerCase().includes(searchQuery.toLowerCase())
         );
       }
@@ -155,20 +156,24 @@ export function StatsScreen({ multiplier, section }) {
           name: section.heading,
           exercises: groupExercises.map(sig => {
             const norm = normalizeLiftName(sig.name);
+            const isMultiDay = exerciseGroupCount.get(norm) > 1;
+            const canonName = canonicalizeName(sig.name);
 
             return {
               ...sig,
-              isMultiDay: exerciseGroupCount.get(norm) > 1,
+              isMultiDay,
+              currentDayHeading: section.heading,
               otherDays: sections
                 .filter(s => s !== section && s.exercises.some(e => normalizeLiftName(e.name) === norm))
-                .map(s => s.heading)
+                .map(s => s.heading),
+              daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
             };
           })
         });
       }
     });
     return groups;
-  }, [parsedSections, analytics.signals, searchQuery]);
+  }, [parsedSections, analytics.signals, analytics.perDaySignals, searchQuery]);
 
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));
@@ -405,10 +410,10 @@ export function StatsScreen({ multiplier, section }) {
                             </View>
                           </View>
 
-                          {sig.isMultiDay && sig.otherDays.length > 0 && (
-                            <Text style={styles.multiDaySummary}>
-                              Also on {sig.otherDays.join(', ')}
-                            </Text>
+                          {sig.isMultiDay && (
+                            sig.daySignals
+                              ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
+                              : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
                           )}
                         </View>
                       );
@@ -429,6 +434,38 @@ export function StatsScreen({ multiplier, section }) {
         </Text>
       )}
     </ScreenShell>
+  );
+}
+
+function CrossDayComparison({ daySignals, currentDay, otherDays }) {
+  const allDays = currentDay ? [currentDay, ...otherDays] : otherDays;
+  return (
+    <View style={styles.crossDayRow}>
+      {allDays.map((day, i) => {
+        const d = daySignals[day];
+        const trendColor = d?.overload_trend === 'up' ? Colors.success
+          : d?.overload_trend === 'down' ? Colors.error
+          : Colors.caution;
+        const trendChar = d?.overload_trend === 'up' ? '↑'
+          : d?.overload_trend === 'down' ? '↓'
+          : d?.overload_trend === 'flat' ? '→' : null;
+        return (
+          <React.Fragment key={day}>
+            {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
+            <View style={styles.crossDayChip}>
+              <Text style={[styles.crossDayChipLabel, day === currentDay && styles.crossDayChipLabelCurrent]}>
+                {day ? day.slice(0, 3).toUpperCase() : '?'}
+              </Text>
+              <Text style={styles.crossDayChipValue}>
+                {d?.latest_top_weight != null ? `${d.latest_top_weight}` : '—'}
+                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>lb</Text>}
+              </Text>
+              {trendChar && <Text style={[styles.crossDayTrend, { color: trendColor }]}>{trendChar}</Text>}
+            </View>
+          </React.Fragment>
+        );
+      })}
+    </View>
   );
 }
 
@@ -767,6 +804,46 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  crossDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  crossDaySep: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginHorizontal: 2,
+  },
+  crossDayChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  crossDayChipLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  crossDayChipLabelCurrent: {
+    color: Colors.text,
+  },
+  crossDayChipValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
+  },
+  crossDayUnit: {
+    fontSize: 9,
+    opacity: 0.5,
+  },
+  crossDayTrend: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   emptySearch: {
     padding: 32,
