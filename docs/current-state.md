@@ -27,8 +27,8 @@ Roadmap status:
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
-entries are layered on top of this seed via `localStorage` merge on each page
-load.
+entries are layered on top of this seed through the app's local persistence
+path.
 
 The native Expo app exposes five tabs: Home, Log, Weight, Analytics, and More.
 
@@ -70,8 +70,9 @@ app:
 
 - `mobile/` is the only path that should receive forward-looking app
   architecture work.
-- The repo-root prototype path stays in place temporarily as a reference and
-  behavior source during migration.
+- The former repo-root browser prototype has been archived under
+  `docs/archive/browser-prototype/` and is no longer part of the active app
+  runtime or test path.
 - No new product behavior should depend on embedding the prototype inside the
   native app.
 - The first implementation split is:
@@ -86,7 +87,7 @@ for implementation agents, not a claim that the native MVP is already complete.
 The first native MVP milestone is reached when all of the following are true in
 `mobile/`:
 
-1. The app has real native Home, Log, Weight, and Stats surfaces.
+1. The app has real native Home, Log, Weight, Analytics, and More surfaces.
 2. Weight entries can be created locally, stored locally, and shown again in a
    recent-history view.
 3. Workout entries can be created locally, stored locally, and shown again in a
@@ -133,12 +134,7 @@ The real native app path now has a modular React Native shell:
   progress bar, and three-column breakdown with full exercise names
   (Squats/Bench/Deadlifts) matching the canonical structure on Analytics. All
   dashboard data comes from existing shared derivation functions; no Home-only
-  calculations exist. The success toast is removed from the render. The file
-  also exports the More/Help/About/Data & Backup/Settings/User Profile
-  surfaces used by the More tab; More subviews intercept Android back presses
-  and return to the More menu before falling through to tab-level navigation,
-  and the Settings & Algorithm sub-screen exposes a persisted
-  fatigue-multiplier stepper plus reset control
+  calculations exist. The success toast is removed from the render
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
@@ -217,8 +213,13 @@ The real native app path now has a modular React Native shell:
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp
-- `mobile/screens/HomeScreen.js` now also owns a native `User Profile`
-  sub-screen under More where users can optionally save or later clear the
+- `mobile/screens/MoreScreen.js` now owns the native More menu plus the
+  `User Profile`, `Data & Backup`, `Settings & Algorithm`, `Help`, and
+  `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
+  intercept Android back presses and return to the More menu before falling
+  through to tab-level navigation, and the Settings & Algorithm screen
+  exposes a persisted fatigue-multiplier stepper plus reset control. The
+  `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:
   height with ft/in or cm entry mapped to persisted `height_cm`, date of
   birth, biological sex, and one of five activity-level choices with helper
@@ -284,7 +285,10 @@ The real native app path now has a modular React Native shell:
   same-day section headings so warmup and lifting blocks can render under one
   calendar-day heading in the Log view, and normalization for the recurring
   mixed-load shorthand, leading flag prefixes, and parseable inline-tail row
-  segments evidenced in the archived workout-note samples
+  segments evidenced in the archived workout-note samples. Progression and
+  per-day signal derivation now share one comparable-building helper, and the
+  module also exports `normalizeExerciseKey()` so alias resolution and
+  lowercased key matching follow the same canonical chain everywhere
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
   including the default 1k exercise-slot selection used by analytics and a
   factory for titled workout-note items in the multi-note model
@@ -497,27 +501,25 @@ Required readiness artifacts and their current status:
 ### Native app path still has partial UI parity only
 
 The `mobile/` Expo app now covers the native MVP create/store/retrieve loop for
-weight and workout entries, but it still exposes a narrower UI than the browser
-prototype. The native app has five tabs, its own note-first Log flow rather than
-the prototype exercise-row form, and it still lacks full parity for seeded
-history presentation and the prototype's live per-row parse preview treatment.
+weight and workout entries, but it still exposes a narrower UI than the
+archived browser prototype. The native app has five tabs, its own note-first
+Log flow rather than the prototype exercise-row form, and it still lacks full
+parity for seeded history presentation and the prototype's live per-row parse
+preview treatment.
 
-### No automated tests for workout logging, corrections, or recent history
+### No automated tests for native app shell, workout logging, or correction flows
 
 The following MVP behaviors have no automated test coverage:
 
-- `KiloLog` render, save path (success and error), per-row error highlighting,
-  `ParsePreview` live preview, PT checklist toggle, `persistWorkoutSession`
-  (`src/screens/log.jsx`)
-- Weight entry delete and edit from `KiloWeight` (`src/screens/weight.jsx`)
-- Combined weight + workout sort in recent history
-- Workout and weight card rendering in `KiloHome`
-- `KiloWeight` entry list, delta calculation, graph, range tabs
-- `KiloStats`, `KiloMore`, `KiloApp` tab routing
-- Script load order and `window.*` global wiring
-- `localStorage` rehydration on fresh load
-- Native App.js hook wiring, native save handlers, and AsyncStorage-backed
-  native reload behavior
+- `mobile/App.js` five-tab shell routing, persistent tab mounting, and
+  hardware-back behavior
+- `mobile/screens/LogScreen.js` end-to-end save/error UI, raw-edit
+  transitions, and the rendered parse-preview/logging loop
+- `mobile/screens/WeightScreen.js` delete and edit correction flows
+- `mobile/screens/HomeScreen.js` rendered weekly-summary contract from a saved
+  workout note
+- full Expo device/emulator runtime behavior and layout validation across the
+  mounted tab set
 
 These gaps mean the automated suite passing does not confirm that the workout
 logging loop or correction flows work correctly. Manual smoke testing (per
@@ -525,13 +527,13 @@ logging loop or correction flows work correctly. Manual smoke testing (per
 
 ### No Supabase or backend
 
-All persistence is `localStorage` in the current browser profile. There is no
-Supabase connection, no authentication, no server, and no network persistence.
-This is a known prototype constraint, not a regression. The MVP roadmap (Phase 2)
-defines the Supabase schema and write-boundary contract, but those have not been
-implemented or wired up.
+All persistence is local device storage via AsyncStorage in the native Expo
+app. There is no Supabase connection, no authentication, no server, and no
+network persistence. This is a known native-app constraint, not a regression.
+The MVP roadmap (Phase 2) defines the Supabase schema and write-boundary
+contract, but those have not been implemented or wired up.
 
-Launch validation must treat `localStorage` as the persistence layer. Any
+Launch validation must treat AsyncStorage as the persistence layer. Any
 evaluation of the app against the Supabase-based data model described in
 `docs/mvp-roadmap.md` Phase 2 is premature.
 
@@ -620,7 +622,7 @@ These were the prerequisites for manual launch validation on issue #17.
 - Seeded entries cannot be corrected via the product UI
 - Home quick-log is not manually reachable in the seeded prototype state (covered
   by automated tests)
-- Supabase is not wired up; `localStorage` is the persistence layer for MVP validation
+- Supabase is not wired up; AsyncStorage is the persistence layer for MVP validation
 
 ## Ownership Split For Native Migration
 
