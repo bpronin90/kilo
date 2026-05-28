@@ -76,13 +76,18 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   layer, including the persisted fatigue-multiplier state that is threaded
   into More and Analytics
 - `mobile/components/` holds reusable shell and UI primitives
+- `mobile/screens/MoreScreen.js` owns the extracted More-tab menu plus Profile,
+  Backup, Settings, Help, and About sub-screens, leaving `HomeScreen.js`
+  focused on dashboard rendering
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
   shared reactive `useTrackedLifts()` hook consumed by both Log and Analytics
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
-  modules and now also exposes the note-derived analytics contract used by
-  downstream native workout analytics work
+  modules, now exposes the note-derived analytics contract used by downstream
+  native workout analytics work, and centralizes exercise alias resolution in
+  `normalizeExerciseKey()` so parser and data consumers share one canonical
+  matching chain
 - `mobile/lib/data.js` owns native entry factories, the exercise catalog,
   shared recompute-only workout analytics helpers such as routine-depth,
   weekly-summary shaping from persisted note fields, canonical temporal
@@ -306,10 +311,10 @@ recomputation at render time is permitted.
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
-| Estimated 1RM per lift | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Kilo max per lift | `computeKiloMax()` via `deriveSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Latest top weight | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Overload trend | `deriveProgressionSignals()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Estimated 1RM per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Kilo max per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Latest top weight | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Overload trend | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
 | 1k total | `derive1kTotal()` in `parser.js` | Not persisted | Home 1k card, Analytics 1k card | Yes — recompute-only |
 | Weight rolling averages | `computeWeightTrends()` / `computeWeightRollingAverageSeries()` in `data.js` | Not persisted | Home chart, Weight trends card, Analytics weight section | Yes — recompute-only |
 | Weight trend prior-window summary | `computeWeightTrendSummary()` via `deriveWeightGoalAnalytics()` in `data.js` | Not persisted | Weight trends card, Home weight summary, Analytics weight section | Yes — recompute-only |

@@ -63,7 +63,7 @@ mobile/
     format.js          ← native timestamp formatter
     parser.js          ← native MVP parser port
   hooks/
-    useEntries.js      ← native read/write hooks for weight/workout entries
+    useEntries.js      ← native read/write hooks for weight entries, workout notes, tracked lifts, goals, and profile
   screens/
     HomeScreen.js
     MoreScreen.js
@@ -76,7 +76,11 @@ mobile/
     entries.js         ← AsyncStorage CRUD for weight/workout entries
   tests/
     parser.test.js     ← native parser parity tests
+    data.test.js       ← native analytics/data helper contract tests
+    format.test.js     ← native formatting and weight-delta helper tests
+    stats-screen.test.js ← native Analytics screen consumer checks
     storage.test.js    ← native AsyncStorage tests
+    weight-goal-ui.test.js ← native Weight goal rendering checks
 ```
 
 ---
@@ -88,18 +92,18 @@ These files define the current real native app path.
 | File | Role |
 |------|------|
 | `mobile/App.js` | Root native app shell. Owns five-tab routing (`Home`, `Log`, `Weight`, `Analytics`, `More`), calls native parser/save hooks, and adapts persisted entries for the Home and Analytics screens. |
-| `mobile/components/ScreenShell.js` | Shared native screen wrapper with bundled logo/wordmark branding, alpha version badge, and scroll container. |
+| `mobile/components/ScreenShell.js` | Shared native screen wrapper with the common header, version badge, scroll container, and shared tab-bar scroll signaling. |
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
 | `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
-| `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries and workout sessions. |
-| `mobile/lib/data.js` | Native exercise catalog plus `makeWeightEntry` / `makeWorkoutSession` factories. |
+| `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries, workout notes, tracked lifts, weight goals, and the user profile. |
+| `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
 | `mobile/screens/MoreScreen.js` | Native More tab menu plus Profile, Backup, Settings, Help, and About sub-screens. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/StatsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
-| `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries and workout sessions. |
+| `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries, workout notes, tracked lifts, weight goals, backup/import, and related UI state. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
 
@@ -110,7 +114,11 @@ These files define the current real native app path.
 | File | Role |
 |------|------|
 | `mobile/tests/parser.test.js` | Native parser parity tests for `mobile/lib/parser.js`. |
+| `mobile/tests/data.test.js` | Native workout/weight analytics helper contract tests for `mobile/lib/data.js`. |
+| `mobile/tests/format.test.js` | Native formatting and weight-delta helper tests for `mobile/lib/format.js`. |
+| `mobile/tests/stats-screen.test.js` | Native Analytics-screen consumer checks for shared weight-goal and per-day signal rendering. |
 | `mobile/tests/storage.test.js` | Native storage tests for `mobile/storage/entries.js` using the AsyncStorage Jest mock. |
+| `mobile/tests/weight-goal-ui.test.js` | Native Weight-screen goal-card rendering checks using `react-test-renderer`. |
 
 Run the native test suite:
 
@@ -135,4 +143,3 @@ npm --prefix mobile test
 | `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |
 | `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by `docs/mvp-roadmap.md` and `docs/current-state.md`. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |
-

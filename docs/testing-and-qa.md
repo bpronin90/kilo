@@ -62,8 +62,9 @@ Current limitation:
   surface end to end from a saved workout note. The current suite covers the
   underlying helper behavior and persisted field shaping, but not the rendered
   Home panel contract.
-- The current native workout form is narrower than the browser prototype UI even
-  though the native save/reload loop now persists canonical entries locally.
+- The current native workout form is narrower than the archived browser
+  prototype UI even though the native save/reload loop now persists canonical
+  entries locally.
 
 ---
 
@@ -76,11 +77,15 @@ npm install
 npm --prefix mobile install
 ```
 
-Run the test suite:
+Run the active native test suite:
 
 ```sh
 npm --prefix mobile test
 ```
+
+The repo root no longer hosts an active browser/Vitest suite. After the
+browser prototype archival in issue `#213`, the root `package.json` only
+retains non-test commands such as `npm run audit`.
 
 ---
 
@@ -90,8 +95,8 @@ npm --prefix mobile test
 
 - parser parity coverage for `mobile/lib/parser.js`
 - validates canonical native `parseWeightEntry`, `parseWorkoutRow`, and
-  `parseWorkoutEntry` behavior against the same constrained MVP forms used in
-  the browser parser tests
+  `parseWorkoutEntry` behavior against the same constrained MVP forms preserved
+  from the archived browser prototype
 - covers `parseWorkoutNote` for sample-style shorthand workout notes, including
   day and section headings, mixed-weight rows, deload summaries, graceful
   degradation of ambiguous fragments, and the non-weight cardio regression from
@@ -175,6 +180,12 @@ npm --prefix mobile test
   activity multipliers, gain/loss/maintain target outputs, and incomplete
   profile fallback behavior
 
+### `mobile/tests/format.test.js`
+
+- shared formatting helper coverage for `mobile/lib/format.js`
+- verifies ISO date display formatting for date-only and datetime inputs
+- verifies weight-delta pace/severity thresholds plus signed delta formatting
+
 ### `mobile/tests/stats-screen.test.js`
 
 - spies on `deriveWeightGoalAnalytics()` and verifies the rendered
@@ -257,7 +268,7 @@ Before declaring the packaged preview ready, a human tester must pass every step
    cd mobile && eas build --platform android --profile preview
    ```
 2. Open the app from the phone launcher and confirm it starts without a crash or blank screen.  **[BLOCKER]**
-3. Confirm all five tabs are visible and respond to taps: Home, Log, Weight, Stats, More.  **[BLOCKER]**
+3. Confirm all five tabs are visible and respond to taps: Home, Log, Weight, Analytics, More.  **[BLOCKER]**
 4. On **Weight**, confirm the entry field and **Log** button load, the button is disabled when the field is empty, and a valid value such as `185` saves successfully and updates the Entries list.  **[BLOCKER]**
 5. Change the visible version text in the packaged app footer from `0.1.0` to `0.1.0-test`, rebuild and redeploy the preview to the same phone, then relaunch it from the launcher. Confirm the app opens normally after the update, the footer now shows `0.1.0-test`, and the saved weight entry is still present.  **[BLOCKER]**
 6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, the header **Save** action becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
