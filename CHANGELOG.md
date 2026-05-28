@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.46.14 - 2026-05-28
+
+- Issue #217: Unified exercise name normalization into a single
+  `normalizeExerciseKey` function and migrated all call sites in parser.js
+  and data.js, fixing key mismatches for aliased exercises in analytics
+  and per-day signal lookups.
+
 ## 0.46.13 - 2026-05-28
 
 - Issue #216: Replaced hardcoded `stickyHeaderIndices={[4]}` in StatsScreen
