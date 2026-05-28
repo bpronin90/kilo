@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.11 - 2026-05-28
+
+- Issue #214: Added an explicit Edit button to the current routine card
+  header on the Log tab so users can enter edit mode without discovering the
+  double-tap gesture.
+
 ## 0.46.10 - 2026-05-28
 
 - Issue #212: Extracted the per-note `parseWorkoutNote` flatMap from the
