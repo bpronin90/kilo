@@ -8,7 +8,8 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useUserProfile, useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
+import { normalizeLiftName } from '../lib/data';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -74,10 +75,16 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
-    // Compute counts from overload_trend signals — same source as the analytics panel.
+    // Mirror StatsScreen: derive signals for tracked exercises visible in the current note only.
     const allSections = (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
-    const trackedNames = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
-    const { signals } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
+    const namesInCurrent = new Set(
+      (sections || []).flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
+    );
+    const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
+    const visibleTrackedNames = globallyTracked.filter(
+      name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
+    );
+    const { signals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
 
     const counts = { progressing: 0, stalled: 0, regressing: 0 };
     signals.forEach(sig => {
@@ -87,7 +94,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     });
 
     if (__DEV__) {
-      console.log('[HOME DEBUG] notes:', (notes || []).length, '| trackedNames:', trackedNames.length, '| allSections:', allSections.length);
+      console.log('[HOME DEBUG] notes:', (notes || []).length, '| allSections:', allSections.length, '| visibleTracked:', visibleTrackedNames.length);
       console.log('[HOME DEBUG] signal trends:', signals.map(s => `${s.name}:${s.overload_trend}`).join(', '));
       console.log('[HOME DEBUG] counts:', JSON.stringify(counts));
     }
