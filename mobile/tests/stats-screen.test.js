@@ -182,7 +182,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       nameDisplayMap: new Map([['bench press', 'Bench Press']]),
       repDropOffFlags: {},
       perDaySignals: {
-        'Bench Press': {
+        'bench press': {
           'Monday': { latest_top_weight: 185, overload_trend: 'up', latest_pr: 210 },
           'Friday': { latest_top_weight: 175, overload_trend: 'flat', latest_pr: 198 },
         },
@@ -193,8 +193,54 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     const root = component.root;
 
     const allText = findAllText(root);
+    // Per-day top weights appear (CrossDayComparison shows them)
     expect(allText.some(s => s.includes('185'))).toBe(true);
     expect(allText.some(s => s.includes('175'))).toBe(true);
+    // Per-day latest_pr values appear in the main row (only shown there, not in CrossDayComparison).
+    // Before the fix, both rows used the global latest_pr (225) and neither 210 nor 198 appeared.
+    expect(allText.some(s => s.includes('210'))).toBe(true);
+    expect(allText.some(s => s.includes('198'))).toBe(true);
+    // Global latest_pr (225) must NOT appear — both rows use their per-day pr instead.
+    expect(allText.some(s => s === '225')).toBe(false);
+  });
+
+  test('multi-day exercises fall back to global trend when per-day trend is null', () => {
+    // When per-day signal exists but has null overload_trend (only one comparable
+    // unit for that day-slot), the row should show the global trend, not —.
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. bench press\n\nFriday\n+ lifting\n1. bench press',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'bench press': true },
+    };
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['bench press', 'Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {
+        'bench press': {
+          'Monday': { latest_top_weight: 185, overload_trend: null, latest_pr: 210 },
+          'Friday': { latest_top_weight: 175, overload_trend: null, latest_pr: 198 },
+        },
+      },
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+    const allText = findAllText(root);
+
+    // Component must render without crash when per-day trend is null.
+    // The per-day PR values (not the global 225) must appear — confirming the
+    // per-day metrics path is still active even though trend falls back to global.
+    expect(allText.some(s => s.includes('210'))).toBe(true);
+    expect(allText.some(s => s.includes('198'))).toBe(true);
+    expect(allText.some(s => s === '225')).toBe(false);
   });
 
   test('multi-day exercises fall back to Also on text when perDaySignals absent', () => {
@@ -242,7 +288,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
       nameDisplayMap: new Map([['pull-ups', 'Pull-ups']]),
       repDropOffFlags: {},
       perDaySignals: {
-        'Pull-ups': {
+        'pull-ups': {
           'Monday': { latest_top_weight: 10, overload_trend: 'up', latest_pr: null, is_bodyweight: true },
           'Friday': { latest_top_weight: 8, overload_trend: 'flat', latest_pr: null, is_bodyweight: true },
         },
@@ -258,6 +304,34 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
     expect(allText.some(s => s.includes('8'))).toBe(true);
     // 'reps' label appears, 'lb' does not appear inside the cross-day row chips
     expect(allText.filter(s => s === 'reps').length).toBeGreaterThan(0);
+  });
+  test('alias exercise names in note match tracked canonical signal', () => {
+    // Note uses alias 'DB Bench' but tracked lift is 'db bench press' (canonical form).
+    // groupedSignals must canonicalize both sides so the signal resolves and the
+    // exercise appears with its correct overload arrow.
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. db bench',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'db bench press': true },
+    };
+    const signals = [
+      { name: 'db bench press', latest_pr: 200, kilo_max: 190, latest_top_weight: 150, overload_trend: 'up' },
+    ];
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['db bench press', 'DB Bench Press']]),
+      repDropOffFlags: {},
+      perDaySignals: {},
+    });
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'DB Bench Press')).toBe(true);
   });
 });
 

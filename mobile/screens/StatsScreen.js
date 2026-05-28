@@ -131,18 +131,19 @@ export function StatsScreen({ multiplier, section }) {
     const sections = parsedSections.currentSections;
     const signals = analytics.signals || [];
     const perDaySignals = analytics.perDaySignals || {};
-    const nameToSignal = new Map(signals.map(s => [normalizeLiftName(s.name), s]));
+    const normCanon = (name) => normalizeLiftName(canonicalizeName(name));
+    const nameToSignal = new Map(signals.map(s => [normCanon(s.name), s]));
 
     // To detect multi-day exercises
     const exerciseGroupCount = new Map();
     sections.forEach(s => s.exercises.forEach(e => {
-      const norm = normalizeLiftName(e.name);
+      const norm = normCanon(e.name);
       exerciseGroupCount.set(norm, (exerciseGroupCount.get(norm) || 0) + 1);
     }));
 
     sections.forEach(section => {
       let groupExercises = section.exercises
-        .map(e => nameToSignal.get(normalizeLiftName(e.name)))
+        .map(e => nameToSignal.get(normCanon(e.name)))
         .filter(Boolean);
 
       if (searchQuery) {
@@ -155,16 +156,16 @@ export function StatsScreen({ multiplier, section }) {
         groups.push({
           name: section.heading,
           exercises: groupExercises.map(sig => {
-            const norm = normalizeLiftName(sig.name);
+            const norm = normCanon(sig.name);
             const isMultiDay = exerciseGroupCount.get(norm) > 1;
-            const canonName = canonicalizeName(sig.name);
+            const canonName = canonicalizeName(sig.name).toLowerCase();
 
             return {
               ...sig,
               isMultiDay,
               currentDayHeading: section.heading,
               otherDays: sections
-                .filter(s => s !== section && s.exercises.some(e => normalizeLiftName(e.name) === norm))
+                .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
                 .map(s => s.heading),
               daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
             };
@@ -370,11 +371,19 @@ export function StatsScreen({ multiplier, section }) {
                   <View style={styles.exerciseList}>
                     {group.exercises.map((sig) => {
                       const normName = normalizeLiftName(sig.name);
+                      // For multi-day exercises, use per-day metrics for this row's heading.
+                      const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
+                      const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
+                      const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
+                      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
                       const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
-                      const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
-                      
+                      // Suppress hit_wall when the row is progressing — a rep drop-off
+                      // while still hitting a new top weight is not a warning to surface.
+                      const dropOffLabel = dropOffFlag === 'hit_wall' && rowTrend !== 'up' ? '⚠ Hit wall' : null;
+                      const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
+
                       return (
-                        <View key={normName} style={[styles.signalRow, styles.signalRowBorder]}>
+                        <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
                           <View style={styles.signalNameRow}>
                             <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
                             {dropOffLabel && (
@@ -383,12 +392,12 @@ export function StatsScreen({ multiplier, section }) {
                               </Text>
                             )}
                           </View>
-                          
+
                           <View style={styles.signalMetricsGrid}>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {sig.latest_pr ? Math.round(sig.latest_pr) : '—'}
-                                {sig.latest_pr ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                                {rowPr ? Math.round(rowPr) : '—'}
+                                {rowPr ? <Text style={styles.unitSuffix}>lb</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
@@ -399,14 +408,12 @@ export function StatsScreen({ multiplier, section }) {
                             </View>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {sig.latest_top_weight ? sig.latest_top_weight : '—'}
-                                {sig.latest_top_weight ? <Text style={styles.unitSuffix}>{sig.is_bodyweight ? 'reps' : 'lb'}</Text> : null}
+                                {rowTopWeight ? rowTopWeight : '—'}
+                                {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : 'lb'}</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
-                              <Text style={styles.signalValue}>
-                                {formatOverload(sig.overload_trend)}
-                              </Text>
+                              {formatOverload(rowTrend)}
                             </View>
                           </View>
 
@@ -415,6 +422,7 @@ export function StatsScreen({ multiplier, section }) {
                               ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
                               : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
                           )}
+
                         </View>
                       );
                     })}
@@ -448,7 +456,7 @@ function CrossDayComparison({ daySignals, currentDay, otherDays }) {
           : Colors.caution;
         const trendChar = d?.overload_trend === 'up' ? '↑'
           : d?.overload_trend === 'down' ? '↓'
-          : d?.overload_trend === 'flat' ? '→' : null;
+          : d?.overload_trend === 'flat' ? '↔' : null;
         return (
           <React.Fragment key={day}>
             {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
@@ -476,10 +484,10 @@ function dropOffBadgeColor(flag) {
 
 function formatOverload(trend) {
   switch (trend) {
-    case 'up': return <MaterialIcons name="arrow-upward" size={16} color={Colors.success} />;
-    case 'flat': return <MaterialIcons name="horizontal-rule" size={16} color={Colors.caution} />;
-    case 'down': return <MaterialIcons name="arrow-downward" size={16} color={Colors.error} />;
-    default: return <Text style={{ color: Colors.textMuted }}>—</Text>;
+    case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
+    case 'flat': return <Text style={{ color: Colors.caution, fontSize: 14 }}>↔</Text>;
+    case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
+    default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
   }
 }
 
@@ -855,4 +863,5 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 15,
   },
+
 });

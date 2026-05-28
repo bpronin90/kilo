@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.46.3 - 2026-05-28
+
+- Issue #207: Fixed the native Analytics Progressive Overload regression by
+  restoring visible row-level trend arrows, canonicalizing alias lookups,
+  using per-day `latest_pr` / `latest_top_weight` / `overload_trend` values
+  for multi-day exercise rows, and treating plain note rows as separate
+  comparable sessions so repeated same-note logging no longer stalls at
+  `first_session`. Reviewer closeout aligned the Home weekly-summary
+  classification band to the live overload-count source of truth and extended
+  parser/data/StatsScreen regression coverage for the per-day key contract.
+
 ## 0.46.2 - 2026-05-27
 
 - Issue #206: Rounded the native Home weight-goal `weeks left` display to the

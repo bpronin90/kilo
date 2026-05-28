@@ -602,16 +602,13 @@ export function deriveProgressionSignals(sections, trackedNames) {
       const kilo_max = ex.estimated_pr;
 
       // Build a session-level comparable list. Each occurrence is expanded
-      // per-session-entry when it has them (the `- date sets` format); occurrences
-      // with only inline set lines contribute as a single comparable unit. This
-      // ensures mixed-history notes (some days inline, some days session-entry) all
-      // participate in the comparison rather than dropping inline occurrences.
+      // per-session-entry when it has them (the `- date sets` format). Plain rows
+      // are also expanded individually — each row represents one logged workout day.
       const comparable = occs.flatMap(occ => {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
         if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
-        // Plain inline rows within one occurrence are one workout unit, not separate sessions.
         const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
-        if (rows.length > 0) return [occ];
+        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
         return occ.sets && occ.sets.length > 0 ? [occ] : [];
       });
 
@@ -706,7 +703,7 @@ export function derivePerDaySignals(sections, trackedNames) {
         const valid = (occ.session_entries || []).filter(se => !se.skipped && !se.unparsed);
         if (valid.length > 0) return valid.map(se => ({ sets: se.sets }));
         const rows = (occ.rows || []).filter(r => r.sets && r.sets.length > 0);
-        if (rows.length > 0) return [occ];
+        if (rows.length > 0) return rows.map(r => ({ sets: r.sets }));
         return occ.sets && occ.sets.length > 0 ? [occ] : [];
       });
 
@@ -761,7 +758,7 @@ export function derivePerDaySignals(sections, trackedNames) {
       dayMap[heading] = { latest_pr, latest_top_weight, overload_trend, is_bodyweight: false };
     }
 
-    result[_canonicalizeName(name)] = dayMap;
+    result[_canonicalizeName(name).toLowerCase()] = dayMap;
   }
 
   return result;

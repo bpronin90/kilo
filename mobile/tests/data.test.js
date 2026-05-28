@@ -1825,7 +1825,7 @@ describe('deriveWorkoutNoteAnalytics', () => {
     const sections = [analyticsSection('Squat', [aw(225, 5)])];
     const { perDaySignals } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
     expect(typeof perDaySignals).toBe('object');
-    expect(perDaySignals).toHaveProperty('Squat');
+    expect(perDaySignals).toHaveProperty('squat');
   });
 
   test('null sections → perDaySignals is empty object', () => {
@@ -1842,8 +1842,8 @@ describe('deriveWorkoutNoteAnalytics', () => {
       }],
     };
     const { perDaySignals } = deriveWorkoutNoteAnalytics([bwSection], ['Pull-ups']);
-    expect(perDaySignals['Pull-ups']['Monday'].is_bodyweight).toBe(true);
-    expect(perDaySignals['Pull-ups']['Monday'].latest_top_weight).toBe(10);
+    expect(perDaySignals['pull-ups']['Monday'].is_bodyweight).toBe(true);
+    expect(perDaySignals['pull-ups']['Monday'].latest_top_weight).toBe(10);
   });
 });
 

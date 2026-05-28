@@ -7,14 +7,16 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useUserProfile, useWeightGoal } from '../hooks/useEntries';
-import { parseWorkoutNote } from '../lib/parser';
+import { useUserProfile, useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
+import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
+  deriveOverloadCounts,
   computeWeeklySummary,
+  normalizeLiftName,
 } from '../lib/data';
 import pkg from '../package.json';
 
@@ -52,8 +54,9 @@ const formatGoalDirection = (direction) => {
   }
 };
 
-export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
+export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate }) {
   const { goal: weightGoal } = useWeightGoal();
+  const { trackedLifts } = useTrackedLifts();
 
   const dashboardData = useMemo(() => {
     let oneK = null;
@@ -73,7 +76,20 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
+    // Mirror StatsScreen: derive signals for tracked exercises visible in the current note only.
+    const allSections = (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
+    const namesInCurrent = new Set(
+      (sections || []).flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
+    );
+    const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
+    const visibleTrackedNames = globallyTracked.filter(
+      name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
+    );
+    const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
+    const counts = deriveOverloadCounts(sections, signals, perDaySignals);
+
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
+    weeklySummary.classifications = counts;
 
     return {
       weightSeries,
@@ -83,7 +99,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       weeklySummary,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
-  }, [weightEntries, workoutNote, weightGoal]);
+  }, [weightEntries, workoutNote, weightGoal, notes, trackedLifts]);
 
   return (
     <ScreenShell
@@ -122,7 +138,6 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
               { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
               { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
               { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
-              { label: 'Inconsistent', count: dashboardData.weeklySummary.classifications?.inconsistent ?? 0, color: Colors.textMuted },
             ].map((item, idx) => (
               <View key={idx} style={styles.classifCol}>
                 <View style={[styles.classifDot, { backgroundColor: item.color }]} />

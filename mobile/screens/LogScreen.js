@@ -34,6 +34,7 @@ export function LogScreen({
   const [saveError, setSaveError] = useState('');
   const [dismissedNudges, setDismissedNudges] = useState({});
 
+
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [editingText, setEditingText] = useState('');
@@ -131,9 +132,7 @@ export function LogScreen({
 
   const otherNotes = notes.filter(n => n.id !== currentId);
 
-  const parsed = useMemo(() => {
-    return parseWorkoutNote(workoutNoteText);
-  }, [workoutNoteText]);
+  const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
@@ -613,6 +612,7 @@ export function LogScreen({
               </View>
             )}
 
+
             <View style={styles.previousRoutines}>
               {otherNotes.length > 0 && (
                 <>
@@ -918,4 +918,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 16,
   },
+
 });
