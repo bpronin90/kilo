@@ -458,7 +458,7 @@ function CrossDayComparison({ daySignals, currentDay, otherDays }) {
               </Text>
               <Text style={styles.crossDayChipValue}>
                 {d?.latest_top_weight != null ? `${d.latest_top_weight}` : '—'}
-                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>lb</Text>}
+                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>{d.is_bodyweight ? 'reps' : 'lb'}</Text>}
               </Text>
               {trendChar && <Text style={[styles.crossDayTrend, { color: trendColor }]}>{trendChar}</Text>}
             </View>

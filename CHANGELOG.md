@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.46.1 - 2026-05-27
+
+- Issue #205: Fixed the per-day multi-day comparison regression for
+  rep-only/bodyweight exercises after the original merge. `derivePerDaySignals`
+  now mirrors the global rep-based fallback semantics for day-level analytics,
+  carries `is_bodyweight` through the per-day payload, and the Analytics
+  `CrossDayComparison` row now renders `reps` instead of hardcoded `lb` for
+  bodyweight day chips. Added targeted regression coverage for parser, data,
+  and StatsScreen bodyweight multi-day cases.
+
 ## 0.46.0 - 2026-05-27
 
 - Issue #205: Implemented per-day signal plumbing for multi-day exercise

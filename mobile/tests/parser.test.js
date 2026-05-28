@@ -2140,5 +2140,68 @@ describe('derivePerDaySignals', () => {
     expect(perDay['Hammer Curl']['Monday'].latest_top_weight).toBe(40);
     expect(perDay['Hammer Curl']['Wednesday'].latest_top_weight).toBe(32);
   });
+
+  // ── bodyweight/rep-only regression ───────────────────────────────────────────
+
+  test('weighted day: is_bodyweight false', () => {
+    const sections = [makePerDaySection('Monday', 'Squat', [pds(225, 5)])];
+    const { Squat } = derivePerDaySignals(sections, ['Squat']);
+    expect(Squat['Monday'].is_bodyweight).toBe(false);
+  });
+
+  test('rep-only day (no weight_value): is_bodyweight true and latest_top_weight is best rep count', () => {
+    const bwSet = { weight_value: null, rep_count: 10 };
+    const sections = [{
+      heading: 'Monday', subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Pull-ups', rows: [], sets: [], unparsed_rows: [],
+        session_entries: [{ skipped: false, raw: '10', sets: [bwSet] }],
+      }],
+    }];
+    const result = derivePerDaySignals(sections, ['Pull-ups']);
+    expect(result['Pull-ups']['Monday'].is_bodyweight).toBe(true);
+    expect(result['Pull-ups']['Monday'].latest_top_weight).toBe(10);
+  });
+
+  test('multi-day bodyweight exercise: each day gets independent rep-based metrics', () => {
+    // Monday: two sessions 8 reps then 10 reps → trend up, best set 10
+    // Friday: two sessions 6 reps then 6 reps → trend flat, best set 6
+    const bwEntry = (reps) => ({ skipped: false, raw: String(reps), sets: [{ weight_value: null, rep_count: reps }] });
+    const makeBwSection = (heading, entries) => ({
+      heading, subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Pull-ups', rows: [], sets: [], unparsed_rows: [],
+        session_entries: entries.map(bwEntry),
+      }],
+    });
+
+    const sections = [makeBwSection('Monday', [8, 10]), makeBwSection('Friday', [6, 6])];
+    const result = derivePerDaySignals(sections, ['Pull-ups']);
+    const mon = result['Pull-ups']['Monday'];
+    const fri = result['Pull-ups']['Friday'];
+
+    expect(mon.is_bodyweight).toBe(true);
+    expect(mon.latest_top_weight).toBe(10);
+    expect(mon.overload_trend).toBe('up');
+
+    expect(fri.is_bodyweight).toBe(true);
+    expect(fri.latest_top_weight).toBe(6);
+    expect(fri.overload_trend).toBe('flat');
+
+    expect(mon.latest_top_weight).not.toBe(fri.latest_top_weight);
+  });
+
+  test('rep-only day with zero reps: latest_top_weight null, is_bodyweight false', () => {
+    const sections = [{
+      heading: 'Monday', subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Pull-ups', rows: [], sets: [], unparsed_rows: [],
+        session_entries: [{ skipped: false, raw: '-', sets: [{ weight_value: null, rep_count: 0 }] }],
+      }],
+    }];
+    const result = derivePerDaySignals(sections, ['Pull-ups']);
+    expect(result['Pull-ups']['Monday'].latest_top_weight).toBeNull();
+    expect(result['Pull-ups']['Monday'].is_bodyweight).toBe(false);
+  });
 });
 

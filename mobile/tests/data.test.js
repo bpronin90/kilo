@@ -1832,6 +1832,19 @@ describe('deriveWorkoutNoteAnalytics', () => {
     const { perDaySignals } = deriveWorkoutNoteAnalytics(null, ['Squat']);
     expect(perDaySignals).toEqual({});
   });
+
+  test('perDaySignals for bodyweight exercise carries is_bodyweight true', () => {
+    const bwSection = {
+      heading: 'Monday', subheading: null, kind: 'general',
+      exercises: [{
+        name: 'Pull-ups', rows: [], sets: [], unparsed_rows: [],
+        session_entries: [{ skipped: false, raw: '10', sets: [{ weight_value: null, rep_count: 10 }] }],
+      }],
+    };
+    const { perDaySignals } = deriveWorkoutNoteAnalytics([bwSection], ['Pull-ups']);
+    expect(perDaySignals['Pull-ups']['Monday'].is_bodyweight).toBe(true);
+    expect(perDaySignals['Pull-ups']['Monday'].latest_top_weight).toBe(10);
+  });
 });
 
 // ── Cross-consumer contract: deriveWorkoutNoteAnalytics signals match deriveSignals ──

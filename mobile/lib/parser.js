@@ -674,13 +674,16 @@ export function deriveProgressionSignals(sections, trackedNames) {
 
 // derivePerDaySignals: per-day progression metrics for multi-day exercises.
 //
-// For each tracked exercise, computes latest_top_weight, latest_pr, and
-// overload_trend separately for each routine-day heading where the exercise
-// appears. Single-day exercises also get an entry so callers can use this
-// uniformly without special-casing.
+// For each tracked exercise, computes latest_top_weight, latest_pr,
+// overload_trend, and is_bodyweight separately for each routine-day heading
+// where the exercise appears. Single-day exercises also get an entry so
+// callers can use this uniformly without special-casing.
+// Rep-only/bodyweight exercises mirror the fallback semantics of
+// deriveProgressionSignals: latest_top_weight is the best single-set rep
+// count, overload_trend is derived from total rep volume, is_bodyweight: true.
 //
 // Input: sections from parseWorkoutNote, trackedNames string[]
-// Output: { [canonicalName]: { [heading]: { latest_pr, latest_top_weight, overload_trend } } }
+// Output: { [canonicalName]: { [heading]: { latest_pr, latest_top_weight, overload_trend, is_bodyweight } } }
 export function derivePerDaySignals(sections, trackedNames) {
   const uniqueNames = [...new Set(trackedNames)];
   const { exercises } = deriveWorkoutAnalytics(sections);
@@ -717,7 +720,22 @@ export function derivePerDaySignals(sections, trackedNames) {
       }
 
       if (latestIdx === -1) {
-        dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null };
+        // Rep-only/bodyweight fallback: mirror semantics from deriveProgressionSignals.
+        const repTotals = comparable.map(unit =>
+          unit.sets.reduce((sum, s) => sum + (s.rep_count || 0), 0)
+        );
+        const latestReps = repTotals[repTotals.length - 1];
+        if (!latestReps) {
+          dayMap[heading] = { latest_pr: null, latest_top_weight: null, overload_trend: null, is_bodyweight: false };
+          continue;
+        }
+        const latestBestSet = Math.max(...comparable[comparable.length - 1].sets.map(s => s.rep_count || 0));
+        const priorReps = repTotals.length > 1 ? repTotals[repTotals.length - 2] : null;
+        const bw_trend = priorReps === null ? null
+          : latestReps > priorReps ? 'up'
+          : latestReps < priorReps ? 'down'
+          : 'flat';
+        dayMap[heading] = { latest_pr: null, latest_top_weight: latestBestSet || null, overload_trend: bw_trend, is_bodyweight: true };
         continue;
       }
 
@@ -740,7 +758,7 @@ export function derivePerDaySignals(sections, trackedNames) {
           : 'flat';
       }
 
-      dayMap[heading] = { latest_pr, latest_top_weight, overload_trend };
+      dayMap[heading] = { latest_pr, latest_top_weight, overload_trend, is_bodyweight: false };
     }
 
     result[_canonicalizeName(name)] = dayMap;
