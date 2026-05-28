@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, LineChart } from '../components/UI';
+import { Card, SectionTitle, LineChart, ArtisanalPanel } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
@@ -13,6 +14,8 @@ export function StatsScreen({ multiplier, section }) {
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
 
   const scrollRef = useRef(null);
   const weightSectionY = useRef(0);
@@ -123,8 +126,61 @@ export function StatsScreen({ multiplier, section }) {
     return { signals, oneK, nameDisplayMap, repDropOffFlags };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
+  const groupedSignals = useMemo(() => {
+    const groups = [];
+    const sections = parsedSections.currentSections;
+    const signals = analytics.signals || [];
+    const nameToSignal = new Map(signals.map(s => [normalizeLiftName(s.name), s]));
+
+    // To detect multi-day exercises
+    const exerciseGroupCount = new Map();
+    sections.forEach(s => s.exercises.forEach(e => {
+      const norm = normalizeLiftName(e.name);
+      exerciseGroupCount.set(norm, (exerciseGroupCount.get(norm) || 0) + 1);
+    }));
+
+    sections.forEach(section => {
+      let groupExercises = section.exercises
+        .map(e => nameToSignal.get(normalizeLiftName(e.name)))
+        .filter(Boolean);
+
+      if (searchQuery) {
+        groupExercises = groupExercises.filter(sig => 
+          sig.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+
+      if (groupExercises.length > 0) {
+        groups.push({
+          name: section.heading,
+          exercises: groupExercises.map(sig => {
+            const norm = normalizeLiftName(sig.name);
+
+            return {
+              ...sig,
+              isMultiDay: exerciseGroupCount.get(norm) > 1,
+              otherDays: sections
+                .filter(s => s !== section && s.exercises.some(e => normalizeLiftName(e.name) === norm))
+                .map(s => s.heading)
+            };
+          })
+        });
+      }
+    });
+    return groups;
+  }, [parsedSections, analytics.signals, searchQuery]);
+
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));
+  }
+
+  function toggleGroup(groupName) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
   }
 
   async function handleSelectExercise(slot, exerciseName) {
@@ -135,8 +191,6 @@ export function StatsScreen({ multiplier, section }) {
   }
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
-
-  const hasSignals = !isNotesLoading && !isTrackedLoading && analytics?.signals?.length > 0;
 
   return (
     <ScreenShell
@@ -188,17 +242,22 @@ export function StatsScreen({ multiplier, section }) {
       <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
         <SectionTitle>Strength</SectionTitle>
       {(isNotesLoading || analytics?.oneK?.total) ? (
-        <Card style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
+        <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
           {isNotesLoading ? (
             <ActivityIndicator size="large" color={Colors.accent} />
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)} lb</Text>
+              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+              
+              <View style={styles.oneKProgressBarContainer}>
+                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
+              </View>
+
               <View style={styles.oneKBreakdown}>
                 <View style={styles.oneKItem}>
                   <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Squat</Text>
+                  <Text style={styles.oneKItemLabel}>Squats</Text>
                 </View>
                 <View style={styles.oneKItem}>
                   <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
@@ -206,12 +265,12 @@ export function StatsScreen({ multiplier, section }) {
                 </View>
                 <View style={styles.oneKItem}>
                   <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Deadlift</Text>
+                  <Text style={styles.oneKItemLabel}>Deadlifts</Text>
                 </View>
               </View>
             </>
           )}
-        </Card>
+        </ArtisanalPanel>
       ) : (
         <Card style={styles.infoCard}>
           <Text style={styles.infoText}>
@@ -260,51 +319,109 @@ export function StatsScreen({ multiplier, section }) {
 
       <View style={styles.signalStickyHeader}>
         <SectionTitle>Progressive Overload</SectionTitle>
-        {hasSignals && (
-          <View style={styles.signalColumnHeader}>
-            <Text style={[styles.signalColumnLabel, styles.signalColumnName]}>Exercise</Text>
-            <View style={styles.signalColumnMetrics}>
-              <Text style={styles.signalColumnLabel}>1 Rep Max</Text>
-              <Text style={styles.signalColumnLabel}>Kilo Max</Text>
-              <Text style={styles.signalColumnLabel}>Top Wt</Text>
-              <Text style={[styles.signalColumnLabel, styles.signalColumnProgress]}>Trend</Text>
-            </View>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search tracked exercises..."
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <View style={styles.signalColumnHeader}>
+          <View style={styles.signalColumnMetrics}>
+            <Text style={styles.signalColumnLabel}>1RM</Text>
+            <Text style={styles.signalColumnLabel}>Kilo</Text>
+            <Text style={styles.signalColumnLabel}>Best</Text>
+            <Text style={styles.signalColumnLabel}>Trend</Text>
           </View>
-        )}
+        </View>
       </View>
+
       {(isNotesLoading || isTrackedLoading) ? (
         <View style={{ height: 100, justifyContent: 'center' }}>
           <ActivityIndicator color={Colors.accent} />
         </View>
-      ) : analytics?.signals?.length > 0 ? (
-        <View style={styles.signalList}>
-          {analytics.signals.map((sig, i) => {
-            const normName = normalizeLiftName(sig.name);
-            const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
-            const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
+      ) : groupedSignals.length > 0 ? (
+        <ArtisanalPanel style={styles.poContainer}>
+          {groupedSignals.map((group, groupIdx) => {
+            const isCollapsed = collapsedGroups.has(group.name);
             return (
-            <View key={i} style={[styles.signalRow, i === analytics.signals.length - 1 && styles.signalRowLast]}>
-              <View style={styles.signalRowInner}>
-                <View style={styles.signalNameBlock}>
-                  <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-                  {dropOffLabel ? (
-                    <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
-                      {dropOffLabel}
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={styles.signalMetrics}>
-                  <Text style={styles.signalValue}>{sig.latest_pr ? `${sig.latest_pr.toFixed(0)} lb` : '—'}</Text>
-                  <Text style={styles.signalValue}>{sig.kilo_max != null ? `${sig.kilo_max} lb` : '—'}</Text>
-                  <Text style={styles.signalValue}>{sig.latest_top_weight ? (sig.is_bodyweight ? `${sig.latest_top_weight} reps` : `${sig.latest_top_weight} lb`) : '—'}</Text>
-                  <Text style={[styles.signalValue, styles.signalProgress, overloadColor(sig.overload_trend)]}>
-                    {formatOverload(sig.overload_trend)}
-                  </Text>
-                </View>
+              <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
+                <Pressable 
+                  onPress={() => toggleGroup(group.name)}
+                  style={styles.groupHeader}
+                >
+                  <Text style={styles.groupName}>{group.name}</Text>
+                  <MaterialIcons 
+                    name={isCollapsed ? "expand-more" : "expand-less"} 
+                    size={20} 
+                    color={Colors.textMuted} 
+                  />
+                </Pressable>
+                
+                {!isCollapsed && (
+                  <View style={styles.exerciseList}>
+                    {group.exercises.map((sig) => {
+                      const normName = normalizeLiftName(sig.name);
+                      const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
+                      const dropOffLabel = dropOffFlag === 'hit_wall' ? '⚠ Hit wall' : null;
+                      
+                      return (
+                        <View key={normName} style={[styles.signalRow, styles.signalRowBorder]}>
+                          <View style={styles.signalNameRow}>
+                            <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
+                            {dropOffLabel && (
+                              <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
+                                {dropOffLabel}
+                              </Text>
+                            )}
+                          </View>
+                          
+                          <View style={styles.signalMetricsGrid}>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {sig.latest_pr ? Math.round(sig.latest_pr) : '—'}
+                                {sig.latest_pr ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                              </Text>
+                            </View>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {sig.kilo_max != null ? sig.kilo_max : '—'}
+                                {sig.kilo_max != null ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                              </Text>
+                            </View>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {sig.latest_top_weight ? sig.latest_top_weight : '—'}
+                                {sig.latest_top_weight ? <Text style={styles.unitSuffix}>{sig.is_bodyweight ? 'reps' : 'lb'}</Text> : null}
+                              </Text>
+                            </View>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {formatOverload(sig.overload_trend)}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {sig.isMultiDay && sig.otherDays.length > 0 && (
+                            <Text style={styles.multiDaySummary}>
+                              Also on {sig.otherDays.join(', ')}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
-            </View>
             );
           })}
+        </ArtisanalPanel>
+      ) : searchQuery ? (
+        <View style={styles.emptySearch}>
+          <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
         </View>
       ) : (
         <Text style={styles.emptyText}>
@@ -322,18 +439,10 @@ function dropOffBadgeColor(flag) {
 
 function formatOverload(trend) {
   switch (trend) {
-    case 'up': return '↑';
-    case 'flat': return '↔';
-    case 'down': return '↓';
-    default: return '—';
-  }
-}
-
-function overloadColor(trend) {
-  switch (trend) {
-    case 'up': return { color: '#4ade80' };
-    case 'down': return { color: Colors.error };
-    default: return { color: Colors.textMuted };
+    case 'up': return <MaterialIcons name="arrow-upward" size={16} color={Colors.success} />;
+    case 'flat': return <MaterialIcons name="horizontal-rule" size={16} color={Colors.caution} />;
+    case 'down': return <MaterialIcons name="arrow-downward" size={16} color={Colors.error} />;
+    default: return <Text style={{ color: Colors.textMuted }}>—</Text>;
   }
 }
 
@@ -402,31 +511,52 @@ const styles = StyleSheet.create({
   oneKCard: {
     padding: 24,
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   oneKLabel: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   oneKValue: {
     fontSize: 48,
     fontWeight: '900',
-    color: Colors.accent,
+    color: Colors.text,
+  },
+  oneKUnit: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    marginLeft: 4,
+  },
+  oneKProgressBarContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: Colors.divider,
+    borderRadius: 4,
+    marginVertical: 12,
+    overflow: 'hidden',
+  },
+  oneKProgressBar: {
+    height: '100%',
+    backgroundColor: Colors.accent,
+    borderRadius: 4,
   },
   oneKBreakdown: {
     flexDirection: 'row',
     width: '100%',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     marginTop: 8,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-    paddingTop: 16,
+    borderTopColor: Colors.divider,
   },
   oneKItem: {
     alignItems: 'center',
     gap: 2,
+    flex: 1,
   },
   oneKItemValue: {
     fontSize: 18,
@@ -434,8 +564,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   oneKItemLabel: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '600',
     color: Colors.textMuted,
+    textTransform: 'uppercase',
   },
   infoCard: {
     backgroundColor: 'transparent',
@@ -524,90 +656,121 @@ const styles = StyleSheet.create({
   },
   signalStickyHeader: {
     backgroundColor: Colors.background,
-    paddingBottom: 2,
+    paddingBottom: 8,
+  },
+  searchContainer: {
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  searchInput: {
+    backgroundColor: Colors.inputBackground,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.text,
   },
   signalColumnHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: Colors.card,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: Colors.cardBorder,
+    paddingBottom: 4,
   },
   signalColumnLabel: {
     flex: 1,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  signalColumnName: {
-    flex: 2,
-  },
-  signalColumnMetrics: {
-    flex: 3,
-    flexDirection: 'row',
-  },
-  signalColumnProgress: {
+    letterSpacing: 0.5,
     textAlign: 'center',
   },
-  signalList: {
-    backgroundColor: Colors.card,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: Colors.cardBorder,
-    overflow: 'hidden',
-  },
-  signalRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  signalRowLast: {
-    borderBottomWidth: 0,
-  },
-  signalRowInner: {
+  signalColumnMetrics: {
+    flex: 1,
     flexDirection: 'row',
+  },
+  poContainer: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  groupSection: {
+    paddingBottom: 4,
+  },
+  groupSectionBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: Colors.subtleBg,
+  },
+  groupName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  exerciseList: {
     paddingHorizontal: 16,
   },
-  signalNameBlock: {
-    flex: 2,
-    gap: 2,
-    paddingRight: 8,
+  signalRow: {
+    paddingVertical: 16,
+  },
+  signalRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  signalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   signalName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.text,
+    flex: 1,
   },
   classifBadge: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    marginLeft: 8,
   },
-  signalMetrics: {
-    flex: 3,
+  signalMetricsGrid: {
     flexDirection: 'row',
   },
-  signalValue: {
+  metricCol: {
     flex: 1,
-    fontSize: 13,
+    alignItems: 'center',
+  },
+  signalValue: {
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.text,
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
-  signalProgress: {
-    textAlign: 'center',
+  unitSuffix: {
+    fontSize: 10,
+    opacity: 0.4,
+    marginLeft: 2,
+  },
+  multiDaySummary: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  emptySearch: {
+    padding: 32,
+    alignItems: 'center',
   },
   emptyText: {
     textAlign: 'center',

@@ -15,4 +15,7 @@ export const Colors = {
   success: '#4a7c44',
   error: '#b03a2e',
   caution: '#d4a017',
+  divider: 'rgba(31, 26, 23, 0.05)',
+  subtleBg: 'rgba(31, 26, 23, 0.02)',
+  panelBackground: '#ffffff',
 };

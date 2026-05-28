@@ -347,6 +347,10 @@ Provides the global runtime contract required by the prototype:
   result instead of any raw-entry local sort or pick
 - verifies the rendered `7-day` and `30-day` weight averages come from the
   shared-layer `avg7` / `avg30` outputs
+- verifies exercises are grouped by routine day with correct group headers
+- verifies multi-day exercises show cross-day summary text
+- verifies redesigned 1K Progress card renders hero total, progress bar,
+  and full breakdown labels (Squats, Bench, Deadlifts)
 
 ### `mobile/tests/storage.test.js`
 
