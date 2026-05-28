@@ -1,27 +1,18 @@
 # Architecture
 
-Kilo currently has a split architecture:
+Kilo is a single-path native app:
 
-- The repo root is the legacy prototype runtime. It is client-only React loaded
-  through CDN scripts in `Kilo.html`, plus a minimal Android Capacitor shell
-  that stages that same web app into a WebView for device install. All CDN
-  scripts in `Kilo.html` use Subresource Integrity (SRI) with `integrity` and
-  `crossorigin` attributes to mitigate supply-chain risks.
-- `mobile/` is the active native-app path. It is an Expo/React Native app and
-  should receive forward-looking app architecture work.
+- `mobile/` is the active Expo/React Native app and receives all forward-looking
+  architecture work.
+- The legacy browser prototype (`Kilo.html`, `src/`, `tests/`) is archived under
+  `docs/archive/browser-prototype/`. The Capacitor Android shell and vitest
+  config have been removed entirely (issue #213).
 
 ## Architecture Overview
 
 ```mermaid
 graph TD
-    subgraph browser["Browser Prototype (legacy — reference only)"]
-        CDN["CDN\nReact / ReactDOM / Babel"]
-        KiloHtml["Kilo.html\n(entry point)"]
-        BrowserSrc["src/\nparser.jsx · data.jsx · ui.jsx\nhome · log · weight · stats · more · app.jsx"]
-        LS[("localStorage\nkilo_workout_sessions\nkilo_weight_entries")]
-    end
-
-    subgraph expo["Native Expo App (active)"]
+    subgraph expo["Native Expo App"]
         ExpoEntry["mobile/index.js\n(Expo entry)"]
         AppJs["mobile/App.js\ntab state · save wiring"]
         NativeScreens["mobile/screens/\nHome · Log · Weight · Analytics · More"]
@@ -31,10 +22,6 @@ graph TD
         AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
 
-    CDN -->|"loads at runtime"| KiloHtml
-    KiloHtml -->|"script tag order"| BrowserSrc
-    BrowserSrc <-->|"r/w globals + localStorage"| LS
-
     ExpoEntry --> AppJs
     AppJs --> NativeScreens
     NativeScreens --> NativeLib
@@ -42,10 +29,6 @@ graph TD
     NativeHooks --> NativeStorage
     NativeStorage <--> AS
 ```
-
-Issue #35 defines the migration contract between these paths: the prototype path
-remains the behavior reference during migration, but the native path is the
-target runtime for future MVP implementation.
 
 ## OTA Update Code Signing
 
@@ -67,18 +50,11 @@ embedded certificate and will not verify OTA signatures.
   verifies the manifest signature against the embedded certificate before
   applying the update. Unsigned or mismatched bundles are rejected.
 
-## Native Migration Boundary
+## Migration History
 
-The migration boundary is intentionally narrow:
-
-1. `mobile/` becomes the real app surface.
-2. The prototype path remains temporarily for reference, manual comparison, and
-   source behavior lookup.
-3. No new architecture work should rely on embedding `Kilo.html` or the
-   Capacitor WebView path inside the native app.
-4. The first implementation split is:
-   - UI and screen structure in issue #36
-   - Parser, entry model, and local persistence in issue #37
+The browser prototype served as the behavior reference during native migration
+(issue #35). That migration is complete: the prototype source is archived and
+the Capacitor shell has been removed. `mobile/` is the only app surface.
 
 ## Target Native Runtime Shape
 
@@ -92,36 +68,6 @@ clear separation between UI and data responsibilities inside `mobile/`:
   re-creating parser or storage rules inline.
 
 ## Runtime Shape
-
-`Kilo.html` is the entry point. It loads React, ReactDOM, and Babel from CDN,
-then loads source files as `<script type="text/babel">` tags in this order:
-
-1. `src/components/ios-frame.jsx`, `src/components/android-frame.jsx`, `src/components/design-canvas.jsx`, `src/components/tweaks-panel.jsx` — device-frame and design-shell helpers used by the root
-2. `src/parser.jsx` — pure parse functions; no React
-3. `src/data.jsx` — seeds globals; depends on `src/parser.jsx`; calls `parseWorkoutRow` and `epleyPR` during initialization via `computeTotal()` to populate the 1000 lb club goal
-4. `src/components/ui.jsx` — shared primitives; depends on globals from `src/data.jsx`
-5. `src/screens/home.jsx`, `src/screens/log.jsx`, `src/screens/weight.jsx`, `src/screens/stats.jsx`, `src/screens/more.jsx`
-6. `src/app.jsx` — root component; references all screen components
-
-Because there is no bundler, every exported symbol must be attached to `window`.
-Imports between files are implicit — scripts execute in the order they appear in
-the HTML `<head>`.
-
-## Packaging Path
-
-For browser use, `Kilo.html` remains the source entry point. For device
-packaging, `npm run build` copies `Kilo.html` to `www/index.html` and copies
-`src/` to `www/src/`. Capacitor then syncs `www/` into
-`android/app/src/main/assets/public/`.
-
-The current native target is Android only. `capacitor.config.json` points
-Capacitor at `webDir: "www"` and the generated `android/` project hosts the
-staged web app without changing product logic or data flow.
-
-This packaging path remains valid only for the legacy prototype runtime. It is
-not the target architecture for the native app path in `mobile/`.
-
-## Native Runtime Shape
 
 The `mobile/` app is a separate runtime from the browser prototype. `mobile/index.js`
 registers `mobile/App.js` with Expo. The current native architecture is narrow:
@@ -162,26 +108,9 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
 
-The native path now uses its own parser/data/storage modules rather than
-importing browser globals from `src/`. It still does not coordinate with the
-Capacitor packaging path.
+The native path uses its own parser/data/storage modules.
 
 ## Screen Routing
-
-`KiloApp` (in `src/app.jsx`) owns a single `tab` state string initialized to
-`'home'`. A `switch` statement in the render body maps it to the active screen
-component. The tab bar (`KiloTabBar`) calls `setTab` directly. Screens receive
-`goToTab` as a prop for cross-screen navigation (e.g. Home → Log via
-`openSession`).
-
-```
-tab: 'home' | 'log' | 'weight' | 'stats' | 'more'
-```
-
-There is no router library. Navigation is in-memory state and does not affect
-the URL.
-
-## Native Screen Routing
 
 `mobile/App.js` owns a separate `activeTab` state string initialized to
 `'Home'`. A `switch` statement maps it to one of five native screens:
@@ -225,7 +154,7 @@ Analytics filters that global tracked set down to lifts present in the current
 routine while still deriving each visible lift's trend and exercise display
 casing from all routine notes through `deriveWorkoutNoteAnalytics()`.
 
-## Native Parse-to-Persistence Flow
+## Parse-to-Persistence Flow
 
 ```
 User types in native Weight or Log form
@@ -252,83 +181,9 @@ one-time forward migration from the legacy single-note key by seeding a
 and normalizes pre-existing notebook rows that predate the new metadata fields.
 No remote sync is involved.
 
-## Parser Responsibilities
-
-`src/parser.jsx` exports all parse functions via `window.*`. The file contains
-two distinct parse paths:
-
-### Legacy freeform path (read-only formatting compatibility)
-
-- `parseKiloInput(raw)` — tokenizes `weight rep-group` pairs; lenient; returns
-  `{ sets: [{weight, reps[]}], skipped, warnings }`
-- `formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM` — legacy
-  helpers that consume the legacy shape
-
-The legacy path is retained for compatibility with seeded history formatting and
-other browser-runtime helpers. It is not used when saving, and the active web
-and native analytics consumers now route through `parseWorkoutRow`,
-`parseWorkoutNote`, and the shared Epley-based derived-analytics helpers.
-
-### MVP canonical path (save and validate)
-
-- `parseWeightEntry(raw)` — accepts `\d+(\.\d+)?` only; returns
-  `{ ok, weight_value, weight_unit, logged_at }` or `{ ok: false, error, category }`
-- `parseWorkoutRow(raw)` — parses one exercise row; returns
-  `{ ok, sets: [{set_index, rep_count, weight_value, weight_unit, ...}] }` or error
-- `parseWorkoutEntry(items, workout_date)` — calls `parseWorkoutRow` for each
-  item; returns a canonical workout entry or collects per-row errors
-- `parseWorkoutNote(noteText)` — parses multi-day shorthand workout notes into
-  sections, exercise blocks, grouped rows, canonical sets, and `unparsed_rows`
-  for ambiguous or non-weight lines
-- `deriveWorkoutAnalytics(sections)` — rolls parsed workout-note sections into
-  a stable per-exercise contract with flattened sets, grouped rows,
-  occurrence-level session context, preserved `unparsed_rows`, and Epley-based
-  PR inputs for later analytics consumers
-
-`parseWorkoutRow` accepted forms:
-- `'-'` → `{ ok: true, skipped: true }`
-- `8,8,8` (comma-separated ints, ≥1 comma) → bodyweight sets, `weight_value: null`
-- `135 5,5,5` or `135 5 120 8,8` → weighted sets, one load per rep-group pair
-- Single integer alone (e.g. `80`) → rejected as ambiguous
-
-## Parse-to-Persistence Flow (Workout)
-
-```
-User types in ExerciseRow input
-  → parseWorkoutRow(raw)  [live, on every keystroke]
-  → ParsePreview renders result or error inline
-
-User taps Save
-  → handleSave() in KiloLog
-  → parseWorkoutEntry(items, today)  [validates all rows together]
-  → on error: setSaveErrors per exercise; display inline
-  → on ok: build newSession object
-  → persistWorkoutSession(newSession)  [writes to localStorage]
-  → window.KILO_SESSIONS.unshift(newSession)  [updates in-memory global]
-  → setSaveStatus('success')
-```
-
-## Parse-to-Persistence Flow (Weight)
-
-```
-User types in weight input
-  → parseWeightEntry(raw)  [on submit]
-  → on error: setStatus({ ok: false, error })
-  → on ok: build entry object
-  → persistWeightEntry(entry)  [writes to localStorage]
-  → window.KILO_WEIGHTS updated in-place + state sync
-```
-
 ## Persistence Model
 
-### localStorage keys
-
-| Key | Contents |
-|-----|----------|
-| `kilo_workout_sessions` | JSON array of user-created workout sessions |
-| `kilo_weight_entries` | JSON array of user-created weight entries |
-
-### Native AsyncStorage keys
+### AsyncStorage keys
 
 | Key | Contents |
 |-----|----------|
@@ -349,22 +204,6 @@ exercise toggles now update the global `kilo_tracked_lifts` map keyed by
 normalized lift name, while 1k slot changes and note edits continue updating
 the selected workout-note document so analytics inputs and raw workout text
 stay persisted across reloads.
-
-### Merge on load
-
-Each screen module runs an IIFE on load that reads its localStorage key and
-merges user entries into the in-memory global:
-
-- `src/screens/log.jsx` merges user sessions into `window.KILO_SESSIONS`,
-  deduplicates by `id`, then sorts newest-first by `(date, saved_at)`.
-- `src/screens/weight.jsx` merges user entries into `window.KILO_WEIGHTS`,
-  sorts by `date`.
-
-Merge runs once per page load. After merge, no further re-merge reads occur
-during rendering — screens read the in-memory global directly. However,
-save/edit/delete operations continue to read and write localStorage via
-`persistWorkoutSession`, `persistWeightEntry`, and the correction helpers
-(`deleteWeightEntry`, `updateWeightEntry`, `deleteWorkoutSession`).
 
 ## Entry Shapes
 
@@ -432,79 +271,7 @@ Same shape as seeded, plus:
 }
 ```
 
-## Global State
-
-`data.jsx` seeds all globals on page load. Screens read and mutate them
-directly — there is no state manager.
-
-| Global | Type | Description |
-|--------|------|-------------|
-| `window.KILO_TODAY` | `string` | Hardcoded date `'2026-05-05'`; used as today by all screens |
-| `window.KILO_VERSION` | `string` | Tracked app version (e.g. `'0.1.0'`) |
-| `window.KILO_SPLIT` | `object` | `{ monday: { label, sub }, ... }` for Mon–Fri |
-| `window.KILO_EXERCISES` | `array` | Normalized exercise list (see shape below) |
-| `window.KILO_SESSIONS` | `array` | All workout sessions, newest-first; seeded + user-merged |
-| `window.KILO_WEIGHTS` | `array` | All weight entries, oldest-first; seeded + user-merged |
-| `window.KILO_GOALS` | `array` | Goal objects: `{ id, type, label, target, current, ... }` |
-| `window.KILO_PT` | `array` | PT checklist items: `{ id, name }` |
-| `window.KILO_C` | `object` | Color/token map used by all components |
-
-### KILO_EXERCISES entry shape
-
-```js
-{
-  id: 'db_bench',
-  name: 'DB Bench Press',
-  day: 'monday',
-  cat: 'primary_compound',     // 'warmup' | 'core' | 'primary_compound' | 'secondary_compound' | 'accessory'
-  po: true,                    // progressive overload tracked → shows 1RM preview
-  repMin: 6, repMax: 8, sets: 4,
-  target: '4×6–8',
-  isWarmup: false,             // true when cat === 'warmup' || cat === 'core'
-}
-```
-
-### Global mutation functions (data.jsx)
-
-| Function | Effect |
-|----------|--------|
-| `window.deleteWeightEntry(id)` | Removes from `KILO_WEIGHTS` and from localStorage |
-| `window.updateWeightEntry(id, value)` | Updates weight in `KILO_WEIGHTS` and localStorage |
-| `window.deleteWorkoutSession(id)` | Removes from `KILO_SESSIONS` and from localStorage |
-| `window.dayOfWeek(iso)` | Returns lowercase weekday string for an ISO date |
-
-### Global parse functions (parser.jsx)
-
-`parseKiloInput`, `parseWeightEntry`, `parseWorkoutRow`, `parseWorkoutEntry`,
-`parseWorkoutNote`, `buildSessionsFromNote`, `epleyPR`,
-`deriveWorkoutAnalytics`, `deriveTrackedPRs`, `deriveProgressionSignals`,
-`formatParsed`, `totalVolume`, `totalReps`, `topSet`, `adjusted1RM`
-
-## Recent History and Correction Flow
-
-`KiloLog` (`src/screens/log.jsx`) builds a `lastRefs` map on each render by
-scanning `KILO_SESSIONS` for the most-recent entry for each exercise id. This
-`lastRef` is passed to each `ExerciseRow`, which displays the top-set weight
-and reps from the prior session as input placeholder and a "last" reference line.
-
-`lastRef.raw` and live input rows are both parsed through `parseWorkoutRow`.
-The prior-session display still shows a simplified top-weight summary derived
-from the canonical set shape rather than the legacy parser output.
-
-## Runtime Assumptions Future Work Must Respect or Remove
-
-1. `window.KILO_TODAY` is hardcoded. Any feature depending on the real date must
-   replace this or derive from it explicitly.
-2. Seeded sessions do not carry `items` (canonical sets). Code that needs
-   normalized set data must handle missing `items` gracefully.
-3. `KILO_WEIGHTS` entries use both `weight` (legacy) and `weight_value`
-   (canonical). Readers should prefer `weight_value ?? weight`.
-4. Module load order is implicit. Reordering `<script>` tags in `Kilo.html`
-   will break globals that depend on earlier files.
-5. There is no Supabase or backend connection in the current prototype. All
-   persistence is `localStorage` in the current browser profile.
-
-## Native Workout Analytics Ownership Contract
+## Workout Analytics Ownership Contract
 
 This section is the canonical source-of-truth for which layer owns each native
 workout analytics field, which consumers are allowed to read it, and whether
@@ -636,9 +403,9 @@ Any downstream implementation issue that touches workout analytics must:
 
 ## Testing Shape
 
-Vitest runs in `jsdom`. Tests import source files via module path (e.g.
-`../src/parser.jsx`). Runtime globals used by the prototype are recreated in
-`tests/setup.js`. Current automated coverage focuses on parser correctness
-(`tests/parser.test.jsx`) and weight-log UI save behavior, validation states,
-persistence shape, and Home quick-log behavior (`tests/weight-ui.test.jsx`).
-Edit/delete UI flows are not currently covered by automated tests.
+The native Jest suite under `mobile/tests/` covers parser, data, storage,
+format, stats-screen, and weight-goal UI. Run it with `npm --prefix mobile test`.
+
+The browser prototype's vitest suite and jsdom setup have been archived with the
+prototype source (issue #213). No browser test infrastructure remains in the
+active codebase.

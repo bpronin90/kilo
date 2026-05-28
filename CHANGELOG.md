@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.7 - 2026-05-28
+
+- Issue #213: Archived the frozen browser prototype (`Kilo.html`, `src/`,
+  `tests/`) to `docs/archive/browser-prototype/`. Removed the Capacitor Android
+  shell (`android/`, `capacitor.config.json`), vitest config, and all
+  browser-specific dependencies and scripts from `package.json`. The mobile Expo
+  app under `mobile/` is now the only active app path.
+
 ## 0.46.6 - 2026-05-28
 
 - Issue #211: Deduplicated progression signal logic by extracting

@@ -8,19 +8,15 @@ has been reached for the current launch-review path.
 
 ## What Kilo Is Right Now
 
-Kilo currently has two app paths with different roles:
+Kilo is a single-path native app:
 
-- `mobile/` is now the active native-app path. It is an Expo/React Native
-  scaffold with a Kilo-specific shell that runs as a real native app surface.
-- The repo root remains the legacy prototype path. It runs directly in a
-  browser via CDN React and Babel from `Kilo.html`, and there is also a minimal
-  Android Capacitor shell that stages that same web app into `www/` for device
-  install.
+- `mobile/` is the active Expo/React Native app with local-only persistence via
+  AsyncStorage-backed modules under `mobile/storage/`.
+- The legacy browser prototype (`Kilo.html`, `src/`, `tests/`) is archived under
+  `docs/archive/browser-prototype/`. The Capacitor Android shell and vitest
+  config have been removed (issue #213).
 
-There is still no server, no backend, and no Supabase connection. Persistence
-remains local-only in the current implementation paths: the browser prototype
-persists via `localStorage`, while the native app now persists user-created
-entries via AsyncStorage-backed modules under `mobile/storage/`.
+There is still no server, no backend, and no Supabase connection.
 
 Roadmap status:
 
@@ -34,18 +30,9 @@ workout sessions and bodyweight entries used as history scaffolding. User-create
 entries are layered on top of this seed via `localStorage` merge on each page
 load.
 
-The browser prototype has five tabs: Home, Log, Weight, Stats, More. The native
-Expo app now also exposes five tabs: Home, Log, Weight, Analytics, and More.
+The native Expo app exposes five tabs: Home, Log, Weight, Analytics, and More.
 
-For physical-device packaging, the repo now has two Android paths with different
-constraints:
-
-1. Legacy prototype shell:
-   - `npm run build`
-   - `npm run cap:sync`
-   - `npm run cap:open`
-   - Build and run from Android Studio to a connected device
-2. Native Expo app:
+For physical-device packaging:
    - `cd mobile`
    - `eas build --platform android --profile preview`
    - Install the resulting APK on the phone
@@ -429,7 +416,7 @@ version, copyright notice, and an OTA Diagnostics panel covering the EAS
 channel, runtime version, current bundle (embedded vs. applied update),
 update-available/pending state, and a manual update check.
 
-### Parser (`src/parser.jsx`)
+### Parser (`mobile/lib/parser.js`)
 
 The MVP canonical parse path is fully implemented and tested.
 
@@ -478,81 +465,8 @@ The MVP canonical parse path is fully implemented and tested.
   set reps in place of top weight.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, legacy helpers)
-still exists for seeded-history compatibility and other browser-runtime
-formatting helpers. It is not used on any save path, and the active web/native
-analytics consumers now route through the canonical row/note parser plus the
-shared Epley-based derived-analytics helpers.
-
-### Weight Logging (`src/screens/weight.jsx`)
-
-- `KiloWeight` renders an entry field and Log button.
-- The Log button is disabled when the field is empty.
-- On submit, `parseWeightEntry` runs; validation errors are shown inline.
-- On success, "✓ Weight saved successfully" is shown; the button changes to
-  "Saved" and disables.
-- A new weight entry is written to `localStorage` (`kilo_weight_entries`) and
-  merged into `window.KILO_WEIGHTS`.
-- The Entries list below the graph shows the 12 most recent entries.
-- Edit (pencil icon) and delete (× icon) are present for user-created entries.
-  Edit opens an inline row editor with Save and cancel controls, re-runs
-  `parseWeightEntry` on the new value, and shows invalid edits as inline error
-  text.
-  Delete uses an inline confirm state (`DEL` / `×`) before removing the entry.
-
-### Home Quick-Log (`src/screens/home.jsx`)
-
-- A weight quick-log field and button are present on the Home tab when
-  `loggedToday` is false.
-- The same `parseWeightEntry` validation and `persistWeightEntry` write path are
-  used as on the Weight tab.
-
-**Prototype limitation:** in the current seeded prototype, `window.KILO_TODAY`
-is hardcoded to `'2026-05-05'` and `src/data.jsx` always seeds a weight entry
-for that date. This means `loggedToday` is always true and the Home quick-log
-input is always hidden in normal browser use. This path is covered by automated
-tests but cannot be reached by a manual tester without modifying the prototype
-source.
-
-### Workout Logging (`src/screens/log.jsx`)
-
-- `KiloLog` renders the exercise list for today's day-of-week split.
-- Each `ExerciseRow` runs `parseWorkoutRow` live on every keystroke and renders
-  a `ParsePreview` chip (or `⚠` error) inline.
-- The primary Save button lives in the Log header, stays reachable without
-  footer scrolling, and is disabled when no rows have valid parseable input.
-- If today's split has already been logged, the header area shows an
-  informational duplicate-session banner. Duplicate saves remain allowed.
-- On save, `parseWorkoutEntry` validates all rows together.
-  - Rows with errors are highlighted inline; no success screen appears.
-  - Non-inline save failures render directly below the header progress area.
-  - On success, a "Workout saved" confirmation screen is shown with both
-    `View Stats` and `Back to Home` actions.
-- Saved sessions are written to `localStorage` (`kilo_workout_sessions`) and
-  merged into `window.KILO_SESSIONS`.
-
-### Recent History (`src/screens/home.jsx`, `src/screens/stats.jsx`)
-
-- The Home tab and Stats history list both combine weight entries and workout
-  sessions, sorted by `saved_at` DESC.
-- The Home tab is display-only for recent history rows and does not expose
-  per-row correction actions.
-- Stats continues to own recent-history correction actions for user-created
-  entries.
-- Entries persist across page reloads via `localStorage`.
-- Seeded entries appear without correction actions (`isUserEntry` is false).
-
-### Correction Flows (`src/data.jsx`)
-
-Three correction helpers are implemented via `window.*` globals:
-
-| Function | Behavior |
-|---|---|
-| `window.deleteWeightEntry(id)` | Removes from `KILO_WEIGHTS` and `localStorage` |
-| `window.updateWeightEntry(id, value)` | Updates weight value in-place in `KILO_WEIGHTS` and `localStorage`; does not parse — the caller (`KiloWeight`) runs `parseWeightEntry` before invoking this helper |
-| `window.deleteWorkoutSession(id)` | Removes from `KILO_SESSIONS` and `localStorage` |
-
-Workout entries can only be deleted, not edited (within the MVP correction
-contract). Seeded entries are not correctable.
+exists in the archived browser prototype for seeded-history compatibility. It is
+not used on any active save path.
 
 ---
 
@@ -619,27 +533,11 @@ Launch validation must treat `localStorage` as the persistence layer. Any
 evaluation of the app against the Supabase-based data model described in
 `docs/mvp-roadmap.md` Phase 2 is premature.
 
-### Android shell is packaging-only
+### Legacy Capacitor shell removed
 
-The Capacitor shell is intentionally minimal. It wraps the existing staged web
-app in an Android WebView and does not add native product features, offline
-bundling, or platform-specific business logic. Because `Kilo.html` still loads
-React and Babel from CDN, the installed app currently requires internet access
-to render successfully on device.
-
-**Supply-chain hardening:** all runtime CDN dependencies in `Kilo.html` (React,
-ReactDOM, and Babel) are hardened with Subresource Integrity (SRI) using stable
-versioned URLs, `integrity` hashes, and `crossorigin="anonymous"`. This ensures
-that a compromise of the CDN provider cannot be used to inject malicious
-JavaScript into the packaged Android app or the browser prototype.
-
-**Android backup policy:** `android:allowBackup="true"` is set intentionally.
-User workout and weight entries stored in WebView `localStorage` are included in
-Android backup and device-to-device transfer. SharedPreferences, which contain
-Capacitor framework internals (device IDs, cached paths), are excluded via
-`backup_content.xml` (API ≤30) and `backup_rules.xml` (API 31+). There is no
-backend or auth layer in this path; the only user data worth preserving is the
-`localStorage`-backed entry history.
+The Capacitor Android shell (`android/`, `capacitor.config.json`) and the
+browser prototype build pipeline have been removed (issue #213). The native Expo
+app under `mobile/` is the only device-packaging path.
 
 ### OTA update code signing is configured (not yet active on installed builds)
 
@@ -694,21 +592,11 @@ Issue #36 review approved the native UI structure, but the approval was based on
 static inspection of the `mobile/**` diff. The Expo app has not yet been
 validated end-to-end on a device or emulator as part of the issue closeout.
 
-### `KILO_TODAY` is hardcoded
+### `KILO_TODAY` was hardcoded in the archived browser prototype
 
-`window.KILO_TODAY` is set to `'2026-05-05'` by `data.jsx`. All screens use
-this value as "today." The Home quick-log is unreachable during manual testing
-because a seeded weight entry always exists for that date. No screen reads the
-real system date. Any date-sensitive behavior (split day, `logged_at` defaulting)
-depends on this fixed value.
-
-### Seeded sessions do not carry canonical `items`
-
-Seeded workout sessions expose only `raw` strings per exercise, not parsed `items`.
-Any code path that reads `session.items` must guard against missing `items`. The
-Stats screen and Log screen `lastRef` display now derive from
-`parseWorkoutRow()`, so seeded raw strings continue to work without depending on
-the legacy parser path.
+`window.KILO_TODAY` was set to `'2026-05-05'` by the archived `data.jsx`. The
+native app does not use this hardcode. This known gap applies only to the
+archived prototype and is no longer relevant to the active codebase.
 
 ---
 
@@ -726,7 +614,7 @@ These were the prerequisites for manual launch validation on issue #17.
 - [x] `docs/repo-structure.md` exists and maps MVP-relevant repo areas
 
 **Automated tests**
-- [x] `npm test` passes with zero failures
+- [x] `npm --prefix mobile test` passes with zero failures
 
 **Manual smoke test**
 - [x] Final launch-signoff validation was completed for issue #17 with

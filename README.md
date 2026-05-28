@@ -1,16 +1,13 @@
 # Kilo
 
-Kilo currently has two client-only app paths:
+Kilo is a local-only fitness tracking app built with Expo/React Native.
 
-- `mobile/` is the active native app path. It is an Expo/React Native app with
-  local-only persistence.
-- The repo root is the legacy browser prototype path. It still runs directly in
-  the browser from `Kilo.html` and remains useful as a reference surface during
-  the native migration.
+- `mobile/` is the active app path. It persists user-created entries locally
+  via AsyncStorage-backed modules under `mobile/storage/`.
+- The legacy browser prototype is archived under
+  `docs/archive/browser-prototype/` for reference.
 
-There is still no backend or Supabase wiring in either path. The browser
-prototype persists user-created entries in `localStorage`, while the native app
-persists them locally in AsyncStorage-backed modules under `mobile/`.
+There is no backend or Supabase wiring. All persistence is local.
 
 ## Run The Native App
 
@@ -30,56 +27,31 @@ cd mobile
 eas build --platform android --profile preview
 ```
 
-## Run The Legacy Prototype
-
-From the repo root:
-
-```sh
-python3 -m http.server 8000
-```
-
-Open [http://localhost:8000/Kilo.html](http://localhost:8000/Kilo.html) in a
-browser.
-
-The legacy browser entry point is `Kilo.html`. It loads React, ReactDOM, and
-Babel from CDN and then loads the app source from `src/`.
-
 ## Run Tests
 
 Install dependencies once:
 
 ```sh
-npm install
+npm --prefix mobile install
 ```
 
-Run the full suite:
+Run the test suite:
 
 ```sh
-npm test
+npm --prefix mobile test
 ```
-
-Watch mode:
-
-```sh
-npm run test:watch
-```
-
-Tests run with Vitest + jsdom. No browser or app server is required for the
-test suite.
 
 ## Repo Map
 
 | Path | What it is |
 |------|------------|
-| `mobile/` | Active Expo/React Native app path |
-| `Kilo.html` | Browser entry point for the legacy prototype |
-| `src/app.jsx` | Top-level tab routing across Home, Log, Weight, Stats, and More |
-| `src/parser.jsx` | Workout and weight parse/validation logic |
-| `src/data.jsx` | Seeded exercises, sessions, weights, goals, and global runtime state |
-| `src/screens/` | User-facing screens for dashboard, workout logging, weight logging, stats, and more |
-| `src/components/ui.jsx` | Shared UI primitives and design tokens used across screens |
-| `tests/` | Parser tests, weight/home UI tests, and jsdom runtime setup |
+| `mobile/` | Active Expo/React Native app |
+| `mobile/lib/parser.js` | Workout and weight parse/validation logic |
+| `mobile/lib/data.js` | Exercise catalog, entry factories, and shared analytics helpers |
+| `mobile/screens/` | Native screens: Home, Log, Weight, Analytics, More |
+| `mobile/tests/` | Jest test suites for parser, data, storage, and screen coverage |
 | `docs/` | Current-state, architecture, testing/QA, roadmap, and repo-structure docs |
+| `docs/archive/browser-prototype/` | Archived legacy browser prototype (reference only) |
 
 ## Key Docs For Launch Review
 
@@ -89,16 +61,10 @@ test suite.
 | [`docs/architecture.md`](docs/architecture.md) | Script load order, parser paths, persistence model, and global state |
 | [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Automated coverage inventory and manual smoke checklist |
 | [`docs/repo-structure.md`](docs/repo-structure.md) | File map, structural verdict, and repo-orientation notes |
-| [`docs/mvp-v3.5-roadmap.md`](docs/mvp-v3.5-roadmap.md) | Latest completed roadmap pass for the native cleanup / polish sequence |
+| [`docs/roadmap-mvp-refine.md`](docs/roadmap-mvp-refine.md) | Active stability and structural cleanup roadmap |
 
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
-what is implemented, which app path is current, and what still gates launch
-validation.
-
-The roadmap docs under `docs/mvp-roadmap.md`, `docs/mvp-v2-roadmap.md`,
-`docs/mvp-v3-roadmap.md`, and `docs/mvp-v3.5-roadmap.md` are historical
-planning snapshots. For new planning work, create a new roadmap doc instead of
-editing one of those older files in place.
+what is implemented and what still gates launch validation.
 
 ## Copyright
 

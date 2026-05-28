@@ -25,7 +25,7 @@ The open issues are mostly valid, but the priority should be **stability and str
 
 ### Solid infrastructure
 - **751 mobile tests passing** (parser, data, storage, format, stats-screen, weight-goal-ui)
-- **836 browser tests passing** (parser, weight-UI, log-UI)
+- **836 browser tests archived** (parser, weight-UI, log-UI) — removed from active pipeline in #213
 - Clean pub/sub hook architecture for cross-tab state updates
 - Well-documented architecture, persistence model, and design tokens
 - Active OTA update pipeline via EAS for Android preview builds
@@ -42,7 +42,7 @@ The open issues are mostly valid, but the priority should be **stability and str
 ## 2. Current Broken / Regressed State
 
 ### Confirmed issues
-- **Vitest picks up mobile Jest test files** (`stats-screen.test.js`, `weight-goal-ui.test.js`): root `npm test` reports 2 failed suites due to syntax mismatch. The mobile Jest runner passes all 751 tests fine. This is a vitest config issue — it should exclude `mobile/tests/` since those are Jest-only. Low severity but creates noise.
+- ~~**Vitest picks up mobile Jest test files**: resolved in #208; vitest and browser test infrastructure removed entirely in #213.~~
 - **Tab-switch flicker** (#204): intermittent visual flicker on all main tabs except More, most visible on Stats. Likely caused by full screen remount on tab switch in `App.js`. User-visible UI defect.
 
 ### Documented gaps (acceptable per current-state.md)
@@ -76,7 +76,7 @@ The open issues are mostly valid, but the priority should be **stability and str
 
 ### Gaps — issues that should exist but don't
 
-1. **Vitest config: exclude mobile/tests/**: Root vitest picks up Jest-syntax files causing 2 false failures. Trivial fix (add `exclude` to vitest.config.js). No issue exists.
+1. ~~**Vitest config: exclude mobile/tests/**: resolved in #208; vitest removed in #213.~~
 2. **Stale docs cleanup**: `docs/current-state.md` references `KILO_TODAY` hardcode that no longer exists. Several superseded roadmap docs (`mvp-roadmap.md`, `v2`, `v3`, `v3.5`) still in the repo. Low priority but adds confusion.
 3. **No issue for More screen file ownership resolution outcome**: #202 is planning to determine where the More surface lives, but the implementation issue hasn't been created yet. This is expected — #202 will produce it.
 
@@ -96,7 +96,7 @@ The open issues are mostly valid, but the priority should be **stability and str
 
 - **Full remount on tab switch** (`App.js`): Each tab switch remounts the screen component. This causes the flicker (#204) and loses scroll position. The Stats screen is worst because its loading guard briefly renders a placeholder during remount.
 
-- **Browser prototype is dead weight**: `src/`, `Kilo.html`, `tests/*.jsx`, and the Capacitor build pipeline are confirmed overhead by the user. The browser tests still run under vitest, and 2 mobile Jest test files fail under vitest due to syntax mismatch. All of this should be cleaned up.
+- ~~**Browser prototype is dead weight**: archived in #213. `src/`, `Kilo.html`, `tests/` moved to `docs/archive/browser-prototype/`; Capacitor shell and vitest removed.~~
 
 - **LogScreen's double-tap is undiscoverable**: The only way to enter edit mode on the current routine is a 300ms double-tap (line 54-60) with a small "Double-tap to edit" hint (line 540). No explicit Edit button exists. Users will try single-tap first and get confused.
 
@@ -127,9 +127,7 @@ Priority: **stability and structural cleanup first, then features.** The app wor
 - This prevents the next signal-related bug.
 
 **3. Remove the browser prototype from the test pipeline** — Claude
-- `tests/parser.test.jsx`, `tests/weight-ui.test.jsx`, `tests/log-ui.test.jsx` test the frozen browser prototype. The mobile Jest suite already covers parser parity with 270 tests.
-- Either: (a) exclude `tests/*.jsx` from vitest, or (b) remove them entirely if the browser prototype is truly dead.
-- Also fixes the vitest config issue where `mobile/tests/` files fail under vitest due to Jest syntax.
+- ~~Browser prototype tests archived and vitest removed in #213.~~
 
 **4. Fix tab-switch flicker (#204)** — Gemini
 - Confirmed still present on device. The full remount on tab switch in `App.js` causes visible flicker, worst on Stats.
@@ -250,17 +248,10 @@ runs clean with no false failures.
 
 Ordered tasks:
 
-#### Task 1: Fix vitest config to exclude mobile Jest test files
+#### Task 1: Fix vitest config to exclude mobile Jest test files — COMPLETE
 
-- **Issue:** `#208`
-- **Goal:** eliminate false test failures from vitest picking up Jest-syntax
-  files.
-- **Scope:** add `exclude: ['mobile/tests/**', 'node_modules/**']` to
-  `vitest.config.js` test config.
-- **Verification:** `npm test` passes with 0 failed suites; `npm --prefix
-  mobile test` still passes 751 tests.
-- **Labels:** `mvp-refine`, `agent:claude`, `area:docs`, `type:bug`,
-  `effort:default`, `reasoning:medium`
+- **Issue:** `#208` (closed)
+- Resolved; vitest and browser test infrastructure subsequently removed in #213.
 
 #### Task 2: Extract MoreScreen and sub-screens from HomeScreen.js
 
@@ -289,18 +280,12 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:claude`, `area:parser`,
   `type:implementation`, `effort:default`, `reasoning:medium`
 
-#### Task 4: Archive browser prototype source and test files
+#### Task 4: Archive browser prototype source and test files — COMPLETE
 
-- **Issue:** `#213`
-- **Goal:** remove the frozen browser prototype from the active codebase and
-  test pipeline.
-- **Scope:** move `src/`, `tests/`, `Kilo.html` to
-  `docs/archive/browser-prototype/`; clean up vitest config and Capacitor
-  deps; update `docs/repo-structure.md`.
-- **Verification:** `npm test` runs clean; archived files intact under
-  `docs/archive/browser-prototype/`.
-- **Labels:** `mvp-refine`, `agent:claude`, `area:docs`,
-  `type:implementation`, `effort:default`, `reasoning:medium`
+- **Issue:** `#213` (closed)
+- Browser prototype source, tests, and `Kilo.html` moved to
+  `docs/archive/browser-prototype/`. Capacitor shell, vitest config, and all
+  browser-specific deps removed.
 
 #### Task 5: Fix tab-switch flicker
 
