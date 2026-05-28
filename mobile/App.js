@@ -6,7 +6,8 @@ import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
 import { ScrollContext } from './components/ScreenShell';
 
-import { HomeScreen, MoreScreen } from './screens/HomeScreen';
+import { HomeScreen } from './screens/HomeScreen';
+import { MoreScreen } from './screens/MoreScreen';
 import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { StatsScreen } from './screens/StatsScreen';
