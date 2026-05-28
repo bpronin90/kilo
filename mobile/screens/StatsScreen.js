@@ -198,13 +198,8 @@ export function StatsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  return (
-    <ScreenShell
-      ref={scrollRef}
-      title="Analytics"
-      subtitle="Insights derived from your logs."
-      stickyHeaderIndices={[4]}
-    >
+  const screenContent = React.Children.toArray(
+    <>
       <View onLayout={handleWeightLayout}>
         <SectionTitle>Weight Trends</SectionTitle>
       </View>
@@ -323,7 +318,10 @@ export function StatsScreen({ multiplier, section }) {
 
       </View>
 
-      <View style={styles.signalStickyHeader}>
+      <View 
+        style={styles.signalStickyHeader} 
+        testID="sticky-header" // Note: testID is used at runtime by stickyHeaderIndex calculation below
+      >
         <SectionTitle>Progressive Overload</SectionTitle>
         <View style={styles.searchContainer}>
           <TextInput
@@ -441,6 +439,22 @@ export function StatsScreen({ multiplier, section }) {
           Tap the bookmark on any exercise in your note to track it here.
         </Text>
       )}
+    </>
+  );
+
+  const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
+  // foundIndex + 1 to account for ScreenShell's internal headerWrapper.
+  // If not found, we pass an empty array to disable sticky behavior rather than sticking a random element.
+  const stickyHeaderIndices = foundIndex !== -1 ? [foundIndex + 1] : [];
+
+  return (
+    <ScreenShell
+      ref={scrollRef}
+      title="Analytics"
+      subtitle="Insights derived from your logs."
+      stickyHeaderIndices={stickyHeaderIndices}
+    >
+      {screenContent}
     </ScreenShell>
   );
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.13 - 2026-05-28
+
+- Issue #216: Replaced hardcoded `stickyHeaderIndices={[4]}` in StatsScreen
+  with a dynamic index calculation so the sticky header stays correct if
+  sections are added or reordered.
+
 ## 0.46.12 - 2026-05-28
 
 - Issue #215: Wrapped all useEntries pub/sub listener calls in try-catch so
