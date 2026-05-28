@@ -468,7 +468,7 @@ function CrossDayComparison({ daySignals, currentDay, otherDays }) {
           : Colors.caution;
         const trendChar = d?.overload_trend === 'up' ? '↑'
           : d?.overload_trend === 'down' ? '↓'
-          : d?.overload_trend === 'flat' ? '→' : null;
+          : d?.overload_trend === 'flat' ? '↔' : null;
         return (
           <React.Fragment key={day}>
             {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
@@ -496,9 +496,9 @@ function dropOffBadgeColor(flag) {
 
 function formatOverload(trend) {
   switch (trend) {
-    case 'up':   return <MaterialIcons name="arrow-upward"   size={16} color={Colors.success} />;
-    case 'flat': return <MaterialIcons name="horizontal-rule" size={16} color={Colors.caution} />;
-    case 'down': return <MaterialIcons name="arrow-downward" size={16} color={Colors.error}   />;
+    case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
+    case 'flat': return <MaterialIcons name="compare-arrows"  size={16} color={Colors.caution} />;
+    case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
     default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
   }
 }

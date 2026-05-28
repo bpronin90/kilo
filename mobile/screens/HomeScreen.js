@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button, LineChart } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useUserProfile, useWeightGoal } from '../hooks/useEntries';
+import { useUserProfile, useWeightGoal, useWorkoutNotes, useTrackedLifts } from '../hooks/useEntries';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -54,6 +54,8 @@ const formatGoalDirection = (direction) => {
 
 export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavigate }) {
   const { goal: weightGoal } = useWeightGoal();
+  const { notes } = useWorkoutNotes();
+  const { trackedLifts } = useTrackedLifts();
 
   const dashboardData = useMemo(() => {
     let oneK = null;
@@ -73,7 +75,18 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
     const latestWeight = weightTrends.currentWeight;
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
+    // Compute classifications live from all notes (same source as StatsScreen).
+    const allSections = (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
+    const trackedNames = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
+    const { classifications: liveClassifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
+
+    const counts = { progressing: 0, stalled: 0, regressing: 0, inconsistent: 0, initial: 0 };
+    Object.values(liveClassifications).forEach(val => {
+      if (val && counts[val] !== undefined) counts[val]++;
+    });
+
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
+    weeklySummary.classifications = counts;
 
     return {
       weightSeries,
@@ -83,7 +96,7 @@ export function HomeScreen({ weightEntries, workoutNote, successMessage, onNavig
       weeklySummary,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
-  }, [weightEntries, workoutNote, weightGoal]);
+  }, [weightEntries, workoutNote, weightGoal, notes, trackedLifts]);
 
   return (
     <ScreenShell
