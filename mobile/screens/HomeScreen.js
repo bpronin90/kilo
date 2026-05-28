@@ -52,6 +52,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   const { goal: weightGoal } = useWeightGoal();
   const { trackedLifts } = useTrackedLifts();
 
+  const allSections = useMemo(
+    () => (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []),
+    [notes]
+  );
+
   const dashboardData = useMemo(() => {
     let oneK = null;
     let sections = null;
@@ -71,7 +76,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
 
     // Mirror StatsScreen: derive signals for tracked exercises visible in the current note only.
-    const allSections = (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
     const namesInCurrent = new Set(
       (sections || []).flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
     );
@@ -93,7 +97,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       weeklySummary,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
-  }, [weightEntries, workoutNote, weightGoal, notes, trackedLifts]);
+  }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
 
   return (
     <ScreenShell
