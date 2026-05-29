@@ -836,13 +836,21 @@ function _detectExerciseClass(sets) {
 // sections: output of parseWorkoutNote(noteText).sections
 // exerciseNames: string[] of exercise names
 //
-// Returns { [normalizedName]: {
-//   exercise_class: 'reps_only' | 'time_based',
-//   total_reps: number | null,
-//   total_reps_arrow: 'up'|'down'|'dash'|'baseline'|null,
-//   longest_hold: number | null,
-//   longest_hold_arrow: 'up'|'down'|'dash'|'baseline'|null,
-// } }
+// Returns { [normalizedName]: one of two shapes keyed by exercise_class:
+//
+//   exercise_class === 'reps_only':
+//     { exercise_class: 'reps_only',
+//       total_reps: number | null,
+//       total_reps_arrow: 'up'|'down'|'dash'|'baseline'|null }
+//
+//   exercise_class === 'time_based':
+//     { exercise_class: 'time_based',
+//       longest_hold: number | null,       // seconds
+//       longest_hold_arrow: 'up'|'down'|'dash'|'baseline'|null }
+//
+// Consumers must branch on exercise_class; only the fields for the detected
+// class are present. Weighted exercises (any added/assisting load) are excluded.
+// }
 export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames) {
   if (!sections || !exerciseNames || exerciseNames.length === 0) return {};
 
