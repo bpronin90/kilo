@@ -424,13 +424,11 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:codex`, `area:ui`, `type:planning`,
   `effort:default`, `reasoning:medium`
 
-#### Task 14: Implement Weight tab visual consistency cleanups
+#### Task 14: Implement Weight tab visual consistency cleanups — COMPLETE
 
-- **Issue:** `#200`
-- **Goal:** apply the Weight tab visual consistency cleanups identified in the
-  `#189` design review.
-- **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`, `area:weight`,
-  `type:implementation`, `effort:default`
+- **Issue:** `#200` (closed)
+- Switched the Weight save CTA to the primary dark button treatment and
+  converted goal Edit/Clear actions to chip-style treatment.
 
 #### Task 15: Derive non-weighted tracked-exercise card metrics
 

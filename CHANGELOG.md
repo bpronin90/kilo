@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.15 - 2026-05-28
+
+- Issue #200: Switched the Weight save CTA to the primary dark button
+  treatment and converted goal Edit/Clear actions from bare text to
+  chip-style treatment for visual consistency with the established UI system.
+
 ## 0.46.14 - 2026-05-28
 
 - Issue #217: Unified exercise name normalization into a single
