@@ -248,6 +248,9 @@ export function StatsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
+    <View key="activity-title">
+      <SectionTitle>Activity</SectionTitle>
+    </View>,
     <View key="session-stat" style={styles.statRow}>
       <StatCard label="Workout sessions" value={String(sessionCount)} tone={getSessionTone(sessionCount)} />
     </View>,
