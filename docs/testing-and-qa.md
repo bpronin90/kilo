@@ -259,6 +259,21 @@ The gate catches advisories in `package-lock.json` and `mobile/package-lock.json
 
 ---
 
+## Version Sync Gate
+
+A CI workflow (`.github/workflows/version-check.yml`) runs `node scripts/sync-version.mjs --check` on every push to `main` and on every pull request. The job fails if the mobile version surfaces (`mobile/package.json` and `app.json` `expo.version`) drift from the canonical root `package.json` version.
+
+The canonical app version lives in the root `package.json`. `mobile/package.json` (displayed version) and `app.json` `expo.version` (OTA `appVersion` runtime boundary) must mirror it. The closeout script (`scripts/close-issue.sh`) runs the same sync after bumping the root version, so a normal closeout keeps all three aligned automatically.
+
+Run the check or fix drift locally:
+
+```sh
+node scripts/sync-version.mjs --check   # report drift (CI gate)
+node scripts/sync-version.mjs           # write the canonical version into the mobile files
+```
+
+---
+
 ## Installable Preview Smoke Checklist
 
 Before declaring the packaged preview ready, a human tester must pass every step below on a physical phone. This is the minimum real-device check for installability, launch, update/relaunch, loading behavior, and basic touch interaction. It is not full product QA.
