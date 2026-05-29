@@ -235,6 +235,11 @@ The real native app path now has a modular React Native shell:
   `Progressive Overload` section with routine-day grouping, collapsible
   group headers, search filtering, and a tabular two-line row layout
   (exercise name + 4-column metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
+  Non-weighted exercises (reps-only or time-based) render with a minimal
+  sub-layout showing `Avg` and `Best` metrics (average reps/hold per set
+  and highest single-set value) with inline labels, plus a PO arrow
+  trending on average progression (`↔` steady, `↑`/`↓` improving/declining,
+  `—` when fewer than two sessions are logged).
   Multi-day exercises appear in each relevant group and now render their row
   metrics from the matching per-day signal payload for that weekday slot
   (`latest_pr`, `latest_top_weight`, `overload_trend`, `is_bodyweight`) while

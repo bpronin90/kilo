@@ -3,9 +3,10 @@ import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInp
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, LineChart, ArtisanalPanel } from '../components/UI';
-import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff } from '../lib/data';
+import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
 import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
+import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
 export function StatsScreen({ multiplier, section }) {
@@ -120,10 +121,13 @@ export function StatsScreen({ multiplier, section }) {
     // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
     const { signals, nameDisplayMap, repDropOffFlags, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
+    // Non-weighted metrics for reps-only and time-based exercises (from #165 derivation)
+    const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
+
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
 
-    return { signals, oneK, nameDisplayMap, repDropOffFlags, perDaySignals };
+    return { signals, oneK, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   const groupedSignals = useMemo(() => {
@@ -198,199 +202,223 @@ export function StatsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  const screenContent = React.Children.toArray(
-    <>
-      <View onLayout={handleWeightLayout}>
-        <SectionTitle>Weight Trends</SectionTitle>
-      </View>
-      <Card style={styles.weightCard}>
-        <View style={styles.weightHeader}>
-          <View>
-            <Text style={styles.weightLabel}>Latest weigh-in</Text>
-            <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
+  const screenContent = React.Children.toArray([
+    <View key="weight-trends-title" onLayout={handleWeightLayout}>
+      <SectionTitle>Weight Trends</SectionTitle>
+    </View>,
+    <Card key="weight-card" style={styles.weightCard}>
+      <View style={styles.weightHeader}>
+        <View>
+          <Text style={styles.weightLabel}>Latest weigh-in</Text>
+          <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
+        </View>
+        {weightSummary.paceFlag && (
+          <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
+            <Text style={styles.paceText}>
+              {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+            </Text>
           </View>
-          {weightSummary.paceFlag && (
-            <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
-              <Text style={styles.paceText}>
-                {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
-              </Text>
+        )}
+      </View>
+
+      <View style={{ height: 100, justifyContent: 'center' }}>
+        {rollingSeries.length > 0 ? (
+          <LineChart data={rollingSeries} height={100} hideHeader />
+        ) : (
+          <View style={{ height: 100, backgroundColor: Colors.cardBorder, opacity: 0.05, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
+             {isWeightLoading && <ActivityIndicator size="small" color={Colors.accent} />}
+          </View>
+        )}
+      </View>
+
+      <View style={styles.weightFooter}>
+        <View style={styles.weightStat}>
+          <Text style={styles.weightStatValue}>{weightSummary.avg7}</Text>
+          <Text style={styles.weightStatLabel}>7-day avg</Text>
+        </View>
+        <View style={styles.weightStat}>
+          <Text style={styles.weightStatValue}>{weightSummary.avg30}</Text>
+          <Text style={styles.weightStatLabel}>30-day avg</Text>
+        </View>
+      </View>
+    </Card>,
+
+    <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
+      <SectionTitle>Strength</SectionTitle>
+    {(isNotesLoading || analytics?.oneK?.total) ? (
+      <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
+        {isNotesLoading ? (
+          <ActivityIndicator size="large" color={Colors.accent} />
+        ) : (
+          <>
+            <Text style={styles.oneKLabel}>1K Progress</Text>
+            <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            
+            <View style={styles.oneKProgressBarContainer}>
+              <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
             </View>
-          )}
-        </View>
 
-        <View style={{ height: 100, justifyContent: 'center' }}>
-          {rollingSeries.length > 0 ? (
-            <LineChart data={rollingSeries} height={100} hideHeader />
-          ) : (
-            <View style={{ height: 100, backgroundColor: Colors.cardBorder, opacity: 0.05, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
-               {isWeightLoading && <ActivityIndicator size="small" color={Colors.accent} />}
+            <View style={styles.oneKBreakdown}>
+              <View style={styles.oneKItem}>
+                <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKItemLabel}>Squats</Text>
+              </View>
+              <View style={styles.oneKItem}>
+                <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKItemLabel}>Bench</Text>
+              </View>
+              <View style={styles.oneKItem}>
+                <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKItemLabel}>Deadlifts</Text>
+              </View>
             </View>
-          )}
-        </View>
-
-        <View style={styles.weightFooter}>
-          <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{weightSummary.avg7}</Text>
-            <Text style={styles.weightStatLabel}>7-day avg</Text>
-          </View>
-          <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{weightSummary.avg30}</Text>
-            <Text style={styles.weightStatLabel}>30-day avg</Text>
-          </View>
-        </View>
+          </>
+        )}
+      </ArtisanalPanel>
+    ) : (
+      <Card style={styles.infoCard}>
+        <Text style={styles.infoText}>
+          Choose your squat, bench, and deadlift exercises below to track 1k progress.
+        </Text>
       </Card>
+    )}
 
-      <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
-        <SectionTitle>Strength</SectionTitle>
-      {(isNotesLoading || analytics?.oneK?.total) ? (
-        <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
-          {isNotesLoading ? (
-            <ActivityIndicator size="large" color={Colors.accent} />
-          ) : (
-            <>
-              <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
-              
-              <View style={styles.oneKProgressBarContainer}>
-                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
-              </View>
-
-              <View style={styles.oneKBreakdown}>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Squats</Text>
-                </View>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Bench</Text>
-                </View>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Deadlifts</Text>
-                </View>
-              </View>
-            </>
-          )}
-        </ArtisanalPanel>
-      ) : (
-        <Card style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            Choose your squat, bench, and deadlift exercises below to track 1k progress.
-          </Text>
-        </Card>
-      )}
-
-      <Card style={styles.slotCard}>
-        <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
-        {(['bench', 'squat', 'deadlift']).map(slot => (
-          <View key={slot}>
-            <Pressable
-              style={styles.slotRow}
-              onPress={() => handleSlotTap(slot)}
-            >
-              <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
-              <View style={styles.slotValueRow}>
-                <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
-                <Text style={styles.slotChevron}>{activeSlot === slot ? '▲' : '▼'}</Text>
-              </View>
-            </Pressable>
-            {activeSlot === slot && noteExerciseNames.length > 0 && (
-              <View style={styles.slotPicker}>
-                {noteExerciseNames.map(name => (
-                  <Pressable
-                    key={name}
-                    style={[styles.slotOption, oneKSelections[slot] === name && styles.slotOptionSelected]}
-                    onPress={() => handleSelectExercise(slot, name)}
-                  >
-                    <Text style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}>
-                      {name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-            {activeSlot === slot && noteExerciseNames.length === 0 && (
-              <Text style={styles.slotEmpty}>Add exercises to your note first.</Text>
-            )}
-          </View>
-        ))}
-      </Card>
-
-      </View>
-
-      <View 
-        style={styles.signalStickyHeader} 
-        testID="sticky-header" // Note: testID is used at runtime by stickyHeaderIndex calculation below
-      >
-        <SectionTitle>Progressive Overload</SectionTitle>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search tracked exercises..."
-            placeholderTextColor={Colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            clearButtonMode="while-editing"
-          />
-        </View>
-        <View style={styles.signalColumnHeader}>
-          <View style={styles.signalColumnMetrics}>
-            <Text style={styles.signalColumnLabel}>1RM</Text>
-            <Text style={styles.signalColumnLabel}>Kilo</Text>
-            <Text style={styles.signalColumnLabel}>Best</Text>
-            <Text style={styles.signalColumnLabel}>Trend</Text>
-          </View>
-        </View>
-      </View>
-
-      {(isNotesLoading || isTrackedLoading) ? (
-        <View style={{ height: 100, justifyContent: 'center' }}>
-          <ActivityIndicator color={Colors.accent} />
-        </View>
-      ) : groupedSignals.length > 0 ? (
-        <ArtisanalPanel style={styles.poContainer}>
-          {groupedSignals.map((group, groupIdx) => {
-            const isCollapsed = collapsedGroups.has(group.name);
-            return (
-              <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
-                <Pressable 
-                  onPress={() => toggleGroup(group.name)}
-                  style={styles.groupHeader}
+    <Card style={styles.slotCard}>
+      <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
+      {(['bench', 'squat', 'deadlift']).map(slot => (
+        <View key={slot}>
+          <Pressable
+            style={styles.slotRow}
+            onPress={() => handleSlotTap(slot)}
+          >
+            <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
+            <View style={styles.slotValueRow}>
+              <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
+              <Text style={styles.slotChevron}>{activeSlot === slot ? '▲' : '▼'}</Text>
+            </View>
+          </Pressable>
+          {activeSlot === slot && noteExerciseNames.length > 0 && (
+            <View style={styles.slotPicker}>
+              {noteExerciseNames.map(name => (
+                <Pressable
+                  key={name}
+                  style={[styles.slotOption, oneKSelections[slot] === name && styles.slotOptionSelected]}
+                  onPress={() => handleSelectExercise(slot, name)}
                 >
-                  <Text style={styles.groupName}>{group.name}</Text>
-                  <MaterialIcons 
-                    name={isCollapsed ? "expand-more" : "expand-less"} 
-                    size={20} 
-                    color={Colors.textMuted} 
-                  />
+                  <Text style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}>
+                    {name}
+                  </Text>
                 </Pressable>
-                
-                {!isCollapsed && (
-                  <View style={styles.exerciseList}>
-                    {group.exercises.map((sig) => {
-                      const normName = normalizeLiftName(sig.name);
-                      // For multi-day exercises, use per-day metrics for this row's heading.
-                      const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
-                      const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
-                      const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
-                      const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-                      const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
-                      // Suppress hit_wall when the row is progressing — a rep drop-off
-                      // while still hitting a new top weight is not a warning to surface.
-                      const dropOffLabel = dropOffFlag === 'hit_wall' && rowTrend !== 'up' ? '⚠ Hit wall' : null;
-                      const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
+              ))}
+            </View>
+          )}
+          {activeSlot === slot && noteExerciseNames.length === 0 && (
+            <Text style={styles.slotEmpty}>Add exercises to your note first.</Text>
+          )}
+        </View>
+      ))}
+    </Card>
+    </View>,
 
-                      return (
-                        <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
-                          <View style={styles.signalNameRow}>
-                            <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-                            {dropOffLabel && (
-                              <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
-                                {dropOffLabel}
+    <View 
+      key="sticky-header"
+      style={styles.signalStickyHeader} 
+      testID="sticky-header" // Note: testID is used at runtime by stickyHeaderIndex calculation below
+    >
+      <SectionTitle>Progressive Overload</SectionTitle>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search tracked exercises..."
+          placeholderTextColor={Colors.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          clearButtonMode="while-editing"
+        />
+      </View>
+      <View style={styles.signalColumnHeader}>
+        <View style={styles.signalColumnMetrics}>
+          <Text style={styles.signalColumnLabel}>1RM</Text>
+          <Text style={styles.signalColumnLabel}>Kilo</Text>
+          <Text style={styles.signalColumnLabel}>Best</Text>
+          <Text style={styles.signalColumnLabel}>Trend</Text>
+        </View>
+      </View>
+    </View>,
+
+    (isNotesLoading || isTrackedLoading) ? (
+      <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
+        <ActivityIndicator color={Colors.accent} />
+      </View>
+    ) : groupedSignals.length > 0 ? (
+      <ArtisanalPanel key="po-container" style={styles.poContainer}>
+        {groupedSignals.map((group, groupIdx) => {
+          const isCollapsed = collapsedGroups.has(group.name);
+          return (
+            <View key={group.name} style={[styles.groupSection, groupIdx > 0 && styles.groupSectionBorder]}>
+              <Pressable 
+                onPress={() => toggleGroup(group.name)}
+                style={styles.groupHeader}
+              >
+                <Text style={styles.groupName}>{group.name}</Text>
+                <MaterialIcons 
+                  name={isCollapsed ? "expand-more" : "expand-less"} 
+                  size={20} 
+                  color={Colors.textMuted} 
+                />
+              </Pressable>
+              
+              {!isCollapsed && (
+                <View style={styles.exerciseList}>
+                  {group.exercises.map((sig) => {
+                    const normName = normalizeLiftName(sig.name);
+                    // For multi-day exercises, use per-day metrics for this row's heading.
+                    const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
+                    const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
+                    const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
+                    const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
+                    const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
+                    // Suppress hit_wall when the row is progressing — a rep drop-off
+                    // while still hitting a new top weight is not a warning to surface.
+                    const dropOffLabel = dropOffFlag === 'hit_wall' && rowTrend !== 'up' ? '⚠ Hit wall' : null;
+                    const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
+                    const nw = analytics.nonWeightedMetrics?.[normName];
+
+                    return (
+                      <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
+                        <View style={styles.signalNameRow}>
+                          <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
+                          {dropOffLabel && (
+                            <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
+                              {dropOffLabel}
+                            </Text>
+                          )}
+                        </View>
+
+                        {nw ? (
+                          <View style={styles.signalMetricsGrid}>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {nw.exercise_class === 'reps_only' 
+                                  ? (nw.avg_reps ?? '—')
+                                  : formatDuration(nw.avg_hold)}
                               </Text>
-                            )}
+                              <Text style={styles.nwMetricLabel}>AVG</Text>
+                            </View>
+                            <View style={styles.metricCol}>
+                              <Text style={styles.signalValue}>
+                                {nw.exercise_class === 'reps_only' 
+                                  ? (nw.best_set_reps ?? '—')
+                                  : formatDuration(nw.best_hold)}
+                              </Text>
+                              <Text style={styles.nwMetricLabel}>BEST</Text>
+                            </View>
+                            <View style={styles.metricCol} />
+                            <View style={styles.metricCol}>
+                              {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow)}
+                            </View>
                           </View>
-
+                        ) : (
                           <View style={styles.signalMetricsGrid}>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
@@ -414,33 +442,33 @@ export function StatsScreen({ multiplier, section }) {
                               {formatOverload(rowTrend)}
                             </View>
                           </View>
+                        )}
 
-                          {sig.isMultiDay && (
-                            sig.daySignals
-                              ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
-                              : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
-                          )}
+                        {sig.isMultiDay && (
+                          sig.daySignals
+                            ? <CrossDayComparison daySignals={sig.daySignals} currentDay={sig.currentDayHeading} otherDays={sig.otherDays} />
+                            : sig.otherDays.length > 0 && <Text style={styles.multiDaySummary}>Also on {sig.otherDays.join(', ')}</Text>
+                        )}
 
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ArtisanalPanel>
-      ) : searchQuery ? (
-        <View style={styles.emptySearch}>
-          <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
-        </View>
-      ) : (
-        <Text style={styles.emptyText}>
-          Tap the bookmark on any exercise in your note to track it here.
-        </Text>
-      )}
-    </>
-  );
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </ArtisanalPanel>
+    ) : searchQuery ? (
+      <View key="empty-search" style={styles.emptySearch}>
+        <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
+      </View>
+    ) : (
+      <Text key="empty-tracked" style={styles.emptyText}>
+        Tap the bookmark on any exercise in your note to track it here.
+      </Text>
+    )
+  ]);
 
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
   // foundIndex + 1 to account for ScreenShell's internal headerWrapper.
@@ -500,7 +528,10 @@ function formatOverload(trend) {
   switch (trend) {
     case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
     case 'flat': return <Text style={{ color: Colors.caution, fontSize: 14 }}>↔</Text>;
+    case 'dash': return <Text style={{ color: Colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
     case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
+    case 'baseline':
+    case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={Colors.textMuted} style={{ opacity: 0.4 }} />;
     default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
   }
 }
@@ -820,6 +851,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     opacity: 0.4,
     marginLeft: 2,
+  },
+  nwMetricLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
   multiDaySummary: {
     fontSize: 12,

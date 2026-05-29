@@ -2761,42 +2761,44 @@ describe('deriveNonWeightedTrackedExerciseMetrics', () => {
     expect(result['squat']).toBeUndefined();
   });
 
-  test('reps-only: first session → total_reps set, arrow = baseline', () => {
+  test('reps-only: first session → avg_reps and best_set_reps set, arrow = dash', () => {
     const sections = [nwSection('Pull-up', [[repSet(8), repSet(8), repSet(7)]])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up']);
     expect(result['pull-up']).toEqual({
       exercise_class: 'reps_only',
-      total_reps: 23,
-      total_reps_arrow: 'baseline',
+      avg_reps: 8,
+      best_set_reps: 8,
+      reps_arrow: 'dash',
     });
   });
 
-  test('reps-only: session 2 reps increased → arrow = up', () => {
+  test('reps-only: session 2 avg_reps increased → arrow = up', () => {
     const sections = [nwSection('Pull-up', [
       [repSet(8), repSet(8)],
       [repSet(10), repSet(9)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up']);
-    expect(result['pull-up'].total_reps).toBe(19);
-    expect(result['pull-up'].total_reps_arrow).toBe('up');
+    expect(result['pull-up'].avg_reps).toBe(10); // (10+9)/2 = 9.5 rounded up to 10
+    expect(result['pull-up'].best_set_reps).toBe(10);
+    expect(result['pull-up'].reps_arrow).toBe('up');
   });
 
-  test('reps-only: session 2 reps decreased → arrow = down', () => {
+  test('reps-only: session 2 avg_reps decreased → arrow = down', () => {
     const sections = [nwSection('Pull-up', [
       [repSet(10), repSet(10)],
       [repSet(7), repSet(7)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up']);
-    expect(result['pull-up'].total_reps_arrow).toBe('down');
+    expect(result['pull-up'].reps_arrow).toBe('down');
   });
 
-  test('reps-only: session 2 reps unchanged → arrow = dash', () => {
+  test('reps-only: session 2 avg_reps unchanged → arrow = flat', () => {
     const sections = [nwSection('Pull-up', [
       [repSet(8), repSet(7)],
       [repSet(8), repSet(7)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up']);
-    expect(result['pull-up'].total_reps_arrow).toBe('dash');
+    expect(result['pull-up'].reps_arrow).toBe('flat');
   });
 
   test('reps-only: all sets have rep_count = 0 → exercise not in result (unclassifiable)', () => {
@@ -2805,48 +2807,50 @@ describe('deriveNonWeightedTrackedExerciseMetrics', () => {
     expect(result['pull-up']).toBeUndefined();
   });
 
-  test('time-based: first session → longest_hold set, arrow = baseline', () => {
+  test('time-based: first session → avg_hold and best_hold set, arrow = dash', () => {
     const sections = [nwSection('Plank', [[durSet(45), durSet(60)]])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Plank']);
     expect(result['plank']).toEqual({
       exercise_class: 'time_based',
-      longest_hold: 60,
-      longest_hold_arrow: 'baseline',
+      avg_hold: 52.5,
+      best_hold: 60,
+      hold_arrow: 'dash',
     });
   });
 
-  test('time-based: longest_hold increased → arrow = up', () => {
+  test('time-based: avg_hold increased → arrow = up', () => {
     const sections = [nwSection('Plank', [
       [durSet(45)],
       [durSet(60)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Plank']);
-    expect(result['plank'].longest_hold).toBe(60);
-    expect(result['plank'].longest_hold_arrow).toBe('up');
+    expect(result['plank'].avg_hold).toBe(60);
+    expect(result['plank'].best_hold).toBe(60);
+    expect(result['plank'].hold_arrow).toBe('up');
   });
 
-  test('time-based: longest_hold decreased → arrow = down', () => {
+  test('time-based: avg_hold decreased → arrow = down', () => {
     const sections = [nwSection('Plank', [
       [durSet(60)],
       [durSet(45)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Plank']);
-    expect(result['plank'].longest_hold_arrow).toBe('down');
+    expect(result['plank'].hold_arrow).toBe('down');
   });
 
-  test('time-based: longest_hold unchanged → arrow = dash', () => {
+  test('time-based: avg_hold unchanged → arrow = flat', () => {
     const sections = [nwSection('Plank', [
       [durSet(60)],
       [durSet(60)],
     ])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Plank']);
-    expect(result['plank'].longest_hold_arrow).toBe('dash');
+    expect(result['plank'].hold_arrow).toBe('flat');
   });
 
-  test('skipped sessions are excluded from session count; first valid session → baseline', () => {
+  test('skipped sessions are excluded from session count; first valid session → dash', () => {
     const sections = [nwSection('Pull-up', ['skip', [repSet(8)]])];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up']);
-    expect(result['pull-up'].total_reps_arrow).toBe('baseline');
+    expect(result['pull-up'].reps_arrow).toBe('dash');
   });
 
   test('multiple exercises in one call', () => {
@@ -2856,8 +2860,8 @@ describe('deriveNonWeightedTrackedExerciseMetrics', () => {
     ];
     const result = deriveNonWeightedTrackedExerciseMetrics(sections, ['Pull-up', 'Plank']);
     expect(result['pull-up'].exercise_class).toBe('reps_only');
-    expect(result['pull-up'].total_reps_arrow).toBe('up');
+    expect(result['pull-up'].reps_arrow).toBe('up');
     expect(result['plank'].exercise_class).toBe('time_based');
-    expect(result['plank'].longest_hold_arrow).toBe('up');
+    expect(result['plank'].hold_arrow).toBe('up');
   });
 });

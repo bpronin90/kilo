@@ -359,3 +359,101 @@ describe('StatsScreen 1K Progress Card', () => {
     expect(hasText(root, 'Deadlifts')).toBe(true);
   });
 });
+
+describe('StatsScreen non-weighted exercise cards — minimal layout', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('reps-only non-weighted cards render avg_reps and best_set_reps', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. pull-up',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'pull-up': true },
+    };
+    const signals = [
+      { name: 'pull-up', latest_pr: null, kilo_max: null, latest_top_weight: null, overload_trend: null },
+    ];
+    const nonWeightedMetrics = {
+      'pull-up': { exercise_class: 'reps_only', avg_reps: 8, best_set_reps: 10, reps_arrow: 'up' }
+    };
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['pull-up', 'Pull-up']]),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'deriveNonWeightedTrackedExerciseMetrics').mockReturnValue(nonWeightedMetrics);
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'Pull-up')).toBe(true);
+    expect(hasText(root, '8')).toBe(true);
+    expect(hasText(root, '10')).toBe(true);
+    // Should NOT have 'lb' unit
+    expect(hasText(root, 'lb')).toBe(false);
+  });
+
+  test('time-based non-weighted cards render formatted avg_hold and best_hold', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. plank',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'plank': true },
+    };
+    const signals = [
+      { name: 'plank', latest_pr: null, kilo_max: null, latest_top_weight: null, overload_trend: null },
+    ];
+    const nonWeightedMetrics = {
+      'plank': { exercise_class: 'time_based', avg_hold: 75, best_hold: 90, hold_arrow: 'dash' }
+    };
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['plank', 'Plank']]),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'deriveNonWeightedTrackedExerciseMetrics').mockReturnValue(nonWeightedMetrics);
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'Plank')).toBe(true);
+    expect(hasText(root, '1:15')).toBe(true);
+    expect(hasText(root, '1:30')).toBe(true);
+  });
+
+  test('non-weighted card renders em-dash sentinel when value is null', () => {
+    const currentNote = {
+      id: 'n1',
+      raw_text: 'Monday\n+ lifting\n1. pull-up',
+    };
+    const hookOverrides = {
+      currentNote,
+      trackedLifts: { 'pull-up': true },
+    };
+    const signals = [
+      { name: 'pull-up', latest_pr: null, kilo_max: null, latest_top_weight: null, overload_trend: null },
+    ];
+    const nonWeightedMetrics = {
+      'pull-up': { exercise_class: 'reps_only', avg_reps: null, best_set_reps: null, reps_arrow: 'dash' }
+    };
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals,
+      nameDisplayMap: new Map([['pull-up', 'Pull-up']]),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'deriveNonWeightedTrackedExerciseMetrics').mockReturnValue(nonWeightedMetrics);
+
+    const component = setup({ hookOverrides });
+    const root = component.root;
+
+    expect(hasText(root, 'Pull-up')).toBe(true);
+    expect(findAllText(root).some(s => s === '—')).toBe(true);
+  });
+});

@@ -77,3 +77,10 @@ export function classifyWeightPace(delta) {
   if (abs < 1.5) return null;
   return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= 2.3 ? 'spike' : 'notable' };
 }
+
+export function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}

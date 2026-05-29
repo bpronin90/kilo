@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.48.0 - 2026-05-29
+
+- Issue #166: Render non-weighted tracked-exercise cards in the Progressive
+  Overload section with avg/best metrics, inline labels, and progression
+  arrows (↔ steady, ↑/↓ improving/declining, — no trend). Reps-only
+  exercises show average and best reps per set; time-based exercises show
+  average and best hold duration. Includes `formatDuration` helper for
+  time formatting.
+
 ## 0.47.0 - 2026-05-28
 
 - Issue #165: Added per-session derivation for non-weighted tracked exercises

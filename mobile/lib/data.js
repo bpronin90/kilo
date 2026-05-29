@@ -835,18 +835,19 @@ function _detectExerciseClass(sets) {
 // Derive card metrics for non-weighted tracked exercises.
 // sections: output of parseWorkoutNote(noteText).sections
 // exerciseNames: string[] of exercise names
-//
 // Returns { [normalizedName]: one of two shapes keyed by exercise_class:
 //
 //   exercise_class === 'reps_only':
 //     { exercise_class: 'reps_only',
-//       total_reps: number | null,
-//       total_reps_arrow: 'up'|'down'|'dash'|'baseline'|null }
+//       avg_reps: number | null,
+//       best_set_reps: number | null,
+//       reps_arrow: 'up'|'down'|'flat'|'dash'|null }
 //
 //   exercise_class === 'time_based':
 //     { exercise_class: 'time_based',
-//       longest_hold: number | null,       // seconds
-//       longest_hold_arrow: 'up'|'down'|'dash'|'baseline'|null }
+//       avg_hold: number | null,            // seconds
+//       best_hold: number | null,           // seconds
+//       hold_arrow: 'up'|'down'|'flat'|'dash'|null }
 //
 // Consumers must branch on exercise_class; only the fields for the detected
 // class are present. Weighted exercises (any added/assisting load) are excluded.
@@ -874,45 +875,47 @@ export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames)
     if (!exerciseClass || exerciseClass === 'weighted') continue;
 
     if (exerciseClass === 'reps_only') {
-      const sessionTotals = loggedSessions.map(se =>
-        se.sets.reduce((sum, s) => sum + (s.rep_count != null && s.rep_count > 0 ? s.rep_count : 0), 0)
-      );
-      const latestTotal = sessionTotals[sessionTotals.length - 1];
-      const total_reps = latestTotal > 0 ? latestTotal : null;
+      const sessionAvgs = loggedSessions.map(se => {
+        const validSets = se.sets.filter(s => s.rep_count != null && s.rep_count > 0);
+        return validSets.length > 0 ? (validSets.reduce((sum, s) => sum + s.rep_count, 0) / validSets.length) : 0;
+      });
+      const latestAvg = sessionAvgs[sessionAvgs.length - 1];
+      const avg_reps = latestAvg > 0 ? Math.round(latestAvg) : null;
+      const best_set_reps = Math.max(...latestSets.map(s => s.rep_count || 0)) || null;
 
-      let priorTotal = null;
-      for (let i = sessionTotals.length - 2; i >= 0; i--) {
-        if (sessionTotals[i] > 0) { priorTotal = sessionTotals[i]; break; }
+      let priorAvg = null;
+      for (let i = sessionAvgs.length - 2; i >= 0; i--) {
+        if (sessionAvgs[i] > 0) { priorAvg = sessionAvgs[i]; break; }
       }
 
-      const total_reps_arrow = total_reps === null ? null
-        : loggedSessions.length === 1 || priorTotal === null ? 'baseline'
-        : latestTotal > priorTotal ? 'up'
-        : latestTotal < priorTotal ? 'down'
-        : 'dash';
+      const reps_arrow = avg_reps === null ? null
+        : loggedSessions.length === 1 || priorAvg === null ? 'dash'
+        : latestAvg > priorAvg ? 'up'
+        : latestAvg < priorAvg ? 'down'
+        : 'flat';
 
-      result[normName] = { exercise_class: 'reps_only', total_reps, total_reps_arrow };
+      result[normName] = { exercise_class: 'reps_only', avg_reps, best_set_reps, reps_arrow };
     } else {
-      const latestMax = Math.max(
-        ...latestSets.map(s => s.duration_seconds != null && s.duration_seconds > 0 ? s.duration_seconds : 0)
-      );
-      const longest_hold = latestMax > 0 ? latestMax : null;
+      const sessionAvgs = loggedSessions.map(se => {
+        const validSets = se.sets.filter(s => s.duration_seconds != null && s.duration_seconds > 0);
+        return validSets.length > 0 ? (validSets.reduce((sum, s) => sum + s.duration_seconds, 0) / validSets.length) : 0;
+      });
+      const latestAvg = sessionAvgs[sessionAvgs.length - 1];
+      const avg_hold = latestAvg > 0 ? latestAvg : null;
+      const best_hold = Math.max(...latestSets.map(s => s.duration_seconds || 0)) || null;
 
-      let priorMax = null;
-      for (let i = loggedSessions.length - 2; i >= 0; i--) {
-        const m = Math.max(...loggedSessions[i].sets.map(s =>
-          s.duration_seconds != null && s.duration_seconds > 0 ? s.duration_seconds : 0
-        ));
-        if (m > 0) { priorMax = m; break; }
+      let priorAvg = null;
+      for (let i = sessionAvgs.length - 2; i >= 0; i--) {
+        if (sessionAvgs[i] > 0) { priorAvg = sessionAvgs[i]; break; }
       }
 
-      const longest_hold_arrow = longest_hold === null ? null
-        : loggedSessions.length === 1 || priorMax === null ? 'baseline'
-        : longest_hold > priorMax ? 'up'
-        : longest_hold < priorMax ? 'down'
-        : 'dash';
+      const hold_arrow = avg_hold === null ? null
+        : loggedSessions.length === 1 || priorAvg === null ? 'dash'
+        : latestAvg > priorAvg ? 'up'
+        : latestAvg < priorAvg ? 'down'
+        : 'flat';
 
-      result[normName] = { exercise_class: 'time_based', longest_hold, longest_hold_arrow };
+      result[normName] = { exercise_class: 'time_based', avg_hold, best_hold, hold_arrow };
     }
   }
 
