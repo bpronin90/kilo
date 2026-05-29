@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.1 - 2026-05-29
+
+- Issue #219: Migrated screen files to `normalizeExerciseKey`. Replaced all
+  manual `normalizeLiftName(canonicalizeName(...))` chains in HomeScreen and
+  StatsScreen with the unified `normalizeExerciseKey` helper. Fixed a bug in
+  StatsScreen where `canonicalizeName(...).toLowerCase()` was missing whitespace
+  collapse, causing potential key mismatches for multi-word exercise names.
+  Removed the now-unused `canonicalizeName` public export from parser.js.
+
 ## 0.49.0 - 2026-05-29
 
 - Issue #92: Session-count signifier colors on Analytics and Home. The
