@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote, normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -111,11 +111,11 @@ export function StatsScreen({ multiplier, section }) {
     // alias variants in the note (e.g. 'DB Bench' for 'DB Bench Press') still match
     // tracked lift names stored under the canonical form.
     const namesInCurrent = new Set(
-      currentSections.flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
+      currentSections.flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
     );
     const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
     const visibleTrackedNames = globallyTrackedNames.filter(
-      name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
+      name => namesInCurrent.has(normalizeExerciseKey(name))
     );
 
     // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
@@ -135,7 +135,7 @@ export function StatsScreen({ multiplier, section }) {
     const sections = parsedSections.currentSections;
     const signals = analytics.signals || [];
     const perDaySignals = analytics.perDaySignals || {};
-    const normCanon = (name) => normalizeLiftName(canonicalizeName(name));
+    const normCanon = normalizeExerciseKey;
     const nameToSignal = new Map(signals.map(s => [normCanon(s.name), s]));
 
     // To detect multi-day exercises
@@ -162,7 +162,7 @@ export function StatsScreen({ multiplier, section }) {
           exercises: groupExercises.map(sig => {
             const norm = normCanon(sig.name);
             const isMultiDay = exerciseGroupCount.get(norm) > 1;
-            const canonName = canonicalizeName(sig.name).toLowerCase();
+            const canonName = normalizeExerciseKey(sig.name);
 
             return {
               ...sig,

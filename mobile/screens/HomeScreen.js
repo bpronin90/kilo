@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote, normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -13,7 +13,6 @@ import {
   deriveWorkoutNoteAnalytics,
   deriveOverloadCounts,
   computeWeeklySummary,
-  normalizeLiftName,
 } from '../lib/data';
 
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
@@ -77,11 +76,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
     // Mirror StatsScreen: derive signals for tracked exercises visible in the current note only.
     const namesInCurrent = new Set(
-      (sections || []).flatMap(s => s.exercises.map(e => normalizeLiftName(canonicalizeName(e.name))))
+      (sections || []).flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
     );
     const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
     const visibleTrackedNames = globallyTracked.filter(
-      name => namesInCurrent.has(normalizeLiftName(canonicalizeName(name)))
+      name => namesInCurrent.has(normalizeExerciseKey(name))
     );
     const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
     const counts = deriveOverloadCounts(sections, signals, perDaySignals);

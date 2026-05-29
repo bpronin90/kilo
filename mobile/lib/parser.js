@@ -495,11 +495,6 @@ const _EXERCISE_ALIASES = new Map([
   ['Lat Pulldown',             ['lat pd', 'lat pulldowns', 'pulldowns']],
 ]);
 
-// Resolves a raw exercise name to its canonical alias key.
-// If the name is already a canonical key or has no alias entry, returns it unchanged.
-// Exported so callers outside the parser (e.g. classifyExerciseSessions) can
-// resolve alias variants before doing analytics lookups.
-export function canonicalizeName(name) { return _canonicalizeName(name); }
 function _canonicalizeName(name) {
   const lower = name.toLowerCase().trim();
   for (const [canonical, aliases] of _EXERCISE_ALIASES) {
