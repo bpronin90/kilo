@@ -4,8 +4,8 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote, normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
+import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
+import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -52,7 +52,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   const { trackedLifts } = useTrackedLifts();
 
   const allSections = useMemo(
-    () => (notes || []).flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []),
+    () => (notes || []).flatMap(n => getNoteSections(n)),
     [notes]
   );
 
@@ -61,7 +61,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     let sections = null;
 
     if (workoutNote?.raw_text) {
-      ({ sections } = parseWorkoutNote(workoutNote.raw_text));
+      sections = getNoteSections(workoutNote);
 
       const oneKSelections = {
         ...DEFAULT_1K_EXERCISES,

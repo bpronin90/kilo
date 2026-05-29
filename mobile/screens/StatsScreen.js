@@ -4,8 +4,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
+import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -94,8 +94,8 @@ export function StatsScreen({ multiplier, section }) {
 
   // Parse sections once — single canonical source for all workout consumers in this screen
   const parsedSections = useMemo(() => {
-    const allSections = notes.flatMap(n => n?.raw_text ? parseWorkoutNote(n.raw_text).sections : []);
-    const currentSections = currentNote?.raw_text ? parseWorkoutNote(currentNote.raw_text).sections : [];
+    const allSections = notes.flatMap(n => getNoteSections(n));
+    const currentSections = getNoteSections(currentNote);
     return { allSections, currentSections };
   }, [notes, currentNote]);
 
