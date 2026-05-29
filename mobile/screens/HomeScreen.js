@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -89,15 +89,24 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
     weeklySummary.classifications = counts;
 
+    const sessionCount = countWorkoutSessionsFromSections(sections || []);
+
     return {
       weightSeries,
       oneK,
       latestWeight,
       weeksIn,
       weeklySummary,
+      sessionCount,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
   }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
+
+  const weekTone = getSessionTone(dashboardData.sessionCount);
+  const weekToneColor = weekTone === 'error' ? Colors.error
+    : weekTone === 'warn' ? Colors.caution
+    : weekTone === 'success' ? Colors.success
+    : null;
 
   return (
     <ScreenShell
@@ -108,13 +117,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       <Card style={styles.weeklyHero}>
         <View style={styles.heroContent}>
           {/* #2 inline week label */}
-          <Text style={[
-            styles.heroWeekLabel,
-            getSessionTone(dashboardData.weeksIn) === 'error' ? { color: Colors.error }
-            : getSessionTone(dashboardData.weeksIn) === 'warn' ? { color: Colors.caution }
-            : getSessionTone(dashboardData.weeksIn) === 'success' ? { color: Colors.success }
-            : null
-          ]}>
+          <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
             {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
           </Text>
 
