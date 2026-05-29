@@ -112,6 +112,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             styles.heroWeekLabel,
             getSessionTone(dashboardData.weeksIn) === 'error' ? { color: Colors.error }
             : getSessionTone(dashboardData.weeksIn) === 'warn' ? { color: Colors.caution }
+            : getSessionTone(dashboardData.weeksIn) === 'success' ? { color: Colors.success }
             : null
           ]}>
             {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}

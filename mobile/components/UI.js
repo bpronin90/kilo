@@ -53,6 +53,7 @@ export function Button({ onPress, title, style, textStyle, disabled = false }) {
 export function getSessionTone(count) {
   if (count >= 10) return 'error';
   if (count >= 7) return 'warn';
+  if (count >= 1) return 'success';
   return 'default';
 }
 
