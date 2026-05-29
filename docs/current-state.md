@@ -411,6 +411,12 @@ unobtrusive inline skip markers; Home and Analytics derive the
 workout/session count from the highest per-day session count in the current
 workout note, so warmup and lifting sections under the same day heading count
 as one session rather than splitting the day across separate section blocks.
+The session count drives a color signifier on both screens: green (1–6
+sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
+at or past deload window), derived through a shared `getSessionTone` helper
+in UI.js. On Home the color applies to the "Week N" label text; on Analytics
+a dedicated "Workout sessions" StatCard renders the count with the
+corresponding tone.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,

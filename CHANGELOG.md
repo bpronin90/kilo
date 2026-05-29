@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.49.0 - 2026-05-29
+
+- Issue #92: Session-count signifier colors on Analytics and Home. The
+  workout session count now turns green (1–6), yellow (7–9), or red (≥ 10)
+  as a deload-approach cue. Home colors the "Week N" label; Analytics adds
+  a "Workout sessions" StatCard with the corresponding tone. Shared
+  `getSessionTone` helper in UI.js, `cardWarn` style switched from accent
+  orange to caution yellow, both screens use `countWorkoutSessionsFromSections`
+  for metric consistency.
+
 ## 0.48.0 - 2026-05-29
 
 - Issue #166: Render non-weighted tracked-exercise cards in the Progressive
