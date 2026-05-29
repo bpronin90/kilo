@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.3 - 2026-05-29
+
+- Issue #221: Integrated the Analytics workout-session count into the screen
+  layout by adding an `Activity` section heading above the existing
+  tone-colored `Workout sessions` StatCard. Preserved the shared
+  `getSessionTone` thresholds and left session-count computation unchanged.
+
 ## 0.49.2 - 2026-05-29
 
 - Issue #220: Replaced `exercises.find` linear scans with keyed `Map` lookups
