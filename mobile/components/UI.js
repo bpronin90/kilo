@@ -50,6 +50,13 @@ export function Button({ onPress, title, style, textStyle, disabled = false }) {
   );
 }
 
+export function getSessionTone(count) {
+  if (count >= 10) return 'error';
+  if (count >= 7) return 'warn';
+  if (count >= 1) return 'success';
+  return 'default';
+}
+
 export function StatCard({ label, value, tone = 'default' }) {
   const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
@@ -191,8 +198,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.error,
   },
   cardWarn: {
-    backgroundColor: Colors.accent, // Using accent as a warning color for now
-    borderColor: Colors.accent,
+    backgroundColor: Colors.caution,
+    borderColor: Colors.caution,
   },
   sectionTitle: {
     fontSize: 18,
