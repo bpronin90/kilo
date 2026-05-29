@@ -2,10 +2,10 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, LineChart, ArtisanalPanel } from '../components/UI';
+import { Card, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -202,6 +202,11 @@ export function StatsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
+  const sessionCount = useMemo(
+    () => countWorkoutSessionsFromSections(parsedSections.currentSections),
+    [parsedSections.currentSections]
+  );
+
   const screenContent = React.Children.toArray([
     <View key="weight-trends-title" onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
@@ -242,6 +247,10 @@ export function StatsScreen({ multiplier, section }) {
         </View>
       </View>
     </Card>,
+
+    <View key="session-stat" style={styles.statRow}>
+      <StatCard label="Workout sessions" value={String(sessionCount)} tone={getSessionTone(sessionCount)} />
+    </View>,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
       <SectionTitle>Strength</SectionTitle>
@@ -537,6 +546,10 @@ function formatOverload(trend) {
 }
 
 const styles = StyleSheet.create({
+  statRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   strengthSection: {
     gap: 16,
   },

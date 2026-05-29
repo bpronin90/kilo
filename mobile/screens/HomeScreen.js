@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, LineChart } from '../components/UI';
+import { Card, LineChart, StatCard, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -89,12 +89,15 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
     weeklySummary.classifications = counts;
 
+    const sessionCount = countWorkoutSessionsFromSections(sections || []);
+
     return {
       weightSeries,
       oneK,
       latestWeight,
       weeksIn,
       weeklySummary,
+      sessionCount,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
   }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
@@ -154,6 +157,15 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           </View>
         </View>
       </Card>
+
+      {/* ══ Session count ══ */}
+      <View style={styles.statRow}>
+        <StatCard
+          label="Total Workouts"
+          value={String(dashboardData.sessionCount)}
+          tone={getSessionTone(dashboardData.sessionCount)}
+        />
+      </View>
 
       {/* ══ TIER 2: Weight Goal ══ */}
       {dashboardData.goalInfo ? (
@@ -226,6 +238,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   );
 }
 const styles = StyleSheet.create({
+  statRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   weeklyHero: {
     padding: 0,
     backgroundColor: Colors.card,
