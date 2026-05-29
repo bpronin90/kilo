@@ -582,7 +582,7 @@ function AboutScreen({ onBack }) {
         <Text style={styles.aboutValue}>Benjamin Pronin</Text>
 
         <Text style={styles.aboutLabel}>Version</Text>
-        <Text style={styles.aboutValue}>{`alpha-${pkg.version}`}</Text>
+        <Text style={styles.aboutValue}>{`v${pkg.version}`}</Text>
 
         <Text style={styles.aboutFooter}>
           Copyright © Benjamin Pronin. All rights reserved.

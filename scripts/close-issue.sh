@@ -407,6 +407,10 @@ main() {
     npm version "$version_bump" --no-git-tag-version >/dev/null
   fi
 
+  # Propagate the canonical root version into the mobile files (displayed
+  # version + OTA runtime boundary). Idempotent: a no-op when already aligned.
+  node scripts/sync-version.mjs
+
   git add -A
   echo "Staged files:"
   git diff --cached --name-only

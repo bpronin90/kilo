@@ -1,0 +1,21 @@
+name: Version Sync
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  version-sync:
+    name: mobile version matches canonical root
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check mobile versions are aligned with root package.json
+        run: node scripts/sync-version.mjs --check
