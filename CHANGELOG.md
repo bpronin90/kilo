@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.6 - 2026-05-29
+
+- Issue #232: Realigned `mobile/package.json` and `mobile/app.json` to the
+  canonical root app version, changed the About version display to `vX.Y.Z`,
+  and added a sync script plus CI/closeout guard so future version bumps keep
+  the mobile version surfaces aligned.
+
 ## 0.49.5 - 2026-05-29
 
 - Issue #225: Moved superseded roadmap docs (`mvp-roadmap.md` through
