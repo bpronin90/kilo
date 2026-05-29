@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.2 - 2026-05-29
+
+- Issue #220: Replaced `exercises.find` linear scans with keyed `Map` lookups
+  in `classifyExerciseSessions`, `deriveRepDropOffFlags`, and
+  `deriveNonWeightedTrackedExerciseMetrics`. Pure Big-O cleanup, no behavior
+  change.
+
 ## 0.49.1 - 2026-05-29
 
 - Issue #219: Migrated screen files to `normalizeExerciseKey`. Replaced all
