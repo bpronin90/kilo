@@ -3,7 +3,7 @@
 Status: historical and superseded.
 
 This foundational roadmap is historical only. The active roadmap lives in
-`docs/roadmap-mvp-refine.md`; keep this file for reference and do not extend
+`docs/mvp-refine-roadmap.md`; keep this file for reference and do not extend
 it.
 
 ## MVP Definition

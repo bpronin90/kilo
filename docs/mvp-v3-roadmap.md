@@ -3,7 +3,7 @@
 Status: complete and historical.
 
 This roadmap's issue map has shipped on `main` through issues `#93`-`#109`.
-The active roadmap now lives in `docs/roadmap-mvp-refine.md`. Treat this as a
+The active roadmap now lives in `docs/mvp-refine-roadmap.md`. Treat this as a
 historical snapshot of the v3 planning pass, not the place to add new roadmap
 work.
 

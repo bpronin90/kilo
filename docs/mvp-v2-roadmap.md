@@ -3,7 +3,7 @@
 Status: complete and historical.
 
 This roadmap reflects an earlier completed planning pass. The active roadmap
-lives in `docs/roadmap-mvp-refine.md`; keep this file as history and do not use
+lives in `docs/mvp-refine-roadmap.md`; keep this file as history and do not use
 it as the edit target for future roadmap work.
 
 ## MVP v2 Definition

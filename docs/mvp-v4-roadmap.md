@@ -3,7 +3,7 @@
 Status: completed as a roadmap pass.
 
 This roadmap translates the post-MVP3.5 findings into a phased MVP4.0 issue
-stack. The active roadmap now lives in `docs/roadmap-mvp-refine.md`. It keeps
+stack. The active roadmap now lives in `docs/mvp-refine-roadmap.md`. It keeps
 the same discipline as prior roadmap passes:
 
 - phases are ordered by user-blocking severity first
@@ -26,7 +26,7 @@ Agent routing follows repo policy:
 
 MVP4.0 is now considered complete for roadmap purposes. Shipped work stays
 documented here, while unresolved or deferred items should be carried forward
-into `docs/roadmap-mvp-refine.md` or moved to backlog/MVP5 rather than keeping
+into `docs/mvp-refine-roadmap.md` or moved to backlog/MVP5 rather than keeping
 MVP4.0 open indefinitely.
 
 ---

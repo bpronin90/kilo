@@ -5,7 +5,7 @@ Status: complete and historical.
 All planned roadmap work has shipped on `main`. The original task stack was
 completed through issues `#110`-`#141`, with follow-up closeout fixes landing
 in issues `#143`, `#144`, and `#145`. The active roadmap now lives in
-`docs/roadmap-mvp-refine.md`. Do not extend this file for new planning.
+`docs/mvp-refine-roadmap.md`. Do not extend this file for new planning.
 
 Post-MVP3 cleanup and capability roadmap. Phases are ordered by user-blocking
 severity → correctness → missing capability → IA fixes → polish. Each phase

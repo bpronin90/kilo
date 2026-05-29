@@ -188,10 +188,14 @@ Priority: **stability and structural cleanup first, then features.** The app wor
 
 # MVP Refine Roadmap
 
-Status: active. Stability and structural cleanup pass before new feature work.
+Status: complete and historical.
 
-This roadmap starts after MVP4.5 and addresses accumulated structural debt
-that makes every subsequent change riskier:
+This roadmap started after MVP4.5 and its planned issue map has now shipped.
+Keep this file as the historical record for the MVP Refine pass rather than
+the active roadmap for new planning.
+
+The pass addressed accumulated structural debt that was making every
+subsequent change riskier:
 
 - large files packing unrelated components together
 - duplicated derivation logic that has already caused regressions
@@ -253,9 +257,9 @@ Ordered tasks:
 - **Issue:** `#208` (closed)
 - Resolved; vitest and browser test infrastructure subsequently removed in #213.
 
-#### Task 2: Extract MoreScreen and sub-screens from HomeScreen.js
+#### Task 2: Extract MoreScreen and sub-screens from HomeScreen.js — COMPLETE
 
-- **Issue:** `#210`
+- **Issue:** `#210` (closed)
 - **Goal:** split the 1401-line HomeScreen.js into two focused files by moving
   MoreScreen + 5 sub-screens (Profile, Backup, Settings, Help, About) into
   their own file.
@@ -267,9 +271,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:claude`, `area:ui`, `type:implementation`,
   `effort:default`, `reasoning:medium`
 
-#### Task 3: Deduplicate deriveProgressionSignals and derivePerDaySignals
+#### Task 3: Deduplicate deriveProgressionSignals and derivePerDaySignals — COMPLETE
 
-- **Issue:** `#211`
+- **Issue:** `#211` (closed)
 - **Goal:** extract the shared comparable-building and trend-comparison logic
   into a single helper so signal changes only need to happen once.
 - **Scope:** create `_deriveSignalForComparables(comparable)` in parser.js;
@@ -287,9 +291,9 @@ Ordered tasks:
   `docs/archive/browser-prototype/`. Capacitor shell, vitest config, and all
   browser-specific deps removed.
 
-#### Task 5: Fix tab-switch flicker
+#### Task 5: Fix tab-switch flicker — COMPLETE
 
-- **Issue:** `#204`
+- **Issue:** `#204` (closed)
 - **Goal:** eliminate the intermittent visual flicker when switching between
   main app tabs.
 - **Scope:** investigate the full-remount pattern in `App.js` and fix the
@@ -300,9 +304,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`, `type:bug`,
   `effort:default`
 
-#### Task 6: Clean up stale doc references and archive superseded roadmaps
+#### Task 6: Clean up stale doc references and archive superseded roadmaps — COMPLETE
 
-- **Issue:** `#209`
+- **Issue:** `#209` (closed)
 - **Goal:** remove stale references from `docs/current-state.md` and move
   superseded roadmap docs to `docs/archive/`.
 - **Scope:** remove `KILO_TODAY` and "seeded sessions items field" references
@@ -326,9 +330,9 @@ undiscoverable edit patterns, no hardcoded layout assumptions.
 
 Ordered tasks:
 
-#### Task 7: Reduce HomeScreen dashboard memo cost
+#### Task 7: Reduce HomeScreen dashboard memo cost — COMPLETE
 
-- **Issue:** `#212`
+- **Issue:** `#212` (closed)
 - **Goal:** stop re-parsing every workout note on every Home render by
   splitting or caching the expensive computation.
 - **Scope:** separate the `allSections` parse into its own useMemo gated only
@@ -339,9 +343,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:claude`, `area:ui`,
   `type:implementation`, `effort:default`, `reasoning:medium`
 
-#### Task 8: Add explicit Edit button to LogScreen current routine
+#### Task 8: Add explicit Edit button to LogScreen current routine — COMPLETE
 
-- **Issue:** `#214`
+- **Issue:** `#214` (closed)
 - **Goal:** make edit mode discoverable without relying solely on the
   double-tap gesture.
 - **Scope:** add a small Edit button to the current routine card header;
@@ -352,9 +356,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`,
   `type:implementation`, `effort:default`
 
-#### Task 9: Add error handling to useEntries.js pub/sub listeners
+#### Task 9: Add error handling to useEntries.js pub/sub listeners — COMPLETE
 
-- **Issue:** `#215`
+- **Issue:** `#215` (closed)
 - **Goal:** prevent one failing listener from silently breaking state updates
   for all subsequent listeners.
 - **Scope:** wrap each listener call in try-catch within notify functions; log
@@ -364,9 +368,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:claude`, `area:workouts`, `type:bug`,
   `effort:default`, `reasoning:medium`
 
-#### Task 10: Make StatsScreen sticky header index dynamic
+#### Task 10: Make StatsScreen sticky header index dynamic — COMPLETE
 
-- **Issue:** `#216`
+- **Issue:** `#216` (closed)
 - **Goal:** replace the hardcoded `stickyHeaderIndices={[4]}` with a dynamic
   calculation based on rendered section order.
 - **Scope:** compute the index from actual children or use a ref-based
@@ -376,9 +380,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`, `type:bug`,
   `effort:default`
 
-#### Task 11: Normalize exercise name canonicalization across call sites
+#### Task 11: Normalize exercise name canonicalization across call sites — COMPLETE
 
-- **Issue:** `#217`
+- **Issue:** `#217` (closed)
 - **Goal:** ensure every call site that normalizes an exercise name uses the
   same chain, eliminating silent key mismatches.
 - **Scope:** audit all normalization call sites in `parser.js` and `data.js`;
@@ -389,9 +393,9 @@ Ordered tasks:
 - **Labels:** `mvp-refine`, `agent:claude`, `area:parser`, `type:bug`,
   `effort:default`, `reasoning:medium`
 
-#### Task 12: Update living docs to reflect MVP Refine structural changes
+#### Task 12: Update living docs to reflect MVP Refine structural changes — COMPLETE
 
-- **Issue:** `#218`
+- **Issue:** `#218` (closed)
 - **Goal:** update repo living docs so they accurately describe the codebase
   after Phases 1–2 complete.
 - **Scope:** review and update only the sections affected by Phase 1–2 changes:
@@ -415,9 +419,9 @@ Completion condition: remaining open UI polish and feature issues are resolved.
 
 Ordered tasks:
 
-#### Task 13: Scope More surface radius cleanup
+#### Task 13: Scope More surface radius cleanup — COMPLETE
 
-- **Issue:** `#202`
+- **Issue:** `#202` (closed)
 - **Goal:** determine actual file ownership for the More surface menu-radius
   fix and produce a precise implementation contract.
 - **Note:** may be trivially resolved by Task 2's MoreScreen extraction.
@@ -439,18 +443,18 @@ Ordered tasks:
   `up` / `down` / `dash`). Weighted exercises route to the existing weighted
   path and are excluded. 14 new tests.
 
-#### Task 16: Render non-weighted tracked-exercise cards
+#### Task 16: Render non-weighted tracked-exercise cards — COMPLETE
 
-- **Issue:** `#166`
+- **Issue:** `#166` (closed)
 - **Depends on:** Task 15 (`#165`)
 - **Goal:** render the non-weighted tracked-exercise cards using metrics from
   Task 15.
 - **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`,
   `type:implementation`, `effort:default`
 
-#### Task 17: Session-count signifier colors on Analytics and Home
+#### Task 17: Session-count signifier colors on Analytics and Home — COMPLETE
 
-- **Issue:** `#92`
+- **Issue:** `#92` (closed)
 - **Goal:** add yellow (7–9 sessions) and red (10–12 sessions) color signifiers
   to session counts on Analytics and Home.
 - **Labels:** `mvp-refine`, `agent:gemini`, `area:ui`,
