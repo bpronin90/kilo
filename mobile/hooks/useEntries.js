@@ -1,6 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
+import { parseWorkoutNote } from '../lib/parser';
+
+// Per-note parsed-sections cache, keyed by note id. We store the raw_text the
+// sections were parsed from so a note edit only reparses that one note while
+// unrelated notes reuse their cached sections. Replaces the full-notebook
+// reparse Home and Analytics each ran on every render.
+const noteSectionsCache = new Map();
+
+export function getNoteSections(note) {
+  if (!note || !note.raw_text) return [];
+  const key = note.id != null ? note.id : note.raw_text;
+  const cached = noteSectionsCache.get(key);
+  if (cached && cached.raw_text === note.raw_text) {
+    return cached.sections;
+  }
+  const { sections } = parseWorkoutNote(note.raw_text);
+  noteSectionsCache.set(key, { raw_text: note.raw_text, sections });
+  return sections;
+}
 
 const safeNotify = (listeners) =>
   listeners.forEach(l => { try { l(); } catch (e) { console.warn('[useEntries] listener error', e); } });

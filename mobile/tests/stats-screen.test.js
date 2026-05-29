@@ -21,7 +21,17 @@ jest.mock('@expo/vector-icons', () => {
   return { MaterialIcons: () => null };
 }, { virtual: true });
 
-jest.mock('../hooks/useEntries');
+// Keep the real getNoteSections (per-note parse cache) so the screen parses
+// notes for real; only the data hooks are stubbed via mockReturnValue below.
+jest.mock('../hooks/useEntries', () => {
+  const actual = jest.requireActual('../hooks/useEntries');
+  return {
+    ...actual,
+    useWeightEntries: jest.fn(),
+    useTrackedLifts: jest.fn(),
+    useWorkoutNotes: jest.fn(),
+  };
+});
 
 const MOCK_NOW = new Date('2026-05-26T12:00:00Z');
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
