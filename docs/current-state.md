@@ -20,10 +20,12 @@ There is still no server, no backend, and no Supabase connection.
 
 Roadmap status:
 
-- MVP4.0 is complete as a roadmap pass.
-- The active follow-up planning pass is MVP4.5, focused on data stability,
-  shared derivation ownership, test hardening, app-shell consistency, and only
-  then later UI redesign.
+- MVP4.0 through MVP4.5 are complete roadmap passes. Their roadmap documents
+  are archived under `docs/archive/`.
+- The MVP-Refine pass (`docs/mvp-refine-roadmap.md`) ran after MVP4.5 and is
+  also complete. There is no currently active follow-up planning pass.
+- `docs/mvp-v4.5-roadmap.md` tracks the cumulative state of the app through
+  the end of the MVP4.5 pass and remains as a reference document.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
