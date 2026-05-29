@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.4 - 2026-05-29
+
+- Issue #224: Removed the dead singular `useWorkoutNote()` hook from
+  `mobile/hooks/useEntries.js` and corrected `docs/architecture.md` so it no
+  longer documents that unused hook as a live load/migrate path. Preserved the
+  storage-layer legacy single-note migration behavior.
+
 ## 0.49.3 - 2026-05-29
 
 - Issue #221: Integrated the Analytics workout-session count into the screen
