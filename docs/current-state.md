@@ -250,7 +250,10 @@ The real native app path now has a modular React Native shell:
   mapping, and plain note rows now count as separate comparable sessions for
   progression derivation. It now
   uses the shared `ScreenShell` component for a consistent layout and
-  safe-area handling across all analytics sections. Its
+  safe-area handling across all analytics sections. A dedicated `Activity`
+  section now groups the tone-colored `Workout sessions` StatCard between
+  Weight Trends and Strength so the session-count signal reads as a first-class
+  Analytics section instead of a floating standalone card. Its
   weight summary card now reads the displayed latest weigh-in, pace flag, and
   rolling-series chart data from the same canonical
   `deriveWeightGoalAnalytics()` path used by Home and Weight, so backdated or
@@ -413,10 +416,10 @@ workout note, so warmup and lifting sections under the same day heading count
 as one session rather than splitting the day across separate section blocks.
 The session count drives a color signifier on both screens: green (1–6
 sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
-at or past deload window), derived through a shared `getSessionTone` helper
-in UI.js. On Home the color applies to the "Week N" label text; on Analytics
-a dedicated "Workout sessions" StatCard renders the count with the
-corresponding tone.
+  at or past deload window), derived through a shared `getSessionTone` helper
+  in UI.js. On Home the color applies to the "Week N" label text; on Analytics
+  a dedicated `Activity` section contains the "Workout sessions" StatCard with
+  the corresponding tone.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,
