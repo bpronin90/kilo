@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.5 - 2026-05-29
+
+- Issue #225: Moved superseded roadmap docs (`mvp-roadmap.md` through
+  `mvp-v4-roadmap.md`) into `docs/archive/`, updated `docs/current-state.md`
+  to reflect MVP-Refine as the last completed planning pass with no active
+  follow-up, and corrected `docs/repo-structure.md` so the `docs/` inventory
+  matches the live repo state.
+
 ## 0.49.4 - 2026-05-29
 
 - Issue #224: Removed the dead singular `useWorkoutNote()` hook from
