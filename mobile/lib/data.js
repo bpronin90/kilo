@@ -819,6 +819,98 @@ export function getLatestRepDropOff(sessionFlags) {
   return sessionFlags[String(maxIdx)] ?? null;
 }
 
+// ── Non-weighted tracked-exercise card metrics ────────────────────────────────
+
+// Classify a set of sets as 'weighted' | 'time_based' | 'reps_only' | null.
+// Loaded bodyweight (weight_value > 0 or non-zero assistance) → 'weighted'.
+function _detectExerciseClass(sets) {
+  if (!sets || sets.length === 0) return null;
+  if (sets.some(s => (s.weight_value != null && s.weight_value > 0) ||
+                     (s.assistance_value != null && s.assistance_value !== 0))) return 'weighted';
+  if (sets.some(s => s.duration_seconds != null && s.duration_seconds > 0)) return 'time_based';
+  if (sets.some(s => s.rep_count != null && s.rep_count > 0)) return 'reps_only';
+  return null;
+}
+
+// Derive card metrics for non-weighted tracked exercises.
+// sections: output of parseWorkoutNote(noteText).sections
+// exerciseNames: string[] of exercise names
+//
+// Returns { [normalizedName]: {
+//   exercise_class: 'reps_only' | 'time_based',
+//   total_reps: number | null,
+//   total_reps_arrow: 'up'|'down'|'dash'|'baseline'|null,
+//   longest_hold: number | null,
+//   longest_hold_arrow: 'up'|'down'|'dash'|'baseline'|null,
+// } }
+export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames) {
+  if (!sections || !exerciseNames || exerciseNames.length === 0) return {};
+
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const result = {};
+
+  for (const name of exerciseNames) {
+    const normName = normalizeLiftName(name);
+    const key = normalizeExerciseKey(name);
+    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
+    if (!ex) continue;
+
+    const loggedSessions = ex.occurrences
+      .flatMap(occ => _occurrenceEntries(occ))
+      .filter(se => !se.skipped && !se.unparsed && se.sets && se.sets.length > 0);
+
+    if (loggedSessions.length === 0) continue;
+
+    const latestSets = loggedSessions[loggedSessions.length - 1].sets;
+    const exerciseClass = _detectExerciseClass(latestSets);
+    if (!exerciseClass || exerciseClass === 'weighted') continue;
+
+    if (exerciseClass === 'reps_only') {
+      const sessionTotals = loggedSessions.map(se =>
+        se.sets.reduce((sum, s) => sum + (s.rep_count != null && s.rep_count > 0 ? s.rep_count : 0), 0)
+      );
+      const latestTotal = sessionTotals[sessionTotals.length - 1];
+      const total_reps = latestTotal > 0 ? latestTotal : null;
+
+      let priorTotal = null;
+      for (let i = sessionTotals.length - 2; i >= 0; i--) {
+        if (sessionTotals[i] > 0) { priorTotal = sessionTotals[i]; break; }
+      }
+
+      const total_reps_arrow = total_reps === null ? null
+        : loggedSessions.length === 1 || priorTotal === null ? 'baseline'
+        : latestTotal > priorTotal ? 'up'
+        : latestTotal < priorTotal ? 'down'
+        : 'dash';
+
+      result[normName] = { exercise_class: 'reps_only', total_reps, total_reps_arrow };
+    } else {
+      const latestMax = Math.max(
+        ...latestSets.map(s => s.duration_seconds != null && s.duration_seconds > 0 ? s.duration_seconds : 0)
+      );
+      const longest_hold = latestMax > 0 ? latestMax : null;
+
+      let priorMax = null;
+      for (let i = loggedSessions.length - 2; i >= 0; i--) {
+        const m = Math.max(...loggedSessions[i].sets.map(s =>
+          s.duration_seconds != null && s.duration_seconds > 0 ? s.duration_seconds : 0
+        ));
+        if (m > 0) { priorMax = m; break; }
+      }
+
+      const longest_hold_arrow = longest_hold === null ? null
+        : loggedSessions.length === 1 || priorMax === null ? 'baseline'
+        : longest_hold > priorMax ? 'up'
+        : longest_hold < priorMax ? 'down'
+        : 'dash';
+
+      result[normName] = { exercise_class: 'time_based', longest_hold, longest_hold_arrow };
+    }
+  }
+
+  return result;
+}
+
 // Wrap deriveProgressionSignals and replace kilo_max with the Epley-average x
 // fatigue formula (adjusted, rounded).
 export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigueMultiplier()) {
