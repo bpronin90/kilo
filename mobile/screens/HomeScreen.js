@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, LineChart, StatCard, getSessionTone } from '../components/UI';
+import { Card, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts } from '../hooks/useEntries';
-import { parseWorkoutNote, canonicalizeName, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote, canonicalizeName } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
@@ -89,15 +89,12 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     const weeklySummary = computeWeeklySummary(sections, workoutNote);
     weeklySummary.classifications = counts;
 
-    const sessionCount = countWorkoutSessionsFromSections(sections || []);
-
     return {
       weightSeries,
       oneK,
       latestWeight,
       weeksIn,
       weeklySummary,
-      sessionCount,
       goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
     };
   }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
@@ -111,7 +108,12 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       <Card style={styles.weeklyHero}>
         <View style={styles.heroContent}>
           {/* #2 inline week label */}
-          <Text style={styles.heroWeekLabel}>
+          <Text style={[
+            styles.heroWeekLabel,
+            getSessionTone(dashboardData.weeksIn) === 'error' ? { color: Colors.error }
+            : getSessionTone(dashboardData.weeksIn) === 'warn' ? { color: Colors.caution }
+            : null
+          ]}>
             {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
           </Text>
 
@@ -157,15 +159,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           </View>
         </View>
       </Card>
-
-      {/* ══ Session count ══ */}
-      <View style={styles.statRow}>
-        <StatCard
-          label="Total Workouts"
-          value={String(dashboardData.sessionCount)}
-          tone={getSessionTone(dashboardData.sessionCount)}
-        />
-      </View>
 
       {/* ══ TIER 2: Weight Goal ══ */}
       {dashboardData.goalInfo ? (
@@ -238,10 +231,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   );
 }
 const styles = StyleSheet.create({
-  statRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   weeklyHero: {
     padding: 0,
     backgroundColor: Colors.card,
