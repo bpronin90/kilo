@@ -344,11 +344,11 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           <Text style={styles.goalTitle}>Goal</Text>
           {goal && !goalEditing && (
             <View style={styles.goalHeaderActions}>
-              <Pressable onPress={startEditGoal} hitSlop={8}>
-                <Text style={styles.goalActionText}>Edit</Text>
+              <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                <Text style={styles.goalActionChipText}>Edit</Text>
               </Pressable>
-              <Pressable onPress={handleClearGoal} hitSlop={8}>
-                <Text style={[styles.goalActionText, styles.goalClearText]}>Clear</Text>
+              <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
+                <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
               </Pressable>
             </View>
           )}
@@ -712,16 +712,21 @@ const styles = StyleSheet.create({
   },
   goalHeaderActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
-  goalActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textMuted,
+  goalActionChip: {
+    backgroundColor: Colors.chipBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  goalActionChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.chipText,
   },
   goalClearText: {
     color: Colors.error,
-    opacity: 0.7,
   },
   goalForm: {
     gap: 8,
@@ -805,7 +810,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   saveButton: {
-    backgroundColor: Colors.accent,
+    // Previously used Colors.accent
     paddingVertical: 12,
   },
 });
