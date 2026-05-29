@@ -754,11 +754,12 @@ function _classifyEntries(allEntries) {
 // Returns { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
 export function classifyExerciseSessions(sections, trackedNames) {
   const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
     const key = normalizeExerciseKey(name);
-    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
+    const ex = byKey.get(key);
     if (!ex) { result[normName] = null; continue; }
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const classification = _classifyEntries(allEntries);
@@ -790,11 +791,12 @@ export function computeRepDropOff(sets) {
 // sessionIndex is the positional index in the exercise's full entry history (oldest = 0).
 export function deriveRepDropOffFlags(sections, trackedNames) {
   const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
   const result = {};
   for (const name of trackedNames) {
     const normName = normalizeLiftName(name);
     const key = normalizeExerciseKey(name);
-    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
+    const ex = byKey.get(key);
     if (!ex) { result[normName] = {}; continue; }
     const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
     const sessionFlags = {};
@@ -856,12 +858,13 @@ export function deriveNonWeightedTrackedExerciseMetrics(sections, exerciseNames)
   if (!sections || !exerciseNames || exerciseNames.length === 0) return {};
 
   const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
   const result = {};
 
   for (const name of exerciseNames) {
     const normName = normalizeLiftName(name);
     const key = normalizeExerciseKey(name);
-    const ex = exercises.find(e => normalizeExerciseKey(e.name) === key);
+    const ex = byKey.get(key);
     if (!ex) continue;
 
     const loggedSessions = ex.occurrences
