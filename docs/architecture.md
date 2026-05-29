@@ -204,13 +204,12 @@ No remote sync is involved.
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
-When `useWorkoutNote()` loads with no existing `kilo_workout_note`, the native
-storage layer now synthesizes one from any legacy `kilo_workout_sessions`
-content and saves the migrated note before returning it. Subsequent tracked
-exercise toggles now update the global `kilo_tracked_lifts` map keyed by
-normalized lift name, while 1k slot changes and note edits continue updating
-the selected workout-note document so analytics inputs and raw workout text
-stay persisted across reloads.
+When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
+legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving
+the migrated result before returning. Tracked exercise toggles update the global
+`kilo_tracked_lifts` map keyed by normalized lift name; 1k slot changes and note
+edits update the selected workout-note document so analytics inputs and raw
+workout text stay persisted across reloads.
 
 ## Entry Shapes
 

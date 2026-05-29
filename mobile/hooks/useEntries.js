@@ -64,9 +64,6 @@ export function useWeightGoal() {
 let weightListeners = [];
 const notifyWeight = () => safeNotify(weightListeners);
 
-let noteListeners = [];
-const notifyNote = () => safeNotify(noteListeners);
-
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,56 +105,6 @@ export function useWeightEntries() {
   return { entries, loading, error, add, remove, update, refresh };
 }
 
-export function useWorkoutNote() {
-  const [note, setNote] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refresh = useCallback(() => {
-    Storage.loadWorkoutNote()
-      .then(n => n ?? Storage.migrateWorkoutNote())
-      .then(setNote)
-      .catch(e => setError(e))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    noteListeners.push(refresh);
-    return () => {
-      noteListeners = noteListeners.filter(l => l !== refresh);
-    };
-  }, [refresh]);
-
-  const save = useCallback(async (raw_text) => {
-    const saved = await Storage.saveWorkoutNote(raw_text);
-    setNote(saved);
-    notifyNote();
-    return saved;
-  }, []);
-
-  const saveTracked = useCallback(async (tracked) => {
-    const saved = await Storage.saveTrackedExercises(tracked);
-    setNote(saved);
-    notifyNote();
-    return saved;
-  }, []);
-
-  const saveOneK = useCallback(async (one_k_exercises) => {
-    const saved = await Storage.saveOneKExercises(one_k_exercises);
-    setNote(saved);
-    notifyNote();
-    return saved;
-  }, []);
-
-  const clear = useCallback(async () => {
-    await Storage.clearWorkoutNote();
-    setNote(null);
-    notifyNote();
-  }, []);
-
-  return { note, loading, error, save, saveTracked, saveOneK, clear, refresh };
-}
 
 let workoutNotesListeners = [];
 const notifyWorkoutNotes = () => safeNotify(workoutNotesListeners);
