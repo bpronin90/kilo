@@ -430,13 +430,14 @@ Ordered tasks:
 - Switched the Weight save CTA to the primary dark button treatment and
   converted goal Edit/Clear actions to chip-style treatment.
 
-#### Task 15: Derive non-weighted tracked-exercise card metrics
+#### Task 15: Derive non-weighted tracked-exercise card metrics — COMPLETE
 
-- **Issue:** `#165`
-- **Goal:** compute analytics metrics for non-weighted tracked exercises
-  (bodyweight, timed, etc.) so they can be rendered as cards.
-- **Labels:** `mvp-refine`, `agent:claude`, `area:workouts`,
-  `type:implementation`, `effort:default`, `reasoning:medium`
+- **Issue:** `#165` (closed)
+- Added `deriveNonWeightedTrackedExerciseMetrics` to `mobile/lib/data.js` with
+  class detection (`reps_only` / `time_based`), per-session primary metric
+  (`total_reps` / `longest_hold`), and arrow state derivation (`baseline` /
+  `up` / `down` / `dash`). Weighted exercises route to the existing weighted
+  path and are excluded. 14 new tests.
 
 #### Task 16: Render non-weighted tracked-exercise cards
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.47.0 - 2026-05-28
+
+- Issue #165: Added per-session derivation for non-weighted tracked exercises
+  covering reps-only (total_reps + arrow) and time-based (longest_hold + arrow)
+  exercise classes, with loaded-bodyweight exclusion routing to the existing
+  weighted path.
+
 ## 0.46.15 - 2026-05-28
 
 - Issue #200: Switched the Weight save CTA to the primary dark button

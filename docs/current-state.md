@@ -290,8 +290,11 @@ The real native app path now has a modular React Native shell:
   module also exports `normalizeExerciseKey()` so alias resolution and
   lowercased key matching follow the same canonical chain everywhere
 - `mobile/lib/data.js` defines the native exercise catalog and entry factories,
-  including the default 1k exercise-slot selection used by analytics and a
-  factory for titled workout-note items in the multi-note model
+  including the default 1k exercise-slot selection used by analytics, a
+  factory for titled workout-note items in the multi-note model, and
+  per-session derivation for non-weighted tracked exercises covering
+  reps-only (`total_reps` + arrow) and time-based (`longest_hold` + arrow)
+  exercise classes with loaded-bodyweight exclusion
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including multi-note current-workout reads/writes, cross-consumer
   refresh fanout, and persisted weight-goal reads/writes
