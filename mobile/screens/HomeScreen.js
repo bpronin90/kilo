@@ -37,15 +37,6 @@ function KiloWordmark({ width = 140, height = 48 }) {
   );
 }
 
-const formatGoalDirection = (direction) => {
-  if (!direction) return '';
-  switch (direction) {
-    case 'gain': return '↑ Bulking';
-    case 'loss': return '↓ Cutting';
-    case 'maintain': return '↔ Maintaining';
-    default: return direction;
-  }
-};
 
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate }) {
   const { goal: weightGoal } = useWeightGoal();
@@ -97,7 +88,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       weeksIn,
       weeklySummary,
       sessionCount,
-      goalInfo: goalInfo ? { ...goalInfo, displayDirection: formatGoalDirection(goalInfo.direction) } : null,
+      goalInfo: goalInfo ? { ...goalInfo } : null,
     };
   }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
 

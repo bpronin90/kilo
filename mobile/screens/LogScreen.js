@@ -437,7 +437,7 @@ export function LogScreen({
       setEditingNoteId(null);
     };
 
-    const alertTitle = 'Set as Current Routine';
+    const alertTitle = 'Set as current routine';
     let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
     
     if (hasUnsaved) {
@@ -468,7 +468,7 @@ export function LogScreen({
         alertMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Set as Current', onPress: doSwitch },
+          { text: 'Set as current routine', onPress: doSwitch },
         ]
       );
     }
@@ -647,7 +647,7 @@ export function LogScreen({
                           style={styles.inlineSwitchButton}
                           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                         >
-                          <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
+                          <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
                         </Pressable>
                       </Pressable>
                     </Card>
