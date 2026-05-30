@@ -225,17 +225,25 @@ retains non-test commands such as `npm run audit`.
 - exercises the saved-goal display path with `start_weight` fallback coverage
   rather than only pure helper-level calculation tests
 
+### `mobile/tests/weight-screen.test.js`
+
+- rendered React Native screen coverage for the Weight screen edit and delete
+  correction flows using `react-test-renderer`
+- verifies tapping a history row loads the entry into the form in editing mode
+  (sets `editingId`, populates weight and note inputs)
+- verifies edit submit reruns `parseWeightEntry` validation and calls `update`
+  with the correct entry id and note on valid input
+- verifies edit submit shows a validation error and does not call `update` when
+  the weight field contains invalid input
+- verifies tapping the delete affordance (✕) triggers `Alert.alert` with a
+  confirm prompt and calls `remove` on the destructive confirmation
+- verifies cancelling the delete prompt does not call `remove`
+
 ---
 
 ## Coverage Gaps
 
 The following MVP behaviors have no automated test coverage:
-
-**Correction flows**
-- Native Weight screen delete flow (`WeightScreen`, confirmation prompt,
-  `deleteWeightEntry`, re-renders history)
-- Native Weight screen edit flow (`WeightScreen`, inline validation via
-  `parseWeightEntry`, `updateWeightEntry`, re-renders history)
 
 **End-to-end**
 - No automated native test covers `mobile/App.js`, native tab routing, native
