@@ -70,6 +70,7 @@ export function useWeightEntries() {
   const [error, setError] = useState(null);
 
   const refresh = useCallback(() => {
+    setError(null);
     Storage.loadWeightEntries()
       .then(setEntries)
       .catch(e => setError(e))
@@ -126,6 +127,7 @@ export function useWorkoutNotes() {
   const [error, setError] = useState(null);
 
   const refresh = useCallback(() => {
+    setError(null);
     Promise.all([Storage.loadWorkoutNotes(), Storage.loadCurrentWorkoutId()])
       .then(([ns, id]) => {
         setNotes(ns);
