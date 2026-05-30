@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.49.10 - 2026-05-30
+
+- Issue #234: Added `accessibilityRole="button"` and descriptive
+  `accessibilityLabel`s to the glyph-only interactive controls flagged in the
+  #233 a11y audit — Weight delete `✕`, More menu `→` rows, More fatigue-multiplier
+  `−`/`+` steppers, Analytics slot `▲/▼` (with the current value folded into the
+  label), and the Log nudge-dismiss `×` — and marked the bare glyph `Text` nodes
+  (including the Profile activity-level `✓`) `accessible={false}` so screen
+  readers announce the control instead of the raw character. Labels only; no
+  visual, layout, or styling change to any screen, with the Log style lock
+  preserved.
+
 ## 0.49.9 - 2026-05-29
 
 - Issue #231: Standardized the Analytics surface naming across the screen
