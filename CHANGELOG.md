@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.14 - 2026-05-30
+
+- Issue #238: Disambiguated `Colors.accent` so brand/hero/CTA treatments no
+  longer double as mild-severity signaling. Moved the Weight history
+  `deltaNotable` color, Weight/Analytics pace-notable badge treatment, and the
+  Home `Cutting` goal-direction label from `Colors.accent` to the existing
+  `Colors.caution` token, leaving the remaining in-scope accent uses as
+  brand-facing UI and leaving the intentional `#FF5C00` wordmark untouched.
+
 ## 0.49.13 - 2026-05-30
 
 - Issue #237: Reconciled `docs/design-system-map.md` and `docs/current-state.md`
