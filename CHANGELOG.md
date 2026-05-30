@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.16 - 2026-05-30
+
+- Issue #240: Corrected the Home weight sparkline label from a misleading
+  "7-day trend" to the accurate "7-day rolling avg" to match the existing
+  rolling-average data series, and documented the intentional `null` goal
+  argument on Analytics' shared weight-analytics call without changing
+  rendered behavior.
+
 ## 0.49.15 - 2026-05-30
 
 - Issue #239: Normalized the shared hero-metric type scale across Home, Weight,
