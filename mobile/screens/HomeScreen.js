@@ -169,7 +169,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           <View style={styles.goalHeader}>
             <Text style={[styles.goalDirectionText, {
               color: dashboardData.goalInfo.direction === 'gain' ? Colors.success
-                : dashboardData.goalInfo.direction === 'loss' ? Colors.accent
+                : dashboardData.goalInfo.direction === 'loss' ? Colors.caution
                 : Colors.textMuted
             }]}>
               {dashboardData.goalInfo.direction === 'loss' ? 'Cutting' : dashboardData.goalInfo.direction === 'gain' ? 'Bulking' : 'Maintaining'}

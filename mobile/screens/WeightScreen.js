@@ -615,7 +615,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   deltaNotable: {
-    color: Colors.accent,
+    color: Colors.caution,
   },
   deltaSpike: {
     color: Colors.error,
@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   paceNotable: {
-    color: Colors.accent,
+    color: Colors.caution,
   },
   goalCard: {
     gap: 10,
