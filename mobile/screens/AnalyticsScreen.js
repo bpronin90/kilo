@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.error,
   },
   paceNotable: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.caution,
   },
   paceText: {
     fontSize: 12,
