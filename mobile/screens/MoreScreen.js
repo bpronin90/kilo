@@ -68,25 +68,25 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
   return (
     <ScreenShell title="More" subtitle="Help, about, and application info.">
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
-          <Text style={styles.menuItemChevron}>→</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="Help and Terminology">
           <Text style={styles.menuItemText}>Help & Terminology</Text>
-          <Text style={styles.menuItemChevron}>→</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings and Algorithm">
           <Text style={styles.menuItemText}>Settings & Algorithm</Text>
-          <Text style={styles.menuItemChevron}>→</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <Text style={styles.menuItemText}>Data & Backup</Text>
-          <Text style={styles.menuItemChevron}>→</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('about')}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
           <Text style={styles.menuItemText}>About Kilo</Text>
-          <Text style={styles.menuItemChevron}>→</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
       </View>
 
