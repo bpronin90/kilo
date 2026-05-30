@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.15 - 2026-05-30
+
+- Issue #239: Normalized the shared hero-metric type scale across Home, Weight,
+  and Analytics by introducing named `HeroMetric` steps in `mobile/components/UI.js`
+  and applying them to the Home latest-weight hero, Home/Analytics 1K totals,
+  Analytics latest-weight stat, and Weight goal/trend values. This removes the
+  prior ad-hoc `800`/`900` split and keeps the same semantic metric roles on a
+  shared size/weight system.
+
 ## 0.49.14 - 2026-05-30
 
 - Issue #238: Disambiguated `Colors.accent` so brand/hero/CTA treatments no

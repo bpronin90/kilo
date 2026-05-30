@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -575,8 +575,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    fontSize: 32,
-    fontWeight: '900',
+    ...HeroMetric.statPrimary,
     color: Colors.accent,
   },
   paceBadge: {
@@ -629,8 +628,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   oneKValue: {
-    fontSize: 48,
-    fontWeight: '900',
+    ...HeroMetric.hero,
     color: Colors.text,
   },
   oneKUnit: {

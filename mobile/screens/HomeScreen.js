@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, LineChart, getSessionTone } from '../components/UI';
+import { Card, HeroMetric, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -252,16 +252,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroWeightValue: {
-    fontSize: 48,
-    fontWeight: '800',
+    ...HeroMetric.hero,
     color: Colors.accent,
-    lineHeight: 52,
   },
   heroWeightPlaceholder: {
-    fontSize: 48,
+    ...HeroMetric.hero,
     fontWeight: '400',
     color: Colors.textMuted,
-    lineHeight: 52,
   },
   heroWeightUnit: {
     fontSize: 20,
@@ -375,8 +372,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   oneKHeroValue: {
-    fontSize: 32,
-    fontWeight: '700',
+    ...HeroMetric.hero,
     color: Colors.text,
   },
   oneKHeroUnit: {

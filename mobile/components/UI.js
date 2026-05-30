@@ -4,6 +4,13 @@ import { Colors } from '../theme/colors';
 
 export const SET_ROW_FONT_SIZE = 14;
 
+export const HeroMetric = {
+  hero:          { fontSize: 48, fontWeight: '900', lineHeight: 52 },
+  statPrimary:   { fontSize: 32, fontWeight: '900' },
+  statSecondary: { fontSize: 24, fontWeight: '900' },
+  statTertiary:  { fontSize: 20, fontWeight: '900' },
+};
+
 export { LineChart } from './LineChart';
 
 export function Card({ children, style, tone = 'default', onPress }) {
