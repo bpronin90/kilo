@@ -534,6 +534,7 @@ export function LogScreen({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
                       style={styles.inlineSwitchButton}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                     >
                       <Text style={styles.inlineSwitchButtonText}>Edit</Text>
                     </Pressable>
@@ -598,7 +599,7 @@ export function LogScreen({
                                 {nudgeCopy && (
                                   <View style={styles.nudgeChip}>
                                     <Text style={styles.nudgeChipText}>{nudgeCopy}</Text>
-                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss} accessibilityRole="button" accessibilityLabel="Dismiss nudge">
+                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Dismiss nudge">
                                       <Text style={styles.nudgeDismissText} accessible={false}>×</Text>
                                     </Pressable>
                                   </View>
@@ -641,6 +642,7 @@ export function LogScreen({
                         <Pressable
                           onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
                           style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                         >
                           <Text style={styles.inlineSwitchButtonText}>Set Current</Text>
                         </Pressable>
