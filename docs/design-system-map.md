@@ -416,9 +416,9 @@ Style lock header at lines 1-14: do not change Log styling unless the repo owner
 | Weight | Goal value | `24` | `900` | `accent` |
 | Weight | Trend value | `20` | `900` | `text` |
 
-Home uses `800` for bold metrics. Stats and Weight use `900`. No clear system.
+Home uses `800` for bold metrics. Analytics and Weight use `900`. No clear system.
 
-### 1K Card: Home vs Stats
+### 1K Card: Home vs Analytics
 
 | Property | Home | Analytics |
 |---|---|---|
@@ -439,7 +439,7 @@ Home treats 1K as tertiary (smaller). Analytics treats it as a hero (larger). Th
 | Uppercase label | `12` | `700` | `uppercase` | Home (goal stat label), Analytics (weight label, 1K label, slot title), Weight (section titles, goal labels) |
 | Section title label | `14` | `700` | `uppercase` | Analytics (1K progress label) |
 
-Four different sizes for the same role (metadata label above a value). The `10px` labels on Home classifications and Stats column headers are the smallest text in the app.
+Four different sizes for the same role (metadata label above a value). The `10px` labels on Home classifications and Analytics column headers are the smallest text in the app.
 
 ### Card Padding
 
@@ -449,9 +449,9 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Home | Weekly hero | `0` (custom) + `24` inner |
 | Home | Goal card | `24` |
 | Home | 1K card | `24` |
-| Stats | Weight card | `20` |
-| Stats | 1K card | `24` |
-| Stats | Slot card | `16` |
+| Analytics | Weight card | `20` |
+| Analytics | 1K card | `24` |
+| Analytics | Slot card | `16` |
 | Weight | Trends card | `0` (merged sections, `16` per section) |
 
 ### Divider Patterns
@@ -480,8 +480,8 @@ Home has the highest orange density — 6 distinct elements. The wordmark is fix
 | Screen | Between-card SectionTitles |
 |---|---|
 | Home | none — Home does not import `SectionTitle` |
-| Stats | "Weight Trends", "Strength", "Progressive Overload" |
+| Analytics | "Weight Trends", "Strength", "Progressive Overload" |
 | Weight | "Goals", "Trends", "History" |
 | Log | "More Routines" |
 
-On Stats/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose.
+On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose.
