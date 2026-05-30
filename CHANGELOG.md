@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.49.11 - 2026-05-30
+
+- Issue #235: Added `hitSlop` to the three sub-minimum inline controls in the
+  Log tab flagged in the #233 a11y audit — the `Edit` and `Set Current`
+  `inlineSwitchButton`s and the nudge-dismiss `×` — bringing each effective
+  touch target to ≥44px on both axes (`top/bottom: 12` on all three;
+  `left/right: 14` on the single-glyph dismiss, `left/right: 8` on the wider
+  labels). Touch-area only; no padding, size, or visual change, with the Log
+  style lock preserved.
+
 ## 0.49.10 - 2026-05-30
 
 - Issue #234: Added `accessibilityRole="button"` and descriptive
