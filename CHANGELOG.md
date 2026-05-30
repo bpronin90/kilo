@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.9 - 2026-05-29
+
+- Issue #231: Standardized the Analytics surface naming across the screen
+  file/component, Home navigation key, native test filename, and living docs,
+  fixing the Home "Full history and insights" route so the Analytics tab stays
+  highlighted after navigation.
+
 ## 0.49.8 - 2026-05-29
 
 - Issue #229: Unified the Log tab's untitled-routine fallback label to
