@@ -155,7 +155,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
           {/* #7 quiet CTA */}
           <View style={styles.heroFooter}>
-            <Pressable onPress={() => onNavigate('Stats')} style={styles.insightsLink}>
+            <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
               <Text style={styles.insightsLinkText}>Full history and insights</Text>
               <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
             </Pressable>

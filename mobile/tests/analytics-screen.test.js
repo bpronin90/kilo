@@ -1,6 +1,6 @@
 import React from 'react';
 import render from 'react-test-renderer';
-import { StatsScreen } from '../screens/StatsScreen';
+import { AnalyticsScreen } from '../screens/AnalyticsScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 
@@ -52,7 +52,7 @@ function setup({ entries = [], hookOverrides = {} } = {}) {
 
   let component;
   render.act(() => {
-    component = render.create(<StatsScreen multiplier={1.07} section={null} />);
+    component = render.create(<AnalyticsScreen multiplier={1.07} section={null} />);
   });
   return component;
 }
@@ -68,9 +68,9 @@ function hasText(root, needle) {
   return findAllText(root).some(s => s.includes(needle));
 }
 
-// ── StatsScreen weight summary — consumer drift regression ────────────────────
+// ── AnalyticsScreen weight summary — consumer drift regression ────────────────────
 
-describe('StatsScreen weight summary — sourced from deriveWeightGoalAnalytics', () => {
+describe('AnalyticsScreen weight summary — sourced from deriveWeightGoalAnalytics', () => {
   afterEach(() => jest.restoreAllMocks());
 
   test('latest weight displayed is the value returned by deriveWeightGoalAnalytics, not a local sort', () => {
@@ -141,7 +141,7 @@ describe('StatsScreen weight summary — sourced from deriveWeightGoalAnalytics'
   });
 });
 
-describe('StatsScreen Progressive Overload — grouping and layout', () => {
+describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
   afterEach(() => jest.restoreAllMocks());
 
   test('exercises are grouped by routine day', () => {
@@ -345,7 +345,7 @@ describe('StatsScreen Progressive Overload — grouping and layout', () => {
   });
 });
 
-describe('StatsScreen 1K Progress Card', () => {
+describe('AnalyticsScreen 1K Progress Card', () => {
   afterEach(() => jest.restoreAllMocks());
 
   test('displays redesigned 1K progress with full labels', () => {
@@ -370,7 +370,7 @@ describe('StatsScreen 1K Progress Card', () => {
   });
 });
 
-describe('StatsScreen non-weighted exercise cards — minimal layout', () => {
+describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () => {
   afterEach(() => jest.restoreAllMocks());
 
   test('reps-only non-weighted cards render avg_reps and best_set_reps', () => {

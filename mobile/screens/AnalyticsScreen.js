@@ -9,7 +9,7 @@ import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/p
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
-export function StatsScreen({ multiplier, section }) {
+export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();

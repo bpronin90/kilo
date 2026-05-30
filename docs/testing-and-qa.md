@@ -52,7 +52,7 @@ Current limitation:
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
   rendering checks that lock the day-level `date` trend bucketing contract
   while confirming Weight history still displays `logged_at`, plus a
-  `StatsScreen` consumer-drift regression that spies on
+  `AnalyticsScreen` consumer-drift regression that spies on
   `deriveWeightGoalAnalytics()` to prove the rendered latest weight and
   7-day/30-day averages come from the shared layer instead of screen-local
   reshaping.
@@ -186,10 +186,10 @@ retains non-test commands such as `npm run audit`.
 - verifies ISO date display formatting for date-only and datetime inputs
 - verifies weight-delta pace/severity thresholds plus signed delta formatting
 
-### `mobile/tests/stats-screen.test.js`
+### `mobile/tests/analytics-screen.test.js`
 
 - spies on `deriveWeightGoalAnalytics()` and verifies the rendered
-  `StatsScreen` latest-weight display uses the shared-layer `currentWeight`
+  `AnalyticsScreen` latest-weight display uses the shared-layer `currentWeight`
   result instead of any raw-entry local sort or pick
 - verifies the rendered `7-day` and `30-day` weight averages come from the
   shared-layer `avg7` / `avg30` outputs

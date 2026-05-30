@@ -228,7 +228,7 @@ The real native app path now has a modular React Native shell:
   descriptions. The flow stays local-only, allows partial profiles, and
   surfaces explicit save feedback plus clear-state controls rather than
   forcing onboarding or a fully populated profile
-- `mobile/screens/StatsScreen.js` now renders a native analytics surface with
+- `mobile/screens/AnalyticsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
   summary averages, alongside a redesigned `1K Progress` card (hero total,

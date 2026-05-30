@@ -10,7 +10,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { MoreScreen } from './screens/MoreScreen';
 import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
-import { StatsScreen } from './screens/StatsScreen';
+import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
@@ -212,8 +212,8 @@ export default function App() {
             saving={weightSaving}
           />
         </View>
-        <View style={[styles.tabContent, (activeTab === 'Stats' || activeTab === 'Analytics') && styles.activeTabContent]}>
-          <StatsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
+        <View style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
+          <AnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
         </View>
         <View style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MoreScreen
