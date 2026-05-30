@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.7 - 2026-05-29
+
+- Issue #227: Added rendered `WeightScreen` correction-flow coverage for row
+  reload, edited-entry validation/update, and delete confirmation/removal, and
+  updated `docs/testing-and-qa.md` to remove the corresponding Weight coverage
+  gaps from the inventory.
+
 ## 0.49.6 - 2026-05-29
 
 - Issue #232: Realigned `mobile/package.json` and `mobile/app.json` to the
