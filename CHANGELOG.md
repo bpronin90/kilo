@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.17 - 2026-05-30
+
+- Issue #241: Standardized the routine-set microcopy on the Log tab to one
+  consistent `Set as current routine` label across the alert title/action,
+  inline chip, and full button; softened the Android exit-confirmation dialog
+  to the app's sentence-case voice (`Exit app?` / `Exit`); and removed the dead
+  Home `formatGoalDirection` helper so the rendered goal-direction label has a
+  single source of truth.
+
 ## 0.49.16 - 2026-05-30
 
 - Issue #240: Corrected the Home weight sparkline label from a misleading
