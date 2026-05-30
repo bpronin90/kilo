@@ -10,7 +10,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, SET_ROW_FONT_SIZE } from '../components/UI';
+import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
@@ -26,7 +26,7 @@ export function LogScreen({
   toggleCollapsed,
   onSaveWorkout
 }) {
-  const { notes, currentId, currentNote, loading: notesLoading, selectCurrent, update, add, remove } = useWorkoutNotes();
+  const { notes, currentId, currentNote, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
 
   const [mode, setMode] = useState('read');
@@ -516,6 +516,9 @@ export function LogScreen({
         headerRight={headerRight}
         keyboardShouldPersistTaps="handled"
       >
+        {notesError ? (
+          <ErrorBanner message="Could not load workout notes." onRetry={refreshNotes} />
+        ) : null}
         {isEmpty ? (
           <LogEmptyState onCreateRoutine={handleCreateRoutine} />
         ) : (

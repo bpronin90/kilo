@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, SectionTitle } from '../components/UI';
+import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
@@ -133,7 +133,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
 }
 
 export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
-  const { entries, remove, update } = useWeightEntries();
+  const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
   const profile = useUserProfile()?.profile ?? null;
   const [editingId, setEditingId] = useState(null);
@@ -301,6 +301,9 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
     >
+      {entriesError ? (
+        <ErrorBanner message="Could not load weight entries." onRetry={refreshEntries} />
+      ) : null}
       <Card style={editingId ? styles.editingCard : null}>
         {editingId && (
           <View style={styles.editingHeader}>

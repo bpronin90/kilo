@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.49.12 - 2026-05-30
+
+- Issue #236: Surfaced AsyncStorage load failures on the Weight and Log tabs
+  instead of rendering a silent empty screen. Wired the existing `error` state
+  from `useWeightEntries`/`useWorkoutNotes` to a new shared `ErrorBanner`
+  (`UI.js`) on `WeightScreen` and the Log read view, each with a Retry action.
+  Also fixed both hooks to reset `error` at the start of every `refresh` so a
+  successful Retry clears the banner instead of leaving it stuck. Log visual
+  styling preserved.
+
 ## 0.49.11 - 2026-05-30
 
 - Issue #235: Added `hitSlop` to the three sub-minimum inline controls in the

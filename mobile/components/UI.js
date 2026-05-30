@@ -164,7 +164,47 @@ export function ArtisanalPanel({ children, style }) {
   return <View style={[styles.artisanalPanel, style]}>{children}</View>;
 }
 
+export function ErrorBanner({ message, onRetry }) {
+  return (
+    <View style={styles.errorBanner}>
+      <Text style={styles.errorBannerText}>{message || 'Failed to load data.'}</Text>
+      {onRetry && (
+        <Pressable onPress={onRetry} style={styles.errorBannerRetry}>
+          <Text style={styles.errorBannerRetryText}>Retry</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  errorBanner: {
+    backgroundColor: '#fff0f0',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+  errorBannerRetry: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.error,
+  },
+  errorBannerRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
   card: {
     backgroundColor: Colors.card,
     borderRadius: 24,

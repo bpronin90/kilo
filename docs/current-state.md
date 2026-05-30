@@ -186,7 +186,9 @@ The real native app path now has a modular React Native shell:
   explanatory copy, a `New Routine` primary action, and an example-format card
   — instead of auto-opening the editor or keyboard, and that empty state is
   gated on the workout-note load so existing users do not see it flash before
-  their routine appears
+  their routine appears. A failed workout-note load now surfaces a retryable
+  `ErrorBanner` above the read view instead of a silent empty screen, and a
+  successful Retry clears the banner.
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
   denser history row treatment with per-entry delta badges for notable
@@ -214,7 +216,9 @@ The real native app path now has a modular React Native shell:
   surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
-  recorded `logged_at` timestamp
+  recorded `logged_at` timestamp. A failed weight-entry load now surfaces a
+  retryable `ErrorBanner` at the top of the screen instead of a silent empty
+  screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
   `User Profile`, `Data & Backup`, `Settings & Algorithm`, `Help`, and
   `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
