@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.49.8 - 2026-05-29
+
+- Issue #229: Unified the Log tab's untitled-routine fallback label to
+  `Untitled Routine` across current-routine save, display, editor-title, and
+  delete-confirmation paths so users no longer see mixed default routine names.
+
 ## 0.49.7 - 2026-05-29
 
 - Issue #227: Added rendered `WeightScreen` correction-flow coverage for row
