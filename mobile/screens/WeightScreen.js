@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
+import { Card, Button, HeroMetric, SectionTitle, ErrorBanner } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
@@ -684,8 +684,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   trendValue: {
-    fontSize: 20,
-    fontWeight: '900',
+    ...HeroMetric.statTertiary,
     color: Colors.text,
   },
   trendLabel: {
@@ -754,8 +753,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   goalDisplayValue: {
-    fontSize: 24,
-    fontWeight: '900',
+    ...HeroMetric.statSecondary,
     color: Colors.accent,
   },
   goalDisplayLabel: {
