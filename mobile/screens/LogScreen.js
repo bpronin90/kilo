@@ -162,7 +162,7 @@ export function LogScreen({
     setSaveSuccess('');
     try {
       let result = null;
-      const titleToSave = workoutNoteTitle || 'My Workout';
+      const titleToSave = workoutNoteTitle || 'Untitled Routine';
       const { sections: savedSections } = parseWorkoutNote(workoutNoteText);
       const explicitTrackedNames = listTrackedLifts(trackedLifts);
       const defaultNames = getDefaultTrackedNames();
@@ -528,7 +528,7 @@ export function LogScreen({
                     style={styles.otherNoteHeader}
                   >
                     <View style={styles.otherNoteInfo}>
-                      <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'My Workout'}</Text>
+                      <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'Untitled Routine'}</Text>
                       <Text style={styles.otherNoteSub}>Current routine</Text>
                     </View>
                     <Pressable
@@ -663,7 +663,7 @@ export function LogScreen({
       <ScreenShell
         ref={editorScrollRef}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
-        title={editingNoteId ? (editingTitle || 'Routine') : (workoutNoteTitle || 'My Workout')}
+        title={editingNoteId ? (editingTitle || 'Untitled Routine') : (workoutNoteTitle || 'Untitled Routine')}
         subtitle="Edit routine"
         headerRight={
           <Pressable onPress={editingNoteId ? handleDoneOther : handleDoneCurrent} style={styles.modeToggle}>
@@ -714,7 +714,7 @@ export function LogScreen({
               if (editingNoteId) {
                 handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
               } else {
-                handleDeleteRoutine(currentId, workoutNoteTitle || 'My Workout', true);
+                handleDeleteRoutine(currentId, workoutNoteTitle || 'Untitled Routine', true);
               }
             }}
             title="Delete routine"
