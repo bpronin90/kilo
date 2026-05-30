@@ -348,7 +348,7 @@ function ProfileScreen({ onBack }) {
             </View>
             {localProfile?.activity_level === level.id && (
               <View style={styles.checkCircle}>
-                <Text style={styles.checkText}>✓</Text>
+                <Text style={styles.checkText} accessible={false}>✓</Text>
               </View>
             )}
           </Pressable>
@@ -477,14 +477,14 @@ function SettingsScreen({ onBack, multiplier, onUpdate }) {
             <Text style={styles.settingHelp}>Applied to epley 1RM for Kilo max</Text>
           </View>
           <View style={styles.stepper}>
-            <Pressable style={styles.stepperButton} onPress={handleDecrement}>
-              <Text style={styles.stepperText}>−</Text>
+            <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
+              <Text style={styles.stepperText} accessible={false}>−</Text>
             </Pressable>
             <View style={styles.stepperValueContainer}>
               <Text style={styles.stepperValue}>{multiplier.toFixed(2)}</Text>
             </View>
-            <Pressable style={styles.stepperButton} onPress={handleIncrement}>
-              <Text style={styles.stepperText}>+</Text>
+            <Pressable style={styles.stepperButton} onPress={handleIncrement} accessibilityRole="button" accessibilityLabel="Increase fatigue multiplier">
+              <Text style={styles.stepperText} accessible={false}>+</Text>
             </Pressable>
           </View>
         </View>
