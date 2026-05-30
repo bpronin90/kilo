@@ -52,7 +52,7 @@ Current limitation:
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
   rendering checks that lock the day-level `date` trend bucketing contract
   while confirming Weight history still displays `logged_at`, plus a
-  `StatsScreen` consumer-drift regression that spies on
+  `AnalyticsScreen` consumer-drift regression that spies on
   `deriveWeightGoalAnalytics()` to prove the rendered latest weight and
   7-day/30-day averages come from the shared layer instead of screen-local
   reshaping.

@@ -76,7 +76,7 @@ mobile/
     MoreScreen.js
     LogScreen.js
     WeightScreen.js
-    StatsScreen.js
+    AnalyticsScreen.js
   theme/
     colors.js          ← shared native color tokens
   storage/
@@ -85,7 +85,7 @@ mobile/
     parser.test.js     ← native parser parity tests
     data.test.js       ← native analytics/data helper contract tests
     format.test.js     ← native formatting and weight-delta helper tests
-    stats-screen.test.js ← native Analytics screen consumer checks
+    analytics-screen.test.js ← native Analytics screen consumer checks
     storage.test.js    ← native AsyncStorage tests
     weight-goal-ui.test.js ← native Weight goal rendering checks
 ```
@@ -109,7 +109,7 @@ These files define the current real native app path.
 | `mobile/screens/MoreScreen.js` | Native More tab menu plus Profile, Backup, Settings, Help, and About sub-screens. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
-| `mobile/screens/StatsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
+| `mobile/screens/AnalyticsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
 | `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries, workout notes, tracked lifts, weight goals, backup/import, and related UI state. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
@@ -123,7 +123,7 @@ These files define the current real native app path.
 | `mobile/tests/parser.test.js` | Native parser parity tests for `mobile/lib/parser.js`. |
 | `mobile/tests/data.test.js` | Native workout/weight analytics helper contract tests for `mobile/lib/data.js`. |
 | `mobile/tests/format.test.js` | Native formatting and weight-delta helper tests for `mobile/lib/format.js`. |
-| `mobile/tests/stats-screen.test.js` | Native Analytics-screen consumer checks for shared weight-goal and per-day signal rendering. |
+| `mobile/tests/analytics-screen.test.js` | Native Analytics-screen consumer checks for shared weight-goal and per-day signal rendering. |
 | `mobile/tests/storage.test.js` | Native storage tests for `mobile/storage/entries.js` using the AsyncStorage Jest mock. |
 | `mobile/tests/weight-goal-ui.test.js` | Native Weight-screen goal-card rendering checks using `react-test-renderer`. |
 
