@@ -302,11 +302,13 @@ export function AnalyticsScreen({ multiplier, section }) {
           <Pressable
             style={styles.slotRow}
             onPress={() => handleSlotTap(slot)}
+            accessibilityRole="button"
+            accessibilityLabel={`${SLOT_LABELS[slot]}, ${oneKSelections[slot]}, ${activeSlot === slot ? 'collapse' : 'expand'}`}
           >
             <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
             <View style={styles.slotValueRow}>
               <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
-              <Text style={styles.slotChevron}>{activeSlot === slot ? '▲' : '▼'}</Text>
+              <Text style={styles.slotChevron} accessible={false}>{activeSlot === slot ? '▲' : '▼'}</Text>
             </View>
           </Pressable>
           {activeSlot === slot && noteExerciseNames.length > 0 && (

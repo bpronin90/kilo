@@ -495,15 +495,17 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                   </Text>
                 )}
               </Pressable>
-              <Pressable 
-                onPress={() => handleDelete(entry.id)} 
+              <Pressable
+                onPress={() => handleDelete(entry.id)}
                 style={({ pressed }) => [
                   styles.deleteAffordance,
                   pressed && styles.deleteAffordancePressed
                 ]}
                 hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Delete weight entry"
               >
-                <Text style={styles.deleteAffordanceText}>✕</Text>
+                <Text style={styles.deleteAffordanceText} accessible={false}>✕</Text>
               </Pressable>
             </View>
           );

@@ -598,8 +598,8 @@ export function LogScreen({
                                 {nudgeCopy && (
                                   <View style={styles.nudgeChip}>
                                     <Text style={styles.nudgeChipText}>{nudgeCopy}</Text>
-                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss}>
-                                      <Text style={styles.nudgeDismissText}>×</Text>
+                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss} accessibilityRole="button" accessibilityLabel="Dismiss nudge">
+                                      <Text style={styles.nudgeDismissText} accessible={false}>×</Text>
                                     </Pressable>
                                   </View>
                                 )}
