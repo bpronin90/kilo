@@ -25,6 +25,9 @@ Source: `mobile/theme/colors.js`
 | `inputBackground` | `#ffffff` | Text input fill |
 | `inputBorder` | `#d9cdbf` | Text input stroke |
 | `chipBackground` | `#f0d8bb` | Chip/badge/highlight fill |
+| `divider` | `rgba(31, 26, 23, 0.05)` | Subtle separator overlay |
+| `subtleBg` | `rgba(31, 26, 23, 0.02)` | Very subtle tinted background |
+| `panelBackground` | `#ffffff` | Panel/section background (same value as `inputBackground`) |
 | `chipText` | `#96571c` | Chip/badge text |
 | `success` | `#4a7c44` | Green (progressing, bulking) |
 | `error` | `#b03a2e` | Red (regressing, delete, warnings) |
@@ -34,8 +37,6 @@ Source: `mobile/theme/colors.js`
 
 | File | Line | Value | Used For |
 |---|---|---|---|
-| `StatsScreen.js` | `325` | `#4ade80` | Progressing classification badge |
-| `StatsScreen.js` | `344` | `#4ade80` | Overload trend "up" arrow |
 | `LogScreen.js` | `749` | `#fff0f0` | Error card background tint |
 | `HomeScreen.js` | `33, 37` | `#FF5C00` | KiloWordmark SVG (brand mark, intentional) |
 
@@ -182,7 +183,6 @@ Source: `mobile/screens/HomeScreen.js`
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| SectionTitle | "Weight goal" — uses shared `SectionTitle` (18px bold) | | `156` → UI.js:182 |
 | Card padding | `24` | | `972` |
 | Card borderRadius | `24` | | `973` |
 | Direction text ("Cutting"/"Bulking") | fontSize | `18` | `983` |
@@ -206,7 +206,6 @@ Source: `mobile/screens/HomeScreen.js`
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| SectionTitle | "1k club progress" — uses shared `SectionTitle` (18px bold) | | `195` → UI.js:182 |
 | Card padding | `24` | | `1024` |
 | Card borderRadius | `24` | | `1025` |
 | Hero total value | fontSize | `32` | `1032` |
@@ -230,9 +229,9 @@ Source: `mobile/screens/HomeScreen.js`
 
 ---
 
-## Stats/Analytics Screen
+## Analytics Screen
 
-Source: `mobile/screens/StatsScreen.js`
+Source: `mobile/screens/AnalyticsScreen.js`
 
 ### Weight Trends Card
 
@@ -412,16 +411,16 @@ Style lock header at lines 1-14: do not change Log styling unless the repo owner
 |---|---|---|---|---|
 | Home | Weight value | `48` | `800` | `accent` |
 | Home | 1K total | `32` | `800` | `accent` |
-| Stats | Weight value | `32` | `900` | `accent` |
-| Stats | 1K total | `48` | `900` | `accent` |
+| Analytics | Weight value | `32` | `900` | `accent` |
+| Analytics | 1K total | `48` | `900` | `accent` |
 | Weight | Goal value | `24` | `900` | `accent` |
 | Weight | Trend value | `20` | `900` | `text` |
 
-Home uses `800` for bold metrics. Stats and Weight use `900`. No clear system.
+Home uses `800` for bold metrics. Analytics and Weight use `900`. No clear system.
 
-### 1K Card: Home vs Stats
+### 1K Card: Home vs Analytics
 
-| Property | Home | Stats |
+| Property | Home | Analytics |
 |---|---|---|
 | Total fontSize | `32` | `48` |
 | Total fontWeight | `800` | `900` |
@@ -429,18 +428,18 @@ Home uses `800` for bold metrics. Stats and Weight use `900`. No clear system.
 | Breakdown label fontSize | `12` | `12` |
 | Breakdown divider | vertical `borderLeft/Right` between items | horizontal `borderTop` above row |
 
-Home treats 1K as tertiary (smaller). Stats treats it as a hero (larger). The structural difference (vertical vs horizontal dividers, centered vs grid) means the "same card" doesn't actually feel the same.
+Home treats 1K as tertiary (smaller). Analytics treats it as a hero (larger). The structural difference (vertical vs horizontal dividers, centered vs grid) means the "same card" doesn't actually feel the same.
 
 ### Support Label Patterns
 
 | Pattern | fontSize | Weight | Case | Screens |
 |---|---|---|---|---|
-| Uppercase micro-label | `10` | `700` | `uppercase` | Stats (column headers, trend labels), Weight (trend labels) |
-| Uppercase small label | `11` | `600` | `uppercase` | Home (hero sublabels), Stats (footer stat labels) |
-| Uppercase label | `12` | `700` | `uppercase` | Home (goal stat label), Stats (weight label, 1K label, slot title), Weight (section titles, goal labels) |
-| Section title label | `14` | `700` | `uppercase` | Stats (1K progress label) |
+| Uppercase micro-label | `10` | `700` | `uppercase` | Analytics (column headers, trend labels), Weight (trend labels) |
+| Uppercase small label | `11` | `600` | `uppercase` | Home (hero sublabels), Analytics (footer stat labels) |
+| Uppercase label | `12` | `700` | `uppercase` | Home (goal stat label), Analytics (weight label, 1K label, slot title), Weight (section titles, goal labels) |
+| Section title label | `14` | `700` | `uppercase` | Analytics (1K progress label) |
 
-Four different sizes for the same role (metadata label above a value). The `10px` labels on Home classifications and Stats column headers are the smallest text in the app.
+Four different sizes for the same role (metadata label above a value). The `10px` labels on Home classifications and Analytics column headers are the smallest text in the app.
 
 ### Card Padding
 
@@ -450,9 +449,9 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Home | Weekly hero | `0` (custom) + `24` inner |
 | Home | Goal card | `24` |
 | Home | 1K card | `24` |
-| Stats | Weight card | `20` |
-| Stats | 1K card | `24` |
-| Stats | Slot card | `16` |
+| Analytics | Weight card | `20` |
+| Analytics | 1K card | `24` |
+| Analytics | Slot card | `16` |
 | Weight | Trends card | `0` (merged sections, `16` per section) |
 
 ### Divider Patterns
@@ -460,8 +459,8 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Type | Used Where |
 |---|---|
 | Full-bleed `marginHorizontal: -24` | Home hero divider |
-| `borderTop 1px` | Stats weight footer, Stats 1K breakdown, Weight trend sections |
-| `borderBottom 1px` | Weight history rows, Stats signal rows |
+| `borderTop 1px` | Analytics weight footer, Analytics 1K breakdown, Weight trend sections |
+| `borderBottom 1px` | Weight history rows, Analytics signal rows |
 | `borderLeft/Right 1px` | Home 1K breakdown items |
 | `opacity: 0.5` divider | Weight goal divider |
 
@@ -470,7 +469,7 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | Screen | Elements using accent |
 |---|---|
 | Home | Weight value, sparkline, CTA text, CTA chevron, 1K total, wordmark SVG |
-| Stats | Weight value, 1K total, pace badge bg, loading spinners |
+| Analytics | Weight value, 1K total, pace badge bg, loading spinners |
 | Weight | Goal display values, save button bg, edit title, delta notable |
 | Log | Current note title, subheadings, mode toggle, switch/create buttons |
 
@@ -480,9 +479,9 @@ Home has the highest orange density — 6 distinct elements. The wordmark is fix
 
 | Screen | Between-card SectionTitles |
 |---|---|
-| Home | "Weight goal", "1k club progress" |
-| Stats | "Weight Trends", "Strength", "Progressive Overload" |
+| Home | none — Home does not import `SectionTitle` |
+| Analytics | "Weight Trends", "Strength", "Progressive Overload" |
 | Weight | "Goals", "Trends", "History" |
 | Log | "More Routines" |
 
-On Stats/Weight, SectionTitles separate genuinely different content areas with many items each. On Home, they label 3 cards that should already communicate their purpose through their content. Removing them from Home would reduce the "list of named dashboard panels" feel.
+On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose.

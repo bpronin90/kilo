@@ -406,10 +406,10 @@ titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with a responsive Kilo wordmark
 header, `Current Routine Progress` subtitle copy, a single non-navigating
-latest-weight summary card, a compact current-workout `1k Club Progress` card
-whose total links into the Analytics Strength section, and a shared line-chart
-view of the 7-day rolling-average weight trend whose scoped tap target links
-into the Analytics Weight Trends section as the default landing view. The native Log read
+latest-weight summary card, a compact non-pressable `1k Club Progress` card, and a plain (non-navigating)
+line-chart view of the 7-day rolling-average weight trend. The only Home→Analytics
+navigation is a "Full history and insights" CTA that opens the Analytics tab at
+its default landing view with no section argument. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection now persists globally
 by normalized lift name so `Bench Press`, `bench press`, and ` Bench  Press `

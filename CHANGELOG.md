@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.49.13 - 2026-05-30
+
+- Issue #237: Reconciled `docs/design-system-map.md` and `docs/current-state.md`
+  with the shipped app (doc-drift fixes from the #233 audit). Retargeted the
+  Analytics screen section from the renamed `StatsScreen.js` to
+  `AnalyticsScreen.js`, removed the stale `#4ade80` hardcoded-color rows (now
+  `Colors.success`), dropped the Home `SectionTitle` rows (Home no longer imports
+  `SectionTitle`), added the `divider`/`subtleBg`/`panelBackground` color tokens
+  (noting `panelBackground == inputBackground`), and finished the Stats→Analytics
+  rename throughout. Corrected `current-state.md` to drop the non-existent Home
+  deep-link claims (the 1K total and sparkline are non-navigating; the only
+  Home→Analytics link is the generic "Full history and insights" CTA).
+  Documentation only.
+
 ## 0.49.12 - 2026-05-30
 
 - Issue #236: Surfaced AsyncStorage load failures on the Weight and Log tabs
