@@ -135,7 +135,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               paddingHorizontal={0}
               hideHeader
             />
-            <Text style={styles.heroSparklineSublabel}>7-day trend</Text>
+            <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
           </View>
 
           {/* Classification band */}

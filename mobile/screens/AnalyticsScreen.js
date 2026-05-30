@@ -68,6 +68,7 @@ export function AnalyticsScreen({ multiplier, section }) {
     }
   }
 
+  // null goal: Analytics renders trend data only, not goal-relative info
   const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries } = useMemo(
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
