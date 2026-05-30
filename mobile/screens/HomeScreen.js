@@ -372,8 +372,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   oneKHeroValue: {
-    fontSize: 32,
-    fontWeight: '700',
+    ...HeroMetric.hero,
     color: Colors.text,
   },
   oneKHeroUnit: {
