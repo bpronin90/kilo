@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.18 - 2026-05-31
+
+- Issue #245: Shortened the Expo OTA code-signing certificate validity window
+  to 3 years, replaced the checked-in signing cert, and expanded the OTA key
+  handling docs with a compromise-response runbook, CI secret storage policy,
+  and team-change rotation guidance.
+
 ## 0.49.17 - 2026-05-30
 
 - Issue #241: Standardized the routine-set microcopy on the Log tab to one
