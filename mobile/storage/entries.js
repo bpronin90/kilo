@@ -13,6 +13,11 @@ const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 const USER_PROFILE_KEY = 'kilo_user_profile';
 
+function localDateToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 async function readList(key) {
   try {
     const raw = await AsyncStorage.getItem(key);
@@ -111,8 +116,7 @@ export async function updateWeightEntry(id, weight_value, note, date) {
   entry.weight_value = weight_value;
   entry.note = note;
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const today = new Date().toISOString().slice(0, 10);
-    if (date <= today) {
+    if (date <= localDateToday()) {
       entry.logged_at = date + entry.logged_at.slice(10);
       entry.date = date;
     }

@@ -1,4 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+
+function localDateToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
@@ -144,7 +149,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [newEntryDate, setNewEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newEntryDate, setNewEntryDate] = useState(localDateToday);
   const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
@@ -332,8 +337,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       cancelEdit();
     } else {
       const date = weightDateEditEnabled ? newEntryDate : undefined;
-      onSaveWeight(date);
-      if (weightDateEditEnabled) setNewEntryDate(new Date().toISOString().slice(0, 10));
+      const ok = await onSaveWeight(date);
+      if (ok && weightDateEditEnabled) setNewEntryDate(localDateToday());
     }
   };
 

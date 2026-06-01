@@ -182,6 +182,28 @@ describe('weight entry storage', () => {
     expect(updated.date).toBe(W1.date);
     expect(updated.logged_at).toBe(W1.logged_at);
   });
+
+  test('updateWeightEntry accepts local today (timezone boundary)', async () => {
+    await saveWeightEntry(W1);
+    const d = new Date();
+    const localToday = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const ok = await updateWeightEntry(W1.id, W1.weight_value, null, localToday);
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.date).toBe(localToday);
+  });
+
+  test('updateWeightEntry rejects local tomorrow (timezone boundary)', async () => {
+    await saveWeightEntry(W1);
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const localTomorrow = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    await updateWeightEntry(W1.id, W1.weight_value, null, localTomorrow);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.date).toBe(W1.date);
+  });
 });
 
 describe('weight date edit setting', () => {

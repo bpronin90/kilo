@@ -116,18 +116,19 @@ export default function App() {
   }, []);
 
   const saveWeight = useCallback(async (date) => {
-    if (weightSaving) return;
+    if (weightSaving) return false;
     Keyboard.dismiss();
     setSaveError('');
     const parsed = parseWeightEntry(weightValue);
     if (!parsed.ok) {
       setSaveError(parsed.error);
-      return;
+      return false;
     }
     let loggedAt = parsed.logged_at || new Date().toISOString();
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      const today = new Date().toISOString().slice(0, 10);
-      if (date <= today) {
+      const d = new Date();
+      const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (date <= localToday) {
         loggedAt = date + loggedAt.slice(10);
       }
     }
@@ -142,6 +143,7 @@ export default function App() {
       setWeightValue('');
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
+      return true;
     } finally {
       setWeightSaving(false);
     }
