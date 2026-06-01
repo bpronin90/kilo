@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.51.0 - 2026-06-01
+
+- Issue #242: Added an opt-in `Edit weigh-in dates` setting under More so
+  Weight can expose inline local-day-capped date pickers for both new and
+  existing weigh-ins while preserving the stored time-of-day on edits,
+  re-sorting history by `logged_at`, and keeping the default logging/edit path
+  unchanged when the setting is off.
+
 ## 0.50.0 - 2026-06-01
 
 - Issue #91: Added a separate Deload mode to the Log tab with a `Routine |

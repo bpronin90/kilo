@@ -95,8 +95,8 @@ export function useWeightEntries() {
     notifyWeight();
   }, []);
 
-  const update = useCallback(async (id, weight_value, note) => {
-    const ok = await Storage.updateWeightEntry(id, weight_value, note);
+  const update = useCallback(async (id, weight_value, note, date) => {
+    const ok = await Storage.updateWeightEntry(id, weight_value, note, date);
     if (ok) {
       notifyWeight();
     }

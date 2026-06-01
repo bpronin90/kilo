@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Alert, Image, Keyboard, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Keyboard, Platform, Pressable, BackHandler, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -11,7 +11,7 @@ import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
 
-export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, onUpdateFatigueMultiplier }) {
+export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, onUpdateFatigueMultiplier, weightDateEditEnabled, onUpdateWeightDateEditEnabled }) {
   const [activeView, setActiveView] = useState('menu');
 
   useEffect(() => {
@@ -57,6 +57,8 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
         onBack={() => setActiveView('menu')}
         multiplier={fatigueMultiplier}
         onUpdate={onUpdateFatigueMultiplier}
+        weightDateEditEnabled={weightDateEditEnabled}
+        onUpdateWeightDateEditEnabled={onUpdateWeightDateEditEnabled}
       />
     );
   }
@@ -460,7 +462,7 @@ function BackupScreen({ onBack, onExport, onImport }) {
   );
 }
 
-function SettingsScreen({ onBack, multiplier, onUpdate }) {
+function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled }) {
   const handleIncrement = () => onUpdate(Math.round((multiplier + 0.01) * 100) / 100);
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
@@ -494,6 +496,22 @@ function SettingsScreen({ onBack, multiplier, onUpdate }) {
           style={styles.resetButton}
           textStyle={styles.resetButtonText}
         />
+      </Card>
+
+      <SectionTitle>Weight Logging</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
+            <Text style={styles.settingHelp}>Allow setting date on new and existing entries</Text>
+          </View>
+          <Switch
+            value={!!weightDateEditEnabled}
+            onValueChange={onUpdateWeightDateEditEnabled}
+            accessibilityLabel="Edit weigh-in dates"
+            accessibilityRole="switch"
+          />
+        </View>
       </Card>
     </ScreenShell>
   );

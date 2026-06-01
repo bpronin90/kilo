@@ -158,7 +158,7 @@ describe('WeightScreen edit and delete correction flows', () => {
       await updateBtn.props.onPress();
     });
 
-    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning');
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
     // cancelEdit() triggers re-renders that pick up the updated entries
     expect(hasText(root, 'Editing entry')).toBe(false);
     expect(hasText(root, '190')).toBe(true);
