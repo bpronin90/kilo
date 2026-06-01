@@ -200,6 +200,12 @@ The real native app path now has a modular React Native shell:
   successful Retry clears the banner.
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
   direct history edit/delete controls for saved weight entries, including a
+  persisted opt-in date-edit path controlled from More > Settings: when the
+  `Edit weigh-in dates` toggle is on, both the new-entry form and the
+  existing-entry edit form expose an inline date picker capped at the local
+  calendar day, new entries splice the chosen date onto the current
+  time-of-day, and edited entries preserve their original time-of-day while
+  re-sorting history by `logged_at`, plus a
   denser history row treatment with per-entry delta badges for notable
   (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, MM-DD-YYYY
   display dates for visible weight-history rows while stored timestamps remain
@@ -233,6 +239,9 @@ The real native app path now has a modular React Native shell:
   `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
   intercept Android back presses and return to the More menu before falling
   through to tab-level navigation, and the Settings & Algorithm screen
+  now also includes a `Weight Logging` section with an `Edit weigh-in dates`
+  switch that governs whether the Weight tab exposes date controls for new and
+  existing weigh-ins,
   exposes a persisted fatigue-multiplier stepper plus reset control. The
   `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:
@@ -333,6 +342,7 @@ The real native app path now has a modular React Native shell:
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
+  weight-date-edit setting under `kilo_weight_date_edit_enabled`, a separate
   deload-note record under `kilo_workout_deload_note`, a global
   tracked-lift map under `kilo_tracked_lifts`, and the Log-tab
   current-routine collapsed state under `kilo_log_current_collapsed`. The
