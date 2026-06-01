@@ -17,6 +17,28 @@ import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDef
 import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote } from '../hooks/useEntries';
 
+// Reshape the compact deload generator output into routine-note style:
+// blank line between day blocks, +Lifting subheading per day.
+// The deload format line "Name: weight lbs SxR" still parses via _DELOAD_RE.
+const _DELOAD_EXERCISE_LINE = /^[^:+\d-][^:]*?:\s+\d+(?:\.\d+)?\s+lbs?\s+\d+x\d+\s*$/i;
+const _DELOAD_CORE_LINE = /^Core:/i;
+function _shapeDeloadText(text) {
+  const lines = text.split('\n');
+  const out = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const isExercise = _DELOAD_EXERCISE_LINE.test(line) || _DELOAD_CORE_LINE.test(line);
+    if (!isExercise) {
+      if (out.length > 0) out.push('');
+      out.push(line);
+      out.push('+Lifting');
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join('\n');
+}
+
 export function LogScreen({
   workoutNoteText,
   setWorkoutNoteText,
@@ -571,8 +593,8 @@ export function LogScreen({
       setIsGenerating(true);
       setSaveError('');
       try {
-        const generated = generateDeloadNote(workoutNoteText);
-        await saveDeloadNote(generated);
+        const raw = generateDeloadNote(workoutNoteText);
+        await saveDeloadNote(_shapeDeloadText(raw));
       } catch {
         setSaveError('Generate failed');
       } finally {
