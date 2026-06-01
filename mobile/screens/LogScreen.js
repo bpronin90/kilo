@@ -39,6 +39,7 @@ export function LogScreen({
   const [deloadMode, setDeloadMode] = useState('read'); // 'read' | 'edit'
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [deloadCollapsed, setDeloadCollapsed] = useState(false);
 
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -568,9 +569,12 @@ export function LogScreen({
   const handleGenerateDeload = () => {
     const doGenerate = async () => {
       setIsGenerating(true);
+      setSaveError('');
       try {
         const generated = generateDeloadNote(workoutNoteText);
         await saveDeloadNote(generated);
+      } catch {
+        setSaveError('Generate failed');
       } finally {
         setIsGenerating(false);
       }
@@ -653,6 +657,11 @@ export function LogScreen({
               </Pressable>
             </View>
 
+            {tabView === 'deload' && saveError ? (
+              <Card style={styles.errorCard}>
+                <Text style={styles.errorText}>{saveError}</Text>
+              </Card>
+            ) : null}
             {tabView === 'deload' && !deloadLoading && (
               !deloadNote?.raw_text ? (
                 <View style={styles.deloadEmpty}>
@@ -667,7 +676,7 @@ export function LogScreen({
                 <>
                   <View style={styles.mirrorContainer}>
                     <Card style={styles.currentRoutineCard}>
-                      <Pressable onPress={toggleCollapsed} style={styles.otherNoteHeader}>
+                      <Pressable onPress={() => setDeloadCollapsed(c => !c)} style={styles.otherNoteHeader}>
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
                         </View>
@@ -681,7 +690,7 @@ export function LogScreen({
                       </Pressable>
                       <Pressable
                         onPress={handleDeloadBodyPress}
-                        style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
+                        style={[styles.currentNoteContent, deloadCollapsed ? { display: 'none' } : null]}
                       >
                         <Text style={styles.editHint}>Double-tap to edit</Text>
                         {deloadDayGroups.map((group, gi) => (
