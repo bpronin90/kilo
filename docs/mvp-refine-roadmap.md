@@ -69,8 +69,8 @@ The open issues are mostly valid, but the priority should be **stability and str
 | **166** | Render non-weighted tracked-exercise cards | **Keep** | Valid feature, depends on #165 |
 | **165** | Derive non-weighted tracked-exercise card metrics | **Keep** | Valid feature for Claude, self-contained |
 | **92** | Session-count signifier colors | **Keep, but deprioritize** | Nice-to-have UI polish, open 9 days with no activity. Not blocking anything. |
-| **91** | Routine/Deload toggle + Generate deload + editable view | **Hold** | Blocked by #90, user defers for stability |
-| **90** | Deload-week generation engine | **Hold** | User defers deload work for stability |
+| **91** | Routine/Deload toggle + Generate deload + editable view | **Done** | Shipped after #90; Log tab now supports a separate generated/editable deload note flow |
+| **90** | Deload-week generation engine | **Done** | Shipped; parser/storage/hook deload support now backs the Log deload UI |
 | **87** | Tidy OTA strategy docs | **Close** | Fold content into #63 as a comment |
 | **63** | Enable OTA for iOS | **Keep on hold** | Blocked on Apple Developer account |
 
@@ -178,8 +178,8 @@ Priority: **stability and structural cleanup first, then features.** The app wor
 | 166 | **Keep** | Blocked by #165 |
 | 165 | **Keep** | Ready for Claude |
 | 92 | **Keep, deprioritize** | Nice-to-have, pick up in gaps |
-| 91 | **Hold** | Blocked by #90, user defers for stability |
-| 90 | **Hold** | User defers deload work for stability |
+| 91 | **Done** | Shipped after #90; separate deload note flow is live on the Log tab |
+| 90 | **Done** | Shipped; deload generation/persistence layer is complete |
 | 87 | **Close** | Fold content into #63 as a comment |
 | 63 | **Keep on hold** | Blocked on external dependency |
 
