@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2205,3 +2205,231 @@ describe('derivePerDaySignals', () => {
   });
 });
 
+
+// ── parseExerciseHeader ───────────────────────────────────────────────────────
+
+describe('parseExerciseHeader', () => {
+  test('parses NxM-P: 4x6-8 → sets=4, repLo=6, repHi=8', () => {
+    expect(parseExerciseHeader('-Squat 4x6-8')).toEqual({ sets: 4, repLo: 6, repHi: 8 });
+  });
+
+  test('parses NxM: 2x12 → sets=2, repLo=12, repHi=12', () => {
+    expect(parseExerciseHeader('-Bench Press 2x12')).toEqual({ sets: 2, repLo: 12, repHi: 12 });
+  });
+
+  test('parses Core: ... * 2x10-12 → sets=2, repLo=10, repHi=12', () => {
+    expect(parseExerciseHeader('-Core: In-and-outs on bench * 2x10-12')).toEqual({ sets: 2, repLo: 10, repHi: 12 });
+  });
+
+  test('parses space-separated "N M-P": 2 8-10 → sets=2, repLo=8, repHi=10', () => {
+    expect(parseExerciseHeader('-Hammer Curl 2 8-10')).toEqual({ sets: 2, repLo: 8, repHi: 10 });
+  });
+
+  test('returns null when no NxM or N M-P pattern present', () => {
+    expect(parseExerciseHeader('-Band pull-aparts')).toBeNull();
+    expect(parseExerciseHeader('-Bike')).toBeNull();
+  });
+
+  test('returns null for empty or null input', () => {
+    expect(parseExerciseHeader('')).toBeNull();
+    expect(parseExerciseHeader(null)).toBeNull();
+  });
+
+  test('parses 3x8-10 → sets=3, repLo=8, repHi=10', () => {
+    expect(parseExerciseHeader('-Lat Pulldown 3x8-10')).toEqual({ sets: 3, repLo: 8, repHi: 10 });
+  });
+});
+
+// ── generateDeloadNote ────────────────────────────────────────────────────────
+
+const DELOAD_FIXTURE = [
+  'Monday',
+  '+WARMUP EXERCISE',
+  '-Bike',
+  '5 min',
+  '+LIFTING EXERCISE',
+  '-DB Bench Press 4x6-8',
+  '80 8,8,8,8',
+  '90 8,8,8,5',
+  '95 7,7,7,7',
+  '-Low-to-High Cable Fly 2x12',
+  '12.5 12,12',
+  '17.5 12, 12.5 12',
+  '-Single-Arm Pushdown 2x10-12',
+  '15 12,12',
+  '20.5 12,12',
+  'Tuesday',
+  '+WARMUP EXERCISE',
+  '-Bike',
+  '5 min',
+  '+LIFTING EXERCISE',
+  '-Squat 4x6-8',
+  '225 8,8,8,8',
+  '235 8,8,8,8',
+  '245 4 235 8,8,8',
+  'Core: Plank 2x30',
+  '30,30',
+].join('\n');
+
+describe('generateDeloadNote', () => {
+  test('PO lift reduced to 65% of working weight, sets-1, mid-rep', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    // Squat: last row 245 4 235 8,8,8 → heaviest with ≥2 sets = 235
+    // po:true → round(0.65 × 235, 5) = 155; sets max(2,3)=3; reps ceil((6+8)/2)=7
+    expect(deload).toContain('Squat: 155 lbs 3x7');
+  });
+
+  test('PO lift: DB Bench Press uses 5-lb increment when all weights are multiples of 5', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    // DB Bench: last row 95 7,7,7,7 → working weight 95; round(0.65×95, 5)=round(61.75,5)=60
+    expect(deload).toContain('DB Bench Press: 60 lbs 3x7');
+  });
+
+  test('catalog po:false accessory: weight unchanged', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    // Low-to-High Cable Fly: po:false → weight unchanged (17.5, heaviest from last row)
+    expect(deload).toContain('Low-to-High Cable Fly: 17.5 lbs 2x12');
+  });
+
+  test('catalog po:false: sets-1 still applied', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    // Single-Arm Pushdown: po:false; last row 20.5 12,12 → working weight 20.5; sets max(2,1)=2; reps ceil(11)=11
+    expect(deload).toContain('Single-Arm Pushdown: 20.5 lbs 2x11');
+  });
+
+  test('warmup section exercises are omitted', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    expect(deload).not.toContain('Bike');
+  });
+
+  test('Core: exercises emitted as "Core: <short>, easy" without weight', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    expect(deload).toContain('Core: plank, easy');
+    expect(deload).not.toMatch(/Core: plank.*lbs/);
+  });
+
+  test('output is grouped under the original day headings', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    const lines = deload.split('\n');
+    const mondayIdx = lines.indexOf('Monday');
+    const tuesdayIdx = lines.indexOf('Tuesday');
+    expect(mondayIdx).toBeGreaterThanOrEqual(0);
+    expect(tuesdayIdx).toBeGreaterThan(mondayIdx);
+    // DB Bench Press appears under Monday
+    const benchIdx = lines.findIndex(l => l.includes('DB Bench Press'));
+    expect(benchIdx).toBeGreaterThan(mondayIdx);
+    expect(benchIdx).toBeLessThan(tuesdayIdx);
+    // Squat appears under Tuesday
+    const squatIdx = lines.findIndex(l => l.includes('Squat:'));
+    expect(squatIdx).toBeGreaterThan(tuesdayIdx);
+  });
+
+  test('output round-trips through parseWorkoutNote with valid deload sections', () => {
+    const deload = generateDeloadNote(DELOAD_FIXTURE);
+    const { ok, sections } = parseWorkoutNote(deload);
+    expect(ok).toBe(true);
+    const allExercises = sections.flatMap(s => s.exercises);
+    const benchEx = allExercises.find(e => e.name === 'DB Bench Press');
+    expect(benchEx).toBeTruthy();
+    expect(benchEx.sets.length).toBeGreaterThan(0);
+    expect(benchEx.sets[0].weight_value).toBe(60);
+    const squatEx = allExercises.find(e => e.name === 'Squat');
+    expect(squatEx).toBeTruthy();
+    expect(squatEx.sets[0].weight_value).toBe(155);
+  });
+
+  test('increment inference: 2.5 lb increment when exercise has non-5-multiple weights', () => {
+    const routine = [
+      'Friday',
+      '+LIFTING',
+      '-Goblet Calf Raise 3x12-15',
+      '17.5 15,15',
+      '25 15,15,15',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // Working weight = 25 (3 sets ≥2); po:true; 0.65×25=16.25; round(16.25,2.5)=17.5
+    // deloadSets=max(2,2)=2; deloadReps=ceil((12+15)/2)=14
+    expect(deload).toContain('Goblet Calf Raise: 17.5 lbs 2x14');
+  });
+
+  test('increment inference: 5 lb increment when all weights are multiples of 5', () => {
+    const routine = [
+      'Tuesday',
+      '+LIFTING',
+      '-Squat 4x6-8',
+      '235 8,8,8,8',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // round(0.65×235, 5) = round(152.75, 5) = 155
+    expect(deload).toContain('Squat: 155 lbs 3x7');
+  });
+
+  test('uncataloged exercise: weight unchanged', () => {
+    const routine = [
+      'Monday',
+      '+LIFTING',
+      '-UnknownLift 3x8',
+      '100 8,8,8',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    expect(deload).toContain('UnknownLift: 100 lbs 2x8');
+  });
+
+  test('fallback when header has no NxM: uses last row set count and rep range', () => {
+    const routine = [
+      'Monday',
+      '+LIFTING',
+      '-SomeExercise',
+      '135 8,8,8',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // prescribedSets=3, repLo=8, repHi=8; deloadSets=max(2,2)=2; deloadReps=8; not in catalog
+    expect(deload).toContain('SomeExercise: 135 lbs 2x8');
+  });
+
+  test('empty routine produces empty string', () => {
+    expect(generateDeloadNote('')).toBe('');
+    expect(generateDeloadNote(null)).toBe('');
+  });
+
+  test('routine with only warmup sections produces empty string', () => {
+    const routine = ['Monday', '+WARMUP', '-Bike', '5 min'].join('\n');
+    expect(generateDeloadNote(routine)).toBe('');
+  });
+
+  test('sets floor: prescribedSets=2 → deloadSets=2 (not 1)', () => {
+    const routine = [
+      'Monday',
+      '+LIFTING',
+      '-Low-to-High Cable Fly 2x12',
+      '17.5 12,12',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // max(2, 2-1) = max(2,1) = 2
+    expect(deload).toContain('2x12');
+  });
+
+  test('working weight: heaviest with ≥2 sets wins over heavier singleton', () => {
+    const routine = [
+      'Tuesday',
+      '+LIFTING',
+      '-Squat 4x6-8',
+      '250 1 235 3,3,3',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // 250 has 1 set, 235 has 3 sets → working weight = 235 → deloadWeight = 155
+    expect(deload).toContain('Squat: 155 lbs 3x7');
+  });
+
+  test('working weight fallback: uses heaviest when no weight has ≥2 sets', () => {
+    const routine = [
+      'Tuesday',
+      '+LIFTING',
+      '-Squat 4x6-8',
+      '235 1 225 1 215 1 205 1',
+    ].join('\n');
+    const deload = generateDeloadNote(routine);
+    // All weights have 1 set → fallback to heaviest = 235 → deloadWeight = 155
+    expect(deload).toContain('Squat: 155 lbs 3x7');
+  });
+});
