@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.50.0 - 2026-06-01
+
+- Issue #91: Added a separate Deload mode to the Log tab with a `Routine |
+  Deload` toggle, empty-state generation flow, overwrite confirmation,
+  separate deload-note editing/persistence, and routine-style shaping of the
+  generated deload source text so the raw editor remains comfortable to use
+  while the rendered read view stays parser-compatible.
+
 ## 0.49.19 - 2026-05-31
 
 - Issue #90: Added deterministic deload-note generation to the parser layer

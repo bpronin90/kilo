@@ -96,6 +96,14 @@ Enforce Big-O discipline:
 
 Canonical repo version lives in `package.json`.
 
+Whenever `package.json` version changes, `mobile/package.json` and `mobile/app.json` must be synchronized from that canonical root version by running:
+
+```sh
+node scripts/sync-version.mjs
+```
+
+Do not hand-edit the mobile version fields independently when performing repo version alignment.
+
 Pre-1.0 versioning policy:
 - `0.1.0` is the initial documented MVP baseline.
 - `0.1.x` is for bug fixes, docs/process changes, and small updates that do not materially change MVP behavior or flows.
@@ -105,6 +113,8 @@ Pre-1.0 versioning policy:
 Implementation agents do not update `CHANGELOG.md` unless it is explicitly listed in `Allowed Files`.
 
 During closing procedure, the reviewer updates `CHANGELOG.md` whenever an issue changes behavior, workflow, docs, or version, even if `CHANGELOG.md` was not part of the implementation `Allowed Files`.
+
+During closing procedure, if the reviewer bumps `package.json`, the reviewer must also run `node scripts/sync-version.mjs` and include the resulting `mobile/package.json` and `mobile/app.json` updates in the same closeout change.
 
 Changelog format:
 - use a version heading with the release date

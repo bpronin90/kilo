@@ -4,44 +4,37 @@ Use this when the Kilo Expo app is run from WSL and loaded in Expo Go on a phone
 
 ## TL;DR
 
-1. In WSL, start Expo:
+Preferred path: use Expo tunnel.
+
+1. From repo root in WSL, start Expo tunnel:
 
 ```bash
-cd /home/benpronin/projects/kilo/mobile
-npx expo start --clear
+npm run mobile:start:tunnel
 ```
 
-2. Copy the WSL Expo IP from:
+2. Open the Expo Go link or scan the QR code shown in the terminal.
 
-```text
-Metro waiting on exp://172.xx.xx.xx:8081
+3. If tunnel is unavailable or unstable, use the WSL port-forward fallback in `Working WSL Fix` below.
+
+## Preferred Start
+
+From repo root in WSL:
+
+```bash
+npm run mobile:start:tunnel
 ```
 
-3. In Windows PowerShell, get the Windows Wi-Fi IP:
+Equivalent direct command from `mobile/`:
 
-```powershell
-ipconfig
+```bash
+npx expo start --tunnel
 ```
 
-4. In Windows PowerShell as Administrator, forward Windows port `8081` to the WSL IP:
+This avoids the usual WSL-local-IP problem and is the default phone workflow for this repo.
 
-```powershell
-netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=8081
-netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=8081 connectaddress=172.xx.xx.xx connectport=8081
-netsh advfirewall firewall add rule name="Expo 8081" dir=in action=allow protocol=TCP localport=8081
-```
+## WSL Fallback Start
 
-5. In Expo Go on the phone, manually open:
-
-```text
-exp://<windows-wifi-ip>:8081
-```
-
-If it stops working later, the WSL `172.x.x.x` IP probably changed. Re-run the port-forward commands with the new WSL IP.
-
-## Normal Start
-
-From WSL:
+If tunnel does not work, start Expo without tunnel:
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile

@@ -167,7 +167,16 @@ The real native app path now has a modular React Native shell:
   inline action, plus routine create/rename/delete controls with confirmation
   and current-selection cleanup guardrails; switching the current workout now
   requires explicit confirmation, and offers a save-and-switch or
-  switch-anyway choice when there are unsaved edits. The read view now also
+  switch-anyway choice when there are unsaved edits. The same screen now also
+  includes a `Routine | Deload` segmented toggle so the user can switch
+  between the canonical routine note and a separate generated deload note. The
+  Deload view reads and writes only the separate deload-note storage path,
+  shows a clear empty state before generation, confirms before regenerate
+  overwrite, reuses the existing rendered-note and raw-edit UX, and now shapes
+  generated deload source text into routine-style editable blocks with blank
+  line day separation plus explicit `+Lifting` section markers before
+  persistence so the raw editor is comfortable to use while the rendered view
+  stays parser-compatible. The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
