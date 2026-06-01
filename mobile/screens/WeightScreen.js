@@ -132,7 +132,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
   );
 }
 
-export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving }) {
+export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeightNote, onSaveWeight, errorMessage, saving, weightDateEditEnabled }) {
   const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
   const profile = useUserProfile()?.profile ?? null;
@@ -144,6 +144,10 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [goalStartWeight, setGoalStartWeight] = useState('');
   const [goalError, setGoalError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [newEntryDate, setNewEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
+  const [editDate, setEditDate] = useState('');
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
 
   const {
     trendSummary: trends,
@@ -246,11 +250,48 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     return new Date();
   }, [goalTargetDate]);
 
+  const newEntryDateObj = useMemo(() => {
+    if (newEntryDate) {
+      const [y, m, d] = newEntryDate.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    return new Date();
+  }, [newEntryDate]);
+
+  const editDateObj = useMemo(() => {
+    if (editDate) {
+      const [y, m, d] = editDate.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    return new Date();
+  }, [editDate]);
+
+  const onNewEntryDateChange = (event, selectedDate) => {
+    setShowNewEntryDatePicker(false);
+    if (selectedDate) {
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      setNewEntryDate(`${y}-${m}-${d}`);
+    }
+  };
+
+  const onEditDateChange = (event, selectedDate) => {
+    setShowEditDatePicker(false);
+    if (selectedDate) {
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      setEditDate(`${y}-${m}-${d}`);
+    }
+  };
+
   const handleEditEntry = (entry) => {
     setLocalError('');
     setEditingId(entry.id);
     setWeightValue(String(entry.weight_value));
     setWeightNote(entry.note || '');
+    setEditDate(entry.date);
   };
 
   const cancelEdit = () => {
@@ -258,6 +299,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     setEditingId(null);
     setWeightValue('');
     setWeightNote('');
+    setEditDate('');
   };
 
   const handleDelete = (id) => {
@@ -286,10 +328,12 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         setLocalError(parsed.error);
         return;
       }
-      await update(editingId, parsed.weight_value, weightNote.trim() || undefined);
+      await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
       cancelEdit();
     } else {
-      onSaveWeight();
+      const date = weightDateEditEnabled ? newEntryDate : undefined;
+      onSaveWeight(date);
+      if (weightDateEditEnabled) setNewEntryDate(new Date().toISOString().slice(0, 10));
     }
   };
 
@@ -333,6 +377,50 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           placeholderTextColor={Colors.textMuted}
           style={styles.input}
         />
+        {weightDateEditEnabled && !editingId && (
+          <>
+            <Text style={styles.inputLabel}>Date</Text>
+            <Pressable
+              style={styles.input}
+              onPress={() => setShowNewEntryDatePicker(true)}
+              accessibilityLabel="Weigh-in date"
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.text }}>{newEntryDate}</Text>
+            </Pressable>
+            {showNewEntryDatePicker && (
+              <DateTimePicker
+                value={newEntryDateObj}
+                mode="date"
+                display="default"
+                onChange={onNewEntryDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+          </>
+        )}
+        {weightDateEditEnabled && editingId && (
+          <>
+            <Text style={styles.inputLabel}>Date</Text>
+            <Pressable
+              style={styles.input}
+              onPress={() => setShowEditDatePicker(true)}
+              accessibilityLabel="Entry date"
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.text }}>{editDate}</Text>
+            </Pressable>
+            {showEditDatePicker && (
+              <DateTimePicker
+                value={editDateObj}
+                mode="date"
+                display="default"
+                onChange={onEditDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+          </>
+        )}
         <Button
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}

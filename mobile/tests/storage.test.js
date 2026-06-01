@@ -32,6 +32,8 @@ import {
   loadDeloadNote,
   saveDeloadNote,
   clearDeloadNote,
+  loadWeightDateEditEnabled,
+  saveWeightDateEditEnabled,
 } from '../storage/entries';
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -139,6 +141,65 @@ describe('weight entry storage', () => {
   test('returns false when updating a non-existent entry', async () => {
     const ok = await updateWeightEntry('no-such-id', 190.0);
     expect(ok).toBe(false);
+  });
+
+  test('updateWeightEntry splices date onto logged_at and re-derives date field', async () => {
+    await saveWeightEntry(W1);
+    const ok = await updateWeightEntry(W1.id, W1.weight_value, W1.note, '2026-05-10');
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.date).toBe('2026-05-10');
+    expect(updated.logged_at.startsWith('2026-05-10')).toBe(true);
+    expect(updated.logged_at.slice(10)).toBe(W1.logged_at.slice(10));
+  });
+
+  test('updateWeightEntry without date is unchanged (back-compat)', async () => {
+    await saveWeightEntry(W1);
+    const ok = await updateWeightEntry(W1.id, 190.0, 'no date');
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.logged_at).toBe(W1.logged_at);
+    expect(updated.date).toBe(W1.date);
+  });
+
+  test('updateWeightEntry preserves original time-of-day when date is changed', async () => {
+    const entry = { ...W1, logged_at: '2026-05-01T14:32:17.000Z' };
+    await saveWeightEntry(entry);
+    await updateWeightEntry(entry.id, entry.weight_value, null, '2026-05-05');
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === entry.id);
+    expect(updated.logged_at).toBe('2026-05-05T14:32:17.000Z');
+  });
+
+  test('updateWeightEntry ignores a future date', async () => {
+    await saveWeightEntry(W1);
+    const futureDate = '2099-01-01';
+    await updateWeightEntry(W1.id, W1.weight_value, null, futureDate);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.date).toBe(W1.date);
+    expect(updated.logged_at).toBe(W1.logged_at);
+  });
+});
+
+describe('weight date edit setting', () => {
+  test('defaults to false when not set', async () => {
+    const val = await loadWeightDateEditEnabled();
+    expect(val).toBe(false);
+  });
+
+  test('saves and loads the enabled state', async () => {
+    await saveWeightDateEditEnabled(true);
+    const val = await loadWeightDateEditEnabled();
+    expect(val).toBe(true);
+  });
+
+  test('saves and loads the disabled state', async () => {
+    await saveWeightDateEditEnabled(false);
+    const val = await loadWeightDateEditEnabled();
+    expect(val).toBe(false);
   });
 });
 

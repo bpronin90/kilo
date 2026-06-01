@@ -15,7 +15,7 @@ import { AnalyticsScreen } from './screens/AnalyticsScreen';
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
+import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -48,10 +48,12 @@ export default function App() {
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
+  const [weightDateEditEnabled, setWeightDateEditEnabled] = useState(false);
 
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
     loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
+    loadWeightDateEditEnabled().then(setWeightDateEditEnabled);
   }, []);
 
   const toggleWorkoutCollapsed = useCallback(async () => {
@@ -113,7 +115,7 @@ export default function App() {
     setActiveTab(tab);
   }, []);
 
-  const saveWeight = useCallback(async () => {
+  const saveWeight = useCallback(async (date) => {
     if (weightSaving) return;
     Keyboard.dismiss();
     setSaveError('');
@@ -122,9 +124,16 @@ export default function App() {
       setSaveError(parsed.error);
       return;
     }
+    let loggedAt = parsed.logged_at || new Date().toISOString();
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (date <= today) {
+        loggedAt = date + loggedAt.slice(10);
+      }
+    }
     const entry = makeWeightEntry({
       weight_value: parsed.weight_value,
-      logged_at: parsed.logged_at,
+      logged_at: loggedAt,
       note: weightNote.trim() || undefined,
     });
     setWeightSaving(true);
@@ -210,6 +219,7 @@ export default function App() {
             onSaveWeight={saveWeight}
             errorMessage={saveError}
             saving={weightSaving}
+            weightDateEditEnabled={weightDateEditEnabled}
           />
         </View>
         <View style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
@@ -224,6 +234,11 @@ export default function App() {
             onUpdateFatigueMultiplier={async (val) => {
               setFatigueMultiplier(val);
               await saveFatigueMultiplier(val);
+            }}
+            weightDateEditEnabled={weightDateEditEnabled}
+            onUpdateWeightDateEditEnabled={async (val) => {
+              setWeightDateEditEnabled(val);
+              await saveWeightDateEditEnabled(val);
             }}
           />
         </View>

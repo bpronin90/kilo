@@ -7,6 +7,7 @@ const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
+const WEIGHT_DATE_EDIT_KEY = 'kilo_weight_date_edit_enabled';
 const WORKOUT_DELOAD_NOTE_KEY = 'kilo_workout_deload_note';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
@@ -72,6 +73,19 @@ export async function saveFatigueMultiplier(multiplier) {
   await AsyncStorage.setItem(FATIGUE_MULTIPLIER_KEY, JSON.stringify(multiplier));
 }
 
+export async function loadWeightDateEditEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(WEIGHT_DATE_EDIT_KEY);
+    return raw ? JSON.parse(raw) : false;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveWeightDateEditEnabled(enabled) {
+  await AsyncStorage.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
+}
+
 // Weight entries
 
 export async function loadWeightEntries() {
@@ -90,12 +104,19 @@ export async function deleteWeightEntry(id) {
   await writeList(WEIGHT_KEY, list.filter(e => e.id !== id));
 }
 
-export async function updateWeightEntry(id, weight_value, note) {
+export async function updateWeightEntry(id, weight_value, note, date) {
   const list = await readList(WEIGHT_KEY);
   const entry = list.find(e => e.id === id);
   if (!entry) return false;
   entry.weight_value = weight_value;
   entry.note = note;
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (date <= today) {
+      entry.logged_at = date + entry.logged_at.slice(10);
+      entry.date = date;
+    }
+  }
   await writeList(WEIGHT_KEY, list);
   return true;
 }
