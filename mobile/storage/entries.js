@@ -7,6 +7,7 @@ const WORKOUT_NOTE_KEY = 'kilo_workout_note';
 const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
 const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
+const WORKOUT_DELOAD_NOTE_KEY = 'kilo_workout_deload_note';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 const USER_PROFILE_KEY = 'kilo_user_profile';
@@ -189,6 +190,33 @@ export async function saveOneKExercises(one_k_exercises) {
 
 export async function clearWorkoutNote() {
   await AsyncStorage.removeItem(WORKOUT_NOTE_KEY);
+}
+
+// ── deload note (independent of routine note) ─────────────────────────────────
+
+export async function loadDeloadNote() {
+  try {
+    const raw = await AsyncStorage.getItem(WORKOUT_DELOAD_NOTE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveDeloadNote(raw_text) {
+  const now = new Date().toISOString();
+  const existing = await loadDeloadNote();
+  const note = {
+    raw_text,
+    saved_at: existing ? existing.saved_at : now,
+    updated_at: now,
+  };
+  await AsyncStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, JSON.stringify(note));
+  return note;
+}
+
+export async function clearDeloadNote() {
+  await AsyncStorage.removeItem(WORKOUT_DELOAD_NOTE_KEY);
 }
 
 // ── multi-note workout storage ────────────────────────────────────────────────

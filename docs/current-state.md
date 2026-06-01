@@ -311,7 +311,8 @@ The real native app path now has a modular React Native shell:
   exercise classes with loaded-bodyweight exclusion
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including multi-note current-workout reads/writes, cross-consumer
-  refresh fanout, and persisted weight-goal reads/writes
+  refresh fanout, persisted weight-goal reads/writes, and a separate
+  `useDeloadNote()` hook for the generated/editable deload note
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
@@ -322,7 +323,8 @@ The real native app path now has a modular React Native shell:
   persists a lightweight
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
-  Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a global
+  Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
+  deload-note record under `kilo_workout_deload_note`, a global
   tracked-lift map under `kilo_tracked_lifts`, and the Log-tab
   current-routine collapsed state under `kilo_log_current_collapsed`. The
   legacy structured
@@ -463,6 +465,9 @@ The MVP canonical parse path is fully implemented and tested.
   positional session-entry slots for downstream analytics, and degrades
   ambiguous or non-weight note fragments into `unparsed_rows` instead of
   rejecting the note.
+- `parseExerciseHeader(raw_header)` — extracts prescribed set/rep targets from
+  trailing exercise-header patterns like `4x6-8`, `2x12`, and `2 8-10` so
+  downstream flows can recover intended working ranges from routine text.
 - `buildSessionsFromNote(noteText)` — aligns the `N`th positional `- ...`
   entry for each exercise into session `N`, ignores day and warmup/lifting
   boundaries for session construction, preserves bare `-` skips, and emits a
@@ -492,6 +497,11 @@ The MVP canonical parse path is fully implemented and tested.
   `repeatability_score`. Exercises with no weighted sets fall back to a
   bodyweight path that compares session-level total reps and surfaces the best
   set reps in place of top weight.
+- `generateDeloadNote(routineRawText)` — deterministically derives a deload
+  note from the canonical routine note by skipping warmup/non-weight rows,
+  reducing PO lifts to 65% of the most recent working weight with inferred
+  2.5/5 lb rounding, preserving accessory weights, and emitting a separate
+  deload-note text format that round-trips back through `parseWorkoutNote()`.
 
 A legacy freeform path (`parseKiloInput`, `formatParsed`, legacy helpers)
 exists in the archived browser prototype for seeded-history compatibility. It is

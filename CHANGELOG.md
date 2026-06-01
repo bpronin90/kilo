@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.49.19 - 2026-05-31
+
+- Issue #90: Added deterministic deload-note generation to the parser layer
+  (`parseExerciseHeader` plus `generateDeloadNote`), persisted a separate
+  AsyncStorage-backed deload note independent from the canonical routine note,
+  exposed the matching `useDeloadNote()` hook, and expanded parser/storage
+  coverage for deload generation, round-trip parsing, and note-isolation
+  behavior.
+
 ## 0.49.18 - 2026-05-31
 
 - Issue #245: Shortened the Expo OTA code-signing certificate validity window

@@ -234,6 +234,46 @@ export function useTrackedLifts() {
   return { trackedLifts, loading, error, save, toggle, refresh };
 }
 
+let deloadNoteListeners = [];
+const notifyDeloadNote = () => safeNotify(deloadNoteListeners);
+
+export function useDeloadNote() {
+  const [note, setNote] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(() => {
+    setError(null);
+    Storage.loadDeloadNote()
+      .then(setNote)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    deloadNoteListeners.push(refresh);
+    return () => {
+      deloadNoteListeners = deloadNoteListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const save = useCallback(async (raw_text) => {
+    const saved = await Storage.saveDeloadNote(raw_text);
+    setNote(saved);
+    notifyDeloadNote();
+    return saved;
+  }, []);
+
+  const clear = useCallback(async () => {
+    await Storage.clearDeloadNote();
+    setNote(null);
+    notifyDeloadNote();
+  }, []);
+
+  return { note, loading, error, save, clear, refresh };
+}
+
 let profileListeners = [];
 const notifyProfile = () => safeNotify(profileListeners);
 

@@ -29,6 +29,9 @@ import {
   loadUserProfile,
   saveUserProfile,
   clearUserProfile,
+  loadDeloadNote,
+  saveDeloadNote,
+  clearDeloadNote,
 } from '../storage/entries';
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -1536,5 +1539,81 @@ describe('user profile storage', () => {
     await clearUserProfile();
     const profile = await loadUserProfile();
     expect(profile).toBeNull();
+  });
+});
+
+// ── deload note storage ───────────────────────────────────────────────────────
+
+describe('deload note storage', () => {
+  test('returns null when no deload note has been saved', async () => {
+    const note = await loadDeloadNote();
+    expect(note).toBeNull();
+  });
+
+  test('saves and loads deload note raw text', async () => {
+    const saved = await saveDeloadNote('Monday\nSquat: 155 lbs 3x7');
+    expect(saved.raw_text).toBe('Monday\nSquat: 155 lbs 3x7');
+    const loaded = await loadDeloadNote();
+    expect(loaded.raw_text).toBe('Monday\nSquat: 155 lbs 3x7');
+  });
+
+  test('returned note includes saved_at and updated_at timestamps', async () => {
+    const saved = await saveDeloadNote('some deload');
+    expect(saved.saved_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(saved.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  test('preserves original saved_at across overwrites', async () => {
+    await saveDeloadNote('first');
+    const first = await loadDeloadNote();
+    await saveDeloadNote('second');
+    const second = await loadDeloadNote();
+    expect(second.saved_at).toBe(first.saved_at);
+    expect(second.raw_text).toBe('second');
+  });
+
+  test('clear removes the deload note', async () => {
+    await saveDeloadNote('content');
+    await clearDeloadNote();
+    expect(await loadDeloadNote()).toBeNull();
+  });
+
+  test('deload note and routine note are stored independently', async () => {
+    await saveWorkoutNote('routine text');
+    await saveDeloadNote('deload text');
+    const routine = await loadWorkoutNote();
+    const deload = await loadDeloadNote();
+    expect(routine.raw_text).toBe('routine text');
+    expect(deload.raw_text).toBe('deload text');
+  });
+
+  test('saving deload note never mutates routine note', async () => {
+    await saveWorkoutNote('routine unchanged');
+    await saveDeloadNote('deload content');
+    const routine = await loadWorkoutNote();
+    expect(routine.raw_text).toBe('routine unchanged');
+  });
+
+  test('saving routine note never mutates deload note', async () => {
+    await saveDeloadNote('deload unchanged');
+    await saveWorkoutNote('routine content');
+    const deload = await loadDeloadNote();
+    expect(deload.raw_text).toBe('deload unchanged');
+  });
+
+  test('clearing deload note does not affect routine note', async () => {
+    await saveWorkoutNote('routine intact');
+    await saveDeloadNote('deload to clear');
+    await clearDeloadNote();
+    const routine = await loadWorkoutNote();
+    expect(routine.raw_text).toBe('routine intact');
+  });
+
+  test('clearing routine note does not affect deload note', async () => {
+    await saveDeloadNote('deload intact');
+    await saveWorkoutNote('routine to clear');
+    await clearWorkoutNote();
+    const deload = await loadDeloadNote();
+    expect(deload.raw_text).toBe('deload intact');
   });
 });
