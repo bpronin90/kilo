@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.51.1 - 2026-06-02
+
+- Issue #246: Fixed the compact Home weight sparkline clipping by enforcing
+  shared chart insets for edge markers/strokes, and reconciled the Home,
+  Weight, and Analytics typography pass by aligning Analytics' latest-weight
+  hero tier with Home and raising the remaining undersized 10px Analytics unit
+  labels to the 11px readability floor.
+
 ## 0.51.0 - 2026-06-01
 
 - Issue #242: Added an opt-in `Edit weigh-in dates` setting under More so
