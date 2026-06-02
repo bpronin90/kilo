@@ -15,6 +15,12 @@ import {
   computeWeeklySummary,
 } from '../lib/data';
 
+function lerpColor(a, b, t) {
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
+  return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
+}
+
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
   return (
@@ -131,8 +137,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           {/* Classification band */}
           <View style={styles.classifSection}>
             <View style={styles.classifSectionHeader}>
-              <Text style={styles.classifSectionLabel}>This week's lifts</Text>
-              <Text style={styles.classifLegend}>Lift status breakdown</Text>
+              <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
             </View>
             <View style={styles.classifRow}>
               {[
@@ -169,12 +174,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
         return (
           <Card style={styles.goalCard}>
-            <View style={styles.goalCardTop}>
-              <Text style={styles.goalCardTitle}>Weight Goal</Text>
-              <View style={styles.goalModeRow}>
-                <Text style={styles.goalDirectionText}>{modeLabel}</Text>
-                <Text style={styles.goalWeeksText}>{Math.round(gi.weeks_remaining)} weeks left</Text>
-              </View>
+            <View style={styles.goalModeRow}>
+              <Text style={styles.goalDirectionText}>
+                Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
+              </Text>
+              <Text style={styles.goalWeeksText}>{Math.round(gi.weeks_remaining)} weeks left</Text>
             </View>
             <View style={styles.goalStatsGrid}>
               <View style={styles.goalStatCol}>
@@ -201,16 +205,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
       {/* ══ TIER 3: 1k Club Progress ══ */}
       <Card style={styles.oneKCard}>
-        <View style={styles.oneKCardHeader}>
-          <Text style={styles.oneKCardTitle}>1K Club</Text>
-          <Text style={styles.oneKCardSubtitle}>of 1,000 lb total</Text>
-        </View>
-        <View style={styles.oneKHero}>
-          <Text style={styles.oneKHeroValue}>
-            {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-            <Text style={styles.oneKHeroUnit}> lb</Text>
-          </Text>
-        </View>
+        <Text style={styles.oneKLabel}>1K Progress</Text>
+        <Text style={[styles.oneKHeroValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+          {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
+          <Text style={styles.oneKHeroUnit}> lb</Text>
+        </Text>
         <View style={styles.progressBarLarge}>
           <View
             style={[
@@ -287,9 +286,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   classifSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 12,
   },
   classifSectionLabel: {
@@ -298,11 +294,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  classifLegend: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.textMuted,
   },
   classifRow: {
     flexDirection: 'row',
@@ -347,26 +338,19 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 24,
   },
-  goalCardTop: {
-    marginBottom: 20,
-  },
-  goalCardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
   goalModeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
   },
   goalDirectionText: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.text,
+  },
+  goalModeAccent: {
+    color: Colors.accent,
   },
   goalWeeksText: {
     fontSize: 14,
@@ -392,34 +376,26 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   goalStatValueLarge: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: '800',
     color: Colors.text,
   },
   goalStatUnitLabel: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.textMuted,
   },
   oneKCard: {
     padding: 24,
     borderRadius: 24,
+    alignItems: 'center',
   },
-  oneKCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 16,
-  },
-  oneKCardTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  oneKCardSubtitle: {
+  oneKLabel: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '800',
     color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   oneKHero: {
     alignItems: 'center',
@@ -440,6 +416,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
     marginBottom: 28,
+    alignSelf: 'stretch',
   },
   progressFillLarge: {
     height: '100%',
@@ -448,6 +425,7 @@ const styles = StyleSheet.create({
   },
   oneKGrid: {
     flexDirection: 'row',
+    alignSelf: 'stretch',
   },
   oneKGridItem: {
     flex: 1,
