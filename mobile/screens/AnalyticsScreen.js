@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...HeroMetric.statPrimary,
+    ...HeroMetric.hero,
     color: Colors.accent,
   },
   paceBadge: {
@@ -865,7 +865,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   unitSuffix: {
-    fontSize: 10,
+    fontSize: 11,
     opacity: 0.4,
     marginLeft: 2,
   },
@@ -915,7 +915,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {
-    fontSize: 10,
+    fontSize: 11,
     opacity: 0.5,
   },
   crossDayTrend: {
