@@ -494,6 +494,14 @@ describe('AnalyticsScreen Deload Risk gauge', () => {
     expect(hasText(root, 'No sessions logged')).toBe(true);
   });
 
+  test('renders the three deload-risk zone labels', () => {
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, 'Building')).toBe(true);
+    expect(hasText(root, 'Approaching')).toBe(true);
+    expect(hasText(root, 'Deload')).toBe(true);
+  });
+
   test('shows the count and the approaching-deload caption in the 7–9 zone', () => {
     const raw_text = ['Monday', '+ lifting', '1. Squat',
       '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');

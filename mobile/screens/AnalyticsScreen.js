@@ -220,6 +220,18 @@ export function AnalyticsScreen({ multiplier, section }) {
     [analytics.oneKSeries]
   );
 
+  // Trend color for the 1K value border: compares the two most recent session totals.
+  // null (neutral border) until there are at least two sessions to compare.
+  const oneKTrendColor = useMemo(() => {
+    const s = analytics.oneKSeries || [];
+    if (s.length < 2) return null;
+    const last = s[s.length - 1].total;
+    const prev = s[s.length - 2].total;
+    if (last > prev) return Colors.success;
+    if (last < prev) return Colors.error;
+    return Colors.caution;
+  }, [analytics.oneKSeries]);
+
   const screenContent = React.Children.toArray([
     <View key="weight-trends-title" onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
@@ -297,7 +309,9 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            <View style={[styles.oneKValueBox, { borderColor: oneKTrendColor || Colors.cardBorder }]}>
+              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            </View>
             
             <View style={styles.oneKProgressBarContainer}>
               <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
@@ -640,7 +654,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...HeroMetric.hero,
+    fontSize: 28,
+    fontWeight: '800',
     color: Colors.accent,
   },
   paceBadge: {
@@ -684,6 +699,8 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 8,
+    backgroundColor: Colors.card,
+    borderColor: Colors.cardBorder,
   },
   oneKLabel: {
     fontSize: 12,
@@ -691,6 +708,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  oneKValueBox: {
+    borderWidth: 2,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 4,
   },
   oneKValue: {
     ...HeroMetric.hero,

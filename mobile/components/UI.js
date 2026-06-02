@@ -80,25 +80,40 @@ const _SESSION_GAUGE_TONE_COLORS = {
   default: Colors.textMuted,
 };
 
-// Visual gauge of how many sessions deep the user is, with a deload-zone caption.
-// Fill is scaled to the deload threshold (10 sessions); tone color follows
-// getSessionTone so the bar reddens as deload risk rises.
+// Deload-risk meter: a three-zone scale (Building / Approaching / Deload) with a
+// knob marking the current session depth — the UV-index / AQI pattern. Zone widths
+// are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
+// (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
+// session counts map linearly onto the zone segments.
 export function SessionGauge({ count }) {
   const tone = getSessionTone(count);
-  const fillColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
-  const fillPct = Math.min(100, (count / 10) * 100);
+  const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
   const caption = getSessionZoneCaption(count);
+  const markerPct = (Math.min(count, 11) / 11) * 100;
 
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <Text style={styles.sessionGaugeLabel}>Sessions deep</Text>
-        <Text style={[styles.sessionGaugeCount, { color: fillColor }]}>{count}</Text>
+        <Text style={styles.sessionGaugeLabel}>Sessions logged</Text>
+        <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
       </View>
-      <View style={styles.sessionGaugeTrack}>
-        <View style={[styles.sessionGaugeFill, { width: `${fillPct}%`, backgroundColor: fillColor }]} />
+
+      <View style={styles.gaugeMeterWrap}>
+        <View style={styles.gaugeBar}>
+          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
+          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
+          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
+        </View>
+        <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
       </View>
-      <Text style={[styles.sessionGaugeCaption, { color: fillColor }]}>{caption}</Text>
+
+      <View style={styles.gaugeZoneLabels}>
+        <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
+      </View>
+
+      <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
     </Card>
   );
 }
@@ -332,20 +347,61 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '900',
   },
-  sessionGaugeTrack: {
+  gaugeMeterWrap: {
+    width: '100%',
+    height: 16,
+    justifyContent: 'center',
+  },
+  gaugeBar: {
+    flexDirection: 'row',
     width: '100%',
     height: 10,
-    backgroundColor: Colors.divider,
     borderRadius: 5,
     overflow: 'hidden',
   },
-  sessionGaugeFill: {
+  gaugeSeg: {
     height: '100%',
-    borderRadius: 5,
+  },
+  gaugeSegLeft: {
+    borderTopLeftRadius: 5,
+    borderBottomLeftRadius: 5,
+  },
+  gaugeSegRight: {
+    borderTopRightRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+  gaugeMarker: {
+    position: 'absolute',
+    top: 0,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.card,
+    borderWidth: 3,
+    transform: [{ translateX: -8 }],
+  },
+  gaugeZoneLabels: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 4,
+  },
+  gaugeZoneLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  gaugeZoneLabelCenter: {
+    textAlign: 'center',
+  },
+  gaugeZoneLabelRight: {
+    textAlign: 'right',
   },
   sessionGaugeCaption: {
     fontSize: 14,
     fontWeight: '700',
+    marginTop: 2,
   },
   statLabel: {
     fontSize: 13,

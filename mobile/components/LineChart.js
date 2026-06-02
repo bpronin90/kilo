@@ -112,9 +112,14 @@ export function LineChart({
         </Svg>
       </Pressable>
       
-      {displayPoint.label && (
+      {(selectedIndex !== null && hideHeader) ? (
+        <Text style={styles.selectionLabel}>
+          {displayPoint.label ? `${displayPoint.label} · ` : ''}
+          <Text style={styles.selectionValue}>{displayPoint.value}{displayPoint.unit || ''}</Text>
+        </Text>
+      ) : displayPoint.label ? (
         <Text style={styles.dateLabel}>{displayPoint.label}</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -158,5 +163,16 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
-  }
+  },
+  selectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  selectionValue: {
+    fontWeight: '800',
+    color: Colors.text,
+  },
 });
