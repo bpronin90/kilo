@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...HeroMetric.statPrimary,
+    ...HeroMetric.hero,
     color: Colors.accent,
   },
   paceBadge: {
@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
   },
   signalColumnLabel: {
     flex: 1,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -846,7 +846,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   classifBadge: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
     marginLeft: 8,
@@ -865,12 +865,12 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   unitSuffix: {
-    fontSize: 10,
+    fontSize: 11,
     opacity: 0.4,
     marginLeft: 2,
   },
   nwMetricLabel: {
-    fontSize: 8,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.textMuted,
     marginTop: 2,
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   crossDayChipLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.textMuted,
     letterSpacing: 0.5,
@@ -915,7 +915,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {
-    fontSize: 9,
+    fontSize: 11,
     opacity: 0.5,
   },
   crossDayTrend: {

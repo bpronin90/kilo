@@ -33,15 +33,23 @@ export function LineChart({
   const maxVal = Math.max(...values);
   const range = maxVal - minVal || 1;
 
-  const getX = (index) => paddingHorizontal + (index * (chartWidth - 2 * paddingHorizontal) / (data.length - 1));
-  const getY = (value) => height - paddingVertical - ((value - minVal) / range * (height - 2 * paddingVertical));
+  // Keep the stroke and point markers inside the SVG bounds. The selected marker
+  // is r=5 with a 2px stroke (outer extent ~6px); without this floor, extreme
+  // data points drawn at the very edge get clipped — e.g. callers passing
+  // paddingVertical={0} for a compact sparkline.
+  const MARKER_INSET = 6;
+  const effPaddingVertical = Math.max(paddingVertical, MARKER_INSET);
+  const effPaddingHorizontal = Math.max(paddingHorizontal, MARKER_INSET);
+
+  const getX = (index) => effPaddingHorizontal + (index * (chartWidth - 2 * effPaddingHorizontal) / (data.length - 1));
+  const getY = (value) => height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
 
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 
   const handlePress = (evt) => {
     if (!chartWidth) return;
     const { locationX } = evt.nativeEvent;
-    const index = Math.round((locationX - paddingHorizontal) / (chartWidth - 2 * paddingHorizontal) * (data.length - 1));
+    const index = Math.round((locationX - effPaddingHorizontal) / (chartWidth - 2 * effPaddingHorizontal) * (data.length - 1));
     if (index >= 0 && index < data.length) {
       setSelectedIndex(index === selectedIndex ? null : index);
     }
