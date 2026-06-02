@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge, OutlinedText } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -309,9 +309,12 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={[styles.oneKValue, oneKTrendColor && { color: oneKTrendColor }]}>
-              {analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
-            </Text>
+            <View style={styles.oneKValueRow}>
+              <OutlinedText textStyle={styles.oneKValue} color={Colors.text} outlineColor={oneKTrendColor}>
+                {analytics.oneK.total.toFixed(0)}
+              </OutlinedText>
+              <Text style={styles.oneKUnit}>lb</Text>
+            </View>
             
             <View style={styles.oneKProgressBarContainer}>
               <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
@@ -710,6 +713,11 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  oneKValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   oneKValue: {
     ...HeroMetric.hero,
