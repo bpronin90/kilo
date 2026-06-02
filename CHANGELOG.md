@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.51.2 - 2026-06-02
+
+- Issue #247: Redesigned the Home tab's information hierarchy without changing
+  data sources or navigation. The weekly hero now separates the lift-status
+  counts into a labeled `Exercise Progress` section, the goal card now presents
+  `Goal: Bulking/Cutting/Maintaining` with semantic success/caution/error color
+  still carried by the required pace based on `goalInfo.warnings`, and the 1K
+  card now uses a centered `1K Progress` treatment with progress-based emphasis
+  on the hero total.
+
 ## 0.51.1 - 2026-06-02
 
 - Issue #246: Fixed the compact Home weight sparkline clipping by enforcing
