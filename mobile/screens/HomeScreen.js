@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
   },
   oneKHeroRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-end',
     justifyContent: 'center',
   },
   oneKHeroValue: {

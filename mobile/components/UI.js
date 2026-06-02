@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
 export const SET_ROW_FONT_SIZE = 14;
@@ -46,35 +47,42 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-// 8-direction offsets used to fake a glyph outline (React Native has no text-stroke).
-const _OUTLINE_OFFSETS = [
-  [-1, -1], [0, -1], [1, -1],
-  [-1, 0],           [1, 0],
-  [-1, 1],  [0, 1],  [1, 1],
-];
+// Renders a number/string with a crisp colored border around the characters
+// themselves, using a true vector stroke (React Native Text has no text-stroke).
+// Pass a single string/number as children; font size/weight/family are read from
+// textStyle. When outlineColor is falsy, renders plain filled text with no stroke.
+export function OutlinedText({ children, color = Colors.text, outlineColor, outlineWidth = 1.25, textStyle }) {
+  const flat = StyleSheet.flatten(textStyle) || {};
+  const fontSize = flat.fontSize || 16;
+  const fontWeight = flat.fontWeight != null ? String(flat.fontWeight) : '400';
+  const fontFamily = flat.fontFamily;
+  const str = String(children ?? '');
 
-// Renders text with a colored border around the characters themselves: layered
-// outline copies behind a filled top copy. Pass a single string/number as children
-// (no nested <Text> with its own color, or the outline layers will inherit it).
-// When outlineColor is falsy, renders plain filled text with no outline.
-export function OutlinedText({ children, color = Colors.text, outlineColor, outlineWidth = 2, textStyle, style }) {
+  // No native measurement here; estimate a width wide enough to never clip, and
+  // center the glyphs with textAnchor="middle" so the extra width stays balanced.
+  const pad = Math.ceil(outlineWidth) + 2;
+  const width = Math.ceil(str.length * fontSize * 0.62) + pad * 2;
+  // Keep the box tight to the baseline so an adjacent unit label lines up; digits
+  // have no descenders, so the baseline sits ~fontSize from the top.
+  const height = Math.ceil(fontSize) + pad;
+  const baselineY = Math.ceil(fontSize);
+
   return (
-    <View style={[styles.outlinedWrap, style]}>
-      {outlineColor ? _OUTLINE_OFFSETS.map(([x, y], i) => (
-        <Text
-          key={i}
-          aria-hidden
-          allowFontScaling={false}
-          style={[textStyle, styles.outlinedLayer, {
-            color: outlineColor,
-            transform: [{ translateX: x * outlineWidth }, { translateY: y * outlineWidth }],
-          }]}
-        >
-          {children}
-        </Text>
-      )) : null}
-      <Text allowFontScaling={false} style={[textStyle, { color }]}>{children}</Text>
-    </View>
+    <Svg width={width} height={height}>
+      <SvgText
+        x={width / 2}
+        y={baselineY}
+        fontSize={fontSize}
+        fontWeight={fontWeight}
+        {...(fontFamily ? { fontFamily } : {})}
+        fill={color}
+        stroke={outlineColor || undefined}
+        strokeWidth={outlineColor ? outlineWidth : 0}
+        textAnchor="middle"
+      >
+        {str}
+      </SvgText>
+    </Svg>
   );
 }
 
@@ -339,15 +347,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
     marginTop: 6,
-  },
-  outlinedWrap: {
-    position: 'relative',
-    alignSelf: 'center',
-  },
-  outlinedLayer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
   },
   button: {
     backgroundColor: Colors.text,

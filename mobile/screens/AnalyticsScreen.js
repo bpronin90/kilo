@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
   },
   oneKValueRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-end',
     justifyContent: 'center',
   },
   oneKValue: {
