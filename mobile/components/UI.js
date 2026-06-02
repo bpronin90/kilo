@@ -64,6 +64,45 @@ export function getSessionTone(count) {
   return 'default';
 }
 
+// Deload-risk caption for a session-depth count. Zone boundaries (1 / 7 / 10)
+// mirror getSessionTone. The 10+ caption is fixed per the issue contract.
+export function getSessionZoneCaption(count) {
+  if (count >= 10) return 'Consider a deload week';
+  if (count >= 7) return 'Approaching deload';
+  if (count >= 1) return 'Building volume';
+  return 'No sessions logged';
+}
+
+const _SESSION_GAUGE_TONE_COLORS = {
+  success: Colors.success,
+  warn: Colors.caution,
+  error: Colors.error,
+  default: Colors.textMuted,
+};
+
+// Visual gauge of how many sessions deep the user is, with a deload-zone caption.
+// Fill is scaled to the deload threshold (10 sessions); tone color follows
+// getSessionTone so the bar reddens as deload risk rises.
+export function SessionGauge({ count }) {
+  const tone = getSessionTone(count);
+  const fillColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
+  const fillPct = Math.min(100, (count / 10) * 100);
+  const caption = getSessionZoneCaption(count);
+
+  return (
+    <Card style={styles.sessionGauge}>
+      <View style={styles.sessionGaugeHeader}>
+        <Text style={styles.sessionGaugeLabel}>Sessions deep</Text>
+        <Text style={[styles.sessionGaugeCount, { color: fillColor }]}>{count}</Text>
+      </View>
+      <View style={styles.sessionGaugeTrack}>
+        <View style={[styles.sessionGaugeFill, { width: `${fillPct}%`, backgroundColor: fillColor }]} />
+      </View>
+      <Text style={[styles.sessionGaugeCaption, { color: fillColor }]}>{caption}</Text>
+    </Card>
+  );
+}
+
 export function StatCard({ label, value, tone = 'default' }) {
   const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
@@ -272,6 +311,41 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '45%',
+  },
+  sessionGauge: {
+    flex: 1,
+    gap: 10,
+  },
+  sessionGaugeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  sessionGaugeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sessionGaugeCount: {
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  sessionGaugeTrack: {
+    width: '100%',
+    height: 10,
+    backgroundColor: Colors.divider,
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  sessionGaugeFill: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  sessionGaugeCaption: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   statLabel: {
     fontSize: 13,

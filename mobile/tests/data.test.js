@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -2863,5 +2863,153 @@ describe('deriveNonWeightedTrackedExerciseMetrics', () => {
     expect(result['pull-up'].reps_arrow).toBe('up');
     expect(result['plank'].exercise_class).toBe('time_based');
     expect(result['plank'].hold_arrow).toBe('up');
+  });
+});
+
+// ── derive1kTotalSeries (per-session Big-3 1RM total) ─────────────────────────
+
+describe('derive1kTotalSeries', () => {
+  const SEL = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+  // Epley: weight * (1 + reps/30)
+  const epley = (wt, reps) => wt * (1 + reps / 30);
+
+  // Build a section whose exercise has both session_entries and the flattened
+  // sets/rows the real parser produces (flushExercise: sets = rows.flatMap).
+  function liftSection(name, sessions) {
+    const session_entries = [];
+    const rows = [];
+    for (const e of sessions) {
+      if (e === 'skip') { session_entries.push({ skipped: true, raw: '-', sets: [] }); continue; }
+      const sets = Array.isArray(e) ? e : [e];
+      session_entries.push({ skipped: false, raw: 'x', sets });
+      rows.push({ raw: 'x', sets });
+    }
+    return {
+      heading: null, subheading: null, kind: 'general',
+      exercises: [{ name, rows, sets: rows.flatMap(r => r.sets), unparsed_rows: [], session_entries }],
+    };
+  }
+
+  function lifts({ bench = [], squat = [], deadlift = [] }) {
+    return [
+      liftSection('DB Bench Press', bench),
+      liftSection('Squat', squat),
+      liftSection('Deadlift', deadlift),
+    ];
+  }
+
+  test('zips three lifts by session index and totals best-Epley per session', () => {
+    const sections = lifts({
+      bench:    [w(100, 10), w(110, 10)],
+      squat:    [w(200, 5),  w(210, 5)],
+      deadlift: [w(300, 5),  w(315, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    expect(series).toHaveLength(2);
+    expect(series[0].session).toBe(1);
+    expect(series[1].session).toBe(2);
+    expect(series[0].bench).toBeCloseTo(epley(100, 10), 5);
+    expect(series[0].squat).toBeCloseTo(epley(200, 5), 5);
+    expect(series[0].deadlift).toBeCloseTo(epley(300, 5), 5);
+    expect(series[0].total).toBeCloseTo(epley(100, 10) + epley(200, 5) + epley(300, 5), 5);
+    expect(series[1].total).toBeCloseTo(epley(110, 10) + epley(210, 5) + epley(315, 5), 5);
+  });
+
+  test('series length is the min session count across the three lifts', () => {
+    const sections = lifts({
+      bench:    [w(100, 10), w(110, 10), w(120, 10)],
+      squat:    [w(200, 5),  w(210, 5)],
+      deadlift: [w(300, 5),  w(315, 5),  w(325, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    expect(series).toHaveLength(2);
+  });
+
+  test('best Epley within a session uses the heaviest estimated set', () => {
+    const sections = lifts({
+      bench:    [[w(100, 10), w(120, 3)]],
+      squat:    [w(200, 5)],
+      deadlift: [w(300, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    // max(epley(100,10)=133.33, epley(120,3)=132) → 133.33
+    expect(series[0].bench).toBeCloseTo(epley(100, 10), 5);
+  });
+
+  test('skipped sessions are omitted before zipping', () => {
+    const sections = lifts({
+      bench:    [w(100, 10), 'skip', w(110, 10)],
+      squat:    [w(200, 5),  w(210, 5)],
+      deadlift: [w(300, 5),  w(315, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    // bench has 2 logged sessions (100, 110); skip dropped → second point pairs bench 110 with squat/dl second
+    expect(series).toHaveLength(2);
+    expect(series[1].bench).toBeCloseTo(epley(110, 10), 5);
+  });
+
+  test('missing lift in note → empty series', () => {
+    const sections = lifts({
+      bench: [w(100, 10), w(110, 10)],
+      squat: [w(200, 5),  w(210, 5)],
+      // no deadlift
+    });
+    expect(derive1kTotalSeries(sections, SEL)).toEqual([]);
+  });
+
+  test('final series total matches derive1kTotal latest scope', () => {
+    const sections = lifts({
+      bench:    [w(100, 10), w(110, 10)],
+      squat:    [w(200, 5),  w(210, 5)],
+      deadlift: [w(300, 5),  w(315, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    const oneK = derive1kTotal(sections, SEL);
+    expect(series[series.length - 1].total).toBeCloseTo(oneK.total, 5);
+  });
+});
+
+// ── computeWeightRollingAverageSeries — 30-day window ─────────────────────────
+
+describe('computeWeightRollingAverageSeries — windowDays', () => {
+  test('windowDays=30 reports 30-day rolling averages (wider window than 7-day)', () => {
+    // 40 days of entries trending up; the 30-day average lags below the 7-day average.
+    const entries = Array.from({ length: 40 }, (_, i) => ({
+      date: `2026-04-${String(i + 1).padStart(2, '0')}`,
+      weight_value: 180 + i,
+    })).filter(e => e.date <= '2026-04-30');
+    const series7 = computeWeightRollingAverageSeries(entries, 30, 7);
+    const series30 = computeWeightRollingAverageSeries(entries, 30, 30);
+    const last7 = series7[series7.length - 1].value;
+    const last30 = series30[series30.length - 1].value;
+    expect(last30).toBeLessThan(last7);
+  });
+
+  test('defaults to 7-day window for backward compatibility', () => {
+    const entries = [
+      { date: '2026-05-25', weight_value: 185 },
+      { date: '2026-05-24', weight_value: 184 },
+    ];
+    expect(computeWeightRollingAverageSeries(entries, 7))
+      .toEqual(computeWeightRollingAverageSeries(entries, 7, 7));
+  });
+});
+
+describe('deriveWeightGoalAnalytics — rollingSeries30', () => {
+  const REF = new Date('2026-05-25T12:00:00');
+
+  test('exposes a 30-day rolling series alongside the 7-day series', () => {
+    const entries = Array.from({ length: 20 }, (_, i) => ({
+      date: `2026-05-${String(i + 1).padStart(2, '0')}`,
+      weight_value: 180 + i * 0.1,
+    }));
+    const result = deriveWeightGoalAnalytics(entries, null, {}, REF);
+    expect(Array.isArray(result.rollingSeries30)).toBe(true);
+    expect(result.rollingSeries30).toEqual(computeWeightRollingAverageSeries(entries, 30, 30));
+  });
+
+  test('empty entries → rollingSeries30 is empty', () => {
+    const result = deriveWeightGoalAnalytics([], null, {}, REF);
+    expect(result.rollingSeries30).toEqual([]);
   });
 });

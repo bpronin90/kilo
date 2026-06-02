@@ -2,8 +2,8 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
-import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
+import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import { formatDuration } from '../lib/format';
@@ -69,10 +69,12 @@ export function AnalyticsScreen({ multiplier, section }) {
   }
 
   // null goal: Analytics renders trend data only, not goal-relative info
-  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries } = useMemo(
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries, rollingSeries30 } = useMemo(
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
   );
+  const rolling7 = rollingSeries || [];
+  const rolling30 = rollingSeries30 || [];
 
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
@@ -127,8 +129,9 @@ export function AnalyticsScreen({ multiplier, section }) {
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
+    const oneKSeries = derive1kTotalSeries(currentSections, oneKSelections);
 
-    return { signals, oneK, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
+    return { signals, oneK, oneKSeries, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   const groupedSignals = useMemo(() => {
@@ -208,6 +211,15 @@ export function AnalyticsScreen({ multiplier, section }) {
     [parsedSections.currentSections]
   );
 
+  const oneKChartData = useMemo(
+    () => (analytics.oneKSeries || []).map(p => ({
+      value: Math.round(p.total),
+      label: `#${p.session}`,
+      unit: 'lb',
+    })),
+    [analytics.oneKSeries]
+  );
+
   const screenContent = React.Children.toArray([
     <View key="weight-trends-title" onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
@@ -227,14 +239,34 @@ export function AnalyticsScreen({ multiplier, section }) {
         )}
       </View>
 
-      <View style={{ height: 100, justifyContent: 'center' }}>
-        {rollingSeries.length > 0 ? (
-          <LineChart data={rollingSeries} height={100} hideHeader />
-        ) : (
-          <View style={{ height: 100, backgroundColor: Colors.cardBorder, opacity: 0.05, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
-             {isWeightLoading && <ActivityIndicator size="small" color={Colors.accent} />}
-          </View>
-        )}
+      <View style={styles.chartBlock}>
+        <Text style={styles.chartLabel}>7-day rolling average</Text>
+        <View style={styles.chartArea}>
+          {rolling7.length > 1 ? (
+            <LineChart data={rolling7} height={100} hideHeader />
+          ) : (
+            <View style={styles.chartPlaceholder}>
+              {isWeightLoading
+                ? <ActivityIndicator size="small" color={Colors.accent} />
+                : <Text style={styles.chartEmpty}>Not enough data</Text>}
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.chartBlock}>
+        <Text style={styles.chartLabel}>30-day rolling average</Text>
+        <View style={styles.chartArea}>
+          {rolling30.length > 1 ? (
+            <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} />
+          ) : (
+            <View style={styles.chartPlaceholder}>
+              {isWeightLoading
+                ? <ActivityIndicator size="small" color={Colors.accent} />
+                : <Text style={styles.chartEmpty}>Not enough data</Text>}
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.weightFooter}>
@@ -249,11 +281,11 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
-    <View key="activity-title">
-      <SectionTitle>Activity</SectionTitle>
+    <View key="deload-title">
+      <SectionTitle>Deload Risk</SectionTitle>
     </View>,
-    <View key="session-stat" style={styles.statRow}>
-      <StatCard label="Workout sessions" value={String(sessionCount)} tone={getSessionTone(sessionCount)} />
+    <View key="session-gauge" style={styles.statRow}>
+      <SessionGauge count={sessionCount} />
     </View>,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
@@ -285,6 +317,13 @@ export function AnalyticsScreen({ multiplier, section }) {
                 <Text style={styles.oneKItemLabel}>Deadlifts</Text>
               </View>
             </View>
+
+            {oneKChartData.length > 1 && (
+              <View style={styles.oneKChartBlock}>
+                <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
+                <LineChart data={oneKChartData} height={120} hideHeader />
+              </View>
+            )}
           </>
         )}
       </ArtisanalPanel>
@@ -563,6 +602,31 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 16,
   },
+  chartBlock: {
+    gap: 4,
+  },
+  chartLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  chartArea: {
+    height: 100,
+    justifyContent: 'center',
+  },
+  chartPlaceholder: {
+    height: 100,
+    backgroundColor: Colors.subtleBg,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartEmpty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
   weightHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -656,9 +720,18 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'space-between',
     marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+  },
+  oneKChartBlock: {
+    width: '100%',
+    marginTop: 16,
+  },
+  oneKChartLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
   },
   oneKItem: {
     alignItems: 'center',
