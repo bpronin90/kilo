@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 
 function localDateToday() {
   const d = new Date();
@@ -82,11 +82,11 @@ function GoalDerived({ info, calorieEstimate }) {
       {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
-            {tdeeBased ? 'Est. daily target' : 'Suggested '}
+            {tdeeBased ? 'Est. daily consumption' : 'Suggested '}
             {!tdeeBased && <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>}
           </Text>
           <Text style={styles.derivedValue}>
-            {calories_per_day} cal / day{tdeeBased ? ' (approximate)' : ' (estimate)'}
+            {calories_per_day} cal / day{tdeeBased ? '' : ' (estimate)'}
           </Text>
         </View>
       )}
@@ -111,6 +111,12 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
   const isSpike = paceLevel === 'spike';
   const isNotable = paceLevel === 'notable';
 
+  let col3ColorStyle = null;
+  if (isSpike) col3ColorStyle = styles.paceSpike;
+  else if (isNotable) col3ColorStyle = styles.paceNotable;
+  else if (col3.value?.startsWith('↑')) col3ColorStyle = styles.trendGaining;
+  else if (col3.value?.startsWith('↓')) col3ColorStyle = styles.trendLosing;
+
   return (
     <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>
       <Text style={styles.trendSectionTitle}>{title}</Text>
@@ -125,10 +131,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
         </View>
         <View style={styles.trendGridItem}>
           <Text style={styles.trendLabel}>{col3.label}</Text>
-          <Text style={[
-            styles.trendValue,
-            isSpike ? styles.paceSpike : isNotable ? styles.paceNotable : null
-          ]}>
+          <Text style={[styles.trendValue, col3ColorStyle]}>
             {col3.value}
           </Text>
         </View>
@@ -153,6 +156,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const scrollRef = useRef(null);
 
   const {
     trendSummary: trends,
@@ -297,6 +301,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     setWeightValue(String(entry.weight_value));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
+    scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
   };
 
   const cancelEdit = () => {
@@ -346,6 +351,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   return (
     <ScreenShell
+      ref={scrollRef}
       title="Weight log"
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
@@ -434,10 +440,9 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         />
       </Card>
 
-      <SectionTitle>Goals</SectionTitle>
+      <SectionTitle>Goal</SectionTitle>
       <Card style={styles.goalCard}>
         <View style={styles.goalHeader}>
-          <Text style={styles.goalTitle}>Goal</Text>
           {goal && !goalEditing && (
             <View style={styles.goalHeaderActions}>
               <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
@@ -519,13 +524,16 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 <Text style={styles.goalDisplayValue}>{formatDate(goal.target_date)}</Text>
               </View>
             </View>
-            
-            <View style={styles.goalDivider} />
-            
-            {goalInfo && <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />}
           </View>
         )}
       </Card>
+
+      {goal && !goalEditing && goalInfo && (
+        <Card style={styles.guidanceCard}>
+          <Text style={styles.guidanceTitle}>Guidance</Text>
+          <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+        </Card>
+      )}
 
       <SectionTitle>Trends</SectionTitle>
       <Card style={styles.trendsCardMerged}>
@@ -792,6 +800,22 @@ const styles = StyleSheet.create({
   },
   paceNotable: {
     color: Colors.caution,
+  },
+  trendGaining: {
+    color: Colors.error,
+  },
+  trendLosing: {
+    color: Colors.success,
+  },
+  guidanceCard: {
+    gap: 12,
+  },
+  guidanceTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   goalCard: {
     gap: 10,
