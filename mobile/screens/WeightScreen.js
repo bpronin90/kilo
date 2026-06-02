@@ -1,10 +1,10 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 
 function localDateToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, HeroMetric, SectionTitle, ErrorBanner } from '../components/UI';
@@ -82,11 +82,11 @@ function GoalDerived({ info, calorieEstimate }) {
       {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
         <View style={styles.derivedRow}>
           <Text style={styles.derivedLabel}>
-            {tdeeBased ? 'Est. daily target' : 'Suggested '}
+            {tdeeBased ? 'Est. daily consumption' : 'Suggested '}
             {!tdeeBased && <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>}
           </Text>
           <Text style={styles.derivedValue}>
-            {calories_per_day} cal / day{tdeeBased ? ' (approximate)' : ' (estimate)'}
+            {calories_per_day} cal / day{tdeeBased ? '' : ' (estimate)'}
           </Text>
         </View>
       )}
@@ -111,6 +111,12 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
   const isSpike = paceLevel === 'spike';
   const isNotable = paceLevel === 'notable';
 
+  let col3ColorStyle = null;
+  if (isSpike) col3ColorStyle = styles.paceSpike;
+  else if (isNotable) col3ColorStyle = styles.paceNotable;
+  else if (col3.value?.startsWith('↑')) col3ColorStyle = styles.trendGaining;
+  else if (col3.value?.startsWith('↓')) col3ColorStyle = styles.trendLosing;
+
   return (
     <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>
       <Text style={styles.trendSectionTitle}>{title}</Text>
@@ -125,10 +131,7 @@ function TrendSection({ title, col1, col2, col3, isLast, paceLevel }) {
         </View>
         <View style={styles.trendGridItem}>
           <Text style={styles.trendLabel}>{col3.label}</Text>
-          <Text style={[
-            styles.trendValue,
-            isSpike ? styles.paceSpike : isNotable ? styles.paceNotable : null
-          ]}>
+          <Text style={[styles.trendValue, col3ColorStyle]}>
             {col3.value}
           </Text>
         </View>
@@ -153,6 +156,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
   const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const scrollRef = useRef(null);
 
   const {
     trendSummary: trends,
@@ -172,6 +176,15 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     }
   }, [goal, goalEditing]);
+
+  useEffect(() => {
+    if (!goalEditing) return;
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancelEditGoal();
+      return true;
+    });
+    return () => handler.remove();
+  }, [goalEditing]);
 
   const handleSaveGoal = async () => {
     setGoalError('');
@@ -297,6 +310,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
     setWeightValue(String(entry.weight_value));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
+    scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
   };
 
   const cancelEdit = () => {
@@ -346,6 +360,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
 
   return (
     <ScreenShell
+      ref={scrollRef}
       title="Weight log"
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
@@ -391,7 +406,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               accessibilityLabel="Weigh-in date"
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.text }}>{newEntryDate}</Text>
+              <Text style={styles.pickerText}>{newEntryDate}</Text>
             </Pressable>
             {showNewEntryDatePicker && (
               <DateTimePicker
@@ -413,7 +428,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               accessibilityLabel="Entry date"
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.text }}>{editDate}</Text>
+              <Text style={styles.pickerText}>{editDate}</Text>
             </Pressable>
             {showEditDatePicker && (
               <DateTimePicker
@@ -430,33 +445,33 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}
           disabled={saving}
-          style={styles.saveButton}
         />
       </Card>
 
-      <SectionTitle>Goals</SectionTitle>
+      <SectionTitle>Goal</SectionTitle>
       <Card style={styles.goalCard}>
-        <View style={styles.goalHeader}>
-          <Text style={styles.goalTitle}>Goal</Text>
-          {goal && !goalEditing && (
-            <View style={styles.goalHeaderActions}>
-              <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
-                <Text style={styles.goalActionChipText}>Edit</Text>
+        {goal && (
+          <View style={styles.goalHeader}>
+            {!goalEditing && (
+              <View style={styles.goalHeaderActions}>
+                <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                  <Text style={styles.goalActionChipText}>Edit</Text>
+                </Pressable>
+                <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
+                  <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
+                </Pressable>
+              </View>
+            )}
+            {goalEditing && (
+              <Pressable onPress={cancelEditGoal} hitSlop={8}>
+                <Text style={styles.goalActionText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
-                <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
-              </Pressable>
-            </View>
-          )}
-          {goalEditing && goal && (
-            <Pressable onPress={cancelEditGoal} hitSlop={8}>
-              <Text style={styles.goalActionText}>Cancel</Text>
-            </Pressable>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
         {(!goal || goalEditing) ? (
-          <View style={styles.goalForm}>
+          <>
             {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
             {!trends.currentWeight && (
               <>
@@ -471,7 +486,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 />
               </>
             )}
-            <Text style={styles.inputLabel}>Target</Text>
+            <Text style={styles.inputLabel}>Target (lb)</Text>
             <TextInput
               value={goalTargetWeight}
               onChangeText={setGoalTargetWeight}
@@ -485,7 +500,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               onPress={() => setShowDatePicker(true)}
               style={styles.input}
             >
-              <Text style={{ color: goalTargetDate ? Colors.text : Colors.textMuted }}>
+              <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
                 {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
               </Text>
             </Pressable>
@@ -506,7 +521,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               </View>
             )}
             <Button onPress={handleSaveGoal} title="Save goal" />
-          </View>
+          </>
         ) : (
           <View style={styles.goalDisplay}>
             <View style={styles.goalDisplayRow}>
@@ -516,16 +531,19 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               </View>
               <View style={styles.goalDisplayItem}>
                 <Text style={styles.goalDisplayLabel}>By Date</Text>
-                <Text style={styles.goalDisplayValue}>{formatDate(goal.target_date)}</Text>
+                <Text style={styles.goalDisplayDateValue}>{formatDate(goal.target_date)}</Text>
               </View>
             </View>
-            
-            <View style={styles.goalDivider} />
-            
-            {goalInfo && <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />}
           </View>
         )}
       </Card>
+
+      {goal && !goalEditing && goalInfo && (
+        <Card style={styles.guidanceCard}>
+          <Text style={styles.guidanceTitle}>Guidance</Text>
+          <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+        </Card>
+      )}
 
       <SectionTitle>Trends</SectionTitle>
       <Card style={styles.trendsCardMerged}>
@@ -793,12 +811,28 @@ const styles = StyleSheet.create({
   paceNotable: {
     color: Colors.caution,
   },
+  trendGaining: {
+    color: Colors.error,
+  },
+  trendLosing: {
+    color: Colors.success,
+  },
+  guidanceCard: {
+    gap: 12,
+  },
+  guidanceTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   goalCard: {
     gap: 10,
   },
   goalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   goalTitle: {
@@ -825,8 +859,12 @@ const styles = StyleSheet.create({
   goalClearText: {
     color: Colors.error,
   },
-  goalForm: {
-    gap: 8,
+  pickerText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  pickerTextPlaceholder: {
+    color: Colors.textMuted,
   },
   goalErrorText: {
     color: Colors.error,
@@ -846,8 +884,14 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   goalDisplayValue: {
-    ...HeroMetric.statSecondary,
+    fontSize: 28,
+    fontWeight: '900',
     color: Colors.accent,
+  },
+  goalDisplayDateValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Colors.text,
   },
   goalDisplayLabel: {
     fontSize: 12,
@@ -904,9 +948,5 @@ const styles = StyleSheet.create({
   formDerived: {
     gap: 12,
     marginVertical: 4,
-  },
-  saveButton: {
-    // Previously used Colors.accent
-    paddingVertical: 12,
   },
 });

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.51.3 - 2026-06-02
+
+- Issue #248: Reworked the Weight tab's goal presentation into a cleaner
+  singular Goal plus separate Guidance treatment, added semantic trend colors
+  for pace and rolling-direction cues, and fixed history-row editing so
+  selecting an entry scrolls the screen back to the editor instead of leaving
+  the loaded form off-screen.
+
 ## 0.51.2 - 2026-06-02
 
 - Issue #247: Redesigned the Home tab's information hierarchy without changing

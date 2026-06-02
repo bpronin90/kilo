@@ -18,6 +18,20 @@ jest.mock('@react-native-community/datetimepicker', () => {
 });
 
 jest.mock('../hooks/useEntries');
+jest.mock('../components/ScreenShell', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const mockScrollTo = jest.fn();
+  const ScreenShell = React.forwardRef(({ children, keyboardShouldPersistTaps }, ref) => {
+    React.useImperativeHandle(ref, () => ({ scrollTo: mockScrollTo }));
+    return React.createElement(View, null, children);
+  });
+  ScreenShell._mockScrollTo = mockScrollTo;
+  return {
+    ScreenShell,
+    ScrollContext: React.createContext({ onScroll: () => {} }),
+  };
+});
 
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
@@ -236,6 +250,27 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'No weight entries yet.')).toBe(true);
   });
 
+  test('tapping a history entry calls scrollTo on the screen ref', () => {
+    const { ScreenShell } = require('../components/ScreenShell');
+    const mockScrollTo = ScreenShell._mockScrollTo;
+    mockScrollTo.mockClear();
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    expect(mockScrollTo).toHaveBeenCalledWith({ x: 0, y: 0, animated: true });
+  });
+
   test('cancelling the delete prompt does not call remove', () => {
     const alertSpy = jest.spyOn(Alert, 'alert');
 
@@ -259,5 +294,54 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
 
     expect(mockRemove).not.toHaveBeenCalled();
+  });
+});
+
+describe('WeightScreen Goals two-panel layout', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [{ ...ENTRY }],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: { target_weight: 175, target_date: '2026-12-01', start_weight: 190 },
+      save: jest.fn(),
+      clear: jest.fn(),
+    });
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  const hasText = (root, text) =>
+    root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const flat = Array.isArray(n.props.children)
+        ? n.props.children.join('')
+        : String(n.props.children ?? '');
+      return flat.includes(text);
+    }).length > 0;
+
+  test('target weight and date appear when goal is set', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    expect(hasText(root, '175 lb')).toBe(true);
+  });
+
+  test('Guidance panel appears when goal is set and goalInfo is available', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    expect(hasText(root, 'Guidance')).toBe(true);
+    expect(hasText(root, 'Target pace')).toBe(true);
   });
 });
