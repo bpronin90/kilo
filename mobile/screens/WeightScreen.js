@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   trendLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: Colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',

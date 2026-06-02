@@ -33,8 +33,15 @@ export function LineChart({
   const maxVal = Math.max(...values);
   const range = maxVal - minVal || 1;
 
+  // Keep the stroke and point markers inside the SVG bounds. The selected marker
+  // is r=5 with a 2px stroke (outer extent ~6px); without this floor, extreme
+  // data points drawn at the very edge get clipped — e.g. callers passing
+  // paddingVertical={0} for a compact sparkline.
+  const MARKER_INSET = 6;
+  const effPaddingVertical = Math.max(paddingVertical, MARKER_INSET);
+
   const getX = (index) => paddingHorizontal + (index * (chartWidth - 2 * paddingHorizontal) / (data.length - 1));
-  const getY = (value) => height - paddingVertical - ((value - minVal) / range * (height - 2 * paddingVertical));
+  const getY = (value) => height - effPaddingVertical - ((value - minVal) / range * (height - 2 * effPaddingVertical));
 
   const points = data.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
 

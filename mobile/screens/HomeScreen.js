@@ -121,8 +121,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             <LineChart
               data={dashboardData.weightSeries}
               color={Colors.textMuted}
-              height={32}
-              paddingVertical={0}
+              height={44}
               paddingHorizontal={0}
               hideHeader
             />
@@ -252,7 +251,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   heroWeightUnit: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '600',
     color: Colors.textMuted,
   },
@@ -367,7 +366,8 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   oneKHeroUnit: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textMuted,
   },
   progressBarLarge: {
