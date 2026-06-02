@@ -4,7 +4,7 @@ function localDateToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, HeroMetric, SectionTitle, ErrorBanner } from '../components/UI';
@@ -176,6 +176,15 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
       setGoalStartWeight(goal.start_weight ? String(goal.start_weight) : '');
     }
   }, [goal, goalEditing]);
+
+  useEffect(() => {
+    if (!goalEditing) return;
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancelEditGoal();
+      return true;
+    });
+    return () => handler.remove();
+  }, [goalEditing]);
 
   const handleSaveGoal = async () => {
     setGoalError('');
@@ -397,7 +406,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               accessibilityLabel="Weigh-in date"
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.text }}>{newEntryDate}</Text>
+              <Text style={styles.pickerText}>{newEntryDate}</Text>
             </Pressable>
             {showNewEntryDatePicker && (
               <DateTimePicker
@@ -419,7 +428,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               accessibilityLabel="Entry date"
               accessibilityRole="button"
             >
-              <Text style={{ color: Colors.text }}>{editDate}</Text>
+              <Text style={styles.pickerText}>{editDate}</Text>
             </Pressable>
             {showEditDatePicker && (
               <DateTimePicker
@@ -436,32 +445,33 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}
           disabled={saving}
-          style={styles.saveButton}
         />
       </Card>
 
       <SectionTitle>Goal</SectionTitle>
       <Card style={styles.goalCard}>
-        <View style={styles.goalHeader}>
-          {goal && !goalEditing && (
-            <View style={styles.goalHeaderActions}>
-              <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
-                <Text style={styles.goalActionChipText}>Edit</Text>
+        {goal && (
+          <View style={styles.goalHeader}>
+            {!goalEditing && (
+              <View style={styles.goalHeaderActions}>
+                <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                  <Text style={styles.goalActionChipText}>Edit</Text>
+                </Pressable>
+                <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
+                  <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
+                </Pressable>
+              </View>
+            )}
+            {goalEditing && (
+              <Pressable onPress={cancelEditGoal} hitSlop={8}>
+                <Text style={styles.goalActionText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
-                <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
-              </Pressable>
-            </View>
-          )}
-          {goalEditing && goal && (
-            <Pressable onPress={cancelEditGoal} hitSlop={8}>
-              <Text style={styles.goalActionText}>Cancel</Text>
-            </Pressable>
-          )}
-        </View>
+            )}
+          </View>
+        )}
 
         {(!goal || goalEditing) ? (
-          <View style={styles.goalForm}>
+          <>
             {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
             {!trends.currentWeight && (
               <>
@@ -476,7 +486,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 />
               </>
             )}
-            <Text style={styles.inputLabel}>Target</Text>
+            <Text style={styles.inputLabel}>Target (lb)</Text>
             <TextInput
               value={goalTargetWeight}
               onChangeText={setGoalTargetWeight}
@@ -490,7 +500,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               onPress={() => setShowDatePicker(true)}
               style={styles.input}
             >
-              <Text style={{ color: goalTargetDate ? Colors.text : Colors.textMuted }}>
+              <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
                 {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
               </Text>
             </Pressable>
@@ -511,7 +521,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               </View>
             )}
             <Button onPress={handleSaveGoal} title="Save goal" />
-          </View>
+          </>
         ) : (
           <View style={styles.goalDisplay}>
             <View style={styles.goalDisplayRow}>
@@ -521,7 +531,7 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
               </View>
               <View style={styles.goalDisplayItem}>
                 <Text style={styles.goalDisplayLabel}>By Date</Text>
-                <Text style={styles.goalDisplayValue}>{formatDate(goal.target_date)}</Text>
+                <Text style={styles.goalDisplayDateValue}>{formatDate(goal.target_date)}</Text>
               </View>
             </View>
           </View>
@@ -822,7 +832,7 @@ const styles = StyleSheet.create({
   },
   goalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   goalTitle: {
@@ -849,8 +859,12 @@ const styles = StyleSheet.create({
   goalClearText: {
     color: Colors.error,
   },
-  goalForm: {
-    gap: 8,
+  pickerText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  pickerTextPlaceholder: {
+    color: Colors.textMuted,
   },
   goalErrorText: {
     color: Colors.error,
@@ -870,8 +884,14 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   goalDisplayValue: {
-    ...HeroMetric.statSecondary,
+    fontSize: 28,
+    fontWeight: '900',
     color: Colors.accent,
+  },
+  goalDisplayDateValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Colors.text,
   },
   goalDisplayLabel: {
     fontSize: 12,
@@ -928,9 +948,5 @@ const styles = StyleSheet.create({
   formDerived: {
     gap: 12,
     marginVertical: 4,
-  },
-  saveButton: {
-    // Previously used Colors.accent
-    paddingVertical: 12,
   },
 });
