@@ -55,7 +55,8 @@ Current limitation:
   `AnalyticsScreen` consumer-drift regression that spies on
   `deriveWeightGoalAnalytics()` to prove the rendered latest weight and
   7-day/30-day averages come from the shared layer instead of screen-local
-  reshaping.
+  reshaping, and targeted `WeightScreen` interaction coverage for history-row
+  scroll-to-editor behavior plus the saved-goal target/guidance split.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
@@ -238,6 +239,10 @@ retains non-test commands such as `npm run audit`.
 - verifies tapping the delete affordance (✕) triggers `Alert.alert` with a
   confirm prompt and calls `remove` on the destructive confirmation
 - verifies cancelling the delete prompt does not call `remove`
+- verifies tapping a history row also calls the forwarded `ScreenShell`
+  `scrollTo` ref so the loaded editor is brought back into view
+- verifies a saved goal renders the split target + guidance presentation rather
+  than collapsing all goal information into one card
 
 ---
 
