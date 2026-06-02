@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge, OutlinedText } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -309,8 +309,11 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <View style={[styles.oneKValueBox, { borderColor: oneKTrendColor || Colors.cardBorder }]}>
-              <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            <View style={styles.oneKValueRow}>
+              <OutlinedText textStyle={styles.oneKValue} color={Colors.text} outlineColor={oneKTrendColor}>
+                {analytics.oneK.total.toFixed(0)}
+              </OutlinedText>
+              <Text style={styles.oneKUnit}>lb</Text>
             </View>
             
             <View style={styles.oneKProgressBarContainer}>
@@ -615,6 +618,7 @@ const styles = StyleSheet.create({
   weightCard: {
     padding: 20,
     gap: 16,
+    backgroundColor: Colors.panelBackground,
   },
   chartBlock: {
     gap: 4,
@@ -676,12 +680,14 @@ const styles = StyleSheet.create({
   },
   weightFooter: {
     flexDirection: 'row',
-    gap: 24,
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
     paddingTop: 16,
   },
   weightStat: {
+    flex: 1,
+    alignItems: 'center',
     gap: 2,
   },
   weightStatValue: {
@@ -699,8 +705,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.card,
-    borderColor: Colors.cardBorder,
+    backgroundColor: Colors.panelBackground,
   },
   oneKLabel: {
     fontSize: 12,
@@ -709,11 +714,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  oneKValueBox: {
-    borderWidth: 2,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 4,
+  oneKValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
   },
   oneKValue: {
     ...HeroMetric.hero,

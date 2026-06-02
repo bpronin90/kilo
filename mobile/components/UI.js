@@ -46,6 +46,38 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
+// 8-direction offsets used to fake a glyph outline (React Native has no text-stroke).
+const _OUTLINE_OFFSETS = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0],           [1, 0],
+  [-1, 1],  [0, 1],  [1, 1],
+];
+
+// Renders text with a colored border around the characters themselves: layered
+// outline copies behind a filled top copy. Pass a single string/number as children
+// (no nested <Text> with its own color, or the outline layers will inherit it).
+// When outlineColor is falsy, renders plain filled text with no outline.
+export function OutlinedText({ children, color = Colors.text, outlineColor, outlineWidth = 2, textStyle, style }) {
+  return (
+    <View style={[styles.outlinedWrap, style]}>
+      {outlineColor ? _OUTLINE_OFFSETS.map(([x, y], i) => (
+        <Text
+          key={i}
+          aria-hidden
+          allowFontScaling={false}
+          style={[textStyle, styles.outlinedLayer, {
+            color: outlineColor,
+            transform: [{ translateX: x * outlineWidth }, { translateY: y * outlineWidth }],
+          }]}
+        >
+          {children}
+        </Text>
+      )) : null}
+      <Text allowFontScaling={false} style={[textStyle, { color }]}>{children}</Text>
+    </View>
+  );
+}
+
 export function Button({ onPress, title, style, textStyle, disabled = false }) {
   return (
     <Pressable
@@ -307,6 +339,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
     marginTop: 6,
+  },
+  outlinedWrap: {
+    position: 'relative',
+    alignSelf: 'center',
+  },
+  outlinedLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
   },
   button: {
     backgroundColor: Colors.text,
