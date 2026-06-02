@@ -1,6 +1,5 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
 export const SET_ROW_FONT_SIZE = 14;
@@ -45,45 +44,6 @@ export function Card({ children, style, tone = 'default', onPress }) {
 
 export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
-}
-
-// Renders a number/string with a crisp colored border around the characters
-// themselves, using a true vector stroke (React Native Text has no text-stroke).
-// Pass a single string/number as children; font size/weight/family are read from
-// textStyle. When outlineColor is falsy, renders plain filled text with no stroke.
-export function OutlinedText({ children, color = Colors.text, outlineColor, outlineWidth = 1.25, textStyle }) {
-  const flat = StyleSheet.flatten(textStyle) || {};
-  const fontSize = flat.fontSize || 16;
-  const fontWeight = flat.fontWeight != null ? String(flat.fontWeight) : '400';
-  const fontFamily = flat.fontFamily;
-  const str = String(children ?? '');
-
-  // No native measurement here; estimate a width wide enough to never clip, and
-  // center the glyphs with textAnchor="middle" so the extra width stays balanced.
-  const pad = Math.ceil(outlineWidth) + 2;
-  const width = Math.ceil(str.length * fontSize * 0.62) + pad * 2;
-  // Keep the box tight to the baseline so an adjacent unit label lines up; digits
-  // have no descenders, so the baseline sits ~fontSize from the top.
-  const height = Math.ceil(fontSize) + pad;
-  const baselineY = Math.ceil(fontSize);
-
-  return (
-    <Svg width={width} height={height}>
-      <SvgText
-        x={width / 2}
-        y={baselineY}
-        fontSize={fontSize}
-        fontWeight={fontWeight}
-        {...(fontFamily ? { fontFamily } : {})}
-        fill={color}
-        stroke={outlineColor || undefined}
-        strokeWidth={outlineColor ? outlineWidth : 0}
-        textAnchor="middle"
-      >
-        {str}
-      </SvgText>
-    </Svg>
-  );
 }
 
 export function Button({ onPress, title, style, textStyle, disabled = false }) {

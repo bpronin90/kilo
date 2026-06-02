@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, LineChart, getSessionTone, OutlinedText } from '../components/UI';
+import { Card, HeroMetric, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -211,12 +211,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       {/* ══ TIER 3: 1k Club Progress ══ */}
       <Card style={styles.oneKCard}>
         <Text style={styles.oneKLabel}>1K Progress</Text>
-        <View style={styles.oneKHeroRow}>
-          <OutlinedText textStyle={styles.oneKHeroValue} color={Colors.text} outlineColor={dashboardData.oneKTrendColor}>
-            {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-          </OutlinedText>
+        <Text style={[styles.oneKHeroValue, dashboardData.oneKTrendColor && { color: dashboardData.oneKTrendColor }]}>
+          {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
           <Text style={styles.oneKHeroUnit}> lb</Text>
-        </View>
+        </Text>
         <View style={styles.progressBarLarge}>
           <View
             style={[
@@ -407,11 +405,6 @@ const styles = StyleSheet.create({
   oneKHero: {
     alignItems: 'center',
     marginBottom: 16,
-  },
-  oneKHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
   },
   oneKHeroValue: {
     ...HeroMetric.hero,
