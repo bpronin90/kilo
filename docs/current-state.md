@@ -126,17 +126,22 @@ The real native app path now has a modular React Native shell:
   card, and a 1K Club Progress card. The hero card contains an inline week
   label, a dominant 48px latest-weight value (the only accent-colored text
   element on the screen besides the wordmark), a full-width 7-day sparkline
-  strip, a three-column classification band with semantic color dots
-  (green/yellow/red) for live `Progressing`, `Steady`, and `Regressing`
-  overload counts mirrored from the current Analytics row contract, and a
-  quiet `Full history and insights` link into Analytics. The Weight Goal card
-  renders only when a goal is set
-  (`dashboardData.goalInfo !== null`) and shows direction, weeks remaining,
-  target weight, and required pace. The 1K Club card uses a centered total,
-  progress bar, and three-column breakdown with full exercise names
-  (Squats/Bench/Deadlifts) matching the canonical structure on Analytics. All
-  dashboard data comes from existing shared derivation functions; no Home-only
-  calculations exist. The success toast is removed from the render
+  strip, and a separated classification section labeled `Exercise Progress`
+  with three semantic color dots (green/yellow/red) for live `Progressing`,
+  `Steady`, and `Regressing` overload counts mirrored from the current
+  Analytics row contract, and a quiet `Full history and insights` link into
+  Analytics. The Weight Goal card renders only when a goal is set
+  (`dashboardData.goalInfo !== null`) and now uses a `Goal: Bulking` /
+  `Cutting` / `Maintaining` heading row with the mode word accent-emphasized,
+  separate Target and Pace stat columns, and semantic pace coloring driven by
+  `goalInfo.warnings` (`unrealistic` = error, `unhealthy` = caution, otherwise
+  success) while still showing weeks remaining. The 1K card now uses a centered
+  `1K Progress` label and total, keeps the shared progress bar plus three-column
+  breakdown with full exercise names (Squats/Bench/Deadlifts) matching the
+  canonical structure on Analytics, and adds progress-based hero-number color
+  emphasis as the total approaches 1,000 lb. All dashboard data comes from
+  existing shared derivation functions; no Home-only calculations exist. The
+  success toast is removed from the render
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks

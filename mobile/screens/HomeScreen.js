@@ -15,6 +15,12 @@ import {
   computeWeeklySummary,
 } from '../lib/data';
 
+function lerpColor(a, b, t) {
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
+  return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
+}
+
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
   return (
@@ -129,18 +135,23 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           </View>
 
           {/* Classification band */}
-          <View style={styles.classifRow}>
-            {[
-              { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
-              { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
-              { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
-            ].map((item, idx) => (
-              <View key={idx} style={styles.classifCol}>
-                <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                <Text style={styles.classifCount}>{item.count}</Text>
-                <Text style={styles.classifLabel}>{item.label}</Text>
-              </View>
-            ))}
+          <View style={styles.classifSection}>
+            <View style={styles.classifSectionHeader}>
+              <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
+            </View>
+            <View style={styles.classifRow}>
+              {[
+                { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
+                { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
+                { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
+              ].map((item, idx) => (
+                <View key={idx} style={styles.classifCol}>
+                  <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.classifCount}>{item.count}</Text>
+                  <Text style={styles.classifLabel}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           {/* #7 quiet CTA */}
@@ -154,49 +165,51 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       </Card>
 
       {/* ══ TIER 2: Weight Goal ══ */}
-      {dashboardData.goalInfo ? (
-        <Card style={styles.goalCard}>
-          <View style={styles.goalHeader}>
-            <Text style={[styles.goalDirectionText, {
-              color: dashboardData.goalInfo.direction === 'gain' ? Colors.success
-                : dashboardData.goalInfo.direction === 'loss' ? Colors.caution
-                : Colors.textMuted
-            }]}>
-              {dashboardData.goalInfo.direction === 'loss' ? 'Cutting' : dashboardData.goalInfo.direction === 'gain' ? 'Bulking' : 'Maintaining'}
-            </Text>
-            {/* #8 no chevron — weeks is display only */}
-            <Text style={styles.goalWeeksText}>{Math.round(dashboardData.goalInfo.weeks_remaining)} weeks left</Text>
-          </View>
-          <View style={styles.goalStatsGrid}>
-            <View style={styles.goalStatCol}>
-              <Text style={styles.goalStatLabel}>Target</Text>
-              <View style={styles.goalStatValueRow}>
-                <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
-                <Text style={styles.goalStatUnitLabel}>lb</Text>
+      {dashboardData.goalInfo ? (() => {
+        const gi = dashboardData.goalInfo;
+        const warnings = gi.warnings || [];
+        const paceColor = warnings.includes('unrealistic') ? Colors.error
+          : warnings.includes('unhealthy') ? Colors.caution
+          : Colors.success;
+        const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
+        return (
+          <Card style={styles.goalCard}>
+            <View style={styles.goalModeRow}>
+              <Text style={styles.goalDirectionText}>
+                Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
+              </Text>
+              <Text style={styles.goalWeeksText}>{Math.round(gi.weeks_remaining)} weeks left</Text>
+            </View>
+            <View style={styles.goalStatsGrid}>
+              <View style={styles.goalStatCol}>
+                <Text style={styles.goalStatLabel}>Target</Text>
+                <View style={styles.goalStatValueRow}>
+                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
+                  <Text style={styles.goalStatUnitLabel}>lb</Text>
+                </View>
+              </View>
+              <View style={styles.goalStatCol}>
+                <Text style={styles.goalStatLabel}>Pace</Text>
+                <View style={styles.goalStatValueRow}>
+                  <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
+                    {gi.required_weekly_pace > 0 ? '+' : ''}
+                    {gi.required_weekly_pace.toFixed(1)}
+                  </Text>
+                  <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>lb/wk</Text>
+                </View>
               </View>
             </View>
-            <View style={styles.goalStatCol}>
-              <Text style={styles.goalStatLabel}>Pace</Text>
-              <View style={styles.goalStatValueRow}>
-                <Text style={styles.goalStatValueLarge}>
-                  {dashboardData.goalInfo.required_weekly_pace > 0 ? '+' : ''}
-                  {dashboardData.goalInfo.required_weekly_pace.toFixed(1)}
-                </Text>
-                <Text style={styles.goalStatUnitLabel}>lb/wk</Text>
-              </View>
-            </View>
-          </View>
-        </Card>
-      ) : null}
+          </Card>
+        );
+      })() : null}
 
       {/* ══ TIER 3: 1k Club Progress ══ */}
       <Card style={styles.oneKCard}>
-        <View style={styles.oneKHero}>
-          <Text style={styles.oneKHeroValue}>
-            {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-            <Text style={styles.oneKHeroUnit}> lb</Text>
-          </Text>
-        </View>
+        <Text style={styles.oneKLabel}>1K Progress</Text>
+        <Text style={[styles.oneKHeroValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+          {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
+          <Text style={styles.oneKHeroUnit}> lb</Text>
+        </Text>
         <View style={styles.progressBarLarge}>
           <View
             style={[
@@ -257,7 +270,7 @@ const styles = StyleSheet.create({
   },
   heroSparklineStrip: {
     marginTop: 8,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   heroSparklineSublabel: {
     fontSize: 11,
@@ -266,9 +279,24 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 2,
   },
+  classifSection: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
+    paddingTop: 16,
+    marginBottom: 16,
+  },
+  classifSectionHeader: {
+    marginBottom: 12,
+  },
+  classifSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   classifRow: {
     flexDirection: 'row',
-    marginBottom: 16,
   },
   classifCol: {
     flex: 1,
@@ -310,27 +338,31 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 24,
   },
-  goalHeader: {
+  goalModeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   goalDirectionText: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.text,
   },
+  goalModeAccent: {
+    color: Colors.accent,
+  },
   goalWeeksText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: Colors.text,
+    fontWeight: '600',
+    color: Colors.textMuted,
   },
   goalStatsGrid: {
     flexDirection: 'row',
-    gap: 40,
+    justifyContent: 'space-between',
   },
   goalStatCol: {
+    flex: 1,
     gap: 4,
   },
   goalStatLabel: {
@@ -344,22 +376,30 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   goalStatValueLarge: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: '800',
     color: Colors.text,
   },
   goalStatUnitLabel: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.textMuted,
   },
   oneKCard: {
     padding: 24,
     borderRadius: 24,
+    alignItems: 'center',
+  },
+  oneKLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   oneKHero: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   oneKHeroValue: {
     ...HeroMetric.hero,
@@ -376,6 +416,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
     marginBottom: 28,
+    alignSelf: 'stretch',
   },
   progressFillLarge: {
     height: '100%',
@@ -384,6 +425,7 @@ const styles = StyleSheet.create({
   },
   oneKGrid: {
     flexDirection: 'row',
+    alignSelf: 'stretch',
   },
   oneKGridItem: {
     flex: 1,
