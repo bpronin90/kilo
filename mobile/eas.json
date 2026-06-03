@@ -16,11 +16,13 @@
       "channel": "production"
     },
     "ios-simulator": {
+      "channel": "preview",
       "ios": {
         "simulator": true
       }
     },
     "ios-device": {
+      "channel": "preview",
       "distribution": "internal",
       "ios": {
         "buildConfiguration": "Release"
