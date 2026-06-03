@@ -1847,3 +1847,107 @@ describe('importBackup — deload history', () => {
     expect(result.error).toMatch(/deload_history/i);
   });
 });
+
+// ── deload note dual-write pattern ────────────────────────────────────────────
+
+const DELOAD_PREFIX = 'Deload · ';
+
+describe('deload note dual-write pattern', () => {
+  test('workout note saved with Deload · prefix loads correctly', async () => {
+    const note = {
+      id: 'wn_dl_2026-06-01_1234',
+      title: `${DELOAD_PREFIX}2026-06-01`,
+      raw_text: 'Monday\nSquat: 155 lbs 3x7',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-01T00:00:00.000Z',
+      tracked_exercises: [],
+      one_k_exercises: null,
+      isCurrent: false,
+    };
+    await saveWorkoutNoteItem(note);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toBe(`${DELOAD_PREFIX}2026-06-01`);
+    expect(notes[0].raw_text).toBe('Monday\nSquat: 155 lbs 3x7');
+  });
+
+  test('deload notes are filterable by prefix; routine notes are excluded', async () => {
+    const deloadNote = { id: 'wn_dl_1', title: `${DELOAD_PREFIX}2026-06-01`, raw_text: 'deload text', saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    const routineNote = { id: 'wn_routine_1', title: 'Push Day', raw_text: 'Bench 185', saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    await saveWorkoutNoteItem(deloadNote);
+    await saveWorkoutNoteItem(routineNote);
+    const notes = await loadWorkoutNotes();
+    const filtered = notes.filter(n => n.title.startsWith(DELOAD_PREFIX));
+    const other = notes.filter(n => !n.title.startsWith(DELOAD_PREFIX));
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe('wn_dl_1');
+    expect(other).toHaveLength(1);
+    expect(other[0].id).toBe('wn_routine_1');
+  });
+
+  test('history record with note_id links to its workout note', async () => {
+    const noteId = 'wn_dl_2026-06-01_1234';
+    const note = { id: noteId, title: `${DELOAD_PREFIX}2026-06-01`, raw_text: 'text', saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    const rec = { id: 'dl_2026-06-01_1234', raw_text: 'text', generated_at: '2026-05-28T00:00:00.000Z', completed_at: '2026-06-01T00:00:00.000Z', session_count: 12, note_id: noteId };
+    await saveWorkoutNoteItem(note);
+    await appendDeloadHistory(rec);
+    const history = await loadDeloadHistory();
+    const linked = history.find(r => r.note_id === noteId);
+    expect(linked).toBeDefined();
+    expect(linked.id).toBe(rec.id);
+  });
+
+  test('deleteDeloadNote pattern: deletes both workout note and history record', async () => {
+    const noteId = 'wn_dl_2026-06-01_1234';
+    const note = { id: noteId, title: `${DELOAD_PREFIX}2026-06-01`, raw_text: 'text', saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    const rec = { id: 'dl_2026-06-01_1234', raw_text: 'text', generated_at: '2026-05-28T00:00:00.000Z', completed_at: '2026-06-01T00:00:00.000Z', session_count: 12, note_id: noteId };
+    await saveWorkoutNoteItem(note);
+    await appendDeloadHistory(rec);
+    // Simulate hook deleteDeloadNote: find record by note_id, delete both
+    const history = await loadDeloadHistory();
+    const matching = history.find(r => r.note_id === noteId);
+    await deleteDeloadHistory(matching.id);
+    await deleteWorkoutNoteItem(noteId);
+    expect(await loadDeloadHistory()).toHaveLength(0);
+    expect(await loadWorkoutNotes()).toHaveLength(0);
+  });
+
+  test('deleteDeloadNote leaves unrelated history records and workout notes intact', async () => {
+    const noteId1 = 'wn_dl_1';
+    const noteId2 = 'wn_dl_2';
+    const note1 = { id: noteId1, title: `${DELOAD_PREFIX}2026-06-01`, raw_text: 'a', saved_at: '2026-06-01T00:00:00.000Z', updated_at: '2026-06-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    const note2 = { id: noteId2, title: `${DELOAD_PREFIX}2026-06-08`, raw_text: 'b', saved_at: '2026-06-08T00:00:00.000Z', updated_at: '2026-06-08T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null, isCurrent: false };
+    const rec1 = { id: 'dl_1', raw_text: 'a', generated_at: '2026-06-01T00:00:00.000Z', completed_at: '2026-06-01T00:00:00.000Z', session_count: 10, note_id: noteId1 };
+    const rec2 = { id: 'dl_2', raw_text: 'b', generated_at: '2026-06-08T00:00:00.000Z', completed_at: '2026-06-08T00:00:00.000Z', session_count: 20, note_id: noteId2 };
+    await saveWorkoutNoteItem(note1);
+    await saveWorkoutNoteItem(note2);
+    await appendDeloadHistory(rec1);
+    await appendDeloadHistory(rec2);
+    // Delete only the first deload note
+    const history = await loadDeloadHistory();
+    const matching = history.find(r => r.note_id === noteId1);
+    await deleteDeloadHistory(matching.id);
+    await deleteWorkoutNoteItem(noteId1);
+    const afterHistory = await loadDeloadHistory();
+    const afterNotes = await loadWorkoutNotes();
+    expect(afterHistory).toHaveLength(1);
+    expect(afterHistory[0].id).toBe('dl_2');
+    expect(afterNotes).toHaveLength(1);
+    expect(afterNotes[0].id).toBe(noteId2);
+  });
+
+  test('history record note_id field is preserved through append and load', async () => {
+    const rec = { id: 'dl_test', raw_text: 'text', generated_at: '2026-06-01T00:00:00.000Z', completed_at: '2026-06-01T00:00:00.000Z', session_count: 5, note_id: 'wn_dl_test' };
+    await appendDeloadHistory(rec);
+    const history = await loadDeloadHistory();
+    expect(history[0].note_id).toBe('wn_dl_test');
+  });
+
+  test('history record without note_id is tolerated (pre-#257 records)', async () => {
+    const old = { id: 'dl_old', raw_text: 'old text', generated_at: '2026-05-01T00:00:00.000Z', completed_at: '2026-05-01T00:00:00.000Z', session_count: 8 };
+    await appendDeloadHistory(old);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].note_id).toBeUndefined();
+  });
+});
