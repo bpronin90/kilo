@@ -4,8 +4,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
-import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory } from '../hooks/useEntries';
+import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -20,6 +20,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
+  const { history: deloadHistory } = useDeloadHistory();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,6 +220,11 @@ export function AnalyticsScreen({ multiplier, section }) {
     [parsedSections.currentSections]
   );
 
+  const sinceDeload = useMemo(
+    () => sessionsSinceLastDeload(sessionCount, deloadHistory),
+    [sessionCount, deloadHistory]
+  );
+
   const oneKChartData = useMemo(
     () => (analytics.oneKSeries || []).map(p => ({
       value: Math.round(p.total),
@@ -296,7 +302,7 @@ export function AnalyticsScreen({ multiplier, section }) {
       <SectionTitle>Session Health</SectionTitle>
     </View>,
     <View key="session-gauge" style={styles.statRow}>
-      <SessionGauge count={sessionCount} />
+      <SessionGauge count={sinceDeload} total={sessionCount} />
     </View>,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>

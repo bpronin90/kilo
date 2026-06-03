@@ -12,10 +12,10 @@ import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote, generateDeloadNote } from '../lib/parser';
+import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
 import { formatRepDropOffNudge } from '../lib/format';
-import { useTrackedLifts, useWorkoutNotes, useDeloadNote } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
@@ -51,6 +51,7 @@ export function LogScreen({
   const { notes, currentId, currentNote, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
+  const { history: deloadHistory, completeDeload } = useDeloadHistory();
 
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
@@ -167,6 +168,11 @@ export function LogScreen({
   const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
+
+  const logSessionCount = useMemo(
+    () => countWorkoutSessionsFromSections(parsed.sections),
+    [parsed.sections]
+  );
 
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
@@ -588,6 +594,22 @@ export function LogScreen({
     );
   };
 
+  const handleCompleteDeload = () => {
+    Alert.alert(
+      'Complete deload?',
+      'This will archive your deload note and reset the session clock.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'I have deloaded',
+          onPress: async () => {
+            await completeDeload({ sessionCount: logSessionCount });
+          },
+        },
+      ]
+    );
+  };
+
   const handleGenerateDeload = () => {
     const doGenerate = async () => {
       setIsGenerating(true);
@@ -752,6 +774,14 @@ export function LogScreen({
                     </Card>
                   </View>
                   <View style={styles.previousRoutines}>
+                    {deloadMode === 'read' && (
+                      <Button
+                        onPress={handleCompleteDeload}
+                        title="I have deloaded"
+                        style={styles.completeDeloadButton}
+                        textStyle={styles.completeDeloadButtonText}
+                      />
+                    )}
                     <Button
                       onPress={handleGenerateDeload}
                       title={isGenerating ? 'Generating…' : 'Regenerate deload'}
@@ -762,6 +792,17 @@ export function LogScreen({
                   </View>
                 </>
               )
+            )}
+            {tabView === 'deload' && !deloadLoading && deloadHistory.length > 0 && (
+              <View style={styles.pastDeloads}>
+                <SectionTitle>Past deloads</SectionTitle>
+                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => (
+                  <Card key={record.id} style={styles.pastDeloadCard}>
+                    <Text style={styles.pastDeloadDate}>{record.completed_at.slice(0, 10)}</Text>
+                    <Text style={styles.pastDeloadText} selectable>{record.raw_text}</Text>
+                  </Card>
+                ))}
+              </View>
             )}
 
             {tabView === 'routine' && mode === 'read' && hasContent && (
@@ -1245,6 +1286,30 @@ const styles = StyleSheet.create({
   },
   generateButtonText: {
     color: Colors.accent,
+  },
+  completeDeloadButton: {
+    backgroundColor: Colors.accent,
+  },
+  completeDeloadButtonText: {
+    color: '#fff',
+  },
+  pastDeloads: {
+    marginTop: 8,
+    gap: 8,
+  },
+  pastDeloadCard: {
+    padding: 16,
+    gap: 6,
+  },
+  pastDeloadDate: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  pastDeloadText: {
+    fontSize: 13,
+    color: Colors.text,
+    fontFamily: 'monospace',
   },
 
 });

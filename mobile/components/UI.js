@@ -85,17 +85,23 @@ const _SESSION_GAUGE_TONE_COLORS = {
 // are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
 // (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
 // session counts map linearly onto the zone segments.
-export function SessionGauge({ count }) {
+export function SessionGauge({ count, total }) {
   const tone = getSessionTone(count);
   const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
   const caption = getSessionZoneCaption(count);
   const markerPct = (Math.min(count, 11) / 11) * 100;
+  const label = total != null ? 'Since deload' : 'Sessions logged';
 
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <Text style={styles.sessionGaugeLabel}>Sessions logged</Text>
-        <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+        <Text style={styles.sessionGaugeLabel}>{label}</Text>
+        <View style={styles.sessionGaugeCountRow}>
+          {total != null && (
+            <Text style={styles.sessionGaugeTotalStat}>{total} total</Text>
+          )}
+          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+        </View>
       </View>
 
       <View style={styles.gaugeMeterWrap}>
@@ -346,6 +352,16 @@ const styles = StyleSheet.create({
   sessionGaugeCount: {
     fontSize: 28,
     fontWeight: '900',
+  },
+  sessionGaugeCountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  sessionGaugeTotalStat: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
   gaugeMeterWrap: {
     width: '100%',
