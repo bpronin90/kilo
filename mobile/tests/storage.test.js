@@ -34,6 +34,7 @@ import {
   clearDeloadNote,
   loadDeloadHistory,
   appendDeloadHistory,
+  deleteDeloadHistory,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
 } from '../storage/entries';
@@ -1744,6 +1745,31 @@ describe('deload history storage', () => {
     await appendDeloadHistory(DL1);
     const history = await loadDeloadHistory();
     expect(history[0].id).toMatch(/^dl_\d{4}-\d{2}-\d{2}_\d+$/);
+  });
+
+  test('deleteDeloadHistory removes only the matching record', async () => {
+    await appendDeloadHistory(DL1);
+    await appendDeloadHistory(DL2);
+    await deleteDeloadHistory(DL1.id);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL2.id);
+  });
+
+  test('deleteDeloadHistory on non-existent id leaves list unchanged', async () => {
+    await appendDeloadHistory(DL1);
+    await deleteDeloadHistory('dl_does-not-exist_0');
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+  });
+
+  test('deleteDeloadHistory returns the filtered list', async () => {
+    await appendDeloadHistory(DL1);
+    await appendDeloadHistory(DL2);
+    const result = await deleteDeloadHistory(DL1.id);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(DL2.id);
   });
 });
 
