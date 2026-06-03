@@ -64,6 +64,60 @@ export function getSessionTone(count) {
   return 'default';
 }
 
+// Deload-risk caption for a session-depth count. Zone boundaries (1 / 7 / 10)
+// mirror getSessionTone. The 10+ caption is fixed per the issue contract.
+export function getSessionZoneCaption(count) {
+  if (count >= 10) return 'Consider a deload week';
+  if (count >= 7) return 'Approaching deload';
+  if (count >= 1) return 'Building volume';
+  return 'No sessions logged';
+}
+
+const _SESSION_GAUGE_TONE_COLORS = {
+  success: Colors.success,
+  warn: Colors.caution,
+  error: Colors.error,
+  default: Colors.textMuted,
+};
+
+// Deload-risk meter: a three-zone scale (Building / Approaching / Deload) with a
+// knob marking the current session depth — the UV-index / AQI pattern. Zone widths
+// are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
+// (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
+// session counts map linearly onto the zone segments.
+export function SessionGauge({ count }) {
+  const tone = getSessionTone(count);
+  const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
+  const caption = getSessionZoneCaption(count);
+  const markerPct = (Math.min(count, 11) / 11) * 100;
+
+  return (
+    <Card style={styles.sessionGauge}>
+      <View style={styles.sessionGaugeHeader}>
+        <Text style={styles.sessionGaugeLabel}>Sessions logged</Text>
+        <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+      </View>
+
+      <View style={styles.gaugeMeterWrap}>
+        <View style={styles.gaugeBar}>
+          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
+          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
+          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
+        </View>
+        <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
+      </View>
+
+      <View style={styles.gaugeZoneLabels}>
+        <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
+      </View>
+
+      <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
+    </Card>
+  );
+}
+
 export function StatCard({ label, value, tone = 'default' }) {
   const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
@@ -272,6 +326,82 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '45%',
+  },
+  sessionGauge: {
+    flex: 1,
+    gap: 10,
+  },
+  sessionGaugeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  sessionGaugeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sessionGaugeCount: {
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  gaugeMeterWrap: {
+    width: '100%',
+    height: 16,
+    justifyContent: 'center',
+  },
+  gaugeBar: {
+    flexDirection: 'row',
+    width: '100%',
+    height: 10,
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  gaugeSeg: {
+    height: '100%',
+  },
+  gaugeSegLeft: {
+    borderTopLeftRadius: 5,
+    borderBottomLeftRadius: 5,
+  },
+  gaugeSegRight: {
+    borderTopRightRadius: 5,
+    borderBottomRightRadius: 5,
+  },
+  gaugeMarker: {
+    position: 'absolute',
+    top: 0,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.card,
+    borderWidth: 3,
+    transform: [{ translateX: -8 }],
+  },
+  gaugeZoneLabels: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 4,
+  },
+  gaugeZoneLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  gaugeZoneLabelCenter: {
+    textAlign: 'center',
+  },
+  gaugeZoneLabelRight: {
+    textAlign: 'right',
+  },
+  sessionGaugeCaption: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
   },
   statLabel: {
     fontSize: 13,

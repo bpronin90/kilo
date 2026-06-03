@@ -2,12 +2,19 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, StatCard, getSessionTone } from '../components/UI';
-import { deriveWeightGoalAnalytics, derive1kTotal, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
+import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
+
+// Interpolate hex color a→b by t (0..1). Mirrors HomeScreen's 1K progress gradient.
+function lerpColor(a, b, t) {
+  const p = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const [ar, ag, ab] = p(a), [br, bg, bb] = p(b);
+  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab + (bb - ab) * t)})`;
+}
 
 export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
@@ -69,17 +76,20 @@ export function AnalyticsScreen({ multiplier, section }) {
   }
 
   // null goal: Analytics renders trend data only, not goal-relative info
-  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries } = useMemo(
+  const { trendSummary: weightTrends, paceLevel: weightPaceLevel, rollingSeries, rollingSeries30 } = useMemo(
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
   );
+  const rolling7 = rollingSeries || [];
+  const rolling30 = rollingSeries30 || [];
 
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
-      return { latestWeight: '—', weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
+      return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
     }
     return {
-      latestWeight: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight} lb` : '—',
+      latestWeightValue: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight}` : '—',
+      showUnit: weightTrends.currentWeight !== null,
       weightCount: String(weightEntries.length),
       avg7:  weightTrends.avg7  !== null ? `${weightTrends.avg7.toFixed(1)} lb`  : '—',
       avg30: weightTrends.avg30 !== null ? `${weightTrends.avg30.toFixed(1)} lb` : '—',
@@ -127,8 +137,9 @@ export function AnalyticsScreen({ multiplier, section }) {
 
     // Big Three 1RM total is scoped to the current routine per issue contract
     const oneK = derive1kTotal(currentSections, oneKSelections);
+    const oneKSeries = derive1kTotalSeries(currentSections, oneKSelections);
 
-    return { signals, oneK, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
+    return { signals, oneK, oneKSeries, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   const groupedSignals = useMemo(() => {
@@ -208,6 +219,15 @@ export function AnalyticsScreen({ multiplier, section }) {
     [parsedSections.currentSections]
   );
 
+  const oneKChartData = useMemo(
+    () => (analytics.oneKSeries || []).map(p => ({
+      value: Math.round(p.total),
+      label: `#${p.session}`,
+      unit: 'lb',
+    })),
+    [analytics.oneKSeries]
+  );
+
   const screenContent = React.Children.toArray([
     <View key="weight-trends-title" onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
@@ -216,7 +236,10 @@ export function AnalyticsScreen({ multiplier, section }) {
       <View style={styles.weightHeader}>
         <View>
           <Text style={styles.weightLabel}>Latest weigh-in</Text>
-          <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
+          <Text style={styles.weightValueLarge}>
+            {weightSummary.latestWeightValue}
+            {weightSummary.showUnit && <Text style={styles.weightUnit}>lb</Text>}
+          </Text>
         </View>
         {weightSummary.paceFlag && (
           <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
@@ -227,14 +250,34 @@ export function AnalyticsScreen({ multiplier, section }) {
         )}
       </View>
 
-      <View style={{ height: 100, justifyContent: 'center' }}>
-        {rollingSeries.length > 0 ? (
-          <LineChart data={rollingSeries} height={100} hideHeader />
-        ) : (
-          <View style={{ height: 100, backgroundColor: Colors.cardBorder, opacity: 0.05, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}>
-             {isWeightLoading && <ActivityIndicator size="small" color={Colors.accent} />}
-          </View>
-        )}
+      <View style={styles.chartBlock}>
+        <Text style={styles.chartLabel}>7-day rolling average</Text>
+        <View style={styles.chartArea}>
+          {rolling7.length > 1 ? (
+            <LineChart data={rolling7} height={100} hideHeader />
+          ) : (
+            <View style={styles.chartPlaceholder}>
+              {isWeightLoading
+                ? <ActivityIndicator size="small" color={Colors.accent} />
+                : <Text style={styles.chartEmpty}>Not enough data</Text>}
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.chartBlock}>
+        <Text style={styles.chartLabel}>30-day rolling average</Text>
+        <View style={styles.chartArea}>
+          {rolling30.length > 1 ? (
+            <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} />
+          ) : (
+            <View style={styles.chartPlaceholder}>
+              {isWeightLoading
+                ? <ActivityIndicator size="small" color={Colors.accent} />
+                : <Text style={styles.chartEmpty}>Not enough data</Text>}
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.weightFooter}>
@@ -249,11 +292,11 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
-    <View key="activity-title">
-      <SectionTitle>Activity</SectionTitle>
+    <View key="deload-title">
+      <SectionTitle>Session Health</SectionTitle>
     </View>,
-    <View key="session-stat" style={styles.statRow}>
-      <StatCard label="Workout sessions" value={String(sessionCount)} tone={getSessionTone(sessionCount)} />
+    <View key="session-gauge" style={styles.statRow}>
+      <SessionGauge count={sessionCount} />
     </View>,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
@@ -265,7 +308,9 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (analytics.oneK.total || 0) / 1000)) }]}>
+              {analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
+            </Text>
             
             <View style={styles.oneKProgressBarContainer}>
               <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
@@ -285,6 +330,13 @@ export function AnalyticsScreen({ multiplier, section }) {
                 <Text style={styles.oneKItemLabel}>Deadlifts</Text>
               </View>
             </View>
+
+            {oneKChartData.length > 1 && (
+              <View style={styles.oneKChartBlock}>
+                <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
+                <LineChart data={oneKChartData} height={120} hideHeader />
+              </View>
+            )}
           </>
         )}
       </ArtisanalPanel>
@@ -562,6 +614,32 @@ const styles = StyleSheet.create({
   weightCard: {
     padding: 20,
     gap: 16,
+    backgroundColor: Colors.panelBackground,
+  },
+  chartBlock: {
+    gap: 4,
+  },
+  chartLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  chartArea: {
+    height: 100,
+    justifyContent: 'center',
+  },
+  chartPlaceholder: {
+    height: 100,
+    backgroundColor: Colors.subtleBg,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartEmpty: {
+    fontSize: 13,
+    color: Colors.textMuted,
   },
   weightHeader: {
     flexDirection: 'row',
@@ -576,8 +654,15 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    ...HeroMetric.hero,
+    fontSize: 32,
+    fontWeight: '800',
     color: Colors.accent,
+  },
+  weightUnit: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginLeft: 4,
   },
   paceBadge: {
     paddingHorizontal: 10,
@@ -597,12 +682,14 @@ const styles = StyleSheet.create({
   },
   weightFooter: {
     flexDirection: 'row',
-    gap: 24,
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
     paddingTop: 16,
   },
   weightStat: {
+    flex: 1,
+    alignItems: 'center',
     gap: 2,
   },
   weightStatValue: {
@@ -620,6 +707,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 8,
+    backgroundColor: Colors.panelBackground,
   },
   oneKLabel: {
     fontSize: 12,
@@ -656,9 +744,18 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'space-between',
     marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+  },
+  oneKChartBlock: {
+    width: '100%',
+    marginTop: 16,
+  },
+  oneKChartLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
   },
   oneKItem: {
     alignItems: 'center',

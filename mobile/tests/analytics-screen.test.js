@@ -106,7 +106,8 @@ describe('AnalyticsScreen weight summary — sourced from deriveWeightGoalAnalyt
     const root = component.root;
 
     expect(data.deriveWeightGoalAnalytics).toHaveBeenCalledWith(entries, null);
-    expect(hasText(root, `${sentinel} lb`)).toBe(true);
+    // The latest-weight number now renders with the unit as a separate node.
+    expect(hasText(root, String(sentinel))).toBe(true);
     // No raw entry weight_value should appear as the latest-weight display
     expect(hasText(root, '185.0 lb')).toBe(false);
     expect(hasText(root, '184.0 lb')).toBe(false);
@@ -465,5 +466,84 @@ describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () =>
 
     expect(hasText(root, 'Pull-up')).toBe(true);
     expect(findAllText(root).some(s => s === '—')).toBe(true);
+  });
+});
+
+// ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────
+
+describe('AnalyticsScreen Weight Trends — two rolling charts', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('renders both 7-day and 30-day rolling chart labels', () => {
+    const component = setup({ entries: [] });
+    const root = component.root;
+    expect(hasText(root, '7-day rolling average')).toBe(true);
+    expect(hasText(root, '30-day rolling average')).toBe(true);
+  });
+});
+
+// ── Session Health gauge (renamed from Activity) ──────────────────────────────
+
+describe('AnalyticsScreen Session Health gauge', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('section is renamed to Session Health and shows the no-sessions caption at 0', () => {
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, 'Session Health')).toBe(true);
+    expect(hasText(root, 'Activity')).toBe(false);
+    expect(hasText(root, 'No sessions logged')).toBe(true);
+  });
+
+  test('renders the three deload-risk zone labels', () => {
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, 'Building')).toBe(true);
+    expect(hasText(root, 'Approaching')).toBe(true);
+    expect(hasText(root, 'Deload')).toBe(true);
+  });
+
+  test('shows the count and the approaching-deload caption in the 7–9 zone', () => {
+    const raw_text = ['Monday', '+ lifting', '1. Squat',
+      '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
+    const component = setup({ hookOverrides: { currentNote: { id: 'n1', raw_text } } });
+    const root = component.root;
+    expect(hasText(root, 'Approaching deload')).toBe(true);
+    expect(findAllText(root).some(s => s === '7')).toBe(true);
+  });
+});
+
+// ── 1K total over sessions chart ──────────────────────────────────────────────
+
+describe('AnalyticsScreen 1K total over sessions chart', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('renders the 1K-over-sessions chart label when a multi-point series exists', () => {
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [], nameDisplayMap: new Map(), repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotal').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
+    jest.spyOn(data, 'derive1kTotalSeries').mockReturnValue([
+      { session: 1, total: 900, bench: 280, squat: 360, deadlift: 260 },
+      { session: 2, total: 1000, bench: 300, squat: 400, deadlift: 300 },
+    ]);
+
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, '1K total over sessions')).toBe(true);
+  });
+
+  test('omits the chart label when fewer than two session points exist', () => {
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [], nameDisplayMap: new Map(), repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotal').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
+    jest.spyOn(data, 'derive1kTotalSeries').mockReturnValue([
+      { session: 1, total: 1000, bench: 300, squat: 400, deadlift: 300 },
+    ]);
+
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, '1K total over sessions')).toBe(false);
   });
 });

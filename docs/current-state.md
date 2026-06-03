@@ -262,13 +262,20 @@ The real native app path now has a modular React Native shell:
   forcing onboarding or a fully populated profile
 - `mobile/screens/AnalyticsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
-  pace warning, embedded 7-day rolling-average chart, and 7-day/30-day
-  summary averages, alongside a redesigned `1K Progress` card (hero total,
-  progress bar, full breakdown labels: Squats/Bench/Deadlifts) in an
-  artisanal-panel container, strength-only 1k slot selection, and a
-  `Progressive Overload` section with routine-day grouping, collapsible
-  group headers, search filtering, and a tabular two-line row layout
-  (exercise name + 4-column metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
+  pace warning, separate labeled `7-day rolling average` and `30-day rolling
+  average` charts, and 7-day/30-day summary averages, alongside a `Session
+  Health` section that replaces the older workout-sessions card with a
+  three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
+  derived from the shared session-depth thresholds. The redesigned `1K
+  Progress` card now keeps the hero total and progress bar, full breakdown
+  labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
+  driven by a shared per-session Big-3 derivation. Shared chart surfaces now
+  also expose a tapped-point readout without breaking existing callers. The
+  screen still uses an artisanal-panel strength container, strength-only 1k
+  slot selection, and a `Progressive Overload` section with routine-day
+  grouping, collapsible group headers, search filtering, and a tabular
+  two-line row layout (exercise name + 4-column metric grid: `1RM`, `Kilo`,
+  `Best`, `Trend`).
   Non-weighted exercises (reps-only or time-based) render with a minimal
   sub-layout showing `Avg` and `Best` metrics (average reps/hold per set
   and highest single-set value) with inline labels, plus a PO arrow
@@ -282,12 +289,8 @@ The real native app path now has a modular React Native shell:
   marker with semantic color mapping (`Colors.success`, `Colors.caution`,
   `Colors.error`), alias variants resolve through canonical exercise-name
   mapping, and plain note rows now count as separate comparable sessions for
-  progression derivation. It now
-  uses the shared `ScreenShell` component for a consistent layout and
-  safe-area handling across all analytics sections. A dedicated `Activity`
-  section now groups the tone-colored `Workout sessions` StatCard between
-  Weight Trends and Strength so the session-count signal reads as a first-class
-  Analytics section instead of a floating standalone card. Its
+  progression derivation. It now uses the shared `ScreenShell` component for a
+  consistent layout and safe-area handling across all analytics sections. Its
   weight summary card now reads the displayed latest weigh-in, pace flag, and
   rolling-series chart data from the same canonical
   `deriveWeightGoalAnalytics()` path used by Home and Weight, so backdated or

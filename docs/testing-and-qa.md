@@ -170,6 +170,13 @@ retains non-test commands such as `npm run audit`.
   per-field outputs across empty/null entries, saved-goal and edited-goal
   paths, `start_weight` fallback, rolling-series limit behavior, pace-level
   nullability, and maintain-goal calorie guidance
+- verifies the new Analytics-specific `rollingSeries30` contract and the
+  backward-compatible `computeWeightRollingAverageSeries(..., windowDays)`
+  behavior for 7-day vs 30-day windows
+- verifies `derive1kTotalSeries()` aligns Big-3 history by shared session
+  ordinal, including gap preservation for skipped sessions or sessions with no
+  valid weighted set so later points cannot drift onto earlier squat/deadlift
+  cycles
 - pins direct helper parity for the canonical weight/goal path by asserting
   `deriveWeightGoalAnalytics()` matches `computeWeightTrendSummary()`,
   `computeWeightPaceLevel()`, `computeWeightRollingAverageSeries()`,
@@ -194,6 +201,11 @@ retains non-test commands such as `npm run audit`.
   result instead of any raw-entry local sort or pick
 - verifies the rendered `7-day` and `30-day` weight averages come from the
   shared-layer `avg7` / `avg30` outputs
+- verifies the split `7-day rolling average` and `30-day rolling average`
+  chart labels render on Analytics
+- verifies the `Session Health` section rename plus the gauge zone/caption
+  contract (`No sessions logged`, `Approaching deload`, and the three zone
+  labels)
 - verifies exercises are grouped by routine day with correct group headers
 - verifies multi-day exercises render per-day row metrics from
   `perDaySignals`, including null-trend fallback to the global signal and
@@ -202,6 +214,8 @@ retains non-test commands such as `npm run audit`.
   tracked signal row
 - verifies redesigned 1K Progress card renders hero total, progress bar,
   and full breakdown labels (Squats, Bench, Deadlifts)
+- verifies the `1K total over sessions` chart label only appears when the
+  derived series has multiple aligned points
 
 ### `mobile/tests/storage.test.js`
 

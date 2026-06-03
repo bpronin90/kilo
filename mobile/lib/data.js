@@ -426,9 +426,10 @@ export function computeWeeksIn(sections) {
   return max;
 }
 
-// Compute a series of 7-day rolling averages for the last N weigh-in dates.
+// Compute a series of rolling averages for the last N weigh-in dates.
 // entries must be sorted newest-first.
-export function computeWeightRollingAverageSeries(entries, limit = 7) {
+// windowDays selects which rolling window each point reports: 7 (default) or 30.
+export function computeWeightRollingAverageSeries(entries, limit = 7, windowDays = 7) {
   if (entries.length === 0) return [];
 
   // We want the last 'limit' dates that have entries.
@@ -438,9 +439,10 @@ export function computeWeightRollingAverageSeries(entries, limit = 7) {
 
   return targetDates.map(dateStr => {
     const refDate = new Date(dateStr + 'T12:00:00');
-    const { avg7 } = computeWeightTrends(entries, refDate);
+    const trends = computeWeightTrends(entries, refDate);
+    const avg = windowDays === 30 ? trends.avg30 : trends.avg7;
     return {
-      value: avg7 !== null ? Number(avg7.toFixed(1)) : null,
+      value: avg !== null ? Number(avg.toFixed(1)) : null,
       label: dateStr.split('-').slice(1).join('/'), // MM/DD
       unit: 'lb'
     };
@@ -470,6 +472,78 @@ export function derive1kTotal(sections, { bench, squat, deadlift }) {
     ? benchPR + squatPR + deadliftPR
     : null;
   return { total, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
+}
+
+// Best Epley PR across one logged session's sets. Returns null when no valid set.
+function _sessionEntryPR(entry) {
+  let best = null;
+  for (const s of entry.sets || []) {
+    const e = epleyPR(s.weight_value, s.rep_count);
+    if (e !== null && (best === null || e > best)) best = e;
+  }
+  return best;
+}
+
+// Ordered (oldest-first) per-session best-Epley PRs for one derived exercise,
+// indexed by session ordinal. The ordinal position is preserved: skipped/unparsed
+// sessions and sessions with no valid weighted set are kept as null placeholders
+// so a given index refers to the same session-cycle slot across every lift. This
+// is what lets the three lifts be aligned by ordinal without a skip in one lift
+// silently shifting later sessions out of alignment.
+function _exercisePerSessionPRs(ex) {
+  const prs = [];
+  for (const occ of ex.occurrences) {
+    for (const entry of _occurrenceEntries(occ)) {
+      prs.push(entry.skipped || entry.unparsed ? null : _sessionEntryPR(entry));
+    }
+  }
+  return prs;
+}
+
+// derive1kTotalSeries: Big-3 1RM total per historical workout session.
+// Builds each lift's ordinal-indexed per-session PR list once (single
+// deriveWorkoutAnalytics pass, then one linear pass per lift) and aligns them by
+// session ordinal. A point is emitted only when all three lifts have a real PR at
+// the SAME ordinal; ordinals where any lift was skipped/unlogged are dropped
+// without shifting later ordinals, so a point never sums PRs from sessions that
+// did not occur in the same cycle. `session` is the 1-based ordinal, so dropped
+// cycles leave gaps in the numbering rather than collapsing the series.
+//
+// sections: output of parseWorkoutNote(noteText).sections
+// selections: { bench: string, squat: string, deadlift: string } — exercise name per slot
+// Returns: { session, total, bench, squat, deadlift }[]
+//
+// Note: alignment is by session ordinal within each lift's history (the routine's
+// week cadence), since the parsed model carries no per-session date to key on.
+//
+// Complexity: O(total sessions across the three lifts); no per-session re-scan of notes.
+export function derive1kTotalSeries(sections, { bench, squat, deadlift }) {
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+  const prsFor = (name) => {
+    const ex = byKey.get(normalizeExerciseKey(name));
+    return ex ? _exercisePerSessionPRs(ex) : [];
+  };
+
+  const benchPRs = prsFor(bench);
+  const squatPRs = prsFor(squat);
+  const deadliftPRs = prsFor(deadlift);
+
+  const n = Math.min(benchPRs.length, squatPRs.length, deadliftPRs.length);
+  const series = [];
+  for (let i = 0; i < n; i++) {
+    const b = benchPRs[i], s = squatPRs[i], d = deadliftPRs[i];
+    // Only emit when all three lifts have a real PR at this same session ordinal.
+    if (b == null || s == null || d == null) continue;
+    series.push({
+      session: i + 1,
+      total: b + s + d,
+      bench: b,
+      squat: s,
+      deadlift: d,
+    });
+  }
+  return series;
 }
 
 // Factory for the canonical workout routine note
@@ -957,7 +1031,8 @@ export function deriveSignals(sections, trackedNames, multiplier = getKiloFatigu
 // Returns:
 //   trendSummary:    { avg7, avg30, paceFlag, priorAvg7, priorAvg30, currentWeight, priorDayWeight }
 //   paceLevel:       'notable' | 'spike' | null
-//   rollingSeries:   { value, label, unit }[]
+//   rollingSeries:   { value, label, unit }[] — 7-day rolling average per weigh-in date
+//   rollingSeries30: { value, label, unit }[] — 30-day rolling average per weigh-in date
 //   goalInfo:        { direction, weeks_remaining, required_weekly_pace, warnings } | null
 //   calorieEstimate: { calories_per_day, label, tdee_based } | null
 export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referenceDate = new Date(), profile = null) {
@@ -972,6 +1047,7 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
   const trendSummary = computeWeightTrendSummary(safeEntries, referenceDate);
   const paceLevel = computeWeightPaceLevel(safeEntries);
   const rollingSeries = computeWeightRollingAverageSeries(safeEntries, 7);
+  const rollingSeries30 = computeWeightRollingAverageSeries(safeEntries, 30, 30);
 
   const resolvedCurrentWeight = resolveGoalCurrentWeight(safeEntries, goal, { goalEditing, goalStartWeight });
   const tw = !goalEditing && goal ? goal.target_weight : parseFloat(goalTargetWeight);
@@ -989,7 +1065,7 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
     }
   }
 
-  return { trendSummary, paceLevel, rollingSeries, goalInfo, calorieEstimate };
+  return { trendSummary, paceLevel, rollingSeries, rollingSeries30, goalInfo, calorieEstimate };
 }
 
 // ── Canonical workout analytics derivation layer ──────────────────────────────
