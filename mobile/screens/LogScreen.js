@@ -15,7 +15,7 @@ import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
 import { formatRepDropOffNudge } from '../lib/format';
-import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, DELOAD_TITLE_PREFIX } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
@@ -63,6 +63,7 @@ export function LogScreen({
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
+  const [expandedDeloads, setExpandedDeloads] = useState(new Set());
 
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -165,10 +166,7 @@ export function LogScreen({
     return () => backHandler.remove();
   }, [editingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
 
-  const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_TITLE_PREFIX));
-  const deloadNotes = notes
-    .filter(n => n.title?.startsWith(DELOAD_TITLE_PREFIX))
-    .sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
+  const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
@@ -797,41 +795,54 @@ export function LogScreen({
                 </>
               )
             )}
-            {tabView === 'deload' && deloadNotes.length > 0 && (
+            {tabView === 'deload' && !deloadLoading && deloadHistory.length > 0 && (
               <View style={styles.pastDeloads}>
                 <SectionTitle>Past deloads</SectionTitle>
-                {deloadNotes.map(note => (
-                  <Card key={note.id} style={styles.otherNoteCard}>
-                    <Pressable
-                      onPress={() => handleOpenOtherNote(note)}
-                      style={styles.otherNoteHeader}
-                    >
-                      <View style={styles.otherNoteInfo}>
-                        <Text style={styles.otherNoteTitle}>{note.title}</Text>
-                        {note.updated_at && (
-                          <Text style={styles.otherNoteSub}>{new Date(note.updated_at).toLocaleDateString()}</Text>
-                        )}
-                      </View>
+                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => {
+                  const isExpanded = expandedDeloads.has(record.id);
+                  const dateStr = record.completed_at.slice(0, 10);
+                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const title = generatedStr && generatedStr !== dateStr
+                    ? `Deload ${generatedStr}`
+                    : `Deload ${dateStr}`;
+                  return (
+                    <Card key={record.id} style={styles.otherNoteCard}>
                       <Pressable
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          Alert.alert(
-                            'Delete deload record?',
-                            'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(note.id) },
-                            ]
-                          );
-                        }}
-                        style={styles.inlineSwitchButton}
-                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        onPress={() => setExpandedDeloads(prev => {
+                          const next = new Set(prev);
+                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
+                          return next;
+                        })}
+                        style={styles.otherNoteHeader}
                       >
-                        <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                        <View style={styles.otherNoteInfo}>
+                          <Text style={styles.otherNoteTitle}>{title}</Text>
+                          <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
+                        </View>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Alert.alert(
+                              'Delete deload record?',
+                              'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
+                              ]
+                            );
+                          }}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                        </Pressable>
                       </Pressable>
-                    </Pressable>
-                  </Card>
-                ))}
+                      {isExpanded && (
+                        <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                      )}
+                    </Card>
+                  );
+                })}
               </View>
             )}
 
@@ -1325,6 +1336,16 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: 14,
     fontWeight: '600',
+  },
+  pastDeloadContent: {
+    fontSize: 13,
+    color: Colors.text,
+    fontFamily: 'monospace',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
   },
 
 });
