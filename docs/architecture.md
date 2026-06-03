@@ -30,25 +30,22 @@ graph TD
     NativeStorage <--> AS
 ```
 
-## OTA Update Code Signing
+## Preview OTA Update Path
 
-The native Expo app is configured for `expo-updates` client-side code signing.
-On-device enforcement is not active until a native binary built after this
-configuration change is installed — existing installs do not contain the
-embedded certificate and will not verify OTA signatures.
+The native Expo app uses unsigned `expo-updates` for the Android preview
+workflow.
 
-- `mobile/app.json` sets `updates.codeSigningCertificate` to
-  `./certs/certificate.crt` and `updates.codeSigningMetadata` to
-  `{ keyid: "main", alg: "rsa-v1_5-sha256" }`.
-- `mobile/certs/certificate.crt` is a PEM-encoded self-signed RSA 2048 X.509
-  certificate committed to the repo. It is embedded in the native app bundle
-  at build time; builds produced before this change do not contain it.
-- The matching private key is stored outside the repo. See
-  `mobile/certs/KEYS.md` for storage guidance and the signed-publish command.
-- Once a post-change binary is installed, `eas update` must be invoked with
-  `--private-key-path` to sign the update manifest. The on-device runtime
-  verifies the manifest signature against the embedded certificate before
-  applying the update. Unsigned or mismatched bundles are rejected.
+- `mobile/app.json` keeps `updates.enabled`, the EAS project `updates.url`, and
+  `runtimeVersion.policy: "appVersion"` so installed preview builds can fetch
+  JavaScript and bundled-asset updates from the `preview` channel on launch.
+- `mobile/package.json` exposes `update:android:preview`, which runs plain
+  `eas update --platform android --channel preview` with no signing key.
+- Native/config changes still require a fresh `eas build --platform android
+  --profile preview` because `appVersion` defines the runtime compatibility
+  boundary.
+- Signed OTA updates are intentionally not configured. There is no checked-in
+  certificate, no `codeSigningCertificate` / `codeSigningMetadata`, and no
+  `--private-key-path` requirement in the supported preview workflow.
 
 ## Migration History
 

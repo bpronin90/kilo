@@ -21,14 +21,13 @@ For Android release-style update verification after a compatible build is
 installed, publish to the configured EAS Update channels from `mobile/`:
 
 ```sh
-npm --prefix mobile run publish:android -- --message "describe the change"
-npm --prefix mobile run publish:android:preview -- --message "describe the change"
+npm --prefix mobile run update:android:preview
 ```
 
 Use OTA publish only for JavaScript and asset changes. Any native-affecting
 change still requires a fresh Android build because `mobile/app.json` uses
-`runtimeVersion.policy: "fingerprint"` to block incompatible updates from
-reaching existing installs.
+`runtimeVersion.policy: "appVersion"` to block incompatible updates from
+reaching existing installs with a different app version.
 
 Current limitation:
 

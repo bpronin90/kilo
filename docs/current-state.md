@@ -39,16 +39,12 @@ For physical-device packaging:
    - `eas build --platform android --profile preview`
    - Install the resulting APK on the phone
    - After a compatible Android build is installed, publish OTA-safe JS and
-     asset updates with `npm --prefix mobile run publish:android:preview --
-     --message "describe the change"`
+     asset updates with `npm --prefix mobile run update:android:preview`
    - The runtime boundary is enforced via `runtimeVersion.policy: "appVersion"`
      (runtime version = `version` in `app.json`). OTA updates apply to any
      installed build with the same version. A new Android build is required
-     when: a native module changes, a native `app.json` field changes, the
-     `version` is bumped, or any APK built under the old `"fingerprint"` policy
-     is still installed (those builds carry a fingerprint hash runtime version
-     and will never receive `appVersion`-keyed OTA updates — install a fresh
-     APK first).
+     when: a native module changes, a native `app.json` field changes, or the
+     `version` is bumped.
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
@@ -614,21 +610,18 @@ The Capacitor Android shell (`android/`, `capacitor.config.json`) and the
 browser prototype build pipeline have been removed (issue #213). The native Expo
 app under `mobile/` is the only device-packaging path.
 
-### OTA update code signing is configured (not yet active on installed builds)
+### Android preview OTA updates use the unsigned preview channel
 
-`mobile/app.json` is now configured for Expo OTA code signing via
-`updates.codeSigningCertificate` and `updates.codeSigningMetadata`. The public
-X.509 certificate is committed at `mobile/certs/certificate.crt`. The matching
-private key is not in the repo; see `mobile/certs/KEYS.md` for storage
-guidance and the signed-publish command.
+The native Expo app uses plain `expo-updates` for Android preview OTA delivery.
+Preview builds check the `preview` EAS Update channel on launch and can accept
+JavaScript and bundled-asset updates without reinstalling the APK, as long as
+the installed build shares the same `runtimeVersion` (`appVersion` policy).
 
-**On-device enforcement requires a new native build.** The certificate is
-embedded in the app binary at build time. Builds produced before this config
-change do not contain the certificate and will not verify OTA signatures.
-Once a binary built after this change is installed, `expo-updates` will reject
-any OTA update whose manifest signature does not verify against the embedded
-certificate. Published OTA updates must be signed via `--private-key-path`
-passed to `eas update`.
+Signed OTA updates are not in use. `mobile/app.json` no longer configures
+`codeSigningCertificate` or `codeSigningMetadata`, `mobile/package.json` no
+longer requires `--private-key-path`, and `mobile/certs/KEYS.md` now documents
+the unsigned preview OTA workflow plus the rebuild boundary for native/config
+changes.
 
 ### Native Expo app has standalone Android and iOS build paths
 

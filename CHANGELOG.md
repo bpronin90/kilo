@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.52.3 - 2026-06-03
+
+- Issue #254: Restored unsigned Android preview OTA updates by adding a plain
+  `update:android:preview` EAS Update script, documenting the build-vs-update
+  workflow and native rebuild boundary for preview installs, and removing the
+  remaining signed-OTA assumptions from the repo's living docs.
+
 ## 0.52.2 - 2026-06-03
 
 - Issue #252: Fixed parser session-slot preservation for workout notes that mix
