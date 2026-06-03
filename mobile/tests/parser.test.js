@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2534,5 +2534,52 @@ describe('generateDeloadNote', () => {
     const deload = generateDeloadNote(routine);
     // All weights have 1 set → fallback to heaviest = 235 → deloadWeight = 155
     expect(deload).toContain('Squat: 155 lbs 3x7');
+  });
+});
+
+// ── sessionsSinceLastDeload ───────────────────────────────────────────────────
+
+describe('sessionsSinceLastDeload', () => {
+  test('returns totalSessions when history is empty', () => {
+    expect(sessionsSinceLastDeload(15, [])).toBe(15);
+  });
+
+  test('returns totalSessions when history is null', () => {
+    expect(sessionsSinceLastDeload(15, null)).toBe(15);
+  });
+
+  test('returns totalSessions when history is undefined', () => {
+    expect(sessionsSinceLastDeload(15, undefined)).toBe(15);
+  });
+
+  test('subtracts session_count of the single history record', () => {
+    const history = [{ id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 }];
+    expect(sessionsSinceLastDeload(15, history)).toBe(5);
+  });
+
+  test('uses the record with the latest completed_at when multiple records exist', () => {
+    const history = [
+      { id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 },
+      { id: 'dl_2026-05-20_2', completed_at: '2026-05-20T00:00:00.000Z', session_count: 17 },
+    ];
+    expect(sessionsSinceLastDeload(22, history)).toBe(5);
+  });
+
+  test('latest-wins even when records are in reverse order', () => {
+    const history = [
+      { id: 'dl_2026-05-20_2', completed_at: '2026-05-20T00:00:00.000Z', session_count: 17 },
+      { id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 },
+    ];
+    expect(sessionsSinceLastDeload(22, history)).toBe(5);
+  });
+
+  test('clamps to 0 when totalSessions is below session_count baseline', () => {
+    const history = [{ id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 20 }];
+    expect(sessionsSinceLastDeload(15, history)).toBe(0);
+  });
+
+  test('returns 0 when totalSessions equals session_count baseline', () => {
+    const history = [{ id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 }];
+    expect(sessionsSinceLastDeload(10, history)).toBe(0);
   });
 });

@@ -362,7 +362,8 @@ The real native app path now has a modular React Native shell:
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
   weight-date-edit setting under `kilo_weight_date_edit_enabled`, a separate
-  deload-note record under `kilo_workout_deload_note`, a global
+  deload-note record under `kilo_workout_deload_note`, a completed
+  deload history under `kilo_workout_deload_history`, a global
   tracked-lift map under `kilo_tracked_lifts`, and the Log-tab
   current-routine collapsed state under `kilo_log_current_collapsed`. The
   legacy structured
@@ -370,12 +371,13 @@ The real native app path now has a modular React Native shell:
   older
   single-note key is now also migrated forward into the notebook model by
   synthesizing a `Routine 1` current entry. The local Data & Backup recovery
-  path now exports a versioned v2 snapshot (weight entries, workout notes,
-  current workout id, optional weight goal, and optional fatigue multiplier),
+  path now exports a versioned v3 snapshot (weight entries, workout notes,
+  current workout id, optional weight goal, optional fatigue multiplier, and
+  completed deload history),
   validates that payload before
-  any write, restores the full multi-note model plus weight goal and fatigue
-  multiplier on v2 import, and still accepts older v1 backups to restore
-  weight history without wiping the newer workout-note state
+  any write, restores the full multi-note model plus weight goal, fatigue
+  multiplier, and deload history on v2/v3 import, and still accepts older v1
+  backups to restore weight history without wiping the newer workout-note state
 
 This path is no longer UI-only. Weight saves run through `parseWeightEntry()`
 before persistence, and the native Log flow now saves through the current item

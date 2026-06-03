@@ -274,6 +274,51 @@ export function useDeloadNote() {
   return { note, loading, error, save, clear, refresh };
 }
 
+let deloadHistoryListeners = [];
+const notifyDeloadHistory = () => safeNotify(deloadHistoryListeners);
+
+export function useDeloadHistory() {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(() => {
+    setError(null);
+    Storage.loadDeloadHistory()
+      .then(setHistory)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    deloadHistoryListeners.push(refresh);
+    return () => {
+      deloadHistoryListeners = deloadHistoryListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  const completeDeload = useCallback(async ({ sessionCount }) => {
+    const activeNote = await Storage.loadDeloadNote();
+    if (!activeNote) return null;
+    const completed_at = new Date().toISOString();
+    const record = {
+      id: `dl_${completed_at.slice(0, 10)}_${Date.now()}`,
+      raw_text: activeNote.raw_text,
+      generated_at: activeNote.saved_at,
+      completed_at,
+      session_count: sessionCount,
+    };
+    await Storage.appendDeloadHistory(record);
+    await Storage.clearDeloadNote();
+    notifyDeloadHistory();
+    notifyDeloadNote();
+    return record;
+  }, []);
+
+  return { history, loading, error, completeDeload, refresh };
+}
+
 let profileListeners = [];
 const notifyProfile = () => safeNotify(profileListeners);
 

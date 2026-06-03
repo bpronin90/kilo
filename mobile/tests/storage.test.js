@@ -32,6 +32,8 @@ import {
   loadDeloadNote,
   saveDeloadNote,
   clearDeloadNote,
+  loadDeloadHistory,
+  appendDeloadHistory,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
 } from '../storage/entries';
@@ -607,7 +609,7 @@ describe('migrateWorkoutNote', () => {
 describe('exportBackup', () => {
   test('returns object with version, exported_at, weight_entries, workout_notes, current_workout_id', async () => {
     const backup = await exportBackup();
-    expect(backup).toHaveProperty('version', '2');
+    expect(backup).toHaveProperty('version', '3');
     expect(backup).toHaveProperty('exported_at');
     expect(backup.exported_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(Array.isArray(backup.weight_entries)).toBe(true);
@@ -1698,5 +1700,124 @@ describe('deload note storage', () => {
     await clearWorkoutNote();
     const deload = await loadDeloadNote();
     expect(deload.raw_text).toBe('deload intact');
+  });
+});
+
+// ── deload history storage ────────────────────────────────────────────────────
+
+const DL1 = { id: 'dl_2026-05-02_1', raw_text: 'Squat: 155 lbs 3x7', generated_at: '2026-05-01T00:00:00.000Z', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 };
+const DL2 = { id: 'dl_2026-05-11_2', raw_text: 'Bench: 120 lbs 2x8', generated_at: '2026-05-10T00:00:00.000Z', completed_at: '2026-05-11T00:00:00.000Z', session_count: 17 };
+
+describe('deload history storage', () => {
+  test('returns empty array when nothing stored', async () => {
+    const history = await loadDeloadHistory();
+    expect(history).toEqual([]);
+  });
+
+  test('appends a record and loads it', async () => {
+    await appendDeloadHistory(DL1);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+    expect(history[0].session_count).toBe(DL1.session_count);
+  });
+
+  test('appends multiple records in order', async () => {
+    await appendDeloadHistory(DL1);
+    await appendDeloadHistory(DL2);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(2);
+    expect(history[0].id).toBe(DL1.id);
+    expect(history[1].id).toBe(DL2.id);
+  });
+
+  test('deload history is independent of deload note storage', async () => {
+    await saveDeloadNote('some deload');
+    await appendDeloadHistory(DL1);
+    const note = await loadDeloadNote();
+    const history = await loadDeloadHistory();
+    expect(note.raw_text).toBe('some deload');
+    expect(history).toHaveLength(1);
+  });
+
+  test('record id follows dl_<date>_<timestamp> pattern', async () => {
+    await appendDeloadHistory(DL1);
+    const history = await loadDeloadHistory();
+    expect(history[0].id).toMatch(/^dl_\d{4}-\d{2}-\d{2}_\d+$/);
+  });
+});
+
+// ── exportBackup — deload history ─────────────────────────────────────────────
+
+describe('exportBackup — deload history', () => {
+  test('includes deload_history field in export', async () => {
+    const backup = await exportBackup();
+    expect('deload_history' in backup).toBe(true);
+  });
+
+  test('exports empty array when no history exists', async () => {
+    const backup = await exportBackup();
+    expect(backup.deload_history).toEqual([]);
+  });
+
+  test('exports saved deload history records', async () => {
+    await appendDeloadHistory(DL1);
+    await appendDeloadHistory(DL2);
+    const backup = await exportBackup();
+    expect(backup.deload_history).toHaveLength(2);
+    expect(backup.deload_history[0].id).toBe(DL1.id);
+    expect(backup.deload_history[1].id).toBe(DL2.id);
+  });
+});
+
+const BASE_V3 = { version: '3', exported_at: '2026-05-01T00:00:00.000Z', workout_notes: [], current_workout_id: null, deload_history: [] };
+
+// ── importBackup — deload history ─────────────────────────────────────────────
+
+describe('importBackup — deload history', () => {
+  test('restores deload_history from v3 backup', async () => {
+    const backup = { ...BASE_V3, weight_entries: [], deload_history: [DL1, DL2] };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(2);
+    expect(history[0].id).toBe(DL1.id);
+    expect(history[1].id).toBe(DL2.id);
+  });
+
+  test('v3 backup without deload_history key leaves history untouched', async () => {
+    await appendDeloadHistory(DL1);
+    const { deload_history: _, ...noHistory } = BASE_V3;
+    const backup = { ...noHistory, weight_entries: [] };
+    await importBackup(backup);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+  });
+
+  test('v2 backup leaves deload_history untouched', async () => {
+    await appendDeloadHistory(DL1);
+    const backup = { ...BASE_V2, weight_entries: [] };
+    await importBackup(backup);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+  });
+
+  test('round-trip: export then import restores deload history', async () => {
+    await appendDeloadHistory(DL1);
+    await appendDeloadHistory(DL2);
+    const backup = await exportBackup();
+    AsyncStorage.clear();
+    await importBackup(backup);
+    const history = await loadDeloadHistory();
+    expect(history.map(r => r.id).sort()).toEqual([DL1.id, DL2.id].sort());
+  });
+
+  test('rejects v3 backup with non-array deload_history', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: 'bad' };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload_history/i);
   });
 });

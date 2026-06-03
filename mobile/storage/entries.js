@@ -9,6 +9,7 @@ const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
 const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
 const WEIGHT_DATE_EDIT_KEY = 'kilo_weight_date_edit_enabled';
 const WORKOUT_DELOAD_NOTE_KEY = 'kilo_workout_deload_note';
+const WORKOUT_DELOAD_HISTORY_KEY = 'kilo_workout_deload_history';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 const USER_PROFILE_KEY = 'kilo_user_profile';
@@ -244,6 +245,18 @@ export async function clearDeloadNote() {
   await AsyncStorage.removeItem(WORKOUT_DELOAD_NOTE_KEY);
 }
 
+// ── deload history ────────────────────────────────────────────────────────────
+
+export async function loadDeloadHistory() {
+  return readList(WORKOUT_DELOAD_HISTORY_KEY);
+}
+
+export async function appendDeloadHistory(record) {
+  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+  list.push(record);
+  await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
+}
+
 // ── multi-note workout storage ────────────────────────────────────────────────
 
 export async function loadWorkoutNotes() {
@@ -310,7 +323,7 @@ export async function clearUserProfile() {
 
 // ── backup / restore ──────────────────────────────────────────────────────────
 
-const BACKUP_VERSION = '2';
+const BACKUP_VERSION = '3';
 
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
@@ -318,6 +331,7 @@ export async function exportBackup() {
   const current_workout_id = await loadCurrentWorkoutId();
   const weight_goal = await loadWeightGoal();
   const fatigue_multiplier = await loadFatigueMultiplier();
+  const deload_history = await readList(WORKOUT_DELOAD_HISTORY_KEY);
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
@@ -326,10 +340,11 @@ export async function exportBackup() {
     current_workout_id,
     weight_goal,
     fatigue_multiplier,
+    deload_history,
   };
 }
 
-const SUPPORTED_VERSIONS = new Set(['1', BACKUP_VERSION]);
+const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
 
 function validateWeightEntries(entries) {
   if (!Array.isArray(entries))
@@ -360,7 +375,7 @@ function validateBackup(payload) {
   const weightCheck = validateWeightEntries(payload.weight_entries);
   if (!weightCheck.ok) return weightCheck;
 
-  if (payload.version === BACKUP_VERSION) {
+  if (payload.version === '2' || payload.version === BACKUP_VERSION) {
     if (!Array.isArray(payload.workout_notes))
       return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
     for (const n of payload.workout_notes) {
@@ -384,6 +399,10 @@ function validateBackup(payload) {
       if (typeof g.target_date !== 'string')
         return { ok: false, error: 'Invalid backup: weight_goal missing target_date' };
     }
+    if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
+      if (!Array.isArray(payload.deload_history))
+        return { ok: false, error: 'Invalid backup: deload_history must be an array' };
+    }
   }
 
   return { ok: true };
@@ -401,7 +420,7 @@ export async function importBackup(payload, strategy = 'replace') {
     // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
     const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
 
-    if (payload.version === BACKUP_VERSION) {
+    if (payload.version === '2' || payload.version === BACKUP_VERSION) {
       pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
       await AsyncStorage.multiSet(pairs);
       if (payload.current_workout_id != null) {
@@ -419,6 +438,9 @@ export async function importBackup(payload, strategy = 'replace') {
       }
       if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
         await saveFatigueMultiplier(payload.fatigue_multiplier);
+      }
+      if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
+        await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history);
       }
     } else {
       // v1: restore weight entries only; workout notes model was not part of the v1 contract

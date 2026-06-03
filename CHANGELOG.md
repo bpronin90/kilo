@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.52.5 - 2026-06-03
+
+- Issue #255: Added the deload-completion data layer. New `kilo_workout_deload_history`
+  store with `loadDeloadHistory`/`appendDeloadHistory`, a `useDeloadHistory` hook whose
+  `completeDeload({ sessionCount })` archives the active deload note (capturing the
+  session count at completion) and clears it, and a `sessionsSinceLastDeload` selector
+  that runs the deload clock off the latest completed deload while leaving the absolute
+  session count intact. Backup format bumped to v3 to export/restore the deload history;
+  v1/v2 backups remain supported. UI wiring is tracked in #256.
+
 ## 0.52.4 - 2026-06-03
 
 - Issue #63: Enabled iOS preview OTA delivery by binding the `ios-simulator` and

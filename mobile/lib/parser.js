@@ -770,6 +770,19 @@ export function parseWorkoutEntry(items, workout_date) {
   return { ok: true, workout_date: date, items: parsedItems };
 }
 
+// ── Deload history ────────────────────────────────────────────────────────────
+
+// Returns sessions elapsed since the most recently completed deload.
+// Baseline is the session_count captured on the latest deload record (by completed_at).
+// Returns totalSessions when history is empty (no deload ever completed).
+// Clamps to 0 if totalSessions is somehow below the baseline.
+export function sessionsSinceLastDeload(totalSessions, deloadHistory) {
+  if (!deloadHistory || deloadHistory.length === 0) return totalSessions;
+  const latest = deloadHistory.reduce((best, r) =>
+    !best || r.completed_at > best.completed_at ? r : best, null);
+  return Math.max(0, totalSessions - latest.session_count);
+}
+
 // ── Deload generation ─────────────────────────────────────────────────────────
 
 // Heaviest weight with ≥2 sets in the last row; fallback to heaviest weight present.
