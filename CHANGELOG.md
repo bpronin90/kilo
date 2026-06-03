@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.52.2 - 2026-06-03
+
+- Issue #252: Fixed parser session-slot preservation for workout notes that mix
+  bare logged rows with bare `-` skip markers so the Log formatted read view
+  keeps skipped weeks interleaved in their original order, and restored session
+  counting for non-weight histories by deriving counts from non-skipped
+  `session_entries` when `rows` are absent.
+
 ## 0.52.1 - 2026-06-03
 
 - Issue #250: Fixed the Home 1K headline so it behaves as a current-performance
