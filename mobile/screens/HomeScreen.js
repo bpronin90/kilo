@@ -108,7 +108,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     <ScreenShell
       title={<KiloWordmark />}
       subtitle="Current routine progress."
-      subtitleStyle={styles.currentRoutineSubtitle}
     >
       {/* ══ TIER 1: Weekly Summary ══ */}
       <Card style={styles.weeklyHero}>
@@ -452,9 +451,6 @@ const styles = StyleSheet.create({
     fontSize: 48,
     color: Colors.textMuted,
     fontWeight: '400',
-  },
-  currentRoutineSubtitle: {
-    color: '#ff69b4',
   },
   emptyText: {
     fontSize: 13,

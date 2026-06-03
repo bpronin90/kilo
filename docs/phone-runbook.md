@@ -170,18 +170,10 @@ rebuilding:
 
 ```bash
 cd /home/benpronin/projects/kilo/mobile
-npm run publish:android -- --message "describe the change"
+npm run update:android:preview
 ```
 
-For the preview channel:
-
-```bash
-cd /home/benpronin/projects/kilo/mobile
-npm run publish:android:preview -- --message "describe the change"
-```
-
-- `publish:android` targets the `production` EAS Update channel.
-- `publish:android:preview` targets the `preview` EAS Update channel.
+- `update:android:preview` targets the `preview` EAS Update channel.
 - After publishing, fully close and reopen the installed app to let
   `expo-updates` fetch the new update on launch.
 
@@ -203,13 +195,8 @@ eas build --platform android --profile preview
   - bumping the `version` field in `app.json` (runtime version = app version
     under `runtimeVersion.policy: "appVersion"`, so a version bump creates a
     new runtime boundary that OTA updates cannot cross)
-  - **one-time migration rebuild**: any APK that was built while
-    `runtimeVersion.policy` was set to `"fingerprint"` carries a fingerprint
-    hash as its runtime version. That hash will never match new OTA publishes
-    that use the `appVersion` policy. Install a fresh preview APK (built after
-    this policy change) before expecting OTA updates to land.
 - The app uses `runtimeVersion.policy: "appVersion"`. Runtime version equals
-  the `version` in `app.json` (`1.0.0`). OTA updates apply to any installed
+  the `version` in `app.json`. OTA updates apply to any installed
   build sharing that version; a rebuild is only required for the cases above.
 - Download the new `.apk` from the latest EAS build URL.
 - Install it on the phone again. Android should treat this as an update as long
@@ -227,7 +214,7 @@ eas build:list --platform android --limit 5
 
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
-- The `preview` profile intentionally omits signing setup, which is sufficient for local sideloading.
+- The `preview` profile intentionally omits OTA code-signing setup. Use a preview APK for the first install, then use `npm run update:android:preview` for JS-only changes.
 
 ---
 
@@ -326,4 +313,4 @@ eas build:list --platform ios --limit 5
 - **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
 - **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
 - **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
-- **No OTA update path.** New app changes require a new EAS build and reinstall, same as the Android path.
+- **OTA not documented for this iOS flow.** Use a new EAS build and reinstall for now unless the repo adopts and validates an iOS OTA process separately.

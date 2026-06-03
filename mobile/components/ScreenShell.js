@@ -12,7 +12,7 @@ export const ScrollContext = createContext({ onScroll: () => {} });
  * - Bottom padding: 120px (ensures content clears the absolute TabBar and bottom safe area)
  * - Top safe area: Handled via localized SafeAreaView in the headerWrapper
  */
-export const ScreenShell = React.forwardRef(({ title, subtitle, subtitleStyle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices }, ref) => {
+export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices }, ref) => {
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
 
@@ -47,7 +47,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, subtitleStyle, h
               {headerRight}
             </View>
           )}
-          {subtitle && <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text>}
+          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
       </View>
       {children}
