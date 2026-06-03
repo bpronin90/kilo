@@ -51,7 +51,7 @@ export function LogScreen({
   const { notes, currentId, currentNote, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
-  const { history: deloadHistory, completeDeload } = useDeloadHistory();
+  const { history: deloadHistory, completeDeload, deleteDeload } = useDeloadHistory();
 
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
@@ -816,6 +816,23 @@ export function LogScreen({
                           <Text style={styles.otherNoteTitle}>{title}</Text>
                           <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
                         </View>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Alert.alert(
+                              'Delete deload record?',
+                              'This cannot be undone.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
+                              ]
+                            );
+                          }}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                        </Pressable>
                       </Pressable>
                       {isExpanded && (
                         <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
@@ -1311,6 +1328,11 @@ const styles = StyleSheet.create({
   pastDeloads: {
     marginTop: 8,
     gap: 8,
+  },
+  pastDeloadDeleteText: {
+    color: Colors.error,
+    fontSize: 14,
+    fontWeight: '600',
   },
   pastDeloadContent: {
     fontSize: 13,

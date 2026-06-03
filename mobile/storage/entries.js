@@ -257,6 +257,13 @@ export async function appendDeloadHistory(record) {
   await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
 }
 
+export async function deleteDeloadHistory(id) {
+  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+  const filtered = list.filter(r => r.id !== id);
+  await writeList(WORKOUT_DELOAD_HISTORY_KEY, filtered);
+  return filtered;
+}
+
 // ── multi-note workout storage ────────────────────────────────────────────────
 
 export async function loadWorkoutNotes() {
