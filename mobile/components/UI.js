@@ -94,16 +94,13 @@ export function SessionGauge({ count, total }) {
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <View style={styles.sessionGaugeStat}>
-          <Text style={styles.sessionGaugeLabel}>Total sessions</Text>
-          <Text style={styles.sessionGaugeCount}>{total ?? count}</Text>
+        <Text style={styles.sessionGaugeLabel}>{total != null ? 'Since deload' : 'Sessions logged'}</Text>
+        <View style={styles.sessionGaugeCountRow}>
+          {total != null && (
+            <Text style={styles.sessionGaugeTotalStat}>{total} total</Text>
+          )}
+          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
         </View>
-        {total != null && (
-          <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
-            <Text style={styles.sessionGaugeLabel}>Since deload</Text>
-            <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
-          </View>
-        )}
       </View>
 
       <View style={styles.gaugeMeterWrap}>
@@ -341,17 +338,11 @@ const styles = StyleSheet.create({
   },
   sessionGaugeHeader: {
     flexDirection: 'row',
-    gap: 16,
-  },
-  sessionGaugeStat: {
-    flex: 1,
-    gap: 2,
-  },
-  sessionGaugeStatRight: {
-    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
   },
   sessionGaugeLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -360,7 +351,16 @@ const styles = StyleSheet.create({
   sessionGaugeCount: {
     fontSize: 28,
     fontWeight: '900',
-    color: Colors.text,
+  },
+  sessionGaugeCountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  sessionGaugeTotalStat: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
   gaugeMeterWrap: {
     width: '100%',

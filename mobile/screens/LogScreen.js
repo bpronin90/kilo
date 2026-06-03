@@ -779,15 +779,14 @@ export function LogScreen({
                       <Button
                         onPress={handleCompleteDeload}
                         title="I have deloaded"
-                        style={styles.completeDeloadButton}
-                        textStyle={styles.completeDeloadButtonText}
                       />
                     )}
                     <Button
                       onPress={handleGenerateDeload}
                       title={isGenerating ? 'Generating…' : 'Regenerate deload'}
                       disabled={isGenerating || !workoutNoteText.trim()}
-                      style={styles.saveButton}
+                      style={styles.generateButton}
+                      textStyle={styles.generateButtonText}
                     />
                   </View>
                 </>
@@ -817,7 +816,6 @@ export function LogScreen({
                           <Text style={styles.otherNoteTitle}>{title}</Text>
                           <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
                         </View>
-                        <Text style={styles.pastDeloadChevron}>{isExpanded ? '▾' : '▸'}</Text>
                       </Pressable>
                       {isExpanded && (
                         <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
@@ -1302,19 +1300,17 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
   },
-  completeDeloadButton: {
-    backgroundColor: Colors.accent,
+  generateButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
   },
-  completeDeloadButtonText: {
-    color: '#fff',
+  generateButtonText: {
+    color: Colors.accent,
   },
   pastDeloads: {
     marginTop: 8,
     gap: 8,
-  },
-  pastDeloadChevron: {
-    fontSize: 16,
-    color: Colors.textMuted,
   },
   pastDeloadContent: {
     fontSize: 13,
