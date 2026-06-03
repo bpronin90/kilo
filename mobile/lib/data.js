@@ -484,29 +484,37 @@ function _sessionEntryPR(entry) {
   return best;
 }
 
-// Ordered (oldest-first) list of per-session best-Epley PRs for one derived exercise.
-// Skipped/unparsed sessions and sessions with no valid weighted set are omitted.
+// Ordered (oldest-first) per-session best-Epley PRs for one derived exercise,
+// indexed by session ordinal. The ordinal position is preserved: skipped/unparsed
+// sessions and sessions with no valid weighted set are kept as null placeholders
+// so a given index refers to the same session-cycle slot across every lift. This
+// is what lets the three lifts be aligned by ordinal without a skip in one lift
+// silently shifting later sessions out of alignment.
 function _exercisePerSessionPRs(ex) {
   const prs = [];
   for (const occ of ex.occurrences) {
     for (const entry of _occurrenceEntries(occ)) {
-      if (entry.skipped || entry.unparsed) continue;
-      const pr = _sessionEntryPR(entry);
-      if (pr !== null) prs.push(pr);
+      prs.push(entry.skipped || entry.unparsed ? null : _sessionEntryPR(entry));
     }
   }
   return prs;
 }
 
 // derive1kTotalSeries: Big-3 1RM total per historical workout session.
-// Builds each lift's ordered per-session PR list once (single deriveWorkoutAnalytics
-// pass, then one linear flatten per lift) and zips them by session index. Session i
-// totals the i-th logged session PR of bench, squat, and deadlift; the series length
-// is the min session count across the three lifts so every point has all three PRs.
+// Builds each lift's ordinal-indexed per-session PR list once (single
+// deriveWorkoutAnalytics pass, then one linear pass per lift) and aligns them by
+// session ordinal. A point is emitted only when all three lifts have a real PR at
+// the SAME ordinal; ordinals where any lift was skipped/unlogged are dropped
+// without shifting later ordinals, so a point never sums PRs from sessions that
+// did not occur in the same cycle. `session` is the 1-based ordinal, so dropped
+// cycles leave gaps in the numbering rather than collapsing the series.
 //
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name per slot
-// Returns: { session, total, bench, squat, deadlift }[] (session is 1-based)
+// Returns: { session, total, bench, squat, deadlift }[]
+//
+// Note: alignment is by session ordinal within each lift's history (the routine's
+// week cadence), since the parsed model carries no per-session date to key on.
 //
 // Complexity: O(total sessions across the three lifts); no per-session re-scan of notes.
 export function derive1kTotalSeries(sections, { bench, squat, deadlift }) {
@@ -524,12 +532,15 @@ export function derive1kTotalSeries(sections, { bench, squat, deadlift }) {
   const n = Math.min(benchPRs.length, squatPRs.length, deadliftPRs.length);
   const series = [];
   for (let i = 0; i < n; i++) {
+    const b = benchPRs[i], s = squatPRs[i], d = deadliftPRs[i];
+    // Only emit when all three lifts have a real PR at this same session ordinal.
+    if (b == null || s == null || d == null) continue;
     series.push({
       session: i + 1,
-      total: benchPRs[i] + squatPRs[i] + deadliftPRs[i],
-      bench: benchPRs[i],
-      squat: squatPRs[i],
-      deadlift: deadliftPRs[i],
+      total: b + s + d,
+      bench: b,
+      squat: s,
+      deadlift: d,
     });
   }
   return series;

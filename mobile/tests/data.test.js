@@ -2936,16 +2936,34 @@ describe('derive1kTotalSeries', () => {
     expect(series[0].bench).toBeCloseTo(epley(100, 10), 5);
   });
 
-  test('skipped sessions are omitted before zipping', () => {
+  test('a skipped session is dropped without shifting later sessions out of alignment', () => {
     const sections = lifts({
-      bench:    [w(100, 10), 'skip', w(110, 10)],
-      squat:    [w(200, 5),  w(210, 5)],
-      deadlift: [w(300, 5),  w(315, 5)],
+      bench:    [w(100, 10), 'skip',     w(110, 10)],
+      squat:    [w(200, 5),  w(210, 5),  w(220, 5)],
+      deadlift: [w(300, 5),  w(315, 5),  w(325, 5)],
     });
     const series = derive1kTotalSeries(sections, SEL);
-    // bench has 2 logged sessions (100, 110); skip dropped → second point pairs bench 110 with squat/dl second
+    // Ordinal 1 (bench skipped) is dropped entirely; ordinals 0 and 2 stay aligned
+    // across all three lifts. Bench's 3rd session must pair with squat/deadlift's
+    // 3rd session — never with their 2nd.
     expect(series).toHaveLength(2);
+    expect(series[0].session).toBe(1);
+    expect(series[1].session).toBe(3);
     expect(series[1].bench).toBeCloseTo(epley(110, 10), 5);
+    expect(series[1].squat).toBeCloseTo(epley(220, 5), 5);
+    expect(series[1].deadlift).toBeCloseTo(epley(325, 5), 5);
+  });
+
+  test('a session with no valid weighted set is a gap, not a shift', () => {
+    const sections = lifts({
+      // ordinal 1 bench has only an unweighted/zero set → null PR → that cycle drops
+      bench:    [w(100, 10), w(0, 0),    w(110, 10)],
+      squat:    [w(200, 5),  w(210, 5),  w(220, 5)],
+      deadlift: [w(300, 5),  w(315, 5),  w(325, 5)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    expect(series.map(p => p.session)).toEqual([1, 3]);
+    expect(series[1].squat).toBeCloseTo(epley(220, 5), 5);
   });
 
   test('missing lift in note → empty series', () => {
