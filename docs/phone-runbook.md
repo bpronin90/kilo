@@ -9,7 +9,7 @@ Preferred path: use Expo tunnel.
 1. From repo root in WSL, start Expo tunnel:
 
 ```bash
-npm run mobile:start:tunnel
+npx expo start --tunnel
 ```
 
 2. Open the Expo Go link or scan the QR code shown in the terminal.
