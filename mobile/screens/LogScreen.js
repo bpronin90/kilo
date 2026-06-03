@@ -63,6 +63,7 @@ export function LogScreen({
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
+  const [expandedDeloads, setExpandedDeloads] = useState(new Set());
 
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -786,8 +787,7 @@ export function LogScreen({
                       onPress={handleGenerateDeload}
                       title={isGenerating ? 'Generating…' : 'Regenerate deload'}
                       disabled={isGenerating || !workoutNoteText.trim()}
-                      style={styles.generateButton}
-                      textStyle={styles.generateButtonText}
+                      style={styles.saveButton}
                     />
                   </View>
                 </>
@@ -796,12 +796,35 @@ export function LogScreen({
             {tabView === 'deload' && !deloadLoading && deloadHistory.length > 0 && (
               <View style={styles.pastDeloads}>
                 <SectionTitle>Past deloads</SectionTitle>
-                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => (
-                  <Card key={record.id} style={styles.pastDeloadCard}>
-                    <Text style={styles.pastDeloadDate}>{record.completed_at.slice(0, 10)}</Text>
-                    <Text style={styles.pastDeloadText} selectable>{record.raw_text}</Text>
-                  </Card>
-                ))}
+                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => {
+                  const isExpanded = expandedDeloads.has(record.id);
+                  const dateStr = record.completed_at.slice(0, 10);
+                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const title = generatedStr && generatedStr !== dateStr
+                    ? `Deload ${generatedStr}`
+                    : `Deload ${dateStr}`;
+                  return (
+                    <Card key={record.id} style={styles.otherNoteCard}>
+                      <Pressable
+                        onPress={() => setExpandedDeloads(prev => {
+                          const next = new Set(prev);
+                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
+                          return next;
+                        })}
+                        style={styles.otherNoteHeader}
+                      >
+                        <View style={styles.otherNoteInfo}>
+                          <Text style={styles.otherNoteTitle}>{title}</Text>
+                          <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
+                        </View>
+                        <Text style={styles.pastDeloadChevron}>{isExpanded ? '▾' : '▸'}</Text>
+                      </Pressable>
+                      {isExpanded && (
+                        <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                      )}
+                    </Card>
+                  );
+                })}
               </View>
             )}
 
@@ -1279,14 +1302,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
   },
-  generateButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  generateButtonText: {
-    color: Colors.accent,
-  },
   completeDeloadButton: {
     backgroundColor: Colors.accent,
   },
@@ -1297,19 +1312,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 8,
   },
-  pastDeloadCard: {
-    padding: 16,
-    gap: 6,
-  },
-  pastDeloadDate: {
-    fontSize: 12,
+  pastDeloadChevron: {
+    fontSize: 16,
     color: Colors.textMuted,
-    fontWeight: '600',
   },
-  pastDeloadText: {
+  pastDeloadContent: {
     fontSize: 13,
     color: Colors.text,
     fontFamily: 'monospace',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
   },
 
 });
