@@ -11,6 +11,7 @@
     "web": "expo start --web",
     "test": "jest",
     "build:android:preview": "eas build --platform android --profile preview",
+    "update:android:preview": "eas update --platform android --channel preview",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
