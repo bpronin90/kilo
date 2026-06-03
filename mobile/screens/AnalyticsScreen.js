@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge, OutlinedText } from '../components/UI';
+import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -220,18 +220,6 @@ export function AnalyticsScreen({ multiplier, section }) {
     [analytics.oneKSeries]
   );
 
-  // Trend color for the 1K value border: compares the two most recent session totals.
-  // null (neutral border) until there are at least two sessions to compare.
-  const oneKTrendColor = useMemo(() => {
-    const s = analytics.oneKSeries || [];
-    if (s.length < 2) return null;
-    const last = s[s.length - 1].total;
-    const prev = s[s.length - 2].total;
-    if (last > prev) return Colors.success;
-    if (last < prev) return Colors.error;
-    return Colors.caution;
-  }, [analytics.oneKSeries]);
-
   const screenContent = React.Children.toArray([
     <View key="weight-trends-title" onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
@@ -309,12 +297,7 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <View style={styles.oneKValueRow}>
-              <OutlinedText textStyle={styles.oneKValue} color={Colors.text} outlineColor={oneKTrendColor}>
-                {analytics.oneK.total.toFixed(0)}
-              </OutlinedText>
-              <Text style={styles.oneKUnit}>lb</Text>
-            </View>
+            <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
             
             <View style={styles.oneKProgressBarContainer}>
               <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
@@ -713,11 +696,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  oneKValueRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
   },
   oneKValue: {
     ...HeroMetric.hero,

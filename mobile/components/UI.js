@@ -1,6 +1,5 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Text as SvgText } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
 export const SET_ROW_FONT_SIZE = 14;
@@ -45,42 +44,6 @@ export function Card({ children, style, tone = 'default', onPress }) {
 
 export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
-}
-
-// Renders a number/string with a thin colored stroke around the glyphs, using a
-// true vector stroke (RN Text has no text-stroke). The stroke is painted UNDER
-// the fill so the outer edge stays crisp and the lines through inner counters
-// (the loops in 8/6/0) are minimized — they can't be fully removed because a
-// text stroke traces every contour. Font size/weight/family come from textStyle.
-// When outlineColor is falsy, renders plain filled text with no stroke.
-export function OutlinedText({ children, color = Colors.text, outlineColor, outlineWidth = 1.5, textStyle }) {
-  const flat = StyleSheet.flatten(textStyle) || {};
-  const fontSize = flat.fontSize || 16;
-  const fontWeight = flat.fontWeight != null ? String(flat.fontWeight) : '400';
-  const fontFamily = flat.fontFamily;
-  const str = String(children ?? '');
-
-  const pad = Math.ceil(outlineWidth) + 2;
-  const width = Math.ceil(str.length * fontSize * 0.62) + pad * 2;
-  const height = Math.ceil(fontSize) + pad;
-  const baselineY = Math.ceil(fontSize);
-  const common = {
-    x: width / 2,
-    y: baselineY,
-    fontSize,
-    fontWeight,
-    ...(fontFamily ? { fontFamily } : {}),
-    textAnchor: 'middle',
-  };
-
-  return (
-    <Svg width={width} height={height}>
-      {outlineColor ? (
-        <SvgText {...common} fill="none" stroke={outlineColor} strokeWidth={outlineWidth}>{str}</SvgText>
-      ) : null}
-      <SvgText {...common} fill={color}>{str}</SvgText>
-    </Svg>
-  );
 }
 
 export function Button({ onPress, title, style, textStyle, disabled = false }) {

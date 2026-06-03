@@ -58,16 +58,10 @@ function setup({ entries = [], hookOverrides = {} } = {}) {
 }
 
 function findAllText(root) {
-  const texts = root.findAllByType('Text').map(t => {
+  return root.findAllByType('Text').map(t => {
     const children = t.props.children;
     return Array.isArray(children) ? children.join('') : String(children ?? '');
   });
-  // OutlinedText renders its value as an SVG vector stroke (not an RN <Text>),
-  // so read the value straight off the component node.
-  const outlined = root
-    .findAll(n => typeof n.type === 'function' && (n.type.displayName === 'OutlinedText' || n.type.name === 'OutlinedText'))
-    .map(n => String(n.props.children ?? ''));
-  return [...texts, ...outlined];
 }
 
 function hasText(root, needle) {

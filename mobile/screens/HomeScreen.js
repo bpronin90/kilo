@@ -2,19 +2,24 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, LineChart, getSessionTone, OutlinedText } from '../components/UI';
+import { Card, HeroMetric, LineChart, getSessionTone } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
-  derive1kTotalSeries,
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
   deriveOverloadCounts,
   computeWeeklySummary,
 } from '../lib/data';
+
+function lerpColor(a, b, t) {
+  const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
+  return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
+}
 
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
 function KiloWordmark({ width = 140, height = 48 }) {
@@ -50,7 +55,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
   const dashboardData = useMemo(() => {
     let oneK = null;
-    let oneKTrendColor = null;
     let sections = null;
 
     if (workoutNote?.raw_text) {
@@ -61,14 +65,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         ...(workoutNote?.one_k_exercises || {}),
       };
       oneK = derive1kTotal(sections, oneKSelections);
-
-      // Trend color for the 1K outline: last vs prior session total (null until two).
-      const series = derive1kTotalSeries(sections, oneKSelections);
-      if (series.length >= 2) {
-        const last = series[series.length - 1].total;
-        const prev = series[series.length - 2].total;
-        oneKTrendColor = last > prev ? Colors.success : last < prev ? Colors.error : Colors.caution;
-      }
     }
 
     const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
@@ -94,7 +90,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     return {
       weightSeries,
       oneK,
-      oneKTrendColor,
       latestWeight,
       weeksIn,
       weeklySummary,
@@ -211,12 +206,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       {/* ══ TIER 3: 1k Club Progress ══ */}
       <Card style={styles.oneKCard}>
         <Text style={styles.oneKLabel}>1K Progress</Text>
-        <View style={styles.oneKHeroRow}>
-          <OutlinedText textStyle={styles.oneKHeroValue} color={Colors.text} outlineColor={dashboardData.oneKTrendColor}>
-            {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-          </OutlinedText>
+        <Text style={[styles.oneKHeroValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+          {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
           <Text style={styles.oneKHeroUnit}> lb</Text>
-        </View>
+        </Text>
         <View style={styles.progressBarLarge}>
           <View
             style={[
@@ -407,11 +400,6 @@ const styles = StyleSheet.create({
   oneKHero: {
     alignItems: 'center',
     marginBottom: 16,
-  },
-  oneKHeroRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
   },
   oneKHeroValue: {
     ...HeroMetric.hero,
