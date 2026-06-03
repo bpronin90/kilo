@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.53.0 - 2026-06-03
+
+- Issue #256: Surfaced deload completion and the sessions-since-deload clock in
+  the UI. The Session Health gauge now runs its zones, marker, and caption off
+  sessions-since-last-deload while showing the absolute total as a secondary
+  stat. The Log Deload tab gains a `Deload complete` action (confirm dialog that
+  archives + clears the active note via `completeDeload`) and a collapsible
+  `Past deloads` list of archived records with per-record delete behind a
+  confirm; delete is backed by a new `deleteDeloadHistory(id)` storage helper and
+  `deleteDeload(id)` on `useDeloadHistory`, and the gauge recomputes off the
+  remaining history (resetting to the absolute session count when none remain).
+  Shared `Button` gained horizontal padding so long labels no longer crowd the
+  rounded edges. The out-of-scope past-deload full-editor experiment was reverted
+  and split into #257.
+
 ## 0.52.5 - 2026-06-03
 
 - Issue #255: Added the deload-completion data layer. New `kilo_workout_deload_history`
