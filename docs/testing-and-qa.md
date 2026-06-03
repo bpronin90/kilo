@@ -116,7 +116,10 @@ retains non-test commands such as `npm run audit`.
   `unparsed_rows` into the derived analytics contract
 - covers `deriveTrackedPRs` caller-order behavior and `derive1kTotal`
   aggregation behavior, including missing-lift null totals, mixed-weight rows,
-  changing tracked selections, and best-set selection across multiple days
+  changing tracked selections, alias-merged histories, latest-complete-cycle
+  selection across weekday, dash-entry, and blank-line session shapes, and
+  regression coverage preventing mixed-cycle totals when one lift is skipped or
+  has an extra unmatched newer cycle
 - covers `classifyExerciseSessions`, including single-session `Initial`,
   majority-of-sets progression, same-weight rep-drop regression threshold,
   skip-window inconsistency, alias-aware tracked-name resolution, and plain-row
@@ -176,7 +179,8 @@ retains non-test commands such as `npm run audit`.
 - verifies `derive1kTotalSeries()` aligns Big-3 history by shared session
   ordinal, including gap preservation for skipped sessions or sessions with no
   valid weighted set so later points cannot drift onto earlier squat/deadlift
-  cycles
+  cycles, and pins the direct helper parity contract that `derive1kTotal()`
+  reuses the last complete aligned series point for the Home headline
 - pins direct helper parity for the canonical weight/goal path by asserting
   `deriveWeightGoalAnalytics()` matches `computeWeightTrendSummary()`,
   `computeWeightPaceLevel()`, `computeWeightRollingAverageSeries()`,
