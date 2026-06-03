@@ -602,7 +602,7 @@ export function LogScreen({
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'I have deloaded',
+          text: 'Deload complete',
           onPress: async () => {
             await completeDeload({ sessionCount: logSessionCount });
           },
@@ -724,6 +724,9 @@ export function LogScreen({
                       <Pressable onPress={() => setDeloadCollapsed(c => !c)} style={styles.otherNoteHeader}>
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
+                          {deloadNote?.saved_at && (
+                            <Text style={styles.otherNoteSub}>{deloadNote.saved_at.slice(0, 10)}</Text>
+                          )}
                         </View>
                         <Pressable
                           onPress={(e) => { e.stopPropagation(); enterDeloadEditor(); }}
@@ -778,7 +781,7 @@ export function LogScreen({
                     {deloadMode === 'read' && (
                       <Button
                         onPress={handleCompleteDeload}
-                        title="I have deloaded"
+                        title="Deload complete"
                       />
                     )}
                     <Button
