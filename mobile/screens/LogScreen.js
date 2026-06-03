@@ -821,7 +821,7 @@ export function LogScreen({
                             e.stopPropagation();
                             Alert.alert(
                               'Delete deload record?',
-                              'This cannot be undone.',
+                              'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
                               [
                                 { text: 'Cancel', style: 'cancel' },
                                 { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
