@@ -10,8 +10,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest",
-    "publish:android": "eas update --platform android --channel production --private-key-path \"${EXPO_OTA_PRIVATE_KEY_PATH:?set EXPO_OTA_PRIVATE_KEY_PATH to the OTA private key path}\"",
-    "publish:android:preview": "eas update --platform android --channel preview --private-key-path \"${EXPO_OTA_PRIVATE_KEY_PATH:?set EXPO_OTA_PRIVATE_KEY_PATH to the OTA private key path}\"",
+    "build:android:preview": "eas build --platform android --profile preview",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
