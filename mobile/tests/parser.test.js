@@ -2070,6 +2070,13 @@ describe('countWorkoutSessions — combined warmup and lifting days', () => {
     expect(countWorkoutSessions(note)).toBe(2);
   });
 
+  test('pure non-weight note session count is derived from session_entries not rows', () => {
+    // Regression: switching to rows.length alone would return 0 here since non-weight
+    // exercises never populate rows. Non-skipped session_entries must be the fallback.
+    const note = '+Warmup\n-Bike\n- 5 min\n- 5 min';
+    expect(countWorkoutSessions(note)).toBe(2);
+  });
+
   test('session count is highest among days when days differ', () => {
     const note = 'Monday\n-Bench\n- 125 4,4\n- 130 4,4\nWednesday\n-Squat\n- 205 5,5';
     expect(countWorkoutSessions(note)).toBe(2);

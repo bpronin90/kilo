@@ -385,9 +385,10 @@ export function buildSessionsFromNote(noteText) {
 // ── countWorkoutSessionsFromSections ─────────────────────────────────────────
 // Returns the session count from an already-parsed sections array.
 // Groups sections by day heading so warmup + lifting on the same day count as
-// one session. Uses rows.length per exercise — rows contains only logged entries
-// and never includes skip markers, making it the canonical logged-session count
-// for both bare-row and dash-space entry formats.
+// one session. Counts logged sessions per exercise as the max of rows.length
+// and non-skipped session_entries.length — rows covers weight exercises while
+// non-skipped session_entries covers non-weight exercises (e.g. Bike) that
+// populate session_entries but never rows. Skip markers are excluded from both.
 export function countWorkoutSessionsFromSections(sections) {
   const byDay = new Map();
   for (const section of sections) {
@@ -400,7 +401,8 @@ export function countWorkoutSessionsFromSections(sections) {
     let dayMax = 0;
     for (const section of daySections) {
       for (const ex of section.exercises) {
-        const count = (ex.rows || []).length;
+        const nonSkipped = (ex.session_entries || []).filter(e => !e.skipped).length;
+        const count = Math.max((ex.rows || []).length, nonSkipped);
         if (count > dayMax) dayMax = count;
       }
     }
