@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.52.0 - 2026-06-03
+
+- Issue #249: Expanded Analytics into a more chart-driven surface by splitting
+  Weight Trends into distinct 7-day and 30-day rolling-average charts, replacing
+  the old Activity session-count card with a Session Health gauge and zone
+  captions, and adding a new `1K total over sessions` chart backed by a shared
+  per-session Big-3 derivation aligned by session ordinal. Also extended the
+  shared line-chart component with tapped-point readouts and expanded native
+  Analytics/data coverage around the new chart and alignment contracts.
+
 ## 0.51.3 - 2026-06-02
 
 - Issue #248: Reworked the Weight tab's goal presentation into a cleaner
