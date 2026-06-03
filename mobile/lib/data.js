@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
+import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -457,17 +457,45 @@ export const DEFAULT_1K_EXERCISES = {
   deadlift: 'Deadlift',
 };
 
-// derive1kTotal: sum latest estimated PRs for the selected bench, squat, and deadlift exercises.
+// Best Epley PR of an exercise's most recent LOGGED session.
+// The 1K metric is a current-performance tracker, not an all-time milestone:
+// it must follow the latest session up AND down. We therefore key off the last
+// non-null per-session PR rather than the max across an occurrence. This is
+// session-boundary robust — _exercisePerSessionPRs walks _occurrenceEntries, so
+// each `- entry` line and each bare data row counts as its own session even when
+// non-weekday separators (dates, week markers, blank lines) collapse several
+// sessions into a single parsed occurrence. Returns null when the exercise has
+// no logged session with a valid weighted set.
+function _latestSessionPR(ex) {
+  const prs = _exercisePerSessionPRs(ex);
+  for (let i = prs.length - 1; i >= 0; i--) {
+    if (prs[i] != null) return prs[i];
+  }
+  return null;
+}
+
+// derive1kTotal: sum the most recent logged session's estimated 1RM for the
+// selected bench, squat, and deadlift exercises.
+//
+// SEMANTIC: current-performance tracker. The total reflects each lift's latest
+// logged session, so a lighter recent session lowers the displayed 1K — it is
+// NOT a sticky all-time PR / milestone. (See _latestSessionPR for why this is
+// robust to how sessions are separated in the note.)
+//
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
-// total is null when any selected exercise has no latest PR in the note.
+// total is null when any selected exercise has no logged session PR in the note.
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
-  const { exercises } = deriveTrackedPRs(sections, [bench, squat, deadlift]);
-  const byName = new Map(exercises.map(e => [e.name, e.latest_pr]));
-  const benchPR = byName.get(bench) ?? null;
-  const squatPR = byName.get(squat) ?? null;
-  const deadliftPR = byName.get(deadlift) ?? null;
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+  const prFor = (name) => {
+    const ex = byKey.get(normalizeExerciseKey(name));
+    return ex ? _latestSessionPR(ex) : null;
+  };
+  const benchPR = prFor(bench);
+  const squatPR = prFor(squat);
+  const deadliftPR = prFor(deadlift);
   const total = (benchPR !== null && squatPR !== null && deadliftPR !== null)
     ? benchPR + squatPR + deadliftPR
     : null;

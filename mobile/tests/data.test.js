@@ -2985,6 +2985,30 @@ describe('derive1kTotalSeries', () => {
     const oneK = derive1kTotal(sections, SEL);
     expect(series[series.length - 1].total).toBeCloseTo(oneK.total, 5);
   });
+
+  // Current-performance semantics (issue #250): when several sessions collapse
+  // into one occurrence, the 1K total must still follow the latest session down.
+  test('derive1kTotal tracks the latest session, not the max, after a lighter day', () => {
+    const sections = lifts({
+      bench:    [w(225, 5), w(235, 5), w(200, 5)], // latest is lighter than the peak
+      squat:    [w(315, 3)],
+      deadlift: [w(405, 1)],
+    });
+    const oneK = derive1kTotal(sections, SEL);
+    expect(oneK.bench).toBeCloseTo(epley(200, 5), 5);
+    expect(oneK.bench).toBeLessThan(epley(235, 5));
+    expect(oneK.total).toBeCloseTo(epley(200, 5) + epley(315, 3) + epley(405, 1), 5);
+  });
+
+  test('derive1kTotal falls back to the last logged session when the latest is skipped', () => {
+    const sections = lifts({
+      bench:    [w(225, 5), w(235, 5), 'skip'],
+      squat:    [w(315, 3)],
+      deadlift: [w(405, 1)],
+    });
+    const oneK = derive1kTotal(sections, SEL);
+    expect(oneK.bench).toBeCloseTo(epley(235, 5), 5);
+  });
 });
 
 // ── computeWeightRollingAverageSeries — 30-day window ─────────────────────────

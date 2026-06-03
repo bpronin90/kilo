@@ -401,12 +401,56 @@ describe('derive1kTotal', () => {
     expect(r1.total).not.toBeCloseTo(r2.total);
   });
 
-  test('multi-day note: best set across days is used per lift', () => {
+  test('multi-day note: the latest session is used per lift (current performance)', () => {
     const note = 'Monday\n-Bench\n80 8\nWednesday\n-Bench\n90 5\n-Squat\n315 3\n-Deadlift\n405 1';
     const { sections } = parseWorkoutNote(note);
     const result = derive1kTotal(sections, SEL);
-    const expectedBench = Math.max(epleyPR(80, 8), epleyPR(90, 5));
-    expect(result.bench).toBeCloseTo(expectedBench);
+    // Wednesday is the most recent bench session, so its PR is used — not the
+    // max across days.
+    expect(result.bench).toBeCloseTo(epleyPR(90, 5));
+  });
+
+  // ── current-performance semantics (issue #250) ──
+  // The 1K total tracks the latest logged session and must fall after lighter
+  // work, never stick at an earlier higher value, regardless of how sessions are
+  // separated in the note.
+
+  test('multi-day note: a lighter later day lowers the lift (not sticky)', () => {
+    // Monday bench is heavier than Friday's; the displayed lift must follow the
+    // latest (Friday) session down rather than keep Monday's higher value.
+    const note = 'Monday\n-Bench\n225 5\nFriday\n-Bench\n185 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(185, 5));
+    expect(result.bench).toBeLessThan(epleyPR(225, 5));
+  });
+
+  test('dash-entry sessions in one block: lighter latest entry lowers the lift', () => {
+    // No weekday separators — all three weeks collapse into a single parsed
+    // occurrence. The latest `- entry` is lighter and must win.
+    const note = '-Bench\n- 225 5\n- 235 5\n- 200 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(200, 5));
+    expect(result.bench).toBeLessThan(epleyPR(235, 5));
+  });
+
+  test('blank-line separated sessions: lighter latest session lowers the lift', () => {
+    // Blank lines collapse into one occurrence (parser skips empties); each data
+    // row is still its own session, so the lighter last row must win.
+    const note = '-Bench\n225 5\n\n235 5\n\n205 5\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(205, 5));
+    expect(result.bench).toBeLessThan(epleyPR(235, 5));
+  });
+
+  test('a skipped latest session falls back to the last logged session', () => {
+    // Final entry is a bare-dash skip; the lift reflects the previous real session.
+    const note = '-Bench\n- 225 5\n- 235 5\n-\n-Squat\n315 3\n-Deadlift\n405 1';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(235, 5));
   });
 });
 
