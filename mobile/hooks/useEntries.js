@@ -3,6 +3,8 @@ import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 
+export const DELOAD_TITLE_PREFIX = 'Deload · ';
+
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while
 // unrelated notes reuse their cached sections. Replaces the full-notebook
@@ -300,7 +302,9 @@ export function useDeloadHistory() {
 
   const deleteDeload = useCallback(async (id) => {
     await Storage.deleteDeloadHistory(id);
+    await Storage.deleteWorkoutNoteItem(id);
     notifyDeloadHistory();
+    notifyWorkoutNotes();
   }, []);
 
   const completeDeload = useCallback(async ({ sessionCount }) => {
@@ -315,8 +319,16 @@ export function useDeloadHistory() {
       session_count: sessionCount,
     };
     await Storage.appendDeloadHistory(record);
+    await Storage.saveWorkoutNoteItem({
+      id: record.id,
+      title: `${DELOAD_TITLE_PREFIX}${completed_at.slice(0, 10)}`,
+      raw_text: activeNote.raw_text,
+      saved_at: completed_at,
+      updated_at: completed_at,
+    });
     await Storage.clearDeloadNote();
     notifyDeloadHistory();
+    notifyWorkoutNotes();
     notifyDeloadNote();
     return record;
   }, []);
