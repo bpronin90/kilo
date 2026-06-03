@@ -40,9 +40,13 @@ For physical-device packaging:
    - Install the resulting APK on the phone
    - After a compatible Android build is installed, publish OTA-safe JS and
      asset updates with `npm --prefix mobile run update:android:preview`
+   - iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
+     `preview` channel; publish iOS OTA updates with
+     `npm --prefix mobile run update:ios:preview`. Live on-device iOS delivery
+     is not yet verified end to end (deferred pending an iOS build, issue #63).
    - The runtime boundary is enforced via `runtimeVersion.policy: "appVersion"`
      (runtime version = `version` in `app.json`). OTA updates apply to any
-     installed build with the same version. A new Android build is required
+     installed build with the same version. A new native build is required
      when: a native module changes, a native `app.json` field changes, or the
      `version` is bumped.
 

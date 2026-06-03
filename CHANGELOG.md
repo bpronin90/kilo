@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.52.4 - 2026-06-03
+
+- Issue #63: Enabled iOS preview OTA delivery by binding the `ios-simulator` and
+  `ios-device` EAS build profiles to the `preview` channel and adding
+  `build:ios:simulator`, `build:ios:device`, and `update:ios:preview` scripts.
+  The shared `app.json` `updates` block and `runtimeVersion.policy: "appVersion"`
+  are reused unchanged. Live on-device iOS delivery is deferred pending an iOS
+  build; config validity was verified by asserting all EAS profiles declare a
+  channel.
+
 ## 0.52.3 - 2026-06-03
 
 - Issue #254: Restored unsigned Android preview OTA updates by adding a plain
