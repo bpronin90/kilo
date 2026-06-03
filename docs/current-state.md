@@ -188,7 +188,10 @@ The real native app path now has a modular React Native shell:
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
-  in error red and warmup/non-lifting fallbacks stay standard text. The same
+  in error red and warmup/non-lifting fallbacks stay standard text, and bare
+  `-` skipped-week markers now stay interleaved with logged rows in their
+  original chronological slots in the formatted read view instead of drifting
+  into a clustered skip block. The same
   save path now also persists workout-note `skip_markers`
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of
