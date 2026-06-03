@@ -482,15 +482,15 @@ describe('AnalyticsScreen Weight Trends — two rolling charts', () => {
   });
 });
 
-// ── Deload Risk gauge (renamed from Activity) ─────────────────────────────────
+// ── Session Health gauge (renamed from Activity) ──────────────────────────────
 
-describe('AnalyticsScreen Deload Risk gauge', () => {
+describe('AnalyticsScreen Session Health gauge', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('section is renamed to Deload Risk and shows the no-sessions caption at 0', () => {
+  test('section is renamed to Session Health and shows the no-sessions caption at 0', () => {
     const component = setup();
     const root = component.root;
-    expect(hasText(root, 'Deload Risk')).toBe(true);
+    expect(hasText(root, 'Session Health')).toBe(true);
     expect(hasText(root, 'Activity')).toBe(false);
     expect(hasText(root, 'No sessions logged')).toBe(true);
   });

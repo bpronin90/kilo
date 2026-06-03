@@ -293,7 +293,7 @@ export function AnalyticsScreen({ multiplier, section }) {
     </Card>,
 
     <View key="deload-title">
-      <SectionTitle>Deload Risk</SectionTitle>
+      <SectionTitle>Session Health</SectionTitle>
     </View>,
     <View key="session-gauge" style={styles.statRow}>
       <SessionGauge count={sessionCount} />
