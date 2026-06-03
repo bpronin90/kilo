@@ -32,17 +32,24 @@ graph TD
 
 ## Preview OTA Update Path
 
-The native Expo app uses unsigned `expo-updates` for the Android preview
-workflow.
+The native Expo app uses unsigned `expo-updates` for the preview workflow on
+both Android and iOS.
 
 - `mobile/app.json` keeps `updates.enabled`, the EAS project `updates.url`, and
   `runtimeVersion.policy: "appVersion"` so installed preview builds can fetch
   JavaScript and bundled-asset updates from the `preview` channel on launch.
-- `mobile/package.json` exposes `update:android:preview`, which runs plain
-  `eas update --platform android --channel preview` with no signing key.
-- Native/config changes still require a fresh `eas build --platform android
-  --profile preview` because `appVersion` defines the runtime compatibility
-  boundary.
+  This config is platform-agnostic and applies to iOS as well as Android.
+- `mobile/eas.json` binds the `preview` (Android), `ios-simulator`, and
+  `ios-device` build profiles to the `preview` channel so their builds receive
+  preview-channel OTA updates. `production` is bound to the `production` channel.
+- `mobile/package.json` exposes `update:android:preview` and
+  `update:ios:preview`, which run plain
+  `eas update --platform <android|ios> --channel preview` with no signing key.
+- Native/config changes still require a fresh `eas build --profile preview`
+  (Android) or `eas build --profile ios-simulator|ios-device` (iOS) because
+  `appVersion` defines the runtime compatibility boundary.
+- Live on-device iOS OTA delivery has not yet been verified end to end; it is
+  deferred pending an iOS build (issue #63).
 - Signed OTA updates are intentionally not configured. There is no checked-in
   certificate, no `codeSigningCertificate` / `codeSigningMetadata`, and no
   `--private-key-path` requirement in the supported preview workflow.

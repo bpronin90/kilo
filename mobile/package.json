@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.52.3",
+  "version": "0.52.4",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
@@ -11,7 +11,10 @@
     "web": "expo start --web",
     "test": "jest",
     "build:android:preview": "eas build --platform android --profile preview",
+    "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
+    "build:ios:device": "eas build --platform ios --profile ios-device",
     "update:android:preview": "eas update --platform android --channel preview",
+    "update:ios:preview": "eas update --platform ios --channel preview",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

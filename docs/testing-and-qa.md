@@ -17,12 +17,17 @@ npm run mobile:android
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
 
-For Android release-style update verification after a compatible build is
-installed, publish to the configured EAS Update channels from `mobile/`:
+For release-style update verification after a compatible build is installed,
+publish to the configured EAS Update channels from `mobile/`:
 
 ```sh
 npm --prefix mobile run update:android:preview
+npm --prefix mobile run update:ios:preview
 ```
+
+iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
+`preview` channel. Live on-device iOS delivery is not yet verified end to end
+(deferred pending an iOS build, issue #63).
 
 Use OTA publish only for JavaScript and asset changes. Any native-affecting
 change still requires a fresh Android build because `mobile/app.json` uses
