@@ -12,10 +12,10 @@ import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote, generateDeloadNote } from '../lib/parser';
+import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
 import { formatRepDropOffNudge } from '../lib/format';
-import { useTrackedLifts, useWorkoutNotes, useDeloadNote } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
@@ -51,6 +51,7 @@ export function LogScreen({
   const { notes, currentId, currentNote, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
+  const { history: deloadHistory, completeDeload, deleteDeload } = useDeloadHistory();
 
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
@@ -62,6 +63,7 @@ export function LogScreen({
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
+  const [expandedDeloads, setExpandedDeloads] = useState(new Set());
 
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -167,6 +169,11 @@ export function LogScreen({
   const otherNotes = notes.filter(n => n.id !== currentId);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
+
+  const logSessionCount = useMemo(
+    () => countWorkoutSessionsFromSections(parsed.sections),
+    [parsed.sections]
+  );
 
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
@@ -588,6 +595,22 @@ export function LogScreen({
     );
   };
 
+  const handleCompleteDeload = () => {
+    Alert.alert(
+      'Complete deload?',
+      'This will archive your deload note and reset the session clock.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deload complete',
+          onPress: async () => {
+            await completeDeload({ sessionCount: logSessionCount });
+          },
+        },
+      ]
+    );
+  };
+
   const handleGenerateDeload = () => {
     const doGenerate = async () => {
       setIsGenerating(true);
@@ -701,6 +724,9 @@ export function LogScreen({
                       <Pressable onPress={() => setDeloadCollapsed(c => !c)} style={styles.otherNoteHeader}>
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
+                          {deloadNote?.saved_at && (
+                            <Text style={styles.otherNoteSub}>{deloadNote.saved_at.slice(0, 10)}</Text>
+                          )}
                         </View>
                         <Pressable
                           onPress={(e) => { e.stopPropagation(); enterDeloadEditor(); }}
@@ -752,6 +778,12 @@ export function LogScreen({
                     </Card>
                   </View>
                   <View style={styles.previousRoutines}>
+                    {deloadMode === 'read' && (
+                      <Button
+                        onPress={handleCompleteDeload}
+                        title="Deload complete"
+                      />
+                    )}
                     <Button
                       onPress={handleGenerateDeload}
                       title={isGenerating ? 'Generating…' : 'Regenerate deload'}
@@ -762,6 +794,56 @@ export function LogScreen({
                   </View>
                 </>
               )
+            )}
+            {tabView === 'deload' && !deloadLoading && deloadHistory.length > 0 && (
+              <View style={styles.pastDeloads}>
+                <SectionTitle>Past deloads</SectionTitle>
+                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => {
+                  const isExpanded = expandedDeloads.has(record.id);
+                  const dateStr = record.completed_at.slice(0, 10);
+                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const title = generatedStr && generatedStr !== dateStr
+                    ? `Deload ${generatedStr}`
+                    : `Deload ${dateStr}`;
+                  return (
+                    <Card key={record.id} style={styles.otherNoteCard}>
+                      <Pressable
+                        onPress={() => setExpandedDeloads(prev => {
+                          const next = new Set(prev);
+                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
+                          return next;
+                        })}
+                        style={styles.otherNoteHeader}
+                      >
+                        <View style={styles.otherNoteInfo}>
+                          <Text style={styles.otherNoteTitle}>{title}</Text>
+                          <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
+                        </View>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Alert.alert(
+                              'Delete deload record?',
+                              'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
+                              ]
+                            );
+                          }}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                        </Pressable>
+                      </Pressable>
+                      {isExpanded && (
+                        <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                      )}
+                    </Card>
+                  );
+                })}
+              </View>
             )}
 
             {tabView === 'routine' && mode === 'read' && hasContent && (
@@ -1245,6 +1327,25 @@ const styles = StyleSheet.create({
   },
   generateButtonText: {
     color: Colors.accent,
+  },
+  pastDeloads: {
+    marginTop: 8,
+    gap: 8,
+  },
+  pastDeloadDeleteText: {
+    color: Colors.error,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pastDeloadContent: {
+    fontSize: 13,
+    color: Colors.text,
+    fontFamily: 'monospace',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.cardBorder,
   },
 
 });

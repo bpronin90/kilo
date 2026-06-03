@@ -298,6 +298,11 @@ export function useDeloadHistory() {
     };
   }, [refresh]);
 
+  const deleteDeload = useCallback(async (id) => {
+    await Storage.deleteDeloadHistory(id);
+    notifyDeloadHistory();
+  }, []);
+
   const completeDeload = useCallback(async ({ sessionCount }) => {
     const activeNote = await Storage.loadDeloadNote();
     if (!activeNote) return null;
@@ -316,7 +321,7 @@ export function useDeloadHistory() {
     return record;
   }, []);
 
-  return { history, loading, error, completeDeload, refresh };
+  return { history, loading, error, completeDeload, deleteDeload, refresh };
 }
 
 let profileListeners = [];

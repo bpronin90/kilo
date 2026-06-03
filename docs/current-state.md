@@ -184,7 +184,12 @@ The real native app path now has a modular React Native shell:
   generated deload source text into routine-style editable blocks with blank
   line day separation plus explicit `+Lifting` section markers before
   persistence so the raw editor is comfortable to use while the rendered view
-  stays parser-compatible. The read view now also
+  stays parser-compatible. When an active deload note exists the Deload tab now
+  shows a `Deload complete` action that archives the note (capturing the current
+  session count) behind a confirm dialog, and renders a collapsible `Past
+  deloads` list of archived records with a per-record delete behind its own
+  confirm; deleting recomputes the sessions-since-deload clock off the remaining
+  history (resetting to the absolute session count when none remain). The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
@@ -272,7 +277,9 @@ The real native app path now has a modular React Native shell:
   average` charts, and 7-day/30-day summary averages, alongside a `Session
   Health` section that replaces the older workout-sessions card with a
   three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
-  derived from the shared session-depth thresholds. The redesigned `1K
+  derived from the shared session-depth thresholds. The gauge now runs its
+  zones, marker, and caption off sessions-since-last-deload while showing the
+  absolute total session count as a secondary stat on the card. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. Shared chart surfaces now
