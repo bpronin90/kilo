@@ -467,52 +467,43 @@ function _latestNonNull(prs) {
 
 // derive1kTotal: the Big-3 1RM total for the most recent COMPLETE session cycle.
 //
-// SEMANTIC: current-performance tracker, not a sticky all-time milestone. We
-// walk each lift's per-session PRs newest-first (aligned by offset from the end)
-// and take the most recent cycle at which all three lifts have a real,
-// non-skipped PR. So a lighter recent cycle lowers the 1K, a per-occurrence max
-// can no longer pin an old higher value, and the total never sums PRs from
-// different cycles (issue #250 + reviewer feedback): if the latest cycle has one
-// lift skipped, the total falls back to the last cycle where all three were
-// logged together.
+// SEMANTIC: current-performance tracker, not a sticky all-time milestone. This is
+// exactly the last point of derive1kTotalSeries — the latest session ordinal at
+// which all three lifts have a real (non-skipped) PR. So a lighter recent cycle
+// lowers the 1K, a per-occurrence max can no longer pin an old higher value, and
+// the total is never a sum of PRs from different cycles.
 //
-// Newest-first alignment (vs. derive1kTotalSeries' oldest-first ordinal zip) is
-// deliberate: the chart plots progression over time from the first session,
-// while this headline must reflect each lift's current performance even when the
-// three lifts have uneven history lengths.
+// Deriving the headline straight from the series is intentional: it guarantees
+// the Home 1K and the historical chart are always consistent and share one
+// alignment rule (oldest-first ordinal zip, since the parsed model carries no
+// per-session date to key on). Any uneven-history shape — a lift skipped in the
+// latest cycle, or a lift with an extra newer cycle the others lack — resolves
+// to the same single complete cycle the series emits, with no mixed-cycle sum in
+// either direction.
 //
-// session-boundary robust: _exercisePerSessionPRs walks _occurrenceEntries, so
-// each `- entry` line and each bare data row counts as its own session even when
-// non-weekday separators (dates, week markers, blank lines) collapse several
-// sessions into a single parsed occurrence.
-//
-// Fallback: when no complete Big-3 cycle exists (a selected lift never appears
-// in the note), total is null but each present lift still reports its most
-// recent logged session PR for context.
+// Fallback: when no complete aligned Big-3 cycle exists (a selected lift never
+// appears in the note), total is null but each present lift still reports its
+// most recent logged session PR for context. _exercisePerSessionPRs walks
+// _occurrenceEntries, so this stays robust to how sessions are separated (day
+// headings, `- entry` lines, bare rows, blank lines).
 //
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
-  const { exercises } = deriveWorkoutAnalytics(sections);
-  const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
-  const prsFor = (name) => {
-    const ex = byKey.get(normalizeExerciseKey(name));
-    return ex ? _exercisePerSessionPRs(ex) : [];
-  };
-  const b = prsFor(bench), s = prsFor(squat), d = prsFor(deadlift);
-
-  const maxLen = Math.max(b.length, s.length, d.length);
-  for (let k = 0; k < maxLen; k++) {
-    const bv = b[b.length - 1 - k];
-    const sv = s[s.length - 1 - k];
-    const dv = d[d.length - 1 - k];
-    if (bv != null && sv != null && dv != null) {
-      return { total: bv + sv + dv, bench: bv, squat: sv, deadlift: dv };
-    }
+  const series = derive1kTotalSeries(sections, { bench, squat, deadlift });
+  if (series.length > 0) {
+    const last = series[series.length - 1];
+    return { total: last.total, bench: last.bench, squat: last.squat, deadlift: last.deadlift };
   }
   // No complete Big-3 cycle: show each present lift's latest session, total null.
-  return { total: null, bench: _latestNonNull(b), squat: _latestNonNull(s), deadlift: _latestNonNull(d) };
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+  const latestFor = (name) => {
+    const ex = byKey.get(normalizeExerciseKey(name));
+    return ex ? _latestNonNull(_exercisePerSessionPRs(ex)) : null;
+  };
+  return { total: null, bench: latestFor(bench), squat: latestFor(squat), deadlift: latestFor(deadlift) };
 }
 
 // Best Epley PR across one logged session's sets. Returns null when no valid set.

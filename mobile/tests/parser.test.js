@@ -1,5 +1,5 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote } from '../lib/parser';
-import { getDefaultTrackedNames, derive1kTotal, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -465,6 +465,20 @@ describe('derive1kTotal', () => {
     expect(result.bench).toBeCloseTo(epleyPR(235, 5));
     expect(result.squat).toBeCloseTo(epleyPR(320, 3)); // cycle 2, NOT 322 (cycle 3)
     expect(result.total).toBeCloseTo(epleyPR(235, 5) + epleyPR(320, 3) + epleyPR(415, 1));
+  });
+
+  test('one lift with an extra newer cycle does not mix into the total', () => {
+    // Bench is logged again on Wednesday with no matching squat/deadlift. The only
+    // COMPLETE Big-3 cycle is Monday, so the total must use Monday's bench (225),
+    // never pairing Wednesday's bench with Monday's squat/deadlift.
+    const note = 'Monday\n-Bench\n225 5\n-Squat\n315 3\n-Deadlift\n405 1\n'
+               + 'Wednesday\n-Bench\n235 5';
+    const { sections } = parseWorkoutNote(note);
+    const result = derive1kTotal(sections, SEL);
+    const series = derive1kTotalSeries(sections, SEL);
+    expect(result.bench).toBeCloseTo(epleyPR(225, 5)); // Monday, NOT 235 (Wednesday)
+    expect(result.total).toBeCloseTo(epleyPR(225, 5) + epleyPR(315, 3) + epleyPR(405, 1));
+    expect(result.total).toBeCloseTo(series[series.length - 1].total);
   });
 });
 
@@ -1855,9 +1869,12 @@ describe('deriveProgressionSignals — alias matching', () => {
     expect(sig.latest_pr).toBeGreaterThan(sig.prior_pr);
   });
 
-  test('1k total uses best PR across mixed-name occurrences', () => {
-    // Monday canonical at 80, Wednesday alias at 85 — 1k should use the higher 85
-    const note = 'Monday\n-DB Bench Press\n80 8,8,8\nWednesday\n-DB Bench\n85 8,8,8\n-Squat\n225 5,5\n-Deadlift\n315 5,5';
+  test('1k total merges mixed-name occurrences into one lift history', () => {
+    // Monday uses the canonical name, Wednesday uses the alias. The two must
+    // merge into a single 2-cycle bench history; the 1K reflects the latest
+    // complete cycle (Wednesday at 85).
+    const note = 'Monday\n-DB Bench Press\n80 8,8,8\n-Squat\n220 5,5\n-Deadlift\n310 5,5\n'
+               + 'Wednesday\n-DB Bench\n85 8,8,8\n-Squat\n225 5,5\n-Deadlift\n315 5,5';
     const { sections } = parseWorkoutNote(note);
     const result = derive1kTotal(sections, { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' });
     const expectedBenchPR = 85 * (1 + 8 / 30);
