@@ -457,49 +457,62 @@ export const DEFAULT_1K_EXERCISES = {
   deadlift: 'Deadlift',
 };
 
-// Best Epley PR of an exercise's most recent LOGGED session.
-// The 1K metric is a current-performance tracker, not an all-time milestone:
-// it must follow the latest session up AND down. We therefore key off the last
-// non-null per-session PR rather than the max across an occurrence. This is
-// session-boundary robust — _exercisePerSessionPRs walks _occurrenceEntries, so
-// each `- entry` line and each bare data row counts as its own session even when
-// non-weekday separators (dates, week markers, blank lines) collapse several
-// sessions into a single parsed occurrence. Returns null when the exercise has
-// no logged session with a valid weighted set.
-function _latestSessionPR(ex) {
-  const prs = _exercisePerSessionPRs(ex);
+// Most recent non-null entry in an ordinal-indexed per-session PR list.
+function _latestNonNull(prs) {
   for (let i = prs.length - 1; i >= 0; i--) {
     if (prs[i] != null) return prs[i];
   }
   return null;
 }
 
-// derive1kTotal: sum the most recent logged session's estimated 1RM for the
-// selected bench, squat, and deadlift exercises.
+// derive1kTotal: the Big-3 1RM total for the most recent COMPLETE session cycle.
 //
-// SEMANTIC: current-performance tracker. The total reflects each lift's latest
-// logged session, so a lighter recent session lowers the displayed 1K — it is
-// NOT a sticky all-time PR / milestone. (See _latestSessionPR for why this is
-// robust to how sessions are separated in the note.)
+// SEMANTIC: current-performance tracker, not a sticky all-time milestone. We
+// walk each lift's per-session PRs newest-first (aligned by offset from the end)
+// and take the most recent cycle at which all three lifts have a real,
+// non-skipped PR. So a lighter recent cycle lowers the 1K, a per-occurrence max
+// can no longer pin an old higher value, and the total never sums PRs from
+// different cycles (issue #250 + reviewer feedback): if the latest cycle has one
+// lift skipped, the total falls back to the last cycle where all three were
+// logged together.
+//
+// Newest-first alignment (vs. derive1kTotalSeries' oldest-first ordinal zip) is
+// deliberate: the chart plots progression over time from the first session,
+// while this headline must reflect each lift's current performance even when the
+// three lifts have uneven history lengths.
+//
+// session-boundary robust: _exercisePerSessionPRs walks _occurrenceEntries, so
+// each `- entry` line and each bare data row counts as its own session even when
+// non-weekday separators (dates, week markers, blank lines) collapse several
+// sessions into a single parsed occurrence.
+//
+// Fallback: when no complete Big-3 cycle exists (a selected lift never appears
+// in the note), total is null but each present lift still reports its most
+// recent logged session PR for context.
 //
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
-// total is null when any selected exercise has no logged session PR in the note.
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
   const { exercises } = deriveWorkoutAnalytics(sections);
   const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
-  const prFor = (name) => {
+  const prsFor = (name) => {
     const ex = byKey.get(normalizeExerciseKey(name));
-    return ex ? _latestSessionPR(ex) : null;
+    return ex ? _exercisePerSessionPRs(ex) : [];
   };
-  const benchPR = prFor(bench);
-  const squatPR = prFor(squat);
-  const deadliftPR = prFor(deadlift);
-  const total = (benchPR !== null && squatPR !== null && deadliftPR !== null)
-    ? benchPR + squatPR + deadliftPR
-    : null;
-  return { total, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
+  const b = prsFor(bench), s = prsFor(squat), d = prsFor(deadlift);
+
+  const maxLen = Math.max(b.length, s.length, d.length);
+  for (let k = 0; k < maxLen; k++) {
+    const bv = b[b.length - 1 - k];
+    const sv = s[s.length - 1 - k];
+    const dv = d[d.length - 1 - k];
+    if (bv != null && sv != null && dv != null) {
+      return { total: bv + sv + dv, bench: bv, squat: sv, deadlift: dv };
+    }
+  }
+  // No complete Big-3 cycle: show each present lift's latest session, total null.
+  return { total: null, bench: _latestNonNull(b), squat: _latestNonNull(s), deadlift: _latestNonNull(d) };
 }
 
 // Best Epley PR across one logged session's sets. Returns null when no valid set.
