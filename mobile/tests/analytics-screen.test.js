@@ -106,7 +106,8 @@ describe('AnalyticsScreen weight summary — sourced from deriveWeightGoalAnalyt
     const root = component.root;
 
     expect(data.deriveWeightGoalAnalytics).toHaveBeenCalledWith(entries, null);
-    expect(hasText(root, `${sentinel} lb`)).toBe(true);
+    // The latest-weight number now renders with the unit as a separate node.
+    expect(hasText(root, String(sentinel))).toBe(true);
     // No raw entry weight_value should appear as the latest-weight display
     expect(hasText(root, '185.0 lb')).toBe(false);
     expect(hasText(root, '184.0 lb')).toBe(false);

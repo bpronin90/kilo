@@ -9,6 +9,13 @@ import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/p
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
+// Interpolate hex color a→b by t (0..1). Mirrors HomeScreen's 1K progress gradient.
+function lerpColor(a, b, t) {
+  const p = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const [ar, ag, ab] = p(a), [br, bg, bb] = p(b);
+  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab + (bb - ab) * t)})`;
+}
+
 export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
@@ -78,10 +85,11 @@ export function AnalyticsScreen({ multiplier, section }) {
 
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
-      return { latestWeight: '—', weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
+      return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
     }
     return {
-      latestWeight: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight} lb` : '—',
+      latestWeightValue: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight}` : '—',
+      showUnit: weightTrends.currentWeight !== null,
       weightCount: String(weightEntries.length),
       avg7:  weightTrends.avg7  !== null ? `${weightTrends.avg7.toFixed(1)} lb`  : '—',
       avg30: weightTrends.avg30 !== null ? `${weightTrends.avg30.toFixed(1)} lb` : '—',
@@ -228,7 +236,10 @@ export function AnalyticsScreen({ multiplier, section }) {
       <View style={styles.weightHeader}>
         <View>
           <Text style={styles.weightLabel}>Latest weigh-in</Text>
-          <Text style={styles.weightValueLarge}>{weightSummary.latestWeight}</Text>
+          <Text style={styles.weightValueLarge}>
+            {weightSummary.latestWeightValue}
+            {weightSummary.showUnit && <Text style={styles.weightUnit}>lb</Text>}
+          </Text>
         </View>
         {weightSummary.paceFlag && (
           <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
@@ -297,7 +308,9 @@ export function AnalyticsScreen({ multiplier, section }) {
         ) : (
           <>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={styles.oneKValue}>{analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text></Text>
+            <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (analytics.oneK.total || 0) / 1000)) }]}>
+              {analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
+            </Text>
             
             <View style={styles.oneKProgressBarContainer}>
               <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
@@ -641,9 +654,15 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   weightValueLarge: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: Colors.accent,
+  },
+  weightUnit: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginLeft: 4,
   },
   paceBadge: {
     paddingHorizontal: 10,
