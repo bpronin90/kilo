@@ -245,7 +245,7 @@ export function parseWorkoutNote(noteText) {
       if (currentExercise) {
         const entries = currentExercise.session_entries;
         const last = entries[entries.length - 1];
-        if (last && !last.skipped) {
+        if (last && !last.skipped && !last.bare) {
           if (!last.comments) last.comments = [];
           last.comments.push(trimmed.slice(2).trim());
         } else {
@@ -324,6 +324,8 @@ export function parseWorkoutNote(noteText) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: trimmed, sets: reindexed });
+          // bare: true marks this as a plain row so -- comment lines still fall through to unparsed_rows
+          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true });
         } else if (!rowResult.blank && !rowResult.skipped) {
           currentExercise.unparsed_rows.push(trimmed);
         }
@@ -383,8 +385,9 @@ export function buildSessionsFromNote(noteText) {
 // ── countWorkoutSessionsFromSections ─────────────────────────────────────────
 // Returns the session count from an already-parsed sections array.
 // Groups sections by day heading so warmup + lifting on the same day count as
-// one session. Uses max(session_entries.length, rows.length) per exercise to
-// handle both dash-space entry format (session_entries) and bare-row format (rows).
+// one session. Uses rows.length per exercise — rows contains only logged entries
+// and never includes skip markers, making it the canonical logged-session count
+// for both bare-row and dash-space entry formats.
 export function countWorkoutSessionsFromSections(sections) {
   const byDay = new Map();
   for (const section of sections) {
@@ -397,7 +400,7 @@ export function countWorkoutSessionsFromSections(sections) {
     let dayMax = 0;
     for (const section of daySections) {
       for (const ex of section.exercises) {
-        const count = Math.max(ex.session_entries.length, ex.rows.length);
+        const count = (ex.rows || []).length;
         if (count > dayMax) dayMax = count;
       }
     }

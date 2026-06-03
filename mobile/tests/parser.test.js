@@ -1542,9 +1542,12 @@ describe('parseWorkoutNote — session_entries', () => {
     expect(Array.isArray(r.sections[0].exercises[0].session_entries)).toBe(true);
   });
 
-  test('plain data rows do not create session_entries', () => {
+  test('plain data rows create session_entries to preserve chronological order with skips', () => {
     const r = parseWorkoutNote('-Bench\n125 4,4,4\n125 5,5,5');
-    expect(r.sections[0].exercises[0].session_entries).toHaveLength(0);
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(2);
+    expect(ex.session_entries[0].skipped).toBe(false);
+    expect(ex.session_entries[1].skipped).toBe(false);
   });
 
   test('dash-space entry creates a session_entry with correct sets', () => {
@@ -1576,6 +1579,24 @@ describe('parseWorkoutNote — session_entries', () => {
     expect(ex.session_entries).toHaveLength(3);
     expect(ex.session_entries[1].skipped).toBe(true);
     expect(ex.session_entries[1].raw).toBe('-');
+  });
+
+  test('bare rows interleaved with bare dashes preserve chronological slot order in session_entries', () => {
+    // Regression: bare logged rows were not added to session_entries, causing skip markers
+    // to cluster before all logged rows instead of staying in their original positions.
+    const r = parseWorkoutNote('-Squat\n135 5,5,5\n-\n225 5,5,5\n-\n315 5,5,5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries).toHaveLength(5);
+    expect(ex.session_entries[0].skipped).toBe(false);
+    expect(ex.session_entries[0].sets[0].weight_value).toBe(135);
+    expect(ex.session_entries[1].skipped).toBe(true);
+    expect(ex.session_entries[2].skipped).toBe(false);
+    expect(ex.session_entries[2].sets[0].weight_value).toBe(225);
+    expect(ex.session_entries[3].skipped).toBe(true);
+    expect(ex.session_entries[4].skipped).toBe(false);
+    expect(ex.session_entries[4].sets[0].weight_value).toBe(315);
+    // rows should still contain only the logged entries
+    expect(ex.rows).toHaveLength(3);
   });
 
   test('bare dash outside exercise context is silently dropped', () => {
@@ -1690,9 +1711,9 @@ describe('buildSessionsFromNote — basics', () => {
     expect(r.sessions).toHaveLength(0);
   });
 
-  test('note with only plain rows returns no sessions', () => {
+  test('note with only plain rows creates sessions (bare rows now populate session_entries)', () => {
     const r = buildSessionsFromNote('-Bench\n125 4,4,4\n125 5,5,5');
-    expect(r.sessions).toHaveLength(0);
+    expect(r.sessions).toHaveLength(2);
   });
 
   test('returns ok sessions array and warnings array', () => {
