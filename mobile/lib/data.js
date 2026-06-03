@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveTrackedPRs, deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
+import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -457,21 +457,53 @@ export const DEFAULT_1K_EXERCISES = {
   deadlift: 'Deadlift',
 };
 
-// derive1kTotal: sum latest estimated PRs for the selected bench, squat, and deadlift exercises.
+// Most recent non-null entry in an ordinal-indexed per-session PR list.
+function _latestNonNull(prs) {
+  for (let i = prs.length - 1; i >= 0; i--) {
+    if (prs[i] != null) return prs[i];
+  }
+  return null;
+}
+
+// derive1kTotal: the Big-3 1RM total for the most recent COMPLETE session cycle.
+//
+// SEMANTIC: current-performance tracker, not a sticky all-time milestone. This is
+// exactly the last point of derive1kTotalSeries — the latest session ordinal at
+// which all three lifts have a real (non-skipped) PR. So a lighter recent cycle
+// lowers the 1K, a per-occurrence max can no longer pin an old higher value, and
+// the total is never a sum of PRs from different cycles.
+//
+// Deriving the headline straight from the series is intentional: it guarantees
+// the Home 1K and the historical chart are always consistent and share one
+// alignment rule (oldest-first ordinal zip, since the parsed model carries no
+// per-session date to key on). Any uneven-history shape — a lift skipped in the
+// latest cycle, or a lift with an extra newer cycle the others lack — resolves
+// to the same single complete cycle the series emits, with no mixed-cycle sum in
+// either direction.
+//
+// Fallback: when no complete aligned Big-3 cycle exists (a selected lift never
+// appears in the note), total is null but each present lift still reports its
+// most recent logged session PR for context. _exercisePerSessionPRs walks
+// _occurrenceEntries, so this stays robust to how sessions are separated (day
+// headings, `- entry` lines, bare rows, blank lines).
+//
 // sections: output of parseWorkoutNote(noteText).sections
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
-// total is null when any selected exercise has no latest PR in the note.
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
-  const { exercises } = deriveTrackedPRs(sections, [bench, squat, deadlift]);
-  const byName = new Map(exercises.map(e => [e.name, e.latest_pr]));
-  const benchPR = byName.get(bench) ?? null;
-  const squatPR = byName.get(squat) ?? null;
-  const deadliftPR = byName.get(deadlift) ?? null;
-  const total = (benchPR !== null && squatPR !== null && deadliftPR !== null)
-    ? benchPR + squatPR + deadliftPR
-    : null;
-  return { total, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
+  const series = derive1kTotalSeries(sections, { bench, squat, deadlift });
+  if (series.length > 0) {
+    const last = series[series.length - 1];
+    return { total: last.total, bench: last.bench, squat: last.squat, deadlift: last.deadlift };
+  }
+  // No complete Big-3 cycle: show each present lift's latest session, total null.
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+  const latestFor = (name) => {
+    const ex = byKey.get(normalizeExerciseKey(name));
+    return ex ? _latestNonNull(_exercisePerSessionPRs(ex)) : null;
+  };
+  return { total: null, bench: latestFor(bench), squat: latestFor(squat), deadlift: latestFor(deadlift) };
 }
 
 // Best Epley PR across one logged session's sets. Returns null when no valid set.

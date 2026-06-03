@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.52.1 - 2026-06-03
+
+- Issue #250: Fixed the Home 1K headline so it behaves as a current-performance
+  metric instead of sticking to an earlier per-occurrence PR, and aligned it
+  directly to the shared `derive1kTotalSeries()` session-ordinal contract so
+  the headline and Analytics chart can no longer disagree or mix PRs from
+  different workout cycles.
+
 ## 0.52.0 - 2026-06-03
 
 - Issue #249: Expanded Analytics into a more chart-driven surface by splitting

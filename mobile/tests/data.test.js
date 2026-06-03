@@ -2985,6 +2985,52 @@ describe('derive1kTotalSeries', () => {
     const oneK = derive1kTotal(sections, SEL);
     expect(series[series.length - 1].total).toBeCloseTo(oneK.total, 5);
   });
+
+  // Current-performance semantics (issue #250): the 1K total tracks the latest
+  // complete Big-3 cycle and must follow it down after a lighter session.
+  test('derive1kTotal tracks the latest cycle, not the max, after a lighter session', () => {
+    const sections = lifts({
+      bench:    [w(225, 5), w(235, 5), w(200, 5)], // latest cycle is lighter than the peak
+      squat:    [w(315, 3), w(320, 3), w(310, 3)],
+      deadlift: [w(405, 1), w(415, 1), w(400, 1)],
+    });
+    const oneK = derive1kTotal(sections, SEL);
+    expect(oneK.bench).toBeCloseTo(epley(200, 5), 5);
+    expect(oneK.bench).toBeLessThan(epley(235, 5));
+    expect(oneK.total).toBeCloseTo(epley(200, 5) + epley(310, 3) + epley(400, 1), 5);
+  });
+
+  // Regression for issue #250 reviewer feedback: a skipped latest lift must drop
+  // the total to the last complete cycle, never mix one lift's earlier cycle with
+  // the others' newer cycle. derive1kTotal must equal the last series point.
+  test('derive1kTotal never sums PRs from different cycles (alignment with series)', () => {
+    const sections = lifts({
+      bench:    [w(225, 5), 'skip'],      // latest cycle skips bench
+      squat:    [w(315, 3), w(320, 3)],
+      deadlift: [w(405, 1), w(415, 1)],
+    });
+    const series = derive1kTotalSeries(sections, SEL);
+    const oneK = derive1kTotal(sections, SEL);
+    // Series emits only cycle 1 (cycle 2 is not a complete Big-3 point).
+    expect(series.map(p => p.session)).toEqual([1]);
+    expect(oneK.total).toBeCloseTo(series[series.length - 1].total, 5);
+    expect(oneK.bench).toBeCloseTo(epley(225, 5), 5);
+    expect(oneK.squat).toBeCloseTo(epley(315, 3), 5); // cycle 1, NOT 320 (cycle 2)
+    expect(oneK.deadlift).toBeCloseTo(epley(405, 1), 5);
+  });
+
+  test('derive1kTotal shows present lifts but null total when a lift is absent', () => {
+    const sections = lifts({
+      bench:  [w(225, 5), w(235, 5)],
+      squat:  [w(315, 3), w(320, 3)],
+      // no deadlift
+    });
+    const oneK = derive1kTotal(sections, SEL);
+    expect(oneK.total).toBeNull();
+    expect(oneK.bench).toBeCloseTo(epley(235, 5), 5);
+    expect(oneK.squat).toBeCloseTo(epley(320, 3), 5);
+    expect(oneK.deadlift).toBeNull();
+  });
 });
 
 // ── computeWeightRollingAverageSeries — 30-day window ─────────────────────────

@@ -139,9 +139,12 @@ The real native app path now has a modular React Native shell:
   `1K Progress` label and total, keeps the shared progress bar plus three-column
   breakdown with full exercise names (Squats/Bench/Deadlifts) matching the
   canonical structure on Analytics, and adds progress-based hero-number color
-  emphasis as the total approaches 1,000 lb. All dashboard data comes from
-  existing shared derivation functions; no Home-only calculations exist. The
-  success toast is removed from the render
+  emphasis as the total approaches 1,000 lb. Its headline value now comes
+  directly from the same shared session-ordinal Big-3 series contract used by
+  Analytics, so the Home total reflects the latest complete aligned workout
+  cycle rather than a sticky per-occurrence PR or a mixed-cycle fallback. All
+  dashboard data comes from existing shared derivation functions; no Home-only
+  calculations exist. The success toast is removed from the render
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
