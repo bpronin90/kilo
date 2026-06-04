@@ -1285,6 +1285,19 @@ describe('getLatestRepDropOff', () => {
 // A within-row skipped set: weight preserved, rep_count 0, skipped flag.
 function skset(weight) { return { weight_value: weight, rep_count: 0, skipped: true }; }
 
+// Build one section holding multiple exercises (so day-skip = every exercise in
+// the section skipped at a column). entries: (sets[] | 'skip')[] per exercise.
+function checkinSection(exerciseSpecs) {
+  return {
+    heading: null, subheading: null, kind: 'general',
+    exercises: exerciseSpecs.map(({ name, entries }) => ({
+      name, rows: [], sets: [], unparsed_rows: [],
+      session_entries: entries.map(e =>
+        e === 'skip' ? { skipped: true, raw: '-', sets: [] } : { skipped: false, raw: 'x', sets: e }),
+    })),
+  };
+}
+
 describe('deriveSessionCheckIn', () => {
   test('guards: null sections / empty tracked names → empty result', () => {
     expect(deriveSessionCheckIn(null, ['Squat']).isRough).toBe(false);
@@ -1346,48 +1359,62 @@ describe('deriveSessionCheckIn', () => {
   });
 
   test('skipped: more skips than usual flags the skipped exercises (2 of 3)', () => {
-    const sections = [
-      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip']),
-      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], 'skip']),
-      dropOffSection('Squat', [[ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)]]),
-    ];
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], 'skip'] },
+      { name: 'Squat', entries: [[ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)]] },
+    ])];
     const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row', 'Squat']);
     expect(r.isRough).toBe(true);
     expect(r.detectors).toEqual(['skipped']);
+    expect(r.sessionIndex).toBe(2);
     expect(r.metrics.exercises_skipped).toBe(2);
     expect(r.flagged.map(f => f.normName).sort()).toEqual(['bench press', 'row']);
     expect(r.flagged.every(f => f.reasons.includes('skip'))).toBe(true);
   });
 
   test('skipped does NOT fire below the floor (only one exercise skipped)', () => {
-    const sections = [
-      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip']),
-      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)]]),
-    ];
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)]] },
+    ])];
     const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
     expect(r.detectors).not.toContain('skipped');
     expect(r.isRough).toBe(false);
   });
 
-  test('skipped does NOT fire for a habitual/alternating skip pattern (not above the worst prior column)', () => {
-    // Both lifts skip every other session: the latest 2-skip column is not unusual.
-    const sections = [
-      dropOffSection('Bench Press', [[ws(80, 8)], 'skip', [ws(80, 8)], 'skip']),
-      dropOffSection('Row', [[ws(100, 8)], 'skip', [ws(100, 8)], 'skip']),
-    ];
-    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+  test('skipped does NOT fire when skips are the usual rate (avg + margin)', () => {
+    // A and B skip every session; the latest 2 skips are not above average + margin.
+    const sections = [checkinSection([
+      { name: 'A', entries: ['skip', 'skip', 'skip'] },
+      { name: 'B', entries: ['skip', 'skip', 'skip'] },
+      { name: 'C', entries: [[ws(50, 8), ws(50, 8)], [ws(50, 8), ws(50, 8)], [ws(50, 8), ws(50, 8)]] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['A', 'B', 'C']);
     expect(r.detectors).not.toContain('skipped');
   });
 
-  test('day_skip: every tracked exercise skipped this session', () => {
-    const sections = [
-      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], 'skip']),
-      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], 'skip']),
-    ];
+  test('day_skip: a whole day skipped at the latest session', () => {
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], 'skip'] },
+    ])];
     const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
     expect(r.isRough).toBe(true);
     expect(r.detectors).toEqual(['skipped', 'day_skip']);
     expect(r.flagged.every(f => f.reasons.includes('day_skip'))).toBe(true);
+  });
+
+  test('day_skip fires independently of the skip trigger', () => {
+    // Whole day skipped at the latest column, but skips are within the usual rate
+    // (skipped is not raised) — day_skip must still fire on its own.
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: ['skip', [ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: ['skip', 'skip', 'skip'] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.detectors).toContain('day_skip');
+    expect(r.detectors).not.toContain('skipped');
   });
 });
 

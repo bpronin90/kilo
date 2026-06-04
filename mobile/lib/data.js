@@ -931,15 +931,19 @@ export function getLatestRepDropOff(sessionFlags) {
 //
 // Flags when the latest logged session looks "rough" so the UI can ask
 // "you okay?" and highlight the offending exercises. Four detectors:
-//   - skipped:     more tracked exercises skipped this session than usual
+//   - skipped:     more exercises skipped at the latest column than the
+//                  historical per-column average + margin (deriveSkipData),
+//                  with an absolute floor
 //   - volume_drop: reps collapsed >REP_DROP_THRESHOLD on ≥MIN_COLLAPSED_SETS
 //                  sets vs the exercise's baseline at that weight (a within-row
 //                  skipped set, rep_count 0, counts as a full collapse)
 //   - collapse:    reps fell apart within the latest session (computeRepDropOff)
-//   - day_skip:    every tracked exercise was skipped this session
+//   - day_skip:    a whole day was skipped at the latest column
+//                  (deriveSkipData().day_skips); independent of the skip trigger
 //
-// "Latest session" follows the existing positional convention (each tracked
-// exercise's most recent entry; see getLatestRepDropOff / classifyExerciseSessions).
+// The latest session is the deepest column, lastIdx = computeWeeksIn(sections) - 1,
+// matching the suppression key used by the persistence layer. Multi-day routines
+// share the existing positional-alignment limitation (see classifyExerciseSessions).
 // Pure; operates on parsed sections. Returns:
 //   { sessionIndex, isRough, detectors: string[],
 //     flagged: [{ normName, name, reasons: ('skip'|'volume_drop'|'collapse'|'day_skip')[] }],
@@ -947,6 +951,7 @@ export function getLatestRepDropOff(sessionFlags) {
 export const SESSION_CHECKIN_REP_DROP_THRESHOLD = 2; // reps lost vs baseline to call a set "collapsed"
 export const SESSION_CHECKIN_MIN_COLLAPSED_SETS = 2; // collapsed sets needed to flag a volume drop
 export const SESSION_CHECKIN_SKIP_FLOOR = 2;         // min skipped exercises before a skip trigger fires
+export const SESSION_CHECKIN_SKIP_MARGIN = 1;        // skips above the historical average to count as "more than usual"
 
 function _checkinTonnage(sets) {
   return (sets || []).reduce(
@@ -974,6 +979,10 @@ export function deriveSessionCheckIn(sections, trackedNames) {
   };
   if (!sections || !trackedNames || trackedNames.length === 0) return empty;
 
+  // Latest session index per the contract: the routine's deepest session column.
+  const sessionIndex = computeWeeksIn(sections) - 1;
+  if (sessionIndex < 0) return empty;
+
   const { exercises } = deriveWorkoutAnalytics(sections);
   const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
 
@@ -988,24 +997,25 @@ export function deriveSessionCheckIn(sections, trackedNames) {
   }
   if (assessments.length === 0) return empty;
 
-  // The latest session is the deepest column across tracked exercises.
-  const depth = Math.max(...assessments.map(a => a.allEntries.length));
-  const sessionIndex = depth - 1;
-
-  // ── Skip / day-skip triggers, relative to usual ──
-  // Skips per positional column; a latest-column skip count above the worst
-  // prior column (and above the floor) is "more than usual" — this naturally
-  // tolerates habitual or alternating skip patterns.
-  const skipByColumn = new Array(depth).fill(0);
-  for (const a of assessments) {
-    a.allEntries.forEach((e, i) => { if (e.skipped) skipByColumn[i]++; });
+  // ── Skip (detector 1) and whole-day skip (detector 4), via deriveSkipData ──
+  // Detector 1 fires when more exercises were skipped at the latest column than
+  // the historical per-column average by a margin (with an absolute floor).
+  // Detector 4 is independent: a whole day skipped at the latest column.
+  const skipData = deriveSkipData(sections);
+  const skipByIndex = {};
+  for (const s of skipData.exercise_skips) {
+    skipByIndex[s.session_index] = (skipByIndex[s.session_index] || 0) + 1;
   }
-  const latestSkipCount = skipByColumn[sessionIndex] || 0;
-  const maxPriorSkips = sessionIndex > 0 ? Math.max(...skipByColumn.slice(0, sessionIndex)) : 0;
-  const presentAtLatest = assessments.filter(a => a.allEntries[sessionIndex] !== undefined).length;
-  const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR && latestSkipCount > maxPriorSkips;
-  // A whole-day skip is only worth a check-in if the skip itself is unusual.
-  const dayFired = skipFired && presentAtLatest > 0 && latestSkipCount === presentAtLatest;
+  const latestSkipCount = skipByIndex[sessionIndex] || 0;
+  let baselineAvgSkips = 0;
+  if (sessionIndex > 0) {
+    let sum = 0;
+    for (let i = 0; i < sessionIndex; i++) sum += skipByIndex[i] || 0;
+    baselineAvgSkips = sum / sessionIndex;
+  }
+  const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
+    && latestSkipCount >= baselineAvgSkips + SESSION_CHECKIN_SKIP_MARGIN;
+  const dayFired = skipData.day_skips.some(d => d.session_index === sessionIndex);
 
   // ── Per-exercise volume_drop / collapse on the latest entry ──
   const detectorSet = new Set();
@@ -1029,10 +1039,8 @@ export function deriveSessionCheckIn(sections, trackedNames) {
     if (priorLogged.length === 0) continue;
 
     if (latest.skipped) {
-      if (skipFired || dayFired) {
-        addReason(a, 'skip');
-        if (dayFired) addReason(a, 'day_skip');
-      }
+      if (skipFired) addReason(a, 'skip');
+      if (dayFired) addReason(a, 'day_skip');
       continue;
     }
     const latestSets = latest.sets || [];
