@@ -67,9 +67,9 @@ export function getSessionTone(count) {
 // Deload-risk caption for a session-depth count. Zone boundaries (1 / 7 / 10)
 // mirror getSessionTone. The 10+ caption is fixed per the issue contract.
 export function getSessionZoneCaption(count) {
-  if (count >= 10) return 'Consider a deload week';
-  if (count >= 7) return 'Approaching deload';
-  if (count >= 1) return 'Building volume';
+  if (count >= 10) return 'Plan deload asap';
+  if (count >= 7) return 'Fatigue setting in';
+  if (count >= 1) return 'Cultivating mass';
   return 'No sessions logged';
 }
 
