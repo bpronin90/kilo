@@ -33,14 +33,49 @@ const REASON_GROUPS = [
 
 const OK_CHIPS = ['No time', 'Short session'];
 
-function deriveTitle(detectors) {
+function deriveTitle(detectors, flagged) {
   if (!detectors || detectors.length === 0) return 'You okay?';
+
+  // Group flagged exercise display names by their reason.
+  const byReason = {};
+  for (const f of (flagged || [])) {
+    for (const r of (f.reasons || [])) {
+      if (!byReason[r]) byReason[r] = [];
+      byReason[r].push(f.name);
+    }
+  }
+
+  // Produce a short comma-joined name list capped at 2, with "+N" overflow.
+  const nameList = (names) => {
+    if (!names || names.length === 0) return null;
+    const shown = names.slice(0, 2);
+    const rest = names.length - shown.length;
+    return shown.join(', ') + (rest > 0 ? ` +${rest}` : '');
+  };
+
   const parts = [];
-  if (detectors.includes('skipped')) parts.push('Exercises skipped');
-  if (detectors.includes('volume_drop') || detectors.includes('collapse')) parts.push('Big volume drop');
-  if (detectors.includes('day_skip')) parts.push('Whole day skipped');
+
+  if (detectors.includes('skipped')) {
+    const names = nameList(byReason['skip']);
+    parts.push(names ? `${names} skipped` : 'Exercises skipped');
+  }
+
+  if (detectors.includes('volume_drop') || detectors.includes('collapse')) {
+    const combined = [
+      ...(byReason['volume_drop'] || []),
+      ...(byReason['collapse'] || []),
+    ];
+    const unique = [...new Set(combined)];
+    const names = nameList(unique);
+    parts.push(names ? `Big drop on ${names}` : 'Big volume drop');
+  }
+
+  if (detectors.includes('day_skip')) {
+    parts.push('Whole day skipped');
+  }
+
   if (parts.length === 0) return 'You okay?';
-  return parts.join(' + ') + ' — you okay?';
+  return parts.join(' · ') + ' — you okay?';
 }
 
 export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose }) {
@@ -92,7 +127,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
 
   if (!checkInData) return null;
 
-  const title = deriveTitle(checkInData.detectors);
+  const title = deriveTitle(checkInData.detectors, checkInData.flagged);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
