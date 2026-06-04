@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.54.1 - 2026-06-03
+
+- Issue #258: Stopped preview OTA compatibility from breaking on every app
+  version bump by moving Expo runtime selection into `mobile/app.config.js`,
+  pinning preview builds/updates to a stable manual `PREVIEW_RUNTIME`, keeping
+  production on the stricter `appVersion` policy, wiring the preview EAS
+  profiles and OTA scripts to the preview runtime env, and updating the phone
+  runbook/current-state/testing docs to document the one-time rebuild and the
+  new manual runtime-bump rule.
+
 ## 0.54.0 - 2026-06-03
 
 - Issue #257: Gave completed deloads full editor parity with saved routines by
