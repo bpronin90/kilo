@@ -182,6 +182,10 @@ export function LogScreen({
         handleDoneOther();
         return true;
       }
+      if (viewingNoteId) {
+        setViewingNoteId(null);
+        return true;
+      }
       if (mode === 'edit') {
         handleDoneCurrent();
         return true;
@@ -195,7 +199,7 @@ export function LogScreen({
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
+  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
