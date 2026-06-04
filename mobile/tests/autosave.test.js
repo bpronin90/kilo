@@ -180,21 +180,33 @@ describe('stale-result guard: snapshot vs live-ref comparison', () => {
     expect(shouldApply).toBe(false);
   });
 
-  test('always applies result for new-note first save regardless of refs', () => {
+  test('new-note first save applies result when content unchanged', () => {
     const savedNoteId = 'new';
-    // Simulate ref having updated to the real ID after setEditingNoteId(result.id).
+    // After add() the ref advances to the real ID, so identity check uses 'new' bypass.
     const liveNoteIdRef = { current: 'wn_2026-06-04_123' };
-    const liveTextRef = { current: 'Bench 135x5 extra typed' };
+    const liveTextRef = { current: 'Bench 135x5' };
+    const liveTitleRef = { current: 'Push Day' };
     const snapshotText = 'Bench 135x5';
+    const snapshotTitle = 'Push Day';
 
-    // New-note path bypasses the snapshot check entirely.
-    const shouldApply =
-      savedNoteId === 'new' || (
-        liveNoteIdRef.current === savedNoteId &&
-        liveTextRef.current === snapshotText
-      );
+    const contentUnchanged = liveTextRef.current === snapshotText && liveTitleRef.current === snapshotTitle;
+    const identityUnchanged = savedNoteId === 'new' || liveNoteIdRef.current === savedNoteId;
 
-    expect(shouldApply).toBe(true);
+    expect(contentUnchanged && identityUnchanged).toBe(true);
+  });
+
+  test('new-note first save suppresses result when user typed more during add()', () => {
+    const savedNoteId = 'new';
+    const liveNoteIdRef = { current: 'wn_2026-06-04_123' };
+    const liveTextRef = { current: 'Bench 135x5\nOHP 95x5' }; // user kept typing
+    const liveTitleRef = { current: 'Push Day' };
+    const snapshotText = 'Bench 135x5';
+    const snapshotTitle = 'Push Day';
+
+    const contentUnchanged = liveTextRef.current === snapshotText && liveTitleRef.current === snapshotTitle;
+    const identityUnchanged = savedNoteId === 'new' || liveNoteIdRef.current === savedNoteId;
+
+    expect(contentUnchanged && identityUnchanged).toBe(false);
   });
 });
 

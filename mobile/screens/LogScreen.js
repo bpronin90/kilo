@@ -385,18 +385,14 @@ export function LogScreen({
       }
 
       if (result) {
-        if (!savedForId) {
-          // New note: always apply result since this was an explicit first save.
-          setWorkoutNoteTitle(result.title || '');
-          setWorkoutNoteText(result.raw_text || '');
-          setSaveSuccess('Saved!');
-        } else if (
-          currentIdRef.current === savedForId &&
+        const contentUnchanged =
           workoutNoteTextRef.current === snapshotText &&
-          workoutNoteTitleRef.current === snapshotTitle
-        ) {
-          // Existing note: only sync UI state when nothing has changed since save
-          // started — guards against in-flight edit races and post-switch stale writes.
+          workoutNoteTitleRef.current === snapshotTitle;
+        const identityUnchanged = !savedForId || currentIdRef.current === savedForId;
+        if (contentUnchanged && identityUnchanged) {
+          // Only sync UI state when note identity and content are unchanged since
+          // save started — guards in-flight edit races, post-switch stale writes,
+          // and first-save races on new notes alike.
           setWorkoutNoteTitle(result.title || '');
           setWorkoutNoteText(result.raw_text || '');
           setSaveSuccess('Saved!');
@@ -560,13 +556,16 @@ export function LogScreen({
         setSaveError('Save failed');
         return false;
       } else {
-        if (savedNoteId === 'new' || (
-          editingNoteIdRef.current === savedNoteId &&
+        const contentUnchanged =
           editingTextRef.current === snapshotText &&
-          editingTitleRef.current === snapshotTitle
-        )) {
-          // Apply result only when editing the same note with unchanged content.
-          // New-note path is always applied since it is an explicit first save.
+          editingTitleRef.current === snapshotTitle;
+        // For new notes savedNoteId is 'new' and the ref already advanced to the
+        // real ID, so skip the identity check and rely solely on content equality.
+        const identityUnchanged =
+          savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
+        if (contentUnchanged && identityUnchanged) {
+          // Only sync UI state when note identity and content are unchanged since
+          // save started — guards in-flight edit races on both new and existing notes.
           setEditingTitle(result.title || '');
           setEditingText(result.raw_text || '');
           setSaveSuccess('Saved!');
