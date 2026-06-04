@@ -107,12 +107,13 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   (`kilo_user_profile`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
   documents now also carry persisted `exercise_classifications`,
-  `skip_markers`, `attendance_flags`, and per-session
-  `rep_drop_off_flags` alongside tracked-lift and 1k-slot selections.
-  Rep-drop-off nudge dismissals are no longer persisted; they are ephemeral
-  screen-local state in Log. The legacy session key remains only a migration
-  source and the old single-note key remains both a migration source into the
-  notebook model and a backup-compatibility fallback
+  `skip_markers`, `attendance_flags`, and `session_checkins` alongside
+  tracked-lift and 1k-slot selections. The old `rep_drop_off_flags` surface is
+  no longer produced by the active save pipeline; any remaining reads are a
+  temporary compatibility shim until the Phase 2 UI cleanup removes them. The
+  legacy session key remains only a migration source and the old single-note
+  key remains both a migration source into the notebook model and a
+  backup-compatibility fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -206,7 +207,7 @@ No remote sync is involved.
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
-| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and per-session `rep_drop_off_flags` fields |
+| `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags` |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`); the latest `completed_at` record is the baseline for sessions-since-deload |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
@@ -313,7 +314,8 @@ recomputation at render time is permitted.
 | `exercise_classifications` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
 | `skip_markers` (`exercise_skips` + `day_skips`) | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `attendance_flags` | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
-| `rep_drop_off_flags` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Log inline nudges (read-only); Analytics may derive an equivalent live badge view from canonical sections | Log: No; Analytics badge path: allowed live recompute |
+| `session_checkins` | Session check-in response flow keyed by `sessionIndex` | Persisted on note document | Fatigue/session-check-in handling state | No |
+| `rep_drop_off_flags` | _Removed from active contract in issue `#264`_ | No longer produced by the active pipeline; legacy note documents may still carry stale values | Temporary compatibility reads only until Phase 2 removes them | N/A |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
@@ -340,11 +342,11 @@ recomputation at render time is permitted.
 │                                                                     │
 │  Produces on each save:                                             │
 │    • exercise_classifications  (via canonical layer, all sections)   │
-│    • rep_drop_off_flags        (via canonical layer, all sections)   │
 │    • skip_markers (exercise_skips + day_skips)  (current note only)  │
 │    • attendance_flags                           (current note only)  │
 │                                                                     │
 │  Does NOT produce:                                                  │
+│    • rep_drop_off_flags (removed from active contract in #264)       │
 │    • big_3_deltas (removed from active contract in #182)            │
 └─────────────────────────────────────────────────────────────────────┘
         │
@@ -373,19 +375,18 @@ recomputation at render time is permitted.
 
 ### Recomputation Rules
 
+`session_checkins` is persisted separately by the session check-in response
+flow and keyed by session index on the workout-note document.
+
 **Consumers MUST NOT recompute these fields:**
 - `exercise_classifications` — read from `workoutNote.exercise_classifications`
 - `skip_markers` — read from `workoutNote.skip_markers`
 - `attendance_flags` — read from `workoutNote.attendance_flags`
-- `rep_drop_off_flags` — read from `workoutNote.rep_drop_off_flags` unless the
-  consumer is explicitly deriving the live Analytics badge state from canonical
-  parsed sections as in issue `#193`
+- `session_checkins` — read from `workoutNote.session_checkins`
 
 **Consumers MAY recompute these fields (they have no persisted equivalent):**
 - Estimated 1RM, Kilo max, latest top weight, overload trend, and signal-row
   display casing via `deriveWorkoutNoteAnalytics()`
-- latest Analytics rep-drop-off badge state via
-  `deriveWorkoutNoteAnalytics()`
 - 1k total
 - Weight rolling averages, pace level, goal guidance
 - Weeks In, session count

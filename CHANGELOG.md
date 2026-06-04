@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.57.0 - 2026-06-04
+
+- Issue #264: Persisted workout-note `session_checkins` entries keyed by
+  session index, added round-trip and legacy-load coverage for that field, and
+  stopped populating the old `rep_drop_off_flags` surface so the legacy Log and
+  Analytics rep-drop-off chip/badge stay dark pending the Phase 2 UI cleanup.
+
 ## 0.56.2 - 2026-06-04
 
 - Issue #263: Added the `deriveSessionCheckIn(sections, trackedNames)` data-layer
