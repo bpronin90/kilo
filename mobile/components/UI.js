@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   sessionGaugeCount: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '900',
     color: Colors.text,
   },
