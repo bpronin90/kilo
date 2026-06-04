@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kilo",
     "slug": "kilo-native",
-    "version": "0.54.0",
+    "version": "0.54.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -32,9 +32,6 @@
       "enabled": true,
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     },
     "extra": {
       "eas": {
