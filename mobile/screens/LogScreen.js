@@ -89,6 +89,7 @@ export function LogScreen({
 
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
+  const [roughNoteId, setRoughNoteId] = useState(null);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -175,13 +176,20 @@ export function LogScreen({
 
   useEffect(() => {
     if (roughSessionIndex == null || roughFlaggedNames.size === 0) return;
+    if (roughNoteId !== currentId) {
+      setRoughFlaggedNames(new Set());
+      setRoughSessionIndex(null);
+      setRoughNoteId(null);
+      return;
+    }
     const checkins = currentNote?.session_checkins;
     if (checkins?.[roughSessionIndex]) {
       setRoughFlaggedNames(new Set());
       setRoughSessionIndex(null);
+      setRoughNoteId(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentNote?.session_checkins, roughSessionIndex]);
+  }, [currentNote?.session_checkins, roughSessionIndex, currentId]);
 
   // Debounced autosave for the current (existing) note while in edit mode.
   // New notes (no currentId) require an explicit first save to get an ID.
@@ -507,10 +515,12 @@ export function LogScreen({
     if (isRough && sessionIndex != null && !(checkins?.[sessionIndex])) {
       setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
       setRoughSessionIndex(sessionIndex);
+      setRoughNoteId(latestId);
       onCheckInPrompt?.();
     } else {
       setRoughFlaggedNames(new Set());
       setRoughSessionIndex(null);
+      setRoughNoteId(null);
     }
   };
 
@@ -1231,7 +1241,7 @@ export function LogScreen({
                             {section.exercises.map((ex, ei) => {
                               const exNormName = normalizeLiftName(ex.name);
                               const isTracked = !!trackedLifts[exNormName];
-                              const isFlagged = roughFlaggedNames.has(exNormName);
+                              const isFlagged = roughNoteId === currentId && roughFlaggedNames.has(exNormName);
                               return (
                               <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
                               <ExerciseBlock
