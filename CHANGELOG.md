@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.56.0 - 2026-06-04
+
+- Issue #261: Added safe debounced autosave for existing workout-note raw
+  editing with `Done` flushes, stale-result guards against in-flight overwrite
+  races, and the removal of manual save-button dependence for existing notes
+  while preserving explicit first-save behavior for brand-new routines. The
+  Log tab now keeps non-current routines and note-backed past deloads expanded
+  inline in place instead of jumping into a separate reader, fixes collapse
+  scroll jumps and inline action clipping, switches displayed Log/deload dates
+  to local-midnight parsing to prevent UTC off-by-one regressions, and adds an
+  opt-in `Edit deload dates` setting so past deload records can change their
+  saved date without breaking deload classification.
+
 ## 0.55.0 - 2026-06-04
 
 - Issue #260: Changed `More Routines` note-open behavior on the Log tab so

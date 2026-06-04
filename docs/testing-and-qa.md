@@ -241,6 +241,19 @@ retains non-test commands such as `npm run audit`.
   slots, multi-session count preservation, and session-view-visible mixed-entry
   comments after `buildSessionsFromNote()`
 
+### `mobile/tests/autosave.test.js`
+
+- focused autosave and persistence coverage for the Log-screen note-editing
+  flow
+- verifies the debounce pattern contract (reschedule, cancel, manual flush, and
+  no-op when no changes are pending)
+- verifies stale-result guards suppress older async save results when the user
+  keeps typing or switches routines before an in-flight save resolves, while
+  still allowing unchanged saves and new-note first saves to settle correctly
+- verifies storage-level persistence behavior for rapid note rewrites so autosave
+  updates converge to the latest content without duplicating or corrupting the
+  underlying note list
+
 ### `mobile/tests/weight-goal-ui.test.js`
 
 - rendered React Native screen coverage for `mobile/screens/WeightScreen.js`

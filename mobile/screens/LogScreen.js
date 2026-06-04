@@ -8,6 +8,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
@@ -18,6 +19,15 @@ import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
+const AUTOSAVE_DEBOUNCE_MS = 800;
+
+// Parse any ISO timestamp or YYYY-MM-DD string as local midnight so
+// toLocaleDateString() never shifts the date back one day for UTC- timezones.
+function localDate(str) {
+  if (!str) return new Date();
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
@@ -48,7 +58,8 @@ export function LogScreen({
   setWorkoutNoteTitle,
   isCollapsed,
   toggleCollapsed,
-  onSaveWorkout
+  onSaveWorkout,
+  deloadDateEditEnabled,
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -75,6 +86,8 @@ export function LogScreen({
   const [saveSuccess, setSaveSuccess] = useState('');
 
   const [viewingNoteId, setViewingNoteId] = useState(null);
+  const [deloadEditDate, setDeloadEditDate] = useState('');
+  const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -83,6 +96,23 @@ export function LogScreen({
   const deloadLastTapRef = useRef(0);
   const viewingNoteLastTapRef = useRef(0);
   const readScrollYRef = useRef(0);
+  const autosaveCurrentTimerRef = useRef(null);
+  const autosaveOtherTimerRef = useRef(null);
+
+  // Live-value refs — updated every render so async save callbacks can read the
+  // current state after an await without relying on stale closure captures.
+  const workoutNoteTextRef = useRef(workoutNoteText);
+  const workoutNoteTitleRef = useRef(workoutNoteTitle);
+  const currentIdRef = useRef(currentId);
+  const editingTextRef = useRef(editingText);
+  const editingTitleRef = useRef(editingTitle);
+  const editingNoteIdRef = useRef(editingNoteId);
+  workoutNoteTextRef.current = workoutNoteText;
+  workoutNoteTitleRef.current = workoutNoteTitle;
+  currentIdRef.current = currentId;
+  editingTextRef.current = editingText;
+  editingTitleRef.current = editingTitle;
+  editingNoteIdRef.current = editingNoteId;
 
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -100,7 +130,14 @@ export function LogScreen({
   };
 
   const handleViewOtherNote = (note) => {
-    setViewingNoteId(note.id);
+    const isCollapsing = viewingNoteId === note.id;
+    const scrollY = readScrollYRef.current;
+    setViewingNoteId(prev => (prev === note.id ? null : note.id));
+    if (isCollapsing) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
   };
 
   const handleEditViewedNote = () => {
@@ -108,6 +145,7 @@ export function LogScreen({
     setEditingNoteId(viewingNote.id);
     setEditingTitle(viewingNote.title || '');
     setEditingText(viewingNote.raw_text);
+    setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
     setSaveError('');
     setSaveSuccess('');
   };
@@ -131,6 +169,49 @@ export function LogScreen({
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  // Debounced autosave for the current (existing) note while in edit mode.
+  // New notes (no currentId) require an explicit first save to get an ID.
+  useEffect(() => {
+    if (mode !== 'edit' || !currentId || !hasUnsavedCurrent) return;
+    if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
+    autosaveCurrentTimerRef.current = setTimeout(async () => {
+      autosaveCurrentTimerRef.current = null;
+      await handleSave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveCurrentTimerRef.current) {
+        clearTimeout(autosaveCurrentTimerRef.current);
+        autosaveCurrentTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
+
+  // Debounced autosave for a non-current (existing) note while in edit mode.
+  useEffect(() => {
+    if (!editingNoteId || editingNoteId === 'new' || !hasUnsavedOther) return;
+    if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
+    autosaveOtherTimerRef.current = setTimeout(async () => {
+      autosaveOtherTimerRef.current = null;
+      await handleSaveOtherNote();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingText, editingTitle, editingNoteId, deloadEditDate]);
+
+  // Cancel pending autosave timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
+      if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -167,8 +248,12 @@ export function LogScreen({
     if (!editingNoteId) return false;
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
     if (!editingNote) return false;
-    return editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
-  }, [editingNoteId, editingNote, editingTitle, editingText]);
+    const textChanged = editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
+    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled
+      ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
+      : false;
+    return textChanged || dateChanged;
+  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -199,7 +284,7 @@ export function LogScreen({
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
+  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText, deloadEditDate]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
@@ -271,6 +356,12 @@ export function LogScreen({
       setSaveError('Workout notes are required');
       return;
     }
+    // Snapshot identity + content before the async operation so we can detect
+    // in-flight edit races (user kept typing) or routine switches that completed
+    // before this promise resolved.
+    const savedForId = currentId;
+    const snapshotText = workoutNoteText;
+    const snapshotTitle = workoutNoteTitle;
     setIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
@@ -318,9 +409,18 @@ export function LogScreen({
       }
 
       if (result) {
-        setWorkoutNoteTitle(result.title || '');
-        setWorkoutNoteText(result.raw_text || '');
-        setSaveSuccess('Saved!');
+        const contentUnchanged =
+          workoutNoteTextRef.current === snapshotText &&
+          workoutNoteTitleRef.current === snapshotTitle;
+        const identityUnchanged = !savedForId || currentIdRef.current === savedForId;
+        if (contentUnchanged && identityUnchanged) {
+          // Only sync UI state when note identity and content are unchanged since
+          // save started — guards in-flight edit races, post-switch stale writes,
+          // and first-save races on new notes alike.
+          setWorkoutNoteTitle(result.title || '');
+          setWorkoutNoteText(result.raw_text || '');
+          setSaveSuccess('Saved!');
+        }
         return true;
       } else {
         setSaveError('Save failed');
@@ -372,130 +472,135 @@ export function LogScreen({
     });
   };
 
-  const handleDoneCurrent = () => {
-    if (!hasUnsavedCurrent) {
-      exitCurrentEditor();
-      return;
+  const handleDoneCurrent = async () => {
+    // Cancel any pending debounced autosave before flushing manually.
+    if (autosaveCurrentTimerRef.current) {
+      clearTimeout(autosaveCurrentTimerRef.current);
+      autosaveCurrentTimerRef.current = null;
     }
 
     if (!currentId) {
+      // New note: prompt to discard; autosave doesn't apply until an ID exists.
+      if (!hasUnsavedCurrent) {
+        exitCurrentEditor();
+        return;
+      }
       Alert.alert(
         'Discard changes?',
         'You have not saved this new routine. Are you sure you want to discard it?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
+          {
+            text: 'Discard',
+            style: 'destructive',
             onPress: () => {
               exitCurrentEditor();
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
-            } 
+            }
           },
         ]
       );
-    } else {
-      Alert.alert(
-        'Unsaved Changes',
-        'Do you want to save your changes before leaving?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => {
-              exitCurrentEditor();
-              setWorkoutNoteText(currentNote.raw_text);
-              setWorkoutNoteTitle(currentNote.title || '');
-            } 
-          },
-          { 
-            text: 'Save', 
-            onPress: async () => {
-              const ok = await handleSave();
-              if (ok) exitCurrentEditor();
-            } 
-          },
-        ]
-      );
-    }
-  };
-
-  const handleDoneOther = () => {
-    if (!hasUnsavedOther) {
-      setEditingNoteId(null);
       return;
     }
 
+    // Existing note: flush any unsaved changes, then exit.
+    if (hasUnsavedCurrent) {
+      const ok = await handleSave();
+      if (!ok) return;
+    }
+    exitCurrentEditor();
+  };
+
+  const handleDoneOther = async () => {
+    // Cancel any pending debounced autosave before flushing manually.
+    if (autosaveOtherTimerRef.current) {
+      clearTimeout(autosaveOtherTimerRef.current);
+      autosaveOtherTimerRef.current = null;
+    }
+
     if (editingNoteId === 'new') {
+      // New note: prompt to discard; autosave doesn't apply until an ID exists.
+      if (!hasUnsavedOther) {
+        setEditingNoteId(null);
+        return;
+      }
       Alert.alert(
         'Discard changes?',
         'You have not saved this new routine. Are you sure you want to discard it?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => setEditingNoteId(null) 
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => setEditingNoteId(null)
           },
         ]
       );
-    } else {
-      Alert.alert(
-        'Unsaved Changes',
-        'Do you want to save your changes before leaving?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => setEditingNoteId(null) 
-          },
-          { 
-            text: 'Save', 
-            onPress: async () => {
-              const ok = await handleSaveOtherNote();
-              if (ok) setEditingNoteId(null);
-            } 
-          },
-        ]
-      );
+      return;
     }
+
+    // Existing note: flush any unsaved changes, then exit.
+    if (hasUnsavedOther) {
+      const ok = await handleSaveOtherNote();
+      if (!ok) return;
+    }
+    setEditingNoteId(null);
   };
 
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
     setEditingTitle(other.title || '');
     setEditingText(other.raw_text);
+    setDeloadEditDate(other.saved_at ? other.saved_at.slice(0, 10) : '');
     setSaveError('');
     setSaveSuccess('');
   };
 
   const handleSaveOtherNote = async () => {
     if (noteIsSaving) return;
+    const savedNoteId = editingNoteId;
+    const snapshotText = editingText;
+    const snapshotTitle = editingTitle;
     setNoteIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
     try {
       let result;
-      const titleToSave = editingTitle || 'Untitled Routine';
+      let titleToSave = editingTitle || 'Untitled Routine';
+      // Deload records must always carry the classification prefix.
+      // Re-apply it if somehow lost (defence against future code paths).
+      if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
+        titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
+      }
       if (editingNoteId === 'new') {
         result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
       } else {
-        result = await update(editingNoteId, { 
-          title: titleToSave,
-          raw_text: editingText 
-        });
+        const patch = { title: titleToSave, raw_text: editingText };
+        if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
+          patch.saved_at = new Date(deloadEditDate).toISOString();
+        }
+        result = await update(editingNoteId, patch);
       }
       if (!result) {
         setSaveError('Save failed');
         return false;
       } else {
-        setEditingTitle(result.title || '');
-        setEditingText(result.raw_text || '');
-        setSaveSuccess('Saved!');
+        const contentUnchanged =
+          editingTextRef.current === snapshotText &&
+          editingTitleRef.current === snapshotTitle;
+        // For new notes savedNoteId is 'new' and the ref already advanced to the
+        // real ID, so skip the identity check and rely solely on content equality.
+        const identityUnchanged =
+          savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
+        if (contentUnchanged && identityUnchanged) {
+          // Only sync UI state when note identity and content are unchanged since
+          // save started — guards in-flight edit races on both new and existing notes.
+          setEditingTitle(result.title || '');
+          setEditingText(result.raw_text || '');
+          setSaveSuccess('Saved!');
+        }
         return true;
       }
     } catch {
@@ -566,6 +671,15 @@ export function LogScreen({
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
     const doSwitch = async () => {
+      // Cancel pending autosaves so they don't write to the wrong note after switch.
+      if (autosaveCurrentTimerRef.current) {
+        clearTimeout(autosaveCurrentTimerRef.current);
+        autosaveCurrentTimerRef.current = null;
+      }
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
       await selectCurrent(id);
       setEditingNoteId(null);
       setViewingNoteId(null);
@@ -582,9 +696,17 @@ export function LogScreen({
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Switch Anyway', style: 'destructive', onPress: doSwitch },
-          { 
-            text: 'Save & Switch', 
+          {
+            text: 'Save & Switch',
             onPress: async () => {
+              if (autosaveCurrentTimerRef.current) {
+                clearTimeout(autosaveCurrentTimerRef.current);
+                autosaveCurrentTimerRef.current = null;
+              }
+              if (autosaveOtherTimerRef.current) {
+                clearTimeout(autosaveOtherTimerRef.current);
+                autosaveOtherTimerRef.current = null;
+              }
               let ok = false;
               if (editingNoteId) {
                 ok = await handleSaveOtherNote();
@@ -592,7 +714,7 @@ export function LogScreen({
                 ok = await handleSave();
               }
               if (ok) await doSwitch();
-            } 
+            }
           },
         ]
       );
@@ -726,6 +848,32 @@ export function LogScreen({
     }
   };
 
+  const handleDeloadCollapsedToggle = () => {
+    const wasExpanded = !deloadCollapsed;
+    const scrollY = readScrollYRef.current;
+    setDeloadCollapsed(c => !c);
+    if (wasExpanded) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
+  };
+
+  const handleToggleLegacyDeload = (id) => {
+    const isExpanded = expandedDeloads.has(id);
+    const scrollY = readScrollYRef.current;
+    setExpandedDeloads(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    if (isExpanded) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
+  };
+
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
       onPress={handleDoneCurrent}
@@ -739,7 +887,6 @@ export function LogScreen({
 
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit' || deloadMode === 'edit';
-  const isViewingOther = !!viewingNoteId && !isEditing;
 
   useEffect(() => {
     if (editingNoteId) {
@@ -752,7 +899,7 @@ export function LogScreen({
       <ScreenShell
         ref={readScrollRef}
         onScroll={handleReadScroll}
-        style={isEditing || isViewingOther ? { display: 'none' } : { flex: 1 }}
+        style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
         subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
         headerRight={headerRight}
@@ -799,11 +946,11 @@ export function LogScreen({
                 <>
                   <View style={styles.mirrorContainer}>
                     <Card style={styles.currentRoutineCard}>
-                      <Pressable onPress={() => setDeloadCollapsed(c => !c)} style={styles.otherNoteHeader}>
+                      <Pressable onPress={handleDeloadCollapsedToggle} style={styles.otherNoteHeader}>
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
                           {deloadNote?.saved_at && (
-                            <Text style={styles.otherNoteSub}>{deloadNote.saved_at.slice(0, 10)}</Text>
+                            <Text style={styles.otherNoteSub}>{localDate(deloadNote.saved_at).toLocaleDateString()}</Text>
                           )}
                         </View>
                         <Pressable
@@ -882,12 +1029,13 @@ export function LogScreen({
                 ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
                   if (item.type === 'note') {
                     const note = item.data;
-                    const dateStr = note.title.startsWith(DELOAD_NOTE_PREFIX)
+                    const rawDate = note.title.startsWith(DELOAD_NOTE_PREFIX)
                       ? note.title.slice(DELOAD_NOTE_PREFIX.length)
                       : note.saved_at.slice(0, 10);
+                    const dateStr = rawDate ? localDate(rawDate).toLocaleDateString() : '';
                     return (
                       <Card key={note.id} style={styles.otherNoteCard}>
-                        <Pressable onPress={() => handleOpenOtherNote(note)} style={styles.otherNoteHeader}>
+                        <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
                           <View style={styles.otherNoteInfo}>
                             <Text style={styles.otherNoteTitle}>{note.title}</Text>
                             <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
@@ -910,25 +1058,65 @@ export function LogScreen({
                             <Text style={styles.pastDeloadDeleteText}>Delete</Text>
                           </Pressable>
                         </Pressable>
+                        {viewingNoteId === note.id && viewingNote && (
+                          <>
+                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                              <Text style={styles.editHint}>Double-tap to edit</Text>
+                              {viewingNoteDayGroups.map((group, gi) => (
+                                <View key={`deload-view-day-${gi}`}>
+                                  {group.heading && (
+                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
+                                      {group.heading}
+                                    </WorkoutHeading>
+                                  )}
+                                  {group.sections.map((section, si) => (
+                                    <View key={`deload-view-section-${gi}-${si}`}>
+                                      {section.subheading && (
+                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
+                                      )}
+                                      {section.exercises.map((ex, ei) => (
+                                        <ExerciseBlock key={`deload-view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
+                                          {ex.rows.map((row, ri) => (
+                                            <SetLine key={`deload-view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                                          ))}
+                                          {ex.unparsed_rows.map((u, ui) => (
+                                            <Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
+                                          ))}
+                                        </ExerciseBlock>
+                                      ))}
+                                    </View>
+                                  ))}
+                                </View>
+                              ))}
+                              {!viewingNoteDayGroups.length && (
+                                <Text selectable={true} style={styles.emptyText}>Deload note is empty.</Text>
+                              )}
+                            </Pressable>
+                            <View style={styles.inlineActions}>
+                              <Button
+                                onPress={() => handleOpenOtherNote(note)}
+                                title="Edit deload record"
+                                style={styles.switchButton}
+                                textStyle={styles.switchButtonText}
+                              />
+                            </View>
+                          </>
+                        )}
                       </Card>
                     );
                   }
                   // Legacy history record (no linked workout note) — read-only inline expand
                   const record = item.data;
                   const isExpanded = expandedDeloads.has(record.id);
-                  const dateStr = record.completed_at.slice(0, 10);
-                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const dateStr = localDate(record.completed_at).toLocaleDateString();
+                  const generatedStr = record.generated_at ? localDate(record.generated_at).toLocaleDateString() : null;
                   const title = generatedStr && generatedStr !== dateStr
                     ? `Deload ${generatedStr}`
                     : `Deload ${dateStr}`;
                   return (
                     <Card key={record.id} style={styles.otherNoteCard}>
                       <Pressable
-                        onPress={() => setExpandedDeloads(prev => {
-                          const next = new Set(prev);
-                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
-                          return next;
-                        })}
+                        onPress={() => handleToggleLegacyDeload(record.id)}
                         style={styles.otherNoteHeader}
                       >
                         <View style={styles.otherNoteInfo}>
@@ -1079,7 +1267,7 @@ export function LogScreen({
                           <View style={styles.otherNoteInfo}>
                             <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
                             {other.updated_at && (
-                              <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
+                              <Text style={styles.otherNoteSub}>{localDate(other.updated_at).toLocaleDateString()}</Text>
                             )}
                           </View>
                           <Pressable
@@ -1090,6 +1278,56 @@ export function LogScreen({
                             <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
                           </Pressable>
                         </Pressable>
+                        {viewingNoteId === other.id && viewingNote && (
+                          <>
+                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                              <Text style={styles.editHint}>Double-tap to edit</Text>
+                              {viewingNoteDayGroups.map((group, gi) => (
+                                <View key={`view-day-${gi}`}>
+                                  {group.heading && (
+                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
+                                      {group.heading}
+                                    </WorkoutHeading>
+                                  )}
+                                  {group.sections.map((section, si) => (
+                                    <View key={`view-section-${gi}-${si}`}>
+                                      {section.subheading && (
+                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
+                                      )}
+                                      {section.exercises.map((ex, ei) => (
+                                        <ExerciseBlock key={`view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
+                                          {ex.rows.map((row, ri) => (
+                                            <SetLine key={`view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                                          ))}
+                                          {ex.unparsed_rows.map((u, ui) => (
+                                            <Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
+                                          ))}
+                                        </ExerciseBlock>
+                                      ))}
+                                    </View>
+                                  ))}
+                                </View>
+                              ))}
+                              {!viewingNoteDayGroups.length && (
+                                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
+                              )}
+                            </Pressable>
+                            <View style={styles.inlineActions}>
+                              <Button
+                                onPress={handleEditViewedNote}
+                                title="Edit routine"
+                                style={styles.switchButton}
+                                textStyle={styles.switchButtonText}
+                              />
+                              <Button
+                                onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+                                title="Delete routine"
+                                style={styles.deleteButton}
+                                textStyle={styles.deleteButtonText}
+                              />
+                            </View>
+                          </>
+                        )}
                       </Card>
                     ))}
                   </>
@@ -1107,88 +1345,11 @@ export function LogScreen({
       </ScreenShell>
 
       <ScreenShell
-        style={isViewingOther ? { flex: 1 } : { display: 'none' }}
-        title={viewingNote?.title || 'Untitled Routine'}
-        subtitle="Routine"
-        headerRight={
-          <Pressable onPress={() => setViewingNoteId(null)} style={styles.modeToggle}>
-            <Text style={styles.modeToggleText}>Done</Text>
-          </Pressable>
-        }
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.mirrorContainer}>
-          <Card style={styles.currentRoutineCard}>
-            <View style={styles.otherNoteHeader}>
-              <View style={styles.otherNoteInfo}>
-                <Text style={styles.currentNoteTitle}>{viewingNote?.title || 'Untitled Routine'}</Text>
-                {viewingNote?.updated_at && (
-                  <Text style={styles.otherNoteSub}>{new Date(viewingNote.updated_at).toLocaleDateString()}</Text>
-                )}
-              </View>
-              <Pressable
-                onPress={handleEditViewedNote}
-                style={styles.inlineSwitchButton}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              >
-                <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-              <Text style={styles.editHint}>Double-tap to edit</Text>
-              {viewingNoteDayGroups.map((group, gi) => (
-                <View key={`day-${gi}`}>
-                  {group.heading && (
-                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
-                      {group.heading}
-                    </WorkoutHeading>
-                  )}
-                  {group.sections.map((section, si) => (
-                    <View key={`section-${gi}-${si}`}>
-                      {section.subheading && (
-                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                      )}
-                      {section.exercises.map((ex, ei) => (
-                        <ExerciseBlock key={`ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                          {ex.rows.map((row, ri) => (
-                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                          ))}
-                          {ex.unparsed_rows.map((u, ui) => (
-                            <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
-                          ))}
-                        </ExerciseBlock>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-              {!viewingNoteDayGroups.length && (
-                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
-              )}
-            </Pressable>
-          </Card>
-        </View>
-        {viewingNoteId && (
-          <Button
-            onPress={() => handleSwitchCurrent(viewingNoteId)}
-            title="Set as current routine"
-            style={styles.switchButton}
-            textStyle={styles.switchButtonText}
-          />
-        )}
-        <Button
-          onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-          title="Delete routine"
-          style={styles.deleteButton}
-          textStyle={styles.deleteButtonText}
-        />
-      </ScreenShell>
-
-      <ScreenShell
         ref={editorScrollRef}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadMode === 'edit' ? 'Deload Week' :
+          (editingNoteId && isEditingDeloadNote) ? 'Deload record' :
           editingNoteId ? (editingTitle || 'Untitled Routine') :
           (workoutNoteTitle || 'Untitled Routine')
         }
@@ -1238,6 +1399,9 @@ export function LogScreen({
         ) : (
           <View style={styles.editContainer}>
             <Card>
+              {/* Title input is hidden for deload records: their title encodes the
+                  classification prefix "Deload · " and must not be freely edited.
+                  Date changes go through the DateTimePicker which keeps the prefix intact. */}
               {!isEditingDeloadNote && (
                 <TextInput
                   value={editingNoteId ? editingTitle : workoutNoteTitle}
@@ -1247,6 +1411,44 @@ export function LogScreen({
                   style={[styles.input, styles.titleInput]}
                 />
               )}
+              {isEditingDeloadNote && deloadDateEditEnabled && (
+                <>
+                  <Text style={styles.inputLabel}>Date</Text>
+                  <Pressable
+                    style={[styles.input, styles.dateInput]}
+                    onPress={() => setShowDeloadDatePicker(true)}
+                    accessibilityLabel="Deload date"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
+                  </Pressable>
+                  {showDeloadDatePicker && (
+                    <DateTimePicker
+                      value={(() => {
+                        if (deloadEditDate) {
+                          const [y, m, d] = deloadEditDate.split('-').map(Number);
+                          return new Date(y, m - 1, d);
+                        }
+                        return new Date();
+                      })()}
+                      mode="date"
+                      display="default"
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        setShowDeloadDatePicker(false);
+                        if (selectedDate) {
+                          const y = selectedDate.getFullYear();
+                          const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const dy = String(selectedDate.getDate()).padStart(2, '0');
+                          const newDateStr = `${y}-${mo}-${dy}`;
+                          setDeloadEditDate(newDateStr);
+                          setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
+                        }
+                      }}
+                    />
+                  )}
+                </>
+              )}
               <TextInput
                 value={editingNoteId ? editingText : workoutNoteText}
                 onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
@@ -1255,12 +1457,16 @@ export function LogScreen({
                 multiline
                 style={[styles.input, styles.editorInput]}
               />
-              <Button
-                onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                title={saveSuccess ? 'Saved!' : 'Save changes'}
-                disabled={editingNoteId ? noteIsSaving : isSaving}
-                style={styles.saveButton}
-              />
+              {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
+                <Button
+                  onPress={editingNoteId ? handleSaveOtherNote : handleSave}
+                  title="Save"
+                  disabled={editingNoteId ? noteIsSaving : isSaving}
+                  style={styles.saveButton}
+                />
+              ) : saveSuccess ? (
+                <Text style={styles.autosaveIndicator}>{saveSuccess}</Text>
+              ) : null}
             </Card>
             {editingNoteId && !isEditingDeloadNote && (
               <Button
@@ -1402,6 +1608,32 @@ const styles = StyleSheet.create({
   otherNoteCard: {
     padding: 0,
     overflow: 'hidden',
+  },
+  inlineActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  autosaveIndicator: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'right',
+    marginTop: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  dateInput: {
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  dateInputText: {
+    fontSize: 16,
+    color: Colors.text,
   },
   otherNoteHeader: {
     flexDirection: 'row',

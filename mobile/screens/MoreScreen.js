@@ -11,7 +11,7 @@ import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
 
-export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, onUpdateFatigueMultiplier, weightDateEditEnabled, onUpdateWeightDateEditEnabled }) {
+export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, onUpdateFatigueMultiplier, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const [activeView, setActiveView] = useState('menu');
 
   useEffect(() => {
@@ -59,6 +59,8 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
         onUpdate={onUpdateFatigueMultiplier}
         weightDateEditEnabled={weightDateEditEnabled}
         onUpdateWeightDateEditEnabled={onUpdateWeightDateEditEnabled}
+        deloadDateEditEnabled={deloadDateEditEnabled}
+        onUpdateDeloadDateEditEnabled={onUpdateDeloadDateEditEnabled}
       />
     );
   }
@@ -462,7 +464,7 @@ function BackupScreen({ onBack, onExport, onImport }) {
   );
 }
 
-function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled }) {
+function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const handleIncrement = () => onUpdate(Math.round((multiplier + 0.01) * 100) / 100);
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
@@ -509,6 +511,22 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
             value={!!weightDateEditEnabled}
             onValueChange={onUpdateWeightDateEditEnabled}
             accessibilityLabel="Edit weigh-in dates"
+            accessibilityRole="switch"
+          />
+        </View>
+      </Card>
+
+      <SectionTitle>Workout Notes</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Edit deload dates</Text>
+            <Text style={styles.settingHelp}>Allow changing the logged date on past deload records</Text>
+          </View>
+          <Switch
+            value={!!deloadDateEditEnabled}
+            onValueChange={onUpdateDeloadDateEditEnabled}
+            accessibilityLabel="Edit deload dates"
             accessibilityRole="switch"
           />
         </View>

@@ -161,26 +161,29 @@ The real native app path now has a modular React Native shell:
   button in the current routine card header row (using the same
   `inlineSwitchButton` style as the `Set Current` button on other routine
   cards), and a double-tap on the rendered note body as an alternative
-  edit affordance, where
-  the rendered body remains scroll-first and supports partial text selection,
-  and where entering raw edit from a scrolled rendered note keeps the editor
-  aligned to that same approximate scroll position. Explicit `Save` actions
-  persist raw-note edits
-  directly through the current workout-note store, keep the editor open, and
-  show a transient `Saved!` button confirmation, exit prompts so leaving an
-  editor with unsaved changes via `Done` or Android back asks to discard a
-  never-saved note or to save/discard an existing note, and for the current
-  routine specifically exiting raw edit now returns consistently to the top of
-  the rendered note as the accepted fallback behavior, a bottom `More Routines`
-  list that keeps each non-current routine collapsed to a compact row that now
-  opens into its own rendered read view first, with the same header-level
-  `Edit` affordance and double-tap-to-edit body behavior used by the current
-  routine plus inline `Set as current routine`, `Delete routine`, and
-  `Done` controls around that full-screen read surface, alongside routine
-  create/rename/delete controls with confirmation and current-selection cleanup
-  guardrails; switching the current workout now requires explicit confirmation,
-  and offers a save-and-switch or
-  switch-anyway choice when there are unsaved edits. The same screen now also
+  edit affordance, where the rendered body remains scroll-first and supports
+  partial text selection, and where entering raw edit from a scrolled rendered
+  note keeps the editor aligned to that same approximate scroll position.
+  Existing saved routines now autosave raw-note edits through the current
+  workout-note store with an 800 ms debounce plus an immediate `Done` flush,
+  while stale-result guards prevent in-flight saves from overwriting newer
+  typing or cross-routine switches; only never-saved routines still keep an
+  explicit `Save` button because autosave does not begin until a storage id
+  exists. Existing-note editors replace the old save button with a muted
+  transient `Saved!` whisper, and leaving an editor via `Done` or Android back
+  still asks to discard a never-saved note while existing notes save and exit
+  without the old save/discard prompt. For the current routine specifically,
+  exiting raw edit now returns consistently to the top of the rendered note as
+  the accepted fallback behavior. A bottom `More Routines` list keeps each
+  non-current routine collapsed to a compact row that now expands inline in
+  place rather than jumping to a dedicated full-screen reader; the expanded
+  view reuses the same rendered-note body and double-tap-to-edit affordance as
+  the current routine and keeps inline `Set as current routine`, `Edit
+  routine`, and `Delete routine` actions inside the expanded card. Routine
+  create/rename/delete controls still keep confirmation and current-selection
+  cleanup guardrails; switching the current workout now requires explicit
+  confirmation, and offers a save-and-switch or switch-anyway choice when
+  there are unsaved edits. The same screen now also
   includes a `Routine | Deload` segmented toggle so the user can switch
   between the canonical routine note and a separate generated deload note. The
   Deload view reads and writes only the separate deload-note storage path,
@@ -194,9 +197,14 @@ The real native app path now has a modular React Native shell:
   session count) behind a confirm dialog, dual-writes that completion into the
   workout-notes store as a dated `Deload · YYYY-MM-DD` note, and renders a
   `Past deloads` list that now splits behavior by record type: note-backed
-  deloads open in the same full-screen editor flow used by saved routines and
-  delete from both stores together, while pre-#257 history-only deloads remain
-  visible as read-only inline expandable cards with history-only delete.
+  deloads expand inline in place like saved routines, expose inline edit/delete
+  affordances, and delete from both stores together, while pre-#257
+  history-only deloads remain visible as read-only inline expandable cards with
+  history-only delete. A persisted `Edit deload dates` toggle under More >
+  Settings optionally exposes a date picker while editing note-backed past
+  deloads; when enabled, changing the date writes through `saved_at`, updates
+  the rendered completion subtitle, and preserves the `Deload · ` title prefix
+  invariant so deload records cannot silently reclassify into normal routines.
   Deleting any past deload recomputes the sessions-since-deload clock off the
   remaining history (resetting to the absolute session count when none remain). The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
@@ -271,8 +279,10 @@ The real native app path now has a modular React Native shell:
   through to tab-level navigation, and the Settings & Algorithm screen
   now also includes a `Weight Logging` section with an `Edit weigh-in dates`
   switch that governs whether the Weight tab exposes date controls for new and
-  existing weigh-ins,
-  exposes a persisted fatigue-multiplier stepper plus reset control. The
+  existing weigh-ins, plus a `Workout Notes` section with an `Edit deload
+  dates` switch that governs whether past deload records expose the opt-in
+  date picker on the Log tab. The same screen also exposes a persisted
+  fatigue-multiplier stepper plus reset control. The
   `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:
   height with ft/in or cm entry mapped to persisted `height_cm`, date of
@@ -378,6 +388,7 @@ The real native app path now has a modular React Native shell:
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
   weight-date-edit setting under `kilo_weight_date_edit_enabled`, a separate
+  deload-date-edit setting under `kilo_deload_date_edit_enabled`, a separate
   deload-note record under `kilo_workout_deload_note`, a completed
   deload history under `kilo_workout_deload_history`, note-backed completed
   deload records in `kilo_workout_notes` linked from history via `note_id`, a global
@@ -456,10 +467,12 @@ Home and Analytics tabs now derive workout activity consistently from the
 currently selected workout note in the same multi-note store used by the Log
 screen, and the Log flow now keeps the selected current routine in the full
 parsed-workout view while rendering every non-current routine as a compact row
-in the bottom `More Routines` list, where it can be reopened in a dedicated
-raw-note editor or promoted directly to the current workout through an
-explicit confirmation step that also preserves any pending draft before
-switching. The local backup/import path
+in the bottom `More Routines` list, where it can be expanded inline as a
+rendered read view, edited from there, or promoted directly to the current
+workout through an explicit confirmation step that also preserves any pending
+draft before switching. The same Log flow now autosaves edits to existing
+saved routines and note-backed past deloads while preserving explicit-save
+behavior only for never-saved notes. The local backup/import path
 also now preserves multiple
 titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
