@@ -1394,6 +1394,19 @@ describe('deriveSessionCheckIn', () => {
     expect(r.detectors).not.toContain('skipped');
   });
 
+  test('skipped does NOT fire at the avg + margin boundary (strict >)', () => {
+    // Per-column skip counts [1, 1, 2]: avg(1,1) = 1, + margin 1 = 2, latest 2 →
+    // exactly at the threshold, must not fire (needs to exceed it).
+    const sections = [checkinSection([
+      { name: 'A', entries: ['skip', [ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'B', entries: [[ws(100, 8), ws(100, 8)], 'skip', 'skip'] },
+      { name: 'C', entries: [[ws(50, 8), ws(50, 8)], [ws(50, 8), ws(50, 8)], [ws(50, 8), ws(50, 8)]] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['A', 'B', 'C']);
+    expect(r.detectors).not.toContain('skipped');
+    expect(r.isRough).toBe(false);
+  });
+
   test('day_skip: a whole day skipped at the latest session', () => {
     const sections = [checkinSection([
       { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], 'skip'] },

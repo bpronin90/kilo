@@ -1014,7 +1014,7 @@ export function deriveSessionCheckIn(sections, trackedNames) {
     baselineAvgSkips = sum / sessionIndex;
   }
   const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
-    && latestSkipCount >= baselineAvgSkips + SESSION_CHECKIN_SKIP_MARGIN;
+    && latestSkipCount > baselineAvgSkips + SESSION_CHECKIN_SKIP_MARGIN;
   const dayFired = skipData.day_skips.some(d => d.session_index === sessionIndex);
 
   // ── Per-exercise volume_drop / collapse on the latest entry ──
