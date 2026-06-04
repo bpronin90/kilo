@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.56.2 - 2026-06-04
+
+- Issue #263: Added the `deriveSessionCheckIn(sections, trackedNames)` data-layer
+  detector for rough latest sessions, combining skip-rate, whole-day-skip,
+  rep-collapse, and intra-session collapse signals into a single pure result
+  shape for the upcoming fatigue/session-check-in flow.
+
 ## 0.56.1 - 2026-06-04
 
 - Issue #262: Fixed weighted workout-row parsing so within-row skipped-set
