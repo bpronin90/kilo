@@ -101,7 +101,7 @@ export function SessionGauge({ count, total }) {
         {total != null && (
           <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
             <Text style={styles.sessionGaugeLabel}>Total</Text>
-            <Text style={styles.sessionGaugeCount}>{total}</Text>
+            <Text style={styles.sessionGaugeTotalCount}>{total}</Text>
           </View>
         )}
       </View>
@@ -362,6 +362,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '900',
     color: Colors.text,
+  },
+  sessionGaugeTotalCount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textMuted,
   },
   sessionGaugeCountRow: {},
   sessionGaugeTotalStat: {},
