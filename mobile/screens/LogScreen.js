@@ -21,6 +21,14 @@ import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } fro
 const DELOAD_NOTE_PREFIX = 'Deload · ';
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
+// Parse any ISO timestamp or YYYY-MM-DD string as local midnight so
+// toLocaleDateString() never shifts the date back one day for UTC- timezones.
+function localDate(str) {
+  if (!str) return new Date();
+  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
 // The deload format line "Name: weight lbs SxR" still parses via _DELOAD_RE.
@@ -937,7 +945,7 @@ export function LogScreen({
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
                           {deloadNote?.saved_at && (
-                            <Text style={styles.otherNoteSub}>{new Date(deloadNote.saved_at).toLocaleDateString()}</Text>
+                            <Text style={styles.otherNoteSub}>{localDate(deloadNote.saved_at).toLocaleDateString()}</Text>
                           )}
                         </View>
                         <Pressable
@@ -1019,8 +1027,7 @@ export function LogScreen({
                     const rawDate = note.title.startsWith(DELOAD_NOTE_PREFIX)
                       ? note.title.slice(DELOAD_NOTE_PREFIX.length)
                       : note.saved_at.slice(0, 10);
-                    const parsedDate = new Date(rawDate);
-                    const dateStr = !isNaN(parsedDate) ? parsedDate.toLocaleDateString() : rawDate;
+                    const dateStr = rawDate ? localDate(rawDate).toLocaleDateString() : '';
                     return (
                       <Card key={note.id} style={styles.otherNoteCard}>
                         <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
@@ -1096,8 +1103,8 @@ export function LogScreen({
                   // Legacy history record (no linked workout note) — read-only inline expand
                   const record = item.data;
                   const isExpanded = expandedDeloads.has(record.id);
-                  const dateStr = new Date(record.completed_at).toLocaleDateString();
-                  const generatedStr = record.generated_at ? new Date(record.generated_at).toLocaleDateString() : null;
+                  const dateStr = localDate(record.completed_at).toLocaleDateString();
+                  const generatedStr = record.generated_at ? localDate(record.generated_at).toLocaleDateString() : null;
                   const title = generatedStr && generatedStr !== dateStr
                     ? `Deload ${generatedStr}`
                     : `Deload ${dateStr}`;
@@ -1255,7 +1262,7 @@ export function LogScreen({
                           <View style={styles.otherNoteInfo}>
                             <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
                             {other.updated_at && (
-                              <Text style={styles.otherNoteSub}>{new Date(other.updated_at).toLocaleDateString()}</Text>
+                              <Text style={styles.otherNoteSub}>{localDate(other.updated_at).toLocaleDateString()}</Text>
                             )}
                           </View>
                           <Pressable
