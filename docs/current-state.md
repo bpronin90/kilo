@@ -44,11 +44,13 @@ For physical-device packaging:
      `preview` channel; publish iOS OTA updates with
      `npm --prefix mobile run update:ios:preview`. Live on-device iOS delivery
      is not yet verified end to end (deferred pending an iOS build, issue #63).
-   - The runtime boundary is enforced via `runtimeVersion.policy: "appVersion"`
-     (runtime version = `version` in `app.json`). OTA updates apply to any
-     installed build with the same version. A new native build is required
-     when: a native module changes, a native `app.json` field changes, or the
-     `version` is bumped.
+   - The preview runtime boundary is a stable manual string (`preview-1`)
+     set in `mobile/app.config.js` when `APP_ENV=preview`. OTA updates apply
+     to any installed preview build sharing that runtime string. App version
+     bumps do not create a new OTA boundary. A new native build is required
+     only when: a native module changes, a native `app.json` field changes, or
+     `PREVIEW_RUNTIME` in `mobile/app.config.js` is deliberately bumped.
+     Production builds continue to use `runtimeVersion.policy: "appVersion"`.
 
 The shipped prototype branding now uses the approved Direction 3 Kilo mark and
 wordmark treatment in the main Home header and the More screen footer instead of
@@ -632,8 +634,13 @@ app under `mobile/` is the only device-packaging path.
 
 The native Expo app uses plain `expo-updates` for Android preview OTA delivery.
 Preview builds check the `preview` EAS Update channel on launch and can accept
-JavaScript and bundled-asset updates without reinstalling the APK, as long as
-the installed build shares the same `runtimeVersion` (`appVersion` policy).
+JavaScript and bundled-asset updates without reinstalling the APK. The preview
+runtime is a stable manual string (`preview-1`) defined in `mobile/app.config.js`
+and is not tied to `expo.version`; app version bumps do not force a rebuild or
+break OTA delivery. A rebuild is only required when a native module changes, a
+native `app.json` field changes, or `PREVIEW_RUNTIME` in `mobile/app.config.js`
+is deliberately bumped. Production builds continue to use
+`runtimeVersion.policy: "appVersion"`.
 
 Signed OTA updates are not in use. `mobile/app.json` no longer configures
 `codeSigningCertificate` or `codeSigningMetadata`, `mobile/package.json` no

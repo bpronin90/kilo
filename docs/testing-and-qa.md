@@ -30,9 +30,10 @@ iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
 (deferred pending an iOS build, issue #63).
 
 Use OTA publish only for JavaScript and asset changes. Any native-affecting
-change still requires a fresh Android build because `mobile/app.json` uses
-`runtimeVersion.policy: "appVersion"` to block incompatible updates from
-reaching existing installs with a different app version.
+change still requires a fresh Android build. Preview builds use a stable manual
+runtime string (`preview-1`) in `mobile/app.config.js`; app version bumps alone
+do not force a rebuild. Only bump `PREVIEW_RUNTIME` in `mobile/app.config.js`
+when a native-incompatible change actually requires it.
 
 Current limitation:
 
@@ -300,7 +301,7 @@ The gate catches advisories in `package-lock.json` and `mobile/package-lock.json
 
 A CI workflow (`.github/workflows/version-check.yml`) runs `node scripts/sync-version.mjs --check` on every push to `main` and on every pull request. The job fails if the mobile version surfaces (`mobile/package.json` and `app.json` `expo.version`) drift from the canonical root `package.json` version.
 
-The canonical app version lives in the root `package.json`. `mobile/package.json` (displayed version) and `app.json` `expo.version` (OTA `appVersion` runtime boundary) must mirror it. The closeout script (`scripts/close-issue.sh`) runs the same sync after bumping the root version, so a normal closeout keeps all three aligned automatically.
+The canonical app version lives in the root `package.json`. `mobile/package.json` (displayed version) and `app.json` `expo.version` must mirror it. The closeout script (`scripts/close-issue.sh`) runs the same sync after bumping the root version, so a normal closeout keeps all three aligned automatically. Note: `expo.version` is no longer the OTA runtime boundary for preview builds; that role is held by `PREVIEW_RUNTIME` in `mobile/app.config.js`.
 
 Run the check or fix drift locally:
 
