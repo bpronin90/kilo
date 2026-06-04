@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.58.0 - 2026-06-04
+
+- Issue #267: Added the first visible fatigue check-in cue on the Log tab.
+  Leaving the current routine editor after a rough detected session now runs
+  the session check-in detector after autosave, highlights exactly the flagged
+  exercises in red in the rendered routine view, and suppresses the highlight
+  once that session index has already been answered. The Log screen also now
+  exposes a gated `onCheckInPrompt` hook so the Task #268 modal can open
+  without changing the detection contract.
+
 ## 0.57.2 - 2026-06-04
 
 - Issue #266: Removed the last legacy rep-drop-off UI plumbing from the native

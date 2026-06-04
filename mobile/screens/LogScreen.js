@@ -14,7 +14,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
-import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData } from '../lib/data';
+import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
@@ -59,6 +59,7 @@ export function LogScreen({
   toggleCollapsed,
   onSaveWorkout,
   deloadDateEditEnabled,
+  onCheckInPrompt,
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -86,6 +87,10 @@ export function LogScreen({
   const [deloadEditDate, setDeloadEditDate] = useState('');
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
 
+  const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
+  const [roughSessionIndex, setRoughSessionIndex] = useState(null);
+  const [roughNoteId, setRoughNoteId] = useState(null);
+
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
   const keyboardVisibleRef = useRef(false);
@@ -104,12 +109,14 @@ export function LogScreen({
   const editingTextRef = useRef(editingText);
   const editingTitleRef = useRef(editingTitle);
   const editingNoteIdRef = useRef(editingNoteId);
+  const currentNoteRef = useRef(currentNote);
   workoutNoteTextRef.current = workoutNoteText;
   workoutNoteTitleRef.current = workoutNoteTitle;
   currentIdRef.current = currentId;
   editingTextRef.current = editingText;
   editingTitleRef.current = editingTitle;
   editingNoteIdRef.current = editingNoteId;
+  currentNoteRef.current = currentNote;
 
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -166,6 +173,23 @@ export function LogScreen({
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  useEffect(() => {
+    if (roughSessionIndex == null || roughFlaggedNames.size === 0) return;
+    if (roughNoteId !== currentId) {
+      setRoughFlaggedNames(new Set());
+      setRoughSessionIndex(null);
+      setRoughNoteId(null);
+      return;
+    }
+    const checkins = currentNote?.session_checkins;
+    if (checkins?.[roughSessionIndex]) {
+      setRoughFlaggedNames(new Set());
+      setRoughSessionIndex(null);
+      setRoughNoteId(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentNote?.session_checkins, roughSessionIndex, currentId]);
 
   // Debounced autosave for the current (existing) note while in edit mode.
   // New notes (no currentId) require an explicit first save to get an ID.
@@ -468,6 +492,38 @@ export function LogScreen({
     });
   };
 
+  const _runCheckInDetection = () => {
+    const explicitTrackedNames = listTrackedLifts(trackedLifts);
+    const defaultNames = getDefaultTrackedNames();
+    const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
+    const resolvedTrackedNames = [
+      ...defaultNames,
+      ...explicitTrackedNames.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
+    ];
+    const latestText = workoutNoteTextRef.current;
+    const latestId = currentIdRef.current;
+    const { sections: latestSections } = parseWorkoutNote(latestText);
+    const allSects = [
+      ...notes.flatMap(n => {
+        const text = n.id === latestId ? latestText : n.raw_text;
+        return text ? parseWorkoutNote(text).sections : [];
+      }),
+      ...(latestId ? [] : latestSections),
+    ];
+    const { isRough, sessionIndex, flagged } = deriveSessionCheckIn(allSects, resolvedTrackedNames);
+    const checkins = currentNoteRef.current?.session_checkins;
+    if (isRough && sessionIndex != null && !(checkins?.[sessionIndex])) {
+      setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
+      setRoughSessionIndex(sessionIndex);
+      setRoughNoteId(latestId);
+      onCheckInPrompt?.();
+    } else {
+      setRoughFlaggedNames(new Set());
+      setRoughSessionIndex(null);
+      setRoughNoteId(null);
+    }
+  };
+
   const handleDoneCurrent = async () => {
     // Cancel any pending debounced autosave before flushing manually.
     if (autosaveCurrentTimerRef.current) {
@@ -505,6 +561,7 @@ export function LogScreen({
       const ok = await handleSave();
       if (!ok) return;
     }
+    _runCheckInDetection();
     exitCurrentEditor();
   };
 
@@ -1184,9 +1241,10 @@ export function LogScreen({
                             {section.exercises.map((ex, ei) => {
                               const exNormName = normalizeLiftName(ex.name);
                               const isTracked = !!trackedLifts[exNormName];
+                              const isFlagged = roughNoteId === currentId && roughFlaggedNames.has(exNormName);
                               return (
+                              <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
                               <ExerciseBlock
-                                key={`ex-${gi}-${si}-${ei}`}
                                 name={ex.name}
                                 isTracked={isTracked}
                                 onToggleTrack={() => handleToggleTrack(ex.name)}
@@ -1213,6 +1271,7 @@ export function LogScreen({
                                   <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                 ))}
                               </ExerciseBlock>
+                              </View>
                               );
                             })}
                           </View>
@@ -1559,6 +1618,11 @@ const styles = StyleSheet.create({
   skipMarker: {
     fontSize: SET_ROW_FONT_SIZE,
     color: Colors.textMuted,
+  },
+  flaggedExercise: {
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.error,
+    marginLeft: -3,
   },
   editContainer: {
     gap: 16,

@@ -226,7 +226,7 @@ Ordered tasks:
 - **Labels:** `mvp-fatigue`, `agent:claude`, `area:ui`, `type:implementation`,
   `effort:default`, `reasoning:medium`
 
-#### Task 6: Exit-editor trigger + red highlight of flagged exercises
+#### Task 6: Exit-editor trigger + red highlight of flagged exercises — ✅ COMPLETE
 
 - **Issue:** `#267` (depends on `#266`)
 - **Goal:** detect a rough session when the user leaves the editor and visually flag it.
@@ -298,6 +298,6 @@ parser token, and the `session_checkins` model; changelog and version bumped at 
 ## Sequencing summary
 
 - Phase 1 (claude): Task 1 `#262` → Task 2 `#263` → Task 3 `#264` → Task 4 `#265` — ✅ complete
-- Phase 2 (claude, after Phase 1): Task 5 `#266` — ✅ complete; Task 6 `#267` → Task 7 `#268` → Task 8 `#269`
+- Phase 2 (claude, after Phase 1): Task 5 `#266` — ✅ complete; Task 6 `#267` — ✅ complete; Task 7 `#268` → Task 8 `#269`
 - Phase 3 (claude, after Phase 2): Task 9
 - Reviewer (codex) writes each issue from these task specs and reviews on completion.

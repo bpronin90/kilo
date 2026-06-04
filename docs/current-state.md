@@ -219,12 +219,18 @@ The real native app path now has a modular React Native shell:
   downstream analytics consumers read stored skip/attendance state instead of
   recomputing it during render. Native workout-note documents now also persist
   `session_checkins` keyed by session index so answered fatigue check-ins
-  survive reloads, while the old `rep_drop_off_flags` surface is no longer
-  populated or consumed. The legacy `hit_wall` chip/badge and its helper reads
-  are removed from Log and Analytics, and within-row skipped sets now render in
-  structured read mode as `-` at their original weight (`80 4,-` → `80 lb 4, -`);
-  Android back now exits edit subviews before falling through to tab-level
-  navigation.
+  survive reloads. When the user leaves the current-routine editor after a
+  rough detected session, the same Log flow now re-runs the session check-in
+  detector after autosave, highlights exactly the flagged exercises in red in
+  the rendered routine view, and suppresses that highlight once the matching
+  `session_checkins[sessionIndex]` answer exists. The screen also accepts a
+  gated `onCheckInPrompt` hook so the upcoming modal can attach without
+  changing detection behavior. The old `rep_drop_off_flags` surface is no
+  longer populated or consumed. The legacy `hit_wall` chip/badge and its
+  helper reads are removed from Log and Analytics, and within-row skipped sets
+  now render in structured read mode as `-` at their original weight
+  (`80 4,-` → `80 lb 4, -`); Android back now exits edit subviews before
+  falling through to tab-level navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card
