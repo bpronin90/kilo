@@ -231,8 +231,10 @@ retains non-test commands such as `npm run audit`.
   `mobile/storage/entries.js`
 - verifies empty-load behavior, newest-first sorting, update misses, workout
   note save/overwrite/clear behavior, tracked-exercise persistence across note
-  edits, optional user-profile persistence, and migration of legacy structured
-  sessions into the canonical workout-note document
+  edits, optional user-profile persistence, the deload dual-write linkage
+  contract (`note_id` plus `Deload · ` note filtering and deletion pattern),
+  tolerance for pre-#257 history rows without `note_id`, and migration of
+  legacy structured sessions into the canonical workout-note document
 - includes a contract-driven migration suite that verifies weighted entries,
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry
