@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.54.2 - 2026-06-03
+
+- Issue #259: Polished the Analytics `Session Health` card presentation by
+  reworking the deload/total stat layout, updating the shipped gauge caption
+  copy, and aligning the targeted Analytics screen test with that copy without
+  changing session-health calculations, thresholds, or gauge behavior.
+
 ## 0.54.1 - 2026-06-03
 
 - Issue #258: Stopped preview OTA compatibility from breaking on every app
