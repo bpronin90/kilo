@@ -13,6 +13,7 @@ const WORKOUT_DELOAD_HISTORY_KEY = 'kilo_workout_deload_history';
 const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 const USER_PROFILE_KEY = 'kilo_user_profile';
+const DELOAD_DATE_EDIT_KEY = 'kilo_deload_date_edit_enabled';
 
 function localDateToday() {
   const d = new Date();
@@ -90,6 +91,19 @@ export async function loadWeightDateEditEnabled() {
 
 export async function saveWeightDateEditEnabled(enabled) {
   await AsyncStorage.setItem(WEIGHT_DATE_EDIT_KEY, JSON.stringify(enabled));
+}
+
+export async function loadDeloadDateEditEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(DELOAD_DATE_EDIT_KEY);
+    return raw ? JSON.parse(raw) : false;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveDeloadDateEditEnabled(enabled) {
+  await AsyncStorage.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
 }
 
 // Weight entries

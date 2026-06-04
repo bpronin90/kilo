@@ -15,7 +15,7 @@ import { AnalyticsScreen } from './screens/AnalyticsScreen';
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled } from './storage/entries';
+import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
@@ -49,11 +49,13 @@ export default function App() {
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
   const [weightDateEditEnabled, setWeightDateEditEnabled] = useState(false);
+  const [deloadDateEditEnabled, setDeloadDateEditEnabled] = useState(false);
 
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
     loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
     loadWeightDateEditEnabled().then(setWeightDateEditEnabled);
+    loadDeloadDateEditEnabled().then(setDeloadDateEditEnabled);
   }, []);
 
   const toggleWorkoutCollapsed = useCallback(async () => {
@@ -210,6 +212,7 @@ export default function App() {
             isCollapsed={isWorkoutCollapsed}
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
+            deloadDateEditEnabled={deloadDateEditEnabled}
           />
         </View>
         <View style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
@@ -241,6 +244,11 @@ export default function App() {
             onUpdateWeightDateEditEnabled={async (val) => {
               setWeightDateEditEnabled(val);
               await saveWeightDateEditEnabled(val);
+            }}
+            deloadDateEditEnabled={deloadDateEditEnabled}
+            onUpdateDeloadDateEditEnabled={async (val) => {
+              setDeloadDateEditEnabled(val);
+              await saveDeloadDateEditEnabled(val);
             }}
           />
         </View>

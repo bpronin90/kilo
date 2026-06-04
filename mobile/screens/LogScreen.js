@@ -8,6 +8,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
@@ -49,7 +50,8 @@ export function LogScreen({
   setWorkoutNoteTitle,
   isCollapsed,
   toggleCollapsed,
-  onSaveWorkout
+  onSaveWorkout,
+  deloadDateEditEnabled,
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -76,6 +78,8 @@ export function LogScreen({
   const [saveSuccess, setSaveSuccess] = useState('');
 
   const [viewingNoteId, setViewingNoteId] = useState(null);
+  const [deloadEditDate, setDeloadEditDate] = useState('');
+  const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -133,6 +137,7 @@ export function LogScreen({
     setEditingNoteId(viewingNote.id);
     setEditingTitle(viewingNote.title || '');
     setEditingText(viewingNote.raw_text);
+    setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
     setSaveError('');
     setSaveSuccess('');
   };
@@ -535,6 +540,7 @@ export function LogScreen({
     setEditingNoteId(other.id);
     setEditingTitle(other.title || '');
     setEditingText(other.raw_text);
+    setDeloadEditDate(other.saved_at ? other.saved_at.slice(0, 10) : '');
     setSaveError('');
     setSaveSuccess('');
   };
@@ -554,10 +560,11 @@ export function LogScreen({
         result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
       } else {
-        result = await update(editingNoteId, {
-          title: titleToSave,
-          raw_text: editingText
-        });
+        const patch = { title: titleToSave, raw_text: editingText };
+        if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
+          patch.saved_at = new Date(deloadEditDate).toISOString();
+        }
+        result = await update(editingNoteId, patch);
       }
       if (!result) {
         setSaveError('Save failed');
@@ -1383,6 +1390,42 @@ export function LogScreen({
                 placeholderTextColor={Colors.textMuted}
                 style={[styles.input, styles.titleInput]}
               />
+              {isEditingDeloadNote && deloadDateEditEnabled && (
+                <>
+                  <Text style={styles.inputLabel}>Date</Text>
+                  <Pressable
+                    style={[styles.input, styles.dateInput]}
+                    onPress={() => setShowDeloadDatePicker(true)}
+                    accessibilityLabel="Deload date"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
+                  </Pressable>
+                  {showDeloadDatePicker && (
+                    <DateTimePicker
+                      value={(() => {
+                        if (deloadEditDate) {
+                          const [y, m, d] = deloadEditDate.split('-').map(Number);
+                          return new Date(y, m - 1, d);
+                        }
+                        return new Date();
+                      })()}
+                      mode="date"
+                      display="default"
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        setShowDeloadDatePicker(false);
+                        if (selectedDate) {
+                          const y = selectedDate.getFullYear();
+                          const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const dy = String(selectedDate.getDate()).padStart(2, '0');
+                          setDeloadEditDate(`${y}-${mo}-${dy}`);
+                        }
+                      }}
+                    />
+                  )}
+                </>
+              )}
               <TextInput
                 value={editingNoteId ? editingText : workoutNoteText}
                 onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
@@ -1543,6 +1586,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     gap: 12,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  dateInput: {
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  dateInputText: {
+    fontSize: 16,
+    color: Colors.text,
   },
   otherNoteHeader: {
     flexDirection: 'row',
