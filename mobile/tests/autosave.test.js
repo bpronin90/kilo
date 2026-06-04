@@ -108,6 +108,96 @@ describe('autosave debounce pattern', () => {
   });
 });
 
+// ── in-flight race guard pattern ──────────────────────────────────────────────
+
+describe('stale-result guard: snapshot vs live-ref comparison', () => {
+  // Simulates the pattern used in handleSave / handleSaveOtherNote:
+  // capture snapshots before the await, then only apply result when
+  // live refs still match those snapshots.
+
+  test('applies result when content is unchanged after await', async () => {
+    let liveText = 'Bench Press 135x5';
+    let liveId = 'note-1';
+    const liveTextRef = { current: liveText };
+    const liveIdRef = { current: liveId };
+
+    const snapshotText = liveText;
+    const snapshotId = liveId;
+
+    // Simulate async save completing without any intervening changes.
+    const result = { raw_text: liveText, title: 'Push Day' };
+
+    const shouldApply =
+      liveIdRef.current === snapshotId &&
+      liveTextRef.current === snapshotText;
+
+    expect(shouldApply).toBe(true);
+  });
+
+  test('suppresses result when content changed during in-flight save', async () => {
+    let liveText = 'Bench Press 135x5';
+    let liveId = 'note-1';
+    const liveTextRef = { current: liveText };
+    const liveIdRef = { current: liveId };
+
+    const snapshotText = liveText;
+    const snapshotId = liveId;
+
+    // User types more while save is in flight.
+    liveText = 'Bench Press 135x5\nOHP 95x5';
+    liveTextRef.current = liveText;
+
+    const result = { raw_text: snapshotText, title: 'Push Day' };
+
+    const shouldApply =
+      liveIdRef.current === snapshotId &&
+      liveTextRef.current === snapshotText;
+
+    expect(shouldApply).toBe(false);
+  });
+
+  test('suppresses result when routine switched during in-flight save', async () => {
+    let liveId = 'note-1';
+    let liveText = 'Bench Press 135x5';
+    const liveIdRef = { current: liveId };
+    const liveTextRef = { current: liveText };
+
+    const snapshotText = liveText;
+    const snapshotId = liveId;
+
+    // User switches to a different routine before save resolves.
+    liveId = 'note-2';
+    liveText = 'Squat 225x5'; // new routine's content loaded by App.js
+    liveIdRef.current = liveId;
+    liveTextRef.current = liveText;
+
+    const result = { raw_text: snapshotText, title: 'Push Day' };
+
+    const shouldApply =
+      liveIdRef.current === snapshotId &&
+      liveTextRef.current === snapshotText;
+
+    expect(shouldApply).toBe(false);
+  });
+
+  test('always applies result for new-note first save regardless of refs', () => {
+    const savedNoteId = 'new';
+    // Simulate ref having updated to the real ID after setEditingNoteId(result.id).
+    const liveNoteIdRef = { current: 'wn_2026-06-04_123' };
+    const liveTextRef = { current: 'Bench 135x5 extra typed' };
+    const snapshotText = 'Bench 135x5';
+
+    // New-note path bypasses the snapshot check entirely.
+    const shouldApply =
+      savedNoteId === 'new' || (
+        liveNoteIdRef.current === savedNoteId &&
+        liveTextRef.current === snapshotText
+      );
+
+    expect(shouldApply).toBe(true);
+  });
+});
+
 // ── storage persistence for autosave use case ─────────────────────────────────
 
 describe('saveWorkoutNoteItem autosave persistence', () => {

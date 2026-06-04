@@ -87,6 +87,21 @@ export function LogScreen({
   const autosaveCurrentTimerRef = useRef(null);
   const autosaveOtherTimerRef = useRef(null);
 
+  // Live-value refs — updated every render so async save callbacks can read the
+  // current state after an await without relying on stale closure captures.
+  const workoutNoteTextRef = useRef(workoutNoteText);
+  const workoutNoteTitleRef = useRef(workoutNoteTitle);
+  const currentIdRef = useRef(currentId);
+  const editingTextRef = useRef(editingText);
+  const editingTitleRef = useRef(editingTitle);
+  const editingNoteIdRef = useRef(editingNoteId);
+  workoutNoteTextRef.current = workoutNoteText;
+  workoutNoteTitleRef.current = workoutNoteTitle;
+  currentIdRef.current = currentId;
+  editingTextRef.current = editingText;
+  editingTitleRef.current = editingTitle;
+  editingNoteIdRef.current = editingNoteId;
+
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
   };
@@ -317,6 +332,12 @@ export function LogScreen({
       setSaveError('Workout notes are required');
       return;
     }
+    // Snapshot identity + content before the async operation so we can detect
+    // in-flight edit races (user kept typing) or routine switches that completed
+    // before this promise resolved.
+    const savedForId = currentId;
+    const snapshotText = workoutNoteText;
+    const snapshotTitle = workoutNoteTitle;
     setIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
@@ -364,9 +385,22 @@ export function LogScreen({
       }
 
       if (result) {
-        setWorkoutNoteTitle(result.title || '');
-        setWorkoutNoteText(result.raw_text || '');
-        setSaveSuccess('Saved!');
+        if (!savedForId) {
+          // New note: always apply result since this was an explicit first save.
+          setWorkoutNoteTitle(result.title || '');
+          setWorkoutNoteText(result.raw_text || '');
+          setSaveSuccess('Saved!');
+        } else if (
+          currentIdRef.current === savedForId &&
+          workoutNoteTextRef.current === snapshotText &&
+          workoutNoteTitleRef.current === snapshotTitle
+        ) {
+          // Existing note: only sync UI state when nothing has changed since save
+          // started — guards against in-flight edit races and post-switch stale writes.
+          setWorkoutNoteTitle(result.title || '');
+          setWorkoutNoteText(result.raw_text || '');
+          setSaveSuccess('Saved!');
+        }
         return true;
       } else {
         setSaveError('Save failed');
@@ -504,6 +538,9 @@ export function LogScreen({
 
   const handleSaveOtherNote = async () => {
     if (noteIsSaving) return;
+    const savedNoteId = editingNoteId;
+    const snapshotText = editingText;
+    const snapshotTitle = editingTitle;
     setNoteIsSaving(true);
     setSaveError('');
     setSaveSuccess('');
@@ -514,18 +551,26 @@ export function LogScreen({
         result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
       } else {
-        result = await update(editingNoteId, { 
+        result = await update(editingNoteId, {
           title: titleToSave,
-          raw_text: editingText 
+          raw_text: editingText
         });
       }
       if (!result) {
         setSaveError('Save failed');
         return false;
       } else {
-        setEditingTitle(result.title || '');
-        setEditingText(result.raw_text || '');
-        setSaveSuccess('Saved!');
+        if (savedNoteId === 'new' || (
+          editingNoteIdRef.current === savedNoteId &&
+          editingTextRef.current === snapshotText &&
+          editingTitleRef.current === snapshotTitle
+        )) {
+          // Apply result only when editing the same note with unchanged content.
+          // New-note path is always applied since it is an explicit first save.
+          setEditingTitle(result.title || '');
+          setEditingText(result.raw_text || '');
+          setSaveSuccess('Saved!');
+        }
         return true;
       }
     } catch {
