@@ -567,7 +567,12 @@ export function LogScreen({
     setSaveSuccess('');
     try {
       let result;
-      const titleToSave = editingTitle || 'Untitled Routine';
+      let titleToSave = editingTitle || 'Untitled Routine';
+      // Deload records must always carry the classification prefix.
+      // Re-apply it if somehow lost (defence against future code paths).
+      if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
+        titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
+      }
       if (editingNoteId === 'new') {
         result = await add(titleToSave, editingText);
         setEditingNoteId(result.id);
@@ -1394,13 +1399,18 @@ export function LogScreen({
         ) : (
           <View style={styles.editContainer}>
             <Card>
-              <TextInput
-                value={editingNoteId ? editingTitle : workoutNoteTitle}
-                onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
-                placeholder={isEditingDeloadNote ? 'Deload · YYYY-MM-DD' : 'Routine Name (e.g. Push Day)'}
-                placeholderTextColor={Colors.textMuted}
-                style={[styles.input, styles.titleInput]}
-              />
+              {/* Title input is hidden for deload records: their title encodes the
+                  classification prefix "Deload · " and must not be freely edited.
+                  Date changes go through the DateTimePicker which keeps the prefix intact. */}
+              {!isEditingDeloadNote && (
+                <TextInput
+                  value={editingNoteId ? editingTitle : workoutNoteTitle}
+                  onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
+                  placeholder="Routine Name (e.g. Push Day)"
+                  placeholderTextColor={Colors.textMuted}
+                  style={[styles.input, styles.titleInput]}
+                />
+              )}
               {isEditingDeloadNote && deloadDateEditEnabled && (
                 <>
                   <Text style={styles.inputLabel}>Date</Text>
