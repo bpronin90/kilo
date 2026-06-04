@@ -3,7 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInp
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
-import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, getLatestRepDropOff, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
+import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload } from '../lib/parser';
 import { formatDuration } from '../lib/format';
@@ -130,8 +130,8 @@ export function AnalyticsScreen({ multiplier, section }) {
       name => namesInCurrent.has(normalizeExerciseKey(name))
     );
 
-    // Canonical derivation: signals, nameDisplayMap, repDropOffFlags, and perDaySignals from shared sections
-    const { signals, nameDisplayMap, repDropOffFlags, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
+    // Canonical derivation: signals, nameDisplayMap, and perDaySignals from shared sections
+    const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
 
     // Non-weighted metrics for reps-only and time-based exercises (from #165 derivation)
     const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
@@ -140,7 +140,7 @@ export function AnalyticsScreen({ multiplier, section }) {
     const oneK = derive1kTotal(currentSections, oneKSelections);
     const oneKSeries = derive1kTotalSeries(currentSections, oneKSelections);
 
-    return { signals, oneK, oneKSeries, nameDisplayMap, repDropOffFlags, perDaySignals, nonWeightedMetrics };
+    return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
   }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
 
   const groupedSignals = useMemo(() => {
@@ -450,10 +450,6 @@ export function AnalyticsScreen({ multiplier, section }) {
                     const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
                     const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
                     const rowTrend = dayRow?.overload_trend ?? sig.overload_trend;
-                    const dropOffFlag = getLatestRepDropOff(analytics.repDropOffFlags?.[normName]);
-                    // Suppress hit_wall when the row is progressing — a rep drop-off
-                    // while still hitting a new top weight is not a warning to surface.
-                    const dropOffLabel = dropOffFlag === 'hit_wall' && rowTrend !== 'up' ? '⚠ Hit wall' : null;
                     const rowIsBodyweight = dayRow ? dayRow.is_bodyweight : sig.is_bodyweight;
                     const nw = analytics.nonWeightedMetrics?.[normName];
 
@@ -461,11 +457,6 @@ export function AnalyticsScreen({ multiplier, section }) {
                       <View key={normName + sig.currentDayHeading} style={[styles.signalRow, styles.signalRowBorder]}>
                         <View style={styles.signalNameRow}>
                           <Text style={styles.signalName}>{analytics.nameDisplayMap?.get(normName) || sig.name}</Text>
-                          {dropOffLabel && (
-                            <Text style={[styles.classifBadge, dropOffBadgeColor(dropOffFlag)]}>
-                              {dropOffLabel}
-                            </Text>
-                          )}
                         </View>
 
                         {nw ? (
@@ -590,11 +581,6 @@ function CrossDayComparison({ daySignals, currentDay, otherDays }) {
       })}
     </View>
   );
-}
-
-function dropOffBadgeColor(flag) {
-  if (flag === 'hit_wall') return { color: Colors.error };
-  return {};
 }
 
 function formatOverload(trend) {
