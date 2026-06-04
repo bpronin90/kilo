@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -3178,5 +3178,86 @@ describe('deriveWeightGoalAnalytics — rollingSeries30', () => {
   test('empty entries → rollingSeries30 is empty', () => {
     const result = deriveWeightGoalAnalytics([], null, {}, REF);
     expect(result.rollingSeries30).toEqual([]);
+  });
+});
+
+describe('deriveCheckInHistory', () => {
+  const C1 = {
+    status: 'rough',
+    reasons: ['fatigued', 'short on sleep'],
+    exercises_skipped: 1,
+    volume_decline_pct: 12,
+    flagged: ['bench press'],
+    responded_at: '2026-05-01T08:00:00.000Z',
+  };
+  const C2 = {
+    status: 'ok',
+    reasons: [],
+    exercises_skipped: 0,
+    volume_decline_pct: null,
+    flagged: [],
+    responded_at: '2026-05-10T09:00:00.000Z',
+  };
+  const C3 = {
+    status: 'rough',
+    reasons: ['fatigued', 'sore'],
+    exercises_skipped: 2,
+    volume_decline_pct: 25,
+    flagged: ['squat'],
+    responded_at: '2026-05-20T10:00:00.000Z',
+  };
+
+  test('empty/null input returns empty shape', () => {
+    expect(deriveCheckInHistory(null)).toEqual({ list: [], summary: { total: 0, top_reason: null } });
+    expect(deriveCheckInHistory([])).toEqual({ list: [], summary: { total: 0, top_reason: null } });
+  });
+
+  test('notes with null session_checkins contribute nothing', () => {
+    const notes = [{ session_checkins: null }, { session_checkins: null }];
+    expect(deriveCheckInHistory(notes)).toEqual({ list: [], summary: { total: 0, top_reason: null } });
+  });
+
+  test('returns reverse-chronological order across notes', () => {
+    const notes = [
+      { session_checkins: { '0': C1 } },
+      { session_checkins: { '0': C3, '1': C2 } },
+    ];
+    const { list } = deriveCheckInHistory(notes);
+    expect(list).toHaveLength(3);
+    expect(list[0].responded_at).toBe(C3.responded_at);
+    expect(list[1].responded_at).toBe(C2.responded_at);
+    expect(list[2].responded_at).toBe(C1.responded_at);
+  });
+
+  test('summary total counts only rough check-ins', () => {
+    const notes = [{ session_checkins: { '0': C1, '1': C2, '2': C3 } }];
+    const { summary } = deriveCheckInHistory(notes);
+    expect(summary.total).toBe(2);
+  });
+
+  test('top_reason is most frequent reason across rough check-ins', () => {
+    const notes = [{ session_checkins: { '0': C1, '1': C3 } }];
+    const { summary } = deriveCheckInHistory(notes);
+    expect(summary.top_reason).toBe('fatigued');
+  });
+
+  test('top_reason is null when no rough check-ins', () => {
+    const notes = [{ session_checkins: { '0': C2 } }];
+    const { summary } = deriveCheckInHistory(notes);
+    expect(summary.total).toBe(0);
+    expect(summary.top_reason).toBeNull();
+  });
+
+  test('list entries include expected fields only', () => {
+    const notes = [{ session_checkins: { '0': C1 } }];
+    const { list } = deriveCheckInHistory(notes);
+    expect(list[0]).toEqual({
+      responded_at: C1.responded_at,
+      status: C1.status,
+      reasons: C1.reasons,
+      exercises_skipped: C1.exercises_skipped,
+      volume_decline_pct: C1.volume_decline_pct,
+      flagged: C1.flagged,
+    });
   });
 });

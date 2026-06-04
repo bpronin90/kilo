@@ -1386,3 +1386,46 @@ export function computeWeeklySummary(sections, workoutNote) {
     sessionStatusRows,
   };
 }
+
+// ── Check-in history ──────────────────────────────────────────────────────────
+
+export function deriveCheckInHistory(notes) {
+  const empty = { list: [], summary: { total: 0, top_reason: null } };
+  if (!notes || notes.length === 0) return empty;
+
+  const list = [];
+  for (const note of notes) {
+    const checkins = note?.session_checkins;
+    if (!checkins) continue;
+    for (const checkin of Object.values(checkins)) {
+      if (!checkin || !checkin.responded_at) continue;
+      list.push({
+        responded_at: checkin.responded_at,
+        status: checkin.status ?? null,
+        reasons: checkin.reasons ?? [],
+        exercises_skipped: checkin.exercises_skipped ?? 0,
+        volume_decline_pct: checkin.volume_decline_pct ?? null,
+        flagged: checkin.flagged ?? [],
+      });
+    }
+  }
+
+  list.sort((a, b) => (a.responded_at < b.responded_at ? 1 : a.responded_at > b.responded_at ? -1 : 0));
+
+  const rough = list.filter(c => c.status === 'rough');
+  let top_reason = null;
+  if (rough.length > 0) {
+    const counts = new Map();
+    for (const c of rough) {
+      for (const r of c.reasons) {
+        counts.set(r, (counts.get(r) ?? 0) + 1);
+      }
+    }
+    let max = 0;
+    for (const [reason, count] of counts) {
+      if (count > max) { max = count; top_reason = reason; }
+    }
+  }
+
+  return { list, summary: { total: rough.length, top_reason } };
+}
