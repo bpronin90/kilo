@@ -118,7 +118,14 @@ export function LogScreen({
   };
 
   const handleViewOtherNote = (note) => {
-    setViewingNoteId(note.id);
+    const isCollapsing = viewingNoteId === note.id;
+    const scrollY = readScrollYRef.current;
+    setViewingNoteId(prev => (prev === note.id ? null : note.id));
+    if (isCollapsing) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
   };
 
   const handleEditViewedNote = () => {
@@ -817,6 +824,32 @@ export function LogScreen({
     }
   };
 
+  const handleDeloadCollapsedToggle = () => {
+    const wasExpanded = !deloadCollapsed;
+    const scrollY = readScrollYRef.current;
+    setDeloadCollapsed(c => !c);
+    if (wasExpanded) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
+  };
+
+  const handleToggleLegacyDeload = (id) => {
+    const isExpanded = expandedDeloads.has(id);
+    const scrollY = readScrollYRef.current;
+    setExpandedDeloads(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    if (isExpanded) {
+      requestAnimationFrame(() => {
+        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
+      });
+    }
+  };
+
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
       onPress={handleDoneCurrent}
@@ -830,7 +863,6 @@ export function LogScreen({
 
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit' || deloadMode === 'edit';
-  const isViewingOther = !!viewingNoteId && !isEditing;
 
   useEffect(() => {
     if (editingNoteId) {
@@ -843,7 +875,7 @@ export function LogScreen({
       <ScreenShell
         ref={readScrollRef}
         onScroll={handleReadScroll}
-        style={isEditing || isViewingOther ? { display: 'none' } : { flex: 1 }}
+        style={isEditing ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
         subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
         headerRight={headerRight}
@@ -890,11 +922,11 @@ export function LogScreen({
                 <>
                   <View style={styles.mirrorContainer}>
                     <Card style={styles.currentRoutineCard}>
-                      <Pressable onPress={() => setDeloadCollapsed(c => !c)} style={styles.otherNoteHeader}>
+                      <Pressable onPress={handleDeloadCollapsedToggle} style={styles.otherNoteHeader}>
                         <View style={styles.otherNoteInfo}>
                           <Text style={styles.currentNoteTitle}>Deload Week</Text>
                           {deloadNote?.saved_at && (
-                            <Text style={styles.otherNoteSub}>{deloadNote.saved_at.slice(0, 10)}</Text>
+                            <Text style={styles.otherNoteSub}>{new Date(deloadNote.saved_at).toLocaleDateString()}</Text>
                           )}
                         </View>
                         <Pressable
@@ -973,12 +1005,10 @@ export function LogScreen({
                 ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
                   if (item.type === 'note') {
                     const note = item.data;
-                    const dateStr = note.title.startsWith(DELOAD_NOTE_PREFIX)
-                      ? note.title.slice(DELOAD_NOTE_PREFIX.length)
-                      : note.saved_at.slice(0, 10);
+                    const dateStr = new Date(note.saved_at).toLocaleDateString();
                     return (
                       <Card key={note.id} style={styles.otherNoteCard}>
-                        <Pressable onPress={() => handleOpenOtherNote(note)} style={styles.otherNoteHeader}>
+                        <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
                           <View style={styles.otherNoteInfo}>
                             <Text style={styles.otherNoteTitle}>{note.title}</Text>
                             <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
@@ -1001,25 +1031,65 @@ export function LogScreen({
                             <Text style={styles.pastDeloadDeleteText}>Delete</Text>
                           </Pressable>
                         </Pressable>
+                        {viewingNoteId === note.id && viewingNote && (
+                          <>
+                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                              <Text style={styles.editHint}>Double-tap to edit</Text>
+                              {viewingNoteDayGroups.map((group, gi) => (
+                                <View key={`deload-view-day-${gi}`}>
+                                  {group.heading && (
+                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
+                                      {group.heading}
+                                    </WorkoutHeading>
+                                  )}
+                                  {group.sections.map((section, si) => (
+                                    <View key={`deload-view-section-${gi}-${si}`}>
+                                      {section.subheading && (
+                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
+                                      )}
+                                      {section.exercises.map((ex, ei) => (
+                                        <ExerciseBlock key={`deload-view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
+                                          {ex.rows.map((row, ri) => (
+                                            <SetLine key={`deload-view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                                          ))}
+                                          {ex.unparsed_rows.map((u, ui) => (
+                                            <Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
+                                          ))}
+                                        </ExerciseBlock>
+                                      ))}
+                                    </View>
+                                  ))}
+                                </View>
+                              ))}
+                              {!viewingNoteDayGroups.length && (
+                                <Text selectable={true} style={styles.emptyText}>Deload note is empty.</Text>
+                              )}
+                            </Pressable>
+                            <View style={styles.inlineActions}>
+                              <Button
+                                onPress={() => handleOpenOtherNote(note)}
+                                title="Edit deload record"
+                                style={styles.switchButton}
+                                textStyle={styles.switchButtonText}
+                              />
+                            </View>
+                          </>
+                        )}
                       </Card>
                     );
                   }
                   // Legacy history record (no linked workout note) — read-only inline expand
                   const record = item.data;
                   const isExpanded = expandedDeloads.has(record.id);
-                  const dateStr = record.completed_at.slice(0, 10);
-                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const dateStr = new Date(record.completed_at).toLocaleDateString();
+                  const generatedStr = record.generated_at ? new Date(record.generated_at).toLocaleDateString() : null;
                   const title = generatedStr && generatedStr !== dateStr
                     ? `Deload ${generatedStr}`
                     : `Deload ${dateStr}`;
                   return (
                     <Card key={record.id} style={styles.otherNoteCard}>
                       <Pressable
-                        onPress={() => setExpandedDeloads(prev => {
-                          const next = new Set(prev);
-                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
-                          return next;
-                        })}
+                        onPress={() => handleToggleLegacyDeload(record.id)}
                         style={styles.otherNoteHeader}
                       >
                         <View style={styles.otherNoteInfo}>
@@ -1181,6 +1251,56 @@ export function LogScreen({
                             <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
                           </Pressable>
                         </Pressable>
+                        {viewingNoteId === other.id && viewingNote && (
+                          <>
+                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                              <Text style={styles.editHint}>Double-tap to edit</Text>
+                              {viewingNoteDayGroups.map((group, gi) => (
+                                <View key={`view-day-${gi}`}>
+                                  {group.heading && (
+                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
+                                      {group.heading}
+                                    </WorkoutHeading>
+                                  )}
+                                  {group.sections.map((section, si) => (
+                                    <View key={`view-section-${gi}-${si}`}>
+                                      {section.subheading && (
+                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
+                                      )}
+                                      {section.exercises.map((ex, ei) => (
+                                        <ExerciseBlock key={`view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
+                                          {ex.rows.map((row, ri) => (
+                                            <SetLine key={`view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                                          ))}
+                                          {ex.unparsed_rows.map((u, ui) => (
+                                            <Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
+                                          ))}
+                                        </ExerciseBlock>
+                                      ))}
+                                    </View>
+                                  ))}
+                                </View>
+                              ))}
+                              {!viewingNoteDayGroups.length && (
+                                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
+                              )}
+                            </Pressable>
+                            <View style={styles.inlineActions}>
+                              <Button
+                                onPress={handleEditViewedNote}
+                                title="Edit routine"
+                                style={styles.switchButton}
+                                textStyle={styles.switchButtonText}
+                              />
+                              <Button
+                                onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+                                title="Delete routine"
+                                style={styles.deleteButton}
+                                textStyle={styles.deleteButtonText}
+                              />
+                            </View>
+                          </>
+                        )}
                       </Card>
                     ))}
                   </>
@@ -1198,88 +1318,11 @@ export function LogScreen({
       </ScreenShell>
 
       <ScreenShell
-        style={isViewingOther ? { flex: 1 } : { display: 'none' }}
-        title={viewingNote?.title || 'Untitled Routine'}
-        subtitle="Routine"
-        headerRight={
-          <Pressable onPress={() => setViewingNoteId(null)} style={styles.modeToggle}>
-            <Text style={styles.modeToggleText}>Done</Text>
-          </Pressable>
-        }
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.mirrorContainer}>
-          <Card style={styles.currentRoutineCard}>
-            <View style={styles.otherNoteHeader}>
-              <View style={styles.otherNoteInfo}>
-                <Text style={styles.currentNoteTitle}>{viewingNote?.title || 'Untitled Routine'}</Text>
-                {viewingNote?.updated_at && (
-                  <Text style={styles.otherNoteSub}>{new Date(viewingNote.updated_at).toLocaleDateString()}</Text>
-                )}
-              </View>
-              <Pressable
-                onPress={handleEditViewedNote}
-                style={styles.inlineSwitchButton}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              >
-                <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-              <Text style={styles.editHint}>Double-tap to edit</Text>
-              {viewingNoteDayGroups.map((group, gi) => (
-                <View key={`day-${gi}`}>
-                  {group.heading && (
-                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
-                      {group.heading}
-                    </WorkoutHeading>
-                  )}
-                  {group.sections.map((section, si) => (
-                    <View key={`section-${gi}-${si}`}>
-                      {section.subheading && (
-                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                      )}
-                      {section.exercises.map((ex, ei) => (
-                        <ExerciseBlock key={`ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                          {ex.rows.map((row, ri) => (
-                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                          ))}
-                          {ex.unparsed_rows.map((u, ui) => (
-                            <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
-                          ))}
-                        </ExerciseBlock>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              ))}
-              {!viewingNoteDayGroups.length && (
-                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
-              )}
-            </Pressable>
-          </Card>
-        </View>
-        {viewingNoteId && (
-          <Button
-            onPress={() => handleSwitchCurrent(viewingNoteId)}
-            title="Set as current routine"
-            style={styles.switchButton}
-            textStyle={styles.switchButtonText}
-          />
-        )}
-        <Button
-          onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-          title="Delete routine"
-          style={styles.deleteButton}
-          textStyle={styles.deleteButtonText}
-        />
-      </ScreenShell>
-
-      <ScreenShell
         ref={editorScrollRef}
         style={isEditing ? { flex: 1 } : { display: 'none' }}
         title={
           deloadMode === 'edit' ? 'Deload Week' :
+          (editingNoteId && isEditingDeloadNote) ? 'Deload record' :
           editingNoteId ? (editingTitle || 'Untitled Routine') :
           (workoutNoteTitle || 'Untitled Routine')
         }
@@ -1329,15 +1372,13 @@ export function LogScreen({
         ) : (
           <View style={styles.editContainer}>
             <Card>
-              {!isEditingDeloadNote && (
-                <TextInput
-                  value={editingNoteId ? editingTitle : workoutNoteTitle}
-                  onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
-                  placeholder="Routine Name (e.g. Push Day)"
-                  placeholderTextColor={Colors.textMuted}
-                  style={[styles.input, styles.titleInput]}
-                />
-              )}
+              <TextInput
+                value={editingNoteId ? editingTitle : workoutNoteTitle}
+                onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
+                placeholder={isEditingDeloadNote ? 'Deload · YYYY-MM-DD' : 'Routine Name (e.g. Push Day)'}
+                placeholderTextColor={Colors.textMuted}
+                style={[styles.input, styles.titleInput]}
+              />
               <TextInput
                 value={editingNoteId ? editingText : workoutNoteText}
                 onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
@@ -1493,6 +1534,11 @@ const styles = StyleSheet.create({
   otherNoteCard: {
     padding: 0,
     overflow: 'hidden',
+  },
+  inlineActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
   },
   otherNoteHeader: {
     flexDirection: 'row',
