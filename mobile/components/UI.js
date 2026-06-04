@@ -94,13 +94,16 @@ export function SessionGauge({ count, total }) {
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <Text style={styles.sessionGaugeLabel}>{total != null ? 'Since deload' : 'Sessions logged'}</Text>
-        <View style={styles.sessionGaugeCountRow}>
+        <View style={styles.sessionGaugeStat}>
+          <Text style={styles.sessionGaugeLabel}>Since deload</Text>
           <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
-          {total != null && (
-            <Text style={styles.sessionGaugeTotalStat}>{total} total</Text>
-          )}
         </View>
+        {total != null && (
+          <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
+            <Text style={styles.sessionGaugeLabel}>Total</Text>
+            <Text style={styles.sessionGaugeCount}>{total}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.gaugeMeterWrap}>
@@ -338,7 +341,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sessionGaugeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  sessionGaugeStat: {
     gap: 2,
+  },
+  sessionGaugeStatRight: {
+    alignItems: 'flex-end',
   },
   sessionGaugeLabel: {
     fontSize: 11,
@@ -348,20 +359,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   sessionGaugeCount: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '900',
-    lineHeight: 40,
+    color: Colors.text,
   },
-  sessionGaugeCountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  sessionGaugeTotalStat: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
+  sessionGaugeCountRow: {},
+  sessionGaugeTotalStat: {},
   gaugeMeterWrap: {
     width: '100%',
     height: 16,
