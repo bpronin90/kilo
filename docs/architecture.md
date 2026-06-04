@@ -98,7 +98,7 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   helpers such as `rollingWindowStart()` for weight-trend rolling windows,
   and the canonical `deriveWorkoutNoteAnalytics()` entry point that wraps
   all shared workout analytics derivation (classifications, skip data,
-  rep-drop-off flags, routine depth, visible-lift signal rows, and
+  routine depth, visible-lift signal rows, and
   display-name casing) into one call for downstream consumers
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
@@ -109,11 +109,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   documents now also carry persisted `exercise_classifications`,
   `skip_markers`, `attendance_flags`, and `session_checkins` alongside
   tracked-lift and 1k-slot selections. The old `rep_drop_off_flags` surface is
-  no longer produced by the active save pipeline; any remaining reads are a
-  temporary compatibility shim until the Phase 2 UI cleanup removes them. The
-  legacy session key remains only a migration source and the old single-note
-  key remains both a migration source into the notebook model and a
-  backup-compatibility fallback
+  no longer produced or consumed by the active app path. The legacy session
+  key remains only a migration source and the old single-note key remains both
+  a migration source into the notebook model and a backup-compatibility
+  fallback
 - `mobile/screens/` holds one component per visible MVP surface
 - `mobile/theme/colors.js` centralizes native design tokens
 - `mobile/lib/format.js` contains a small shared timestamp formatter
@@ -315,7 +314,7 @@ recomputation at render time is permitted.
 | `skip_markers` (`exercise_skips` + `day_skips`) | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `attendance_flags` | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `session_checkins` | Session check-in response flow keyed by `sessionIndex` | Persisted on note document | Fatigue/session-check-in handling state | No |
-| `rep_drop_off_flags` | _Removed from active contract in issue `#264`_ | No longer produced by the active pipeline; legacy note documents may still carry stale values | Temporary compatibility reads only until Phase 2 removes them | N/A |
+| `rep_drop_off_flags` | _Removed from active contract in issue `#264`; cleanup finished in `#266`_ | No longer produced by the active pipeline; legacy note documents may still carry stale values | No active consumers | N/A |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
@@ -368,7 +367,6 @@ recomputation at render time is permitted.
 │                                                                     │
 │  Legitimately recomputes:                                           │
 │    • signal rows + display casing via deriveWorkoutNoteAnalytics()  │
-│    • latest rep-drop-off badge state via deriveWorkoutNoteAnalytics()│
 │    • 1k total, weight rolling averages, pace                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```

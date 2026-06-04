@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.57.2 - 2026-06-04
+
+- Issue #266: Removed the last legacy rep-drop-off UI plumbing from the native
+  app by deleting the Log `hit a wall` nudge chip, the Analytics `⚠ Hit wall`
+  badge, their dead helper functions, and the obsolete `getLatestRepDropOff`
+  test coverage. Structured Log read mode now renders within-row skipped sets
+  with their original weight and a `-` rep token (`80 4,-` → `80 lb 4, -`).
+
 ## 0.57.1 - 2026-06-04
 
 - Issue #265: Added `deriveCheckInHistory(notes)` so persisted workout-note
