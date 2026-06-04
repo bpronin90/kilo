@@ -276,7 +276,7 @@ export function LogScreen({
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
+  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText, deloadEditDate]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
@@ -1423,7 +1423,9 @@ export function LogScreen({
                           const y = selectedDate.getFullYear();
                           const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
                           const dy = String(selectedDate.getDate()).padStart(2, '0');
-                          setDeloadEditDate(`${y}-${mo}-${dy}`);
+                          const newDateStr = `${y}-${mo}-${dy}`;
+                          setDeloadEditDate(newDateStr);
+                          setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
                         }
                       }}
                     />
