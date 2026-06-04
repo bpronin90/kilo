@@ -151,15 +151,18 @@ retains non-test commands such as `npm run audit`.
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
   logged session position while omitting skipped sessions
 - verifies `getLatestRepDropOff()` returns the latest derived session flag for
-  Log and Analytics display, including null-latest and skipped-gap cases
+  temporary Log and Analytics compatibility reads, including null-latest and
+  skipped-gap cases
 - verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
-  per-field output (weeksIn, classifications, skipData, repDropOffFlags,
-  signals, and `nameDisplayMap`), empty-sections behavior,
+  per-field output (weeksIn, classifications, skipData, signals, and
+  `nameDisplayMap`), absence of `repDropOffFlags`, empty-sections behavior,
   missing-exercise handling, and determinism
 - pins direct helper parity for the canonical workout path by asserting
   `deriveWorkoutNoteAnalytics()` matches `computeWeeksIn()`,
-  `classifyExerciseSessions()`, `deriveSkipData()`,
-  `deriveRepDropOffFlags()`, and `deriveSignals()` for the same inputs
+  `classifyExerciseSessions()`, `deriveSkipData()`, and `deriveSignals()` for
+  the same inputs
+- verifies workout-note storage round-trips `session_checkins` entries intact
+  and loads legacy notes without the field null-safely
 - pins the canonical Analytics migration contract by asserting that
   `deriveWorkoutNoteAnalytics(...).signals` matches `deriveSignals(...)` for
   the same sections, tracked lifts, and multiplier inputs
@@ -171,9 +174,6 @@ retains non-test commands such as `npm run audit`.
 - verifies canonical alias resolution for Analytics signals so tracked
   exercises such as `DB Bench Press` still yield overload trends when the
   note uses an alias like `DB Bench`
-- verifies live `repDropOffFlags` returned from
-  `deriveWorkoutNoteAnalytics()` distinguish no-drop-off vs `hit_wall`
-  current-section patterns without relying on stale persisted badge state
 - verifies `deriveWeightGoalAnalytics()` canonical weight/goal return shape and
   per-field outputs across empty/null entries, saved-goal and edited-goal
   paths, `start_weight` fallback, rolling-series limit behavior, pace-level

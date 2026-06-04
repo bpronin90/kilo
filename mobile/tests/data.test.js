@@ -869,10 +869,15 @@ describe('makeWorkoutNoteItem skip fields', () => {
     expect(item).toHaveProperty('attendance_flags', null);
   });
 
-  test('new note item has rep_drop_off_flags and dismissed_nudges initialised to null', () => {
+  test('new note item has session_checkins and dismissed_nudges initialised to null', () => {
     const item = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
-    expect(item).toHaveProperty('rep_drop_off_flags', null);
+    expect(item).toHaveProperty('session_checkins', null);
     expect(item).toHaveProperty('dismissed_nudges', null);
+  });
+
+  test('new note item no longer carries rep_drop_off_flags', () => {
+    const item = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
+    expect(item).not.toHaveProperty('rep_drop_off_flags');
   });
 
   test('new note item has exercise_classifications initialised to null', () => {
@@ -1890,13 +1895,18 @@ function analyticsSection(name, entries) {
 function aw(weight, reps) { return { weight_value: weight, rep_count: reps }; }
 
 describe('deriveWorkoutNoteAnalytics', () => {
-  test('returns all four output fields', () => {
+  test('returns core output fields', () => {
     const sections = [analyticsSection('Squat', [aw(225, 5)])];
     const result = deriveWorkoutNoteAnalytics(sections, ['Squat']);
     expect(result).toHaveProperty('weeksIn');
     expect(result).toHaveProperty('classifications');
     expect(result).toHaveProperty('skipData');
-    expect(result).toHaveProperty('repDropOffFlags');
+  });
+
+  test('no longer surfaces repDropOffFlags (chip flags stopped)', () => {
+    const sections = [analyticsSection('Squat', [aw(225, 5)])];
+    const result = deriveWorkoutNoteAnalytics(sections, ['Squat']);
+    expect(result).not.toHaveProperty('repDropOffFlags');
   });
 
   test('weeksIn reflects session depth from sections', () => {
@@ -1920,26 +1930,18 @@ describe('deriveWorkoutNoteAnalytics', () => {
     expect(skipData.exercise_skips).toHaveLength(1);
   });
 
-  test('repDropOffFlags keyed by normalized name with per-session flags', () => {
-    const sections = [analyticsSection('Squat', [[aw(225, 8), aw(225, 4)]])];
-    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
-    expect(repDropOffFlags['squat']).toEqual({ '0': 'hit_wall' });
-  });
-
   test('empty sections → weeksIn 0, empty analytics', () => {
-    const { weeksIn, classifications, skipData, repDropOffFlags } =
+    const { weeksIn, classifications, skipData } =
       deriveWorkoutNoteAnalytics([], ['Squat']);
     expect(weeksIn).toBe(0);
     expect(classifications['squat']).toBeNull();
     expect(skipData.exercise_skips).toHaveLength(0);
-    expect(repDropOffFlags['squat']).toEqual({});
   });
 
-  test('tracked exercise absent from note → null classification, empty repDropOff', () => {
+  test('tracked exercise absent from note → null classification', () => {
     const sections = [analyticsSection('Bench Press', [aw(135, 5)])];
-    const { classifications, repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
+    const { classifications } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
     expect(classifications['squat']).toBeNull();
-    expect(repDropOffFlags['squat']).toEqual({});
   });
 
   test('output is deterministic — same sections produce same result regardless of call order', () => {
@@ -2159,7 +2161,7 @@ describe('deriveWorkoutNoteAnalytics weeksIn — HomeScreen progression-depth co
   });
 });
 
-// ── deriveWorkoutNoteAnalytics — alias canonicalization and live repDropOffFlags ─
+// ── deriveWorkoutNoteAnalytics — alias canonicalization ──────────────────────
 
 describe('deriveWorkoutNoteAnalytics — alias canonicalization', () => {
   test('exercise with alias name in note matches canonical tracked name — signal returned', () => {
@@ -2199,49 +2201,6 @@ describe('deriveWorkoutNoteAnalytics — alias canonicalization', () => {
   });
 });
 
-describe('deriveWorkoutNoteAnalytics — live repDropOffFlags', () => {
-  test('sections with no drop-off pattern → getLatestRepDropOff returns null', () => {
-    // Demonstrates repDropOffFlags is derived live from sections.
-    // Consistent reps across all sets → no hit_wall flag.
-    const sets = Array(4).fill({ weight_value: 100, rep_count: 8 });
-    const session_entries = [{ skipped: false, raw: '100x8,8,8,8', sets }];
-    const sections = [{
-      heading: null, subheading: null, kind: 'general',
-      exercises: [{
-        name: 'Bench Press',
-        rows: [{ raw: '100x8,8,8,8', sets }],
-        sets,
-        unparsed_rows: [],
-        session_entries,
-      }],
-    }];
-    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Bench Press']);
-    expect(getLatestRepDropOff(repDropOffFlags['bench press'])).toBeNull();
-  });
-
-  test('sections with a drop-off pattern → getLatestRepDropOff returns hit_wall', () => {
-    // Live derivation picks up a real hit_wall from current section state.
-    const sets = [
-      { weight_value: 100, rep_count: 8 },
-      { weight_value: 100, rep_count: 8 },
-      { weight_value: 100, rep_count: 8 },
-      { weight_value: 100, rep_count: 4 }, // 4-rep drop at max weight → hit_wall
-    ];
-    const session_entries = [{ skipped: false, raw: '100x8,8,8,4', sets }];
-    const sections = [{
-      heading: null, subheading: null, kind: 'general',
-      exercises: [{
-        name: 'Bench Press',
-        rows: [{ raw: '100x8,8,8,4', sets }],
-        sets,
-        unparsed_rows: [],
-        session_entries,
-      }],
-    }];
-    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, ['Bench Press']);
-    expect(getLatestRepDropOff(repDropOffFlags['bench press'])).toBe('hit_wall');
-  });
-});
 
 // ── deriveWeightGoalAnalytics ─────────────────────────────────────────────────
 
@@ -2559,13 +2518,6 @@ describe('deriveWorkoutNoteAnalytics — canonical contract: output consistent w
     const { skipData } = deriveWorkoutNoteAnalytics(sections, ['Squat']);
     const direct = deriveSkipData(sections);
     expect(skipData).toEqual(direct);
-  });
-
-  test('repDropOffFlags match deriveRepDropOffFlags(sections, trackedNames) directly', () => {
-    const sections = makeContractSections({ squatEntries, benchEntries });
-    const { repDropOffFlags } = deriveWorkoutNoteAnalytics(sections, trackedNames);
-    const direct = deriveRepDropOffFlags(sections, trackedNames);
-    expect(repDropOffFlags).toEqual(direct);
   });
 
   test('signals match deriveSignals(sections, trackedNames) directly', () => {

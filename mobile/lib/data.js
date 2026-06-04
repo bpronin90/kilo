@@ -602,7 +602,7 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     isCurrent,
     skip_markers: null,
     attendance_flags: null,
-    rep_drop_off_flags: null,
+    session_checkins: null,
     dismissed_nudges: null,
     exercise_classifications: null,
   };
@@ -1280,19 +1280,16 @@ export function deriveWeightGoalAnalytics(entries, goal, editState = {}, referen
 //   weeksIn:         session depth (routine depth) — max session_entries.length
 //   classifications: { [normalizedName]: 'progressing'|'stalled'|'regressing'|'inconsistent'|null }
 //   skipData:        { exercise_skips, day_skips, attendance_flags }
-//   repDropOffFlags: { [normalizedName]: { [sessionIndex]: 'hit_wall'|null } }
 //   signals:         exercise[] — progression signals for trackedNames
 //   nameDisplayMap:  Map<normalizedName, displayName> — last-seen user-typed casing
 export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
   const _multiplier = multiplier !== undefined ? multiplier : getKiloFatigueMultiplier();
   if (!sections) {
     const emptyClassif = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), null]));
-    const emptyFlags = Object.fromEntries((trackedNames || []).map(n => [normalizeLiftName(n), {}]));
     return {
       weeksIn: null,
       classifications: emptyClassif,
       skipData: { exercise_skips: [], day_skips: [], attendance_flags: [] },
-      repDropOffFlags: emptyFlags,
       signals: [],
       nameDisplayMap: new Map(),
       perDaySignals: {},
@@ -1306,7 +1303,6 @@ export function deriveWorkoutNoteAnalytics(sections, trackedNames, multiplier) {
     weeksIn: computeWeeksIn(sections),
     classifications: classifyExerciseSessions(sections, trackedNames),
     skipData: deriveSkipData(sections),
-    repDropOffFlags: deriveRepDropOffFlags(sections, trackedNames),
     signals: deriveSignals(sections, trackedNames, _multiplier).exercises,
     nameDisplayMap,
     perDaySignals: derivePerDaySignals(sections, trackedNames),

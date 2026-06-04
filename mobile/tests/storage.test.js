@@ -1056,6 +1056,71 @@ describe('saveWorkoutNoteItem', () => {
   });
 });
 
+describe('session_checkins round-trip', () => {
+  const CHECKIN = {
+    status: 'rough',
+    reasons: ['fatigued', 'short on sleep'],
+    note: 'tough one',
+    flagged: ['bench press', 'squat'],
+    detectors: ['collapse', 'volume_drop'],
+    exercises_skipped: 1,
+    volume_decline_pct: 12,
+    responded_at: '2026-05-03T08:00:00.000Z',
+  };
+  const NOTE = {
+    id: 'wn_2026-05-03_1', title: 'Leg Day', raw_text: 'Squat 225 5,5,5',
+    saved_at: '2026-05-03T00:00:00.000Z', updated_at: '2026-05-03T00:00:00.000Z',
+    tracked_exercises: [], one_k_exercises: null, session_checkins: null,
+  };
+
+  test('saves and reloads a keyed session_checkins entry intact', async () => {
+    const withCheckin = { ...NOTE, session_checkins: { '2': CHECKIN } };
+    await saveWorkoutNoteItem(withCheckin);
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    expect(notes[0].session_checkins).toEqual({ '2': CHECKIN });
+  });
+
+  test('an ok check-in round-trips with empty reasons and null note', async () => {
+    const ok = {
+      status: 'ok', reasons: [], note: null, flagged: [], detectors: [],
+      exercises_skipped: 0, volume_decline_pct: null, responded_at: '2026-05-03T08:00:00.000Z',
+    };
+    await saveWorkoutNoteItem({ ...NOTE, session_checkins: { '0': ok } });
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].session_checkins['0']).toEqual(ok);
+  });
+
+  test('upsert adds a new session index without dropping prior check-ins', async () => {
+    await saveWorkoutNoteItem({ ...NOTE, session_checkins: { '0': CHECKIN } });
+    const [existing] = await loadWorkoutNotes();
+    const merged = { ...existing, session_checkins: { ...existing.session_checkins, '1': CHECKIN } };
+    await saveWorkoutNoteItem(merged);
+    const notes = await loadWorkoutNotes();
+    expect(Object.keys(notes[0].session_checkins).sort()).toEqual(['0', '1']);
+  });
+
+  test('null session_checkins persists as null', async () => {
+    await saveWorkoutNoteItem(NOTE);
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].session_checkins).toBeNull();
+  });
+
+  test('legacy note without the field loads null-safe (undefined, not a throw)', async () => {
+    const legacy = {
+      id: 'wn_legacy_1', title: 'Old Routine', raw_text: 'Bench 135 5,5,5',
+      saved_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+      tracked_exercises: [], one_k_exercises: null,
+    };
+    await saveWorkoutNoteItem(legacy);
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].session_checkins).toBeUndefined();
+    // Consumer-style null-safe access must not throw.
+    expect(() => notes[0].session_checkins?.['0']).not.toThrow();
+    expect(notes[0].session_checkins?.['0']).toBeUndefined();
+  });
+});
+
 describe('deleteWorkoutNoteItem', () => {
   const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
   const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };

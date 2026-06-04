@@ -217,12 +217,13 @@ The real native app path now has a modular React Native shell:
   save path now also persists workout-note `skip_markers`
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of
-  recomputing it during render. That same save path now also persists
-  per-session `rep_drop_off_flags` for tracked exercises, while the read view
-  surfaces the latest `hit_wall` nudge inline and treats dismissals as
-  ephemeral local UI state, so the nudge disappears for the current render but
-  can re-fire on a later save when the persisted flag still exists; Android
-  back now exits edit subviews before falling through to tab-level navigation.
+  recomputing it during render. Native workout-note documents now also persist
+  `session_checkins` keyed by session index so answered fatigue check-ins
+  survive reloads, while the old `rep_drop_off_flags` surface is no longer
+  populated. The remaining Log and Analytics helper reads therefore resolve to
+  no data and keep the legacy `hit_wall` chip/badge dark until the Phase 2 UI
+  cleanup removes those reads; Android back now exits edit subviews before
+  falling through to tab-level navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card
@@ -381,8 +382,10 @@ The real native app path now has a modular React Native shell:
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
   alongside the retained `tracked_exercises`, `one_k_exercises`,
-  `skip_markers`, `attendance_flags`, `exercise_classifications`,
-  and per-session `rep_drop_off_flags` fields. It also
+  `skip_markers`, `attendance_flags`, `exercise_classifications`, and
+  `session_checkins` fields. Legacy notes may still contain old
+  `rep_drop_off_flags`, but the active save pipeline no longer writes that
+  surface. It also
   persists a lightweight
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
