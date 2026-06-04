@@ -648,6 +648,47 @@ describe('parseWorkoutRow', () => {
     expect(r.ok).toBe(true);
     expect(r.sets.map(s => s.set_index)).toEqual([1, 2, 3]);
   });
+
+  test('within-row skipped set: trailing dash keeps weight', () => {
+    const r = parseWorkoutRow('80 4,-');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[0]).toMatchObject({ set_index: 1, rep_count: 4, weight_value: 80, weight_unit: 'lb' });
+    expect(r.sets[0].skipped).toBeUndefined();
+    expect(r.sets[1]).toMatchObject({ set_index: 2, rep_count: 0, skipped: true, weight_value: 80, weight_unit: 'lb' });
+  });
+
+  test('within-row skipped set: leading dash keeps weight', () => {
+    const r = parseWorkoutRow('80 -,8');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[0]).toMatchObject({ set_index: 1, rep_count: 0, skipped: true, weight_value: 80 });
+    expect(r.sets[1]).toMatchObject({ set_index: 2, rep_count: 8, weight_value: 80 });
+    expect(r.sets[1].skipped).toBeUndefined();
+  });
+
+  test('within-row skipped set: lone dash after weight', () => {
+    const r = parseWorkoutRow('80 -');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0]).toMatchObject({ rep_count: 0, skipped: true, weight_value: 80 });
+  });
+
+  test('within-row skipped set: mixed across weight pairs', () => {
+    const r = parseWorkoutRow('80 4,- 70 8,-');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(4);
+    expect(r.sets.map(s => s.weight_value)).toEqual([80, 80, 70, 70]);
+    expect(r.sets.map(s => !!s.skipped)).toEqual([false, true, false, true]);
+    expect(r.sets.map(s => s.set_index)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('within-row skipped set: spaced comma still parses', () => {
+    const r = parseWorkoutRow('80 4, -');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[1]).toMatchObject({ rep_count: 0, skipped: true, weight_value: 80 });
+  });
 });
 
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
@@ -1008,6 +1049,26 @@ describe('parseWorkoutNote — set row parsing', () => {
     const r = parseWorkoutNote('-Bench\n80 8,8,8\n-\n85 8,8,8');
     const ex = r.sections[0].exercises[0];
     expect(ex.session_entries.some(e => e.skipped)).toBe(true);
+  });
+
+  test('within-row skipped set parses into sets, not unparsed_rows', () => {
+    const r = parseWorkoutNote('-Skullcrusher\n80 4,-');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows).toHaveLength(0);
+    expect(ex.rows).toHaveLength(1);
+    expect(ex.sets).toHaveLength(2);
+    expect(ex.sets[0]).toMatchObject({ weight_value: 80, rep_count: 4 });
+    expect(ex.sets[1]).toMatchObject({ weight_value: 80, rep_count: 0, skipped: true });
+  });
+
+  test('within-row skipped set as a session entry is a logged (not skipped) entry', () => {
+    const r = parseWorkoutNote('-Skullcrusher\n- 80 8,8\n- 80 4,-');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows).toHaveLength(0);
+    // the second session is logged (it has sets), not a whole-entry skip
+    const second = ex.session_entries[1];
+    expect(second.skipped).toBe(false);
+    expect(second.sets.map(s => !!s.skipped)).toEqual([false, true]);
   });
 
   test('decimal weight parses correctly', () => {
