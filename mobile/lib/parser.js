@@ -89,7 +89,10 @@ export function parseWorkoutRow(raw) {
   }
 
   const LOAD_RE = /^\d+(\.\d+)?$/;
-  const REP_RE = /^\d+(,\d+)*$/;
+  // A rep token is a comma-separated group whose members are positive integers
+  // or "-", a skipped set at this weight (e.g. "80 4,-" → a set of 4 then a
+  // skipped set, both at 80 lb).
+  const REP_RE = /^(\d+|-)(,(\d+|-))*$/;
   const sets = [];
   let set_index = 1;
   let i = 0;
@@ -110,14 +113,17 @@ export function parseWorkoutRow(raw) {
     if (!REP_RE.test(rep_tok)) {
       return { ok: false, raw, error: `Invalid reps "${rep_tok}" — use: 8 or 8,8,8`, category: 'invalid_field_value' };
     }
-    const reps = rep_tok.split(',').map(n => parseInt(n, 10));
-    if (reps.some(r => r <= 0)) {
+    // null marks a skipped set ("-"); real reps must be positive integers.
+    const reps = rep_tok.split(',').map(n => (n === '-' ? null : parseInt(n, 10)));
+    if (reps.some(r => r !== null && r <= 0)) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     i++;
     for (const rep_count of reps) {
       sets.push({
-        set_index: set_index++, rep_count,
+        set_index: set_index++,
+        rep_count: rep_count === null ? 0 : rep_count,
+        ...(rep_count === null ? { skipped: true } : null),
         weight_value: weight, weight_unit: 'lb',
         duration_seconds: null, assistance_value: null, assistance_unit: null, note_text: null,
       });
