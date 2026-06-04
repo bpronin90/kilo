@@ -195,7 +195,7 @@ export function LogScreen({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingText, editingTitle, editingNoteId]);
+  }, [editingText, editingTitle, editingNoteId, deloadEditDate]);
 
   // Cancel pending autosave timers on unmount.
   useEffect(() => {
@@ -240,8 +240,12 @@ export function LogScreen({
     if (!editingNoteId) return false;
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
     if (!editingNote) return false;
-    return editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
-  }, [editingNoteId, editingNote, editingTitle, editingText]);
+    const textChanged = editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
+    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled
+      ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
+      : false;
+    return textChanged || dateChanged;
+  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -1434,12 +1438,16 @@ export function LogScreen({
                 multiline
                 style={[styles.input, styles.editorInput]}
               />
-              <Button
-                onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                title={saveSuccess ? 'Saved!' : 'Save changes'}
-                disabled={editingNoteId ? noteIsSaving : isSaving}
-                style={styles.saveButton}
-              />
+              {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
+                <Button
+                  onPress={editingNoteId ? handleSaveOtherNote : handleSave}
+                  title="Save"
+                  disabled={editingNoteId ? noteIsSaving : isSaving}
+                  style={styles.saveButton}
+                />
+              ) : saveSuccess ? (
+                <Text style={styles.autosaveIndicator}>{saveSuccess}</Text>
+              ) : null}
             </Card>
             {editingNoteId && !isEditingDeloadNote && (
               <Button
@@ -1586,6 +1594,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     gap: 12,
+  },
+  autosaveIndicator: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'right',
+    marginTop: 8,
   },
   inputLabel: {
     fontSize: 12,
