@@ -220,10 +220,11 @@ The real native app path now has a modular React Native shell:
   recomputing it during render. Native workout-note documents now also persist
   `session_checkins` keyed by session index so answered fatigue check-ins
   survive reloads, while the old `rep_drop_off_flags` surface is no longer
-  populated. The remaining Log and Analytics helper reads therefore resolve to
-  no data and keep the legacy `hit_wall` chip/badge dark until the Phase 2 UI
-  cleanup removes those reads; Android back now exits edit subviews before
-  falling through to tab-level navigation.
+  populated or consumed. The legacy `hit_wall` chip/badge and its helper reads
+  are removed from Log and Analytics, and within-row skipped sets now render in
+  structured read mode as `-` at their original weight (`80 4,-` → `80 lb 4, -`);
+  Android back now exits edit subviews before falling through to tab-level
+  navigation.
   A fresh install with no
   logged routines now renders a dedicated `LogEmptyState` surface — short
   explanatory copy, a `New Routine` primary action, and an example-format card

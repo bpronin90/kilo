@@ -214,7 +214,7 @@ export function SetLine({ sets, selectable }) {
       currentGroup = { weight: set.weight_value, reps: [] };
       groups.push(currentGroup);
     }
-    currentGroup.reps.push(set.rep_count);
+    currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
   }
   
   return (

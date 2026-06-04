@@ -14,8 +14,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
-import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, getLatestRepDropOff } from '../lib/data';
-import { formatRepDropOffNudge } from '../lib/format';
+import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
@@ -69,8 +68,6 @@ export function LogScreen({
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [dismissedNudges, setDismissedNudges] = useState({});
-
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
   const [deloadMode, setDeloadMode] = useState('read'); // 'read' | 'edit'
   const [deloadEditText, setDeloadEditText] = useState('');
@@ -385,8 +382,8 @@ export function LogScreen({
         }),
         ...(currentId ? [] : savedSections),
       ];
-      // Cross-note analytics: classifications and rep-drop-off use full session history.
-      const { classifications: exercise_classifications, repDropOffFlags: rep_drop_off_flags } =
+      // Cross-note analytics: classifications use full session history.
+      const { classifications: exercise_classifications } =
         deriveWorkoutNoteAnalytics(allSections, trackedNames);
       // Skip tracking: scoped to the current note being saved.
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
@@ -398,13 +395,12 @@ export function LogScreen({
           exercise_classifications,
           skip_markers,
           attendance_flags,
-          rep_drop_off_flags,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);
         await selectCurrent(result.id);
         if (result) {
-          await update(result.id, { exercise_classifications, skip_markers, attendance_flags, rep_drop_off_flags });
+          await update(result.id, { exercise_classifications, skip_markers, attendance_flags });
         }
       }
 
@@ -733,11 +729,6 @@ export function LogScreen({
   const handleToggleTrack = async (name) => {
     const key = normalizeLiftName(name);
     await toggleTrackedLift(key);
-  };
-
-  const handleDismissNudge = (name) => {
-    const key = normalizeLiftName(name);
-    setDismissedNudges(prev => ({ ...prev, [key]: true }));
   };
 
   const enterDeloadEditor = () => {
@@ -1193,11 +1184,6 @@ export function LogScreen({
                             {section.exercises.map((ex, ei) => {
                               const exNormName = normalizeLiftName(ex.name);
                               const isTracked = !!trackedLifts[exNormName];
-                              const dropOffFlag = isTracked
-                                ? getLatestRepDropOff(currentNote?.rep_drop_off_flags?.[exNormName])
-                                : null;
-                              const isDismissed = dismissedNudges[exNormName];
-                              const nudgeCopy = (!isDismissed && dropOffFlag) ? formatRepDropOffNudge(dropOffFlag) : null;
                               return (
                               <ExerciseBlock
                                 key={`ex-${gi}-${si}-${ei}`}
@@ -1226,14 +1212,6 @@ export function LogScreen({
                                 {ex.unparsed_rows.map((u, ui) => (
                                   <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                 ))}
-                                {nudgeCopy && (
-                                  <View style={styles.nudgeChip}>
-                                    <Text style={styles.nudgeChipText}>{nudgeCopy}</Text>
-                                    <Pressable onPress={(e) => { e?.stopPropagation?.(); handleDismissNudge(ex.name); }} style={styles.nudgeDismiss} hitSlop={{ top: 12, bottom: 12, left: 14, right: 14 }} accessibilityRole="button" accessibilityLabel="Dismiss nudge">
-                                      <Text style={styles.nudgeDismissText} accessible={false}>×</Text>
-                                    </Pressable>
-                                  </View>
-                                )}
                               </ExerciseBlock>
                               );
                             })}
@@ -1694,33 +1672,6 @@ const styles = StyleSheet.create({
   },
   createButtonText: {
     color: Colors.accent,
-  },
-  nudgeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.chipBackground,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 4,
-    gap: 6,
-  },
-  nudgeChipText: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.chipText,
-    lineHeight: 15,
-  },
-  nudgeDismiss: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  nudgeDismissText: {
-    fontSize: 14,
-    color: Colors.chipText,
-    fontWeight: '700',
-    lineHeight: 16,
   },
   tabToggle: {
     flexDirection: 'row',

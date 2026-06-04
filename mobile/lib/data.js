@@ -917,16 +917,6 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
 }
 
 // Return the flag for the most recent logged session from a per-session flags map.
-// sessionFlags: { [sessionIndex]: 'hit_wall' | null }
-// Returns 'hit_wall' | null
-export function getLatestRepDropOff(sessionFlags) {
-  if (!sessionFlags || typeof sessionFlags !== 'object') return null;
-  const keys = Object.keys(sessionFlags);
-  if (keys.length === 0) return null;
-  const maxIdx = Math.max(...keys.map(Number));
-  return sessionFlags[String(maxIdx)] ?? null;
-}
-
 // ── Session check-in detection ────────────────────────────────────────────────
 //
 // Flags when the latest logged session looks "rough" so the UI can ask

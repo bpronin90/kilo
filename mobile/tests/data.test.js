@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1249,39 +1249,6 @@ describe('deriveRepDropOffFlags', () => {
     const result = deriveRepDropOffFlags(sections, ['Squat']);
     expect(result['squat']).toEqual({ '0': 'hit_wall' });
     expect(result['bench press']).toBeUndefined();
-  });
-});
-
-// ── getLatestRepDropOff ───────────────────────────────────────────────────────
-
-describe('getLatestRepDropOff', () => {
-  test('null → null', () => {
-    expect(getLatestRepDropOff(null)).toBeNull();
-  });
-
-  test('undefined → null', () => {
-    expect(getLatestRepDropOff(undefined)).toBeNull();
-  });
-
-  test('empty object → null', () => {
-    expect(getLatestRepDropOff({})).toBeNull();
-  });
-
-  test('single session returns its flag', () => {
-    expect(getLatestRepDropOff({ '0': 'hit_wall' })).toBe('hit_wall');
-  });
-
-  test('returns flag from highest-index session', () => {
-    expect(getLatestRepDropOff({ '0': 'hit_wall', '1': null, '2': null })).toBeNull();
-  });
-
-  test('most recent session null (drop=2) → null', () => {
-    expect(getLatestRepDropOff({ '0': 'hit_wall', '1': null })).toBeNull();
-  });
-
-  test('skipped sessions (absent keys) do not affect result', () => {
-    // session 0 logged (hit_wall), session 1 skipped (absent), session 2 logged (null)
-    expect(getLatestRepDropOff({ '0': 'hit_wall', '2': null })).toBeNull();
   });
 });
 

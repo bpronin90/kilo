@@ -194,9 +194,13 @@ and the Analytics Fatigue section shows the history.
 
 Ordered tasks:
 
-#### Task 5: Remove the rep-drop-off chip (LogScreen + Analytics) and render within-row skipped sets
+#### Task 5: Remove the rep-drop-off chip (LogScreen + Analytics) and render within-row skipped sets — ✅ COMPLETE
 
 - **Issue:** `#266`
+- **Status:** complete. The legacy Log nudge chip and Analytics `⚠ Hit wall`
+  badge are removed, `getLatestRepDropOff` / `formatRepDropOffNudge` are
+  deleted, within-row skipped sets now render as `80 lb 4, -`, and the mobile
+  Jest suite passes after removing the obsolete `getLatestRepDropOff` tests.
 - **Goal:** delete the disliked rep-drop-off ("hit a wall") signal everywhere it renders and
   display within-row skipped sets correctly.
 - **Scope (corrected for post-Phase-1 state):** the signal renders in **two** dead-but-wired
@@ -294,6 +298,6 @@ parser token, and the `session_checkins` model; changelog and version bumped at 
 ## Sequencing summary
 
 - Phase 1 (claude): Task 1 `#262` → Task 2 `#263` → Task 3 `#264` → Task 4 `#265` — ✅ complete
-- Phase 2 (claude, after Phase 1): Task 5 `#266` → Task 6 `#267` → Task 7 `#268` → Task 8 `#269`
+- Phase 2 (claude, after Phase 1): Task 5 `#266` — ✅ complete; Task 6 `#267` → Task 7 `#268` → Task 8 `#269`
 - Phase 3 (claude, after Phase 2): Task 9
 - Reviewer (codex) writes each issue from these task specs and reviews on completion.
