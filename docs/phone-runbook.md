@@ -192,12 +192,8 @@ eas build --platform android --profile preview
   - changing Android native project files
   - changing `app.json` fields that affect native config, such as package,
     permissions, splash, or icons
-  - bumping the `version` field in `app.json` (runtime version = app version
-    under `runtimeVersion.policy: "appVersion"`, so a version bump creates a
-    new runtime boundary that OTA updates cannot cross)
-- The app uses `runtimeVersion.policy: "appVersion"`. Runtime version equals
-  the `version` in `app.json`. OTA updates apply to any installed
-  build sharing that version; a rebuild is only required for the cases above.
+  - manually bumping `PREVIEW_RUNTIME` in `mobile/app.config.js` (see
+    [Preview runtime policy](#preview-runtime-policy) below)
 - Download the new `.apk` from the latest EAS build URL.
 - Install it on the phone again. Android should treat this as an update as long
   as the package name stays the same and the signing is compatible.
@@ -215,6 +211,7 @@ eas build:list --platform android --limit 5
 - The app uses only local `AsyncStorage`; no backend or network connection is required at runtime.
 - Subsequent builds reuse the same EAS project — no re-configuration needed.
 - The `preview` profile intentionally omits OTA code-signing setup. Use a preview APK for the first install, then use `npm run update:android:preview` for JS-only changes.
+- Preview builds use a stable manual runtime string (`preview-1`) rather than tracking `expo.version`. App version bumps do not create a new OTA boundary for preview. See [Preview runtime policy](#preview-runtime-policy) for when to bump this string.
 
 ---
 
@@ -313,4 +310,66 @@ eas build:list --platform ios --limit 5
 - **iOS 16+ requires Developer Mode enabled on the device.** Internal-distribution builds will not launch until Developer Mode is turned on in Settings → Privacy & Security → Developer Mode.
 - **Simulator artifact requires macOS.** The EAS remote build itself runs on any OS, but installing and running the `.app` requires macOS with Xcode. Windows and Linux contributors cannot use the simulator artifact locally.
 - **Simulator builds cannot run on a real device.** The `.app` from `ios-simulator` is a simulator binary, not a signed device build.
-- **OTA not documented for this iOS flow.** Use a new EAS build and reinstall for now unless the repo adopts and validates an iOS OTA process separately.
+- **OTA not documented for this iOS flow.** Use a new EAS build and reinstall for now unless the repo adopts and validates an iOS OTA process separately. Preview builds share the same stable runtime string (`preview-1`), so the runtime boundary won't shift on version bumps when OTA is later enabled here.
+
+---
+
+# Preview Runtime Policy
+
+Preview builds use a **stable manual runtime string** (`preview-1`) instead of
+tracking `expo.version`. This means app version bumps do not create a new OTA
+compatibility boundary for the `preview` channel. After a one-time rebuild onto
+the new runtime, all subsequent JS-only preview OTA updates flow without
+rebuilding.
+
+## How it works
+
+`mobile/app.config.js` sets `runtimeVersion` dynamically:
+
+- Build/update env `APP_ENV=preview` → `runtimeVersion: "preview-1"`
+- Production builds (no `APP_ENV`) → `runtimeVersion: { policy: "appVersion" }`
+
+All three preview EAS build profiles (`preview`, `ios-simulator`, `ios-device`)
+set `APP_ENV=preview` via `eas.json`. The `update:android:preview` and
+`update:ios:preview` npm scripts also set `APP_ENV=preview` so bundled OTA
+updates carry the same runtime value as the installed build.
+
+## One-time rebuild required
+
+Installed preview builds built before this change still have a runtime version
+of their old `expo.version` (e.g. `"0.54.0"`). They will not receive OTA
+updates from builds that now emit `"preview-1"`. A one-time fresh preview build
+and reinstall is required to migrate onto the stable runtime:
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+eas build --platform android --profile preview
+```
+
+Install the new APK. After that, all JS-only preview updates flow OTA.
+
+## JS-only preview update (normal path after migration)
+
+```bash
+cd /home/benpronin/projects/kilo/mobile
+npm run update:android:preview
+```
+
+No rebuild required.
+
+## When to bump the preview runtime
+
+Bump `PREVIEW_RUNTIME` in `mobile/app.config.js` only when a native-affecting
+change makes existing installed preview builds incompatible:
+
+- adding or removing a native module
+- changing Android/iOS native project files
+- changing `app.json` native config fields (package, permissions, splash,
+  icons)
+
+After bumping the constant (e.g. `"preview-1"` → `"preview-2"`), create a new
+preview build and distribute it. Devices still on the old runtime will not
+receive OTA updates until reinstalled.
+
+Do **not** bump the preview runtime for JS-only changes, styling updates,
+dependency upgrades that are pure JS, or app version bumps.

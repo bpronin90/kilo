@@ -7,7 +7,10 @@
       "android": {
         "buildType": "apk"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "APP_ENV": "preview"
+      }
     },
     "production": {
       "android": {
@@ -19,6 +22,9 @@
       "channel": "preview",
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "APP_ENV": "preview"
       }
     },
     "ios-device": {
@@ -26,6 +32,9 @@
       "distribution": "internal",
       "ios": {
         "buildConfiguration": "Release"
+      },
+      "env": {
+        "APP_ENV": "preview"
       }
     }
   }
