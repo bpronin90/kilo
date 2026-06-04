@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, getLatestRepDropOff, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn } from '../lib/data';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -1277,6 +1277,117 @@ describe('getLatestRepDropOff', () => {
   test('skipped sessions (absent keys) do not affect result', () => {
     // session 0 logged (hit_wall), session 1 skipped (absent), session 2 logged (null)
     expect(getLatestRepDropOff({ '0': 'hit_wall', '2': null })).toBeNull();
+  });
+});
+
+// ── deriveSessionCheckIn ──────────────────────────────────────────────────────
+
+// A within-row skipped set: weight preserved, rep_count 0, skipped flag.
+function skset(weight) { return { weight_value: weight, rep_count: 0, skipped: true }; }
+
+describe('deriveSessionCheckIn', () => {
+  test('guards: null sections / empty tracked names → empty result', () => {
+    expect(deriveSessionCheckIn(null, ['Squat']).isRough).toBe(false);
+    expect(deriveSessionCheckIn([dropOffSection('Squat', [[ws(225, 5)]])], []).isRough).toBe(false);
+  });
+
+  test('not rough when latest is within range of baseline (8,8 → 6,6)', () => {
+    const sections = [dropOffSection('Skullcrusher', [
+      [ws(80, 8), ws(80, 8)],
+      [ws(80, 6), ws(80, 6)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Skullcrusher']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+    expect(r.flagged).toEqual([]);
+    expect(r.metrics).toEqual({ exercises_skipped: 0, volume_decline_pct: null });
+  });
+
+  test('brand-new exercise (no history) never flags, even with an intra-session drop', () => {
+    const sections = [dropOffSection('New Lift', [[ws(50, 8), ws(50, 4)]])];
+    const r = deriveSessionCheckIn(sections, ['New Lift']);
+    expect(r.isRough).toBe(false);
+  });
+
+  test('volume_drop: 80 8,8 → 80 4,- flags the exercise and reports decline %', () => {
+    const sections = [dropOffSection('Skullcrusher', [
+      [ws(80, 8), ws(80, 8)],
+      [ws(80, 4), skset(80)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Skullcrusher']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['volume_drop']);
+    expect(r.flagged).toHaveLength(1);
+    expect(r.flagged[0]).toMatchObject({ normName: 'skullcrusher', reasons: ['volume_drop'] });
+    // base tonnage 1280, latest 320 → 75% decline
+    expect(r.metrics.volume_decline_pct).toBe(75);
+    expect(r.metrics.exercises_skipped).toBe(0);
+    expect(r.sessionIndex).toBe(1);
+  });
+
+  test('volume_drop does NOT fire for a small in-range drop (8,8 → 6,6)', () => {
+    const sections = [dropOffSection('Skullcrusher', [
+      [ws(80, 8), ws(80, 8)],
+      [ws(80, 6), ws(80, 6)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Skullcrusher']);
+    expect(r.detectors).not.toContain('volume_drop');
+  });
+
+  test('collapse: reps fall apart within the latest session (80 5,5 → 80 8,4)', () => {
+    const sections = [dropOffSection('Bench Press', [
+      [ws(80, 5), ws(80, 5)],
+      [ws(80, 8), ws(80, 4)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press']);
+    expect(r.detectors).toEqual(['collapse']);
+    expect(r.flagged[0].reasons).toEqual(['collapse']);
+    expect(r.metrics.volume_decline_pct).toBeNull();
+  });
+
+  test('skipped: more skips than usual flags the skipped exercises (2 of 3)', () => {
+    const sections = [
+      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip']),
+      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], 'skip']),
+      dropOffSection('Squat', [[ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)]]),
+    ];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row', 'Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['skipped']);
+    expect(r.metrics.exercises_skipped).toBe(2);
+    expect(r.flagged.map(f => f.normName).sort()).toEqual(['bench press', 'row']);
+    expect(r.flagged.every(f => f.reasons.includes('skip'))).toBe(true);
+  });
+
+  test('skipped does NOT fire below the floor (only one exercise skipped)', () => {
+    const sections = [
+      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip']),
+      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)]]),
+    ];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.detectors).not.toContain('skipped');
+    expect(r.isRough).toBe(false);
+  });
+
+  test('skipped does NOT fire for a habitual/alternating skip pattern (not above the worst prior column)', () => {
+    // Both lifts skip every other session: the latest 2-skip column is not unusual.
+    const sections = [
+      dropOffSection('Bench Press', [[ws(80, 8)], 'skip', [ws(80, 8)], 'skip']),
+      dropOffSection('Row', [[ws(100, 8)], 'skip', [ws(100, 8)], 'skip']),
+    ];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.detectors).not.toContain('skipped');
+  });
+
+  test('day_skip: every tracked exercise skipped this session', () => {
+    const sections = [
+      dropOffSection('Bench Press', [[ws(80, 8), ws(80, 8)], 'skip']),
+      dropOffSection('Row', [[ws(100, 8), ws(100, 8)], 'skip']),
+    ];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['skipped', 'day_skip']);
+    expect(r.flagged.every(f => f.reasons.includes('day_skip'))).toBe(true);
   });
 });
 
