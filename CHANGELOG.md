@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.54.0 - 2026-06-03
+
+- Issue #257: Gave completed deloads full editor parity with saved routines by
+  dual-writing new completions into the workout-notes store as `Deload ·
+  YYYY-MM-DD` notes while keeping `kilo_workout_deload_history` authoritative
+  for the Session Health gauge. The Log Deload tab now opens note-backed past
+  deloads in the full-screen routine editor, filters those deload notes out of
+  `More Routines`, deletes note-backed deloads from both stores together, and
+  preserves pre-#257 history visibility by rendering legacy history-only
+  deloads inline as read-only expandable cards until they have note twins.
+
 ## 0.53.0 - 2026-06-03
 
 - Issue #256: Surfaced deload completion and the sessions-since-deload clock in

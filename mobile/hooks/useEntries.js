@@ -146,6 +146,7 @@ export function useWorkoutNotes() {
   }, [refresh]);
 
   const currentNote = notes.find(n => n.id === currentId) ?? null;
+  const deloadNotes = notes.filter(n => n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
   const add = useCallback(async (title, raw_text = '') => {
     const note = makeWorkoutNoteItem({ title, raw_text });
@@ -177,7 +178,7 @@ export function useWorkoutNotes() {
     notifyWorkoutNotes();
   }, []);
 
-  return { notes, currentId, currentNote, loading, error, add, update, remove, selectCurrent, refresh };
+  return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh };
 }
 
 export function useTrackedLifts() {
@@ -233,6 +234,8 @@ export function useTrackedLifts() {
 
   return { trackedLifts, loading, error, save, toggle, refresh };
 }
+
+const DELOAD_NOTE_PREFIX = 'Deload · ';
 
 let deloadNoteListeners = [];
 const notifyDeloadNote = () => safeNotify(deloadNoteListeners);
@@ -307,21 +310,47 @@ export function useDeloadHistory() {
     const activeNote = await Storage.loadDeloadNote();
     if (!activeNote) return null;
     const completed_at = new Date().toISOString();
+    const dateStr = completed_at.slice(0, 10);
+    const noteId = `wn_dl_${dateStr}_${Date.now()}`;
+    const workoutNote = {
+      id: noteId,
+      title: `${DELOAD_NOTE_PREFIX}${dateStr}`,
+      raw_text: activeNote.raw_text,
+      saved_at: completed_at,
+      updated_at: completed_at,
+      tracked_exercises: [],
+      one_k_exercises: null,
+      isCurrent: false,
+    };
     const record = {
-      id: `dl_${completed_at.slice(0, 10)}_${Date.now()}`,
+      id: `dl_${dateStr}_${Date.now()}`,
       raw_text: activeNote.raw_text,
       generated_at: activeNote.saved_at,
       completed_at,
       session_count: sessionCount,
+      note_id: noteId,
     };
     await Storage.appendDeloadHistory(record);
+    await Storage.saveWorkoutNoteItem(workoutNote);
     await Storage.clearDeloadNote();
     notifyDeloadHistory();
     notifyDeloadNote();
+    notifyWorkoutNotes();
     return record;
   }, []);
 
-  return { history, loading, error, completeDeload, deleteDeload, refresh };
+  const deleteDeloadNote = useCallback(async (noteId) => {
+    const hist = await Storage.loadDeloadHistory();
+    const record = hist.find(r => r.note_id === noteId);
+    if (record) {
+      await Storage.deleteDeloadHistory(record.id);
+      notifyDeloadHistory();
+    }
+    await Storage.deleteWorkoutNoteItem(noteId);
+    notifyWorkoutNotes();
+  }, []);
+
+  return { history, loading, error, completeDeload, deleteDeload, deleteDeloadNote, refresh };
 }
 
 let profileListeners = [];

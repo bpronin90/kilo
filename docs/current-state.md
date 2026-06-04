@@ -186,10 +186,14 @@ The real native app path now has a modular React Native shell:
   persistence so the raw editor is comfortable to use while the rendered view
   stays parser-compatible. When an active deload note exists the Deload tab now
   shows a `Deload complete` action that archives the note (capturing the current
-  session count) behind a confirm dialog, and renders a collapsible `Past
-  deloads` list of archived records with a per-record delete behind its own
-  confirm; deleting recomputes the sessions-since-deload clock off the remaining
-  history (resetting to the absolute session count when none remain). The read view now also
+  session count) behind a confirm dialog, dual-writes that completion into the
+  workout-notes store as a dated `Deload · YYYY-MM-DD` note, and renders a
+  `Past deloads` list that now splits behavior by record type: note-backed
+  deloads open in the same full-screen editor flow used by saved routines and
+  delete from both stores together, while pre-#257 history-only deloads remain
+  visible as read-only inline expandable cards with history-only delete.
+  Deleting any past deload recomputes the sessions-since-deload clock off the
+  remaining history (resetting to the absolute session count when none remain). The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
@@ -370,7 +374,8 @@ The real native app path now has a modular React Native shell:
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
   weight-date-edit setting under `kilo_weight_date_edit_enabled`, a separate
   deload-note record under `kilo_workout_deload_note`, a completed
-  deload history under `kilo_workout_deload_history`, a global
+  deload history under `kilo_workout_deload_history`, note-backed completed
+  deload records in `kilo_workout_notes` linked from history via `note_id`, a global
   tracked-lift map under `kilo_tracked_lifts`, and the Log-tab
   current-routine collapsed state under `kilo_log_current_collapsed`. The
   legacy structured

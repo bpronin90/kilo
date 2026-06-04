@@ -17,6 +17,8 @@ import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDef
 import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
+const DELOAD_NOTE_PREFIX = 'Deload · ';
+
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
 // The deload format line "Name: weight lbs SxR" still parses via _DELOAD_RE.
@@ -48,10 +50,10 @@ export function LogScreen({
   toggleCollapsed,
   onSaveWorkout
 }) {
-  const { notes, currentId, currentNote, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
+  const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
-  const { history: deloadHistory, completeDeload, deleteDeload } = useDeloadHistory();
+  const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote } = useDeloadHistory();
 
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
@@ -128,9 +130,11 @@ export function LogScreen({
     return workoutNoteTitle !== (currentNote.title || '') || workoutNoteText !== currentNote.raw_text;
   }, [currentNote, workoutNoteTitle, workoutNoteText]);
 
-  const editingNote = useMemo(() => 
+  const editingNote = useMemo(() =>
     (editingNoteId && editingNoteId !== 'new') ? notes.find(n => n.id === editingNoteId) : null
   , [editingNoteId, notes]);
+
+  const isEditingDeloadNote = !!editingNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
 
   const hasUnsavedOther = useMemo(() => {
     if (!editingNoteId) return false;
@@ -166,7 +170,7 @@ export function LogScreen({
     return () => backHandler.remove();
   }, [editingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
 
-  const otherNotes = notes.filter(n => n.id !== currentId);
+  const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
@@ -469,6 +473,24 @@ export function LogScreen({
               setWorkoutNoteTitle('');
             }
           } 
+        },
+      ]
+    );
+  };
+
+  const handleDeleteDeloadNoteFromEditor = () => {
+    Alert.alert(
+      'Delete deload record?',
+      'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteDeloadNote(editingNoteId);
+            setEditingNoteId(null);
+          },
         },
       ]
     );
@@ -795,10 +817,48 @@ export function LogScreen({
                 </>
               )
             )}
-            {tabView === 'deload' && !deloadLoading && deloadHistory.length > 0 && (
+            {tabView === 'deload' && !deloadLoading && (deloadNotes.length > 0 || deloadHistory.some(r => !r.note_id)) && (
               <View style={styles.pastDeloads}>
                 <SectionTitle>Past deloads</SectionTitle>
-                {deloadHistory.slice().sort((a, b) => b.completed_at.localeCompare(a.completed_at)).map(record => {
+                {[
+                  ...deloadNotes.map(n => ({ type: 'note', id: n.id, sortKey: n.saved_at, data: n })),
+                  ...deloadHistory.filter(r => !r.note_id).map(r => ({ type: 'legacy', id: r.id, sortKey: r.completed_at, data: r })),
+                ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
+                  if (item.type === 'note') {
+                    const note = item.data;
+                    const dateStr = note.title.startsWith(DELOAD_NOTE_PREFIX)
+                      ? note.title.slice(DELOAD_NOTE_PREFIX.length)
+                      : note.saved_at.slice(0, 10);
+                    return (
+                      <Card key={note.id} style={styles.otherNoteCard}>
+                        <Pressable onPress={() => handleOpenOtherNote(note)} style={styles.otherNoteHeader}>
+                          <View style={styles.otherNoteInfo}>
+                            <Text style={styles.otherNoteTitle}>{note.title}</Text>
+                            <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
+                          </View>
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Alert.alert(
+                                'Delete deload record?',
+                                'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
+                                ]
+                              );
+                            }}
+                            style={styles.inlineSwitchButton}
+                            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                          </Pressable>
+                        </Pressable>
+                      </Card>
+                    );
+                  }
+                  // Legacy history record (no linked workout note) — read-only inline expand
+                  const record = item.data;
                   const isExpanded = expandedDeloads.has(record.id);
                   const dateStr = record.completed_at.slice(0, 10);
                   const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
@@ -998,7 +1058,11 @@ export function LogScreen({
           editingNoteId ? (editingTitle || 'Untitled Routine') :
           (workoutNoteTitle || 'Untitled Routine')
         }
-        subtitle={deloadMode === 'edit' ? 'Edit deload' : 'Edit routine'}
+        subtitle={
+          deloadMode === 'edit' ? 'Edit deload' :
+          (editingNoteId && isEditingDeloadNote) ? 'Edit deload record' :
+          'Edit routine'
+        }
         headerRight={
           <Pressable
             onPress={
@@ -1040,13 +1104,15 @@ export function LogScreen({
         ) : (
           <View style={styles.editContainer}>
             <Card>
-              <TextInput
-                value={editingNoteId ? editingTitle : workoutNoteTitle}
-                onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
-                placeholder="Routine Name (e.g. Push Day)"
-                placeholderTextColor={Colors.textMuted}
-                style={[styles.input, styles.titleInput]}
-              />
+              {!isEditingDeloadNote && (
+                <TextInput
+                  value={editingNoteId ? editingTitle : workoutNoteTitle}
+                  onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
+                  placeholder="Routine Name (e.g. Push Day)"
+                  placeholderTextColor={Colors.textMuted}
+                  style={[styles.input, styles.titleInput]}
+                />
+              )}
               <TextInput
                 value={editingNoteId ? editingText : workoutNoteText}
                 onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
@@ -1062,7 +1128,7 @@ export function LogScreen({
                 style={styles.saveButton}
               />
             </Card>
-            {editingNoteId && (
+            {editingNoteId && !isEditingDeloadNote && (
               <Button
                 onPress={() => handleSwitchCurrent(editingNoteId)}
                 title="Set as current routine"
@@ -1073,12 +1139,16 @@ export function LogScreen({
             <Button
               onPress={() => {
                 if (editingNoteId) {
-                  handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+                  if (isEditingDeloadNote) {
+                    handleDeleteDeloadNoteFromEditor();
+                  } else {
+                    handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
+                  }
                 } else {
                   handleDeleteRoutine(currentId, workoutNoteTitle || 'Untitled Routine', true);
                 }
               }}
-              title="Delete routine"
+              title={isEditingDeloadNote ? 'Delete deload record' : 'Delete routine'}
               style={styles.deleteButton}
               textStyle={styles.deleteButtonText}
             />
