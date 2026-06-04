@@ -12,6 +12,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
+import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
@@ -90,6 +91,8 @@ export function LogScreen({
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
   const [roughNoteId, setRoughNoteId] = useState(null);
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [roughCheckInData, setRoughCheckInData] = useState(null);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -510,12 +513,14 @@ export function LogScreen({
       }),
       ...(latestId ? [] : latestSections),
     ];
-    const { isRough, sessionIndex, flagged } = deriveSessionCheckIn(allSects, resolvedTrackedNames);
+    const { isRough, sessionIndex, flagged, detectors, metrics } = deriveSessionCheckIn(allSects, resolvedTrackedNames);
     const checkins = currentNoteRef.current?.session_checkins;
     if (isRough && sessionIndex != null && !(checkins?.[sessionIndex])) {
       setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
       setRoughSessionIndex(sessionIndex);
       setRoughNoteId(latestId);
+      setRoughCheckInData({ sessionIndex, detectors, flagged, metrics });
+      setShowCheckInModal(true);
       onCheckInPrompt?.();
     } else {
       setRoughFlaggedNames(new Set());
@@ -1532,6 +1537,14 @@ export function LogScreen({
           </View>
         )}
       </ScreenShell>
+      <SessionCheckInModal
+        visible={showCheckInModal}
+        checkInData={roughCheckInData}
+        currentId={roughNoteId}
+        currentNote={currentNote}
+        update={update}
+        onClose={() => setShowCheckInModal(false)}
+      />
     </>
   );
 }
