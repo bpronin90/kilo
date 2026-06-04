@@ -96,10 +96,10 @@ export function SessionGauge({ count, total }) {
       <View style={styles.sessionGaugeHeader}>
         <Text style={styles.sessionGaugeLabel}>{total != null ? 'Since deload' : 'Sessions logged'}</Text>
         <View style={styles.sessionGaugeCountRow}>
+          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
           {total != null && (
             <Text style={styles.sessionGaugeTotalStat}>{total} total</Text>
           )}
-          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
         </View>
       </View>
 
@@ -338,20 +338,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sessionGaugeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
+    gap: 2,
   },
   sessionGaugeLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   sessionGaugeCount: {
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: '900',
+    lineHeight: 40,
   },
   sessionGaugeCountRow: {
     flexDirection: 'row',
@@ -359,7 +358,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sessionGaugeTotalStat: {
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.textMuted,
     fontWeight: '600',
   },
