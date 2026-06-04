@@ -18,6 +18,7 @@ import { formatRepDropOffNudge } from '../lib/format';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
+const AUTOSAVE_DEBOUNCE_MS = 800;
 
 // Reshape the compact deload generator output into routine-note style:
 // blank line between day blocks, +Lifting subheading per day.
@@ -83,6 +84,8 @@ export function LogScreen({
   const deloadLastTapRef = useRef(0);
   const viewingNoteLastTapRef = useRef(0);
   const readScrollYRef = useRef(0);
+  const autosaveCurrentTimerRef = useRef(null);
+  const autosaveOtherTimerRef = useRef(null);
 
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -131,6 +134,49 @@ export function LogScreen({
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  // Debounced autosave for the current (existing) note while in edit mode.
+  // New notes (no currentId) require an explicit first save to get an ID.
+  useEffect(() => {
+    if (mode !== 'edit' || !currentId || !hasUnsavedCurrent) return;
+    if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
+    autosaveCurrentTimerRef.current = setTimeout(async () => {
+      autosaveCurrentTimerRef.current = null;
+      await handleSave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveCurrentTimerRef.current) {
+        clearTimeout(autosaveCurrentTimerRef.current);
+        autosaveCurrentTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutNoteText, workoutNoteTitle, mode, currentId]);
+
+  // Debounced autosave for a non-current (existing) note while in edit mode.
+  useEffect(() => {
+    if (!editingNoteId || editingNoteId === 'new' || !hasUnsavedOther) return;
+    if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
+    autosaveOtherTimerRef.current = setTimeout(async () => {
+      autosaveOtherTimerRef.current = null;
+      await handleSaveOtherNote();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingText, editingTitle, editingNoteId]);
+
+  // Cancel pending autosave timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
+      if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -372,96 +418,80 @@ export function LogScreen({
     });
   };
 
-  const handleDoneCurrent = () => {
-    if (!hasUnsavedCurrent) {
-      exitCurrentEditor();
-      return;
+  const handleDoneCurrent = async () => {
+    // Cancel any pending debounced autosave before flushing manually.
+    if (autosaveCurrentTimerRef.current) {
+      clearTimeout(autosaveCurrentTimerRef.current);
+      autosaveCurrentTimerRef.current = null;
     }
 
     if (!currentId) {
+      // New note: prompt to discard; autosave doesn't apply until an ID exists.
+      if (!hasUnsavedCurrent) {
+        exitCurrentEditor();
+        return;
+      }
       Alert.alert(
         'Discard changes?',
         'You have not saved this new routine. Are you sure you want to discard it?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
+          {
+            text: 'Discard',
+            style: 'destructive',
             onPress: () => {
               exitCurrentEditor();
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
-            } 
+            }
           },
         ]
       );
-    } else {
-      Alert.alert(
-        'Unsaved Changes',
-        'Do you want to save your changes before leaving?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => {
-              exitCurrentEditor();
-              setWorkoutNoteText(currentNote.raw_text);
-              setWorkoutNoteTitle(currentNote.title || '');
-            } 
-          },
-          { 
-            text: 'Save', 
-            onPress: async () => {
-              const ok = await handleSave();
-              if (ok) exitCurrentEditor();
-            } 
-          },
-        ]
-      );
-    }
-  };
-
-  const handleDoneOther = () => {
-    if (!hasUnsavedOther) {
-      setEditingNoteId(null);
       return;
     }
 
+    // Existing note: flush any unsaved changes, then exit.
+    if (hasUnsavedCurrent) {
+      const ok = await handleSave();
+      if (!ok) return;
+    }
+    exitCurrentEditor();
+  };
+
+  const handleDoneOther = async () => {
+    // Cancel any pending debounced autosave before flushing manually.
+    if (autosaveOtherTimerRef.current) {
+      clearTimeout(autosaveOtherTimerRef.current);
+      autosaveOtherTimerRef.current = null;
+    }
+
     if (editingNoteId === 'new') {
+      // New note: prompt to discard; autosave doesn't apply until an ID exists.
+      if (!hasUnsavedOther) {
+        setEditingNoteId(null);
+        return;
+      }
       Alert.alert(
         'Discard changes?',
         'You have not saved this new routine. Are you sure you want to discard it?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => setEditingNoteId(null) 
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => setEditingNoteId(null)
           },
         ]
       );
-    } else {
-      Alert.alert(
-        'Unsaved Changes',
-        'Do you want to save your changes before leaving?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Discard', 
-            style: 'destructive', 
-            onPress: () => setEditingNoteId(null) 
-          },
-          { 
-            text: 'Save', 
-            onPress: async () => {
-              const ok = await handleSaveOtherNote();
-              if (ok) setEditingNoteId(null);
-            } 
-          },
-        ]
-      );
+      return;
     }
+
+    // Existing note: flush any unsaved changes, then exit.
+    if (hasUnsavedOther) {
+      const ok = await handleSaveOtherNote();
+      if (!ok) return;
+    }
+    setEditingNoteId(null);
   };
 
   const handleOpenOtherNote = (other) => {
@@ -566,6 +596,15 @@ export function LogScreen({
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
     const doSwitch = async () => {
+      // Cancel pending autosaves so they don't write to the wrong note after switch.
+      if (autosaveCurrentTimerRef.current) {
+        clearTimeout(autosaveCurrentTimerRef.current);
+        autosaveCurrentTimerRef.current = null;
+      }
+      if (autosaveOtherTimerRef.current) {
+        clearTimeout(autosaveOtherTimerRef.current);
+        autosaveOtherTimerRef.current = null;
+      }
       await selectCurrent(id);
       setEditingNoteId(null);
       setViewingNoteId(null);
@@ -582,9 +621,17 @@ export function LogScreen({
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Switch Anyway', style: 'destructive', onPress: doSwitch },
-          { 
-            text: 'Save & Switch', 
+          {
+            text: 'Save & Switch',
             onPress: async () => {
+              if (autosaveCurrentTimerRef.current) {
+                clearTimeout(autosaveCurrentTimerRef.current);
+                autosaveCurrentTimerRef.current = null;
+              }
+              if (autosaveOtherTimerRef.current) {
+                clearTimeout(autosaveOtherTimerRef.current);
+                autosaveOtherTimerRef.current = null;
+              }
               let ok = false;
               if (editingNoteId) {
                 ok = await handleSaveOtherNote();
@@ -592,7 +639,7 @@ export function LogScreen({
                 ok = await handleSave();
               }
               if (ok) await doSwitch();
-            } 
+            }
           },
         ]
       );
