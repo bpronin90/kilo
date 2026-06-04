@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.56.1 - 2026-06-04
+
+- Issue #262: Fixed weighted workout-row parsing so within-row skipped-set
+  tokens like `80 4,-`, `80 -,8`, and mixed weighted groups no longer degrade
+  into `unparsed_rows`. The parser now preserves the set weight, records the
+  skipped set as `rep_count: 0` with an optional `skipped: true` flag, and
+  keeps bare whole-line `-` behavior unchanged.
+
 ## 0.56.0 - 2026-06-04
 
 - Issue #261: Added safe debounced autosave for existing workout-note raw
