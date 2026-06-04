@@ -222,10 +222,11 @@ The real native app path now has a modular React Native shell:
   survive reloads. When the user leaves the current-routine editor after a
   rough detected session, the same Log flow now re-runs the session check-in
   detector after autosave, highlights exactly the flagged exercises in red in
-  the rendered routine view, and suppresses that highlight once the matching
-  `session_checkins[sessionIndex]` answer exists. The screen also accepts a
-  gated `onCheckInPrompt` hook so the upcoming modal can attach without
-  changing detection behavior. The old `rep_drop_off_flags` surface is no
+  the rendered routine view, opens a bottom-sheet `SessionCheckInModal` with a
+  detector-aware title plus flagged exercise names where available, and
+  persists either an `I'm okay` or `Not great` answer back onto that session
+  index. The highlight and modal prompt both suppress once the matching
+  `session_checkins[sessionIndex]` answer exists. The old `rep_drop_off_flags` surface is no
   longer populated or consumed. The legacy `hit_wall` chip/badge and its
   helper reads are removed from Log and Analytics, and within-row skipped sets
   now render in structured read mode as `-` at their original weight

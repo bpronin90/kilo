@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.59.0 - 2026-06-04
+
+- Issue #268: Completed the Log-tab fatigue check-in flow with a contextual
+  bottom-sheet modal that opens after a rough detected session, titles the
+  prompt from the firing detectors plus flagged exercise names where available,
+  captures either `I'm okay` or `Not great` responses with the defined reason
+  vocabulary, persists the answer into `session_checkins`, and suppresses
+  future prompts/highlights for that answered session index.
+
 ## 0.58.0 - 2026-06-04
 
 - Issue #267: Added the first visible fatigue check-in cue on the Log tab.
