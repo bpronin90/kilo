@@ -503,12 +503,12 @@ describe('AnalyticsScreen Session Health gauge', () => {
     expect(hasText(root, 'Deload')).toBe(true);
   });
 
-  test('shows the count and the approaching-deload caption in the 7–9 zone', () => {
+  test('shows the count and the 7–9 zone caption', () => {
     const raw_text = ['Monday', '+ lifting', '1. Squat',
       '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
     const component = setup({ hookOverrides: { currentNote: { id: 'n1', raw_text } } });
     const root = component.root;
-    expect(hasText(root, 'Approaching deload')).toBe(true);
+    expect(hasText(root, 'Fatigue setting in')).toBe(true);
     expect(findAllText(root).some(s => s === '7')).toBe(true);
   });
 });

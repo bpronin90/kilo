@@ -478,10 +478,11 @@ workout note, so warmup and lifting sections under the same day heading count
 as one session rather than splitting the day across separate section blocks.
 The session count drives a color signifier on both screens: green (1–6
 sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
-  at or past deload window), derived through a shared `getSessionTone` helper
-  in UI.js. On Home the color applies to the "Week N" label text; on Analytics
-  a dedicated `Activity` section contains the "Workout sessions" StatCard with
-  the corresponding tone.
+at or past deload window), derived through a shared `getSessionTone` helper
+in UI.js. On Home the color applies to the "Week N" label text; on Analytics
+the `Session Health` card applies the tone to its sessions-since-deload hero
+count and gauge caption while still showing total sessions as secondary
+context.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,

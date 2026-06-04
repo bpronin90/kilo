@@ -67,9 +67,9 @@ export function getSessionTone(count) {
 // Deload-risk caption for a session-depth count. Zone boundaries (1 / 7 / 10)
 // mirror getSessionTone. The 10+ caption is fixed per the issue contract.
 export function getSessionZoneCaption(count) {
-  if (count >= 10) return 'Consider a deload week';
-  if (count >= 7) return 'Approaching deload';
-  if (count >= 1) return 'Building volume';
+  if (count >= 10) return 'Plan deload asap';
+  if (count >= 7) return 'Fatigue setting in';
+  if (count >= 1) return 'Cultivating mass';
   return 'No sessions logged';
 }
 
@@ -94,13 +94,16 @@ export function SessionGauge({ count, total }) {
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <Text style={styles.sessionGaugeLabel}>{total != null ? 'Since deload' : 'Sessions logged'}</Text>
-        <View style={styles.sessionGaugeCountRow}>
-          {total != null && (
-            <Text style={styles.sessionGaugeTotalStat}>{total} total</Text>
-          )}
+        <View style={styles.sessionGaugeStat}>
+          <Text style={styles.sessionGaugeLabel}>Since deload</Text>
           <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
         </View>
+        {total != null && (
+          <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
+            <Text style={styles.sessionGaugeLabel}>Total</Text>
+            <Text style={styles.sessionGaugeCount}>{total}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.gaugeMeterWrap}>
@@ -340,29 +343,28 @@ const styles = StyleSheet.create({
   sessionGaugeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
+    alignItems: 'flex-end',
+  },
+  sessionGaugeStat: {
+    gap: 2,
+  },
+  sessionGaugeStatRight: {
+    alignItems: 'flex-end',
   },
   sessionGaugeLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   sessionGaugeCount: {
     fontSize: 28,
     fontWeight: '900',
+    color: Colors.text,
   },
-  sessionGaugeCountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  sessionGaugeTotalStat: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
+  sessionGaugeCountRow: {},
+  sessionGaugeTotalStat: {},
   gaugeMeterWrap: {
     width: '100%',
     height: 16,
