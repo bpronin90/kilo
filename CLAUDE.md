@@ -13,3 +13,7 @@ If the brief is vague, stop and ask Codex for a tighter issue brief.
 Keep output tight and execution-focused.
 
 When the user says `action <issue>`, implement the issue immediately — do not summarize or report what you read. Start a branch and execute.
+
+## GitHub
+
+Repo: `bpronin90/kilo`
