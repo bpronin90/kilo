@@ -65,6 +65,7 @@ export function LogScreen({
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
+  const [expandedDeloads, setExpandedDeloads] = useState(new Set());
 
 
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -816,21 +817,66 @@ export function LogScreen({
                 </>
               )
             )}
-            {tabView === 'deload' && !deloadLoading && deloadNotes.length > 0 && (
+            {tabView === 'deload' && !deloadLoading && (deloadNotes.length > 0 || deloadHistory.some(r => !r.note_id)) && (
               <View style={styles.pastDeloads}>
                 <SectionTitle>Past deloads</SectionTitle>
-                {deloadNotes.slice().sort((a, b) => b.saved_at.localeCompare(a.saved_at)).map(note => {
-                  const dateStr = note.title.startsWith(DELOAD_NOTE_PREFIX)
-                    ? note.title.slice(DELOAD_NOTE_PREFIX.length)
-                    : note.saved_at.slice(0, 10);
+                {[
+                  ...deloadNotes.map(n => ({ type: 'note', id: n.id, sortKey: n.saved_at, data: n })),
+                  ...deloadHistory.filter(r => !r.note_id).map(r => ({ type: 'legacy', id: r.id, sortKey: r.completed_at, data: r })),
+                ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
+                  if (item.type === 'note') {
+                    const note = item.data;
+                    const dateStr = note.title.startsWith(DELOAD_NOTE_PREFIX)
+                      ? note.title.slice(DELOAD_NOTE_PREFIX.length)
+                      : note.saved_at.slice(0, 10);
+                    return (
+                      <Card key={note.id} style={styles.otherNoteCard}>
+                        <Pressable onPress={() => handleOpenOtherNote(note)} style={styles.otherNoteHeader}>
+                          <View style={styles.otherNoteInfo}>
+                            <Text style={styles.otherNoteTitle}>{note.title}</Text>
+                            <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
+                          </View>
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Alert.alert(
+                                'Delete deload record?',
+                                'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
+                                ]
+                              );
+                            }}
+                            style={styles.inlineSwitchButton}
+                            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.pastDeloadDeleteText}>Delete</Text>
+                          </Pressable>
+                        </Pressable>
+                      </Card>
+                    );
+                  }
+                  // Legacy history record (no linked workout note) — read-only inline expand
+                  const record = item.data;
+                  const isExpanded = expandedDeloads.has(record.id);
+                  const dateStr = record.completed_at.slice(0, 10);
+                  const generatedStr = record.generated_at ? record.generated_at.slice(0, 10) : null;
+                  const title = generatedStr && generatedStr !== dateStr
+                    ? `Deload ${generatedStr}`
+                    : `Deload ${dateStr}`;
                   return (
-                    <Card key={note.id} style={styles.otherNoteCard}>
+                    <Card key={record.id} style={styles.otherNoteCard}>
                       <Pressable
-                        onPress={() => handleOpenOtherNote(note)}
+                        onPress={() => setExpandedDeloads(prev => {
+                          const next = new Set(prev);
+                          if (next.has(record.id)) next.delete(record.id); else next.add(record.id);
+                          return next;
+                        })}
                         style={styles.otherNoteHeader}
                       >
                         <View style={styles.otherNoteInfo}>
-                          <Text style={styles.otherNoteTitle}>{note.title}</Text>
+                          <Text style={styles.otherNoteTitle}>{title}</Text>
                           <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
                         </View>
                         <Pressable
@@ -841,7 +887,7 @@ export function LogScreen({
                               'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
                               [
                                 { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
                               ]
                             );
                           }}
@@ -851,6 +897,9 @@ export function LogScreen({
                           <Text style={styles.pastDeloadDeleteText}>Delete</Text>
                         </Pressable>
                       </Pressable>
+                      {isExpanded && (
+                        <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                      )}
                     </Card>
                   );
                 })}
