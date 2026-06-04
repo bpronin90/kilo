@@ -927,6 +927,173 @@ export function getLatestRepDropOff(sessionFlags) {
   return sessionFlags[String(maxIdx)] ?? null;
 }
 
+// ── Session check-in detection ────────────────────────────────────────────────
+//
+// Flags when the latest logged session looks "rough" so the UI can ask
+// "you okay?" and highlight the offending exercises. Four detectors:
+//   - skipped:     more exercises skipped at the latest column than the
+//                  historical per-column average + margin (deriveSkipData),
+//                  with an absolute floor
+//   - volume_drop: reps collapsed >REP_DROP_THRESHOLD on ≥MIN_COLLAPSED_SETS
+//                  sets vs the exercise's baseline at that weight (a within-row
+//                  skipped set, rep_count 0, counts as a full collapse)
+//   - collapse:    reps fell apart within the latest session (computeRepDropOff)
+//   - day_skip:    a whole day was skipped at the latest column
+//                  (deriveSkipData().day_skips); independent of the skip trigger
+//
+// The latest session is the deepest column, lastIdx = computeWeeksIn(sections) - 1,
+// matching the suppression key used by the persistence layer. Multi-day routines
+// share the existing positional-alignment limitation (see classifyExerciseSessions).
+// Pure; operates on parsed sections. Returns:
+//   { sessionIndex, isRough, detectors: string[],
+//     flagged: [{ normName, name, reasons: ('skip'|'volume_drop'|'collapse'|'day_skip')[] }],
+//     metrics: { exercises_skipped: number, volume_decline_pct: number|null } }
+export const SESSION_CHECKIN_REP_DROP_THRESHOLD = 2; // reps lost vs baseline to call a set "collapsed"
+export const SESSION_CHECKIN_MIN_COLLAPSED_SETS = 2; // collapsed sets needed to flag a volume drop
+export const SESSION_CHECKIN_SKIP_FLOOR = 2;         // min skipped exercises before a skip trigger fires
+export const SESSION_CHECKIN_SKIP_MARGIN = 1;        // skips above the historical average to count as "more than usual"
+
+function _checkinTonnage(sets) {
+  return (sets || []).reduce(
+    (sum, s) => (s.weight_value > 0 && s.rep_count > 0 ? sum + s.weight_value * s.rep_count : sum),
+    0
+  );
+}
+
+// Best (max) reps recorded at a given working weight within one entry's sets.
+function _maxRepsAtWeight(sets, weight) {
+  let max = 0;
+  for (const s of sets || []) {
+    if (s.weight_value === weight && s.rep_count > max) max = s.rep_count;
+  }
+  return max;
+}
+
+export function deriveSessionCheckIn(sections, trackedNames) {
+  const empty = {
+    sessionIndex: null,
+    isRough: false,
+    detectors: [],
+    flagged: [],
+    metrics: { exercises_skipped: 0, volume_decline_pct: null },
+  };
+  if (!sections || !trackedNames || trackedNames.length === 0) return empty;
+
+  // Latest session index per the contract: the routine's deepest session column.
+  const sessionIndex = computeWeeksIn(sections) - 1;
+  if (sessionIndex < 0) return empty;
+
+  const { exercises } = deriveWorkoutAnalytics(sections);
+  const byKey = new Map(exercises.map(ex => [normalizeExerciseKey(ex.name), ex]));
+
+  // Build the positional entry history for each tracked exercise that exists.
+  const assessments = [];
+  for (const name of trackedNames) {
+    const ex = byKey.get(normalizeExerciseKey(name));
+    if (!ex) continue;
+    const allEntries = ex.occurrences.flatMap(occ => _occurrenceEntries(occ));
+    if (allEntries.length === 0) continue;
+    assessments.push({ normName: normalizeLiftName(name), name: ex.name, allEntries });
+  }
+  if (assessments.length === 0) return empty;
+
+  // ── Skip (detector 1) and whole-day skip (detector 4), via deriveSkipData ──
+  // Detector 1 fires when more exercises were skipped at the latest column than
+  // the historical per-column average by a margin (with an absolute floor).
+  // Detector 4 is independent: a whole day skipped at the latest column.
+  const skipData = deriveSkipData(sections);
+  const skipByIndex = {};
+  for (const s of skipData.exercise_skips) {
+    skipByIndex[s.session_index] = (skipByIndex[s.session_index] || 0) + 1;
+  }
+  const latestSkipCount = skipByIndex[sessionIndex] || 0;
+  let baselineAvgSkips = 0;
+  if (sessionIndex > 0) {
+    let sum = 0;
+    for (let i = 0; i < sessionIndex; i++) sum += skipByIndex[i] || 0;
+    baselineAvgSkips = sum / sessionIndex;
+  }
+  const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
+    && latestSkipCount > baselineAvgSkips + SESSION_CHECKIN_SKIP_MARGIN;
+  const dayFired = skipData.day_skips.some(d => d.session_index === sessionIndex);
+
+  // ── Per-exercise volume_drop / collapse on the latest entry ──
+  const detectorSet = new Set();
+  const flaggedMap = new Map(); // normName -> { normName, name, reasons:Set }
+  let sumBaseTon = 0;
+  let sumLatestTon = 0;
+  let anyVolumeDrop = false;
+
+  const addReason = (a, reason) => {
+    if (!flaggedMap.has(a.normName)) flaggedMap.set(a.normName, { normName: a.normName, name: a.name, reasons: new Set() });
+    flaggedMap.get(a.normName).reasons.add(reason);
+  };
+
+  for (const a of assessments) {
+    const latest = a.allEntries[sessionIndex];
+    if (!latest) continue; // exercise shorter than the latest column — not part of this session
+    const priorLogged = a.allEntries
+      .slice(0, sessionIndex)
+      .filter(e => !e.skipped && !e.unparsed && e.sets && e.sets.length > 0);
+    // Need a baseline to judge "rough": skip brand-new exercises with no history.
+    if (priorLogged.length === 0) continue;
+
+    if (latest.skipped) {
+      if (skipFired) addReason(a, 'skip');
+      if (dayFired) addReason(a, 'day_skip');
+      continue;
+    }
+    const latestSets = latest.sets || [];
+    // Distinct working weights in the latest entry.
+    const weights = [...new Set(latestSets.filter(s => s.weight_value > 0).map(s => s.weight_value))];
+    let collapsedSets = 0;
+    for (const w of weights) {
+      // Baseline reps at this weight: most recent prior logged entry that used it.
+      let baseReps = 0;
+      for (let i = priorLogged.length - 1; i >= 0; i--) {
+        const m = _maxRepsAtWeight(priorLogged[i].sets, w);
+        if (m > 0) { baseReps = m; break; }
+      }
+      if (baseReps <= 0) continue; // new weight, nothing to compare against
+      for (const s of latestSets) {
+        if (s.weight_value !== w) continue;
+        if (baseReps - s.rep_count > SESSION_CHECKIN_REP_DROP_THRESHOLD) collapsedSets++;
+      }
+    }
+    if (collapsedSets >= SESSION_CHECKIN_MIN_COLLAPSED_SETS) {
+      addReason(a, 'volume_drop');
+      anyVolumeDrop = true;
+      sumBaseTon += _checkinTonnage(priorLogged[priorLogged.length - 1].sets);
+      sumLatestTon += _checkinTonnage(latestSets);
+    }
+    if (computeRepDropOff(latestSets) === 'hit_wall') {
+      addReason(a, 'collapse');
+    }
+  }
+
+  // Roll up detectors from flagged reasons + session-level skip triggers.
+  for (const f of flaggedMap.values()) {
+    for (const r of f.reasons) detectorSet.add(r === 'skip' ? 'skipped' : r);
+  }
+  if (skipFired) detectorSet.add('skipped');
+  if (dayFired) detectorSet.add('day_skip');
+
+  const flagged = [...flaggedMap.values()].map(f => ({ normName: f.normName, name: f.name, reasons: [...f.reasons] }));
+  const detectorOrder = ['skipped', 'volume_drop', 'collapse', 'day_skip'];
+  const detectors = detectorOrder.filter(d => detectorSet.has(d));
+  const volume_decline_pct = anyVolumeDrop && sumBaseTon > 0
+    ? Math.round(((sumBaseTon - sumLatestTon) / sumBaseTon) * 100)
+    : null;
+
+  return {
+    sessionIndex,
+    isRough: detectors.length > 0,
+    detectors,
+    flagged,
+    metrics: { exercises_skipped: latestSkipCount, volume_decline_pct },
+  };
+}
+
 // ── Non-weighted tracked-exercise card metrics ────────────────────────────────
 
 // Classify a set of sets as 'weighted' | 'time_based' | 'reps_only' | null.
