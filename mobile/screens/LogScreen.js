@@ -74,11 +74,14 @@ export function LogScreen({
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
 
+  const [viewingNoteId, setViewingNoteId] = useState(null);
+
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
   const keyboardVisibleRef = useRef(false);
   const lastTapRef = useRef(0);
   const deloadLastTapRef = useRef(0);
+  const viewingNoteLastTapRef = useRef(0);
   const readScrollYRef = useRef(0);
 
   const handleReadScroll = (e) => {
@@ -93,6 +96,30 @@ export function LogScreen({
       lastTapRef.current = 0;
     } else {
       lastTapRef.current = now;
+    }
+  };
+
+  const handleViewOtherNote = (note) => {
+    setViewingNoteId(note.id);
+  };
+
+  const handleEditViewedNote = () => {
+    if (!viewingNote) return;
+    setEditingNoteId(viewingNote.id);
+    setEditingTitle(viewingNote.title || '');
+    setEditingText(viewingNote.raw_text);
+    setSaveError('');
+    setSaveSuccess('');
+  };
+
+  const handleViewedNoteBodyPress = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    if (now - viewingNoteLastTapRef.current < DOUBLE_TAP_DELAY) {
+      handleEditViewedNote();
+      viewingNoteLastTapRef.current = 0;
+    } else {
+      viewingNoteLastTapRef.current = now;
     }
   };
   const keyboardExitTimeoutRef = useRef(null);
@@ -155,6 +182,10 @@ export function LogScreen({
         handleDoneOther();
         return true;
       }
+      if (viewingNoteId) {
+        setViewingNoteId(null);
+        return true;
+      }
       if (mode === 'edit') {
         handleDoneCurrent();
         return true;
@@ -168,7 +199,7 @@ export function LogScreen({
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
+  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
@@ -209,6 +240,28 @@ export function LogScreen({
     if (deloadMode !== 'edit') return false;
     return deloadEditText !== (deloadNote?.raw_text || '');
   }, [deloadMode, deloadEditText, deloadNote]);
+
+  const viewingNote = useMemo(() =>
+    viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
+  , [viewingNoteId, notes]);
+
+  const viewingNoteParsed = useMemo(() =>
+    viewingNote ? parseWorkoutNote(viewingNote.raw_text || '') : null
+  , [viewingNote]);
+
+  const viewingNoteDayGroups = useMemo(() => {
+    if (!viewingNoteParsed) return [];
+    const groups = [];
+    for (const section of viewingNoteParsed.sections) {
+      const last = groups[groups.length - 1];
+      if (last && last.heading === section.heading) {
+        last.sections.push(section);
+      } else {
+        groups.push({ heading: section.heading, sections: [section] });
+      }
+    }
+    return groups;
+  }, [viewingNoteParsed]);
 
   const hasContent = workoutNoteText.trim().length > 0;
 
@@ -467,12 +520,13 @@ export function LogScreen({
           onPress: async () => {
             await remove(id);
             setEditingNoteId(null);
+            setViewingNoteId(null);
             if (isCurrent) {
               setMode('edit');
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
             }
-          } 
+          }
         },
       ]
     );
@@ -514,6 +568,7 @@ export function LogScreen({
     const doSwitch = async () => {
       await selectCurrent(id);
       setEditingNoteId(null);
+      setViewingNoteId(null);
     };
 
     const alertTitle = 'Set as current routine';
@@ -684,6 +739,7 @@ export function LogScreen({
 
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit' || deloadMode === 'edit';
+  const isViewingOther = !!viewingNoteId && !isEditing;
 
   useEffect(() => {
     if (editingNoteId) {
@@ -696,7 +752,7 @@ export function LogScreen({
       <ScreenShell
         ref={readScrollRef}
         onScroll={handleReadScroll}
-        style={isEditing ? { display: 'none' } : { flex: 1 }}
+        style={isEditing || isViewingOther ? { display: 'none' } : { flex: 1 }}
         title="Workout Notes"
         subtitle={isEmpty ? "Track your active training routine." : "Your active training routine. Update it as you go."}
         headerRight={headerRight}
@@ -1017,7 +1073,7 @@ export function LogScreen({
                         style={styles.otherNoteCard}
                       >
                         <Pressable
-                          onPress={() => handleOpenOtherNote(other)}
+                          onPress={() => handleViewOtherNote(other)}
                           style={styles.otherNoteHeader}
                         >
                           <View style={styles.otherNoteInfo}>
@@ -1048,6 +1104,84 @@ export function LogScreen({
             )}
           </>
         )}
+      </ScreenShell>
+
+      <ScreenShell
+        style={isViewingOther ? { flex: 1 } : { display: 'none' }}
+        title={viewingNote?.title || 'Untitled Routine'}
+        subtitle="Routine"
+        headerRight={
+          <Pressable onPress={() => setViewingNoteId(null)} style={styles.modeToggle}>
+            <Text style={styles.modeToggleText}>Done</Text>
+          </Pressable>
+        }
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.mirrorContainer}>
+          <Card style={styles.currentRoutineCard}>
+            <View style={styles.otherNoteHeader}>
+              <View style={styles.otherNoteInfo}>
+                <Text style={styles.currentNoteTitle}>{viewingNote?.title || 'Untitled Routine'}</Text>
+                {viewingNote?.updated_at && (
+                  <Text style={styles.otherNoteSub}>{new Date(viewingNote.updated_at).toLocaleDateString()}</Text>
+                )}
+              </View>
+              <Pressable
+                onPress={handleEditViewedNote}
+                style={styles.inlineSwitchButton}
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              >
+                <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+              <Text style={styles.editHint}>Double-tap to edit</Text>
+              {viewingNoteDayGroups.map((group, gi) => (
+                <View key={`day-${gi}`}>
+                  {group.heading && (
+                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
+                      {group.heading}
+                    </WorkoutHeading>
+                  )}
+                  {group.sections.map((section, si) => (
+                    <View key={`section-${gi}-${si}`}>
+                      {section.subheading && (
+                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
+                      )}
+                      {section.exercises.map((ex, ei) => (
+                        <ExerciseBlock key={`ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
+                          {ex.rows.map((row, ri) => (
+                            <SetLine key={`row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
+                          ))}
+                          {ex.unparsed_rows.map((u, ui) => (
+                            <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
+                          ))}
+                        </ExerciseBlock>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              ))}
+              {!viewingNoteDayGroups.length && (
+                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
+              )}
+            </Pressable>
+          </Card>
+        </View>
+        {viewingNoteId && (
+          <Button
+            onPress={() => handleSwitchCurrent(viewingNoteId)}
+            title="Set as current routine"
+            style={styles.switchButton}
+            textStyle={styles.switchButtonText}
+          />
+        )}
+        <Button
+          onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+          title="Delete routine"
+          style={styles.deleteButton}
+          textStyle={styles.deleteButtonText}
+        />
       </ScreenShell>
 
       <ScreenShell

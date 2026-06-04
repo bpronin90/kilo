@@ -172,11 +172,14 @@ The real native app path now has a modular React Native shell:
   never-saved note or to save/discard an existing note, and for the current
   routine specifically exiting raw edit now returns consistently to the top of
   the rendered note as the accepted fallback behavior, a bottom `More Routines`
-  list that keeps each non-current routine collapsed to a compact row that can
-  either reopen its raw-note editor or mark that routine current through an
-  inline action, plus routine create/rename/delete controls with confirmation
-  and current-selection cleanup guardrails; switching the current workout now
-  requires explicit confirmation, and offers a save-and-switch or
+  list that keeps each non-current routine collapsed to a compact row that now
+  opens into its own rendered read view first, with the same header-level
+  `Edit` affordance and double-tap-to-edit body behavior used by the current
+  routine plus inline `Set as current routine`, `Delete routine`, and
+  `Done` controls around that full-screen read surface, alongside routine
+  create/rename/delete controls with confirmation and current-selection cleanup
+  guardrails; switching the current workout now requires explicit confirmation,
+  and offers a save-and-switch or
   switch-anyway choice when there are unsaved edits. The same screen now also
   includes a `Routine | Deload` segmented toggle so the user can switch
   between the canonical routine note and a separate generated deload note. The

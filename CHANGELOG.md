@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.55.0 - 2026-06-04
+
+- Issue #260: Changed `More Routines` note-open behavior on the Log tab so
+  non-current routines now open into a rendered read view first instead of
+  jumping straight into raw text edit, matching the current routine's explicit
+  `Edit` control and double-tap-to-edit interaction model. Also fixed Android
+  hardware Back so it dismisses that intermediate read view before leaving the
+  screen.
+
 ## 0.54.2 - 2026-06-03
 
 - Issue #259: Polished the Analytics `Session Health` card presentation by
