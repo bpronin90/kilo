@@ -1005,7 +1005,11 @@ export function LogScreen({
                 ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
                   if (item.type === 'note') {
                     const note = item.data;
-                    const dateStr = new Date(note.saved_at).toLocaleDateString();
+                    const rawDate = note.title.startsWith(DELOAD_NOTE_PREFIX)
+                      ? note.title.slice(DELOAD_NOTE_PREFIX.length)
+                      : note.saved_at.slice(0, 10);
+                    const parsedDate = new Date(rawDate);
+                    const dateStr = !isNaN(parsedDate) ? parsedDate.toLocaleDateString() : rawDate;
                     return (
                       <Card key={note.id} style={styles.otherNoteCard}>
                         <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
