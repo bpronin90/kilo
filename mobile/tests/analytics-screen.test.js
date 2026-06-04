@@ -30,6 +30,7 @@ jest.mock('../hooks/useEntries', () => {
     useWeightEntries: jest.fn(),
     useTrackedLifts: jest.fn(),
     useWorkoutNotes: jest.fn(),
+    useDeloadHistory: jest.fn(),
   };
 });
 
@@ -48,6 +49,10 @@ function setup({ entries = [], hookOverrides = {} } = {}) {
     loading: false,
     update: jest.fn(),
     ...hookOverrides,
+  });
+  useEntries.useDeloadHistory.mockReturnValue({
+    history: hookOverrides.deloadHistory || [],
+    loading: false,
   });
 
   let component;
