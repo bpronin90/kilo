@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.57.1 - 2026-06-04
+
+- Issue #265: Added `deriveCheckInHistory(notes)` so persisted workout-note
+  `session_checkins` now shape into the reverse-chronological list and rough-
+  check-in summary contract required by the upcoming Analytics fatigue section,
+  with null-safe handling for notes that do not carry stored check-ins.
+
 ## 0.57.0 - 2026-06-04
 
 - Issue #264: Persisted workout-note `session_checkins` entries keyed by
