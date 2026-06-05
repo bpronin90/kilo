@@ -310,7 +310,11 @@ The real native app path now has a modular React Native shell:
   absolute total session count as a secondary stat on the card. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
-  driven by a shared per-session Big-3 derivation. Shared chart surfaces now
+  driven by a shared per-session Big-3 derivation. The screen now also includes
+  a `Fatigue` section backed by persisted `session_checkins`, with a reverse-
+  chronological answered-check-in list, a rough-session summary (`total` plus
+  most common reason), and stable calendar-day formatting from `responded_at`.
+  Shared chart surfaces now
   also expose a tapped-point readout without breaking existing callers. The
   screen still uses an artisanal-panel strength container, strength-only 1k
   slot selection, and a `Progressive Overload` section with routine-day
@@ -345,10 +349,8 @@ The real native app path now has a modular React Native shell:
   contract, surfaces estimated 1RM and Kilo max together,
   shows either latest top weight in pounds or best-set reps for bodyweight
   exercises, renders the trend column as `↑`, `↔`, `↓`, or `—` based on the
-  latest comparable session pair, and now adds a subtle `⚠ Hit wall` /
-  `↑ Reserve` badge when the latest live intra-session rep drop-off flag
-  derived from the canonical workout sections exists for that tracked
-  exercise, rather than trusting a potentially stale persisted badge value.
+  latest comparable session pair, and no longer shows the old `⚠ Hit wall`
+  rep-drop-off badge surface.
   Its mount-time entry state is now stabilized so Analytics no longer visibly
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they

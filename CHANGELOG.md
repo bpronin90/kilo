@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.60.0 - 2026-06-04
+
+- Issue #269: Added a `Fatigue` section to Analytics backed by
+  `deriveCheckInHistory(notes)`, including a reverse-chronological dated list
+  of answered session check-ins, rough-session summary counts, top-reason
+  labeling, empty-state handling, and stable date formatting that preserves
+  the stored calendar day from `responded_at`.
+
 ## 0.59.0 - 2026-06-04
 
 - Issue #268: Completed the Log-tab fatigue check-in flow with a contextual
