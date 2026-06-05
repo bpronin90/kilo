@@ -588,8 +588,9 @@ export function AnalyticsScreen({ multiplier, section }) {
 }
 
 function formatCheckInDate(responded_at) {
-  const d = new Date(responded_at);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Parse only the YYYY-MM-DD portion to avoid UTC→local-timezone day shift
+  const [year, month, day] = responded_at.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function CrossDayComparison({ daySignals, currentDay, otherDays }) {
