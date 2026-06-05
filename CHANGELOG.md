@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.61.0 - 2026-06-05
+
+- Issue #270: Fixed the Log-tab fatigue check-in trigger so rough-session
+  detection runs against the current routine instead of all workout notes,
+  restoring prompts for the single-exercise repro cases (`110 2,2,2`,
+  `110 2,2,-`, and whole-session skip). The fatigue modal now uses the widened
+  centered-dialog UX with pending/unanswered dismissal state, and Analytics now
+  splits fatigue history into `Not great`, `All good`, and `Unanswered`
+  sections backed by the expanded `deriveCheckInHistory()` shape.
+
 ## 0.60.0 - 2026-06-04
 
 - Issue #269: Added a `Fatigue` section to Analytics backed by

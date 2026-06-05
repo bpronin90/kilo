@@ -10,16 +10,19 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 
 const REASON_GROUPS = [
   {
     label: 'Fatigue / Recovery',
-    reasons: ['Tired', 'Poor sleep', 'Under-recovered', 'Low energy'],
+    reasons: ['Tired', 'Poor sleep', 'Sore', 'Low energy'],
   },
   {
     label: 'Pain / Injury',
-    reasons: ['Shoulder', 'Elbow/wrist', 'Knee', 'Low back', 'Hip', 'Other pain'],
+    sublabel: 'Side',
+    reasons: ['Shoulder', 'Elbow', 'Knee', 'Lower back', 'Hip', 'Wrist', 'Other'],
+    subReasons: ['Left', 'Right', 'Both'],
   },
   {
     label: 'Life / Logistics',
@@ -125,20 +128,45 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
     }
   };
 
+  const handleDismiss = async () => {
+    if (!checkInData || !currentId) { onClose(); return; }
+    const prevCheckins = currentNote?.session_checkins || {};
+    await update(currentId, {
+      session_checkins: {
+        ...prevCheckins,
+        [checkInData.sessionIndex]: {
+          status: null,
+          reasons: [],
+          flagged: checkInData.flagged,
+          detectors: checkInData.detectors,
+          exercises_skipped: checkInData.metrics.exercises_skipped,
+          volume_decline_pct: checkInData.metrics.volume_decline_pct,
+          responded_at: new Date().toISOString(),
+        },
+      },
+    });
+    onClose();
+  };
+
   if (!checkInData) return null;
 
   const title = deriveTitle(checkInData.detectors, checkInData.flagged);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss}>
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={[styles.overlay, tier === 'rough' && styles.overlayTop]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, tier === 'rough' ? styles.sheetExpanded : styles.sheetBounded]}>
           <View style={styles.header}>
+            {tier !== null ? (
+              <Pressable onPress={() => setTier(null)} hitSlop={12} style={styles.backBtn}>
+                <MaterialIcons name="arrow-back" size={20} color={Colors.textMuted} />
+              </Pressable>
+            ) : null}
             <Text style={styles.title}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+            <Pressable onPress={handleDismiss} hitSlop={12} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
           </View>
@@ -162,6 +190,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
 
           {tier === 'ok' && (
             <ScrollView
+              key="ok"
               style={styles.body}
               contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
@@ -192,7 +221,8 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
 
           {tier === 'rough' && (
             <ScrollView
-              style={styles.body}
+              key="rough"
+              style={[styles.body, styles.bodyExpanded]}
               contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
             >
@@ -212,6 +242,24 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                       </Pressable>
                     ))}
                   </View>
+                  {group.subReasons && (
+                    <View style={styles.subGroup}>
+                      <Text style={styles.subGroupLabel}>{group.sublabel}</Text>
+                      <View style={styles.chipRow}>
+                        {group.subReasons.map(r => (
+                          <Pressable
+                            key={r}
+                            style={[styles.chipSub, selectedReasons.has(r) && styles.chipSelected]}
+                            onPress={() => toggleReason(r)}
+                          >
+                            <Text style={[styles.chipSubText, selectedReasons.has(r) && styles.chipTextSelected]}>
+                              {r}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                 </View>
               ))}
               <TextInput
@@ -242,35 +290,44 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(31,26,23,0.55)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  overlayTop: {
+    justifyContent: 'flex-start',
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
   sheet: {
     backgroundColor: Colors.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1,
     borderColor: Colors.cardBorder,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+  },
+  sheetBounded: {
     maxHeight: '85%',
+  },
+  sheetExpanded: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
+    gap: 8,
+  },
+  backBtn: {
+    padding: 2,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
     color: Colors.text,
-    marginRight: 12,
   },
   closeBtn: {
     padding: 4,
@@ -308,6 +365,9 @@ const styles = StyleSheet.create({
   body: {
     flexShrink: 1,
   },
+  bodyExpanded: {
+    flex: 1,
+  },
   bodyContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
@@ -316,6 +376,19 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: 8,
+  },
+  subGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  subGroupLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   groupLabel: {
     fontSize: 13,
@@ -328,6 +401,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  chipSub: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  chipSubText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
   },
   chip: {
     paddingHorizontal: 14,

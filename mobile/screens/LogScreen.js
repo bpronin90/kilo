@@ -505,15 +505,8 @@ export function LogScreen({
     ];
     const latestText = workoutNoteTextRef.current;
     const latestId = currentIdRef.current;
-    const { sections: latestSections } = parseWorkoutNote(latestText);
-    const allSects = [
-      ...notes.flatMap(n => {
-        const text = n.id === latestId ? latestText : n.raw_text;
-        return text ? parseWorkoutNote(text).sections : [];
-      }),
-      ...(latestId ? [] : latestSections),
-    ];
-    const { isRough, sessionIndex, flagged, detectors, metrics } = deriveSessionCheckIn(allSects, resolvedTrackedNames);
+    const { sections: currentSections } = parseWorkoutNote(latestText);
+    const { isRough, sessionIndex, flagged, detectors, metrics } = deriveSessionCheckIn(currentSections, resolvedTrackedNames);
     const checkins = currentNoteRef.current?.session_checkins;
     if (isRough && sessionIndex != null && !(checkins?.[sessionIndex])) {
       setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));

@@ -263,7 +263,7 @@ export default function App() {
         <ExpoStatusBar style="dark" />
         <KeyboardAvoidingView
           style={styles.container}
-          behavior={Platform.OS === 'ios' ? 'height' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>

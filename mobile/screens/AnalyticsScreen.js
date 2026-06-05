@@ -311,32 +311,69 @@ export function AnalyticsScreen({ multiplier, section }) {
       <SectionTitle>Fatigue</SectionTitle>
     </View>,
     <Card key="fatigue-card" style={styles.fatigueCard}>
-      {checkInHistory.list.length === 0 ? (
+      {checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0 ? (
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
       ) : (
         <>
-          <View style={styles.fatigueSummary}>
-            <Text style={styles.fatigueSummaryText}>
-              {checkInHistory.summary.total} rough session{checkInHistory.summary.total !== 1 ? 's' : ''}
-              {checkInHistory.summary.top_reason ? ` · most common: ${checkInHistory.summary.top_reason}` : ''}
-            </Text>
-          </View>
-          {checkInHistory.list.map((ci, i) => (
-            <View key={ci.responded_at} style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}>
-              <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
-              <View style={styles.fatigueDetails}>
-                {ci.reasons.length > 0 && (
-                  <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
-                )}
-                <View style={styles.fatigueStats}>
-                  <Text style={styles.fatigueStat}>{ci.exercises_skipped} skipped</Text>
-                  <Text style={styles.fatigueStat}>
-                    {ci.volume_decline_pct != null ? `${ci.volume_decline_pct}% vol` : '—'}
-                  </Text>
+          <View style={styles.fatigueSection}>
+            <View style={styles.fatigueSectionHeader}>
+              <Text style={styles.fatigueSectionLabel}>Not great</Text>
+              <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.roughTotal}</Text>
+            </View>
+            {checkInHistory.rough.length === 0 ? (
+              <Text style={styles.fatigueSectionEmpty}>None logged</Text>
+            ) : checkInHistory.rough.map((ci, i) => (
+              <View key={ci.responded_at} style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}>
+                <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
+                <View style={styles.fatigueDetails}>
+                  {ci.reasons.length > 0 && (
+                    <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
+                  )}
+                  <View style={styles.fatigueStats}>
+                    {ci.exercises_skipped > 0 && (
+                      <Text style={styles.fatigueStat}>{ci.exercises_skipped} skipped</Text>
+                    )}
+                    {ci.volume_decline_pct != null && (
+                      <Text style={styles.fatigueStat}>{ci.volume_decline_pct}% vol drop</Text>
+                    )}
+                  </View>
                 </View>
               </View>
+            ))}
+          </View>
+          <View style={styles.fatigueDivider} />
+          <View style={styles.fatigueSection}>
+            <View style={styles.fatigueSectionHeader}>
+              <Text style={styles.fatigueSectionLabel}>All good</Text>
+              <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.okTotal}</Text>
             </View>
-          ))}
+            {checkInHistory.ok.length === 0 ? (
+              <Text style={styles.fatigueSectionEmpty}>None logged</Text>
+            ) : checkInHistory.ok.map((ci, i) => (
+              <View key={ci.responded_at} style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}>
+                <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
+                {ci.reasons.length > 0 && (
+                  <Text style={styles.fatigueReasonsOk}>{ci.reasons.join(' · ')}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+          {checkInHistory.pending.length > 0 && (
+            <>
+              <View style={styles.fatigueDivider} />
+              <View style={styles.fatigueSection}>
+                <View style={styles.fatigueSectionHeader}>
+                  <Text style={styles.fatigueSectionLabel}>Unanswered</Text>
+                  <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.pendingTotal}</Text>
+                </View>
+                {checkInHistory.pending.map((ci, i) => (
+                  <View key={ci.responded_at} style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}>
+                    <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
         </>
       )}
     </Card>,
@@ -1073,43 +1110,68 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 8,
   },
-  fatigueSummary: {
-    paddingBottom: 12,
-    marginBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+  fatigueSection: {
+    gap: 0,
   },
-  fatigueSummaryText: {
+  fatigueSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+  },
+  fatigueSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  fatigueSectionCount: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
   },
+  fatigueSectionEmpty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    paddingVertical: 4,
+  },
+  fatigueDivider: {
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    marginVertical: 14,
+  },
   fatigueRow: {
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   fatigueRowBorder: {
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
   },
   fatigueDate: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   fatigueDetails: {
-    gap: 4,
+    gap: 3,
   },
   fatigueReasons: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.text,
   },
+  fatigueReasonsOk: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+  },
   fatigueStats: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   fatigueStat: {
     fontSize: 12,
