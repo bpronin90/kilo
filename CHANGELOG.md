@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.63.0 - 2026-06-05
+
+- Issue #273: Added persisted `Fatigue tracking` and `Deload mode` settings
+  under More > Settings so those workout-side optional flows can be turned off
+  cleanly without deleting stored data. When disabled, the app now hides
+  fatigue prompts plus Analytics fatigue surfaces, and separately hides
+  deload-specific Log and Analytics UI while restoring the existing data if the
+  feature is turned back on later.
+
 ## 0.62.0 - 2026-06-05
 
 - Issue #271: Added an Analytics-side edit path for fatigue check-ins so

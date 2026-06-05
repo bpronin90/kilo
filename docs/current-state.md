@@ -287,6 +287,10 @@ The real native app path now has a modular React Native shell:
   `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
   intercept Android back presses and return to the More menu before falling
   through to tab-level navigation, and the Settings & Algorithm screen
+  now includes a top `Training Features` section with persisted `Fatigue
+  tracking` and `Deload mode` switches so users can disable those optional
+  workout-side flows without deleting their saved check-ins, deload note, or
+  deload history,
   now also includes a `Weight Logging` section with an `Edit weigh-in dates`
   switch that governs whether the Weight tab exposes date controls for new and
   existing weigh-ins, plus a `Workout Notes` section with an `Edit deload
@@ -308,7 +312,9 @@ The real native app path now has a modular React Native shell:
   three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
   derived from the shared session-depth thresholds. The gauge now runs its
   zones, marker, and caption off sessions-since-last-deload while showing the
-  absolute total session count as a secondary stat on the card. The redesigned `1K
+  absolute total session count as a secondary stat on the card, and the whole
+  `Session Health` surface is hidden when the More > Settings `Deload mode`
+  toggle is off. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
@@ -321,6 +327,8 @@ The real native app path now has a modular React Native shell:
   against the original session record. Editing an existing entry hydrates its
   saved status/reasons/note, preserves the original `responded_at` timestamp,
   and lets unanswered dismissals be completed later without reordering history.
+  The whole `Fatigue` section and its edit-modal entry path are hidden when
+  the More > Settings `Fatigue tracking` toggle is off.
   Shared chart surfaces now also expose a tapped-point readout without breaking
   existing callers. The screen still uses an artisanal-panel strength
   container, strength-only 1k slot selection, and a `Progressive Overload`
@@ -392,7 +400,10 @@ The real native app path now has a modular React Native shell:
 - `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
   UI, including multi-note current-workout reads/writes, cross-consumer
   refresh fanout, persisted weight-goal reads/writes, and a separate
-  `useDeloadNote()` hook for the generated/editable deload note
+  `useDeloadNote()` hook for the generated/editable deload note, plus a
+  shared `useFeatureToggles()` hook that fans persisted fatigue/deload toggle
+  changes live to Settings, Log, and Analytics without threading new props
+  through `App.js`
 - `mobile/storage/entries.js` persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
@@ -406,7 +417,9 @@ The real native app path now has a modular React Native shell:
   weight-goal record under `kilo_weight_goal` with `target_weight`,
   `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
   Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
-  weight-date-edit setting under `kilo_weight_date_edit_enabled`, a separate
+  weight-date-edit setting under `kilo_weight_date_edit_enabled`, separate
+  fatigue-tracking and deload-mode feature toggles under
+  `kilo_fatigue_tracking_enabled` and `kilo_deload_mode_enabled`, a separate
   deload-date-edit setting under `kilo_deload_date_edit_enabled`, a separate
   deload-note record under `kilo_workout_deload_note`, a completed
   deload history under `kilo_workout_deload_history`, note-backed completed

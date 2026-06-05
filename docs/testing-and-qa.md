@@ -60,7 +60,9 @@ Current limitation:
   `AnalyticsScreen` consumer-drift regression that spies on
   `deriveWeightGoalAnalytics()` to prove the rendered latest weight and
   7-day/30-day averages come from the shared layer instead of screen-local
-  reshaping, and targeted `WeightScreen` interaction coverage for history-row
+  reshaping, targeted Analytics feature-toggle gating coverage that hides the
+  Fatigue and Session Health sections when their settings are off, and
+  targeted `WeightScreen` interaction coverage for history-row
   scroll-to-editor behavior plus the saved-goal target/guidance split.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
@@ -215,6 +217,9 @@ retains non-test commands such as `npm run audit`.
 - verifies the `Session Health` section rename plus the gauge zone/caption
   contract (`No sessions logged`, `Approaching deload`, and the three zone
   labels)
+- verifies feature-toggle gating so the `Fatigue` section disappears when
+  fatigue tracking is off and the `Session Health` section disappears when
+  deload mode is off while unrelated Analytics sections remain visible
 - verifies exercises are grouped by routine day with correct group headers
 - verifies multi-day exercises render per-day row metrics from
   `perDaySignals`, including null-trend fallback to the global signal and
@@ -234,8 +239,10 @@ retains non-test commands such as `npm run audit`.
   note save/overwrite/clear behavior, tracked-exercise persistence across note
   edits, optional user-profile persistence, the deload dual-write linkage
   contract (`note_id` plus `Deload · ` note filtering and deletion pattern),
-  tolerance for pre-#257 history rows without `note_id`, and migration of
-  legacy structured sessions into the canonical workout-note document
+  tolerance for pre-#257 history rows without `note_id`, persisted default and
+  round-trip behavior for the `Fatigue tracking` and `Deload mode` settings,
+  and migration of legacy structured sessions into the canonical workout-note
+  document
 - includes a contract-driven migration suite that verifies weighted entries,
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry
