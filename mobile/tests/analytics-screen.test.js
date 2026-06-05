@@ -31,13 +31,21 @@ jest.mock('../hooks/useEntries', () => {
     useTrackedLifts: jest.fn(),
     useWorkoutNotes: jest.fn(),
     useDeloadHistory: jest.fn(),
+    useFeatureToggles: jest.fn(),
   };
 });
 
 const MOCK_NOW = new Date('2026-05-26T12:00:00Z');
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
-function setup({ entries = [], hookOverrides = {} } = {}) {
+function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
+  useEntries.useFeatureToggles.mockReturnValue({
+    fatigueTrackingEnabled: true,
+    deloadModeEnabled: true,
+    setFatigueTrackingEnabled: jest.fn(),
+    setDeloadModeEnabled: jest.fn(),
+    ...featureToggles,
+  });
   useEntries.useWeightEntries.mockReturnValue({ entries, loading: false, error: null });
   useEntries.useTrackedLifts.mockReturnValue({ 
     trackedLifts: hookOverrides.trackedLifts || {}, 
@@ -550,5 +558,37 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
     const component = setup();
     const root = component.root;
     expect(hasText(root, '1K total over sessions')).toBe(false);
+  });
+});
+
+// ── feature toggle gating (issue #273) ────────────────────────────────────────
+
+describe('AnalyticsScreen feature toggle gating', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('shows Fatigue and Session Health sections when both features are enabled', () => {
+    const component = setup();
+    const root = component.root;
+    expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Session Health')).toBe(true);
+  });
+
+  test('hides the Fatigue section when fatigue tracking is off', () => {
+    const component = setup({ featureToggles: { fatigueTrackingEnabled: false } });
+    const root = component.root;
+    expect(hasText(root, 'Fatigue')).toBe(false);
+    expect(hasText(root, 'No check-ins logged yet.')).toBe(false);
+    // Unrelated sections still render.
+    expect(hasText(root, 'Session Health')).toBe(true);
+    expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+
+  test('hides the Session Health gauge when deload mode is off', () => {
+    const component = setup({ featureToggles: { deloadModeEnabled: false } });
+    const root = component.root;
+    expect(hasText(root, 'Session Health')).toBe(false);
+    // Unrelated sections still render.
+    expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 });
