@@ -3,7 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInp
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
-import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics } from '../lib/data';
+import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload } from '../lib/parser';
 import { formatDuration } from '../lib/format';
@@ -225,6 +225,8 @@ export function AnalyticsScreen({ multiplier, section }) {
     [sessionCount, deloadHistory]
   );
 
+  const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
+
   const oneKChartData = useMemo(
     () => (analytics.oneKSeries || []).map(p => ({
       value: Math.round(p.total),
@@ -304,6 +306,40 @@ export function AnalyticsScreen({ multiplier, section }) {
     <View key="session-gauge" style={styles.statRow}>
       <SessionGauge count={sinceDeload} total={sessionCount} />
     </View>,
+
+    <View key="fatigue-title">
+      <SectionTitle>Fatigue</SectionTitle>
+    </View>,
+    <Card key="fatigue-card" style={styles.fatigueCard}>
+      {checkInHistory.list.length === 0 ? (
+        <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
+      ) : (
+        <>
+          <View style={styles.fatigueSummary}>
+            <Text style={styles.fatigueSummaryText}>
+              {checkInHistory.summary.total} rough session{checkInHistory.summary.total !== 1 ? 's' : ''}
+              {checkInHistory.summary.top_reason ? ` · most common: ${checkInHistory.summary.top_reason}` : ''}
+            </Text>
+          </View>
+          {checkInHistory.list.map((ci, i) => (
+            <View key={ci.responded_at} style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}>
+              <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
+              <View style={styles.fatigueDetails}>
+                {ci.reasons.length > 0 && (
+                  <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
+                )}
+                <View style={styles.fatigueStats}>
+                  <Text style={styles.fatigueStat}>{ci.exercises_skipped} skipped</Text>
+                  <Text style={styles.fatigueStat}>
+                    {ci.volume_decline_pct != null ? `${ci.volume_decline_pct}% vol` : '—'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </>
+      )}
+    </Card>,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
       <SectionTitle>Strength</SectionTitle>
@@ -549,6 +585,12 @@ export function AnalyticsScreen({ multiplier, section }) {
       {screenContent}
     </ScreenShell>
   );
+}
+
+function formatCheckInDate(responded_at) {
+  // Parse only the YYYY-MM-DD portion to avoid UTC→local-timezone day shift
+  const [year, month, day] = responded_at.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function CrossDayComparison({ daySignals, currentDay, otherDays }) {
@@ -1020,6 +1062,59 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  fatigueCard: {
+    padding: 16,
+    gap: 0,
+  },
+  fatigueEmpty: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  fatigueSummary: {
+    paddingBottom: 12,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  fatigueSummaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  fatigueRow: {
+    paddingVertical: 12,
+  },
+  fatigueRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  fatigueDate: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  fatigueDetails: {
+    gap: 4,
+  },
+  fatigueReasons: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  fatigueStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  fatigueStat: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
 
 });
