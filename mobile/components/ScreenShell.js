@@ -22,7 +22,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   };
 
   return (
-    <ScrollView 
+    <ScrollView
       ref={ref}
       style={[styles.scroll, style]}
       contentContainerStyle={styles.container}

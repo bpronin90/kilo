@@ -3222,13 +3222,16 @@ describe('deriveCheckInHistory', () => {
   };
 
   test('empty/null input returns empty shape', () => {
-    expect(deriveCheckInHistory(null)).toEqual({ list: [], summary: { total: 0, top_reason: null } });
-    expect(deriveCheckInHistory([])).toEqual({ list: [], summary: { total: 0, top_reason: null } });
+    const empty = { list: [], rough: [], ok: [], pending: [], summary: { roughTotal: 0, okTotal: 0, pendingTotal: 0, top_reason: null } };
+    expect(deriveCheckInHistory(null)).toEqual(empty);
+    expect(deriveCheckInHistory([])).toEqual(empty);
   });
 
   test('notes with null session_checkins contribute nothing', () => {
     const notes = [{ session_checkins: null }, { session_checkins: null }];
-    expect(deriveCheckInHistory(notes)).toEqual({ list: [], summary: { total: 0, top_reason: null } });
+    expect(deriveCheckInHistory(notes)).toEqual(
+      { list: [], rough: [], ok: [], pending: [], summary: { roughTotal: 0, okTotal: 0, pendingTotal: 0, top_reason: null } }
+    );
   });
 
   test('returns reverse-chronological order across notes', () => {
@@ -3243,10 +3246,23 @@ describe('deriveCheckInHistory', () => {
     expect(list[2].responded_at).toBe(C1.responded_at);
   });
 
-  test('summary total counts only rough check-ins', () => {
-    const notes = [{ session_checkins: { '0': C1, '1': C2, '2': C3 } }];
+  test('rough, ok, and pending lists split by status', () => {
+    const C_pending = { status: null, reasons: [], exercises_skipped: 0, volume_decline_pct: null, flagged: [], responded_at: '2026-05-15T08:00:00.000Z' };
+    const notes = [{ session_checkins: { '0': C1, '1': C2, '2': C3, '3': C_pending } }];
+    const { rough, ok, pending } = deriveCheckInHistory(notes);
+    expect(rough).toHaveLength(2);
+    expect(ok).toHaveLength(1);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].status).toBeNull();
+  });
+
+  test('summary roughTotal, okTotal, and pendingTotal reflect split counts', () => {
+    const C_pending = { status: null, reasons: [], exercises_skipped: 0, volume_decline_pct: null, flagged: [], responded_at: '2026-05-15T08:00:00.000Z' };
+    const notes = [{ session_checkins: { '0': C1, '1': C2, '2': C3, '3': C_pending } }];
     const { summary } = deriveCheckInHistory(notes);
-    expect(summary.total).toBe(2);
+    expect(summary.roughTotal).toBe(2);
+    expect(summary.okTotal).toBe(1);
+    expect(summary.pendingTotal).toBe(1);
   });
 
   test('top_reason is most frequent reason across rough check-ins', () => {
@@ -3258,7 +3274,7 @@ describe('deriveCheckInHistory', () => {
   test('top_reason is null when no rough check-ins', () => {
     const notes = [{ session_checkins: { '0': C2 } }];
     const { summary } = deriveCheckInHistory(notes);
-    expect(summary.total).toBe(0);
+    expect(summary.roughTotal).toBe(0);
     expect(summary.top_reason).toBeNull();
   });
 

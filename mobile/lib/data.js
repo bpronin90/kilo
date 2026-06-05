@@ -1380,7 +1380,7 @@ export function computeWeeklySummary(sections, workoutNote) {
 // ── Check-in history ──────────────────────────────────────────────────────────
 
 export function deriveCheckInHistory(notes) {
-  const empty = { list: [], summary: { total: 0, top_reason: null } };
+  const empty = { list: [], rough: [], ok: [], pending: [], summary: { roughTotal: 0, okTotal: 0, pendingTotal: 0, top_reason: null } };
   if (!notes || notes.length === 0) return empty;
 
   const list = [];
@@ -1403,6 +1403,9 @@ export function deriveCheckInHistory(notes) {
   list.sort((a, b) => (a.responded_at < b.responded_at ? 1 : a.responded_at > b.responded_at ? -1 : 0));
 
   const rough = list.filter(c => c.status === 'rough');
+  const ok = list.filter(c => c.status === 'ok');
+  const pending = list.filter(c => c.status == null);
+
   let top_reason = null;
   if (rough.length > 0) {
     const counts = new Map();
@@ -1417,5 +1420,5 @@ export function deriveCheckInHistory(notes) {
     }
   }
 
-  return { list, summary: { total: rough.length, top_reason } };
+  return { list, rough, ok, pending, summary: { roughTotal: rough.length, okTotal: ok.length, pendingTotal: pending.length, top_reason } };
 }
