@@ -1401,6 +1401,53 @@ describe('deriveSessionCheckIn', () => {
     expect(r.detectors).toContain('day_skip');
     expect(r.detectors).not.toContain('skipped');
   });
+
+  // ── Repro cases from issue #270 ────────────────────────────────────────────
+
+  test('repro #270: single-exercise 110 5,5,5 → 110 2,2,2 flags volume_drop', () => {
+    const sections = [checkinSection([
+      { name: 'Squat', entries: [
+        [ws(100, 5), ws(100, 5), ws(100, 5)],
+        [ws(105, 5), ws(105, 5), ws(105, 5)],
+        [ws(110, 5), ws(110, 5), ws(110, 5)],
+        [ws(110, 2), ws(110, 2), ws(110, 2)],
+      ]},
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('volume_drop');
+    expect(r.sessionIndex).toBe(3);
+  });
+
+  test('repro #270: single-exercise 110 5,5,5 → 110 2,2,- flags volume_drop', () => {
+    const sections = [checkinSection([
+      { name: 'Squat', entries: [
+        [ws(100, 5), ws(100, 5), ws(100, 5)],
+        [ws(105, 5), ws(105, 5), ws(105, 5)],
+        [ws(110, 5), ws(110, 5), ws(110, 5)],
+        [ws(110, 2), ws(110, 2), skset(110)],
+      ]},
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('volume_drop');
+  });
+
+  test('repro #270: single-exercise full-skip fires day_skip', () => {
+    const sections = [checkinSection([
+      { name: 'Squat', entries: [
+        [ws(100, 5), ws(100, 5), ws(100, 5)],
+        [ws(105, 5), ws(105, 5), ws(105, 5)],
+        [ws(110, 5), ws(110, 5), ws(110, 5)],
+        'skip',
+      ]},
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('day_skip');
+    expect(r.sessionIndex).toBe(3);
+  });
+
 });
 
 // ── detectBig3Asymmetry ───────────────────────────────────────────────────────
