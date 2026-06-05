@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
@@ -23,6 +23,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
+  const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
@@ -310,16 +311,20 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
+    deloadModeEnabled ? (
     <View key="deload-title">
       <SectionTitle>Session Health</SectionTitle>
-    </View>,
+    </View>) : null,
+    deloadModeEnabled ? (
     <View key="session-gauge" style={styles.statRow}>
       <SessionGauge count={sinceDeload} total={sessionCount} />
-    </View>,
+    </View>) : null,
 
+    fatigueTrackingEnabled ? (
     <View key="fatigue-title">
       <SectionTitle>Fatigue</SectionTitle>
-    </View>,
+    </View>) : null,
+    fatigueTrackingEnabled ? (
     <Card key="fatigue-card" style={styles.fatigueCard}>
       {checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0 ? (
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
@@ -446,7 +451,7 @@ export function AnalyticsScreen({ multiplier, section }) {
           )}
         </>
       )}
-    </Card>,
+    </Card>) : null,
 
     <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
       <SectionTitle>Strength</SectionTitle>
@@ -707,7 +712,7 @@ export function AnalyticsScreen({ multiplier, section }) {
         {screenContent}
       </ScreenShell>
       <SessionCheckInModal
-        visible={editPendingCheckIn != null}
+        visible={fatigueTrackingEnabled && editPendingCheckIn != null}
         checkInData={editCheckInData}
         currentId={editPendingCheckIn?.note?.id ?? null}
         currentNote={editPendingCheckIn?.note ?? null}

@@ -37,6 +37,10 @@ import {
   deleteDeloadHistory,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
+  loadFatigueTrackingEnabled,
+  saveFatigueTrackingEnabled,
+  loadDeloadModeEnabled,
+  saveDeloadModeEnabled,
 } from '../storage/entries';
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -225,6 +229,44 @@ describe('weight date edit setting', () => {
     await saveWeightDateEditEnabled(false);
     const val = await loadWeightDateEditEnabled();
     expect(val).toBe(false);
+  });
+});
+
+describe('fatigue tracking feature toggle', () => {
+  test('defaults to true (enabled) when not set', async () => {
+    const val = await loadFatigueTrackingEnabled();
+    expect(val).toBe(true);
+  });
+
+  test('saves and loads the disabled state', async () => {
+    await saveFatigueTrackingEnabled(false);
+    const val = await loadFatigueTrackingEnabled();
+    expect(val).toBe(false);
+  });
+
+  test('saves and loads the enabled state', async () => {
+    await saveFatigueTrackingEnabled(true);
+    const val = await loadFatigueTrackingEnabled();
+    expect(val).toBe(true);
+  });
+});
+
+describe('deload mode feature toggle', () => {
+  test('defaults to true (enabled) when not set', async () => {
+    const val = await loadDeloadModeEnabled();
+    expect(val).toBe(true);
+  });
+
+  test('saves and loads the disabled state', async () => {
+    await saveDeloadModeEnabled(false);
+    const val = await loadDeloadModeEnabled();
+    expect(val).toBe(false);
+  });
+
+  test('saves and loads the enabled state', async () => {
+    await saveDeloadModeEnabled(true);
+    const val = await loadDeloadModeEnabled();
+    expect(val).toBe(true);
   });
 });
 

@@ -14,6 +14,8 @@ const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
 const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
 const USER_PROFILE_KEY = 'kilo_user_profile';
 const DELOAD_DATE_EDIT_KEY = 'kilo_deload_date_edit_enabled';
+const FATIGUE_TRACKING_KEY = 'kilo_fatigue_tracking_enabled';
+const DELOAD_MODE_KEY = 'kilo_deload_mode_enabled';
 
 function localDateToday() {
   const d = new Date();
@@ -104,6 +106,36 @@ export async function loadDeloadDateEditEnabled() {
 
 export async function saveDeloadDateEditEnabled(enabled) {
   await AsyncStorage.setItem(DELOAD_DATE_EDIT_KEY, JSON.stringify(enabled));
+}
+
+// Feature toggles. Default to enabled so existing users keep the shipped flows
+// unless they explicitly turn a feature off. Disabling only hides UI/prompts;
+// stored fatigue and deload data is left intact.
+
+export async function loadFatigueTrackingEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(FATIGUE_TRACKING_KEY);
+    return raw == null ? true : JSON.parse(raw);
+  } catch {
+    return true;
+  }
+}
+
+export async function saveFatigueTrackingEnabled(enabled) {
+  await AsyncStorage.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
+}
+
+export async function loadDeloadModeEnabled() {
+  try {
+    const raw = await AsyncStorage.getItem(DELOAD_MODE_KEY);
+    return raw == null ? true : JSON.parse(raw);
+  } catch {
+    return true;
+  }
+}
+
+export async function saveDeloadModeEnabled(enabled) {
+  await AsyncStorage.setItem(DELOAD_MODE_KEY, JSON.stringify(enabled));
 }
 
 // Weight entries

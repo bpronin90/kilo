@@ -16,7 +16,7 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -66,6 +66,7 @@ export function LogScreen({
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
   const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote } = useDeloadHistory();
+  const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
 
   const [mode, setMode] = useState('read');
   const [isSaving, setIsSaving] = useState(false);
@@ -496,6 +497,8 @@ export function LogScreen({
   };
 
   const _runCheckInDetection = () => {
+    // Fatigue tracking off: never surface check-in prompts.
+    if (!fatigueTrackingEnabled) return;
     const explicitTrackedNames = listTrackedLifts(trackedLifts);
     const defaultNames = getDefaultTrackedNames();
     const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
@@ -934,6 +937,9 @@ export function LogScreen({
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit' || deloadMode === 'edit';
 
+  // Deload mode off: collapse to the routine view and hide the deload entry point.
+  const effectiveTabView = deloadModeEnabled ? tabView : 'routine';
+
   useEffect(() => {
     if (editingNoteId) {
       editorScrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -958,27 +964,29 @@ export function LogScreen({
           <LogEmptyState onCreateRoutine={handleCreateRoutine} />
         ) : (
           <>
-            <View style={styles.tabToggle}>
-              <Pressable
-                onPress={() => setTabView('routine')}
-                style={[styles.tabToggleItem, tabView === 'routine' && styles.tabToggleItemActive]}
-              >
-                <Text style={[styles.tabToggleText, tabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setTabView('deload')}
-                style={[styles.tabToggleItem, tabView === 'deload' && styles.tabToggleItemActive]}
-              >
-                <Text style={[styles.tabToggleText, tabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
-              </Pressable>
-            </View>
+            {deloadModeEnabled && (
+              <View style={styles.tabToggle}>
+                <Pressable
+                  onPress={() => setTabView('routine')}
+                  style={[styles.tabToggleItem, effectiveTabView === 'routine' && styles.tabToggleItemActive]}
+                >
+                  <Text style={[styles.tabToggleText, effectiveTabView === 'routine' && styles.tabToggleTextActive]}>Routine</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setTabView('deload')}
+                  style={[styles.tabToggleItem, effectiveTabView === 'deload' && styles.tabToggleItemActive]}
+                >
+                  <Text style={[styles.tabToggleText, effectiveTabView === 'deload' && styles.tabToggleTextActive]}>Deload</Text>
+                </Pressable>
+              </View>
+            )}
 
-            {tabView === 'deload' && saveError ? (
+            {effectiveTabView === 'deload' && saveError ? (
               <Card style={styles.errorCard}>
                 <Text style={styles.errorText}>{saveError}</Text>
               </Card>
             ) : null}
-            {tabView === 'deload' && !deloadLoading && (
+            {effectiveTabView === 'deload' && !deloadLoading && (
               !deloadNote?.raw_text ? (
                 <View style={styles.deloadEmpty}>
                   <Text style={styles.deloadEmptyText}>No deload week generated yet.</Text>
@@ -1066,7 +1074,7 @@ export function LogScreen({
                 </>
               )
             )}
-            {tabView === 'deload' && !deloadLoading && (deloadNotes.length > 0 || deloadHistory.some(r => !r.note_id)) && (
+            {effectiveTabView === 'deload' && !deloadLoading && (deloadNotes.length > 0 || deloadHistory.some(r => !r.note_id)) && (
               <View style={styles.pastDeloads}>
                 <SectionTitle>Past deloads</SectionTitle>
                 {[
@@ -1196,7 +1204,7 @@ export function LogScreen({
               </View>
             )}
 
-            {tabView === 'routine' && mode === 'read' && hasContent && (
+            {effectiveTabView === 'routine' && mode === 'read' && hasContent && (
               <View style={styles.mirrorContainer}>
                 <Card style={styles.currentRoutineCard}>
                   <Pressable
@@ -1285,7 +1293,7 @@ export function LogScreen({
             )}
 
 
-            {tabView === 'routine' && (
+            {effectiveTabView === 'routine' && (
               <View style={styles.previousRoutines}>
                 {otherNotes.length > 0 && (
                   <>

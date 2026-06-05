@@ -6,7 +6,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, SectionTitle, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
-import { useUserProfile } from '../hooks/useEntries';
+import { useUserProfile, useFeatureToggles } from '../hooks/useEntries';
 import pkg from '../package.json';
 
 const LOGO = require('../assets/brand/logo.png');
@@ -465,6 +465,7 @@ function BackupScreen({ onBack, onExport, onImport }) {
 }
 
 function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
+  const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
   const handleIncrement = () => onUpdate(Math.round((multiplier + 0.01) * 100) / 100);
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
@@ -472,6 +473,34 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
   return (
     <ScreenShell title="Settings" subtitle="Algorithm and calculation defaults.">
       <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+
+      <SectionTitle>Training Features</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Fatigue tracking</Text>
+            <Text style={styles.settingHelp}>Session check-in prompts and Fatigue analytics</Text>
+          </View>
+          <Switch
+            value={!!fatigueTrackingEnabled}
+            onValueChange={setFatigueTrackingEnabled}
+            accessibilityLabel="Fatigue tracking"
+            accessibilityRole="switch"
+          />
+        </View>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Deload mode</Text>
+            <Text style={styles.settingHelp}>Deload tab, generation, and past deload records</Text>
+          </View>
+          <Switch
+            value={!!deloadModeEnabled}
+            onValueChange={setDeloadModeEnabled}
+            accessibilityLabel="Deload mode"
+            accessibilityRole="switch"
+          />
+        </View>
+      </Card>
 
       <SectionTitle>Algorithm</SectionTitle>
       <Card>
