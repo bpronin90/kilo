@@ -1387,15 +1387,19 @@ export function deriveCheckInHistory(notes) {
   for (const note of notes) {
     const checkins = note?.session_checkins;
     if (!checkins) continue;
-    for (const checkin of Object.values(checkins)) {
+    for (const [key, checkin] of Object.entries(checkins)) {
       if (!checkin || !checkin.responded_at) continue;
       list.push({
+        noteId: note.id,
+        sessionIndex: Number(key),
         responded_at: checkin.responded_at,
         status: checkin.status ?? null,
         reasons: checkin.reasons ?? [],
+        note: checkin.note ?? null,
         exercises_skipped: checkin.exercises_skipped ?? 0,
         volume_decline_pct: checkin.volume_decline_pct ?? null,
         flagged: checkin.flagged ?? [],
+        detectors: checkin.detectors ?? [],
       });
     }
   }

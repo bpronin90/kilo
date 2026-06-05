@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.62.0 - 2026-06-05
+
+- Issue #271: Added an Analytics-side edit path for fatigue check-ins so
+  unanswered entries can be completed later and existing responses can be
+  reopened without losing their saved status, reasons, note text, or original
+  session date. The Fatigue card now restores a `Most common` rough-session
+  reason insight, surfaces flagged exercise names per row, and preserves
+  reverse-chronological ordering when historical check-ins are edited.
+
 ## 0.61.0 - 2026-06-05
 
 - Issue #270: Fixed the Log-tab fatigue check-in trigger so rough-session
