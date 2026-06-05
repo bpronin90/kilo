@@ -218,15 +218,16 @@ The real native app path now has a modular React Native shell:
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of
   recomputing it during render. Native workout-note documents now also persist
-  `session_checkins` keyed by session index so answered fatigue check-ins
-  survive reloads. When the user leaves the current-routine editor after a
-  rough detected session, the same Log flow now re-runs the session check-in
-  detector after autosave, highlights exactly the flagged exercises in red in
-  the rendered routine view, opens a bottom-sheet `SessionCheckInModal` with a
-  detector-aware title plus flagged exercise names where available, and
-  persists either an `I'm okay` or `Not great` answer back onto that session
-  index. The highlight and modal prompt both suppress once the matching
-  `session_checkins[sessionIndex]` answer exists. The old `rep_drop_off_flags` surface is no
+  `session_checkins` keyed by session index so fatigue check-ins survive
+  reloads. When the user leaves the current-routine editor after a rough
+  detected session, the same Log flow now re-runs the session check-in
+  detector against the current note only, highlights exactly the flagged
+  exercises in red in the rendered routine view, opens a centered
+  `SessionCheckInModal` with a detector-aware title plus flagged exercise names
+  where available, and persists either an `I'm okay`, `Not great`, or
+  dismissed/pending (`status: null`) state back onto that session index. The
+  highlight and modal prompt both suppress once a matching
+  `session_checkins[sessionIndex]` entry exists. The old `rep_drop_off_flags` surface is no
   longer populated or consumed. The legacy `hit_wall` chip/badge and its
   helper reads are removed from Log and Analytics, and within-row skipped sets
   now render in structured read mode as `-` at their original weight
@@ -311,10 +312,11 @@ The real native app path now has a modular React Native shell:
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
-  a `Fatigue` section backed by persisted `session_checkins`, with a reverse-
-  chronological answered-check-in list, a rough-session summary (`total` plus
-  most common reason), and stable calendar-day formatting from `responded_at`.
-  Shared chart surfaces now
+  a `Fatigue` section backed by persisted `session_checkins`, split into `Not
+  great`, `All good`, and conditional `Unanswered` groups with stable
+  calendar-day formatting from `responded_at`; rough rows show reasons plus
+  non-zero skipped/volume-drop stats, and dismissed check-ins now appear in the
+  `Unanswered` group until later follow-up UX is added. Shared chart surfaces now
   also expose a tapped-point readout without breaking existing callers. The
   screen still uses an artisanal-panel strength container, strength-only 1k
   slot selection, and a `Progressive Overload` section with routine-day
