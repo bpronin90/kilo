@@ -315,14 +315,18 @@ The real native app path now has a modular React Native shell:
   a `Fatigue` section backed by persisted `session_checkins`, split into `Not
   great`, `All good`, and conditional `Unanswered` groups with stable
   calendar-day formatting from `responded_at`; rough rows show reasons plus
-  non-zero skipped/volume-drop stats, and dismissed check-ins now appear in the
-  `Unanswered` group until later follow-up UX is added. Shared chart surfaces now
-  also expose a tapped-point readout without breaking existing callers. The
-  screen still uses an artisanal-panel strength container, strength-only 1k
-  slot selection, and a `Progressive Overload` section with routine-day
-  grouping, collapsible group headers, search filtering, and a tabular
-  two-line row layout (exercise name + 4-column metric grid: `1RM`, `Kilo`,
-  `Best`, `Trend`).
+  non-zero skipped/volume-drop stats, the card restores a top-level `Most
+  common` rough-session reason insight when one exists, and every fatigue row
+  now exposes an Analytics-side edit path that reopens the check-in modal
+  against the original session record. Editing an existing entry hydrates its
+  saved status/reasons/note, preserves the original `responded_at` timestamp,
+  and lets unanswered dismissals be completed later without reordering history.
+  Shared chart surfaces now also expose a tapped-point readout without breaking
+  existing callers. The screen still uses an artisanal-panel strength
+  container, strength-only 1k slot selection, and a `Progressive Overload`
+  section with routine-day grouping, collapsible group headers, search
+  filtering, and a tabular two-line row layout (exercise name + 4-column
+  metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
   Non-weighted exercises (reps-only or time-based) render with a minimal
   sub-layout showing `Avg` and `Best` metrics (average reps/hold per set
   and highest single-set value) with inline labels, plus a PO arrow

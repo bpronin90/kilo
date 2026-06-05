@@ -3278,16 +3278,42 @@ describe('deriveCheckInHistory', () => {
     expect(summary.top_reason).toBeNull();
   });
 
-  test('list entries include expected fields only', () => {
-    const notes = [{ session_checkins: { '0': C1 } }];
+  test('editing a check-in preserves sort position when responded_at is unchanged', () => {
+    const original_at = '2026-04-01T08:00:00.000Z';
+    const later_at = '2026-05-01T08:00:00.000Z';
+    const original = { status: 'rough', reasons: ['Tired'], exercises_skipped: 0, volume_decline_pct: null, flagged: [], detectors: [], responded_at: original_at };
+    const later = { status: 'ok', reasons: [], exercises_skipped: 0, volume_decline_pct: null, flagged: [], detectors: [], responded_at: later_at };
+    // Simulate an edit that updates status but preserves responded_at
+    const edited = { ...original, status: 'ok', responded_at: original_at };
+    const notes = [{ id: 'n1', session_checkins: { '0': edited, '1': later } }];
+    const { list } = deriveCheckInHistory(notes);
+    expect(list[0].responded_at).toBe(later_at);
+    expect(list[1].responded_at).toBe(original_at);
+  });
+
+  test('list entries include expected fields', () => {
+    const notes = [{ id: 'note-1', session_checkins: { '0': C1 } }];
     const { list } = deriveCheckInHistory(notes);
     expect(list[0]).toEqual({
+      noteId: 'note-1',
+      sessionIndex: 0,
       responded_at: C1.responded_at,
       status: C1.status,
       reasons: C1.reasons,
+      note: null,
       exercises_skipped: C1.exercises_skipped,
       volume_decline_pct: C1.volume_decline_pct,
       flagged: C1.flagged,
+      detectors: [],
     });
+  });
+
+  test('list entries preserve note text for hydrating the edit modal', () => {
+    const withNote = { ...C1, note: 'felt rough all session' };
+    const notes = [{ id: 'note-1', session_checkins: { '0': withNote } }];
+    const { list } = deriveCheckInHistory(notes);
+    expect(list[0].note).toBe('felt rough all session');
+    expect(list[0].status).toBe('rough');
+    expect(list[0].reasons).toEqual(C1.reasons);
   });
 });

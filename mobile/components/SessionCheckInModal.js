@@ -81,7 +81,7 @@ function deriveTitle(detectors, flagged) {
   return parts.join(' · ') + ' — you okay?';
 }
 
-export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose }) {
+export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose, isEdit = false }) {
   const [tier, setTier] = useState(null);
   const [selectedReasons, setSelectedReasons] = useState(new Set());
   const [freeText, setFreeText] = useState('');
@@ -93,8 +93,12 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
       setSelectedReasons(new Set());
       setFreeText('');
       setIsSaving(false);
+    } else if (isEdit && checkInData) {
+      setTier(checkInData.status ?? null);
+      setSelectedReasons(new Set(checkInData.reasons ?? []));
+      setFreeText(checkInData.note ?? '');
     }
-  }, [visible]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleReason = (reason) => {
     setSelectedReasons(prev => {
@@ -116,7 +120,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         detectors: checkInData.detectors,
         exercises_skipped: checkInData.metrics.exercises_skipped,
         volume_decline_pct: checkInData.metrics.volume_decline_pct,
-        responded_at: new Date().toISOString(),
+        responded_at: (isEdit && checkInData.responded_at) ? checkInData.responded_at : new Date().toISOString(),
       };
       const prevCheckins = currentNote?.session_checkins || {};
       await update(currentId, {
@@ -129,7 +133,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   };
 
   const handleDismiss = async () => {
-    if (!checkInData || !currentId) { onClose(); return; }
+    if (isEdit || !checkInData || !currentId) { onClose(); return; }
     const prevCheckins = currentNote?.session_checkins || {};
     await update(currentId, {
       session_checkins: {
