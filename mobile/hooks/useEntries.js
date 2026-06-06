@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
-import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote } from '../lib/parser';
 
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while
@@ -24,26 +24,6 @@ export function getNoteSections(note) {
 const safeNotify = (listeners) =>
   listeners.forEach(l => { try { l(); } catch (e) { console.warn('[useEntries] listener error', e); } });
 
-function _localDateStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// Sync session_dates array length to match newCount.
-// On first touch (no existing array), initializes all positions as null.
-// When count increases, appends today's date for the new sessions.
-// When count decreases or stays the same, trims to match.
-export function syncSessionDates(existing, newCount) {
-  if (!existing || existing.length === 0) {
-    return newCount > 0 ? new Array(newCount).fill(null) : [];
-  }
-  if (newCount <= existing.length) {
-    return existing.slice(0, newCount);
-  }
-  const added = newCount - existing.length;
-  const today = _localDateStr();
-  return [...existing, ...new Array(added).fill(today)];
-}
 
 let goalListeners = [];
 const notifyGoal = () => safeNotify(goalListeners);
@@ -180,13 +160,7 @@ export function useWorkoutNotes() {
     const list = await Storage.loadWorkoutNotes();
     const note = list.find(n => n.id === id);
     if (!note) return false;
-    let updatedPatch = { ...patch };
-    if ('raw_text' in patch && !note.title?.startsWith(DELOAD_NOTE_PREFIX)) {
-      const { sections } = parseWorkoutNote(patch.raw_text || '');
-      const newCount = countWorkoutSessionsFromSections(sections);
-      updatedPatch.session_dates = syncSessionDates(note.session_dates || null, newCount);
-    }
-    const updated = { ...note, ...updatedPatch, updated_at: new Date().toISOString() };
+    const updated = { ...note, ...patch, updated_at: new Date().toISOString() };
     await Storage.saveWorkoutNoteItem(updated);
     notifyWorkoutNotes();
     return updated;

@@ -1,5 +1,4 @@
-import { parseWorkoutNote, computePostDeloadSessions } from '../lib/parser';
-import { syncSessionDates } from '../hooks/useEntries';
+import { parseWorkoutNote, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
 
 // Simulates the skip-aware IIFE used in all clean-view render paths of LogScreen.
 // Returns an array of 'skip' | 'set' | 'unparsed:<raw>' tokens in order.
@@ -161,79 +160,54 @@ describe('LogScreen skip-aware rendering', () => {
   });
 });
 
-// ── syncSessionDates (session_dates maintenance contract) ─────────────────────
+// ── deload date edit: two-metric model ───────────────────────────────────────
 
-describe('syncSessionDates', () => {
-  test('initializes all positions to null on first touch (no existing array)', () => {
-    expect(syncSessionDates(null, 5)).toEqual([null, null, null, null, null]);
+const MOCK_NOW_MS_LOG = new Date('2026-06-06T12:00:00.000Z').getTime();
+
+describe('deload date edit: sessions and weeks are independent metrics', () => {
+  beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(MOCK_NOW_MS_LOG); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('editing completed_at changes weeksSinceLastDeload but leaves session_count untouched', () => {
+    const totalSessions = 14;
+    // Deload originally completed May 9 (4 weeks ago); user corrects to May 16 (3 weeks ago)
+    const originalRecord = { id: 'dl_1', completed_at: '2026-05-09T12:00:00.000Z', session_count: 11 };
+    const editedRecord   = { id: 'dl_1', completed_at: '2026-05-16T12:00:00.000Z', session_count: 11 };
+
+    expect(sessionsSinceLastDeload(totalSessions, [originalRecord])).toBe(3);
+    expect(sessionsSinceLastDeload(totalSessions, [editedRecord])).toBe(3); // unchanged
+
+    expect(weeksSinceLastDeload([originalRecord])).toBe(4);
+    expect(weeksSinceLastDeload([editedRecord])).toBe(3);   // updated
   });
 
-  test('initializes empty array when count is 0 on first touch', () => {
-    expect(syncSessionDates(null, 0)).toEqual([]);
+  test('sessions since deload only depends on session_count, not completed_at', () => {
+    const totalSessions = 20;
+    const history = [{ id: 'dl_1', completed_at: '2026-01-01T12:00:00.000Z', session_count: 15 }];
+    expect(sessionsSinceLastDeload(totalSessions, history)).toBe(5);
   });
 
-  test('trims array when session count decreases', () => {
-    const existing = ['2026-05-01', '2026-05-08', '2026-05-15'];
-    expect(syncSessionDates(existing, 2)).toEqual(['2026-05-01', '2026-05-08']);
+  test('weeks since deload only depends on completed_at, not session_count', () => {
+    // 14 days = 2 full weeks
+    const history = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 99 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
   });
 
-  test('returns same array length when session count is unchanged', () => {
-    const existing = ['2026-05-01', '2026-05-08'];
-    expect(syncSessionDates(existing, 2)).toEqual(['2026-05-01', '2026-05-08']);
+  test('legacy records without note_id work for both metrics', () => {
+    const history = [{ id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 5 }];
+    expect(sessionsSinceLastDeload(10, history)).toBe(5);
+    expect(weeksSinceLastDeload(history)).toBe(2);
   });
 
-  test('appends today for newly added sessions when count increases', () => {
-    const existing = ['2026-05-01', '2026-05-08'];
-    const result = syncSessionDates(existing, 4);
-    expect(result).toHaveLength(4);
-    expect(result[0]).toBe('2026-05-01');
-    expect(result[1]).toBe('2026-05-08');
-    // New entries are today's date (non-null string)
-    expect(typeof result[2]).toBe('string');
-    expect(result[2]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(result[3]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  test('preserves legacy null positions when trimming', () => {
-    const existing = [null, null, '2026-05-15', '2026-06-01'];
-    expect(syncSessionDates(existing, 3)).toEqual([null, null, '2026-05-15']);
-  });
-
-  test('initializes empty existing array as all-null on first touch', () => {
-    expect(syncSessionDates([], 3)).toEqual([null, null, null]);
-  });
-});
-
-// ── deload date edit path: auto-recompute vs manual-repair decision ───────────
-
-describe('deload date edit: auto-recompute path decision', () => {
-  test('canRecompute true leads to new baseline = totalSessions - postDeloadCount', () => {
-    const totalSessions = 18;
-    const sessionDates = [
-      '2026-01-10', '2026-01-24', '2026-02-07', '2026-02-21',
-      '2026-03-07', '2026-03-21', '2026-04-04', '2026-04-18',
-      '2026-05-02', '2026-05-16', '2026-05-30', '2026-06-13',
-      '2026-06-27', '2026-07-11', '2026-07-25', '2026-08-08',
-      '2026-08-22', '2026-09-05',
-    ];
-    const newDeloadDate = '2026-05-16';
-    const { canRecompute, count } = computePostDeloadSessions(sessionDates, newDeloadDate);
-    expect(canRecompute).toBe(true);
-    expect(count).toBe(8); // sessions after May 16: May 30, Jun 13, Jun 27, Jul 11, Jul 25, Aug 8, Aug 22, Sep 5
-    const newBaseline = Math.max(0, totalSessions - count);
-    expect(newBaseline).toBe(10);
-  });
-
-  test('canRecompute false when any session date is missing (triggers manual-repair path)', () => {
-    const sessionDates = [null, null, '2026-05-15', '2026-06-01'];
-    const { canRecompute } = computePostDeloadSessions(sessionDates, '2026-05-10');
-    expect(canRecompute).toBe(false);
-  });
-
-  test('manual-repair: baseline_source distinguishes repair source from auto', () => {
-    const auto = { id: 'dl_auto', completed_at: '2026-06-01T12:00:00.000Z', session_count: 12, baseline_source: 'captured' };
-    const manual = { id: 'dl_man', completed_at: '2026-06-01T12:00:00.000Z', session_count: 12, baseline_source: 'manual_repair' };
-    expect(auto.baseline_source).toBe('captured');
-    expect(manual.baseline_source).toBe('manual_repair');
+  test('date edit with no linked history record must not change the analytics anchor (desync guard)', () => {
+    // Simulate the save-path contract: if histRecord is not found, saved_at should NOT
+    // be applied. The session and weeks metrics must remain based on the original record.
+    const totalSessions = 8;
+    const legacyRecord = { id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 5 };
+    // After attempted date change (no histRecord found, save blocked):
+    expect(sessionsSinceLastDeload(totalSessions, [legacyRecord])).toBe(3);
+    expect(weeksSinceLastDeload([legacyRecord])).toBe(2);
+    // The record is unchanged — same values before and after.
+    expect(legacyRecord.completed_at).toBe('2026-05-23T12:00:00.000Z');
   });
 });

@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, computePostDeloadSessions } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2650,81 +2650,86 @@ describe('sessionsSinceLastDeload', () => {
   });
 });
 
-// ── computePostDeloadSessions ─────────────────────────────────────────────────
+// ── weeksSinceLastDeload ──────────────────────────────────────────────────────
 
-describe('computePostDeloadSessions', () => {
-  test('returns canRecompute false when sessionDates is null', () => {
-    const result = computePostDeloadSessions(null, '2026-05-01');
-    expect(result.canRecompute).toBe(false);
-    expect(result.count).toBeNull();
+const MOCK_NOW_MS = new Date('2026-06-06T12:00:00.000Z').getTime();
+
+describe('weeksSinceLastDeload', () => {
+  beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(MOCK_NOW_MS); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('returns null when history is empty', () => {
+    expect(weeksSinceLastDeload([])).toBeNull();
   });
 
-  test('returns canRecompute false when sessionDates is empty', () => {
-    const result = computePostDeloadSessions([], '2026-05-01');
-    expect(result.canRecompute).toBe(false);
-    expect(result.count).toBeNull();
+  test('returns null when history is null', () => {
+    expect(weeksSinceLastDeload(null)).toBeNull();
   });
 
-  test('returns canRecompute false when any session date is null (legacy)', () => {
-    const result = computePostDeloadSessions(['2026-04-10', null, '2026-05-20'], '2026-05-01');
-    expect(result.canRecompute).toBe(false);
-    expect(result.count).toBeNull();
+  test('returns null when history is undefined', () => {
+    expect(weeksSinceLastDeload(undefined)).toBeNull();
   });
 
-  test('returns canRecompute false when all dates are null', () => {
-    const result = computePostDeloadSessions([null, null, null], '2026-05-01');
-    expect(result.canRecompute).toBe(false);
-    expect(result.count).toBeNull();
+  test('returns 0 for a deload completed today', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-06-06T00:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
   });
 
-  test('returns canRecompute true with correct count when all dates are present', () => {
-    const sessionDates = ['2026-04-10', '2026-04-24', '2026-05-08', '2026-05-22', '2026-06-05'];
-    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
-    expect(result.canRecompute).toBe(true);
-    expect(result.count).toBe(3); // May 8, May 22, Jun 5 are all after May 1
+  test('returns 0 for a deload completed 6 days ago (less than 1 full week)', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-31T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
   });
 
-  test('same-day sessions do NOT count as post-deload', () => {
-    const sessionDates = ['2026-04-10', '2026-05-01', '2026-05-15'];
-    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
-    expect(result.canRecompute).toBe(true);
-    expect(result.count).toBe(1); // Only May 15; the May 1 session is same-day and excluded
+  test('returns 1 for a deload completed exactly 7 calendar days ago (noon timestamp)', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(1);
   });
 
-  test('returns count 0 when no sessions are after deload date', () => {
-    const sessionDates = ['2026-03-01', '2026-04-01', '2026-05-01'];
-    const result = computePostDeloadSessions(sessionDates, '2026-05-10');
-    expect(result.canRecompute).toBe(true);
-    expect(result.count).toBe(0);
+  test('returns 1 for a deload logged late at night 7 calendar days ago (timestamp bias fix)', () => {
+    // 2026-05-30T23:30Z is < 7 wall-clock days before 2026-06-06T12:00Z,
+    // but 7 calendar days have elapsed (May 30 → Jun 6). Must return 1, not 0.
+    const history = [{ id: 'dl_1', completed_at: '2026-05-30T23:30:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(1);
   });
 
-  test('returns count equal to total when all sessions are after deload date', () => {
-    const sessionDates = ['2026-05-15', '2026-06-01', '2026-06-10'];
-    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
-    expect(result.canRecompute).toBe(true);
-    expect(result.count).toBe(3);
+  test('returns 2 for a deload completed 14 days ago', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
   });
 
-  test('auto-recompute path: new session_count derived from count', () => {
-    const totalSessions = 20;
-    const sessionDates = Array.from({ length: 20 }, (_, i) =>
-      `2026-${String(Math.floor(i / 4) + 1).padStart(2, '0')}-${String((i % 4) * 7 + 1).padStart(2, '0')}`
-    );
-    const deloadDate = '2026-04-01';
-    const { canRecompute, count } = computePostDeloadSessions(sessionDates, deloadDate);
-    expect(canRecompute).toBe(true);
-    const newSessionCount = Math.max(0, totalSessions - count);
-    expect(sessionsSinceLastDeload(totalSessions, [
-      { id: 'dl_1', completed_at: `${deloadDate}T12:00:00.000Z`, session_count: newSessionCount }
-    ])).toBe(count);
+  test('uses the record with the latest completed_at when multiple records exist', () => {
+    const history = [
+      { id: 'dl_old', completed_at: '2026-04-01T12:00:00.000Z', session_count: 5 },
+      { id: 'dl_new', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 },
+    ];
+    expect(weeksSinceLastDeload(history)).toBe(1);
   });
 
-  test('manual-repair path: session_count derived from manual input', () => {
+  test('latest-wins even when records arrive in reverse order', () => {
+    const history = [
+      { id: 'dl_new', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 },
+      { id: 'dl_old', completed_at: '2026-04-01T12:00:00.000Z', session_count: 5 },
+    ];
+    expect(weeksSinceLastDeload(history)).toBe(1);
+  });
+
+  test('returns 0 when completed_at is in the future', () => {
+    const history = [{ id: 'dl_future', completed_at: '2026-12-01T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
+  });
+
+  test('legacy record without note_id is tolerated', () => {
+    const history = [{ id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 8 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
+  });
+
+  test('weeks and sessions metrics are independent — editing completed_at changes weeks without changing sessions', () => {
     const totalSessions = 15;
-    const manualSinceDeload = 4;
-    const newSessionCount = Math.max(0, totalSessions - manualSinceDeload);
-    expect(sessionsSinceLastDeload(totalSessions, [
-      { id: 'dl_1', completed_at: '2026-05-01T12:00:00.000Z', session_count: newSessionCount, baseline_source: 'manual_repair' }
-    ])).toBe(manualSinceDeload);
+    const oldHistory = [{ id: 'dl_1', completed_at: '2026-05-16T12:00:00.000Z', session_count: 12 }];
+    const newHistory = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 12 }];
+    expect(sessionsSinceLastDeload(totalSessions, oldHistory)).toBe(3);
+    expect(sessionsSinceLastDeload(totalSessions, newHistory)).toBe(3);
+    expect(weeksSinceLastDeload(oldHistory)).toBe(3);
+    expect(weeksSinceLastDeload(newHistory)).toBe(2);
   });
 });

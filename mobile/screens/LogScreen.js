@@ -14,7 +14,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections, computePostDeloadSessions } from '../lib/parser';
+import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
@@ -88,8 +88,6 @@ export function LogScreen({
   const [viewingNoteId, setViewingNoteId] = useState(null);
   const [deloadEditDate, setDeloadEditDate] = useState('');
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
-  const [manualRepairPending, setManualRepairPending] = useState(null);
-  const [manualRepairInput, setManualRepairInput] = useState('');
 
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
@@ -218,7 +216,6 @@ export function LogScreen({
   // Debounced autosave for a non-current (existing) note while in edit mode.
   useEffect(() => {
     if (!editingNoteId || editingNoteId === 'new' || !hasUnsavedOther) return;
-    if (manualRepairPending) return;
     if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
     autosaveOtherTimerRef.current = setTimeout(async () => {
       autosaveOtherTimerRef.current = null;
@@ -231,7 +228,7 @@ export function LogScreen({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingText, editingTitle, editingNoteId, deloadEditDate, manualRepairPending]);
+  }, [editingText, editingTitle, editingNoteId, deloadEditDate]);
 
   // Cancel pending autosave timers on unmount.
   useEffect(() => {
@@ -272,16 +269,22 @@ export function LogScreen({
 
   const isEditingDeloadNote = !!editingNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
 
+  // True only when the deload note being edited has a linked history record.
+  // Legacy deload notes without a note_id match are read-only for date edits.
+  const editingDeloadHasLinkedRecord = useMemo(() =>
+    isEditingDeloadNote ? deloadHistory.some(r => r.note_id === editingNoteId) : false,
+  [isEditingDeloadNote, deloadHistory, editingNoteId]);
+
   const hasUnsavedOther = useMemo(() => {
     if (!editingNoteId) return false;
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
     if (!editingNote) return false;
     const textChanged = editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
-    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled
+    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
     return textChanged || dateChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate]);
+  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, editingDeloadHasLinkedRecord]);
 
   // Latest back-press logic, reassigned every render so the registered listener
   // always runs against current state (fresh handleDone* closures, current text)
@@ -610,27 +613,6 @@ export function LogScreen({
       return;
     }
 
-    // Manual repair incomplete: offer to discard the date change.
-    if (manualRepairPending) {
-      Alert.alert(
-        'Discard changes?',
-        'The deload date was changed but the sessions repair is incomplete. Discard all changes?',
-        [
-          { text: 'Stay', style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => {
-              setManualRepairPending(null);
-              setManualRepairInput('');
-              setEditingNoteId(null);
-            },
-          },
-        ]
-      );
-      return;
-    }
-
     // Existing note: flush any unsaved changes, then exit.
     if (hasUnsavedOther) {
       const ok = await handleSaveOtherNote();
@@ -672,32 +654,18 @@ export function LogScreen({
         if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
           const newDate = deloadEditDate;
           const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-          const dateChanged = newDate !== savedDate;
-          if (dateChanged) {
+          if (newDate !== savedDate) {
             const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
             if (histRecord) {
-              const { canRecompute, count } = computePostDeloadSessions(
-                currentNote?.session_dates || null,
-                newDate
-              );
-              if (canRecompute) {
-                const newSessionCount = Math.max(0, logSessionCount - count);
-                await updateDeload(histRecord.id, {
-                  completed_at: `${newDate}T12:00:00.000Z`,
-                  session_count: newSessionCount,
-                  baseline_source: 'captured',
-                });
-              } else {
-                setManualRepairPending({
-                  deloadHistId: histRecord.id,
-                  newDate,
-                  totalSessions: logSessionCount,
-                });
-                return false;
-              }
+              await updateDeload(histRecord.id, { completed_at: `${newDate}T12:00:00.000Z` });
+              patch.saved_at = `${newDate}T12:00:00.000Z`;
             }
+            // No linked history record (legacy note): skip the date change entirely.
+            // Applying saved_at without updating completed_at would desync the workout
+            // note date from the analytics anchor — silently preserve the old date.
+          } else {
+            patch.saved_at = `${newDate}T12:00:00.000Z`;
           }
-          patch.saved_at = `${newDate}T12:00:00.000Z`;
         }
         result = await update(editingNoteId, patch);
       }
@@ -724,47 +692,6 @@ export function LogScreen({
     } catch {
       setSaveError('Save failed');
       return false;
-    } finally {
-      setNoteIsSaving(false);
-    }
-  };
-
-  const handleCompleteManualRepair = async (countStr) => {
-    const parsed = parseInt(countStr, 10);
-    if (isNaN(parsed) || parsed < 0) {
-      setSaveError('Enter a valid number of sessions (0 or more)');
-      return;
-    }
-    if (!manualRepairPending) return;
-    const { deloadHistId, newDate, totalSessions } = manualRepairPending;
-    const newSessionCount = Math.max(0, totalSessions - parsed);
-    setNoteIsSaving(true);
-    setSaveError('');
-    setSaveSuccess('');
-    try {
-      await updateDeload(deloadHistId, {
-        completed_at: `${newDate}T12:00:00.000Z`,
-        session_count: newSessionCount,
-        baseline_source: 'manual_repair',
-      });
-      const titleToSave = DELOAD_NOTE_PREFIX + newDate;
-      const patch = {
-        title: titleToSave,
-        raw_text: editingText,
-        saved_at: `${newDate}T12:00:00.000Z`,
-      };
-      const result = await update(editingNoteId, patch);
-      if (!result) {
-        setSaveError('Save failed');
-        return;
-      }
-      setEditingTitle(result.title || '');
-      setEditingText(result.raw_text || '');
-      setSaveSuccess('Saved!');
-      setManualRepairPending(null);
-      setManualRepairInput('');
-    } catch {
-      setSaveError('Save failed');
     } finally {
       setNoteIsSaving(false);
     }
@@ -1674,13 +1601,13 @@ export function LogScreen({
                   <Text style={styles.inputLabel}>Date</Text>
                   <Pressable
                     style={[styles.input, styles.dateInput]}
-                    onPress={() => setShowDeloadDatePicker(true)}
+                    onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
                     accessibilityLabel="Deload date"
-                    accessibilityRole="button"
+                    accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
                   >
                     <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
                   </Pressable>
-                  {showDeloadDatePicker && (
+                  {editingDeloadHasLinkedRecord && showDeloadDatePicker && (
                     <DateTimePicker
                       value={(() => {
                         if (deloadEditDate) {
@@ -1701,33 +1628,9 @@ export function LogScreen({
                           const newDateStr = `${y}-${mo}-${dy}`;
                           setDeloadEditDate(newDateStr);
                           setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
-                          setManualRepairPending(null);
-                          setManualRepairInput('');
                         }
                       }}
                     />
-                  )}
-                  {manualRepairPending && (
-                    <View style={styles.repairSection}>
-                      <Text style={styles.repairHint}>
-                        Some session dates are unavailable. Enter the number of sessions logged since this deload.
-                      </Text>
-                      <Text style={styles.inputLabel}>Sessions since deload</Text>
-                      <TextInput
-                        value={manualRepairInput}
-                        onChangeText={setManualRepairInput}
-                        placeholder="e.g. 5"
-                        placeholderTextColor={Colors.textMuted}
-                        keyboardType="number-pad"
-                        style={[styles.input, styles.repairInput]}
-                      />
-                      <Button
-                        onPress={() => handleCompleteManualRepair(manualRepairInput)}
-                        title="Repair baseline"
-                        disabled={noteIsSaving || !manualRepairInput.trim()}
-                        style={styles.saveButton}
-                      />
-                    </View>
                   )}
                 </>
               )}
@@ -2050,17 +1953,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
-  },
-  repairSection: {
-    marginTop: 12,
-    gap: 8,
-  },
-  repairHint: {
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  repairInput: {
-    marginBottom: 4,
   },
 
 });
