@@ -5,8 +5,14 @@ import { parseWorkoutNote } from '../lib/parser';
 function simulateSkipAwareRender(ex) {
   const tokens = [];
   const renderedUnparsed = new Set();
+  const positions = ex.unparsed_positions || [];
+  let posIdx = 0;
   let loggedIdx = 0;
-  ex.session_entries.forEach((entry) => {
+  ex.session_entries.forEach((entry, eni) => {
+    while (posIdx < positions.length && positions[posIdx].pos === eni) {
+      tokens.push('unparsed:' + positions[posIdx].raw);
+      posIdx++;
+    }
     if (entry.skipped) {
       tokens.push('skip');
     } else if (entry.unparsed) {
@@ -17,10 +23,17 @@ function simulateSkipAwareRender(ex) {
       loggedIdx++;
     }
   });
+  while (posIdx < positions.length) {
+    tokens.push('unparsed:' + positions[posIdx].raw);
+    posIdx++;
+  }
   const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
   ex.rows.slice(loggedCount).forEach(() => tokens.push('set'));
+  const positionalRaws = new Set(positions.map(p => p.raw));
   ex.unparsed_rows.forEach(u => {
-    if (!renderedUnparsed.has(u)) tokens.push('trailing:' + u);
+    if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+      tokens.push('trailing:' + u);
+    }
   });
   return tokens;
 }
@@ -105,15 +118,18 @@ describe('LogScreen skip-aware rendering', () => {
     expect(setCount).toBe(bench.rows.length);
   });
 
-  test('bare unparsed entry carries bare_unparsed flag and does not inflate session count', () => {
+  test('bare unparsed row is recorded in unparsed_positions, not session_entries', () => {
     const bench = sections[0].exercises[0];
-    const bareUnparsed = bench.session_entries.find(e => e.bare_unparsed);
-    expect(bareUnparsed).toBeDefined();
-    expect(bareUnparsed.unparsed).toBe(true);
-    expect(bareUnparsed.raw).toBe('140');
 
-    // session count must equal number of actual logged rows, not inflated by the bare unparsed entry
-    const nonSkipped = bench.session_entries.filter(e => !e.skipped && !e.bare_unparsed).length;
+    // 140 must not appear in session_entries
+    expect(bench.session_entries.find(e => e.raw === '140')).toBeUndefined();
+
+    // 140 must appear in unparsed_positions with correct raw text
+    const pos = bench.unparsed_positions.find(p => p.raw === '140');
+    expect(pos).toBeDefined();
+
+    // session count must equal actual logged rows with no inflation
+    const nonSkipped = bench.session_entries.filter(e => !e.skipped).length;
     expect(nonSkipped).toBe(bench.rows.length);
   });
 

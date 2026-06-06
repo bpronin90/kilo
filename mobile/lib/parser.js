@@ -215,7 +215,7 @@ export function parseWorkoutNote(noteText) {
   function startExercise(name, rawHeader) {
     flushExercise();
     ensureSection();
-    currentExercise = { name, raw_header: rawHeader, rows: [], session_entries: [], unparsed_rows: [] };
+    currentExercise = { name, raw_header: rawHeader, rows: [], session_entries: [], unparsed_rows: [], unparsed_positions: [] };
     currentExerciseNonWeight = _NON_WEIGHT_RE.test(name);
   }
 
@@ -333,8 +333,8 @@ export function parseWorkoutNote(noteText) {
           // bare: true marks this as a plain row so -- comment lines still fall through to unparsed_rows
           currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true });
         } else if (!rowResult.blank && !rowResult.skipped) {
+          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed });
           currentExercise.unparsed_rows.push(trimmed);
-          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: [], unparsed: true, bare_unparsed: true });
         }
       }
     }
@@ -408,7 +408,7 @@ export function countWorkoutSessionsFromSections(sections) {
     let dayMax = 0;
     for (const section of daySections) {
       for (const ex of section.exercises) {
-        const nonSkipped = (ex.session_entries || []).filter(e => !e.skipped && !e.bare_unparsed).length;
+        const nonSkipped = (ex.session_entries || []).filter(e => !e.skipped).length;
         const count = Math.max((ex.rows || []).length, nonSkipped);
         if (count > dayMax) dayMax = count;
       }

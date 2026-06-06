@@ -419,8 +419,7 @@ export function computeWeeksIn(sections) {
   for (const section of sections) {
     for (const ex of section.exercises) {
       const skippedCount = (ex.session_entries || []).filter(se => se.skipped).length;
-      const realEntries = (ex.session_entries || []).filter(e => !e.bare_unparsed);
-      const depth = Math.max(realEntries.length, (ex.rows || []).length + skippedCount);
+      const depth = Math.max(ex.session_entries.length, (ex.rows || []).length + skippedCount);
       if (depth > max) max = depth;
     }
   }
