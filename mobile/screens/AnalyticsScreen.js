@@ -20,6 +20,7 @@ function lerpColor(a, b, t) {
 export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const [editPendingCheckIn, setEditPendingCheckIn] = useState(null); // { ci, note }
+  const [fatigueExpanded, setFatigueExpanded] = useState(false);
   const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
@@ -330,124 +331,71 @@ export function AnalyticsScreen({ multiplier, section }) {
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
       ) : (
         <>
-          {checkInHistory.summary.top_reason && (
-            <View style={styles.fatigueTopReason}>
-              <Text style={styles.fatigueTopReasonLabel}>Most common</Text>
-              <Text style={styles.fatigueTopReasonValue}>{checkInHistory.summary.top_reason}</Text>
+          <Pressable
+            style={styles.fatigueSummary}
+            onPress={() => setFatigueExpanded(e => !e)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: fatigueExpanded }}
+            accessibilityLabel={fatigueExpanded ? 'Collapse fatigue details' : 'Expand fatigue details'}
+          >
+            <View style={styles.fatigueSummaryMain}>
+              <Text style={styles.fatigueInsightLabel}>
+                {checkInHistory.summary.top_reason ? 'Most common reason' : 'Fatigue'}
+              </Text>
+              <Text style={styles.fatigueInsightValue} numberOfLines={1}>
+                {checkInHistory.summary.top_reason
+                  || (checkInHistory.summary.roughTotal > 0
+                    ? `${checkInHistory.summary.roughTotal} flagged session${checkInHistory.summary.roughTotal > 1 ? 's' : ''}`
+                    : 'No rough sessions')}
+              </Text>
             </View>
-          )}
-          <View style={styles.fatigueSection}>
-            <View style={styles.fatigueSectionHeader}>
-              <Text style={styles.fatigueSectionLabel}>Not great</Text>
-              <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.roughTotal}</Text>
-            </View>
-            {checkInHistory.rough.length === 0 ? (
-              <Text style={styles.fatigueSectionEmpty}>None logged</Text>
-            ) : checkInHistory.rough.map((ci, i) => {
-              const flagNames = flaggedNames(ci.flagged);
-              return (
-                <Pressable
-                  key={ci.responded_at}
-                  style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}
-                  onPress={() => handleCheckInEdit(ci)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
-                >
-                  <View style={styles.fatigueDateRow}>
-                    <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
-                    <View style={styles.fatigueEditAction}>
-                      <Text style={styles.fatigueEditText}>Edit</Text>
-                      <MaterialIcons name="chevron-right" size={14} color={Colors.accent} />
-                    </View>
-                  </View>
-                  <View style={styles.fatigueDetails}>
-                    {ci.reasons.length > 0 && (
-                      <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
-                    )}
-                    <View style={styles.fatigueStats}>
-                      {ci.exercises_skipped > 0 && (
-                        <Text style={styles.fatigueStat}>{ci.exercises_skipped} skipped</Text>
-                      )}
-                      {ci.volume_decline_pct != null && (
-                        <Text style={styles.fatigueStat}>{ci.volume_decline_pct}% vol drop</Text>
-                      )}
-                    </View>
-                    {flagNames.length > 0 && (
-                      <Text style={styles.fatigueFlagged}>{flagNames.join(' · ')}</Text>
-                    )}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-          <View style={styles.fatigueDivider} />
-          <View style={styles.fatigueSection}>
-            <View style={styles.fatigueSectionHeader}>
-              <Text style={styles.fatigueSectionLabel}>All good</Text>
-              <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.okTotal}</Text>
-            </View>
-            {checkInHistory.ok.length === 0 ? (
-              <Text style={styles.fatigueSectionEmpty}>None logged</Text>
-            ) : checkInHistory.ok.map((ci, i) => {
-              const flagNames = flaggedNames(ci.flagged);
-              return (
-                <Pressable
-                  key={ci.responded_at}
-                  style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}
-                  onPress={() => handleCheckInEdit(ci)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
-                >
-                  <View style={styles.fatigueDateRow}>
-                    <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
-                    <View style={styles.fatigueEditAction}>
-                      <Text style={styles.fatigueEditText}>Edit</Text>
-                      <MaterialIcons name="chevron-right" size={14} color={Colors.accent} />
-                    </View>
-                  </View>
-                  {ci.reasons.length > 0 && (
-                    <Text style={styles.fatigueReasonsOk}>{ci.reasons.join(' · ')}</Text>
-                  )}
-                  {flagNames.length > 0 && (
-                    <Text style={styles.fatigueFlagged}>{flagNames.join(' · ')}</Text>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-          {checkInHistory.pending.length > 0 && (
-            <>
-              <View style={styles.fatigueDivider} />
-              <View style={styles.fatigueSection}>
-                <View style={styles.fatigueSectionHeader}>
-                  <Text style={styles.fatigueSectionLabel}>Unanswered</Text>
-                  <Text style={styles.fatigueSectionCount}>{checkInHistory.summary.pendingTotal}</Text>
-                </View>
-                {checkInHistory.pending.map((ci, i) => {
-                  const flagNames = flaggedNames(ci.flagged);
-                  return (
-                    <Pressable
-                      key={ci.responded_at}
-                      style={[styles.fatigueRow, i > 0 && styles.fatigueRowBorder]}
-                      onPress={() => handleCheckInEdit(ci)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
-                    >
-                      <View style={styles.fatigueDateRow}>
-                        <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
-                        <View style={styles.fatigueEditAction}>
-                          <Text style={styles.fatigueEditText}>Edit</Text>
-                          <MaterialIcons name="chevron-right" size={14} color={Colors.accent} />
-                        </View>
-                      </View>
-                      {flagNames.length > 0 && (
-                        <Text style={styles.fatigueFlagged}>{flagNames.join(' · ')}</Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
+            {checkInHistory.summary.pendingTotal > 0 && (
+              <View
+                style={styles.fatigueAlert}
+                accessibilityLabel={`${checkInHistory.summary.pendingTotal} unanswered check-in${checkInHistory.summary.pendingTotal > 1 ? 's' : ''}`}
+              >
+                <MaterialIcons name="error-outline" size={14} color={Colors.caution} />
+                <Text style={styles.fatigueAlertText}>{checkInHistory.summary.pendingTotal} unanswered</Text>
               </View>
-            </>
+            )}
+            <MaterialIcons
+              name={fatigueExpanded ? 'expand-less' : 'expand-more'}
+              size={22}
+              color={Colors.textMuted}
+            />
+          </Pressable>
+          {fatigueExpanded && (
+            <View style={styles.fatigueDetails}>
+              {checkInHistory.rough.length > 0 && (
+                <FatigueSection
+                  status="rough"
+                  label="Not great"
+                  count={checkInHistory.summary.roughTotal}
+                  rows={checkInHistory.rough}
+                  onEdit={handleCheckInEdit}
+                />
+              )}
+              {checkInHistory.ok.length > 0 && (
+                <FatigueSection
+                  status="ok"
+                  label="All good"
+                  count={checkInHistory.summary.okTotal}
+                  rows={checkInHistory.ok}
+                  onEdit={handleCheckInEdit}
+                  variant="chips"
+                />
+              )}
+              {checkInHistory.pending.length > 0 && (
+                <FatigueSection
+                  status="pending"
+                  label="Unanswered"
+                  count={checkInHistory.summary.pendingTotal}
+                  rows={checkInHistory.pending}
+                  onEdit={handleCheckInEdit}
+                  variant="chips"
+                />
+              )}
+            </View>
           )}
         </>
       )}
@@ -724,14 +672,84 @@ export function AnalyticsScreen({ multiplier, section }) {
   );
 }
 
-function flaggedNames(flagged) {
-  return (flagged || []).map(f => f.name ?? f).filter(Boolean);
-}
-
 function formatCheckInDate(responded_at) {
   // Parse only the YYYY-MM-DD portion to avoid UTC→local-timezone day shift
   const [year, month, day] = responded_at.slice(0, 10).split('-').map(Number);
   return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Detailed entry — used only for "Not great" check-ins, which carry the
+// reasons and metrics worth reading. Each is a calm callout card so entries
+// read as distinct units rather than a bunched-up wall of text.
+function FatigueRow({ ci, onEdit }) {
+  const metrics = [];
+  if (ci.exercises_skipped > 0) {
+    metrics.push(`${ci.exercises_skipped} skipped`);
+  }
+  if (ci.volume_decline_pct != null) {
+    metrics.push(`${ci.volume_decline_pct}% volume drop`);
+  }
+  return (
+    <Pressable
+      style={styles.fatigueEntry}
+      onPress={() => onEdit(ci)}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
+    >
+      <View style={styles.fatigueEntryAccent} />
+      <View style={styles.fatigueEntryBody}>
+        <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
+        {ci.reasons.length > 0 && (
+          <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
+        )}
+        {metrics.length > 0 && (
+          <Text style={styles.fatigueMeta}>{metrics.join('  ·  ')}</Text>
+        )}
+      </View>
+      <MaterialIcons name="chevron-right" size={18} color={Colors.textMuted} style={styles.fatigueChevron} />
+    </Pressable>
+  );
+}
+
+// Compact chip — used for low-signal "All good" / "Unanswered" check-ins,
+// which are mostly just a date. Chips wrap instead of stacking, and tapping
+// still opens the full editor.
+function FatigueChip({ ci, onEdit }) {
+  return (
+    <Pressable
+      style={styles.fatigueChip}
+      onPress={() => onEdit(ci)}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
+    >
+      <Text style={styles.fatigueChipText}>{formatCheckInDate(ci.responded_at)}</Text>
+    </Pressable>
+  );
+}
+
+function FatigueSection({ status, label, count, rows, onEdit, variant = 'detailed' }) {
+  return (
+    <View style={styles.fatigueSection}>
+      <View style={styles.fatigueSectionHeader}>
+        <View style={[styles.fatigueDot, styles[`fatigueDot_${status}`]]} />
+        <Text style={styles.fatigueSectionLabel}>{label}</Text>
+        <Text style={styles.fatigueSectionCount}>{count}</Text>
+      </View>
+      {variant === 'chips' ? (
+        <View style={styles.fatigueChipRow}>
+          {rows.map(ci => (
+            <FatigueChip key={ci.responded_at} ci={ci} onEdit={onEdit} />
+          ))}
+        </View>
+      ) : (
+        <View style={styles.fatigueEntryList}>
+          {rows.map(ci => (
+            <FatigueRow key={ci.responded_at} ci={ci} onEdit={onEdit} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
 }
 
 function CrossDayComparison({ daySignals, currentDay, otherDays }) {
@@ -1205,8 +1223,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   fatigueCard: {
-    padding: 16,
+    padding: 20,
     gap: 0,
+    backgroundColor: Colors.panelBackground,
   },
   fatigueEmpty: {
     fontSize: 14,
@@ -1214,43 +1233,110 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 8,
   },
+  fatigueSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  fatigueSummaryMain: {
+    flex: 1,
+    gap: 2,
+  },
+  fatigueAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212, 160, 23, 0.12)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  fatigueAlertText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.caution,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  fatigueDetails: {
+    gap: 20,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  fatigueInsightLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  fatigueInsightValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+  },
   fatigueSection: {
     gap: 0,
   },
   fatigueSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 8,
+    gap: 8,
+    marginBottom: 8,
+  },
+  fatigueDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  fatigueDot_rough: {
+    backgroundColor: Colors.error,
+  },
+  fatigueDot_ok: {
+    backgroundColor: Colors.success,
+  },
+  fatigueDot_pending: {
+    backgroundColor: Colors.caution,
   },
   fatigueSectionLabel: {
+    flex: 1,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
+    letterSpacing: 1,
   },
   fatigueSectionCount: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text,
   },
-  fatigueSectionEmpty: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    paddingVertical: 4,
+  fatigueEntryList: {
+    gap: 8,
   },
-  fatigueDivider: {
-    height: 1,
-    backgroundColor: Colors.cardBorder,
-    marginVertical: 14,
+  fatigueEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.subtleBg,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
-  fatigueRow: {
-    paddingVertical: 10,
+  fatigueEntryAccent: {
+    alignSelf: 'stretch',
+    width: 3,
+    backgroundColor: Colors.error,
   },
-  fatigueRowBorder: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+  fatigueEntryBody: {
+    flex: 1,
+    gap: 4,
+    paddingVertical: 12,
+    paddingLeft: 14,
+  },
+  fatigueChevron: {
+    opacity: 0.5,
+    marginRight: 10,
   },
   fatigueDate: {
     fontSize: 11,
@@ -1258,73 +1344,34 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 3,
-  },
-  fatigueDetails: {
-    gap: 3,
   },
   fatigueReasons: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: Colors.text,
   },
-  fatigueReasonsOk: {
-    fontSize: 13,
+  fatigueMeta: {
+    fontSize: 12,
     color: Colors.textMuted,
     fontWeight: '500',
   },
-  fatigueStats: {
+  fatigueChipRow: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingLeft: 16,
   },
-  fatigueStat: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
+  fatigueChip: {
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  fatigueTopReason: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.subtleBg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 14,
-  },
-  fatigueTopReasonLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  fatigueTopReasonValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  fatigueDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 3,
-  },
-  fatigueEditAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  fatigueEditText: {
+  fatigueChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.accent,
-  },
-  fatigueFlagged: {
-    fontSize: 12,
     color: Colors.textMuted,
-    fontStyle: 'italic',
-    marginTop: 2,
   },
 
 });
