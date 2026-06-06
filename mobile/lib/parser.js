@@ -864,64 +864,10 @@ export function weeksSinceLastDeload(deloadHistory) {
   return Math.floor(diffMs / _WEEK_MS);
 }
 
-// ── activeWeeksOnRoutine ──────────────────────────────────────────────────────
-// Number of distinct calendar weeks (Monday-anchored) that contain at least one
-// logged session, derived from the session-date chronology. Returns null when no
-// dated sessions exist (chronology unavailable), so the surface can render "—"
-// rather than a misleading 0.
-export function activeWeeksOnRoutine(dateMap) {
-  if (!dateMap || dateMap.size === 0) return null;
-  const weeks = new Set();
-  for (const day of dateMap.values()) {
-    const ms = _utcDayFromIso(day);
-    const dow = new Date(ms).getUTCDay();      // 0=Sun..6=Sat
-    const mondayOffset = (dow + 6) % 7;        // days since Monday
-    weeks.add(ms - mondayOffset * _DAY_MS);    // Monday-of-week epoch as bucket key
-  }
-  return weeks.size;
-}
-
-// ── elapsedWeeksOnRoutine ─────────────────────────────────────────────────────
-// Number of calendar weeks the routine has spanned since it began, including
-// inactive gaps. 1-based: the routine's first week reads 1. Returns null when no
-// start date is known; returns 0 when the start date is in the future.
-//
-// This is exposure span (always >= activeWeeksOnRoutine), distinct from
-// weeksSinceLastDeload which measures recovery elapsed and reads 0 immediately
-// after a deload.
-export function elapsedWeeksOnRoutine(routineStartIso, nowMs) {
-  if (!routineStartIso) return null;
-  const startDay = _utcDayFromIso(routineStartIso);
-  const now = new Date(nowMs != null ? nowMs : Date.now());
-  const todayDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const diffMs = todayDay - startDay;
-  if (diffMs < 0) return 0;
-  return Math.floor(diffMs / _WEEK_MS) + 1;
-}
-
-// ── deriveRoutineStatus ───────────────────────────────────────────────────────
-// Single canonical entry point for the Analytics routine-status surface. Bundles
-// the four metric contract values from the current routine sections, the routine
-// note (chronology + start date), and deload history.
-//
-// Returns:
-//   sessionsLogged:      total sessions on the current routine (includes deload
-//                        sessions present in the chain; never reduced by deloads)
-//   activeWeeks:         calendar weeks with >=1 logged session (null if unknown)
-//   elapsedWeeks:        calendar weeks since the routine began (null if unknown)
-//   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
-//   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
-export function deriveRoutineStatus(currentSections, note, deloadHistory) {
-  const sessionsLogged = countWorkoutSessionsFromSections(currentSections || []);
-  const dateMap = sessionDateMapFromNote(note);
-  return {
-    sessionsLogged,
-    activeWeeks: activeWeeksOnRoutine(dateMap),
-    elapsedWeeks: elapsedWeeksOnRoutine(note?.saved_at),
-    sessionsSinceDeload: sessionsSinceLastDeload(sessionsLogged, deloadHistory, dateMap),
-    weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
-  };
-}
+// Routine-week metrics (activeWeeks/elapsedWeeks) and the deriveRoutineStatus
+// composite live in lib/data.js: they build on computeWeeksIn (the canonical
+// session-depth metric) which lives there, and data.js imports the deload
+// primitives above from this module.
 
 // ── Deload generation ─────────────────────────────────────────────────────────
 

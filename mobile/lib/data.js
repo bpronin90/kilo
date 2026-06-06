@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
+import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey, countWorkoutSessions, countWorkoutSessionsFromSections, sessionDateMapFromNote, sessionsSinceLastDeload, weeksSinceLastDeload } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -424,6 +424,59 @@ export function computeWeeksIn(sections) {
     }
   }
   return max;
+}
+
+// ── Routine status (issue #282) ───────────────────────────────────────────────
+// Canonical routine-status derivation for the Analytics surface. Built on the
+// session chain (computeWeeksIn / countWorkoutSessionsFromSections) so the
+// week metrics work for any routine — including legacy history and chains with
+// no fatigue/check-in coverage. The deload-relative metrics reuse the parser
+// primitives, where sessions-since-deload is recomputed from the session-date
+// chronology relative to the latest deload boundary (so editing a past deload
+// date moves it together with weeks-since-deload).
+
+// Total deload sessions logged across archived deload notes. Each completed
+// deload is archived separately in deloadHistory with its own raw_text, so its
+// logged session passes are added back to total routine exposure. Records
+// without raw_text (legacy) contribute 0.
+export function deloadSessionsLogged(deloadHistory) {
+  if (!deloadHistory || deloadHistory.length === 0) return 0;
+  return deloadHistory.reduce((sum, r) => sum + countWorkoutSessions(r?.raw_text || ''), 0);
+}
+
+// Active weeks: weeks actually worked out on the routine = count of logged
+// (non-skipped) session passes. Returns null only when no routine is loaded.
+export function activeWeeksOnRoutine(sections) {
+  if (!sections) return null;
+  return countWorkoutSessionsFromSections(sections);
+}
+
+// Elapsed weeks: weeks the routine has spanned including inactive gaps =
+// canonical session depth (counts skipped sessions as gap weeks). Always >=
+// activeWeeksOnRoutine by construction. Returns null when no routine is loaded.
+export function elapsedWeeksOnRoutine(sections) {
+  return computeWeeksIn(sections);
+}
+
+// Single canonical entry point for the Analytics routine-status surface.
+//
+// Returns:
+//   sessionsLogged:      total sessions on the routine, INCLUDING archived
+//                        deload sessions (never reduced by deloads)
+//   activeWeeks:         weeks worked out (non-skipped session passes)
+//   elapsedWeeks:        weeks since the routine began, including skipped gaps
+//   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
+//   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
+export function deriveRoutineStatus(currentSections, note, deloadHistory) {
+  const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
+  const dateMap = sessionDateMapFromNote(note);
+  return {
+    sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
+    activeWeeks: activeWeeksOnRoutine(currentSections),
+    elapsedWeeks: elapsedWeeksOnRoutine(currentSections),
+    sessionsSinceDeload: sessionsSinceLastDeload(routineSessions, deloadHistory, dateMap),
+    weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
+  };
 }
 
 // Compute a series of rolling averages for the last N weigh-in dates.
