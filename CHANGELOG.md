@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.65.3 - 2026-06-06
+
+- Issue #282: Fixed the Analytics deload-cycle derivation so `sessions since
+  deload` now recomputes from dated workout chronology when that history
+  exists, making past deload date edits move both deload-relative metrics
+  together instead of leaving the session count frozen. Analytics also now
+  counts archived deload sessions in `sessions logged`, exposes `weeks on
+  routine` as elapsed calendar weeks since the routine start, and explicitly
+  defers the removed `active weeks` metric to follow-up issue #284.
+
 ## 0.65.2 - 2026-06-06
 
 - Issue #280: Fixed a Log deload-record save race that could leave the editor
