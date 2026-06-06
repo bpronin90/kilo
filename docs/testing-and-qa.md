@@ -61,7 +61,10 @@ Current limitation:
   the workout-note clean view, plus source-contract coverage that pins the
   Log autosave regression boundary by asserting both debounce timers pass
   `{ autosave: true }` and both save handlers guard the visible `Saved!`
-  notice behind `!autosave`, plus a `react-test-renderer` suite for the Weight goal card's loss,
+  notice behind `!autosave`, plus the past-deload save-path regression boundary
+  by asserting the non-current note editor reuses one in-flight save promise
+  during `Done` flushes and clears that pending state in `finally`, plus a
+  `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
   rendering checks that lock the day-level `date` trend bucketing contract
   while confirming Weight history still displays `logged_at`, plus a

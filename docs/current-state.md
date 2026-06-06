@@ -173,7 +173,8 @@ The real native app path now has a modular React Native shell:
   debounce-driven autosave, but still preserve the muted transient `Saved!`
   confirmation for explicit user-triggered saves; leaving an editor via `Done`
   or Android back still asks to discard a never-saved note while existing notes
-  save and exit without the old save/discard prompt. For the current routine
+  save and exit without the old save/discard prompt, including the past-deload
+  edit path when a debounced autosave is already in flight. For the current routine
   specifically, exiting raw edit now returns consistently to the top of the
   rendered note as the accepted fallback behavior. A bottom `More Routines`
   list keeps each
