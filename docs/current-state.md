@@ -169,12 +169,14 @@ The real native app path now has a modular React Native shell:
   while stale-result guards prevent in-flight saves from overwriting newer
   typing or cross-routine switches; only never-saved routines still keep an
   explicit `Save` button because autosave does not begin until a storage id
-  exists. Existing-note editors replace the old save button with a muted
-  transient `Saved!` whisper, and leaving an editor via `Done` or Android back
-  still asks to discard a never-saved note while existing notes save and exit
-  without the old save/discard prompt. For the current routine specifically,
-  exiting raw edit now returns consistently to the top of the rendered note as
-  the accepted fallback behavior. A bottom `More Routines` list keeps each
+  exists. Existing-note editors no longer flash a visible success notice during
+  debounce-driven autosave, but still preserve the muted transient `Saved!`
+  confirmation for explicit user-triggered saves; leaving an editor via `Done`
+  or Android back still asks to discard a never-saved note while existing notes
+  save and exit without the old save/discard prompt. For the current routine
+  specifically, exiting raw edit now returns consistently to the top of the
+  rendered note as the accepted fallback behavior. A bottom `More Routines`
+  list keeps each
   non-current routine collapsed to a compact row that now expands inline in
   place rather than jumping to a dedicated full-screen reader; the expanded
   view reuses the same rendered-note body and double-tap-to-edit affordance as
