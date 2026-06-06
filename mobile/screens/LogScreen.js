@@ -104,6 +104,7 @@ export function LogScreen({
   const readScrollYRef = useRef(0);
   const autosaveCurrentTimerRef = useRef(null);
   const autosaveOtherTimerRef = useRef(null);
+  const saveOtherNoteInFlightRef = useRef(null);
 
   // Live-value refs — updated every render so async save callbacks can read the
   // current state after an await without relying on stale closure captures.
@@ -630,71 +631,83 @@ export function LogScreen({
     setSaveSuccess('');
   };
 
-  const handleSaveOtherNote = async ({ autosave = false } = {}) => {
-    if (noteIsSaving) return;
+  const handleSaveOtherNote = ({ autosave = false } = {}) => {
+    // If a save is already in flight, chain on it rather than returning undefined.
+    // This prevents handleDoneOther from treating the in-flight autosave as a
+    // failure and keeping the editor open when the user presses Done.
+    if (saveOtherNoteInFlightRef.current) return saveOtherNoteInFlightRef.current;
+
     const savedNoteId = editingNoteId;
     const snapshotText = editingText;
     const snapshotTitle = editingTitle;
-    setNoteIsSaving(true);
-    setSaveError('');
-    setSaveSuccess('');
-    try {
-      let result;
-      let titleToSave = editingTitle || 'Untitled Routine';
-      // Deload records must always carry the classification prefix.
-      // Re-apply it if somehow lost (defence against future code paths).
-      if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
-        titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
-      }
-      if (editingNoteId === 'new') {
-        result = await add(titleToSave, editingText);
-        setEditingNoteId(result.id);
-      } else {
-        const patch = { title: titleToSave, raw_text: editingText };
-        if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
-          const newDate = deloadEditDate;
-          const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-          if (newDate !== savedDate) {
-            const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
-            if (histRecord) {
-              await updateDeload(histRecord.id, { completed_at: `${newDate}T12:00:00.000Z` });
+
+    const run = async () => {
+      setNoteIsSaving(true);
+      setSaveError('');
+      setSaveSuccess('');
+      try {
+        let result;
+        let titleToSave = editingTitle || 'Untitled Routine';
+        // Deload records must always carry the classification prefix.
+        // Re-apply it if somehow lost (defence against future code paths).
+        if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
+          titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
+        }
+        if (editingNoteId === 'new') {
+          result = await add(titleToSave, editingText);
+          setEditingNoteId(result.id);
+        } else {
+          const patch = { title: titleToSave, raw_text: editingText };
+          if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
+            const newDate = deloadEditDate;
+            const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
+            if (newDate !== savedDate) {
+              const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
+              if (histRecord) {
+                await updateDeload(histRecord.id, { completed_at: `${newDate}T12:00:00.000Z` });
+                patch.saved_at = `${newDate}T12:00:00.000Z`;
+              }
+              // No linked history record (legacy note): skip the date change entirely.
+              // Applying saved_at without updating completed_at would desync the workout
+              // note date from the analytics anchor — silently preserve the old date.
+            } else {
               patch.saved_at = `${newDate}T12:00:00.000Z`;
             }
-            // No linked history record (legacy note): skip the date change entirely.
-            // Applying saved_at without updating completed_at would desync the workout
-            // note date from the analytics anchor — silently preserve the old date.
-          } else {
-            patch.saved_at = `${newDate}T12:00:00.000Z`;
           }
+          result = await update(editingNoteId, patch);
         }
-        result = await update(editingNoteId, patch);
-      }
-      if (!result) {
+        if (!result) {
+          setSaveError('Save failed');
+          return false;
+        } else {
+          const contentUnchanged =
+            editingTextRef.current === snapshotText &&
+            editingTitleRef.current === snapshotTitle;
+          // For new notes savedNoteId is 'new' and the ref already advanced to the
+          // real ID, so skip the identity check and rely solely on content equality.
+          const identityUnchanged =
+            savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
+          if (contentUnchanged && identityUnchanged) {
+            // Only sync UI state when note identity and content are unchanged since
+            // save started — guards in-flight edit races on both new and existing notes.
+            setEditingTitle(result.title || '');
+            setEditingText(result.raw_text || '');
+            if (!autosave) setSaveSuccess('Saved!');
+          }
+          return true;
+        }
+      } catch {
         setSaveError('Save failed');
         return false;
-      } else {
-        const contentUnchanged =
-          editingTextRef.current === snapshotText &&
-          editingTitleRef.current === snapshotTitle;
-        // For new notes savedNoteId is 'new' and the ref already advanced to the
-        // real ID, so skip the identity check and rely solely on content equality.
-        const identityUnchanged =
-          savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
-        if (contentUnchanged && identityUnchanged) {
-          // Only sync UI state when note identity and content are unchanged since
-          // save started — guards in-flight edit races on both new and existing notes.
-          setEditingTitle(result.title || '');
-          setEditingText(result.raw_text || '');
-          if (!autosave) setSaveSuccess('Saved!');
-        }
-        return true;
+      } finally {
+        setNoteIsSaving(false);
+        saveOtherNoteInFlightRef.current = null;
       }
-    } catch {
-      setSaveError('Save failed');
-      return false;
-    } finally {
-      setNoteIsSaving(false);
-    }
+    };
+
+    const promise = run();
+    saveOtherNoteInFlightRef.current = promise;
+    return promise;
   };
 
   const handleDeleteRoutine = (id, title, isCurrent) => {

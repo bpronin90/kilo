@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.65.2 - 2026-06-06
+
+- Issue #280: Fixed a Log deload-record save race that could leave the editor
+  appearing stuck in `Saving...` after changing the date on an existing past
+  deload while an autosave was already in flight. The non-current note editor
+  now reuses the active save promise during the explicit `Done` flush, exits
+  cleanly when that save succeeds, and the `log-screen` test suite now pins
+  that in-flight deload-save contract.
+
 ## 0.65.1 - 2026-06-06
 
 - Issue #279: Removed the visible autosave `Saved!` flicker from the Log note
