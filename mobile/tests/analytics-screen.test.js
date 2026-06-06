@@ -561,6 +561,156 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
   });
 });
 
+// ── Fatigue section — collapse/expand and edit affordances (issue #272) ──────
+
+const ROUGH_CI = {
+  noteId: 'n1',
+  sessionIndex: 0,
+  responded_at: '2026-05-20T10:00:00Z',
+  status: 'rough',
+  reasons: ['tired', 'low energy'],
+  exercises_skipped: 1,
+  volume_decline_pct: 15,
+  detectors: [],
+  flagged: true,
+};
+
+const OK_CI = {
+  noteId: 'n1',
+  sessionIndex: 1,
+  responded_at: '2026-05-21T10:00:00Z',
+  status: 'ok',
+  reasons: [],
+  exercises_skipped: 0,
+  volume_decline_pct: null,
+  detectors: [],
+  flagged: false,
+};
+
+const PENDING_CI = {
+  noteId: 'n1',
+  sessionIndex: 2,
+  responded_at: '2026-05-22T10:00:00Z',
+  status: 'pending',
+  reasons: [],
+  exercises_skipped: 0,
+  volume_decline_pct: null,
+  detectors: [],
+  flagged: false,
+};
+
+describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordances', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('fatigue card renders in collapsed summary state by default when check-in history exists', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [ROUGH_CI],
+      ok: [],
+      pending: [],
+      summary: { roughTotal: 1, okTotal: 0, pendingTotal: 0, top_reason: 'tired' },
+    });
+
+    const component = setup();
+    const root = component.root;
+
+    // Summary text visible in collapsed state
+    expect(hasText(root, 'tired')).toBe(true);
+    // Detail section labels not yet visible
+    expect(hasText(root, 'Not great')).toBe(false);
+  });
+
+  test('pressing the fatigue summary expands and reveals detailed sections', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [ROUGH_CI],
+      ok: [OK_CI],
+      pending: [],
+      summary: { roughTotal: 1, okTotal: 1, pendingTotal: 0, top_reason: 'tired' },
+    });
+
+    const component = setup();
+    const root = component.root;
+
+    expect(hasText(root, 'Not great')).toBe(false);
+    expect(hasText(root, 'All good')).toBe(false);
+
+    const expandPressable = root.findAll(
+      n => n.props.accessibilityLabel === 'Expand fatigue details'
+    )[0];
+    render.act(() => {
+      expandPressable.props.onPress();
+    });
+
+    expect(hasText(root, 'Not great')).toBe(true);
+    expect(hasText(root, 'All good')).toBe(true);
+  });
+
+  test('rough entries are pressable edit affordances after expansion', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [ROUGH_CI],
+      ok: [],
+      pending: [],
+      summary: { roughTotal: 1, okTotal: 0, pendingTotal: 0, top_reason: 'tired' },
+    });
+
+    const component = setup();
+    const root = component.root;
+
+    const expandPressable = root.findAll(
+      n => n.props.accessibilityLabel === 'Expand fatigue details'
+    )[0];
+    render.act(() => {
+      expandPressable.props.onPress();
+    });
+
+    const editPressables = root.findAll(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Edit check-in')
+    );
+    expect(editPressables.length).toBeGreaterThan(0);
+    expect(typeof editPressables[0].props.onPress).toBe('function');
+  });
+
+  test('ok and pending chip entries are pressable edit affordances after expansion', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [],
+      ok: [OK_CI],
+      pending: [PENDING_CI],
+      summary: { roughTotal: 0, okTotal: 1, pendingTotal: 1, top_reason: null },
+    });
+
+    const component = setup();
+    const root = component.root;
+
+    const expandPressable = root.findAll(
+      n => n.props.accessibilityLabel === 'Expand fatigue details'
+    )[0];
+    render.act(() => {
+      expandPressable.props.onPress();
+    });
+
+    const chipPressables = root.findAll(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Edit check-in') &&
+           typeof n.props.onPress === 'function'
+    );
+    expect(chipPressables.length).toBe(2);
+  });
+
+  test('pending alert badge appears when unanswered check-ins exist', () => {
+    jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
+      rough: [],
+      ok: [],
+      pending: [PENDING_CI],
+      summary: { roughTotal: 0, okTotal: 0, pendingTotal: 1, top_reason: null },
+    });
+
+    const component = setup();
+    const root = component.root;
+
+    expect(hasText(root, '1 unanswered')).toBe(true);
+  });
+});
+
 // ── feature toggle gating (issue #273) ────────────────────────────────────────
 
 describe('AnalyticsScreen feature toggle gating', () => {
