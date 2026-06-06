@@ -1071,7 +1071,7 @@ export function LogScreen({
                                         items.push(<SetLine key={`deload-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
                                       });
                                       ex.unparsed_rows.forEach((u, ui) => {
-                                        if (!renderedUnparsed.has(u)) {
+                                        if (!renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
                                           items.push(<Text selectable={true} key={`deload-u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRowMuted}>{u}</Text>);
                                         }
                                       });
@@ -1183,7 +1183,7 @@ export function LogScreen({
                                               items.push(<SetLine key={`deload-view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
                                             });
                                             ex.unparsed_rows.forEach((u, ui) => {
-                                              if (!renderedUnparsed.has(u)) {
+                                              if (!renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
                                                 items.push(<Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
                                               }
                                             });
@@ -1329,7 +1329,7 @@ export function LogScreen({
                                     items.push(<SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
                                   });
                                   ex.unparsed_rows.forEach((u, ui) => {
-                                    if (!renderedUnparsed.has(u)) {
+                                    if (!renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
                                       items.push(<Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
                                     }
                                   });
@@ -1418,7 +1418,7 @@ export function LogScreen({
                                               items.push(<SetLine key={`view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
                                             });
                                             ex.unparsed_rows.forEach((u, ui) => {
-                                              if (!renderedUnparsed.has(u)) {
+                                              if (!renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
                                                 items.push(<Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
                                               }
                                             });

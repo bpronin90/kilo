@@ -334,7 +334,7 @@ export function parseWorkoutNote(noteText) {
           currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true });
         } else if (!rowResult.blank && !rowResult.skipped) {
           currentExercise.unparsed_rows.push(trimmed);
-          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: [], unparsed: true });
+          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: [], unparsed: true, bare_unparsed: true });
         }
       }
     }
@@ -408,7 +408,7 @@ export function countWorkoutSessionsFromSections(sections) {
     let dayMax = 0;
     for (const section of daySections) {
       for (const ex of section.exercises) {
-        const nonSkipped = (ex.session_entries || []).filter(e => !e.skipped).length;
+        const nonSkipped = (ex.session_entries || []).filter(e => !e.skipped && !e.bare_unparsed).length;
         const count = Math.max((ex.rows || []).length, nonSkipped);
         if (count > dayMax) dayMax = count;
       }

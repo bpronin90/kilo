@@ -105,6 +105,18 @@ describe('LogScreen skip-aware rendering', () => {
     expect(setCount).toBe(bench.rows.length);
   });
 
+  test('bare unparsed entry carries bare_unparsed flag and does not inflate session count', () => {
+    const bench = sections[0].exercises[0];
+    const bareUnparsed = bench.session_entries.find(e => e.bare_unparsed);
+    expect(bareUnparsed).toBeDefined();
+    expect(bareUnparsed.unparsed).toBe(true);
+    expect(bareUnparsed.raw).toBe('140');
+
+    // session count must equal number of actual logged rows, not inflated by the bare unparsed entry
+    const nonSkipped = bench.session_entries.filter(e => !e.skipped && !e.bare_unparsed).length;
+    expect(nonSkipped).toBe(bench.rows.length);
+  });
+
   test('bare unparsed row (140) renders in chronological position between skip groups', () => {
     const bench = sections[0].exercises[0];
     const tokens = simulateSkipAwareRender(bench);
