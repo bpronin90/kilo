@@ -444,18 +444,54 @@ export function deloadSessionsLogged(deloadHistory) {
   return deloadHistory.reduce((sum, r) => sum + countWorkoutSessions(r?.raw_text || ''), 0);
 }
 
-// Active weeks: weeks actually worked out on the routine = count of logged
-// (non-skipped) session passes. Returns null only when no routine is loaded.
-export function activeWeeksOnRoutine(sections) {
-  if (!sections) return null;
-  return countWorkoutSessionsFromSections(sections);
+// Both routine-week metrics are genuine calendar weeks (Monday-anchored), not
+// session-pass counts. The only per-session calendar anchor in the note model
+// is session_checkins[idx].responded_at, so active weeks can only be computed
+// from dated check-ins; elapsed weeks uses the routine's saved_at start, which
+// is always present.
+const _DAY_MS = 24 * 60 * 60 * 1000;
+const _WEEK_MS = 7 * _DAY_MS;
+
+// Monday-of-week UTC epoch for a 'YYYY-MM-DD...' ISO string.
+function _mondayEpochFromIso(iso) {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d);
+  const dow = new Date(ms).getUTCDay();   // 0=Sun..6=Sat
+  return ms - (((dow + 6) % 7) * _DAY_MS); // back up to Monday
 }
 
-// Elapsed weeks: weeks the routine has spanned including inactive gaps =
-// canonical session depth (counts skipped sessions as gap weeks). Always >=
-// activeWeeksOnRoutine by construction. Returns null when no routine is loaded.
-export function elapsedWeeksOnRoutine(sections) {
-  return computeWeeksIn(sections);
+// Monday-of-week UTC epoch for "now" (optionally injected for tests).
+function _mondayEpochNow(nowMs) {
+  const now = new Date(nowMs != null ? nowMs : Date.now());
+  const ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dow = new Date(ms).getUTCDay();
+  return ms - (((dow + 6) % 7) * _DAY_MS);
+}
+
+// Active weeks: distinct calendar weeks (Monday-anchored) that contain at least
+// one logged session, derived from the dated session check-ins. Returns null
+// when no dated session exists — calendar-week occupancy is not knowable without
+// a per-session date, and the model carries no session date outside check-ins.
+export function activeWeeksOnRoutine(note) {
+  const dateMap = sessionDateMapFromNote(note);
+  if (dateMap.size === 0) return null;
+  const weeks = new Set();
+  for (const day of dateMap.values()) weeks.add(_mondayEpochFromIso(day));
+  return weeks.size;
+}
+
+// Elapsed weeks: calendar weeks the routine has spanned since it began
+// (note.saved_at), including inactive gaps. Monday-anchored and 1-based: the
+// routine's first calendar week reads 1. Returns null without a start date, 0
+// for a future start. Always >= activeWeeksOnRoutine (active weeks are a subset
+// of the spanned weeks).
+export function elapsedWeeksOnRoutine(note, nowMs) {
+  const start = note?.saved_at;
+  if (!start) return null;
+  const startMon = _mondayEpochFromIso(start);
+  const nowMon = _mondayEpochNow(nowMs);
+  if (nowMon < startMon) return 0;
+  return Math.round((nowMon - startMon) / _WEEK_MS) + 1;
 }
 
 // Single canonical entry point for the Analytics routine-status surface.
@@ -463,8 +499,9 @@ export function elapsedWeeksOnRoutine(sections) {
 // Returns:
 //   sessionsLogged:      total sessions on the routine, INCLUDING archived
 //                        deload sessions (never reduced by deloads)
-//   activeWeeks:         weeks worked out (non-skipped session passes)
-//   elapsedWeeks:        weeks since the routine began, including skipped gaps
+//   activeWeeks:         calendar weeks with >=1 logged session (null if no
+//                        dated check-ins exist)
+//   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
@@ -472,8 +509,8 @@ export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const dateMap = sessionDateMapFromNote(note);
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
-    activeWeeks: activeWeeksOnRoutine(currentSections),
-    elapsedWeeks: elapsedWeeksOnRoutine(currentSections),
+    activeWeeks: activeWeeksOnRoutine(note),
+    elapsedWeeks: elapsedWeeksOnRoutine(note),
     sessionsSinceDeload: sessionsSinceLastDeload(routineSessions, deloadHistory, dateMap),
     weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
   };
