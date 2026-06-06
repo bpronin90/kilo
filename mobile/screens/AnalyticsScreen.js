@@ -322,8 +322,9 @@ export function AnalyticsScreen({ multiplier, section }) {
       <SectionTitle>Session Health</SectionTitle>
     </View>) : null,
     deloadModeEnabled ? (
-    <View key="session-gauge" style={styles.statRow}>
+    <View key="session-gauge">
       <SessionGauge count={sinceDeload} total={sessionCount} />
+      <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
     </View>) : null,
     deloadModeEnabled ? (
     <Card key="weeks-since-deload" style={styles.weeksCard}>
@@ -1235,6 +1236,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  gaugeMetricLabel: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
   },
   weeksCard: {
     padding: 16,

@@ -740,13 +740,14 @@ describe('AnalyticsScreen Session Health two-metric display', () => {
     isCurrent: true,
   };
 
-  test('renders Session Health section with both gauge and weeks metric', () => {
+  test('renders Session Health section with both metrics explicitly labeled', () => {
     const deloadHistory = [
       { id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 1, note_id: 'wn_dl_1' },
     ];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
     const root = component.root;
     expect(hasText(root, 'Session Health')).toBe(true);
+    expect(hasText(root, 'sessions since deload')).toBe(true);
     expect(hasText(root, 'weeks since deload')).toBe(true);
   });
 
@@ -764,24 +765,23 @@ describe('AnalyticsScreen Session Health two-metric display', () => {
     expect(hasText(component.root, 'weeks since deload')).toBe(true);
   });
 
-  test('editing completed_at does not require session_count change: weeks metric updates independently', () => {
-    // Same session_count, two different completed_at values — both should render Session Health.
+  test('editing completed_at does not require session_count change: both labels present regardless', () => {
     const historyA = [{ id: 'dl_1', completed_at: '2026-05-09T12:00:00.000Z', session_count: 10 }];
     const historyB = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 10 }];
 
     const compA = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyA } });
     const compB = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyB } });
 
-    expect(hasText(compA.root, 'Session Health')).toBe(true);
-    expect(hasText(compB.root, 'Session Health')).toBe(true);
-    expect(hasText(compA.root, 'weeks since deload')).toBe(true);
-    expect(hasText(compB.root, 'weeks since deload')).toBe(true);
+    for (const comp of [compA, compB]) {
+      expect(hasText(comp.root, 'sessions since deload')).toBe(true);
+      expect(hasText(comp.root, 'weeks since deload')).toBe(true);
+    }
   });
 
-  test('legacy records without note_id or extra fields render without error', () => {
+  test('legacy records without note_id render both metric labels without error', () => {
     const deloadHistory = [{ id: 'dl_legacy', completed_at: '2026-04-01T00:00:00.000Z', session_count: 0 }];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    expect(hasText(component.root, 'Session Health')).toBe(true);
+    expect(hasText(component.root, 'sessions since deload')).toBe(true);
     expect(hasText(component.root, 'weeks since deload')).toBe(true);
   });
 });
