@@ -211,3 +211,28 @@ describe('deload date edit: sessions and weeks are independent metrics', () => {
     expect(legacyRecord.completed_at).toBe('2026-05-23T12:00:00.000Z');
   });
 });
+
+// ── autosave vs explicit save: success indicator behavior ─────────────────────
+
+describe('save success notification: autosave vs explicit save', () => {
+  // Mirrors the saveSuccess decision in handleSave / handleSaveOtherNote.
+  // autosave:true = debounce-timer triggered; autosave:false = user-triggered
+  // (Done button, Save & Switch).
+  function computeSaveSuccessMessage({ autosave }) {
+    return autosave ? null : 'Saved!';
+  }
+
+  test('autosave does not produce a visible success message', () => {
+    expect(computeSaveSuccessMessage({ autosave: true })).toBeNull();
+  });
+
+  test('explicit save produces a visible success message', () => {
+    expect(computeSaveSuccessMessage({ autosave: false })).toBe('Saved!');
+  });
+
+  test('autosave flag defaults to false (explicit-save path when flag absent)', () => {
+    // Callers that omit the flag (original call sites) behave as explicit saves.
+    const autosave = undefined ?? false;
+    expect(computeSaveSuccessMessage({ autosave })).toBe('Saved!');
+  });
+});

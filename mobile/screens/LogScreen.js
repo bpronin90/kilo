@@ -202,7 +202,7 @@ export function LogScreen({
     if (autosaveCurrentTimerRef.current) clearTimeout(autosaveCurrentTimerRef.current);
     autosaveCurrentTimerRef.current = setTimeout(async () => {
       autosaveCurrentTimerRef.current = null;
-      await handleSave();
+      await handleSave({ autosave: true });
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveCurrentTimerRef.current) {
@@ -219,7 +219,7 @@ export function LogScreen({
     if (autosaveOtherTimerRef.current) clearTimeout(autosaveOtherTimerRef.current);
     autosaveOtherTimerRef.current = setTimeout(async () => {
       autosaveOtherTimerRef.current = null;
-      await handleSaveOtherNote();
+      await handleSaveOtherNote({ autosave: true });
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveOtherTimerRef.current) {
@@ -394,7 +394,7 @@ export function LogScreen({
 
   const hasContent = workoutNoteText.trim().length > 0;
 
-  const handleSave = async () => {
+  const handleSave = async ({ autosave = false } = {}) => {
     if (isSaving) return;
     if (!currentId && !workoutNoteText.trim()) {
       setSaveError('Workout notes are required');
@@ -462,7 +462,7 @@ export function LogScreen({
           // and first-save races on new notes alike.
           setWorkoutNoteTitle(result.title || '');
           setWorkoutNoteText(result.raw_text || '');
-          setSaveSuccess('Saved!');
+          if (!autosave) setSaveSuccess('Saved!');
         }
         return true;
       } else {
@@ -630,7 +630,7 @@ export function LogScreen({
     setSaveSuccess('');
   };
 
-  const handleSaveOtherNote = async () => {
+  const handleSaveOtherNote = async ({ autosave = false } = {}) => {
     if (noteIsSaving) return;
     const savedNoteId = editingNoteId;
     const snapshotText = editingText;
@@ -685,7 +685,7 @@ export function LogScreen({
           // save started — guards in-flight edit races on both new and existing notes.
           setEditingTitle(result.title || '');
           setEditingText(result.raw_text || '');
-          setSaveSuccess('Saved!');
+          if (!autosave) setSaveSuccess('Saved!');
         }
         return true;
       }
