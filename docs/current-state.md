@@ -212,8 +212,11 @@ The real native app path now has a modular React Native shell:
   without the earlier stray italics, while unresolved lifting fallbacks render
   in error red and warmup/non-lifting fallbacks stay standard text, and bare
   `-` skipped-week markers now stay interleaved with logged rows in their
-  original chronological slots in the formatted read view instead of drifting
-  into a clustered skip block. The same
+  original chronological slots across all clean note views (current routine,
+  expanded more-routines notes, and deload notes) instead of drifting into a
+  clustered skip block; bare rows that fail to parse (e.g. an incomplete weight
+  entry with no reps) also render in their chronological position between skip
+  groups rather than being displaced to the bottom of the exercise block. The same
   save path now also persists workout-note `skip_markers`
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of

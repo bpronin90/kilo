@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.64.1 - 2026-06-06
+
+- Issue #274: Fixed skipped-session placeholder rendering in workout-note clean
+  views. Skip markers (`—`) now render consistently across all clean views
+  (current routine, expanded more-routines notes, deload notes). Bare rows that
+  fail to parse (e.g. an incomplete weight entry with no reps) now render in
+  their chronological position between skip groups rather than drifting to the
+  bottom of the exercise block.
+
 ## 0.64.0 - 2026-06-05
 
 - Issue #272: Refined the Analytics `Fatigue` card into a calmer collapsible

@@ -53,7 +53,9 @@ Current limitation:
   backup rejection coverage for the optional `weight_goal` v2
   import field.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
-  includes a `react-test-renderer` suite for the Weight goal card's loss,
+  includes a `log-screen.test.js` parser-and-render-logic suite covering
+  skip-marker interleaving and bare-unparsed-row chronological positioning for
+  the workout-note clean view, plus a `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
   rendering checks that lock the day-level `date` trend bucketing contract
   while confirming Weight history still displays `logged_at`, plus a

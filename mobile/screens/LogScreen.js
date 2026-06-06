@@ -1051,12 +1051,43 @@ export function LogScreen({
                                     name={ex.name}
                                     selectable={true}
                                   >
-                                    {ex.rows.map((row, ri) => (
-                                      <SetLine key={`deload-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                    ))}
-                                    {ex.unparsed_rows.map((u, ui) => (
-                                      <Text selectable={true} key={`deload-u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRowMuted}>{u}</Text>
-                                    ))}
+                                    {(() => {
+                                      const items = [];
+                                      const renderedUnparsed = new Set();
+                                      const positions = ex.unparsed_positions || [];
+                                      let posIdx = 0;
+                                      let loggedIdx = 0;
+                                      ex.session_entries.forEach((entry, eni) => {
+                                        while (posIdx < positions.length && positions[posIdx].pos === eni) {
+                                          items.push(<Text selectable={true} key={`deload-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                          posIdx++;
+                                        }
+                                        if (entry.skipped) {
+                                          items.push(<Text selectable={true} key={`deload-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                        } else if (entry.unparsed) {
+                                          items.push(<Text selectable={true} key={`deload-u-inline-${gi}-${si}-${ei}-${eni}`} style={styles.unparsedRowMuted}>{entry.raw}</Text>);
+                                          renderedUnparsed.add(entry.raw);
+                                        } else {
+                                          const row = ex.rows[loggedIdx++];
+                                          if (row) items.push(<SetLine key={`deload-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                        }
+                                      });
+                                      while (posIdx < positions.length) {
+                                        items.push(<Text selectable={true} key={`deload-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                        posIdx++;
+                                      }
+                                      const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                      ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                        items.push(<SetLine key={`deload-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                      });
+                                      const positionalRaws = new Set(positions.map(p => p.raw));
+                                      ex.unparsed_rows.forEach((u, ui) => {
+                                        if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+                                          items.push(<Text selectable={true} key={`deload-u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRowMuted}>{u}</Text>);
+                                        }
+                                      });
+                                      return items;
+                                    })()}
                                   </ExerciseBlock>
                                 ))}
                               </View>
@@ -1143,12 +1174,43 @@ export function LogScreen({
                                       )}
                                       {section.exercises.map((ex, ei) => (
                                         <ExerciseBlock key={`deload-view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {ex.rows.map((row, ri) => (
-                                            <SetLine key={`deload-view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                          ))}
-                                          {ex.unparsed_rows.map((u, ui) => (
-                                            <Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
-                                          ))}
+                                          {(() => {
+                                            const items = [];
+                                            const renderedUnparsed = new Set();
+                                            const positions = ex.unparsed_positions || [];
+                                            let posIdx = 0;
+                                            let loggedIdx = 0;
+                                            ex.session_entries.forEach((entry, eni) => {
+                                              while (posIdx < positions.length && positions[posIdx].pos === eni) {
+                                                items.push(<Text selectable={true} key={`deload-view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                                posIdx++;
+                                              }
+                                              if (entry.skipped) {
+                                                items.push(<Text selectable={true} key={`deload-view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                              } else if (entry.unparsed) {
+                                                items.push(<Text selectable={true} key={`deload-view-u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
+                                                renderedUnparsed.add(entry.raw);
+                                              } else {
+                                                const row = ex.rows[loggedIdx++];
+                                                if (row) items.push(<SetLine key={`deload-view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                              }
+                                            });
+                                            while (posIdx < positions.length) {
+                                              items.push(<Text selectable={true} key={`deload-view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                              posIdx++;
+                                            }
+                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                              items.push(<SetLine key={`deload-view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                            });
+                                            const positionalRaws = new Set(positions.map(p => p.raw));
+                                            ex.unparsed_rows.forEach((u, ui) => {
+                                              if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+                                                items.push(<Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
+                                              }
+                                            });
+                                            return items;
+                                          })()}
                                         </ExerciseBlock>
                                       ))}
                                     </View>
@@ -1271,24 +1333,41 @@ export function LogScreen({
                               >
                                 {(() => {
                                   const items = [];
+                                  const renderedUnparsed = new Set();
+                                  const positions = ex.unparsed_positions || [];
+                                  let posIdx = 0;
                                   let loggedIdx = 0;
                                   ex.session_entries.forEach((entry, eni) => {
+                                    while (posIdx < positions.length && positions[posIdx].pos === eni) {
+                                      items.push(<Text selectable={true} key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                      posIdx++;
+                                    }
                                     if (entry.skipped) {
                                       items.push(<Text selectable={true} key={`skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                                    } else if (!entry.unparsed) {
+                                    } else if (entry.unparsed) {
+                                      items.push(<Text selectable={true} key={`u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
+                                      renderedUnparsed.add(entry.raw);
+                                    } else {
                                       const row = ex.rows[loggedIdx++];
                                       if (row) items.push(<SetLine key={`row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
                                     }
                                   });
+                                  while (posIdx < positions.length) {
+                                    items.push(<Text selectable={true} key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                    posIdx++;
+                                  }
                                   const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
                                   ex.rows.slice(loggedCount).forEach((row, ri) => {
                                     items.push(<SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
                                   });
+                                  const positionalRaws = new Set(positions.map(p => p.raw));
+                                  ex.unparsed_rows.forEach((u, ui) => {
+                                    if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+                                      items.push(<Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
+                                    }
+                                  });
                                   return items;
                                 })()}
-                                {ex.unparsed_rows.map((u, ui) => (
-                                  <Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
-                                ))}
                               </ExerciseBlock>
                               </View>
                               );
@@ -1352,12 +1431,43 @@ export function LogScreen({
                                       )}
                                       {section.exercises.map((ex, ei) => (
                                         <ExerciseBlock key={`view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {ex.rows.map((row, ri) => (
-                                            <SetLine key={`view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                          ))}
-                                          {ex.unparsed_rows.map((u, ui) => (
-                                            <Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
-                                          ))}
+                                          {(() => {
+                                            const items = [];
+                                            const renderedUnparsed = new Set();
+                                            const positions = ex.unparsed_positions || [];
+                                            let posIdx = 0;
+                                            let loggedIdx = 0;
+                                            ex.session_entries.forEach((entry, eni) => {
+                                              while (posIdx < positions.length && positions[posIdx].pos === eni) {
+                                                items.push(<Text selectable={true} key={`view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                                posIdx++;
+                                              }
+                                              if (entry.skipped) {
+                                                items.push(<Text selectable={true} key={`view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                              } else if (entry.unparsed) {
+                                                items.push(<Text selectable={true} key={`view-u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
+                                                renderedUnparsed.add(entry.raw);
+                                              } else {
+                                                const row = ex.rows[loggedIdx++];
+                                                if (row) items.push(<SetLine key={`view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                              }
+                                            });
+                                            while (posIdx < positions.length) {
+                                              items.push(<Text selectable={true} key={`view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
+                                              posIdx++;
+                                            }
+                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                              items.push(<SetLine key={`view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                            });
+                                            const positionalRaws = new Set(positions.map(p => p.raw));
+                                            ex.unparsed_rows.forEach((u, ui) => {
+                                              if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
+                                                items.push(<Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
+                                              }
+                                            });
+                                            return items;
+                                          })()}
                                         </ExerciseBlock>
                                       ))}
                                     </View>
