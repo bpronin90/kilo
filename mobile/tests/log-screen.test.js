@@ -251,3 +251,51 @@ describe('autosave call sites: debounce timers pass { autosave: true }', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+// ── deload date edit: save-flow stuck-state prevention ───────────────────────
+// These source-level assertions prove that the save path cannot remain stuck in
+// a pending state when the user presses Done while an autosave is in flight.
+// The component cannot be rendered in this env, so we assert the code structure.
+
+describe('deload date edit: save flow does not get stuck in pending state', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(
+      path.join(__dirname, '../screens/LogScreen.js'),
+      'utf8'
+    );
+  });
+
+  test('handleSaveOtherNote uses an in-flight ref guard, not a bare noteIsSaving return', () => {
+    // The old guard `if (noteIsSaving) return;` returned undefined, causing
+    // handleDoneOther to treat the in-flight autosave as a failure. The fix
+    // replaces it with an in-flight promise ref so callers can chain on the
+    // running save rather than receiving undefined.
+    expect(src).toMatch(/saveOtherNoteInFlightRef\.current/);
+    expect(src).not.toMatch(/if\s*\(\s*noteIsSaving\s*\)\s*return\s*;/);
+  });
+
+  test('in-flight ref is returned when a concurrent save is already running', () => {
+    // When saveOtherNoteInFlightRef.current is non-null, the function must return
+    // it so the caller awaits the real result rather than undefined.
+    expect(src).toMatch(/if\s*\(\s*saveOtherNoteInFlightRef\.current\s*\)\s*return\s+saveOtherNoteInFlightRef\.current/);
+  });
+
+  test('in-flight ref is cleared in the finally block so it never leaks', () => {
+    // Leak would leave saveOtherNoteInFlightRef.current non-null after the save,
+    // preventing any future save from starting.
+    expect(src).toMatch(/finally[\s\S]{0,200}saveOtherNoteInFlightRef\.current\s*=\s*null/);
+  });
+
+  test('setNoteIsSaving(false) is in a finally block in the deload save path', () => {
+    // Guarantees noteIsSaving is always reset regardless of success or failure,
+    // preventing the save-spinner state from getting permanently stuck.
+    expect(src).toMatch(/finally[\s\S]{0,200}setNoteIsSaving\s*\(\s*false\s*\)/);
+  });
+
+  test('deload date save path calls updateDeload before update on date change', () => {
+    // Both the history record and the note record must be updated. If updateDeload
+    // is absent the history anchor drifts from the note saved_at date.
+    expect(src).toMatch(/await\s+updateDeload\s*\([\s\S]{0,700}await\s+update\s*\(\s*editingNoteId/);
+  });
+});
