@@ -328,7 +328,8 @@ function ProfileScreen({ onBack }) {
             value={getDobDate()}
             mode="date"
             display="default"
-            onChange={handleDobChange}
+            onValueChange={handleDobChange}
+            onDismiss={() => setShowDatePicker(false)}
             maximumDate={new Date()}
           />
         )}
