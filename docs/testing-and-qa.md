@@ -46,8 +46,11 @@ Current limitation:
   shared weight trend-summary helper coverage, direct
   `deriveWeightGoalAnalytics()` canonical contract coverage for empty/null
   entries, saved-goal/edit-state paths, rolling-series limits, and maintain
-  handling, per-session rep-drop-off flag derivation coverage, weekly-summary
-  stored-input shaping coverage (session presence and persisted
+  handling, per-session rep-drop-off flag derivation coverage,
+  fatigue session check-in detection coverage (`deriveSessionCheckIn` detectors
+  plus `deriveCheckInHistory` list/summary shaping), within-row skipped-set
+  parser coverage, `session_checkins` storage round-trip coverage,
+  weekly-summary stored-input shaping coverage (session presence and persisted
   classification counts), plain-row progression comparables for note-based
   sessions, lowercase canonical `perDaySignals` key coverage, and malformed
   backup rejection coverage for the optional `weight_goal` v2
@@ -63,9 +66,13 @@ Current limitation:
   `deriveWeightGoalAnalytics()` to prove the rendered latest weight and
   7-day/30-day averages come from the shared layer instead of screen-local
   reshaping, targeted Analytics feature-toggle gating coverage that hides the
-  Fatigue and Session Health sections when their settings are off, and
-  targeted `WeightScreen` interaction coverage for history-row
-  scroll-to-editor behavior plus the saved-goal target/guidance split.
+  Fatigue and Session Health sections when their settings are off, targeted
+  `AnalyticsScreen` Fatigue-section interaction coverage for the
+  collapsed-by-default summary, the expand/collapse toggle cycle, the
+  post-expansion rough-row and ok/pending chip edit affordances, and the
+  unanswered-check-in alert badge, and targeted `WeightScreen` interaction
+  coverage for history-row scroll-to-editor behavior plus the saved-goal
+  target/guidance split.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
@@ -107,6 +114,11 @@ retains non-test commands such as `npm run audit`.
 - validates canonical native `parseWeightEntry`, `parseWorkoutRow`, and
   `parseWorkoutEntry` behavior against the same constrained MVP forms preserved
   from the archived browser prototype
+- covers within-row skipped sets in `parseWorkoutRow` (the fatigue parser token),
+  asserting a `-` rep token keeps its weight and emits a `rep_count: 0,
+  skipped: true` set for trailing (`80 4,-`), leading (`80 -,8`), lone
+  (`80 -`), spaced-comma, and mixed weight-pair (`80 4,- 70 8,-`) forms instead of
+  degrading to `unparsed_rows`
 - covers `parseWorkoutNote` for sample-style shorthand workout notes, including
   day and section headings, mixed-weight rows, deload summaries, graceful
   degradation of ambiguous fragments, and the non-weight cardio regression from
@@ -154,9 +166,15 @@ retains non-test commands such as `npm run audit`.
   mixed-weight ambiguity handling, and working-set filtering
 - verifies `deriveRepDropOffFlags()` stores per-session flag maps keyed by
   logged session position while omitting skipped sessions
-- verifies `getLatestRepDropOff()` returns the latest derived session flag for
-  temporary Log and Analytics compatibility reads, including null-latest and
-  skipped-gap cases
+- verifies the `deriveSessionCheckIn()` fatigue detector contract on the latest
+  positional session, covering null/empty guards, the not-rough baseline case, the
+  brand-new-exercise no-history guard, the four detectors (volume-drop on rep
+  collapse vs baseline including within-row skipped sets, intra-session collapse,
+  skips above the usual rate with floor and strict `avg + margin` boundary, and
+  whole-day skip), and the `#270` single-exercise repro cases
+- verifies `deriveCheckInHistory()` reverse-chron list shaping and `{ total,
+  top_reason }` summary tally, including null/empty inputs and notes whose
+  `session_checkins` is null
 - verifies `deriveWorkoutNoteAnalytics()` canonical layer return shape,
   per-field output (weeksIn, classifications, skipData, signals, and
   `nameDisplayMap`), absence of `repDropOffFlags`, empty-sections behavior,

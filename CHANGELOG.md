@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.64.4 - 2026-06-06
+
+- Issue #277: Aligned the fatigue QA docs and roadmap status with shipped
+  reality. `docs/testing-and-qa.md` now documents the real fatigue verification
+  surface — `deriveSessionCheckIn` detector coverage, `deriveCheckInHistory`
+  list/summary shaping, within-row skipped-set parser coverage,
+  `session_checkins` storage round-trip, and the post-ship `AnalyticsScreen`
+  Fatigue-section interaction coverage — and drops the stale
+  `getLatestRepDropOff` test bullet. `docs/mvp-fatigue-roadmap.md` marks Phase 2
+  and Tasks 7/8 complete, records the `#272`/`#274`/`#275` post-ship follow-ups,
+  splits Phase 3 Task 9 into 9A (#276) and 9B (#277), and notes the remaining
+  work is reviewer closeout only.
+
 ## 0.64.3 - 2026-06-06
 
 - Issue #276: Updated the fatigue product docs to match the shipped session
