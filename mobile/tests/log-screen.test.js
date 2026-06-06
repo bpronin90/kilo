@@ -1,20 +1,27 @@
 import { parseWorkoutNote } from '../lib/parser';
 
 // Simulates the skip-aware IIFE used in all clean-view render paths of LogScreen.
-// Returns an array of 'skip' | 'set' tokens in order, matching the render output.
+// Returns an array of 'skip' | 'set' | 'unparsed:<raw>' tokens in order.
 function simulateSkipAwareRender(ex) {
   const tokens = [];
+  const renderedUnparsed = new Set();
   let loggedIdx = 0;
   ex.session_entries.forEach((entry) => {
     if (entry.skipped) {
       tokens.push('skip');
-    } else if (!entry.unparsed) {
+    } else if (entry.unparsed) {
+      tokens.push('unparsed:' + entry.raw);
+      renderedUnparsed.add(entry.raw);
+    } else {
       if (ex.rows[loggedIdx]) tokens.push('set');
       loggedIdx++;
     }
   });
   const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
   ex.rows.slice(loggedCount).forEach(() => tokens.push('set'));
+  ex.unparsed_rows.forEach(u => {
+    if (!renderedUnparsed.has(u)) tokens.push('trailing:' + u);
+  });
   return tokens;
 }
 
@@ -96,6 +103,23 @@ describe('LogScreen skip-aware rendering', () => {
     // Total sets must equal ex.rows.length
     const setCount = tokens.filter(t => t === 'set').length;
     expect(setCount).toBe(bench.rows.length);
+  });
+
+  test('bare unparsed row (140) renders in chronological position between skip groups', () => {
+    const bench = sections[0].exercises[0];
+    const tokens = simulateSkipAwareRender(bench);
+
+    const unparsedIdx = tokens.indexOf('unparsed:140');
+    expect(unparsedIdx).toBeGreaterThan(-1);
+
+    // There must be skips both before and after the unparsed row
+    const skipsBefore = tokens.slice(0, unparsedIdx).filter(t => t === 'skip').length;
+    const skipsAfter = tokens.slice(unparsedIdx + 1).filter(t => t === 'skip').length;
+    expect(skipsBefore).toBeGreaterThan(0);
+    expect(skipsAfter).toBeGreaterThan(0);
+
+    // 140 must not appear as a trailing item (which was the old bug)
+    expect(tokens[tokens.length - 1]).not.toBe('trailing:140');
   });
 
   test('row-only render (old behavior) would omit all skip markers', () => {

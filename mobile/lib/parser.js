@@ -334,6 +334,7 @@ export function parseWorkoutNote(noteText) {
           currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true });
         } else if (!rowResult.blank && !rowResult.skipped) {
           currentExercise.unparsed_rows.push(trimmed);
+          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: [], unparsed: true });
         }
       }
     }
