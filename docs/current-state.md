@@ -318,15 +318,18 @@ The real native app path now has a modular React Native shell:
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
-  a `Fatigue` section backed by persisted `session_checkins`, split into `Not
-  great`, `All good`, and conditional `Unanswered` groups with stable
-  calendar-day formatting from `responded_at`; rough rows show reasons plus
-  non-zero skipped/volume-drop stats, the card restores a top-level `Most
-  common` rough-session reason insight when one exists, and every fatigue row
-  now exposes an Analytics-side edit path that reopens the check-in modal
-  against the original session record. Editing an existing entry hydrates its
-  saved status/reasons/note, preserves the original `responded_at` timestamp,
-  and lets unanswered dismissals be completed later without reordering history.
+  a `Fatigue` section backed by persisted `session_checkins`, now collapsed by
+  default into a signal-first summary row that highlights the most common rough
+  reason when available and shows an unanswered-count alert when pending
+  check-ins exist. Expanding the card reveals `Not great`, `All good`, and
+  conditional `Unanswered` groups with stable calendar-day formatting from
+  `responded_at`; rough entries render as quieter callout rows with reasons
+  plus non-zero skipped/volume-drop stats, while ok/pending entries collapse
+  into date chips to reduce scan noise. Every fatigue entry still exposes an
+  Analytics-side edit path that reopens the check-in modal against the
+  original session record. Editing an existing entry hydrates its saved
+  status/reasons/note, preserves the original `responded_at` timestamp, and
+  lets unanswered dismissals be completed later without reordering history.
   The whole `Fatigue` section and its edit-modal entry path are hidden when
   the More > Settings `Fatigue tracking` toggle is off.
   Shared chart surfaces now also expose a tapped-point readout without breaking

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.64.0 - 2026-06-05
+
+- Issue #272: Refined the Analytics `Fatigue` card into a calmer collapsible
+  summary with a most-common-reason insight, pending-check-in alert badge, and
+  expanded detail groups that keep rough entries as callout rows while
+  rendering ok/pending history as compact date chips. The existing Analytics
+  edit path for each fatigue entry remains intact.
+
 ## 0.63.0 - 2026-06-05
 
 - Issue #273: Added persisted `Fatigue tracking` and `Deload mode` settings
