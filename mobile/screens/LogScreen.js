@@ -1051,9 +1051,23 @@ export function LogScreen({
                                     name={ex.name}
                                     selectable={true}
                                   >
-                                    {ex.rows.map((row, ri) => (
-                                      <SetLine key={`deload-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                    ))}
+                                    {(() => {
+                                      const items = [];
+                                      let loggedIdx = 0;
+                                      ex.session_entries.forEach((entry, eni) => {
+                                        if (entry.skipped) {
+                                          items.push(<Text selectable={true} key={`deload-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                        } else if (!entry.unparsed) {
+                                          const row = ex.rows[loggedIdx++];
+                                          if (row) items.push(<SetLine key={`deload-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                        }
+                                      });
+                                      const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                      ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                        items.push(<SetLine key={`deload-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                      });
+                                      return items;
+                                    })()}
                                     {ex.unparsed_rows.map((u, ui) => (
                                       <Text selectable={true} key={`deload-u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRowMuted}>{u}</Text>
                                     ))}
@@ -1143,9 +1157,23 @@ export function LogScreen({
                                       )}
                                       {section.exercises.map((ex, ei) => (
                                         <ExerciseBlock key={`deload-view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {ex.rows.map((row, ri) => (
-                                            <SetLine key={`deload-view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                          ))}
+                                          {(() => {
+                                            const items = [];
+                                            let loggedIdx = 0;
+                                            ex.session_entries.forEach((entry, eni) => {
+                                              if (entry.skipped) {
+                                                items.push(<Text selectable={true} key={`deload-view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                              } else if (!entry.unparsed) {
+                                                const row = ex.rows[loggedIdx++];
+                                                if (row) items.push(<SetLine key={`deload-view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                              }
+                                            });
+                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                              items.push(<SetLine key={`deload-view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                            });
+                                            return items;
+                                          })()}
                                           {ex.unparsed_rows.map((u, ui) => (
                                             <Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                           ))}
@@ -1352,9 +1380,23 @@ export function LogScreen({
                                       )}
                                       {section.exercises.map((ex, ei) => (
                                         <ExerciseBlock key={`view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {ex.rows.map((row, ri) => (
-                                            <SetLine key={`view-row-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />
-                                          ))}
+                                          {(() => {
+                                            const items = [];
+                                            let loggedIdx = 0;
+                                            ex.session_entries.forEach((entry, eni) => {
+                                              if (entry.skipped) {
+                                                items.push(<Text selectable={true} key={`view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
+                                              } else if (!entry.unparsed) {
+                                                const row = ex.rows[loggedIdx++];
+                                                if (row) items.push(<SetLine key={`view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                                              }
+                                            });
+                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
+                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
+                                              items.push(<SetLine key={`view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
+                                            });
+                                            return items;
+                                          })()}
                                           {ex.unparsed_rows.map((u, ui) => (
                                             <Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>
                                           ))}
