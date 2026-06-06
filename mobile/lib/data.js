@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey } from './parser.js';
+import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey, countWorkoutSessions, countWorkoutSessionsFromSections, sessionDateMapFromNote, sessionsSinceLastDeload, weeksSinceLastDeload } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -424,6 +424,82 @@ export function computeWeeksIn(sections) {
     }
   }
   return max;
+}
+
+// ── Routine status (issue #282) ───────────────────────────────────────────────
+// Canonical routine-status derivation for the Analytics surface. Built on the
+// session chain (computeWeeksIn / countWorkoutSessionsFromSections) so the
+// week metrics work for any routine — including legacy history and chains with
+// no fatigue/check-in coverage. The deload-relative metrics reuse the parser
+// primitives, where sessions-since-deload is recomputed from the session-date
+// chronology relative to the latest deload boundary (so editing a past deload
+// date moves it together with weeks-since-deload).
+
+// Total deload sessions logged across archived deload notes. Each completed
+// deload is archived separately in deloadHistory with its own raw_text, so its
+// logged session passes are added back to total routine exposure. Records
+// without raw_text (legacy) contribute 0.
+export function deloadSessionsLogged(deloadHistory) {
+  if (!deloadHistory || deloadHistory.length === 0) return 0;
+  return deloadHistory.reduce((sum, r) => sum + countWorkoutSessions(r?.raw_text || ''), 0);
+}
+
+// elapsedWeeks is a genuine calendar-week metric (Monday-anchored), not a
+// session-pass count. It uses the routine's saved_at start, which is always
+// present. (`active weeks` — calendar weeks containing a logged session — is
+// intentionally NOT derived here: the only per-session calendar anchor in the
+// model is session_checkins[idx].responded_at, so it cannot be both calendar-
+// true and check-in-independent within this card's derivation-first scope. It
+// is deferred to a separate storage/model follow-up per #282 review.)
+const _DAY_MS = 24 * 60 * 60 * 1000;
+const _WEEK_MS = 7 * _DAY_MS;
+
+// Monday-of-week UTC epoch for a 'YYYY-MM-DD...' ISO string.
+function _mondayEpochFromIso(iso) {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const ms = Date.UTC(y, m - 1, d);
+  const dow = new Date(ms).getUTCDay();   // 0=Sun..6=Sat
+  return ms - (((dow + 6) % 7) * _DAY_MS); // back up to Monday
+}
+
+// Monday-of-week UTC epoch for "now" (optionally injected for tests).
+function _mondayEpochNow(nowMs) {
+  const now = new Date(nowMs != null ? nowMs : Date.now());
+  const ms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const dow = new Date(ms).getUTCDay();
+  return ms - (((dow + 6) % 7) * _DAY_MS);
+}
+
+// Elapsed weeks: calendar weeks the routine has spanned since it began
+// (note.saved_at), including inactive gaps. Monday-anchored and 1-based: the
+// routine's first calendar week reads 1. Returns null without a start date, 0
+// for a future start.
+export function elapsedWeeksOnRoutine(note, nowMs) {
+  const start = note?.saved_at;
+  if (!start) return null;
+  const startMon = _mondayEpochFromIso(start);
+  const nowMon = _mondayEpochNow(nowMs);
+  if (nowMon < startMon) return 0;
+  return Math.round((nowMon - startMon) / _WEEK_MS) + 1;
+}
+
+// Single canonical entry point for the Analytics routine-status surface.
+//
+// Returns:
+//   sessionsLogged:      total sessions on the routine, INCLUDING archived
+//                        deload sessions (never reduced by deloads)
+//   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
+//   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
+//   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
+export function deriveRoutineStatus(currentSections, note, deloadHistory) {
+  const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
+  const dateMap = sessionDateMapFromNote(note);
+  return {
+    sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
+    elapsedWeeks: elapsedWeeksOnRoutine(note),
+    sessionsSinceDeload: sessionsSinceLastDeload(routineSessions, deloadHistory, dateMap),
+    weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
+  };
 }
 
 // Compute a series of rolling averages for the last N weigh-in dates.

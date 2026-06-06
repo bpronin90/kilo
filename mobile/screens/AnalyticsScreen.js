@@ -4,9 +4,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
-import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory } from '../lib/data';
+import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
-import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
+import { normalizeExerciseKey } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -219,20 +219,15 @@ export function AnalyticsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  const sessionCount = useMemo(
-    () => countWorkoutSessionsFromSections(parsedSections.currentSections),
-    [parsedSections.currentSections]
+  // Canonical routine-status metrics. Derivation is chronology-aware: editing a
+  // past deload date moves both deload-relative metrics together (see #282).
+  const routineStatus = useMemo(
+    () => deriveRoutineStatus(parsedSections.currentSections, currentNote, deloadHistory),
+    [parsedSections.currentSections, currentNote, deloadHistory]
   );
-
-  const sinceDeload = useMemo(
-    () => sessionsSinceLastDeload(sessionCount, deloadHistory),
-    [sessionCount, deloadHistory]
-  );
-
-  const weeksDeload = useMemo(
-    () => weeksSinceLastDeload(deloadHistory),
-    [deloadHistory]
-  );
+  const sessionCount = routineStatus.sessionsLogged;
+  const sinceDeload = routineStatus.sessionsSinceDeload;
+  const weeksDeload = routineStatus.weeksSinceDeload;
 
   const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
 
@@ -333,6 +328,24 @@ export function AnalyticsScreen({ multiplier, section }) {
           {weeksDeload !== null ? String(weeksDeload) : '—'}
         </Text>
         <Text style={styles.weeksLabel}>weeks since deload</Text>
+      </View>
+    </Card>) : null,
+
+    // Routine-exposure metrics. Minimal plumbing to surface the corrected
+    // contract values (#282); #283 redesigns the presentation.
+    deloadModeEnabled ? (
+    <Card key="routine-exposure" style={styles.weeksCard}>
+      <View style={styles.routineExposureRow}>
+        <View style={styles.weeksStat}>
+          <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
+          <Text style={styles.weeksLabel}>sessions logged</Text>
+        </View>
+        <View style={styles.weeksStat}>
+          <Text style={styles.weeksValue}>
+            {routineStatus.elapsedWeeks !== null ? String(routineStatus.elapsedWeeks) : '—'}
+          </Text>
+          <Text style={styles.weeksLabel}>weeks on routine</Text>
+        </View>
       </View>
     </Card>) : null,
 
@@ -1245,6 +1258,12 @@ const styles = StyleSheet.create({
   },
   weeksCard: {
     padding: 16,
+  },
+  routineExposureRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
   },
   weeksStat: {
     flexDirection: 'row',

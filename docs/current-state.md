@@ -320,12 +320,17 @@ The real native app path now has a modular React Native shell:
   Health` section that replaces the older workout-sessions card with a
   three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
   derived from the shared session-depth thresholds. The gauge now runs its
-  zones, marker, and caption off sessions-since-last-deload while showing the
-  absolute total session count as a secondary stat on the card, and the same
-  section now also shows a separate `weeks since deload` metric derived from
-  the latest deload completion date without changing the session counter. The
-  whole `Session Health` surface is hidden when the More > Settings `Deload
-  mode` toggle is off. The redesigned `1K
+  zones, marker, and caption off `sessions since deload`, where the session
+  count now recomputes from workout chronology relative to the latest deload
+  date when dated session history exists, so editing a past deload date moves
+  both deload-relative metrics together. When no dated session chronology
+  exists, the session counter still falls back to the stored deload snapshot
+  for legacy safety. The same section now also shows a separate
+  calendar-based `weeks since deload` metric plus a small routine-exposure card
+  with `sessions logged` (including archived deload sessions) and `weeks on
+  routine` as elapsed calendar weeks since the routine start. The deferred
+  `active weeks` metric is not currently shown. The whole `Session Health`
+  surface is hidden when the More > Settings `Deload mode` toggle is off. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
@@ -543,9 +548,9 @@ sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
 at or past deload window), derived through a shared `getSessionTone` helper
 in UI.js. On Home the color applies to the "Week N" label text; on Analytics
 the `Session Health` card applies the tone to its sessions-since-deload hero
-count and gauge caption while still showing total sessions as secondary
-context, and now pairs that session-based signal with an explicitly labeled
-calendar-based `weeks since deload` value.
+count and gauge caption, and pairs that session-based signal with explicitly
+labeled routine-exposure context (`sessions logged`, `weeks on routine`) plus
+the calendar-based `weeks since deload` value.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,
