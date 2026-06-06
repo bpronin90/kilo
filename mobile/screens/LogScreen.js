@@ -280,36 +280,49 @@ export function LogScreen({
     return textChanged || dateChanged;
   }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate]);
 
+  // Latest back-press logic, reassigned every render so the registered listener
+  // always runs against current state (fresh handleDone* closures, current text)
+  // without re-subscribing as the user types.
+  const handleAndroidBack = () => {
+    if (deloadMode === 'edit') {
+      handleDoneDeload();
+      return true;
+    }
+    if (editingNoteId) {
+      handleDoneOther();
+      return true;
+    }
+    if (viewingNoteId) {
+      setViewingNoteId(null);
+      return true;
+    }
+    if (mode === 'edit') {
+      handleDoneCurrent();
+      return true;
+    }
+    return false;
+  };
+  const handleAndroidBackRef = useRef(handleAndroidBack);
+  handleAndroidBackRef.current = handleAndroidBack;
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    const backAction = () => {
-      if (deloadMode === 'edit') {
-        handleDoneDeload();
-        return true;
-      }
-      if (editingNoteId) {
-        handleDoneOther();
-        return true;
-      }
-      if (viewingNoteId) {
-        setViewingNoteId(null);
-        return true;
-      }
-      if (mode === 'edit') {
-        handleDoneCurrent();
-        return true;
-      }
-      return false;
-    };
-
+    // Re-subscribe only when a sub-mode opens/closes. Two reasons:
+    //   1. Text fields are intentionally NOT deps — re-subscribing on every
+    //      keystroke churned the listener and intermittently dropped the back
+    //      gesture mid-render.
+    //   2. BackHandler is LIFO (last registered runs first). Re-registering when
+    //      a sub-mode opens places this handler after the tab-level handler in
+    //      App.js, so we get the press first and can consume it to exit the
+    //      sub-screen instead of falling through to tab navigation.
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
-      backAction,
+      () => handleAndroidBackRef.current(),
     );
 
     return () => backHandler.remove();
-  }, [editingNoteId, viewingNoteId, mode, deloadMode, workoutNoteText, workoutNoteTitle, editingTitle, editingText, deloadEditDate]);
+  }, [editingNoteId, viewingNoteId, mode, deloadMode]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith(DELOAD_NOTE_PREFIX));
 
