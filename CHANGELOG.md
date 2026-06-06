@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64.3 - 2026-06-06
+
+- Issue #276: Updated the fatigue product docs to match the shipped session
+  check-in feature. `docs/architecture.md` now documents the detection →
+  response → consumer flow (`deriveSessionCheckIn`, `SessionCheckInModal`
+  persisting `session_checkins` with answer-time `responded_at`, and the
+  `deriveCheckInHistory` Analytics consumer) and `docs/repo-structure.md` now
+  lists `mobile/components/SessionCheckInModal.js`. `docs/current-state.md` was
+  reviewed and already accurate.
+
 ## 0.64.2 - 2026-06-06
 
 - Issue #275: Added targeted `AnalyticsScreen` fatigue interaction coverage so

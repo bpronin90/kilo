@@ -99,7 +99,9 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   and the canonical `deriveWorkoutNoteAnalytics()` entry point that wraps
   all shared workout analytics derivation (classifications, skip data,
   routine depth, visible-lift signal rows, and
-  display-name casing) into one call for downstream consumers
+  display-name casing) into one call for downstream consumers. It also owns the
+  fatigue helpers `deriveSessionCheckIn()` (latest-session rough detection) and
+  `deriveCheckInHistory()` (the Analytics-side check-in history consumer)
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
@@ -193,6 +195,39 @@ one-time forward migration from the legacy single-note key by seeding a
 `Routine 1` notebook entry with `isCurrent: true` and `currentSince: null`,
 and normalizes pre-existing notebook rows that predate the new metadata fields.
 No remote sync is involved.
+
+## Session Check-In (Fatigue) Flow
+
+The fatigue feature is a detection → response → consumer pipeline keyed by
+session index on the current workout note. The old rep-drop-off / `hit_wall`
+chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
+
+- **Detection** — `deriveSessionCheckIn(sections, trackedNames)` in
+  `mobile/lib/data.js` evaluates the latest (deepest) session column of the
+  current note only. It runs skip, whole-day-skip, and per-exercise
+  volume-drop/collapse detectors over the tracked lifts and returns
+  `{ sessionIndex, isRough, detectors, flagged, metrics }`. `LogScreen.js` runs
+  this when the user leaves the current-routine editor after a rough session.
+- **Prompt** — when `isRough` is true and no matching
+  `session_checkins[sessionIndex]` entry exists yet, `LogScreen.js` highlights
+  the flagged exercises in red in the rendered note and opens
+  `mobile/components/SessionCheckInModal.js` with a detector-aware title and the
+  flagged exercise names.
+- **Response / persistence** — the modal writes a check-in record onto the
+  note's `session_checkins[sessionIndex]` carrying `status`
+  (`'ok'` / `'rough'` / `null` for a dismissed/pending answer), optional
+  `reasons` and free-text `note`, the captured detector `metrics`
+  (`exercises_skipped`, `volume_decline_pct`), `flagged`, `detectors`, and an
+  answer-time `responded_at` ISO timestamp. The highlight and prompt suppress
+  once that entry exists. This record is persisted on the workout-note document
+  through the normal note save path.
+- **Consumer** — `deriveCheckInHistory(notes)` in `mobile/lib/data.js` flattens
+  `session_checkins` across all notes into a `responded_at`-sorted history split
+  into `rough` / `ok` / `pending` groups plus a summary (`top_reason`, group
+  totals). `AnalyticsScreen.js` consumes this for the `Fatigue` section and can
+  reopen `SessionCheckInModal` against an existing record to edit it, preserving
+  the original `responded_at`. Both the Log prompt and the Analytics Fatigue
+  surface are gated on the More > Settings `Fatigue tracking` toggle.
 
 ## Persistence Model
 
@@ -313,7 +348,7 @@ recomputation at render time is permitted.
 | `exercise_classifications` | Log save path via `deriveWorkoutNoteAnalytics()` | Persisted on note document | Home (read-only), Analytics (read-only) | **No** — consumers must read `workoutNote.exercise_classifications` |
 | `skip_markers` (`exercise_skips` + `day_skips`) | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
 | `attendance_flags` | Log save path via `deriveSkipData()` (current-note scoped) | Persisted on note document | No current UI consumer after `#163`; available for future use | No |
-| `session_checkins` | Session check-in response flow keyed by `sessionIndex` | Persisted on note document | Fatigue/session-check-in handling state | No |
+| `session_checkins` | Detection via `deriveSessionCheckIn()`; response written by `SessionCheckInModal` keyed by `sessionIndex` (carries `status`, `reasons`, `responded_at`, captured metrics) | Persisted on note document | Analytics Fatigue section via `deriveCheckInHistory()` (read + edit) | No |
 | `rep_drop_off_flags` | _Removed from active contract in issue `#264`; cleanup finished in `#266`_ | No longer produced by the active pipeline; legacy note documents may still carry stale values | No active consumers | N/A |
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
@@ -374,7 +409,10 @@ recomputation at render time is permitted.
 ### Recomputation Rules
 
 `session_checkins` is persisted separately by the session check-in response
-flow and keyed by session index on the workout-note document.
+flow (`SessionCheckInModal`) and keyed by session index on the workout-note
+document, with each record carrying an answer-time `responded_at` timestamp.
+Detection is `deriveSessionCheckIn()` and the read/edit consumer is
+`deriveCheckInHistory()`; see the Session Check-In (Fatigue) Flow section above.
 
 **Consumers MUST NOT recompute these fields:**
 - `exercise_classifications` — read from `workoutNote.exercise_classifications`

@@ -65,6 +65,7 @@ mobile/
     ScreenShell.js     ← native screen wrapper
     TabBar.js          ← native tab bar
     UI.js              ← shared native UI primitives
+    SessionCheckInModal.js ← fatigue session check-in prompt modal (Log + Analytics)
   lib/
     data.js            ← native entry factories + exercise catalog
     format.js          ← native timestamp formatter
@@ -103,6 +104,7 @@ These files define the current real native app path.
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
 | `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
+| `mobile/components/SessionCheckInModal.js` | Centered fatigue check-in prompt modal. Opened from `LogScreen.js` after a rough detected session and reopened from `AnalyticsScreen.js` to edit an existing entry; writes the `I'm okay` / `Not great` / dismissed (`status: null`) response with `responded_at` onto the note's `session_checkins[sessionIndex]`. |
 | `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries, workout notes, tracked lifts, weight goals, and the user profile. |
 | `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
