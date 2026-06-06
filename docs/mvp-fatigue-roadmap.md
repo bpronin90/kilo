@@ -183,14 +183,30 @@ Ordered tasks:
 
 ---
 
-### Phase 2: Check-In UI (depends on Phase 1)
+### Phase 2: Check-In UI (depends on Phase 1) — ✅ COMPLETE
+
+Status: complete. All four tasks (`#266`–`#269`) merged to `main` and closed. The shipped
+behavior is live: the old chip is gone, `80 4,-` renders as `80 lb 4,-`, a rough session
+highlights flagged exercises and opens `SessionCheckInModal` on editor exit, answers persist via
+`session_checkins` and suppress re-prompts, and the Analytics Fatigue section shows the history.
 
 Phase goal: surface the check-in on editor exit, highlight flagged exercises, capture the
 answer, and present logged issues in Analytics.
 
-Completion condition: a rough session highlights red + pops the contextual popup on exit,
+Completion condition (met): a rough session highlights red + pops the contextual popup on exit,
 answers persist and suppress re-prompts, the old chip is gone, `80 4,-` renders as `80 lb 4,-`,
 and the Analytics Fatigue section shows the history.
+
+Post-ship follow-ups (these refined the shipped surface without changing the Phase 2 data model
+or edit path; they are the current contract docs must describe):
+
+- `#272` — refined the Analytics fatigue UX (collapsible card, rough/ok/pending row edit
+  affordances, unanswered-check-in badge) while preserving the same `session_checkins` data model
+  and edit path.
+- `#274` — fixed skipped-session placeholder rendering in clean workout-note views so within-row
+  and bare skips position correctly.
+- `#275` — added targeted `AnalyticsScreen` fatigue interaction coverage (collapse/expand cycle,
+  row/chip edit affordances, pending badge).
 
 Ordered tasks:
 
@@ -239,9 +255,12 @@ Ordered tasks:
 - **Labels:** `mvp-fatigue`, `agent:claude`, `area:ui`, `type:implementation`,
   `effort:default`, `reasoning:medium`
 
-#### Task 7: `SessionCheckInModal` — contextual question + answer capture
+#### Task 7: `SessionCheckInModal` — contextual question + answer capture — ✅ COMPLETE
 
 - **Issue:** `#268` (depends on `#267`)
+- **Status:** complete. `mobile/components/SessionCheckInModal.js` ships the
+  contextual popup with the two-tier answer flow; answers persist via
+  `session_checkins` and suppress re-prompting on the answered session.
 - **Goal:** the popup that asks "you okay?" and records the answer.
 - **Scope:** new `mobile/components/SessionCheckInModal.js`. Contextual title from `detectors`
   + flagged display names. Two-tier answer: **"I'm okay"** (optional Life/logistics quick chips:
@@ -257,9 +276,12 @@ Ordered tasks:
 - **Labels:** `mvp-fatigue`, `agent:claude`, `area:ui`, `type:implementation`,
   `effort:heavy`, `reasoning:medium`
 
-#### Task 8: Analytics Fatigue section (dated list + summary)
+#### Task 8: Analytics Fatigue section (dated list + summary) — ✅ COMPLETE
 
 - **Issue:** `#269` (depends on `#268`; assumes `#266` removed the dead Analytics badge)
+- **Status:** complete. `AnalyticsScreen` renders the Fatigue section from
+  `deriveCheckInHistory(notes)` with the summary header and reverse-chron dated
+  list, gated by the Fatigue tracking setting.
 - **Goal:** present logged check-ins in Analytics.
 - **Scope:** in `mobile/screens/AnalyticsScreen.js` add a **Fatigue** section backed by
   `deriveCheckInHistory(notes)` → `{ list[], summary:{ total, top_reason } }`: a summary header
@@ -275,29 +297,51 @@ Ordered tasks:
 
 ### Phase 3: Docs & Closeout
 
-Phase goal: living docs reflect the new feature and removed chip.
+Phase goal: living docs reflect the new feature and removed chip. With Phases 1–2 shipped, the
+remaining work is the docs pass below plus reviewer closeout (changelog + version bump) — there
+is no outstanding UI or detection implementation.
 
 Completion condition: docs describe the check-in flow, the Fatigue analytics surface, the new
 parser token, and the `session_checkins` model; changelog and version bumped at closeout.
 
-#### Task 9: Update living docs for the fatigue feature
+Task 9 was split into two scoped docs passes:
 
-- **Issue:** TBD
-- **Goal:** keep `current-state`, `architecture`, `repo-structure`, and `testing-and-qa`
-  accurate after Phases 1–2.
+#### Task 9A: Product/architecture docs for the fatigue feature — ✅ COMPLETE
+
+- **Issue:** `#276`
+- **Status:** complete. The product-state and architecture docs describe the shipped check-in
+  flow, the Fatigue analytics surface, the new parser token, and the `session_checkins` model,
+  with no references to the removed chip.
 - **Scope:** `docs/current-state.md` (new check-in flow + Fatigue analytics; chip removed),
   `docs/architecture.md` (detection data flow, `session_checkins` persistence),
-  `docs/repo-structure.md` (new `SessionCheckInModal.js`), `docs/testing-and-qa.md` (new
-  detector/parser test coverage).
-- **Verification:** no references to the removed chip; new feature described accurately.
+  `docs/repo-structure.md` (new `SessionCheckInModal.js`).
+
+#### Task 9B: QA docs + roadmap status — ✅ COMPLETE
+
+- **Issue:** `#277`
+- **Status:** complete. `docs/testing-and-qa.md` documents the real fatigue verification surface
+  (detector/parser/storage checks plus the post-ship `AnalyticsScreen` interaction coverage), and
+  this roadmap is brought current with Phase 2 completion and the post-ship follow-ups.
+- **Goal:** keep `testing-and-qa` accurate after Phases 1–2 and align roadmap status with shipped
+  reality.
+- **Scope:** `docs/testing-and-qa.md` (detector/parser/interaction test coverage),
+  `docs/mvp-fatigue-roadmap.md` (Phase 2 completion + follow-ups, remaining = reviewer closeout).
+- **Verification:** no references to the removed chip; fatigue verification surface described
+  accurately; roadmap no longer presents Tasks 7/8 as outstanding.
 - **Labels:** `mvp-fatigue`, `agent:claude`, `area:docs`, `type:implementation`,
   `effort:default`, `reasoning:medium`
+
+Remaining after Task 9B: reviewer closeout only — changelog entry and version bump per the
+versioning policy. No implementation work remains in this pass.
 
 ---
 
 ## Sequencing summary
 
 - Phase 1 (claude): Task 1 `#262` → Task 2 `#263` → Task 3 `#264` → Task 4 `#265` — ✅ complete
-- Phase 2 (claude, after Phase 1): Task 5 `#266` — ✅ complete; Task 6 `#267` — ✅ complete; Task 7 `#268` → Task 8 `#269`
-- Phase 3 (claude, after Phase 2): Task 9
+- Phase 2 (claude, after Phase 1): Task 5 `#266` → Task 6 `#267` → Task 7 `#268` → Task 8 `#269` — ✅ complete
+- Post-ship follow-ups (claude): `#272` (Analytics fatigue UX), `#274` (skip placeholder render),
+  `#275` (Analytics fatigue interaction coverage) — ✅ complete
+- Phase 3 (claude, after Phase 2): Task 9A `#276` — ✅ complete; Task 9B `#277` — ✅ complete;
+  then reviewer closeout (changelog + version bump)
 - Reviewer (codex) writes each issue from these task specs and reviews on completion.
