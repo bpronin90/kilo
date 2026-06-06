@@ -222,6 +222,9 @@ retains non-test commands such as `npm run audit`.
 - verifies feature-toggle gating so the `Fatigue` section disappears when
   fatigue tracking is off and the `Session Health` section disappears when
   deload mode is off while unrelated Analytics sections remain visible
+- verifies the `Fatigue` card's collapsed default summary, expand-then-collapse
+  toggle cycle, post-expansion rough-row edit affordances, post-expansion
+  ok/pending chip edit affordances, and the unanswered-check-in badge
 - verifies exercises are grouped by routine day with correct group headers
 - verifies multi-day exercises render per-day row metrics from
   `perDaySignals`, including null-trend fallback to the global signal and

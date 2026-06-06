@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.64.2 - 2026-06-06
+
+- Issue #275: Added targeted `AnalyticsScreen` fatigue interaction coverage so
+  the native test suite now locks the card's collapsed default state,
+  expand-then-collapse toggle behavior, rough-row and ok/pending-chip edit
+  affordances, and the unanswered-check-in badge.
+
 ## 0.64.1 - 2026-06-06
 
 - Issue #274: Fixed skipped-session placeholder rendering in workout-note clean
