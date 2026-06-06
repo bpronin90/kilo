@@ -790,6 +790,25 @@ export function sessionsSinceLastDeload(totalSessions, deloadHistory) {
   return Math.max(0, totalSessions - latest.session_count);
 }
 
+// ── computePostDeloadSessions ─────────────────────────────────────────────────
+// Given a session_dates array (may contain null for legacy sessions) and a
+// deload date string (YYYY-MM-DD), returns whether auto-recompute is possible
+// and how many sessions fall strictly after the deload date.
+//
+// canRecompute is true only when every entry in session_dates is a non-null string.
+// Same-day sessions (date === deloadDateStr) do NOT count as post-deload.
+// Returns { canRecompute: false, count: null } when any date is missing.
+export function computePostDeloadSessions(sessionDates, deloadDateStr) {
+  if (!sessionDates || sessionDates.length === 0) {
+    return { canRecompute: false, count: null };
+  }
+  if (sessionDates.some(d => d == null)) {
+    return { canRecompute: false, count: null };
+  }
+  const count = sessionDates.filter(d => d > deloadDateStr).length;
+  return { canRecompute: true, count };
+}
+
 // ── Deload generation ─────────────────────────────────────────────────────────
 
 // Heaviest weight with ≥2 sets in the last row; fallback to heaviest weight present.

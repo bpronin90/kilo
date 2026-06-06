@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, computePostDeloadSessions } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2642,5 +2642,89 @@ describe('sessionsSinceLastDeload', () => {
   test('returns 0 when totalSessions equals session_count baseline', () => {
     const history = [{ id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 }];
     expect(sessionsSinceLastDeload(10, history)).toBe(0);
+  });
+
+  test('legacy record without note_id still works for sinceDeload calculation', () => {
+    const history = [{ id: 'dl_old', completed_at: '2026-04-01T00:00:00.000Z', session_count: 7 }];
+    expect(sessionsSinceLastDeload(12, history)).toBe(5);
+  });
+});
+
+// ── computePostDeloadSessions ─────────────────────────────────────────────────
+
+describe('computePostDeloadSessions', () => {
+  test('returns canRecompute false when sessionDates is null', () => {
+    const result = computePostDeloadSessions(null, '2026-05-01');
+    expect(result.canRecompute).toBe(false);
+    expect(result.count).toBeNull();
+  });
+
+  test('returns canRecompute false when sessionDates is empty', () => {
+    const result = computePostDeloadSessions([], '2026-05-01');
+    expect(result.canRecompute).toBe(false);
+    expect(result.count).toBeNull();
+  });
+
+  test('returns canRecompute false when any session date is null (legacy)', () => {
+    const result = computePostDeloadSessions(['2026-04-10', null, '2026-05-20'], '2026-05-01');
+    expect(result.canRecompute).toBe(false);
+    expect(result.count).toBeNull();
+  });
+
+  test('returns canRecompute false when all dates are null', () => {
+    const result = computePostDeloadSessions([null, null, null], '2026-05-01');
+    expect(result.canRecompute).toBe(false);
+    expect(result.count).toBeNull();
+  });
+
+  test('returns canRecompute true with correct count when all dates are present', () => {
+    const sessionDates = ['2026-04-10', '2026-04-24', '2026-05-08', '2026-05-22', '2026-06-05'];
+    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
+    expect(result.canRecompute).toBe(true);
+    expect(result.count).toBe(3); // May 8, May 22, Jun 5 are all after May 1
+  });
+
+  test('same-day sessions do NOT count as post-deload', () => {
+    const sessionDates = ['2026-04-10', '2026-05-01', '2026-05-15'];
+    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
+    expect(result.canRecompute).toBe(true);
+    expect(result.count).toBe(1); // Only May 15; the May 1 session is same-day and excluded
+  });
+
+  test('returns count 0 when no sessions are after deload date', () => {
+    const sessionDates = ['2026-03-01', '2026-04-01', '2026-05-01'];
+    const result = computePostDeloadSessions(sessionDates, '2026-05-10');
+    expect(result.canRecompute).toBe(true);
+    expect(result.count).toBe(0);
+  });
+
+  test('returns count equal to total when all sessions are after deload date', () => {
+    const sessionDates = ['2026-05-15', '2026-06-01', '2026-06-10'];
+    const result = computePostDeloadSessions(sessionDates, '2026-05-01');
+    expect(result.canRecompute).toBe(true);
+    expect(result.count).toBe(3);
+  });
+
+  test('auto-recompute path: new session_count derived from count', () => {
+    const totalSessions = 20;
+    const sessionDates = Array.from({ length: 20 }, (_, i) =>
+      `2026-${String(Math.floor(i / 4) + 1).padStart(2, '0')}-${String((i % 4) * 7 + 1).padStart(2, '0')}`
+    );
+    const deloadDate = '2026-04-01';
+    const { canRecompute, count } = computePostDeloadSessions(sessionDates, deloadDate);
+    expect(canRecompute).toBe(true);
+    const newSessionCount = Math.max(0, totalSessions - count);
+    expect(sessionsSinceLastDeload(totalSessions, [
+      { id: 'dl_1', completed_at: `${deloadDate}T12:00:00.000Z`, session_count: newSessionCount }
+    ])).toBe(count);
+  });
+
+  test('manual-repair path: session_count derived from manual input', () => {
+    const totalSessions = 15;
+    const manualSinceDeload = 4;
+    const newSessionCount = Math.max(0, totalSessions - manualSinceDeload);
+    expect(sessionsSinceLastDeload(totalSessions, [
+      { id: 'dl_1', completed_at: '2026-05-01T12:00:00.000Z', session_count: newSessionCount, baseline_source: 'manual_repair' }
+    ])).toBe(manualSinceDeload);
   });
 });

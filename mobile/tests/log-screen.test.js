@@ -1,4 +1,5 @@
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, computePostDeloadSessions } from '../lib/parser';
+import { syncSessionDates } from '../hooks/useEntries';
 
 // Simulates the skip-aware IIFE used in all clean-view render paths of LogScreen.
 // Returns an array of 'skip' | 'set' | 'unparsed:<raw>' tokens in order.
@@ -157,5 +158,82 @@ describe('LogScreen skip-aware rendering', () => {
     expect(rowOnlyTokens.every(t => t === 'set')).toBe(true);
     // Old path produces no skips — confirms the bug was real
     expect(rowOnlyTokens.filter(t => t === 'skip')).toHaveLength(0);
+  });
+});
+
+// ── syncSessionDates (session_dates maintenance contract) ─────────────────────
+
+describe('syncSessionDates', () => {
+  test('initializes all positions to null on first touch (no existing array)', () => {
+    expect(syncSessionDates(null, 5)).toEqual([null, null, null, null, null]);
+  });
+
+  test('initializes empty array when count is 0 on first touch', () => {
+    expect(syncSessionDates(null, 0)).toEqual([]);
+  });
+
+  test('trims array when session count decreases', () => {
+    const existing = ['2026-05-01', '2026-05-08', '2026-05-15'];
+    expect(syncSessionDates(existing, 2)).toEqual(['2026-05-01', '2026-05-08']);
+  });
+
+  test('returns same array length when session count is unchanged', () => {
+    const existing = ['2026-05-01', '2026-05-08'];
+    expect(syncSessionDates(existing, 2)).toEqual(['2026-05-01', '2026-05-08']);
+  });
+
+  test('appends today for newly added sessions when count increases', () => {
+    const existing = ['2026-05-01', '2026-05-08'];
+    const result = syncSessionDates(existing, 4);
+    expect(result).toHaveLength(4);
+    expect(result[0]).toBe('2026-05-01');
+    expect(result[1]).toBe('2026-05-08');
+    // New entries are today's date (non-null string)
+    expect(typeof result[2]).toBe('string');
+    expect(result[2]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(result[3]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test('preserves legacy null positions when trimming', () => {
+    const existing = [null, null, '2026-05-15', '2026-06-01'];
+    expect(syncSessionDates(existing, 3)).toEqual([null, null, '2026-05-15']);
+  });
+
+  test('initializes empty existing array as all-null on first touch', () => {
+    expect(syncSessionDates([], 3)).toEqual([null, null, null]);
+  });
+});
+
+// ── deload date edit path: auto-recompute vs manual-repair decision ───────────
+
+describe('deload date edit: auto-recompute path decision', () => {
+  test('canRecompute true leads to new baseline = totalSessions - postDeloadCount', () => {
+    const totalSessions = 18;
+    const sessionDates = [
+      '2026-01-10', '2026-01-24', '2026-02-07', '2026-02-21',
+      '2026-03-07', '2026-03-21', '2026-04-04', '2026-04-18',
+      '2026-05-02', '2026-05-16', '2026-05-30', '2026-06-13',
+      '2026-06-27', '2026-07-11', '2026-07-25', '2026-08-08',
+      '2026-08-22', '2026-09-05',
+    ];
+    const newDeloadDate = '2026-05-16';
+    const { canRecompute, count } = computePostDeloadSessions(sessionDates, newDeloadDate);
+    expect(canRecompute).toBe(true);
+    expect(count).toBe(8); // sessions after May 16: May 30, Jun 13, Jun 27, Jul 11, Jul 25, Aug 8, Aug 22, Sep 5
+    const newBaseline = Math.max(0, totalSessions - count);
+    expect(newBaseline).toBe(10);
+  });
+
+  test('canRecompute false when any session date is missing (triggers manual-repair path)', () => {
+    const sessionDates = [null, null, '2026-05-15', '2026-06-01'];
+    const { canRecompute } = computePostDeloadSessions(sessionDates, '2026-05-10');
+    expect(canRecompute).toBe(false);
+  });
+
+  test('manual-repair: baseline_source distinguishes repair source from auto', () => {
+    const auto = { id: 'dl_auto', completed_at: '2026-06-01T12:00:00.000Z', session_count: 12, baseline_source: 'captured' };
+    const manual = { id: 'dl_man', completed_at: '2026-06-01T12:00:00.000Z', session_count: 12, baseline_source: 'manual_repair' };
+    expect(auto.baseline_source).toBe('captured');
+    expect(manual.baseline_source).toBe('manual_repair');
   });
 });

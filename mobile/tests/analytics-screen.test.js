@@ -724,6 +724,104 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
   });
 });
 
+// ── Session Health after deload date edit ─────────────────────────────────────
+
+describe('AnalyticsScreen Session Health with edited deload baseline', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('sinceDeload is derived from updated session_count after captured auto-recompute', () => {
+    // currentNote has 20 sessions. After editing the deload date, the history
+    // record now has session_count=15 (5 sessions post-deload). SessionGauge
+    // should display the new count correctly via sessionsSinceLastDeload.
+    const note = {
+      id: 'wn_routine',
+      title: 'Routine',
+      raw_text: '-Bench\n' + Array(20).fill('100 5,5,5').map(r => `- ${r}`).join('\n'),
+      saved_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      tracked_exercises: [],
+      one_k_exercises: null,
+      isCurrent: true,
+      session_dates: Array(20).fill('2026-01-01'),
+    };
+    const deloadHistory = [
+      {
+        id: 'dl_1',
+        completed_at: '2026-06-01T12:00:00.000Z',
+        session_count: 15,
+        baseline_source: 'captured',
+        note_id: 'wn_dl_1',
+      },
+    ];
+    const component = setup({
+      hookOverrides: {
+        notes: [note],
+        currentNote: note,
+        deloadHistory,
+      },
+    });
+    const root = component.root;
+    expect(hasText(root, 'Session Health')).toBe(true);
+  });
+
+  test('sinceDeload is derived from updated session_count after manual_repair', () => {
+    const note = {
+      id: 'wn_routine',
+      title: 'Routine',
+      raw_text: '-Bench\n' + Array(10).fill('100 5,5,5').map(r => `- ${r}`).join('\n'),
+      saved_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      tracked_exercises: [],
+      one_k_exercises: null,
+      isCurrent: true,
+      session_dates: null, // legacy: no session dates
+    };
+    const deloadHistory = [
+      {
+        id: 'dl_1',
+        completed_at: '2026-05-15T12:00:00.000Z',
+        session_count: 7,
+        baseline_source: 'manual_repair',
+        note_id: 'wn_dl_1',
+      },
+    ];
+    const component = setup({
+      hookOverrides: {
+        notes: [note],
+        currentNote: note,
+        deloadHistory,
+      },
+    });
+    const root = component.root;
+    expect(hasText(root, 'Session Health')).toBe(true);
+  });
+
+  test('legacy records without note_id or baseline_source are tolerated', () => {
+    const note = {
+      id: 'wn_routine',
+      title: 'Routine',
+      raw_text: '-Bench\n100 5,5,5',
+      saved_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      tracked_exercises: [],
+      one_k_exercises: null,
+      isCurrent: true,
+    };
+    const deloadHistory = [
+      { id: 'dl_legacy', completed_at: '2026-04-01T00:00:00.000Z', session_count: 0 },
+    ];
+    const component = setup({
+      hookOverrides: {
+        notes: [note],
+        currentNote: note,
+        deloadHistory,
+      },
+    });
+    const root = component.root;
+    expect(hasText(root, 'Session Health')).toBe(true);
+  });
+});
+
 // ── feature toggle gating (issue #273) ────────────────────────────────────────
 
 describe('AnalyticsScreen feature toggle gating', () => {

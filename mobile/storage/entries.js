@@ -310,6 +310,15 @@ export async function deleteDeloadHistory(id) {
   return filtered;
 }
 
+export async function updateDeloadHistory(id, patch) {
+  const list = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+  const idx = list.findIndex(r => r.id === id);
+  if (idx < 0) return false;
+  list[idx] = { ...list[idx], ...patch };
+  await writeList(WORKOUT_DELOAD_HISTORY_KEY, list);
+  return list[idx];
+}
+
 // ── multi-note workout storage ────────────────────────────────────────────────
 
 export async function loadWorkoutNotes() {
