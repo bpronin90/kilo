@@ -212,27 +212,42 @@ describe('deload date edit: sessions and weeks are independent metrics', () => {
   });
 });
 
-// ── autosave vs explicit save: success indicator behavior ─────────────────────
+// ── autosave vs explicit save: call-site contract ────────────────────────────
+// React Native components cannot be rendered in this test environment, so these
+// tests assert the source-level contract directly: both debounce timer callbacks
+// must pass { autosave: true } to their respective save handlers.  If either
+// call site is changed back to a bare call, the test will fail and the flicker
+// will return.
 
-describe('save success notification: autosave vs explicit save', () => {
-  // Mirrors the saveSuccess decision in handleSave / handleSaveOtherNote.
-  // autosave:true = debounce-timer triggered; autosave:false = user-triggered
-  // (Done button, Save & Switch).
-  function computeSaveSuccessMessage({ autosave }) {
-    return autosave ? null : 'Saved!';
-  }
+const fs = require('fs');
+const path = require('path');
 
-  test('autosave does not produce a visible success message', () => {
-    expect(computeSaveSuccessMessage({ autosave: true })).toBeNull();
+describe('autosave call sites: debounce timers pass { autosave: true }', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(
+      path.join(__dirname, '../screens/LogScreen.js'),
+      'utf8'
+    );
   });
 
-  test('explicit save produces a visible success message', () => {
-    expect(computeSaveSuccessMessage({ autosave: false })).toBe('Saved!');
+  test('current-note debounce timer calls handleSave({ autosave: true })', () => {
+    expect(src).toMatch(/handleSave\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
   });
 
-  test('autosave flag defaults to false (explicit-save path when flag absent)', () => {
-    // Callers that omit the flag (original call sites) behave as explicit saves.
-    const autosave = undefined ?? false;
-    expect(computeSaveSuccessMessage({ autosave })).toBe('Saved!');
+  test('other-note debounce timer calls handleSaveOtherNote({ autosave: true })', () => {
+    expect(src).toMatch(/handleSaveOtherNote\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
+  });
+
+  test('handleSave suppresses setSaveSuccess when autosave is true', () => {
+    // The guarded call must be present: if (!autosave) setSaveSuccess(...)
+    expect(src).toMatch(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/);
+  });
+
+  test('handleSaveOtherNote suppresses setSaveSuccess when autosave is true', () => {
+    // Same guard must appear twice — once per save handler.
+    const matches = src.match(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/g);
+    expect(matches).not.toBeNull();
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });
