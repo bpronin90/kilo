@@ -779,14 +779,69 @@ export function parseWorkoutEntry(items, workout_date) {
 
 // ── Deload history ────────────────────────────────────────────────────────────
 
-// Returns sessions elapsed since the most recently completed deload.
-// Baseline is the session_count captured on the latest deload record (by completed_at).
-// Returns totalSessions when history is empty (no deload ever completed).
-// Clamps to 0 if totalSessions is somehow below the baseline.
-export function sessionsSinceLastDeload(totalSessions, deloadHistory) {
-  if (!deloadHistory || deloadHistory.length === 0) return totalSessions;
-  const latest = deloadHistory.reduce((best, r) =>
+const _DAY_MS = 24 * 60 * 60 * 1000;
+const _WEEK_MS = 7 * _DAY_MS;
+
+// UTC midnight epoch for a 'YYYY-MM-DD...' string (time-of-day ignored).
+function _utcDayFromIso(iso) {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+// Latest-wins deload record by completed_at. Returns null for empty history.
+function _latestDeload(deloadHistory) {
+  if (!deloadHistory || deloadHistory.length === 0) return null;
+  return deloadHistory.reduce((best, r) =>
     !best || r.completed_at > best.completed_at ? r : best, null);
+}
+
+// ── sessionDateMapFromNote ────────────────────────────────────────────────────
+// Builds the per-session date chronology for the current routine from its stored
+// session check-ins. Returns Map<sessionIndex(int), 'YYYY-MM-DD'>.
+//
+// session_checkins is the only per-session dated anchor in the note model, so it
+// is the chronology source for deload-boundary and active-week derivation. Index
+// keys are 0-based positions in the session chain (oldest = 0), matching the
+// session ordinals counted by countWorkoutSessionsFromSections.
+export function sessionDateMapFromNote(note) {
+  const out = new Map();
+  const checkins = note?.session_checkins;
+  if (!checkins) return out;
+  for (const [key, ci] of Object.entries(checkins)) {
+    if (!ci || !ci.responded_at) continue;
+    const idx = Number(key);
+    if (!Number.isInteger(idx) || idx < 0) continue;
+    out.set(idx, ci.responded_at.slice(0, 10));
+  }
+  return out;
+}
+
+// ── sessionsSinceLastDeload ───────────────────────────────────────────────────
+// Sessions logged after the most recently completed deload, excluding the deload
+// boundary session itself (so a freshly completed deload reads 0).
+//
+// When a session-date chronology (dateMap) is supplied, the boundary is located
+// from workout chronology relative to the deload's completed_at date: the highest
+// session ordinal whose date is on/before the deload date is the boundary, and
+// every later ordinal counts as a post-deload session. Sessions are chronological
+// by index, so dates are only used to LOCATE the boundary — undated sessions past
+// the boundary are still counted by ordinal. This makes editing a past deload
+// date move sessions-since-deload in lockstep with weeks-since-deload.
+//
+// Falls back to the stored session_count snapshot when no chronology is available
+// (no dated check-ins), preserving legacy behavior. Returns totalSessions when no
+// deload has ever been completed. Clamps to 0.
+export function sessionsSinceLastDeload(totalSessions, deloadHistory, dateMap) {
+  const latest = _latestDeload(deloadHistory);
+  if (!latest) return totalSessions;
+  if (dateMap && dateMap.size > 0 && latest.completed_at) {
+    const boundary = latest.completed_at.slice(0, 10);
+    let boundaryIndex = -1; // highest dated ordinal on/before the deload date
+    for (const [idx, day] of dateMap) {
+      if (day <= boundary && idx > boundaryIndex) boundaryIndex = idx;
+    }
+    return Math.max(0, totalSessions - (boundaryIndex + 1));
+  }
   return Math.max(0, totalSessions - latest.session_count);
 }
 
@@ -799,16 +854,73 @@ export function sessionsSinceLastDeload(totalSessions, deloadHistory) {
 // so that a deload logged late at night on day D still counts as a full week
 // once today's UTC date is D+7, regardless of the clock time.
 export function weeksSinceLastDeload(deloadHistory) {
-  if (!deloadHistory || deloadHistory.length === 0) return null;
-  const latest = deloadHistory.reduce((best, r) =>
-    !best || r.completed_at > best.completed_at ? r : best, null);
-  const [dy, dm, dd] = latest.completed_at.slice(0, 10).split('-').map(Number);
-  const deloadDay = Date.UTC(dy, dm - 1, dd);
+  const latest = _latestDeload(deloadHistory);
+  if (!latest) return null;
+  const deloadDay = _utcDayFromIso(latest.completed_at);
   const now = new Date(Date.now());
   const todayDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const diffMs = todayDay - deloadDay;
   if (diffMs < 0) return 0;
-  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+  return Math.floor(diffMs / _WEEK_MS);
+}
+
+// ── activeWeeksOnRoutine ──────────────────────────────────────────────────────
+// Number of distinct calendar weeks (Monday-anchored) that contain at least one
+// logged session, derived from the session-date chronology. Returns null when no
+// dated sessions exist (chronology unavailable), so the surface can render "—"
+// rather than a misleading 0.
+export function activeWeeksOnRoutine(dateMap) {
+  if (!dateMap || dateMap.size === 0) return null;
+  const weeks = new Set();
+  for (const day of dateMap.values()) {
+    const ms = _utcDayFromIso(day);
+    const dow = new Date(ms).getUTCDay();      // 0=Sun..6=Sat
+    const mondayOffset = (dow + 6) % 7;        // days since Monday
+    weeks.add(ms - mondayOffset * _DAY_MS);    // Monday-of-week epoch as bucket key
+  }
+  return weeks.size;
+}
+
+// ── elapsedWeeksOnRoutine ─────────────────────────────────────────────────────
+// Number of calendar weeks the routine has spanned since it began, including
+// inactive gaps. 1-based: the routine's first week reads 1. Returns null when no
+// start date is known; returns 0 when the start date is in the future.
+//
+// This is exposure span (always >= activeWeeksOnRoutine), distinct from
+// weeksSinceLastDeload which measures recovery elapsed and reads 0 immediately
+// after a deload.
+export function elapsedWeeksOnRoutine(routineStartIso, nowMs) {
+  if (!routineStartIso) return null;
+  const startDay = _utcDayFromIso(routineStartIso);
+  const now = new Date(nowMs != null ? nowMs : Date.now());
+  const todayDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const diffMs = todayDay - startDay;
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / _WEEK_MS) + 1;
+}
+
+// ── deriveRoutineStatus ───────────────────────────────────────────────────────
+// Single canonical entry point for the Analytics routine-status surface. Bundles
+// the four metric contract values from the current routine sections, the routine
+// note (chronology + start date), and deload history.
+//
+// Returns:
+//   sessionsLogged:      total sessions on the current routine (includes deload
+//                        sessions present in the chain; never reduced by deloads)
+//   activeWeeks:         calendar weeks with >=1 logged session (null if unknown)
+//   elapsedWeeks:        calendar weeks since the routine began (null if unknown)
+//   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
+//   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
+export function deriveRoutineStatus(currentSections, note, deloadHistory) {
+  const sessionsLogged = countWorkoutSessionsFromSections(currentSections || []);
+  const dateMap = sessionDateMapFromNote(note);
+  return {
+    sessionsLogged,
+    activeWeeks: activeWeeksOnRoutine(dateMap),
+    elapsedWeeks: elapsedWeeksOnRoutine(note?.saved_at),
+    sessionsSinceDeload: sessionsSinceLastDeload(sessionsLogged, deloadHistory, dateMap),
+    weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
+  };
 }
 
 // ── Deload generation ─────────────────────────────────────────────────────────

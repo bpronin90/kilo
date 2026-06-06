@@ -3,6 +3,15 @@ import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
+import {
+  parseWorkoutNote,
+  deriveRoutineStatus,
+  sessionsSinceLastDeload,
+  weeksSinceLastDeload,
+  sessionDateMapFromNote,
+  activeWeeksOnRoutine,
+  elapsedWeeksOnRoutine,
+} from '../lib/parser';
 
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -815,5 +824,178 @@ describe('AnalyticsScreen feature toggle gating', () => {
     // Unrelated sections still render.
     expect(hasText(root, 'Fatigue')).toBe(true);
     expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+});
+
+// ── Routine-status metric derivation (issue #282) ─────────────────────────────
+// MOCK_NOW (module-level) is 2026-05-26T12:00:00Z; date-relative metrics below
+// are anchored to that via the fake system time.
+
+// Builds a session_checkins map ({ '<idx>': { responded_at } }) from an ordered
+// list of session date strings, mirroring the note's chronology source.
+function checkinsFromDates(dates) {
+  const out = {};
+  dates.forEach((d, i) => {
+    out[String(i)] = { responded_at: `${d}T10:00:00.000Z`, status: 'ok' };
+  });
+  return out;
+}
+
+// A five-session routine dated one week apart (Mondays), beginning 2026-04-06.
+const FIVE_WEEK_DATES = ['2026-04-06', '2026-04-13', '2026-04-20', '2026-04-27', '2026-05-04'];
+const FIVE_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
+  '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
+
+describe('routine-status derivation — deload-relative metrics (#282)', () => {
+  test('deload date edits move sessions-since and weeks-since together', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    const total = 5;
+
+    // Two records differing ONLY in completed_at (session_count snapshot identical).
+    const historyA = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3 }];
+    const historyB = [{ id: 'dl', completed_at: '2026-05-04T12:00:00.000Z', session_count: 3 }];
+
+    const sinceA = sessionsSinceLastDeload(total, historyA, dateMap);
+    const sinceB = sessionsSinceLastDeload(total, historyB, dateMap);
+    const weeksA = weeksSinceLastDeload(historyA);
+    const weeksB = weeksSinceLastDeload(historyB);
+
+    // Boundary at 04-20 → ordinals 0,1,2 on/before → 2 sessions after.
+    expect(sinceA).toBe(2);
+    // Boundary at 05-04 → ordinals 0..4 on/before → 0 sessions after.
+    expect(sinceB).toBe(0);
+    // Both deload-relative metrics changed when only the date moved.
+    expect(sinceA).not.toBe(sinceB);
+    expect(weeksA).not.toBe(weeksB);
+    expect(weeksA).toBe(5); // 2026-05-26 − 2026-04-20 = 36 days → 5 weeks
+    expect(weeksB).toBe(3); // 2026-05-26 − 2026-05-04 = 22 days → 3 weeks
+  });
+
+  test('chronology recompute is preferred over a stale session_count snapshot', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    // Snapshot is deliberately wrong (99); the date-located boundary must win.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99 }];
+    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(2);
+    // Without chronology, it falls back to the (clamped) snapshot.
+    expect(sessionsSinceLastDeload(5, history)).toBe(0);
+  });
+
+  test('a completed deload resets sessions-since-deload to 0', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    // Deload completed on the latest session date → boundary is the last ordinal.
+    const history = [{ id: 'dl', completed_at: '2026-05-04T12:00:00.000Z', session_count: 5 }];
+    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(0);
+  });
+
+  test('a deload date before all sessions counts every session as post-deload', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    const history = [{ id: 'dl', completed_at: '2026-01-01T12:00:00.000Z', session_count: 0 }];
+    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(5);
+  });
+
+  test('no deload history returns total sessions and null weeks', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    expect(sessionsSinceLastDeload(5, [], dateMap)).toBe(5);
+    expect(weeksSinceLastDeload([])).toBeNull();
+  });
+});
+
+describe('routine-status derivation — routine-week metrics (#282)', () => {
+  test('active weeks counts distinct calendar weeks with a logged session', () => {
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+    expect(activeWeeksOnRoutine(dateMap)).toBe(5);
+  });
+
+  test('active weeks de-duplicates multiple sessions in the same calendar week', () => {
+    // 2026-04-06 (Mon) and 2026-04-08 (Wed) are the same week → 1 active week.
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(['2026-04-06', '2026-04-08']) });
+    expect(activeWeeksOnRoutine(dateMap)).toBe(1);
+  });
+
+  test('active weeks is null when no dated sessions exist', () => {
+    expect(activeWeeksOnRoutine(sessionDateMapFromNote({}))).toBeNull();
+    expect(activeWeeksOnRoutine(new Map())).toBeNull();
+  });
+
+  test('elapsed weeks spans calendar weeks since the routine began, including gaps', () => {
+    // 2026-04-06 → 2026-05-26 = 50 days → floor(50/7)+1 = 8 spanned weeks.
+    expect(elapsedWeeksOnRoutine('2026-04-06T00:00:00.000Z')).toBe(8);
+  });
+
+  test('elapsed weeks is 1 within the first week and >= active weeks', () => {
+    expect(elapsedWeeksOnRoutine('2026-05-25T00:00:00.000Z')).toBe(1);
+    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(['2026-05-25']) });
+    expect(elapsedWeeksOnRoutine('2026-05-25T00:00:00.000Z'))
+      .toBeGreaterThanOrEqual(activeWeeksOnRoutine(dateMap));
+  });
+
+  test('elapsed weeks is null without a start date and 0 for a future start', () => {
+    expect(elapsedWeeksOnRoutine(null)).toBeNull();
+    expect(elapsedWeeksOnRoutine('2026-12-01T00:00:00.000Z')).toBe(0);
+  });
+});
+
+describe('deriveRoutineStatus — composite contract (#282)', () => {
+  function sectionsFor(raw) {
+    return parseWorkoutNote(raw).sections;
+  }
+
+  test('sessions logged is the full routine session depth (deloads do not reduce it)', () => {
+    const note = {
+      saved_at: '2026-04-06T00:00:00.000Z',
+      session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
+    };
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3 }];
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsLogged).toBe(5);
+    // The deload-relative metric is derived from chronology, not the snapshot.
+    expect(status.sessionsSinceDeload).toBe(2);
+    expect(status.weeksSinceDeload).toBe(5);
+    expect(status.activeWeeks).toBe(5);
+    expect(status.elapsedWeeks).toBe(8);
+  });
+
+  test('legacy / no-history note derives safely', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' }; // no check-ins
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, []);
+    expect(status.sessionsLogged).toBe(5);
+    expect(status.sessionsSinceDeload).toBe(5); // no deload → all sessions
+    expect(status.weeksSinceDeload).toBeNull();
+    expect(status.activeWeeks).toBeNull();      // no dated sessions
+    expect(status.elapsedWeeks).toBe(8);
+  });
+
+  test('null note and empty sections do not throw', () => {
+    const status = deriveRoutineStatus(null, null, null);
+    expect(status.sessionsLogged).toBe(0);
+    expect(status.sessionsSinceDeload).toBe(0);
+    expect(status.weeksSinceDeload).toBeNull();
+    expect(status.activeWeeks).toBeNull();
+    expect(status.elapsedWeeks).toBeNull();
+  });
+});
+
+describe('AnalyticsScreen routine-status plumbing (#282)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('surfaces sessions-logged, active-weeks and elapsed-weeks labels', () => {
+    const currentNote = {
+      id: 'wn1',
+      raw_text: FIVE_SESSION_RAW,
+      saved_at: '2026-04-06T00:00:00.000Z',
+      session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
+      isCurrent: true,
+    };
+    const deloadHistory = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99 }];
+    const component = setup({ hookOverrides: { notes: [currentNote], currentNote, deloadHistory } });
+    const root = component.root;
+
+    expect(hasText(root, 'sessions logged')).toBe(true);
+    expect(hasText(root, 'active weeks')).toBe(true);
+    expect(hasText(root, 'elapsed weeks')).toBe(true);
+    // Corrected, chronology-derived sessions-since value (2), not the snapshot path.
+    expect(hasText(root, 'sessions since deload')).toBe(true);
+    expect(findAllText(root).some(s => s === '5')).toBe(true); // sessions logged + active weeks
+    expect(findAllText(root).some(s => s === '8')).toBe(true); // elapsed weeks
   });
 });
