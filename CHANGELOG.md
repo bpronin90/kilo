@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.65.0 - 2026-06-06
+
+- Issue #278: Reframed `Session Health` into two explicit deload metrics.
+  Analytics now keeps `sessions since deload` as the session-based gauge while
+  adding a separate calendar-based `weeks since deload` value, and past deload
+  date edits now sync the linked workout note and deload-history record
+  together without redefining skipped sessions or introducing the abandoned
+  manual-repair/session-date model. Legacy note-backed deloads without a
+  linked history row now keep their date field read-only so note dates cannot
+  silently drift away from the analytics anchor.
+
 ## 0.64.4 - 2026-06-06
 
 - Issue #277: Aligned the fatigue QA docs and roadmap status with shipped

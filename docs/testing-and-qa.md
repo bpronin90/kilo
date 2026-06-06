@@ -67,6 +67,8 @@ Current limitation:
   7-day/30-day averages come from the shared layer instead of screen-local
   reshaping, targeted Analytics feature-toggle gating coverage that hides the
   Fatigue and Session Health sections when their settings are off, targeted
+  two-metric Session Health coverage for explicit `sessions since deload` and
+  `weeks since deload` labels plus legacy deload-history rendering, targeted
   `AnalyticsScreen` Fatigue-section interaction coverage for the
   collapsed-by-default summary, the expand/collapse toggle cycle, the
   post-expansion rough-row and ok/pending chip edit affordances, and the
@@ -237,6 +239,9 @@ retains non-test commands such as `npm run audit`.
 - verifies the `Session Health` section rename plus the gauge zone/caption
   contract (`No sessions logged`, `Approaching deload`, and the three zone
   labels)
+- verifies the two-metric deload display so Analytics explicitly labels both
+  `sessions since deload` and `weeks since deload`, including the no-history
+  em-dash state for the weeks metric
 - verifies feature-toggle gating so the `Fatigue` section disappears when
   fatigue tracking is off and the `Session Health` section disappears when
   deload mode is off while unrelated Analytics sections remain visible
@@ -262,10 +267,11 @@ retains non-test commands such as `npm run audit`.
   note save/overwrite/clear behavior, tracked-exercise persistence across note
   edits, optional user-profile persistence, the deload dual-write linkage
   contract (`note_id` plus `Deload · ` note filtering and deletion pattern),
-  tolerance for pre-#257 history rows without `note_id`, persisted default and
-  round-trip behavior for the `Fatigue tracking` and `Deload mode` settings,
-  and migration of legacy structured sessions into the canonical workout-note
-  document
+  tolerance for pre-#257 history rows without `note_id`, direct
+  `updateDeloadHistory(id, patch)` coverage for linked deload-date sync,
+  persisted default and round-trip behavior for the `Fatigue tracking` and
+  `Deload mode` settings, and migration of legacy structured sessions into the
+  canonical workout-note document
 - includes a contract-driven migration suite that verifies weighted entries,
   non-weight entries, mixed weighted-plus-metadata entries, positional skip
   slots, multi-session count preservation, and session-view-visible mixed-entry

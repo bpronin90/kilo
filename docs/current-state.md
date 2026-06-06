@@ -202,9 +202,12 @@ The real native app path now has a modular React Native shell:
   history-only deloads remain visible as read-only inline expandable cards with
   history-only delete. A persisted `Edit deload dates` toggle under More >
   Settings optionally exposes a date picker while editing note-backed past
-  deloads; when enabled, changing the date writes through `saved_at`, updates
-  the rendered completion subtitle, and preserves the `Deload · ` title prefix
-  invariant so deload records cannot silently reclassify into normal routines.
+  deloads; when enabled, changing the date now updates both the workout-note
+  `saved_at` date and the linked deload-history `completed_at` date so the
+  editor and analytics stay in sync, while legacy note-backed deloads without a
+  linked history row keep the date field read-only. The edit path still
+  preserves the `Deload · ` title prefix invariant so deload records cannot
+  silently reclassify into normal routines.
   Deleting any past deload recomputes the sessions-since-deload clock off the
   remaining history (resetting to the absolute session count when none remain). The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
@@ -315,9 +318,11 @@ The real native app path now has a modular React Native shell:
   three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
   derived from the shared session-depth thresholds. The gauge now runs its
   zones, marker, and caption off sessions-since-last-deload while showing the
-  absolute total session count as a secondary stat on the card, and the whole
-  `Session Health` surface is hidden when the More > Settings `Deload mode`
-  toggle is off. The redesigned `1K
+  absolute total session count as a secondary stat on the card, and the same
+  section now also shows a separate `weeks since deload` metric derived from
+  the latest deload completion date without changing the session counter. The
+  whole `Session Health` surface is hidden when the More > Settings `Deload
+  mode` toggle is off. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
@@ -536,7 +541,8 @@ at or past deload window), derived through a shared `getSessionTone` helper
 in UI.js. On Home the color applies to the "Week N" label text; on Analytics
 the `Session Health` card applies the tone to its sessions-since-deload hero
 count and gauge caption while still showing total sessions as secondary
-context.
+context, and now pairs that session-based signal with an explicitly labeled
+calendar-based `weeks since deload` value.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,
