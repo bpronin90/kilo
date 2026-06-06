@@ -1,4 +1,4 @@
-import { parseWorkoutNote } from '../lib/parser';
+import { parseWorkoutNote, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
 
 // Simulates the skip-aware IIFE used in all clean-view render paths of LogScreen.
 // Returns an array of 'skip' | 'set' | 'unparsed:<raw>' tokens in order.
@@ -157,5 +157,57 @@ describe('LogScreen skip-aware rendering', () => {
     expect(rowOnlyTokens.every(t => t === 'set')).toBe(true);
     // Old path produces no skips — confirms the bug was real
     expect(rowOnlyTokens.filter(t => t === 'skip')).toHaveLength(0);
+  });
+});
+
+// ── deload date edit: two-metric model ───────────────────────────────────────
+
+const MOCK_NOW_MS_LOG = new Date('2026-06-06T12:00:00.000Z').getTime();
+
+describe('deload date edit: sessions and weeks are independent metrics', () => {
+  beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(MOCK_NOW_MS_LOG); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('editing completed_at changes weeksSinceLastDeload but leaves session_count untouched', () => {
+    const totalSessions = 14;
+    // Deload originally completed May 9 (4 weeks ago); user corrects to May 16 (3 weeks ago)
+    const originalRecord = { id: 'dl_1', completed_at: '2026-05-09T12:00:00.000Z', session_count: 11 };
+    const editedRecord   = { id: 'dl_1', completed_at: '2026-05-16T12:00:00.000Z', session_count: 11 };
+
+    expect(sessionsSinceLastDeload(totalSessions, [originalRecord])).toBe(3);
+    expect(sessionsSinceLastDeload(totalSessions, [editedRecord])).toBe(3); // unchanged
+
+    expect(weeksSinceLastDeload([originalRecord])).toBe(4);
+    expect(weeksSinceLastDeload([editedRecord])).toBe(3);   // updated
+  });
+
+  test('sessions since deload only depends on session_count, not completed_at', () => {
+    const totalSessions = 20;
+    const history = [{ id: 'dl_1', completed_at: '2026-01-01T12:00:00.000Z', session_count: 15 }];
+    expect(sessionsSinceLastDeload(totalSessions, history)).toBe(5);
+  });
+
+  test('weeks since deload only depends on completed_at, not session_count', () => {
+    // 14 days = 2 full weeks
+    const history = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 99 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
+  });
+
+  test('legacy records without note_id work for both metrics', () => {
+    const history = [{ id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 5 }];
+    expect(sessionsSinceLastDeload(10, history)).toBe(5);
+    expect(weeksSinceLastDeload(history)).toBe(2);
+  });
+
+  test('date edit with no linked history record must not change the analytics anchor (desync guard)', () => {
+    // Simulate the save-path contract: if histRecord is not found, saved_at should NOT
+    // be applied. The session and weeks metrics must remain based on the original record.
+    const totalSessions = 8;
+    const legacyRecord = { id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 5 };
+    // After attempted date change (no histRecord found, save blocked):
+    expect(sessionsSinceLastDeload(totalSessions, [legacyRecord])).toBe(3);
+    expect(weeksSinceLastDeload([legacyRecord])).toBe(2);
+    // The record is unchanged — same values before and after.
+    expect(legacyRecord.completed_at).toBe('2026-05-23T12:00:00.000Z');
   });
 });

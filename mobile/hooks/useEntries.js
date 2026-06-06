@@ -24,6 +24,7 @@ export function getNoteSections(note) {
 const safeNotify = (listeners) =>
   listeners.forEach(l => { try { l(); } catch (e) { console.warn('[useEntries] listener error', e); } });
 
+
 let goalListeners = [];
 const notifyGoal = () => safeNotify(goalListeners);
 
@@ -350,7 +351,12 @@ export function useDeloadHistory() {
     notifyWorkoutNotes();
   }, []);
 
-  return { history, loading, error, completeDeload, deleteDeload, deleteDeloadNote, refresh };
+  const updateDeload = useCallback(async (id, patch) => {
+    await Storage.updateDeloadHistory(id, patch);
+    notifyDeloadHistory();
+  }, []);
+
+  return { history, loading, error, completeDeload, deleteDeload, deleteDeloadNote, updateDeload, refresh };
 }
 
 // ── feature toggles (fatigue tracking / deload mode) ──────────────────────────

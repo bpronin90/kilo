@@ -65,7 +65,7 @@ export function LogScreen({
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
-  const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote } = useDeloadHistory();
+  const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote, updateDeload } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
 
   const [mode, setMode] = useState('read');
@@ -269,16 +269,22 @@ export function LogScreen({
 
   const isEditingDeloadNote = !!editingNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
 
+  // True only when the deload note being edited has a linked history record.
+  // Legacy deload notes without a note_id match are read-only for date edits.
+  const editingDeloadHasLinkedRecord = useMemo(() =>
+    isEditingDeloadNote ? deloadHistory.some(r => r.note_id === editingNoteId) : false,
+  [isEditingDeloadNote, deloadHistory, editingNoteId]);
+
   const hasUnsavedOther = useMemo(() => {
     if (!editingNoteId) return false;
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
     if (!editingNote) return false;
     const textChanged = editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
-    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled
+    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
     return textChanged || dateChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate]);
+  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, editingDeloadHasLinkedRecord]);
 
   // Latest back-press logic, reassigned every render so the registered listener
   // always runs against current state (fresh handleDone* closures, current text)
@@ -646,7 +652,20 @@ export function LogScreen({
       } else {
         const patch = { title: titleToSave, raw_text: editingText };
         if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
-          patch.saved_at = new Date(deloadEditDate).toISOString();
+          const newDate = deloadEditDate;
+          const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
+          if (newDate !== savedDate) {
+            const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
+            if (histRecord) {
+              await updateDeload(histRecord.id, { completed_at: `${newDate}T12:00:00.000Z` });
+              patch.saved_at = `${newDate}T12:00:00.000Z`;
+            }
+            // No linked history record (legacy note): skip the date change entirely.
+            // Applying saved_at without updating completed_at would desync the workout
+            // note date from the analytics anchor — silently preserve the old date.
+          } else {
+            patch.saved_at = `${newDate}T12:00:00.000Z`;
+          }
         }
         result = await update(editingNoteId, patch);
       }
@@ -1582,13 +1601,13 @@ export function LogScreen({
                   <Text style={styles.inputLabel}>Date</Text>
                   <Pressable
                     style={[styles.input, styles.dateInput]}
-                    onPress={() => setShowDeloadDatePicker(true)}
+                    onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
                     accessibilityLabel="Deload date"
-                    accessibilityRole="button"
+                    accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
                   >
                     <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
                   </Pressable>
-                  {showDeloadDatePicker && (
+                  {editingDeloadHasLinkedRecord && showDeloadDatePicker && (
                     <DateTimePicker
                       value={(() => {
                         if (deloadEditDate) {

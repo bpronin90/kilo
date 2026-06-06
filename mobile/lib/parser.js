@@ -790,6 +790,27 @@ export function sessionsSinceLastDeload(totalSessions, deloadHistory) {
   return Math.max(0, totalSessions - latest.session_count);
 }
 
+// ── weeksSinceLastDeload ──────────────────────────────────────────────────────
+// Returns the number of full calendar weeks elapsed since the most recently
+// completed deload (by completed_at). Returns null when history is empty.
+// Uses the same latest-wins logic as sessionsSinceLastDeload.
+//
+// Comparison is calendar-date based: the time-of-day in completed_at is ignored
+// so that a deload logged late at night on day D still counts as a full week
+// once today's UTC date is D+7, regardless of the clock time.
+export function weeksSinceLastDeload(deloadHistory) {
+  if (!deloadHistory || deloadHistory.length === 0) return null;
+  const latest = deloadHistory.reduce((best, r) =>
+    !best || r.completed_at > best.completed_at ? r : best, null);
+  const [dy, dm, dd] = latest.completed_at.slice(0, 10).split('-').map(Number);
+  const deloadDay = Date.UTC(dy, dm - 1, dd);
+  const now = new Date(Date.now());
+  const todayDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const diffMs = todayDay - deloadDay;
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+}
+
 // ── Deload generation ─────────────────────────────────────────────────────────
 
 // Heaviest weight with ≥2 sets in the last row; fallback to heaviest weight present.

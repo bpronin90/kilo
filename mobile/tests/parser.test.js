@@ -1,4 +1,4 @@
-import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload } from '../lib/parser';
+import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
@@ -2642,5 +2642,94 @@ describe('sessionsSinceLastDeload', () => {
   test('returns 0 when totalSessions equals session_count baseline', () => {
     const history = [{ id: 'dl_2026-05-02_1', completed_at: '2026-05-02T00:00:00.000Z', session_count: 10 }];
     expect(sessionsSinceLastDeload(10, history)).toBe(0);
+  });
+
+  test('legacy record without note_id still works for sinceDeload calculation', () => {
+    const history = [{ id: 'dl_old', completed_at: '2026-04-01T00:00:00.000Z', session_count: 7 }];
+    expect(sessionsSinceLastDeload(12, history)).toBe(5);
+  });
+});
+
+// ── weeksSinceLastDeload ──────────────────────────────────────────────────────
+
+const MOCK_NOW_MS = new Date('2026-06-06T12:00:00.000Z').getTime();
+
+describe('weeksSinceLastDeload', () => {
+  beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(MOCK_NOW_MS); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('returns null when history is empty', () => {
+    expect(weeksSinceLastDeload([])).toBeNull();
+  });
+
+  test('returns null when history is null', () => {
+    expect(weeksSinceLastDeload(null)).toBeNull();
+  });
+
+  test('returns null when history is undefined', () => {
+    expect(weeksSinceLastDeload(undefined)).toBeNull();
+  });
+
+  test('returns 0 for a deload completed today', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-06-06T00:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
+  });
+
+  test('returns 0 for a deload completed 6 days ago (less than 1 full week)', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-31T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
+  });
+
+  test('returns 1 for a deload completed exactly 7 calendar days ago (noon timestamp)', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(1);
+  });
+
+  test('returns 1 for a deload logged late at night 7 calendar days ago (timestamp bias fix)', () => {
+    // 2026-05-30T23:30Z is < 7 wall-clock days before 2026-06-06T12:00Z,
+    // but 7 calendar days have elapsed (May 30 → Jun 6). Must return 1, not 0.
+    const history = [{ id: 'dl_1', completed_at: '2026-05-30T23:30:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(1);
+  });
+
+  test('returns 2 for a deload completed 14 days ago', () => {
+    const history = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
+  });
+
+  test('uses the record with the latest completed_at when multiple records exist', () => {
+    const history = [
+      { id: 'dl_old', completed_at: '2026-04-01T12:00:00.000Z', session_count: 5 },
+      { id: 'dl_new', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 },
+    ];
+    expect(weeksSinceLastDeload(history)).toBe(1);
+  });
+
+  test('latest-wins even when records arrive in reverse order', () => {
+    const history = [
+      { id: 'dl_new', completed_at: '2026-05-30T12:00:00.000Z', session_count: 10 },
+      { id: 'dl_old', completed_at: '2026-04-01T12:00:00.000Z', session_count: 5 },
+    ];
+    expect(weeksSinceLastDeload(history)).toBe(1);
+  });
+
+  test('returns 0 when completed_at is in the future', () => {
+    const history = [{ id: 'dl_future', completed_at: '2026-12-01T12:00:00.000Z', session_count: 10 }];
+    expect(weeksSinceLastDeload(history)).toBe(0);
+  });
+
+  test('legacy record without note_id is tolerated', () => {
+    const history = [{ id: 'dl_legacy', completed_at: '2026-05-23T12:00:00.000Z', session_count: 8 }];
+    expect(weeksSinceLastDeload(history)).toBe(2);
+  });
+
+  test('weeks and sessions metrics are independent — editing completed_at changes weeks without changing sessions', () => {
+    const totalSessions = 15;
+    const oldHistory = [{ id: 'dl_1', completed_at: '2026-05-16T12:00:00.000Z', session_count: 12 }];
+    const newHistory = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 12 }];
+    expect(sessionsSinceLastDeload(totalSessions, oldHistory)).toBe(3);
+    expect(sessionsSinceLastDeload(totalSessions, newHistory)).toBe(3);
+    expect(weeksSinceLastDeload(oldHistory)).toBe(3);
+    expect(weeksSinceLastDeload(newHistory)).toBe(2);
   });
 });

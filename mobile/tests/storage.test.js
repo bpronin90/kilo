@@ -35,6 +35,7 @@ import {
   loadDeloadHistory,
   appendDeloadHistory,
   deleteDeloadHistory,
+  updateDeloadHistory,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
   loadFatigueTrackingEnabled,
@@ -2056,5 +2057,57 @@ describe('deload note dual-write pattern', () => {
     const history = await loadDeloadHistory();
     expect(history).toHaveLength(1);
     expect(history[0].note_id).toBeUndefined();
+  });
+});
+
+// ── updateDeloadHistory ───────────────────────────────────────────────────────
+
+describe('updateDeloadHistory', () => {
+  test('updates completed_at on an existing record', async () => {
+    const rec = { id: 'dl_test', completed_at: '2026-05-01T12:00:00.000Z', session_count: 10, note_id: 'wn_dl_test' };
+    await appendDeloadHistory(rec);
+    const updated = await updateDeloadHistory('dl_test', { completed_at: '2026-06-01T12:00:00.000Z' });
+    expect(updated).toBeTruthy();
+    expect(updated.completed_at).toBe('2026-06-01T12:00:00.000Z');
+    expect(updated.session_count).toBe(10);
+    expect(updated.note_id).toBe('wn_dl_test');
+  });
+
+  test('preserves unpatched fields', async () => {
+    const rec = { id: 'dl_test2', completed_at: '2026-05-01T12:00:00.000Z', session_count: 15, note_id: 'wn_dl_2', raw_text: 'some text' };
+    await appendDeloadHistory(rec);
+    await updateDeloadHistory('dl_test2', { completed_at: '2026-06-01T12:00:00.000Z' });
+    const history = await loadDeloadHistory();
+    const found = history.find(r => r.id === 'dl_test2');
+    expect(found.raw_text).toBe('some text');
+    expect(found.note_id).toBe('wn_dl_2');
+    expect(found.session_count).toBe(15);
+    expect(found.completed_at).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  test('returns false when id is not found', async () => {
+    const result = await updateDeloadHistory('nonexistent', { completed_at: '2026-06-01T12:00:00.000Z' });
+    expect(result).toBe(false);
+  });
+
+  test('does not affect other records in the list', async () => {
+    const rec1 = { id: 'dl_a', completed_at: '2026-05-01T12:00:00.000Z', session_count: 10 };
+    const rec2 = { id: 'dl_b', completed_at: '2026-06-01T12:00:00.000Z', session_count: 20 };
+    await appendDeloadHistory(rec1);
+    await appendDeloadHistory(rec2);
+    await updateDeloadHistory('dl_a', { completed_at: '2026-05-15T12:00:00.000Z' });
+    const history = await loadDeloadHistory();
+    const b = history.find(r => r.id === 'dl_b');
+    expect(b.completed_at).toBe('2026-06-01T12:00:00.000Z');
+    expect(b.session_count).toBe(20);
+  });
+
+  test('updated record survives a load round-trip', async () => {
+    const rec = { id: 'dl_rt', completed_at: '2026-05-01T12:00:00.000Z', session_count: 8, note_id: 'wn_dl_rt' };
+    await appendDeloadHistory(rec);
+    await updateDeloadHistory('dl_rt', { completed_at: '2026-05-08T12:00:00.000Z' });
+    const history = await loadDeloadHistory();
+    expect(history[0].completed_at).toBe('2026-05-08T12:00:00.000Z');
+    expect(history[0].note_id).toBe('wn_dl_rt');
   });
 });

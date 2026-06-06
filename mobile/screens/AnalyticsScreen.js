@@ -6,7 +6,7 @@ import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
-import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload } from '../lib/parser';
+import { normalizeExerciseKey, countWorkoutSessionsFromSections, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -229,6 +229,11 @@ export function AnalyticsScreen({ multiplier, section }) {
     [sessionCount, deloadHistory]
   );
 
+  const weeksDeload = useMemo(
+    () => weeksSinceLastDeload(deloadHistory),
+    [deloadHistory]
+  );
+
   const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
 
   const noteById = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
@@ -317,9 +322,19 @@ export function AnalyticsScreen({ multiplier, section }) {
       <SectionTitle>Session Health</SectionTitle>
     </View>) : null,
     deloadModeEnabled ? (
-    <View key="session-gauge" style={styles.statRow}>
+    <View key="session-gauge">
       <SessionGauge count={sinceDeload} total={sessionCount} />
+      <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
     </View>) : null,
+    deloadModeEnabled ? (
+    <Card key="weeks-since-deload" style={styles.weeksCard}>
+      <View style={styles.weeksStat}>
+        <Text style={styles.weeksValue}>
+          {weeksDeload !== null ? String(weeksDeload) : '—'}
+        </Text>
+        <Text style={styles.weeksLabel}>weeks since deload</Text>
+      </View>
+    </Card>) : null,
 
     fatigueTrackingEnabled ? (
     <View key="fatigue-title">
@@ -1221,6 +1236,29 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  gaugeMetricLabel: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  weeksCard: {
+    padding: 16,
+  },
+  weeksStat: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  weeksValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  weeksLabel: {
+    fontSize: 14,
+    color: Colors.textMuted,
   },
   fatigueCard: {
     padding: 20,
