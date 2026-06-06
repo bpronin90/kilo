@@ -619,7 +619,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
     expect(hasText(root, 'Not great')).toBe(false);
   });
 
-  test('pressing the fatigue summary expands and reveals detailed sections', () => {
+  test('pressing the fatigue summary expands then collapses detailed sections', () => {
     jest.spyOn(data, 'deriveCheckInHistory').mockReturnValue({
       rough: [ROUGH_CI],
       ok: [OK_CI],
@@ -630,9 +630,11 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
     const component = setup();
     const root = component.root;
 
+    // Initially collapsed
     expect(hasText(root, 'Not great')).toBe(false);
     expect(hasText(root, 'All good')).toBe(false);
 
+    // First press — expand
     const expandPressable = root.findAll(
       n => n.props.accessibilityLabel === 'Expand fatigue details'
     )[0];
@@ -642,6 +644,17 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
 
     expect(hasText(root, 'Not great')).toBe(true);
     expect(hasText(root, 'All good')).toBe(true);
+
+    // Second press — collapse
+    const collapsePressable = root.findAll(
+      n => n.props.accessibilityLabel === 'Collapse fatigue details'
+    )[0];
+    render.act(() => {
+      collapsePressable.props.onPress();
+    });
+
+    expect(hasText(root, 'Not great')).toBe(false);
+    expect(hasText(root, 'All good')).toBe(false);
   });
 
   test('rough entries are pressable edit affordances after expansion', () => {
