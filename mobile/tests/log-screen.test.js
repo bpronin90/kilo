@@ -211,3 +211,43 @@ describe('deload date edit: sessions and weeks are independent metrics', () => {
     expect(legacyRecord.completed_at).toBe('2026-05-23T12:00:00.000Z');
   });
 });
+
+// ── autosave vs explicit save: call-site contract ────────────────────────────
+// React Native components cannot be rendered in this test environment, so these
+// tests assert the source-level contract directly: both debounce timer callbacks
+// must pass { autosave: true } to their respective save handlers.  If either
+// call site is changed back to a bare call, the test will fail and the flicker
+// will return.
+
+const fs = require('fs');
+const path = require('path');
+
+describe('autosave call sites: debounce timers pass { autosave: true }', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(
+      path.join(__dirname, '../screens/LogScreen.js'),
+      'utf8'
+    );
+  });
+
+  test('current-note debounce timer calls handleSave({ autosave: true })', () => {
+    expect(src).toMatch(/handleSave\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
+  });
+
+  test('other-note debounce timer calls handleSaveOtherNote({ autosave: true })', () => {
+    expect(src).toMatch(/handleSaveOtherNote\(\s*\{\s*autosave\s*:\s*true\s*\}\s*\)/);
+  });
+
+  test('handleSave suppresses setSaveSuccess when autosave is true', () => {
+    // The guarded call must be present: if (!autosave) setSaveSuccess(...)
+    expect(src).toMatch(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/);
+  });
+
+  test('handleSaveOtherNote suppresses setSaveSuccess when autosave is true', () => {
+    // Same guard must appear twice — once per save handler.
+    const matches = src.match(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/g);
+    expect(matches).not.toBeNull();
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+});

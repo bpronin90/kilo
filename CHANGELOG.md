@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.65.1 - 2026-06-06
+
+- Issue #279: Removed the visible autosave `Saved!` flicker from the Log note
+  editor. Debounced autosaves for existing current and non-current routines now
+  stay silent on success while explicit user-triggered saves still surface the
+  existing confirmation, save failures remain visible, and the `log-screen`
+  test suite now pins that autosave-vs-explicit-save contract at the real save
+  call sites.
+
 ## 0.65.0 - 2026-06-06
 
 - Issue #278: Reframed `Session Health` into two explicit deload metrics.
