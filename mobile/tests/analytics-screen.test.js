@@ -12,7 +12,6 @@ import {
 import {
   deriveRoutineStatus,
   deloadSessionsLogged,
-  activeWeeksOnRoutine,
   elapsedWeeksOnRoutine,
 } from '../lib/data';
 
@@ -903,24 +902,10 @@ describe('routine-status derivation — deload-relative metrics (#282)', () => {
   });
 });
 
-describe('routine-status derivation — routine-week metrics (#282)', () => {
-  // Genuine calendar weeks (Monday-anchored), anchored to MOCK_NOW 2026-05-26.
-
-  test('active weeks counts distinct calendar weeks with a logged session', () => {
-    const note = { session_checkins: checkinsFromDates(FIVE_WEEK_DATES) };
-    expect(activeWeeksOnRoutine(note)).toBe(5);
-  });
-
-  test('active weeks de-duplicates multiple sessions in the same calendar week', () => {
-    // 2026-04-06 (Mon) and 2026-04-08 (Wed) are the same calendar week → 1.
-    const note = { session_checkins: checkinsFromDates(['2026-04-06', '2026-04-08']) };
-    expect(activeWeeksOnRoutine(note)).toBe(1);
-  });
-
-  test('active weeks is null when no dated check-in exists (no session date source)', () => {
-    expect(activeWeeksOnRoutine({})).toBeNull();
-    expect(activeWeeksOnRoutine(null)).toBeNull();
-  });
+describe('routine-status derivation — weeks on routine (#282)', () => {
+  // elapsed weeks is a genuine calendar-week metric (Monday-anchored), anchored
+  // to MOCK_NOW 2026-05-26. (active weeks is deferred per #282 review — the data
+  // model has no per-session date outside check-ins.)
 
   test('elapsed weeks is the calendar-week span since the routine began, incl. gaps', () => {
     // saved_at 2026-04-06 → MOCK_NOW 2026-05-26 spans 8 calendar weeks.
@@ -935,11 +920,6 @@ describe('routine-status derivation — routine-week metrics (#282)', () => {
   test('elapsed weeks is null without a start date and 0 for a future start', () => {
     expect(elapsedWeeksOnRoutine({})).toBeNull();
     expect(elapsedWeeksOnRoutine({ saved_at: '2026-12-01T00:00:00.000Z' })).toBe(0);
-  });
-
-  test('elapsed weeks is always >= active weeks', () => {
-    const note = { saved_at: '2026-04-06T00:00:00.000Z', session_checkins: checkinsFromDates(FIVE_WEEK_DATES) };
-    expect(elapsedWeeksOnRoutine(note)).toBeGreaterThanOrEqual(activeWeeksOnRoutine(note));
   });
 });
 
@@ -978,8 +958,8 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     // Deload-relative metric is derived from chronology, not the snapshot.
     expect(status.sessionsSinceDeload).toBe(2);
     expect(status.weeksSinceDeload).toBe(5);
-    expect(status.activeWeeks).toBe(5);          // 5 distinct check-in weeks
     expect(status.elapsedWeeks).toBe(8);         // calendar span since saved_at
+    expect(status).not.toHaveProperty('activeWeeks'); // deferred per #282 review
   });
 
   test('legacy / no-check-in note derives safely (elapsed still shows real weeks)', () => {
@@ -988,7 +968,6 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(status.sessionsLogged).toBe(5);
     expect(status.sessionsSinceDeload).toBe(5); // no deload → all sessions
     expect(status.weeksSinceDeload).toBeNull();
-    expect(status.activeWeeks).toBeNull();      // no per-session date source
     expect(status.elapsedWeeks).toBe(8);        // calendar span from saved_at
   });
 
@@ -997,7 +976,6 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(status.sessionsLogged).toBe(0);
     expect(status.sessionsSinceDeload).toBe(0);
     expect(status.weeksSinceDeload).toBeNull();
-    expect(status.activeWeeks).toBeNull();
     expect(status.elapsedWeeks).toBeNull();
   });
 });
@@ -1005,7 +983,7 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('surfaces sessions-logged, active-weeks and elapsed-weeks labels', () => {
+  test('surfaces sessions-logged and weeks-on-routine; no active-weeks (deferred)', () => {
     const currentNote = {
       id: 'wn1',
       raw_text: FIVE_SESSION_RAW,
@@ -1018,13 +996,13 @@ describe('AnalyticsScreen routine-status plumbing (#282)', () => {
     const root = component.root;
 
     expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'active weeks')).toBe(true);
-    expect(hasText(root, 'elapsed weeks')).toBe(true);
+    expect(hasText(root, 'weeks on routine')).toBe(true);
     expect(hasText(root, 'sessions since deload')).toBe(true);
+    // active weeks is deferred per #282 review — must not appear.
+    expect(hasText(root, 'active weeks')).toBe(false);
     // sessions logged = 5 routine + 1 deload = 6 (includes archived deloads).
     expect(findAllText(root).some(s => s === '6')).toBe(true);
-    // active weeks = 5 distinct check-in weeks; elapsed = 8 calendar-week span.
-    expect(findAllText(root).some(s => s === '5')).toBe(true);
+    // weeks on routine = 8 calendar-week span since saved_at.
     expect(findAllText(root).some(s => s === '8')).toBe(true);
   });
 });

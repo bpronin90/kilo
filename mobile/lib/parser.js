@@ -864,10 +864,9 @@ export function weeksSinceLastDeload(deloadHistory) {
   return Math.floor(diffMs / _WEEK_MS);
 }
 
-// Routine-week metrics (activeWeeks/elapsedWeeks) and the deriveRoutineStatus
-// composite live in lib/data.js: they build on computeWeeksIn (the canonical
-// session-depth metric) which lives there, and data.js imports the deload
-// primitives above from this module.
+// The weeks-on-routine metric (elapsedWeeks) and the deriveRoutineStatus
+// composite live in lib/data.js (the canonical analytics layer); data.js
+// imports the deload primitives above from this module.
 
 // ── Deload generation ─────────────────────────────────────────────────────────
 
