@@ -796,15 +796,13 @@ function _latestDeload(deloadHistory) {
 }
 
 // ── sessionDateMapFromNote ────────────────────────────────────────────────────
-// Builds the per-session date chronology for the current routine.
-// Returns Map<sessionIndex(int), 'YYYY-MM-DD'>.
+// Builds the per-session date chronology for the current routine from its stored
+// session check-ins. Returns Map<sessionIndex(int), 'YYYY-MM-DD'>.
 //
-// Reads from two sources merged in priority order:
-//   1. session_checkins[idx].responded_at — legacy chronology anchor (lower priority)
-//   2. session_dates[idx]                 — explicit per-session date (issue #284, higher priority)
-//
-// session_dates entries override check-ins for the same index so that sessions
-// Index keys are 0-based session ordinals, matching countWorkoutSessionsFromSections.
+// session_checkins is the only per-session dated anchor in the note model, so it
+// is the chronology source for deload-boundary and active-week derivation. Index
+// keys are 0-based positions in the session chain (oldest = 0), matching the
+// session ordinals counted by countWorkoutSessionsFromSections.
 export function sessionDateMapFromNote(note) {
   const out = new Map();
   const checkins = note?.session_checkins;
@@ -822,19 +820,20 @@ export function sessionDateMapFromNote(note) {
 // Sessions logged after the most recently completed deload, excluding the deload
 // boundary session itself (so a freshly completed deload reads 0).
 //
-// When the deload record carries a deload_session_ordinal (1-based), that ordinal
-// is the authoritative anchor: sessions since = totalSessions - ordinal + 1,
-// clamped to 0. This is the preferred path for new deloads (#284).
+// When a session-date chronology (dateMap) is supplied, the boundary is located
+// from workout chronology relative to the deload's completed_at date: the highest
+// session ordinal whose date is on/before the deload date is the boundary, and
+// every later ordinal counts as a post-deload session. Sessions are chronological
+// by index, so dates are only used to LOCATE the boundary — undated sessions past
+// the boundary are still counted by ordinal. This makes editing a past deload
+// date move sessions-since-deload in lockstep with weeks-since-deload.
 //
-// Legacy records without deload_session_ordinal fall back to the date-map
-// boundary (if check-in chronology is available) or the stored session_count
-// snapshot, preserving pre-#284 behavior.
+// Falls back to the stored session_count snapshot when no chronology is available
+// (no dated check-ins), preserving legacy behavior. Returns totalSessions when no
+// deload has ever been completed. Clamps to 0.
 export function sessionsSinceLastDeload(totalSessions, deloadHistory, dateMap) {
   const latest = _latestDeload(deloadHistory);
   if (!latest) return totalSessions;
-  if (latest.deload_session_ordinal != null) {
-    return Math.max(0, totalSessions - latest.deload_session_ordinal + 1);
-  }
   if (dateMap && dateMap.size > 0 && latest.completed_at) {
     const boundary = latest.completed_at.slice(0, 10);
     let boundaryIndex = -1; // highest dated ordinal on/before the deload date

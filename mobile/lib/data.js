@@ -479,6 +479,14 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
   return Math.round((nowMon - startMon) / _WEEK_MS) + 1;
 }
 
+// Latest deload record by completed_at. Mirrors _latestDeload in parser.js;
+// kept private here to avoid coupling to parser internals.
+function _latestDeloadRecord(deloadHistory) {
+  if (!Array.isArray(deloadHistory) || !deloadHistory.length) return null;
+  return deloadHistory.reduce((best, r) =>
+    !best || r.completed_at > best.completed_at ? r : best, null);
+}
+
 // Single canonical entry point for the Analytics routine-status surface.
 //
 // Returns:
@@ -487,13 +495,21 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
 //   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
+//
+// When the latest deload record carries a deload_session_ordinal (1-based),
+// that ordinal is the authoritative anchor (#284): sessions since deload =
+// max(0, routineSessions - ordinal + 1). Legacy records without the field
+// fall through to the date-map / session_count path in sessionsSinceLastDeload.
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
-  const dateMap = sessionDateMapFromNote(note);
+  const latest = _latestDeloadRecord(deloadHistory);
+  const sessionsSinceDeload = latest?.deload_session_ordinal != null
+    ? Math.max(0, routineSessions - latest.deload_session_ordinal + 1)
+    : sessionsSinceLastDeload(routineSessions, deloadHistory, sessionDateMapFromNote(note));
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
-    sessionsSinceDeload: sessionsSinceLastDeload(routineSessions, deloadHistory, dateMap),
+    sessionsSinceDeload,
     weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
   };
 }
