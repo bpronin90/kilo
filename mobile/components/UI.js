@@ -344,11 +344,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sessionGaugePanelTitle: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
   sessionGaugeHeader: {
     flexDirection: 'row',
