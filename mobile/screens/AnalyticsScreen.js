@@ -313,41 +313,39 @@ export function AnalyticsScreen({ multiplier, section }) {
     </Card>,
 
     deloadModeEnabled ? (
-    <View key="deload-title">
-      <SectionTitle>Session Health</SectionTitle>
+    <View key="routine-status-title">
+      <SectionTitle>Routine Status</SectionTitle>
     </View>) : null,
     deloadModeEnabled ? (
-    <View key="session-gauge">
-      <SessionGauge count={sinceDeload} total={sessionCount} />
+    <View key="routine-status-content" style={styles.routineStatusContent}>
+      <Text style={styles.routineGroupLabel}>Routine Exposure</Text>
+      <Card style={styles.routineExposureCard}>
+        <View style={styles.routineExposureRow}>
+          <View style={styles.routineMetric}>
+            <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
+            <Text style={styles.weeksLabel}>sessions logged</Text>
+          </View>
+          <View style={styles.routineMetricDivider} />
+          <View style={styles.routineMetric}>
+            <Text style={styles.weeksValue}>
+              {routineStatus.elapsedWeeks !== null ? String(routineStatus.elapsedWeeks) : '—'}
+            </Text>
+            <Text style={styles.weeksLabel}>weeks on routine</Text>
+          </View>
+        </View>
+      </Card>
+      <Text style={styles.routineGroupLabel}>Recovery Cycle</Text>
+      <SessionGauge count={sinceDeload} />
       <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
-    </View>) : null,
-    deloadModeEnabled ? (
-    <Card key="weeks-since-deload" style={styles.weeksCard}>
-      <View style={styles.weeksStat}>
-        <Text style={styles.weeksValue}>
-          {weeksDeload !== null ? String(weeksDeload) : '—'}
-        </Text>
-        <Text style={styles.weeksLabel}>weeks since deload</Text>
-      </View>
-    </Card>) : null,
-
-    // Routine-exposure metrics. Minimal plumbing to surface the corrected
-    // contract values (#282); #283 redesigns the presentation.
-    deloadModeEnabled ? (
-    <Card key="routine-exposure" style={styles.weeksCard}>
-      <View style={styles.routineExposureRow}>
-        <View style={styles.weeksStat}>
-          <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
-          <Text style={styles.weeksLabel}>sessions logged</Text>
-        </View>
-        <View style={styles.weeksStat}>
+      <Card style={styles.weeksCard}>
+        <View style={styles.routineMetric}>
           <Text style={styles.weeksValue}>
-            {routineStatus.elapsedWeeks !== null ? String(routineStatus.elapsedWeeks) : '—'}
+            {weeksDeload !== null ? String(weeksDeload) : '—'}
           </Text>
-          <Text style={styles.weeksLabel}>weeks on routine</Text>
+          <Text style={styles.weeksLabel}>weeks since deload</Text>
         </View>
-      </View>
-    </Card>) : null,
+      </Card>
+    </View>) : null,
 
     fatigueTrackingEnabled ? (
     <View key="fatigue-title">
@@ -1259,11 +1257,34 @@ const styles = StyleSheet.create({
   weeksCard: {
     padding: 16,
   },
+  routineStatusContent: {
+    gap: 8,
+  },
+  routineGroupLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 4,
+  },
+  routineExposureCard: {
+    padding: 16,
+  },
   routineExposureRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    justifyContent: 'space-around',
     gap: 12,
+  },
+  routineMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  routineMetricDivider: {
+    width: 1,
+    backgroundColor: Colors.cardBorder,
+    alignSelf: 'stretch',
   },
   weeksStat: {
     flexDirection: 'row',
@@ -1274,10 +1295,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     color: Colors.text,
+    textAlign: 'center',
   },
   weeksLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textMuted,
+    textAlign: 'center',
   },
   fatigueCard: {
     padding: 20,
