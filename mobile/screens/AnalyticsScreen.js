@@ -1212,22 +1212,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 15,
   },
-  weeksStat: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  weeksValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  weeksLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
   fatigueCard: {
     padding: 20,
     gap: 8,
