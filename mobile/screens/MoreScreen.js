@@ -606,43 +606,48 @@ function HelpScreen({ onBack }) {
 
       <Card>
         <Text style={styles.helpText}>
-          Each workout note is plain text. Declare an exercise with a dash, then write your sets on the lines below it.
+          Each workout note is plain text. Declare an exercise with a dash (<Text style={{ fontWeight: 'bold' }}>-</Text>), then write your sets (weight followed by reps) on the lines below it.
         </Text>
 
         <View style={styles.codeBlock}>
           <Text style={styles.codeText}>Monday</Text>
           <Text style={styles.codeText}>+Lifting</Text>
-          <Text style={styles.codeText}>-Squat</Text>
-          <Text style={styles.codeText}>225 5,5,5</Text>
-          <Text style={styles.codeText}>-Bench Press</Text>
-          <Text style={styles.codeText}>185 8,8,7</Text>
+          <Text style={styles.codeText}>-Bench</Text>
+          <Text style={styles.codeText}>135 5,5,5</Text>
+          <Text style={styles.codeText}>140 5,5</Text>
+          <Text style={styles.codeText}>-</Text>
+          <Text style={styles.codeText}>145 5</Text>
         </View>
 
         <Text style={[styles.helpText, { marginTop: 12 }]}>
-          Set row formats:
+          How it works:
         </Text>
         <View style={{ marginTop: 6, gap: 6 }}>
           <View style={styles.formatRow}>
-            <Text style={styles.codeText}>225 8</Text>
-            <Text style={styles.formatDesc}>one set at 225 lb, 8 reps</Text>
+            <Text style={styles.codeText}>-Bench</Text>
+            <Text style={styles.formatDesc}>Declares the exercise name (starts with a dash)</Text>
           </View>
           <View style={styles.formatRow}>
-            <Text style={styles.codeText}>225 8,8,7</Text>
-            <Text style={styles.formatDesc}>three sets at same weight</Text>
+            <Text style={styles.codeText}>135 5,5,5</Text>
+            <Text style={styles.formatDesc}>Logs 3 sets at 135 lbs for 5 reps (separated by commas)</Text>
           </View>
           <View style={styles.formatRow}>
-            <Text style={styles.codeText}>225 5 185 8,8</Text>
-            <Text style={styles.formatDesc}>sets at different weights</Text>
+            <Text style={styles.codeText}>140 5,5</Text>
+            <Text style={styles.formatDesc}>Logs 2 sets at 140 lbs for 5 reps (each new line is a new session)</Text>
           </View>
           <View style={styles.formatRow}>
-            <Text style={styles.codeText}>8,8,8</Text>
-            <Text style={styles.formatDesc}>bodyweight — reps only, no weight</Text>
+            <Text style={styles.codeText}>-</Text>
+            <Text style={styles.formatDesc}>A single dash on a set line marks that session as skipped</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>12,12</Text>
+            <Text style={styles.formatDesc}>Logs bodyweight exercises (reps only, no weight prefix)</Text>
           </View>
         </View>
 
-        <Text style={[styles.helpText, { marginTop: 12 }]}>
-          Day labels (Monday, Tuesday…) and block labels (+Lifting, +Warmup) are optional. Kilo uses them to group and sort analytics by day.{"\n\n"}
-          To track an exercise in Analytics: tap it in your parsed log, then tap "Track."
+         <Text style={[styles.helpText, { marginTop: 12 }]}>
+          Day names (e.g., <Text style={{ fontWeight: 'bold', color: Colors.text }}>Monday</Text>) group exercises by training day. Block headers starting with a plus (e.g., <Text style={{ fontWeight: 'bold', color: Colors.text }}>+Lifting</Text>) group exercises within that day. If you omit day names, exercises are parsed normally but will not have day/session grouping headings in the log view.{"\n\n"}
+          To track an exercise in Analytics: tap it in your parsed log and tap "Track" to monitor its progress.
         </Text>
       </Card>
 

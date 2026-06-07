@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.67.4 - 2026-06-07
+
+- Issue #290: Added a visible per-note `Undo` escape hatch to Log editing so
+  current routines, saved routines, and editable past deload notes can revert
+  to the state they had when the user entered edit mode, aligned the Log editor
+  placeholder with the canonical App Guide workout syntax, and added rendered
+  regression coverage for guide/placeholder alignment plus the main Undo flows.
+
 ## 0.67.3 - 2026-06-07
 
 - Issue #289: Made Weight history delta highlighting respect the active goal

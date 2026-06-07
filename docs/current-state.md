@@ -176,8 +176,13 @@ The real native app path now has a modular React Native shell:
   save and exit without the old save/discard prompt, including the past-deload
   edit path when a debounced autosave is already in flight. For the current routine
   specifically, exiting raw edit now returns consistently to the top of the
-  rendered note as the accepted fallback behavior. A bottom `More Routines`
-  list keeps each
+  rendered note as the accepted fallback behavior. The editor now pairs the
+  `Done` action with a visible `Undo` action that restores
+  only the note currently being edited to its pre-edit-session state, including
+  linked editable deload metadata for note-backed past deload records. This is
+  a best-effort local-persistence undo on the current AsyncStorage-backed model;
+  true atomic cross-record undo guarantees remain deferred until the app has an
+  underlying transactional database layer. A bottom `More Routines` list keeps each
   non-current routine collapsed to a compact row that now expands inline in
   place rather than jumping to a dedicated full-screen reader; the expanded
   view reuses the same rendered-note body and double-tap-to-edit affordance as
