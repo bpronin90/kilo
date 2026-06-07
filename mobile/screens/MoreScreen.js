@@ -223,22 +223,25 @@ function ProfileScreen({ onBack }) {
     { id: 'extra_active', label: 'Extra active', desc: 'Very hard exercise, physical job, or training twice/day' },
   ];
 
+  const headerRight = (
+    <Pressable onPress={handleClearProfile}>
+      <Text style={{ color: Colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
+    </Pressable>
+  );
+
   if (loading && !localProfile) {
     return (
-      <ScreenShell title="User Profile" subtitle="Loading...">
-        <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-      </ScreenShell>
+      <ScreenShell title="User Profile" subtitle="Loading..." onBack={onBack} />
     );
   }
 
   return (
-    <ScreenShell title="User Profile" subtitle="Personal details for calorie estimation.">
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-        <Pressable onPress={handleClearProfile}>
-          <Text style={{ color: Colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
-        </Pressable>
-      </View>
+    <ScreenShell
+      title="User Profile"
+      subtitle="Personal details for calorie estimation."
+      onBack={onBack}
+      headerRight={headerRight}
+    >
 
       <SectionTitle>Biometrics</SectionTitle>
       <Card>
@@ -426,8 +429,7 @@ function BackupScreen({ onBack, onExport, onImport }) {
   };
 
   return (
-    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="Data & Backup" subtitle="Export or restore your training data." onBack={onBack}>
 
       {status ? (
         <Card tone={status.ok ? 'success' : 'error'}>
@@ -472,8 +474,7 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
   const handleReset = () => onUpdate(1.07);
 
   return (
-    <ScreenShell title="Settings" subtitle="App features and preferences.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="Settings" subtitle="App features and preferences." onBack={onBack}>
 
       <SectionTitle>Features</SectionTitle>
       <Card>
@@ -563,8 +564,7 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
 
 function HelpScreen({ onBack }) {
   return (
-    <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it." onBack={onBack}>
 
       <View style={styles.logoContainer}>
         <Image source={LOGO} style={styles.logo} />
@@ -716,8 +716,7 @@ function AboutScreen({ onBack }) {
   const updateIdLabel = isEmbedded ? 'embedded bundle' : (updateId ? updateId.slice(0, 8) + '…' : '—');
 
   return (
-    <ScreenShell title="About" subtitle="App information and attribution.">
-      <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+    <ScreenShell title="About" subtitle="App information and attribution." onBack={onBack}>
 
       <Card style={styles.aboutCard}>
         <Text style={styles.aboutLabel}>Created by</Text>

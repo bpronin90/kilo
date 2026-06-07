@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.67.6 - 2026-06-07
+
+- Issue #292: Moved More-subpage back navigation into a persistent shared
+  header path so `User Profile`, `Data & Backup`, `Settings`, `App Guide`, and
+  `About` keep an always-available Back control while their content scrolls.
+
 ## 0.67.5 - 2026-06-07
 
 - Issue #293: Standardized the main mobile text-input treatment across Weight,
