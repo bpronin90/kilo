@@ -614,13 +614,16 @@ function HelpScreen({ onBack }) {
 
       <Card>
         <Text style={styles.helpText}>
-          Each workout note is plain text. Declare an exercise on its own line starting with a dash, then log each set on the lines below it starting with{" "}<Text style={styles.codeText}>{"- "}</Text>(dash-space).
+          Each workout note is plain text. Declare an exercise with a dash, then write your sets on the lines below it.
         </Text>
 
         <View style={styles.codeBlock}>
+          <Text style={styles.codeText}>Monday</Text>
+          <Text style={styles.codeText}>+Lifting</Text>
           <Text style={styles.codeText}>-Squat</Text>
-          <Text style={styles.codeText}>- 225 5,5,5</Text>
-          <Text style={styles.codeText}>- 185 8,8,7</Text>
+          <Text style={styles.codeText}>225 5,5,5</Text>
+          <Text style={styles.codeText}>-Bench Press</Text>
+          <Text style={styles.codeText}>185 8,8,7</Text>
         </View>
 
         <Text style={[styles.helpText, { marginTop: 12 }]}>
@@ -636,27 +639,13 @@ function HelpScreen({ onBack }) {
             <Text style={styles.formatDesc}>three sets at same weight</Text>
           </View>
           <View style={styles.formatRow}>
-            <Text style={styles.codeText}>225 8 185 8,8</Text>
+            <Text style={styles.codeText}>225 5 185 8,8</Text>
             <Text style={styles.formatDesc}>sets at different weights</Text>
           </View>
           <View style={styles.formatRow}>
             <Text style={styles.codeText}>8,8,8</Text>
             <Text style={styles.formatDesc}>bodyweight — reps only, no weight</Text>
           </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>-</Text>
-            <Text style={styles.formatDesc}>skipped set slot</Text>
-          </View>
-        </View>
-
-        <Text style={[styles.helpText, { marginTop: 12 }]}>
-          You can organize by day and block using optional labels:
-        </Text>
-        <View style={styles.codeBlock}>
-          <Text style={styles.codeText}>Monday</Text>
-          <Text style={styles.codeText}>+Lifting</Text>
-          <Text style={styles.codeText}>-Squat</Text>
-          <Text style={styles.codeText}>- 225 5,5,5</Text>
         </View>
 
         <Text style={[styles.helpText, { marginTop: 12 }]}>
