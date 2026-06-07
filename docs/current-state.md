@@ -316,38 +316,36 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/AnalyticsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, separate labeled `7-day rolling average` and `30-day rolling
-  average` charts, and 7-day/30-day summary averages, alongside a `Session
-  Health` section that replaces the older workout-sessions card with a
-  three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
-  derived from the shared session-depth thresholds. The gauge runs its zones,
-  marker, and caption off `sessions since deload`, where the session count is
-  anchored only to routine session position: newly completed deloads persist a
-  user-confirmed `deload_session_ordinal`, prefilled from the current note's
-  next inferred session and editable before confirmation, and legacy deload
-  records fall back to their stored `session_count`. Deload dates remain display
-  and calendar metadata only for this session-count metric. The same section
-  also shows a separate calendar-based `weeks since deload` metric plus a small
-  routine-exposure card with `sessions logged` (including archived deload
-  sessions) and `weeks on routine` as elapsed calendar weeks since the routine
-  start. The deferred `active weeks` metric is not currently shown. The whole `Session Health`
-  surface is hidden when the More > Settings `Deload mode` toggle is off. The redesigned `1K
+  average` charts, and 7-day/30-day summary averages, alongside a merged
+  `Routine Status` / `Fatigue` parent section. That section contains a
+  `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
+  `Approaching` / `Deload`) driven entirely by session-ordinal data. Newly
+  completed deloads now persist a user-confirmed `deload_session_ordinal`,
+  prefilled from the current routine's next inferred session and editable
+  before confirmation; legacy deload records still fall back to stored
+  `session_count`. On the Analytics surface, `sessions since deload` and
+  `sessions logged` are the only routine-status metrics shown; no calendar
+  metrics appear in this panel. The gauge marker, zone labels, and caption
+  always render, while `Deload mode` hides only the `Since deload` stat. The
+  same parent section contains a `Fatigue Tracking` panel backed by persisted
+  `session_checkins`. The parent title is `Fatigue` when fatigue tracking is
+  enabled and `Routine Status` otherwise; turning fatigue tracking off hides
+  only the fatigue panel and its Analytics edit path. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
-  a `Fatigue` section backed by persisted `session_checkins`, now collapsed by
-  default into a signal-first summary row that highlights the most common rough
-  reason when available and shows an unanswered-count alert when pending
-  check-ins exist. Expanding the card reveals `Not great`, `All good`, and
-  conditional `Unanswered` groups with stable calendar-day formatting from
-  `responded_at`; rough entries render as quieter callout rows with reasons
-  plus non-zero skipped/volume-drop stats, while ok/pending entries collapse
-  into date chips to reduce scan noise. Every fatigue entry still exposes an
-  Analytics-side edit path that reopens the check-in modal against the
-  original session record. Editing an existing entry hydrates its saved
-  status/reasons/note, preserves the original `responded_at` timestamp, and
-  lets unanswered dismissals be completed later without reordering history.
-  The whole `Fatigue` section and its edit-modal entry path are hidden when
-  the More > Settings `Fatigue tracking` toggle is off.
+  a fatigue-tracking panel that stays collapsed by default into a signal-first
+  summary row highlighting the most common rough reason when available and an
+  unanswered-count alert when pending check-ins exist. Expanding the panel
+  reveals `Not great`, `All good`, and conditional `Unanswered` groups with
+  stable calendar-day formatting from `responded_at`; rough entries render as
+  quieter callout rows with reasons plus non-zero skipped/volume-drop stats,
+  while ok/pending entries collapse into date chips to reduce scan noise.
+  Every fatigue entry still exposes an Analytics-side edit path that reopens
+  the check-in modal against the original session record. Editing an existing
+  entry hydrates its saved status/reasons/note, preserves the original
+  `responded_at` timestamp, and lets unanswered dismissals be completed later
+  without reordering history.
   Shared chart surfaces now also expose a tapped-point readout without breaking
   existing callers. The screen still uses an artisanal-panel strength
   container, strength-only 1k slot selection, and a `Progressive Overload`
@@ -547,10 +545,10 @@ The session count drives a color signifier on both screens: green (1–6
 sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
 at or past deload window), derived through a shared `getSessionTone` helper
 in UI.js. On Home the color applies to the "Week N" label text; on Analytics
-the `Session Health` card applies the tone to its sessions-since-deload hero
-count and gauge caption, and pairs that session-based signal with explicitly
-labeled routine-exposure context (`sessions logged`, `weeks on routine`) plus
-the calendar-based `weeks since deload` value.
+the `Routine Health` gauge applies the tone to its `sessions since deload`
+count and caption; `sessions logged` is shown as a `Total` stat within the
+same gauge card. No calendar-based metrics are shown in the Analytics routine
+status surface.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,

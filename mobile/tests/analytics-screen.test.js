@@ -504,15 +504,16 @@ describe('AnalyticsScreen Weight Trends — two rolling charts', () => {
   });
 });
 
-// ── Session Health gauge (renamed from Activity) ──────────────────────────────
+// ── Routine Status gauge ──────────────────────────────────────────────────────
 
-describe('AnalyticsScreen Session Health gauge', () => {
+describe('AnalyticsScreen Routine Status gauge', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('section is renamed to Session Health and shows the no-sessions caption at 0', () => {
+  test('gauge renders and shows the no-sessions caption at 0', () => {
+    // Both features on → parent section title is "Fatigue"; gauge still renders.
     const component = setup();
     const root = component.root;
-    expect(hasText(root, 'Session Health')).toBe(true);
+    expect(hasText(root, 'Session Health')).toBe(false);
     expect(hasText(root, 'Activity')).toBe(false);
     expect(hasText(root, 'No sessions logged')).toBe(true);
   });
@@ -733,9 +734,9 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
   });
 });
 
-// ── Session Health two-metric model ──────────────────────────────────────────
+// ── Routine Status two-metric model ──────────────────────────────────────────
 
-describe('AnalyticsScreen Session Health two-metric display', () => {
+describe('AnalyticsScreen Routine Status metric display', () => {
   afterEach(() => jest.restoreAllMocks());
 
   const ROUTINE_NOTE = {
@@ -749,49 +750,25 @@ describe('AnalyticsScreen Session Health two-metric display', () => {
     isCurrent: true,
   };
 
-  test('renders Session Health section with both metrics explicitly labeled', () => {
+  test('renders gauge showing Since deload and Total; no calendar metrics', () => {
+    // Both toggles on → parent title is "Fatigue"; gauge content still renders.
     const deloadHistory = [
       { id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 1, note_id: 'wn_dl_1' },
     ];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
     const root = component.root;
-    expect(hasText(root, 'Session Health')).toBe(true);
-    expect(hasText(root, 'sessions since deload')).toBe(true);
-    expect(hasText(root, 'weeks since deload')).toBe(true);
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Total')).toBe(true);
+    expect(hasText(root, 'weeks on routine')).toBe(false);
+    expect(hasText(root, 'weeks since deload')).toBe(false);
+    expect(hasText(root, 'sessions since deload')).toBe(false);
   });
 
-  test('weeks since deload label is present even with 0 weeks', () => {
-    const deloadHistory = [
-      { id: 'dl_1', completed_at: new Date().toISOString(), session_count: 2, note_id: 'wn_dl_1' },
-    ];
-    const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
-  });
-
-  test('weeks since deload shows em-dash when no deload history exists', () => {
-    const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: [] } });
-    expect(hasText(component.root, '—')).toBe(true);
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
-  });
-
-  test('editing completed_at does not require session_count change: both labels present regardless', () => {
-    const historyA = [{ id: 'dl_1', completed_at: '2026-05-09T12:00:00.000Z', session_count: 10 }];
-    const historyB = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 10 }];
-
-    const compA = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyA } });
-    const compB = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyB } });
-
-    for (const comp of [compA, compB]) {
-      expect(hasText(comp.root, 'sessions since deload')).toBe(true);
-      expect(hasText(comp.root, 'weeks since deload')).toBe(true);
-    }
-  });
-
-  test('legacy records without note_id render both metric labels without error', () => {
+  test('legacy records without note_id render gauge without error', () => {
     const deloadHistory = [{ id: 'dl_legacy', completed_at: '2026-04-01T00:00:00.000Z', session_count: 0 }];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    expect(hasText(component.root, 'sessions since deload')).toBe(true);
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
+    expect(hasText(component.root, 'Since deload')).toBe(true);
+    expect(hasText(component.root, 'Total')).toBe(true);
   });
 });
 
@@ -800,29 +777,49 @@ describe('AnalyticsScreen Session Health two-metric display', () => {
 describe('AnalyticsScreen feature toggle gating', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('shows Fatigue and Session Health sections when both features are enabled', () => {
+  test('shows section titled Fatigue and Fatigue Tracking panel when both features enabled', () => {
     const component = setup();
     const root = component.root;
+    // Parent section title is "Fatigue" when both sub-panels are visible.
     expect(hasText(root, 'Fatigue')).toBe(true);
-    expect(hasText(root, 'Session Health')).toBe(true);
+    expect(hasText(root, 'Fatigue Tracking')).toBe(true);
+    // "Routine Status" does not appear as a separate section title.
+    expect(hasText(root, 'Routine Status')).toBe(false);
   });
 
-  test('hides the Fatigue section when fatigue tracking is off', () => {
+  test('section title switches to Routine Status when only sessions panel is visible', () => {
     const component = setup({ featureToggles: { fatigueTrackingEnabled: false } });
     const root = component.root;
-    expect(hasText(root, 'Fatigue')).toBe(false);
+    // Sessions-only: parent title is "Routine Status".
+    expect(hasText(root, 'Routine Status')).toBe(true);
+    // Fatigue Tracking panel is hidden.
+    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'No check-ins logged yet.')).toBe(false);
-    // Unrelated sections still render.
-    expect(hasText(root, 'Session Health')).toBe(true);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('hides the Session Health gauge when deload mode is off', () => {
+  test('deload mode off hides Since deload stat but keeps gauge graphic and Total', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false } });
     const root = component.root;
-    expect(hasText(root, 'Session Health')).toBe(false);
-    // Unrelated sections still render.
+    // Fatigue Tracking still visible → section title stays "Fatigue".
     expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Fatigue Tracking')).toBe(true);
+    // Gauge card shows Total and full graphic.
+    expect(hasText(root, 'Total')).toBe(true);
+    expect(hasText(root, 'Building')).toBe(true);
+    // Only the Since deload stat label is hidden.
+    expect(hasText(root, 'Since deload')).toBe(false);
+    expect(hasText(root, 'Weight Trends')).toBe(true);
+  });
+
+  test('both toggles off shows Routine Status with gauge graphic and Total, no Since deload', () => {
+    const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
+    const root = component.root;
+    expect(hasText(root, 'Routine Status')).toBe(true);
+    expect(hasText(root, 'Total')).toBe(true);
+    expect(hasText(root, 'Building')).toBe(true);
+    expect(hasText(root, 'Since deload')).toBe(false);
+    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 });
@@ -994,7 +991,7 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('surfaces sessions-logged and weeks-on-routine', () => {
+  test('gauge surfaces since-deload count and total; no calendar metrics', () => {
     const currentNote = {
       id: 'wn1',
       raw_text: FIVE_SESSION_RAW,
@@ -1006,13 +1003,14 @@ describe('AnalyticsScreen routine-status plumbing (#282)', () => {
     const component = setup({ hookOverrides: { notes: [currentNote], currentNote, deloadHistory } });
     const root = component.root;
 
-    expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'weeks on routine')).toBe(true);
-    expect(hasText(root, 'sessions since deload')).toBe(true);
-    // sessions logged = 5 routine + 1 deload = 6 (includes archived deloads).
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Total')).toBe(true);
+    // Calendar metrics removed — must not appear.
+    expect(hasText(root, 'weeks on routine')).toBe(false);
+    expect(hasText(root, 'weeks since deload')).toBe(false);
+    expect(hasText(root, 'active weeks')).toBe(false);
+    // sessions logged (Total) = 5 routine + 1 deload = 6 (includes archived deloads).
     expect(findAllText(root).some(s => s === '6')).toBe(true);
-    // weeks on routine = 8 calendar-week span since saved_at.
-    expect(findAllText(root).some(s => s === '8')).toBe(true);
   });
 });
 

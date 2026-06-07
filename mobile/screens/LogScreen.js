@@ -88,6 +88,7 @@ export function LogScreen({
   const [viewingNoteId, setViewingNoteId] = useState(null);
   const [deloadEditDate, setDeloadEditDate] = useState('');
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
+  const [deloadEditOrdinal, setDeloadEditOrdinal] = useState('');
 
   const [roughFlaggedNames, setRoughFlaggedNames] = useState(new Set());
   const [roughSessionIndex, setRoughSessionIndex] = useState(null);
@@ -158,6 +159,8 @@ export function LogScreen({
     setEditingTitle(viewingNote.title || '');
     setEditingText(viewingNote.raw_text);
     setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
+    const _histRec = deloadHistory.find(r => r.note_id === viewingNote.id);
+    setDeloadEditOrdinal(_histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '');
     setSaveError('');
     setSaveSuccess('');
   };
@@ -287,8 +290,15 @@ export function LogScreen({
     const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
-    return textChanged || dateChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, editingDeloadHasLinkedRecord]);
+    const ordinalChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
+      ? (() => {
+          const r = deloadHistory.find(h => h.note_id === editingNoteId);
+          const orig = r?.deload_session_ordinal != null ? String(r.deload_session_ordinal) : '';
+          return deloadEditOrdinal !== orig;
+        })()
+      : false;
+    return textChanged || dateChanged || ordinalChanged;
+  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
   // Latest back-press logic, reassigned every render so the registered listener
   // always runs against current state (fresh handleDone* closures, current text)
@@ -662,20 +672,34 @@ export function LogScreen({
           setEditingNoteId(result.id);
         } else {
           const patch = { title: titleToSave, raw_text: editingText };
-          if (isEditingDeloadNote && deloadDateEditEnabled && deloadEditDate) {
-            const newDate = deloadEditDate;
-            const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-            if (newDate !== savedDate) {
-              const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
-              if (histRecord) {
-                await updateDeload(histRecord.id, { completed_at: `${newDate}T12:00:00.000Z` });
+          if (isEditingDeloadNote && deloadDateEditEnabled) {
+            const histRecord = editingDeloadHasLinkedRecord
+              ? deloadHistory.find(r => r.note_id === editingNoteId)
+              : null;
+            const deloadPatch = {};
+            if (deloadEditDate) {
+              const newDate = deloadEditDate;
+              const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
+              if (newDate !== savedDate) {
+                if (histRecord) {
+                  deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
+                  patch.saved_at = `${newDate}T12:00:00.000Z`;
+                }
+                // No linked history record (legacy note): skip the date change entirely.
+                // Applying saved_at without updating completed_at would desync the workout
+                // note date from the analytics anchor — silently preserve the old date.
+              } else {
                 patch.saved_at = `${newDate}T12:00:00.000Z`;
               }
-              // No linked history record (legacy note): skip the date change entirely.
-              // Applying saved_at without updating completed_at would desync the workout
-              // note date from the analytics anchor — silently preserve the old date.
-            } else {
-              patch.saved_at = `${newDate}T12:00:00.000Z`;
+            }
+            if (histRecord) {
+              const newOrdinal = parseInt(deloadEditOrdinal, 10);
+              if (!isNaN(newOrdinal) && newOrdinal !== histRecord.deload_session_ordinal) {
+                deloadPatch.deload_session_ordinal = newOrdinal;
+              }
+              if (Object.keys(deloadPatch).length > 0) {
+                await updateDeload(histRecord.id, deloadPatch);
+              }
             }
           }
           result = await update(editingNoteId, patch);
@@ -1620,6 +1644,20 @@ export function LogScreen({
                   >
                     <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
                   </Pressable>
+                  {editingDeloadHasLinkedRecord && (
+                    <>
+                      <Text style={styles.inputLabel}>Session #</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={deloadEditOrdinal}
+                        onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
+                        keyboardType="number-pad"
+                        placeholder="Session number"
+                        placeholderTextColor={Colors.textMuted}
+                        accessibilityLabel="Deload session number"
+                      />
+                    </>
+                  )}
                   {editingDeloadHasLinkedRecord && showDeloadDatePicker && (
                     <DateTimePicker
                       value={(() => {

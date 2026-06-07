@@ -377,4 +377,17 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
     // is absent the history anchor drifts from the note saved_at date.
     expect(src).toMatch(/await\s+updateDeload\s*\([\s\S]{0,700}await\s+update\s*\(\s*editingNoteId/);
   });
+
+  test('deload save path writes deload_session_ordinal into the deloadPatch', () => {
+    // The ordinal field must flow through the consolidated deloadPatch so that
+    // a single updateDeload call carries both date and ordinal changes.
+    expect(src).toMatch(/deload_session_ordinal/);
+    expect(src).toMatch(/deloadPatch\.deload_session_ordinal/);
+  });
+
+  test('deload ordinal input strips non-numeric characters', () => {
+    // The TextInput onChangeText handler must sanitize to digits only so the
+    // parseInt call downstream always receives a clean integer string.
+    expect(src).toMatch(/replace\s*\(\s*\/\[.*\^.*0-9.*\].*\/.*,\s*''\s*\)/);
+  });
 });

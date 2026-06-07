@@ -85,7 +85,7 @@ const _SESSION_GAUGE_TONE_COLORS = {
 // are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
 // (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
 // session counts map linearly onto the zone segments.
-export function SessionGauge({ count, total }) {
+export function SessionGauge({ count, total, showDeload = true }) {
   const tone = getSessionTone(count);
   const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
   const caption = getSessionZoneCaption(count);
@@ -93,11 +93,14 @@ export function SessionGauge({ count, total }) {
 
   return (
     <Card style={styles.sessionGauge}>
+      <Text style={styles.sessionGaugePanelTitle}>Routine Health</Text>
       <View style={styles.sessionGaugeHeader}>
-        <View style={styles.sessionGaugeStat}>
-          <Text style={styles.sessionGaugeLabel}>Since deload</Text>
-          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
-        </View>
+        {showDeload && (
+          <View style={styles.sessionGaugeStat}>
+            <Text style={styles.sessionGaugeLabel}>Since deload</Text>
+            <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+          </View>
+        )}
         {total != null && (
           <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
             <Text style={styles.sessionGaugeLabel}>Total</Text>
@@ -340,9 +343,14 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
+  sessionGaugePanelTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
   sessionGaugeHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
   },
   sessionGaugeStat: {
@@ -350,6 +358,7 @@ const styles = StyleSheet.create({
   },
   sessionGaugeStatRight: {
     alignItems: 'flex-end',
+    marginLeft: 'auto',
   },
   sessionGaugeLabel: {
     fontSize: 11,

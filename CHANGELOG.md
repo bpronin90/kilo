@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.67.0 - 2026-06-07
+
+- Issue #283: Simplified Analytics routine status to a session-only `Routine
+  Health` gauge, merged the routine-status and fatigue surfaces under one
+  parent section, kept `Deload mode` focused on hiding only the `Since deload`
+  stat, added editable deload `Session #` support on linked past-deload
+  records, and updated the current-state docs to match the shipped contract.
+
 ## 0.66.0 - 2026-06-07
 
 - Issue #284: Anchored Analytics deload session counts to routine session

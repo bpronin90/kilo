@@ -219,15 +219,12 @@ export function AnalyticsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  // Canonical routine-status metrics. Derivation is chronology-aware: editing a
-  // past deload date moves both deload-relative metrics together (see #282).
   const routineStatus = useMemo(
     () => deriveRoutineStatus(parsedSections.currentSections, currentNote, deloadHistory),
     [parsedSections.currentSections, currentNote, deloadHistory]
   );
   const sessionCount = routineStatus.sessionsLogged;
   const sinceDeload = routineStatus.sessionsSinceDeload;
-  const weeksDeload = routineStatus.weeksSinceDeload;
 
   const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
 
@@ -312,49 +309,14 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
-    deloadModeEnabled ? (
-    <View key="deload-title">
-      <SectionTitle>Session Health</SectionTitle>
-    </View>) : null,
-    deloadModeEnabled ? (
-    <View key="session-gauge">
-      <SessionGauge count={sinceDeload} total={sessionCount} />
-      <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
-    </View>) : null,
-    deloadModeEnabled ? (
-    <Card key="weeks-since-deload" style={styles.weeksCard}>
-      <View style={styles.weeksStat}>
-        <Text style={styles.weeksValue}>
-          {weeksDeload !== null ? String(weeksDeload) : '—'}
-        </Text>
-        <Text style={styles.weeksLabel}>weeks since deload</Text>
-      </View>
-    </Card>) : null,
+    <View key="combined-section-title">
+      <SectionTitle>{fatigueTrackingEnabled ? 'Fatigue' : 'Routine Status'}</SectionTitle>
+    </View>,
+    <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled} />,
 
-    // Routine-exposure metrics. Minimal plumbing to surface the corrected
-    // contract values (#282); #283 redesigns the presentation.
-    deloadModeEnabled ? (
-    <Card key="routine-exposure" style={styles.weeksCard}>
-      <View style={styles.routineExposureRow}>
-        <View style={styles.weeksStat}>
-          <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
-          <Text style={styles.weeksLabel}>sessions logged</Text>
-        </View>
-        <View style={styles.weeksStat}>
-          <Text style={styles.weeksValue}>
-            {routineStatus.elapsedWeeks !== null ? String(routineStatus.elapsedWeeks) : '—'}
-          </Text>
-          <Text style={styles.weeksLabel}>weeks on routine</Text>
-        </View>
-      </View>
-    </Card>) : null,
-
-    fatigueTrackingEnabled ? (
-    <View key="fatigue-title">
-      <SectionTitle>Fatigue</SectionTitle>
-    </View>) : null,
     fatigueTrackingEnabled ? (
     <Card key="fatigue-card" style={styles.fatigueCard}>
+      <Text style={styles.fatiguePanelLabel}>Fatigue Tracking</Text>
       {checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0 ? (
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
       ) : (
@@ -1250,39 +1212,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 15,
   },
-  gaugeMetricLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  weeksCard: {
-    padding: 16,
-  },
-  routineExposureRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  weeksStat: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  weeksValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  weeksLabel: {
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
   fatigueCard: {
     padding: 20,
-    gap: 0,
+    gap: 8,
     backgroundColor: Colors.panelBackground,
+  },
+  fatiguePanelLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   fatigueEmpty: {
     fontSize: 14,
@@ -1324,10 +1264,8 @@ const styles = StyleSheet.create({
   },
   fatigueInsightLabel: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '500',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   fatigueInsightValue: {
     fontSize: 18,
