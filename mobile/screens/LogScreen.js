@@ -21,6 +21,11 @@ import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useF
 const DELOAD_NOTE_PREFIX = 'Deload · ';
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
+function _localDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Parse any ISO timestamp or YYYY-MM-DD string as local midnight so
 // toLocaleDateString() never shifts the date back one day for UTC- timezones.
 function localDate(str) {
@@ -436,6 +441,17 @@ export function LogScreen({
       // Skip tracking: scoped to the current note being saved.
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const skip_markers = { exercise_skips, day_skips };
+
+      // Stamp today's date for the latest session if it doesn't already have one.
+      // Preserves existing dates and leaves old undated sessions without a date so
+      // we never retroactively assign today's date to sessions logged weeks ago.
+      const newSessionCount = countWorkoutSessionsFromSections(savedSections);
+      const existingDates = currentNote?.session_dates || {};
+      const session_dates = { ...existingDates };
+      if (newSessionCount > 0 && !session_dates[newSessionCount - 1]) {
+        session_dates[newSessionCount - 1] = _localDateStr();
+      }
+
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
@@ -443,6 +459,7 @@ export function LogScreen({
           exercise_classifications,
           skip_markers,
           attendance_flags,
+          session_dates,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);

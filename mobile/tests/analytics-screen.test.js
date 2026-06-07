@@ -959,7 +959,8 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(status.sessionsSinceDeload).toBe(2);
     expect(status.weeksSinceDeload).toBe(5);
     expect(status.elapsedWeeks).toBe(8);         // calendar span since saved_at
-    expect(status).not.toHaveProperty('activeWeeks'); // deferred per #282 review
+    // activeWeeks is null here: note has session_checkins but no session_dates.
+    expect(status.activeWeeks).toBeNull();
   });
 
   test('legacy / no-check-in note derives safely (elapsed still shows real weeks)', () => {
@@ -983,12 +984,19 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('surfaces sessions-logged and weeks-on-routine; no active-weeks (deferred)', () => {
+  test('surfaces sessions-logged, weeks-on-routine, and active-weeks (#284)', () => {
     const currentNote = {
       id: 'wn1',
       raw_text: FIVE_SESSION_RAW,
       saved_at: '2026-04-06T00:00:00.000Z',
       session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
+      session_dates: {
+        0: '2026-04-06',
+        1: '2026-04-13',
+        2: '2026-04-20',
+        3: '2026-04-27',
+        4: '2026-05-04',
+      },
       isCurrent: true,
     };
     const deloadHistory = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, raw_text: '-Squat\n- 135 5' }];
@@ -998,11 +1006,61 @@ describe('AnalyticsScreen routine-status plumbing (#282)', () => {
     expect(hasText(root, 'sessions logged')).toBe(true);
     expect(hasText(root, 'weeks on routine')).toBe(true);
     expect(hasText(root, 'sessions since deload')).toBe(true);
-    // active weeks is deferred per #282 review — must not appear.
-    expect(hasText(root, 'active weeks')).toBe(false);
+    // active weeks now surfaces (#284).
+    expect(hasText(root, 'active weeks')).toBe(true);
     // sessions logged = 5 routine + 1 deload = 6 (includes archived deloads).
     expect(findAllText(root).some(s => s === '6')).toBe(true);
     // weeks on routine = 8 calendar-week span since saved_at.
     expect(findAllText(root).some(s => s === '8')).toBe(true);
+    // active weeks = 5 distinct calendar weeks.
+    expect(findAllText(root).some(s => s === '5')).toBe(true);
+  });
+});
+
+describe('activeWeeksFromSessionDates (#284)', () => {
+  const { activeWeeksFromSessionDates } = require('../lib/data');
+
+  test('returns null for legacy note without session_dates', () => {
+    expect(activeWeeksFromSessionDates({ id: 'x', raw_text: '' })).toBeNull();
+    expect(activeWeeksFromSessionDates({ id: 'x', session_dates: null })).toBeNull();
+    expect(activeWeeksFromSessionDates({ id: 'x', session_dates: {} })).toBeNull();
+  });
+
+  test('counts distinct calendar weeks', () => {
+    const note = {
+      session_dates: {
+        0: '2026-04-06',
+        1: '2026-04-13',
+        2: '2026-04-20',
+        3: '2026-04-27',
+        4: '2026-05-04',
+      },
+    };
+    expect(activeWeeksFromSessionDates(note)).toBe(5);
+  });
+
+  test('de-duplicates sessions in the same calendar week', () => {
+    const note = {
+      session_dates: {
+        0: '2026-04-06',
+        1: '2026-04-07',
+        2: '2026-04-08',
+        3: '2026-04-13',
+      },
+    };
+    // First three dates are all Mon–Wed of the same week; fourth is next Monday.
+    expect(activeWeeksFromSessionDates(note)).toBe(2);
+  });
+
+  test('does not depend on session_checkins', () => {
+    const noteWithDates = {
+      session_dates: { 0: '2026-04-06', 1: '2026-04-13' },
+    };
+    const noteWithCheckins = {
+      session_checkins: checkinsFromDates(['2026-04-06', '2026-04-13']),
+    };
+    // Note with session_dates returns a count; note with only checkins returns null.
+    expect(activeWeeksFromSessionDates(noteWithDates)).toBe(2);
+    expect(activeWeeksFromSessionDates(noteWithCheckins)).toBeNull();
   });
 });

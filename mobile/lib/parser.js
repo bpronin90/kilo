@@ -796,22 +796,35 @@ function _latestDeload(deloadHistory) {
 }
 
 // ── sessionDateMapFromNote ────────────────────────────────────────────────────
-// Builds the per-session date chronology for the current routine from its stored
-// session check-ins. Returns Map<sessionIndex(int), 'YYYY-MM-DD'>.
+// Builds the per-session date chronology for the current routine.
+// Returns Map<sessionIndex(int), 'YYYY-MM-DD'>.
 //
-// session_checkins is the only per-session dated anchor in the note model, so it
-// is the chronology source for deload-boundary and active-week derivation. Index
-// keys are 0-based positions in the session chain (oldest = 0), matching the
-// session ordinals counted by countWorkoutSessionsFromSections.
+// Reads from two sources merged in priority order:
+//   1. session_checkins[idx].responded_at — legacy chronology anchor (lower priority)
+//   2. session_dates[idx]                 — explicit per-session date (issue #284, higher priority)
+//
+// session_dates entries override check-ins for the same index so that sessions
+// logged after #284 carry a durable date even when check-ins are absent.
+// Index keys are 0-based session ordinals, matching countWorkoutSessionsFromSections.
 export function sessionDateMapFromNote(note) {
   const out = new Map();
   const checkins = note?.session_checkins;
-  if (!checkins) return out;
-  for (const [key, ci] of Object.entries(checkins)) {
-    if (!ci || !ci.responded_at) continue;
-    const idx = Number(key);
-    if (!Number.isInteger(idx) || idx < 0) continue;
-    out.set(idx, ci.responded_at.slice(0, 10));
+  if (checkins) {
+    for (const [key, ci] of Object.entries(checkins)) {
+      if (!ci || !ci.responded_at) continue;
+      const idx = Number(key);
+      if (!Number.isInteger(idx) || idx < 0) continue;
+      out.set(idx, ci.responded_at.slice(0, 10));
+    }
+  }
+  const dates = note?.session_dates;
+  if (dates) {
+    for (const [key, d] of Object.entries(dates)) {
+      if (!d || typeof d !== 'string') continue;
+      const idx = Number(key);
+      if (!Number.isInteger(idx) || idx < 0) continue;
+      out.set(idx, d.slice(0, 10));
+    }
   }
   return out;
 }
