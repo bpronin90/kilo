@@ -310,7 +310,7 @@ export function AnalyticsScreen({ multiplier, section }) {
     </Card>,
 
     <View key="combined-section-title">
-      <SectionTitle>{fatigueTrackingEnabled ? 'Fatigue' : 'Routine Status'}</SectionTitle>
+      <SectionTitle>Fatigue</SectionTitle>
     </View>,
     <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled} />,
 
