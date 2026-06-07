@@ -596,10 +596,9 @@ export function LogScreen({
         return;
       }
       Alert.alert(
-        'Discard changes?',
-        'You have not saved this new routine. Are you sure you want to discard it?',
+        'Save new routine?',
+        'Would you like to save this routine before leaving?',
         [
-          { text: 'Cancel', style: 'cancel' },
           {
             text: 'Discard',
             style: 'destructive',
@@ -607,6 +606,14 @@ export function LogScreen({
               exitCurrentEditor();
               setWorkoutNoteText('');
               setWorkoutNoteTitle('');
+            }
+          },
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: async () => {
+              const ok = await handleSave();
+              if (ok) exitCurrentEditor();
             }
           },
         ]
