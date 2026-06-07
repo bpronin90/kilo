@@ -413,7 +413,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 value={newEntryDateObj}
                 mode="date"
                 display="default"
-                onChange={onNewEntryDateChange}
+                onValueChange={onNewEntryDateChange}
+                onDismiss={() => setShowNewEntryDatePicker(false)}
                 maximumDate={new Date()}
               />
             )}
@@ -435,7 +436,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 value={editDateObj}
                 mode="date"
                 display="default"
-                onChange={onEditDateChange}
+                onValueChange={onEditDateChange}
+                onDismiss={() => setShowEditDatePicker(false)}
                 maximumDate={new Date()}
               />
             )}
@@ -509,7 +511,8 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
                 value={pickerDate}
                 mode="date"
                 display="default"
-                onChange={onDateChange}
+                onValueChange={onDateChange}
+                onDismiss={() => setShowDatePicker(false)}
                 minimumDate={new Date()}
               />
             )}

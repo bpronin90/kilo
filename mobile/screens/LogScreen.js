@@ -1632,7 +1632,7 @@ export function LogScreen({
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onChange={(event, selectedDate) => {
+                      onValueChange={(event, selectedDate) => {
                         setShowDeloadDatePicker(false);
                         if (selectedDate) {
                           const y = selectedDate.getFullYear();
@@ -1643,6 +1643,7 @@ export function LogScreen({
                           setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
                         }
                       }}
+                      onDismiss={() => setShowDeloadDatePicker(false)}
                     />
                   )}
                 </>
