@@ -352,6 +352,7 @@ const styles = StyleSheet.create({
   },
   sessionGaugeStatRight: {
     alignItems: 'flex-end',
+    marginLeft: 'auto',
   },
   sessionGaugeLabel: {
     fontSize: 11,
