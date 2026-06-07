@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.67.5 - 2026-06-07
+
+- Issue #293: Standardized the main mobile text-input treatment across Weight,
+  More, Analytics, and the session check-in modal, aligned the modal primary
+  action button with the shared primary-button sizing, and replaced touched
+  hardcoded white text with the shared warm `Colors.textLight` token.
+
 ## 0.67.4 - 2026-06-07
 
 - Issue #290: Added a visible per-note `Undo` escape hatch to Log editing so

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
+import { InputStyle } from './UI';
 
 const REASON_GROUPS = [
   {
@@ -441,21 +442,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   noteInput: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: Colors.text,
+    ...InputStyle,
     minHeight: 72,
     textAlignVertical: 'top',
   },
   submitBtn: {
     backgroundColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingVertical: 16,
     alignItems: 'center',
     marginTop: 4,
   },
@@ -463,8 +457,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   submitBtnText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: Colors.textLight,
   },
 });
