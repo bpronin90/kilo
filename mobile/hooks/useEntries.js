@@ -307,7 +307,7 @@ export function useDeloadHistory() {
     notifyDeloadHistory();
   }, []);
 
-  const completeDeload = useCallback(async ({ sessionCount }) => {
+  const completeDeload = useCallback(async ({ sessionCount, deloadSessionOrdinal }) => {
     const activeNote = await Storage.loadDeloadNote();
     if (!activeNote) return null;
     const completed_at = new Date().toISOString();
@@ -329,6 +329,7 @@ export function useDeloadHistory() {
       generated_at: activeNote.saved_at,
       completed_at,
       session_count: sessionCount,
+      deload_session_ordinal: deloadSessionOrdinal ?? null,
       note_id: noteId,
     };
     await Storage.appendDeloadHistory(record);

@@ -1164,40 +1164,6 @@ describe('session_checkins round-trip', () => {
   });
 });
 
-describe('session_dates round-trip (#284)', () => {
-  const NOTE = {
-    id: 'wn_2026-05-01_1', title: 'Routine', raw_text: '',
-    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
-    tracked_exercises: [], one_k_exercises: null,
-    session_checkins: null, session_dates: null,
-  };
-
-  test('round-trip: session_dates persists and reloads', async () => {
-    const dates = { '0': '2026-04-06', '1': '2026-04-13' };
-    await saveWorkoutNoteItem({ ...NOTE, session_dates: dates });
-    const notes = await loadWorkoutNotes();
-    expect(notes[0].session_dates).toEqual(dates);
-  });
-
-  test('null session_dates persists as null', async () => {
-    await saveWorkoutNoteItem(NOTE);
-    const notes = await loadWorkoutNotes();
-    expect(notes[0].session_dates).toBeNull();
-  });
-
-  test('legacy note without session_dates loads null-safe', async () => {
-    const legacy = {
-      id: 'wn_legacy_2', title: 'Old', raw_text: '',
-      saved_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
-      tracked_exercises: [], one_k_exercises: null,
-    };
-    await saveWorkoutNoteItem(legacy);
-    const notes = await loadWorkoutNotes();
-    expect(() => notes[0].session_dates?.['0']).not.toThrow();
-    expect(notes[0].session_dates?.['0']).toBeUndefined();
-  });
-});
-
 describe('deleteWorkoutNoteItem', () => {
   const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
   const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
@@ -1912,6 +1878,20 @@ describe('deload history storage', () => {
     const result = await deleteDeloadHistory(DL1.id);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(DL2.id);
+  });
+
+  test('round-trip: deload_session_ordinal persists and reloads', async () => {
+    const record = { ...DL1, deload_session_ordinal: 5 };
+    await appendDeloadHistory(record);
+    const history = await loadDeloadHistory();
+    expect(history[0].deload_session_ordinal).toBe(5);
+  });
+
+  test('legacy deload record without deload_session_ordinal loads null-safe', async () => {
+    await appendDeloadHistory(DL1);
+    const history = await loadDeloadHistory();
+    expect(() => history[0].deload_session_ordinal?.toString()).not.toThrow();
+    expect(history[0].deload_session_ordinal).toBeUndefined();
   });
 });
 

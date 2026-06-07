@@ -212,6 +212,43 @@ describe('deload date edit: sessions and weeks are independent metrics', () => {
   });
 });
 
+// ── deload_session_ordinal: session-ordinal anchor (#284) ─────────────────────
+
+describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', () => {
+  test('ordinal takes precedence over session_count and dateMap', () => {
+    // stale session_count of 99 and no dateMap — ordinal of 5 wins.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5 }];
+    expect(sessionsSinceLastDeload(5, history)).toBe(1);
+    expect(sessionsSinceLastDeload(4, history)).toBe(0);
+    expect(sessionsSinceLastDeload(7, history)).toBe(3);
+  });
+
+  test('freshly completed deload (no new sessions yet) reads 0', () => {
+    // 4 sessions in note, prefill = 5; totalSessions stays 4 until user logs more.
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    expect(sessionsSinceLastDeload(4, history)).toBe(0);
+  });
+
+  test('first post-deload session reads 1', () => {
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    expect(sessionsSinceLastDeload(5, history)).toBe(1);
+  });
+
+  test('user-corrected ordinal works for partial import scenario', () => {
+    // App note only has 2 sessions (imported last 2 of a real 14-session routine).
+    // User corrects ordinal to 15 (= real next position).
+    // After logging to 15 sessions in note, sessionsSinceDeload = 1.
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 15 }];
+    expect(sessionsSinceLastDeload(15, history)).toBe(1);
+    expect(sessionsSinceLastDeload(17, history)).toBe(3);
+  });
+
+  test('legacy records without deload_session_ordinal still use session_count fallback', () => {
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 10 }];
+    expect(sessionsSinceLastDeload(14, history)).toBe(4);
+  });
+});
+
 // ── autosave vs explicit save: call-site contract ────────────────────────────
 // React Native components cannot be rendered in this test environment, so these
 // tests assert the source-level contract directly: both debounce timer callbacks

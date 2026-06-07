@@ -346,12 +346,6 @@ export function AnalyticsScreen({ multiplier, section }) {
           </Text>
           <Text style={styles.weeksLabel}>weeks on routine</Text>
         </View>
-        <View style={styles.weeksStat}>
-          <Text style={styles.weeksValue}>
-            {routineStatus.activeWeeks !== null ? String(routineStatus.activeWeeks) : '—'}
-          </Text>
-          <Text style={styles.weeksLabel}>active weeks</Text>
-        </View>
       </View>
     </Card>) : null,
 

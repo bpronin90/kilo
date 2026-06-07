@@ -446,9 +446,7 @@ export function deloadSessionsLogged(deloadHistory) {
 
 // elapsedWeeks is a genuine calendar-week metric (Monday-anchored), not a
 // session-pass count. It uses the routine's saved_at start, which is always
-// present. activeWeeks counts distinct calendar weeks that contain at least one
-// logged session, derived from session_dates (the explicit per-session date field
-// added in issue #284). Returns null for legacy notes with no session_dates.
+// present.
 const _DAY_MS = 24 * 60 * 60 * 1000;
 const _WEEK_MS = 7 * _DAY_MS;
 
@@ -481,29 +479,12 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
   return Math.round((nowMon - startMon) / _WEEK_MS) + 1;
 }
 
-// Count distinct ISO calendar weeks (Monday-anchored) that contain at least one
-// logged session. Reads from note.session_dates — the explicit per-session date
-// map added in issue #284. Returns null when session_dates is absent (legacy note)
-// so callers can distinguish "zero active weeks" from "no date data".
-export function activeWeeksFromSessionDates(note) {
-  const dates = note?.session_dates;
-  if (!dates || Object.keys(dates).length === 0) return null;
-  const weekEpochs = new Set();
-  for (const d of Object.values(dates)) {
-    if (d && typeof d === 'string') {
-      weekEpochs.add(_mondayEpochFromIso(d));
-    }
-  }
-  return weekEpochs.size;
-}
-
 // Single canonical entry point for the Analytics routine-status surface.
 //
 // Returns:
 //   sessionsLogged:      total sessions on the routine, INCLUDING archived
 //                        deload sessions (never reduced by deloads)
 //   elapsedWeeks:        calendar weeks since the routine began, incl. gaps
-//   activeWeeks:         distinct calendar weeks with ≥1 logged session (null for legacy)
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
@@ -512,7 +493,6 @@ export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
-    activeWeeks: activeWeeksFromSessionDates(note),
     sessionsSinceDeload: sessionsSinceLastDeload(routineSessions, deloadHistory, dateMap),
     weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
   };
@@ -695,7 +675,6 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     skip_markers: null,
     attendance_flags: null,
     session_checkins: null,
-    session_dates: null,
     dismissed_nudges: null,
     exercise_classifications: null,
   };
