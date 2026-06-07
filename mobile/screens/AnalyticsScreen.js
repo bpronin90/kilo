@@ -318,33 +318,14 @@ export function AnalyticsScreen({ multiplier, section }) {
     </View>) : null,
     deloadModeEnabled ? (
     <View key="routine-status-content" style={styles.routineStatusContent}>
-      <Text style={styles.routineGroupLabel}>Routine Exposure</Text>
       <Card style={styles.routineExposureCard}>
-        <View style={styles.routineExposureRow}>
-          <View style={styles.routineMetric}>
-            <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
-            <Text style={styles.weeksLabel}>sessions logged</Text>
-          </View>
-          <View style={styles.routineMetricDivider} />
-          <View style={styles.routineMetric}>
-            <Text style={styles.weeksValue}>
-              {routineStatus.elapsedWeeks !== null ? String(routineStatus.elapsedWeeks) : '—'}
-            </Text>
-            <Text style={styles.weeksLabel}>weeks on routine</Text>
-          </View>
+        <View style={styles.routineMetric}>
+          <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
+          <Text style={styles.weeksLabel}>sessions logged</Text>
         </View>
       </Card>
-      <Text style={styles.routineGroupLabel}>Recovery Cycle</Text>
       <SessionGauge count={sinceDeload} />
       <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
-      <Card style={styles.weeksCard}>
-        <View style={styles.routineMetric}>
-          <Text style={styles.weeksValue}>
-            {weeksDeload !== null ? String(weeksDeload) : '—'}
-          </Text>
-          <Text style={styles.weeksLabel}>weeks since deload</Text>
-        </View>
-      </Card>
     </View>) : null,
 
     fatigueTrackingEnabled ? (

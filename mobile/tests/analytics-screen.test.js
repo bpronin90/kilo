@@ -736,7 +736,7 @@ describe('AnalyticsScreen Fatigue section — collapse/expand and edit affordanc
   });
 });
 
-// ── Routine Status four-metric model ─────────────────────────────────────────
+// ── Routine Status two-metric model ──────────────────────────────────────────
 
 describe('AnalyticsScreen Routine Status metric display', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -752,7 +752,7 @@ describe('AnalyticsScreen Routine Status metric display', () => {
     isCurrent: true,
   };
 
-  test('renders Routine Status section with all four metrics explicitly labeled', () => {
+  test('renders Routine Status section with sessions logged and sessions since deload', () => {
     const deloadHistory = [
       { id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 1, note_id: 'wn_dl_1' },
     ];
@@ -760,53 +760,16 @@ describe('AnalyticsScreen Routine Status metric display', () => {
     const root = component.root;
     expect(hasText(root, 'Routine Status')).toBe(true);
     expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'weeks on routine')).toBe(true);
     expect(hasText(root, 'sessions since deload')).toBe(true);
-    expect(hasText(root, 'weeks since deload')).toBe(true);
-  });
-
-  test('renders Routine Exposure and Recovery Cycle group labels', () => {
-    const deloadHistory = [
-      { id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 1, note_id: 'wn_dl_1' },
-    ];
-    const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    const root = component.root;
-    expect(hasText(root, 'Routine Exposure')).toBe(true);
-    expect(hasText(root, 'Recovery Cycle')).toBe(true);
-  });
-
-  test('weeks since deload label is present even with 0 weeks', () => {
-    const deloadHistory = [
-      { id: 'dl_1', completed_at: new Date().toISOString(), session_count: 2, note_id: 'wn_dl_1' },
-    ];
-    const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
-  });
-
-  test('weeks since deload shows em-dash when no deload history exists', () => {
-    const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: [] } });
-    expect(hasText(component.root, '—')).toBe(true);
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
-  });
-
-  test('editing completed_at does not require session_count change: both labels present regardless', () => {
-    const historyA = [{ id: 'dl_1', completed_at: '2026-05-09T12:00:00.000Z', session_count: 10 }];
-    const historyB = [{ id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 10 }];
-
-    const compA = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyA } });
-    const compB = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory: historyB } });
-
-    for (const comp of [compA, compB]) {
-      expect(hasText(comp.root, 'sessions since deload')).toBe(true);
-      expect(hasText(comp.root, 'weeks since deload')).toBe(true);
-    }
+    expect(hasText(root, 'weeks on routine')).toBe(false);
+    expect(hasText(root, 'weeks since deload')).toBe(false);
   });
 
   test('legacy records without note_id render both metric labels without error', () => {
     const deloadHistory = [{ id: 'dl_legacy', completed_at: '2026-04-01T00:00:00.000Z', session_count: 0 }];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
+    expect(hasText(component.root, 'sessions logged')).toBe(true);
     expect(hasText(component.root, 'sessions since deload')).toBe(true);
-    expect(hasText(component.root, 'weeks since deload')).toBe(true);
   });
 });
 
@@ -996,7 +959,7 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('surfaces sessions-logged and weeks-on-routine; no active-weeks (deferred)', () => {
+  test('surfaces sessions-logged and sessions-since-deload; no calendar metrics', () => {
     const currentNote = {
       id: 'wn1',
       raw_text: FIVE_SESSION_RAW,
@@ -1009,13 +972,12 @@ describe('AnalyticsScreen routine-status plumbing (#282)', () => {
     const root = component.root;
 
     expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'weeks on routine')).toBe(true);
     expect(hasText(root, 'sessions since deload')).toBe(true);
-    // active weeks is deferred per #282 review — must not appear.
+    // Calendar metrics removed — must not appear.
+    expect(hasText(root, 'weeks on routine')).toBe(false);
+    expect(hasText(root, 'weeks since deload')).toBe(false);
     expect(hasText(root, 'active weeks')).toBe(false);
     // sessions logged = 5 routine + 1 deload = 6 (includes archived deloads).
     expect(findAllText(root).some(s => s === '6')).toBe(true);
-    // weeks on routine = 8 calendar-week span since saved_at.
-    expect(findAllText(root).some(s => s === '8')).toBe(true);
   });
 });
