@@ -476,15 +476,15 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
   const handleReset = () => onUpdate(1.07);
 
   return (
-    <ScreenShell title="Settings" subtitle="Algorithm and calculation defaults.">
+    <ScreenShell title="Settings" subtitle="App features and preferences.">
       <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
 
-      <SectionTitle>Training Features</SectionTitle>
+      <SectionTitle>Features</SectionTitle>
       <Card>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue tracking</Text>
-            <Text style={styles.settingHelp}>Session check-in prompts and Fatigue analytics</Text>
+            <Text style={styles.settingHelp}>Check-in prompt after each session and fatigue charts in Analytics</Text>
           </View>
           <Switch
             value={!!fatigueTrackingEnabled}
@@ -496,7 +496,7 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Deload mode</Text>
-            <Text style={styles.settingHelp}>Deload tab, generation, and past deload records</Text>
+            <Text style={styles.settingHelp}>Enables deload generation and history in the Log tab</Text>
           </View>
           <Switch
             value={!!deloadModeEnabled}
@@ -507,12 +507,40 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
         </View>
       </Card>
 
-      <SectionTitle>Algorithm</SectionTitle>
+      <SectionTitle>Date Editing</SectionTitle>
       <Card>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Fatigue Multiplier</Text>
-            <Text style={styles.settingHelp}>Applied to epley 1RM for Kilo max</Text>
+            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
+            <Text style={styles.settingHelp}>Choose a custom date when logging or editing weight entries</Text>
+          </View>
+          <Switch
+            value={!!weightDateEditEnabled}
+            onValueChange={onUpdateWeightDateEditEnabled}
+            accessibilityLabel="Edit weigh-in dates"
+            accessibilityRole="switch"
+          />
+        </View>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Edit deload dates</Text>
+            <Text style={styles.settingHelp}>Change the date on past deload records</Text>
+          </View>
+          <Switch
+            value={!!deloadDateEditEnabled}
+            onValueChange={onUpdateDeloadDateEditEnabled}
+            accessibilityLabel="Edit deload dates"
+            accessibilityRole="switch"
+          />
+        </View>
+      </Card>
+
+      <SectionTitle>Advanced</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Fatigue multiplier</Text>
+            <Text style={styles.settingHelp}>Scales your Est. Max to produce the Kilo Max. Lower = more conservative. Default: 1.07.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
@@ -532,38 +560,6 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
           style={styles.resetButton}
           textStyle={styles.resetButtonText}
         />
-      </Card>
-
-      <SectionTitle>Weight Logging</SectionTitle>
-      <Card>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
-            <Text style={styles.settingHelp}>Allow setting date on new and existing entries</Text>
-          </View>
-          <Switch
-            value={!!weightDateEditEnabled}
-            onValueChange={onUpdateWeightDateEditEnabled}
-            accessibilityLabel="Edit weigh-in dates"
-            accessibilityRole="switch"
-          />
-        </View>
-      </Card>
-
-      <SectionTitle>Workout Notes</SectionTitle>
-      <Card>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit deload dates</Text>
-            <Text style={styles.settingHelp}>Allow changing the logged date on past deload records</Text>
-          </View>
-          <Switch
-            value={!!deloadDateEditEnabled}
-            onValueChange={onUpdateDeloadDateEditEnabled}
-            accessibilityLabel="Edit deload dates"
-            accessibilityRole="switch"
-          />
-        </View>
       </Card>
     </ScreenShell>
   );
