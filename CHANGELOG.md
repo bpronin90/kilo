@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.67.3 - 2026-06-07
+
+- Issue #289: Made Weight history delta highlighting respect the active goal
+  direction so intentional loss/gain movement no longer gets warning colors,
+  kept opposite-direction swings highlighted, and locked the Analytics parent
+  section title to a static `Fatigue` label while adding regression coverage
+  for both behaviors.
+
 ## 0.67.2 - 2026-06-07
 
 - Issue #288: Fixed the native mobile date pickers to use the correct

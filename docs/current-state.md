@@ -261,9 +261,12 @@ The real native app path now has a modular React Native shell:
   time-of-day, and edited entries preserve their original time-of-day while
   re-sorting history by `logged_at`, plus a
   denser history row treatment with per-entry delta badges for notable
-  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, MM-DD-YYYY
-  display dates for visible weight-history rows while stored timestamps remain
-  ISO, and a prominent top-level goal card with a native target-date picker,
+  (`> 1.5 lb`), spike (`> 2.3 lb`), and outlier (`> 3.5 lb`) changes, where
+  active loss/gain goals suppress those warning colors when the delta moves in
+  the target direction while maintain/no-goal states keep the symmetrical
+  threshold treatment, MM-DD-YYYY display dates for visible weight-history
+  rows while stored timestamps remain ISO, and a prominent top-level goal card
+  with a native target-date picker,
   MM-DD-YYYY visible goal-date formatting, `Target` and `By Date` as the
   primary anchors, and row-based derived guidance for `Target pace` plus
   advisory calorie guidance alongside warnings; when a complete stored user
@@ -321,7 +324,7 @@ The real native app path now has a modular React Native shell:
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, separate labeled `7-day rolling average` and `30-day rolling
   average` charts, and 7-day/30-day summary averages, alongside a merged
-  `Routine Status` / `Fatigue` parent section. That section contains a
+  `Fatigue` parent section. That section contains a
   `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
   `Approaching` / `Deload`) driven entirely by session-ordinal data. Newly
   completed deloads now persist a user-confirmed `deload_session_ordinal`,
@@ -332,9 +335,9 @@ The real native app path now has a modular React Native shell:
   metrics appear in this panel. The gauge marker, zone labels, and caption
   always render, while `Deload mode` hides only the `Since deload` stat. The
   same parent section contains a `Fatigue Tracking` panel backed by persisted
-  `session_checkins`. The parent title is `Fatigue` when fatigue tracking is
-  enabled and `Routine Status` otherwise; turning fatigue tracking off hides
-  only the fatigue panel and its Analytics edit path. The redesigned `1K
+  `session_checkins`. The parent title now stays statically `Fatigue`;
+  turning fatigue tracking off hides only the fatigue panel and its Analytics
+  edit path. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
@@ -492,7 +495,9 @@ removed. It also now derives 7-day and 30-day rolling averages plus fast
 gain/loss pace flags from saved entries, and shows that trend feedback on
 both the Weight and Analytics screens with shared threshold bands: sub-`1.5 lb`
 daily deltas stay unflagged, `1.5-2.2 lb` changes render as notable
-yellow/amber warnings, and `>= 2.3 lb` changes render as red spike warnings.
+yellow/amber warnings, and `>= 2.3 lb` changes render as red spike warnings,
+with Weight-history goal-aware suppression when a saved gain/loss target makes
+that direction intentional.
 The native Weight screen now also supports
 a lightweight saved goal with target weight and target date, derives gain,
 loss, or maintain direction plus required weekly pace from the latest saved
