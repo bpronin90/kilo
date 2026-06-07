@@ -84,10 +84,6 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
           <Text style={styles.menuItemText}>Settings & Algorithm</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-      </View>
-
-      <SectionTitle>Data</SectionTitle>
-      <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <Text style={styles.menuItemText}>Data & Backup</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
