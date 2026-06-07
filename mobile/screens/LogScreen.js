@@ -144,14 +144,7 @@ export function LogScreen({
   };
 
   const handleViewOtherNote = (note) => {
-    const isCollapsing = viewingNoteId === note.id;
-    const scrollY = readScrollYRef.current;
     setViewingNoteId(prev => (prev === note.id ? null : note.id));
-    if (isCollapsing) {
-      requestAnimationFrame(() => {
-        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
-      });
-    }
   };
 
   const handleEditViewedNote = () => {
@@ -185,7 +178,6 @@ export function LogScreen({
     }
   };
   const keyboardExitTimeoutRef = useRef(null);
-
 
   useEffect(() => {
     if (saveSuccess) {
@@ -1114,29 +1106,15 @@ export function LogScreen({
   };
 
   const handleDeloadCollapsedToggle = () => {
-    const wasExpanded = !deloadCollapsed;
-    const scrollY = readScrollYRef.current;
     setDeloadCollapsed(c => !c);
-    if (wasExpanded) {
-      requestAnimationFrame(() => {
-        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
-      });
-    }
   };
 
   const handleToggleLegacyDeload = (id) => {
-    const isExpanded = expandedDeloads.has(id);
-    const scrollY = readScrollYRef.current;
     setExpandedDeloads(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-    if (isExpanded) {
-      requestAnimationFrame(() => {
-        readScrollRef.current?.scrollTo({ y: scrollY, animated: false });
-      });
-    }
   };
 
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (

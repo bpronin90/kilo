@@ -23,7 +23,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   };
 
   return (
-    <View style={styles.outerContainer}>
+    <View style={[styles.outerContainer, style]}>
       {onBack && (
         <View style={styles.stickyHeader}>
           <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
@@ -32,7 +32,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
       )}
       <ScrollView
         ref={ref}
-        style={[styles.scroll, style]}
+        style={styles.scroll}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
