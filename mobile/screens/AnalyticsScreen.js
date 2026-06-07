@@ -1321,10 +1321,8 @@ const styles = StyleSheet.create({
   },
   fatigueInsightLabel: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '500',
     color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   fatigueInsightValue: {
     fontSize: 18,
