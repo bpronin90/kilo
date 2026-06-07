@@ -85,7 +85,7 @@ const _SESSION_GAUGE_TONE_COLORS = {
 // are proportional to their session ranges (1–6 / 7–9 / 10+) and the boundaries
 // (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
 // session counts map linearly onto the zone segments.
-export function SessionGauge({ count, total }) {
+export function SessionGauge({ count, total, showDeload = true }) {
   const tone = getSessionTone(count);
   const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
   const caption = getSessionZoneCaption(count);
@@ -94,34 +94,40 @@ export function SessionGauge({ count, total }) {
   return (
     <Card style={styles.sessionGauge}>
       <View style={styles.sessionGaugeHeader}>
-        <View style={styles.sessionGaugeStat}>
-          <Text style={styles.sessionGaugeLabel}>Since deload</Text>
-          <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
-        </View>
+        {showDeload && (
+          <View style={styles.sessionGaugeStat}>
+            <Text style={styles.sessionGaugeLabel}>Since deload</Text>
+            <Text style={[styles.sessionGaugeCount, { color: toneColor }]}>{count}</Text>
+          </View>
+        )}
         {total != null && (
-          <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
+          <View style={[styles.sessionGaugeStat, showDeload && styles.sessionGaugeStatRight]}>
             <Text style={styles.sessionGaugeLabel}>Total</Text>
             <Text style={styles.sessionGaugeCount}>{total}</Text>
           </View>
         )}
       </View>
 
-      <View style={styles.gaugeMeterWrap}>
-        <View style={styles.gaugeBar}>
-          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
-          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
-          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
-        </View>
-        <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
-      </View>
+      {showDeload && (
+        <>
+          <View style={styles.gaugeMeterWrap}>
+            <View style={styles.gaugeBar}>
+              <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
+              <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
+              <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
+            </View>
+            <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
+          </View>
 
-      <View style={styles.gaugeZoneLabels}>
-        <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
-        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
-        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
-      </View>
+          <View style={styles.gaugeZoneLabels}>
+            <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
+            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
+            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
+          </View>
 
-      <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
+          <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
+        </>
+      )}
     </Card>
   );
 }
