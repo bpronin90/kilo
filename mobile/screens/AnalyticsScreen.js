@@ -312,19 +312,18 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
-    deloadModeEnabled ? (
-    <View key="routine-status-title">
-      <SectionTitle>Routine Status</SectionTitle>
+    (deloadModeEnabled || fatigueTrackingEnabled) ? (
+    <View key="combined-section-title">
+      <SectionTitle>
+        {(deloadModeEnabled && fatigueTrackingEnabled) ? 'Fatigue' : deloadModeEnabled ? 'Routine Status' : 'Fatigue'}
+      </SectionTitle>
     </View>) : null,
     deloadModeEnabled ? (
     <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} />) : null,
 
     fatigueTrackingEnabled ? (
-    <View key="fatigue-title">
-      <SectionTitle>Fatigue</SectionTitle>
-    </View>) : null,
-    fatigueTrackingEnabled ? (
     <Card key="fatigue-card" style={styles.fatigueCard}>
+      <Text style={styles.fatiguePanelLabel}>Fatigue Tracking</Text>
       {checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0 ? (
         <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
       ) : (
@@ -1276,8 +1275,15 @@ const styles = StyleSheet.create({
   },
   fatigueCard: {
     padding: 20,
-    gap: 0,
+    gap: 8,
     backgroundColor: Colors.panelBackground,
+  },
+  fatiguePanelLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   fatigueEmpty: {
     fontSize: 14,
