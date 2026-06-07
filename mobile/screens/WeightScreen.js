@@ -7,7 +7,7 @@ function localDateToday() {
 import { Alert, BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, HeroMetric, SectionTitle, ErrorBanner } from '../components/UI';
+import { Card, Button, HeroMetric, SectionTitle, ErrorBanner, InputStyle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { formatDate, formatDelta, getWeightDeltaSeverity } from '../lib/format';
@@ -655,14 +655,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   input: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.text,
+    ...InputStyle,
     justifyContent: 'center',
   },
   editingCard: {

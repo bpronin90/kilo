@@ -4,7 +4,7 @@ import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, SectionTitle, Button } from '../components/UI';
+import { Card, SectionTitle, Button, InputStyle } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useUserProfile, useFeatureToggles } from '../hooks/useEntries';
 import pkg from '../package.json';
@@ -1099,14 +1099,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   profileInput: {
-    backgroundColor: Colors.inputBackground,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
+    ...InputStyle,
     fontWeight: '700',
-    color: Colors.text,
     textAlign: 'center',
   },
   datePickerButton: {

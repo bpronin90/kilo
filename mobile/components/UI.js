@@ -11,6 +11,17 @@ export const HeroMetric = {
   statTertiary:  { fontSize: 20, fontWeight: '900' },
 };
 
+export const InputStyle = {
+  backgroundColor: Colors.inputBackground,
+  borderWidth: 1,
+  borderColor: Colors.inputBorder,
+  borderRadius: 12,
+  paddingHorizontal: 12,
+  paddingVertical: 12,
+  fontSize: 15,
+  color: Colors.text,
+};
+
 export { LineChart } from './LineChart';
 
 export function Card({ children, style, tone = 'default', onPress }) {
@@ -275,7 +286,7 @@ const styles = StyleSheet.create({
   errorBannerRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#fff',
+    color: Colors.textLight,
   },
   card: {
     backgroundColor: Colors.card,
