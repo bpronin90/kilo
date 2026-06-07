@@ -312,14 +312,17 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     </Card>,
 
-    (deloadModeEnabled || fatigueTrackingEnabled) ? (
     <View key="combined-section-title">
-      <SectionTitle>
-        {(deloadModeEnabled && fatigueTrackingEnabled) ? 'Fatigue' : deloadModeEnabled ? 'Routine Status' : 'Fatigue'}
-      </SectionTitle>
-    </View>) : null,
+      <SectionTitle>{fatigueTrackingEnabled ? 'Fatigue' : 'Routine Status'}</SectionTitle>
+    </View>,
     deloadModeEnabled ? (
-    <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} />) : null,
+    <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} />) : (
+    <Card key="sessions-logged-card" style={styles.routineExposureCard}>
+      <View style={styles.routineMetric}>
+        <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
+        <Text style={styles.weeksLabel}>sessions logged</Text>
+      </View>
+    </Card>),
 
     fatigueTrackingEnabled ? (
     <Card key="fatigue-card" style={styles.fatigueCard}>

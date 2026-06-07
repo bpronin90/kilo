@@ -800,24 +800,28 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('sessions gauge is hidden when deload mode is off; Fatigue Tracking panel remains', () => {
+  test('deload mode off hides gauge but keeps sessions logged and Fatigue Tracking panel', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false } });
     const root = component.root;
-    // Parent section title falls back to "Fatigue" (only fatigue panel visible).
+    // Fatigue Tracking still visible → section title stays "Fatigue".
     expect(hasText(root, 'Fatigue')).toBe(true);
     expect(hasText(root, 'Fatigue Tracking')).toBe(true);
-    // Sessions gauge absent: no "Since deload" or "Building" zone labels.
+    // Routine Status panel still shows — just the sessions-logged stat, no gauge.
+    expect(hasText(root, 'sessions logged')).toBe(true);
+    // Gauge-specific content absent.
     expect(hasText(root, 'Since deload')).toBe(false);
     expect(hasText(root, 'Building')).toBe(false);
-    expect(hasText(root, 'Routine Status')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('both sub-panels hidden when both toggles off; no combined section title', () => {
+  test('both toggles off shows Routine Status section with sessions logged only', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
     const root = component.root;
-    expect(hasText(root, 'Routine Status')).toBe(false);
-    expect(hasText(root, 'Fatigue')).toBe(false);
+    // Section always renders; title is "Routine Status" when fatigue tracking is off.
+    expect(hasText(root, 'Routine Status')).toBe(true);
+    expect(hasText(root, 'sessions logged')).toBe(true);
+    expect(hasText(root, 'Fatigue Tracking')).toBe(false);
+    expect(hasText(root, 'Since deload')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 });
