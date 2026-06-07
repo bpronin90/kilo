@@ -787,11 +787,12 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Routine Status')).toBe(false);
   });
 
-  test('section title switches to Routine Status when only sessions panel is visible', () => {
+  test('section title reads Fatigue when only sessions panel is visible', () => {
     const component = setup({ featureToggles: { fatigueTrackingEnabled: false } });
     const root = component.root;
-    // Sessions-only: parent title is "Routine Status".
-    expect(hasText(root, 'Routine Status')).toBe(true);
+    // Sessions-only: parent title is statically "Fatigue".
+    expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Routine Status')).toBe(false);
     // Fatigue Tracking panel is hidden.
     expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'No check-ins logged yet.')).toBe(false);
@@ -812,10 +813,11 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('both toggles off shows Routine Status with gauge graphic and Total, no Since deload', () => {
+  test('both toggles off shows Fatigue with gauge graphic and Total, no Since deload', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
     const root = component.root;
-    expect(hasText(root, 'Routine Status')).toBe(true);
+    expect(hasText(root, 'Fatigue')).toBe(true);
+    expect(hasText(root, 'Routine Status')).toBe(false);
     expect(hasText(root, 'Total')).toBe(true);
     expect(hasText(root, 'Building')).toBe(true);
     expect(hasText(root, 'Since deload')).toBe(false);

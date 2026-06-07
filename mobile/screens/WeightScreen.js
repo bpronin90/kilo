@@ -568,7 +568,14 @@ export function WeightScreen({ weightValue, setWeightValue, weightNote, setWeigh
         {entries.map((entry, index) => {
           const nextEntry = entries[index + 1];
           const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
-          const severity = getWeightDeltaSeverity(delta);
+          let severity = getWeightDeltaSeverity(delta);
+          if (goalInfo && goalInfo.direction) {
+            if (goalInfo.direction === 'loss' && delta < 0) {
+              severity = 'normal';
+            } else if (goalInfo.direction === 'gain' && delta > 0) {
+              severity = 'normal';
+            }
+          }
           const isLast = index === entries.length - 1;
           const isActive = editingId === entry.id;
 
@@ -737,7 +744,6 @@ const styles = StyleSheet.create({
   deltaOutlier: {
     color: Colors.error,
     fontWeight: '900',
-    textDecorationLine: 'underline',
   },
   rowDate: {
     fontSize: 12,

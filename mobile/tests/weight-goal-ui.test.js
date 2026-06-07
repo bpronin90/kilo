@@ -2,6 +2,7 @@ import React from 'react';
 import render from 'react-test-renderer';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
+import { Colors } from '../theme/colors';
 
 // Mock dependencies
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -157,5 +158,87 @@ describe('WeightScreen', () => {
     expect(findText(root, '05-20-2026')).toBeTruthy();
     expect(findText(root, '185.0 lb')).toBeTruthy();
     expect(findText(root, 'after travel')).toBeTruthy();
+  });
+
+  describe('goal-aware weight delta highlighting', () => {
+    const getStyleProp = (node, propName) => {
+      const style = node.props.style;
+      if (!style) return undefined;
+      if (Array.isArray(style)) {
+        const flat = style.flat();
+        for (let i = flat.length - 1; i >= 0; i--) {
+          if (flat[i] && flat[i][propName] !== undefined) {
+            return flat[i][propName];
+          }
+        }
+        return undefined;
+      }
+      return style[propName];
+    };
+
+    const isHistoryDeltaText = (node) => {
+      const style = node.props.style;
+      if (!style) return false;
+      const flat = Array.isArray(style) ? style.flat() : [style];
+      return flat.some(s => s && s.fontSize === 12);
+    };
+
+    test('suppresses warnings for weight loss when goal is weight loss, but warns on weight gain', () => {
+      const goal = { target_weight: 180, target_date: '2026-08-02', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185.0, note: '' },
+        { id: '2', date: '2026-05-23', logged_at: '2026-05-23T08:00:00Z', weight_value: 182.0, note: '' }, // +3.0 delta relative to next
+        { id: '3', date: '2026-05-22', logged_at: '2026-05-22T08:00:00Z', weight_value: 185.0, note: '' }, // -3.0 delta relative to next
+        { id: '4', date: '2026-05-21', logged_at: '2026-05-21T08:00:00Z', weight_value: 188.0, note: '' },
+      ];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      const texts = root.findAllByType('Text');
+      const historyDeltaTexts = texts.filter(isHistoryDeltaText);
+      const positiveDeltaText = historyDeltaTexts.find(t => t.props.children === '+3.0');
+      const negativeDeltaText = historyDeltaTexts.find(t => t.props.children === '-3.0');
+
+      expect(positiveDeltaText).toBeTruthy();
+      expect(negativeDeltaText).toBeTruthy();
+
+      // Positive delta (+3.0) goes opposite to the weight loss goal, so it should be highlighted (warn)
+      const posColor = getStyleProp(positiveDeltaText, 'color');
+      expect(posColor).not.toBe(Colors.textMuted);
+      expect(posColor).toBeTruthy();
+
+      // Negative delta (-3.0) matches the weight loss goal, so it should NOT be highlighted (remain muted)
+      const negColor = getStyleProp(negativeDeltaText, 'color');
+      expect(negColor).toBe(Colors.textMuted);
+    });
+
+    test('suppresses warnings for weight gain when goal is weight gain, but warns on weight loss', () => {
+      const goal = { target_weight: 200, target_date: '2026-08-02', start_weight: 180 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185.0, note: '' },
+        { id: '2', date: '2026-05-23', logged_at: '2026-05-23T08:00:00Z', weight_value: 182.0, note: '' }, // +3.0 delta relative to next
+        { id: '3', date: '2026-05-22', logged_at: '2026-05-22T08:00:00Z', weight_value: 185.0, note: '' }, // -3.0 delta relative to next
+        { id: '4', date: '2026-05-21', logged_at: '2026-05-21T08:00:00Z', weight_value: 188.0, note: '' },
+      ];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      const texts = root.findAllByType('Text');
+      const historyDeltaTexts = texts.filter(isHistoryDeltaText);
+      const positiveDeltaText = historyDeltaTexts.find(t => t.props.children === '+3.0');
+      const negativeDeltaText = historyDeltaTexts.find(t => t.props.children === '-3.0');
+
+      expect(positiveDeltaText).toBeTruthy();
+      expect(negativeDeltaText).toBeTruthy();
+
+      // Positive delta (+3.0) matches weight gain goal, so it should NOT be highlighted
+      const posColor = getStyleProp(positiveDeltaText, 'color');
+      expect(posColor).toBe(Colors.textMuted);
+
+      // Negative delta (-3.0) goes opposite to the weight gain goal, so it should be highlighted
+      const negColor = getStyleProp(negativeDeltaText, 'color');
+      expect(negColor).not.toBe(Colors.textMuted);
+      expect(negColor).toBeTruthy();
+    });
   });
 });
