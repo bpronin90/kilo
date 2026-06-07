@@ -101,33 +101,29 @@ export function SessionGauge({ count, total, showDeload = true }) {
           </View>
         )}
         {total != null && (
-          <View style={[styles.sessionGaugeStat, showDeload && styles.sessionGaugeStatRight]}>
+          <View style={[styles.sessionGaugeStat, styles.sessionGaugeStatRight]}>
             <Text style={styles.sessionGaugeLabel}>Total</Text>
             <Text style={styles.sessionGaugeCount}>{total}</Text>
           </View>
         )}
       </View>
 
-      {showDeload && (
-        <>
-          <View style={styles.gaugeMeterWrap}>
-            <View style={styles.gaugeBar}>
-              <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
-              <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
-              <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
-            </View>
-            <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
-          </View>
+      <View style={styles.gaugeMeterWrap}>
+        <View style={styles.gaugeBar}>
+          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
+          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
+          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
+        </View>
+        <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
+      </View>
 
-          <View style={styles.gaugeZoneLabels}>
-            <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
-            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
-            <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
-          </View>
+      <View style={styles.gaugeZoneLabels}>
+        <Text style={[styles.gaugeZoneLabel, { flex: 6 }]}>Building</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelCenter, { flex: 3 }]}>Approaching</Text>
+        <Text style={[styles.gaugeZoneLabel, styles.gaugeZoneLabelRight, { flex: 2 }]}>Deload</Text>
+      </View>
 
-          <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
-        </>
-      )}
+      <Text style={[styles.sessionGaugeCaption, { color: toneColor }]}>{caption}</Text>
     </Card>
   );
 }

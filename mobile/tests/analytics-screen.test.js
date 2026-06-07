@@ -800,25 +800,26 @@ describe('AnalyticsScreen feature toggle gating', () => {
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('deload mode off hides deload content but gauge card stays with Total visible', () => {
+  test('deload mode off hides Since deload stat but keeps gauge graphic and Total', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false } });
     const root = component.root;
     // Fatigue Tracking still visible → section title stays "Fatigue".
     expect(hasText(root, 'Fatigue')).toBe(true);
     expect(hasText(root, 'Fatigue Tracking')).toBe(true);
-    // Gauge card still shows Total (sessions logged).
+    // Gauge card shows Total and full graphic.
     expect(hasText(root, 'Total')).toBe(true);
-    // Deload-specific content hidden.
+    expect(hasText(root, 'Building')).toBe(true);
+    // Only the Since deload stat label is hidden.
     expect(hasText(root, 'Since deload')).toBe(false);
-    expect(hasText(root, 'Building')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
   });
 
-  test('both toggles off shows Routine Status with gauge Total only', () => {
+  test('both toggles off shows Routine Status with gauge graphic and Total, no Since deload', () => {
     const component = setup({ featureToggles: { deloadModeEnabled: false, fatigueTrackingEnabled: false } });
     const root = component.root;
     expect(hasText(root, 'Routine Status')).toBe(true);
     expect(hasText(root, 'Total')).toBe(true);
+    expect(hasText(root, 'Building')).toBe(true);
     expect(hasText(root, 'Since deload')).toBe(false);
     expect(hasText(root, 'Fatigue Tracking')).toBe(false);
     expect(hasText(root, 'Weight Trends')).toBe(true);
