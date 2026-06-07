@@ -15,7 +15,7 @@ import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
-import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
+import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn, findMatchingExerciseNames, rolloverOneKExercises, normalizeExerciseKey, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
@@ -354,11 +354,28 @@ export function LogScreen({
     [parsed.sections]
   );
 
+  // A/B week support: detect '---' separator and derive active week.
+  const weekBStartIndex = parsed.weekBStartIndex ?? null;
+  const hasABWeeks = weekBStartIndex !== null;
+  const effectiveActiveWeek = hasABWeeks ? (currentNote?.activeWeek ?? 'A') : null;
+
+  const activeWeekSections = useMemo(() => {
+    if (!hasABWeeks) return parsed.sections;
+    if (effectiveActiveWeek === 'B') return parsed.sections.slice(weekBStartIndex);
+    return parsed.sections.slice(0, weekBStartIndex);
+  }, [parsed.sections, weekBStartIndex, hasABWeeks, effectiveActiveWeek]);
+
+  const handleToggleWeek = async () => {
+    if (!currentId || !hasABWeeks) return;
+    const next = effectiveActiveWeek === 'B' ? 'A' : 'B';
+    await update(currentId, { activeWeek: next });
+  };
+
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
   const dayGroups = useMemo(() => {
     const groups = [];
-    for (const section of parsed.sections) {
+    for (const section of activeWeekSections) {
       const last = groups[groups.length - 1];
       if (last && last.heading === section.heading) {
         last.sections.push(section);
@@ -367,7 +384,7 @@ export function LogScreen({
       }
     }
     return groups;
-  }, [parsed.sections]);
+  }, [activeWeekSections]);
 
   const deloadParsed = useMemo(() => parseWorkoutNote(deloadNote?.raw_text || ''), [deloadNote?.raw_text]);
   const deloadDayGroups = useMemo(() => {
@@ -925,7 +942,7 @@ export function LogScreen({
     // Check if there are unsaved changes in the editor for ANY routine
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
-    const doSwitch = async () => {
+    const doSwitch = async ({ rollover = false } = {}) => {
       // Cancel pending autosaves so they don't write to the wrong note after switch.
       if (autosaveCurrentTimerRef.current) {
         clearTimeout(autosaveCurrentTimerRef.current);
@@ -935,15 +952,49 @@ export function LogScreen({
         clearTimeout(autosaveOtherTimerRef.current);
         autosaveOtherTimerRef.current = null;
       }
+      if (rollover && currentNote) {
+        const oldSections = parseWorkoutNote(currentNote.raw_text || '').sections;
+        const newSections = parseWorkoutNote(note.raw_text || '').sections;
+        const matchedNames = findMatchingExerciseNames(oldSections, newSections);
+        if (matchedNames.length > 0) {
+          const matchedKeys = new Set(matchedNames.map(n => normalizeExerciseKey(n)));
+          const oldOneK = { ...DEFAULT_1K_EXERCISES, ...(currentNote.one_k_exercises || {}) };
+          const rolledOneK = rolloverOneKExercises(oldOneK, matchedKeys);
+          if (rolledOneK) {
+            await update(id, { one_k_exercises: rolledOneK });
+          }
+        }
+      }
       await selectCurrent(id);
       setEditingNoteId(null);
       setOriginalNoteState(null);
       setViewingNoteId(null);
     };
 
+    const confirmSwitch = () => {
+      // Detect matching exercises to decide whether to offer rollover.
+      const oldSections = parseWorkoutNote(currentNote?.raw_text || '').sections;
+      const newSections = parseWorkoutNote(note.raw_text || '').sections;
+      const matchedNames = findMatchingExerciseNames(oldSections, newSections);
+      const hasMatches = matchedNames.length > 0;
+
+      if (hasMatches) {
+        Alert.alert(
+          'Keep current progress?',
+          'Some exercises match your current routine. Carry over 1K and progress tracking?',
+          [
+            { text: 'No', onPress: () => doSwitch({ rollover: false }) },
+            { text: 'Yes', onPress: () => doSwitch({ rollover: true }) },
+          ]
+        );
+      } else {
+        doSwitch({ rollover: false });
+      }
+    };
+
     const alertTitle = 'Set as current routine';
     let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
-    
+
     if (hasUnsaved) {
       alertMessage = `You have unsaved changes that will be lost if you switch. Continue?`;
       Alert.alert(
@@ -951,7 +1002,7 @@ export function LogScreen({
         alertMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Switch Anyway', style: 'destructive', onPress: doSwitch },
+          { text: 'Switch Anyway', style: 'destructive', onPress: confirmSwitch },
           {
             text: 'Save & Switch',
             onPress: async () => {
@@ -969,7 +1020,7 @@ export function LogScreen({
               } else {
                 ok = await handleSave();
               }
-              if (ok) await doSwitch();
+              if (ok) confirmSwitch();
             }
           },
         ]
@@ -980,7 +1031,7 @@ export function LogScreen({
         alertMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Set as current routine', onPress: doSwitch },
+          { text: 'Set as current routine', onPress: confirmSwitch },
         ]
       );
     }
@@ -1469,15 +1520,30 @@ export function LogScreen({
                   >
                     <View style={styles.otherNoteInfo}>
                       <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'Untitled Routine'}</Text>
-                      <Text style={styles.otherNoteSub}>Current routine</Text>
+                      <Text style={styles.otherNoteSub}>
+                        {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
+                      </Text>
                     </View>
-                    <Pressable
-                      onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {hasABWeeks && (
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.inlineSwitchButtonText}>
+                            Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
+                          </Text>
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
+                        style={styles.inlineSwitchButton}
+                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+                      </Pressable>
+                    </View>
                   </Pressable>
 
                   <Pressable 

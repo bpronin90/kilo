@@ -676,6 +676,43 @@ export function derive1kTotalSeries(sections, { bench, squat, deadlift }) {
   return series;
 }
 
+// ── Routine switching: progress rollover ──────────────────────────────────────
+
+// Returns display names of exercises that appear in both routines.
+// Uses keyed Set lookups — O(n+m), no nested scans.
+// Deduplicates by canonical key; returns display names from the new routine.
+export function findMatchingExerciseNames(oldSections, newSections) {
+  const oldKeys = new Set(
+    (oldSections || []).flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
+  );
+  const matched = [];
+  const seenNew = new Set();
+  for (const section of (newSections || [])) {
+    for (const ex of section.exercises) {
+      const key = normalizeExerciseKey(ex.name);
+      if (oldKeys.has(key) && !seenNew.has(key)) {
+        matched.push(ex.name);
+        seenNew.add(key);
+      }
+    }
+  }
+  return matched;
+}
+
+// Returns a filtered one_k_exercises object retaining only slots whose exercise
+// name exists in matchedNameKeys (a Set of canonical keys).
+// Returns null when oldOneK is null or no slots survive.
+export function rolloverOneKExercises(oldOneK, matchedNameKeys) {
+  if (!oldOneK || !(matchedNameKeys instanceof Set) || matchedNameKeys.size === 0) return null;
+  const result = {};
+  for (const [slot, name] of Object.entries(oldOneK)) {
+    if (name && matchedNameKeys.has(normalizeExerciseKey(name))) {
+      result[slot] = name;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 // Factory for the canonical workout routine note
 export function makeWorkoutNote({ raw_text }) {
   const now = new Date().toISOString();
@@ -703,6 +740,7 @@ export function makeWorkoutNoteItem({ title = 'Untitled Routine', raw_text = '',
     session_checkins: null,
     dismissed_nudges: null,
     exercise_classifications: null,
+    activeWeek: null,
   };
 }
 

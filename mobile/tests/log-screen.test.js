@@ -1000,3 +1000,76 @@ describe('Undo escape hatch: integration tests', () => {
   });
 });
 
+
+// ── Routine switch: progress rollover (#295) ──────────────────────────────────
+
+describe('routine switch: progress rollover source assertions (#295)', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  });
+
+  test('imports findMatchingExerciseNames and rolloverOneKExercises from data', () => {
+    expect(src).toMatch(/findMatchingExerciseNames/);
+    expect(src).toMatch(/rolloverOneKExercises/);
+  });
+
+  test('handleSwitchCurrent calls findMatchingExerciseNames', () => {
+    expect(src).toMatch(/findMatchingExerciseNames\s*\(/);
+  });
+
+  test('rollover prompt is shown only when matches exist', () => {
+    expect(src).toMatch(/matchedNames\.length\s*>\s*0/);
+  });
+
+  test('rollover prompt is a single yes/no Alert with no exercise list', () => {
+    expect(src).toMatch(/Keep current progress\?/);
+    expect(src).toMatch(/Some exercises match/);
+  });
+
+  test('rollover applies one_k_exercises patch to new note before selectCurrent', () => {
+    expect(src).toMatch(/rolloverOneKExercises\s*\(/);
+    expect(src).toMatch(/one_k_exercises\s*:\s*rolledOneK/);
+  });
+
+  test('declining rollover calls doSwitch with rollover false', () => {
+    expect(src).toMatch(/rollover\s*:\s*false/);
+  });
+});
+
+// ── A/B week support: source assertions (#295) ───────────────────────────────
+
+describe('A/B week support: source assertions (#295)', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  });
+
+  test('derives weekBStartIndex from parsed result', () => {
+    expect(src).toMatch(/weekBStartIndex/);
+  });
+
+  test('computes hasABWeeks from weekBStartIndex', () => {
+    expect(src).toMatch(/hasABWeeks/);
+  });
+
+  test('effectiveActiveWeek defaults to A when activeWeek is not set', () => {
+    expect(src).toMatch(/activeWeek\s*\?\?\s*['"]A['"]/);
+  });
+
+  test('handleToggleWeek toggles between A and B', () => {
+    expect(src).toMatch(/handleToggleWeek/);
+    expect(src).toMatch(/effectiveActiveWeek\s*===\s*['"]B['"]\s*\?\s*['"]A['"]\s*:\s*['"]B['"]/);
+  });
+
+  test('activeWeekSections slices sections by week', () => {
+    expect(src).toMatch(/activeWeekSections/);
+    expect(src).toMatch(/parsed\.sections\.slice\s*\(\s*weekBStartIndex\s*\)/);
+    expect(src).toMatch(/parsed\.sections\.slice\s*\(\s*0\s*,\s*weekBStartIndex\s*\)/);
+  });
+
+  test('week toggle button only renders when hasABWeeks is true', () => {
+    expect(src).toMatch(/hasABWeeks\s*&&/);
+    expect(src).toMatch(/Week\s*\{effectiveActiveWeek/);
+  });
+});

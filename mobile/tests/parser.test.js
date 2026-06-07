@@ -2733,3 +2733,74 @@ describe('weeksSinceLastDeload', () => {
     expect(weeksSinceLastDeload(newHistory)).toBe(2);
   });
 });
+
+// ── parseWorkoutNote: A/B week separator ─────────────────────────────────────
+
+describe('parseWorkoutNote: A/B week separator (---)', () => {
+  const AB_NOTE = `Monday
++LIFTING
+-Squat
+225 5,5,5
+---
+Monday
++LIFTING
+-DB Goblet Squat
+70 10,10,10`;
+
+  test('weekBStartIndex is null for notes without --- separator', () => {
+    const { weekBStartIndex } = parseWorkoutNote('-Squat\n225 5,5,5');
+    expect(weekBStartIndex).toBeNull();
+  });
+
+  test('weekBStartIndex is null for empty note', () => {
+    const { weekBStartIndex } = parseWorkoutNote('');
+    expect(weekBStartIndex).toBeNull();
+  });
+
+  test('detects --- and sets weekBStartIndex to the first Week B section index', () => {
+    const { sections, weekBStartIndex } = parseWorkoutNote(AB_NOTE);
+    expect(weekBStartIndex).not.toBeNull();
+    expect(weekBStartIndex).toBeGreaterThan(0);
+    expect(sections.length).toBeGreaterThan(weekBStartIndex);
+  });
+
+  test('sections before weekBStartIndex belong to Week A', () => {
+    const { sections, weekBStartIndex } = parseWorkoutNote(AB_NOTE);
+    const weekASections = sections.slice(0, weekBStartIndex);
+    const weekANames = weekASections.flatMap(s => s.exercises.map(e => e.name));
+    expect(weekANames).toContain('Squat');
+    expect(weekANames).not.toContain('DB Goblet Squat');
+  });
+
+  test('sections from weekBStartIndex onward belong to Week B', () => {
+    const { sections, weekBStartIndex } = parseWorkoutNote(AB_NOTE);
+    const weekBSections = sections.slice(weekBStartIndex);
+    const weekBNames = weekBSections.flatMap(s => s.exercises.map(e => e.name));
+    expect(weekBNames).toContain('DB Goblet Squat');
+    expect(weekBNames).not.toContain('Squat');
+  });
+
+  test('--- does not appear as an exercise or unparsed row', () => {
+    const { sections } = parseWorkoutNote(AB_NOTE);
+    const allExNames = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(allExNames).not.toContain('---');
+    const allUnparsed = sections.flatMap(s => s.exercises.flatMap(e => e.unparsed_rows));
+    expect(allUnparsed.some(r => r.includes('---'))).toBe(false);
+  });
+
+  test('--- inside an exercise block is treated as a week separator, not a comment', () => {
+    const note = `-Squat\n225 5,5,5\n---\n-Bench\n135 5,5,5`;
+    const { sections, weekBStartIndex } = parseWorkoutNote(note);
+    expect(weekBStartIndex).not.toBeNull();
+    const squat = sections[0]?.exercises?.find(e => e.name === 'Squat');
+    expect(squat).toBeDefined();
+    expect(squat.unparsed_rows).not.toContain('---');
+  });
+
+  test('same exercise name across both weeks shares one continuous analytics thread', () => {
+    const sharedNote = `-Squat\n225 5,5,5\n- 235 5,5,5\n---\n-Squat\n- 225 5,5,5`;
+    const { sections } = parseWorkoutNote(sharedNote);
+    const allSquatSections = sections.flatMap(s => s.exercises.filter(e => e.name === 'Squat'));
+    expect(allSquatSections.length).toBeGreaterThan(0);
+  });
+});

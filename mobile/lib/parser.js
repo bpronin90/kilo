@@ -181,13 +181,14 @@ function _makeSet(setIndex, repCount, weightValue, weightUnit) {
 }
 
 export function parseWorkoutNote(noteText) {
-  if (!noteText || noteText.trim() === '') return { ok: true, sections: [] };
+  if (!noteText || noteText.trim() === '') return { ok: true, sections: [], weekBStartIndex: null };
 
   const sections = [];
   let currentDay = null;
   let currentSection = null;
   let currentExercise = null;
   let currentExerciseNonWeight = false;
+  let weekBStartIndex = null;
 
   function flushExercise() {
     if (currentExercise && currentSection) {
@@ -228,6 +229,15 @@ export function parseWorkoutNote(noteText) {
       if (currentExercise) {
         currentExercise.session_entries.push({ skipped: true, raw: '-', sets: [] });
       }
+      continue;
+    }
+
+    // Week B separator: '---' marks the boundary between week A and week B.
+    // Must be checked before the '--' comment handler since '---'.startsWith('--') is true.
+    if (trimmed === '---') {
+      flushSection();
+      weekBStartIndex = sections.length;
+      currentDay = null;
       continue;
     }
 
@@ -341,7 +351,7 @@ export function parseWorkoutNote(noteText) {
   }
 
   flushSection();
-  return { ok: true, sections };
+  return { ok: true, sections, weekBStartIndex };
 }
 
 // ── buildSessionsFromNote ─────────────────────────────────────────────────────
