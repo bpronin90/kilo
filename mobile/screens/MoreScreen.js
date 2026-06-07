@@ -70,20 +70,24 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
   }
 
   return (
-    <ScreenShell title="More" subtitle="Help, about, and application info.">
+    <ScreenShell title="More" subtitle="Settings, help, and your data.">
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
-          <Text style={styles.menuItemText}>User Profile</Text>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
+          <Text style={styles.menuItemText}>App Guide</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="Help and Terminology">
-          <Text style={styles.menuItemText}>Help & Terminology</Text>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
+          <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings and Algorithm">
           <Text style={styles.menuItemText}>Settings & Algorithm</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
+      </View>
+
+      <SectionTitle>Data</SectionTitle>
+      <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <Text style={styles.menuItemText}>Data & Backup</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
@@ -567,7 +571,7 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
 
 function HelpScreen({ onBack }) {
   return (
-    <ScreenShell title="Help" subtitle="Terminology and usage guide.">
+    <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it.">
       <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
 
       <View style={styles.logoContainer}>
@@ -577,38 +581,77 @@ function HelpScreen({ onBack }) {
       <Card>
         <Text style={styles.helpHeading}>What is Kilo?</Text>
         <Text style={styles.helpText}>
-          Kilo is a minimalist training log designed for speed. It interprets your natural workout notes into structured data and analytics.
+          Kilo is a minimalist training log built for speed. Write your workout in plain text — Kilo parses it into structured data, tracks your progress, and surfaces analytics without extra steps.
         </Text>
       </Card>
 
+      <SectionTitle>Your Tabs</SectionTitle>
+
       <Card>
-        <Text style={styles.helpHeading}>Workout Notes</Text>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Log</Text>
+          <Text style={styles.tabDesc}>Write your workouts as free-form notes. Kilo parses exercises, sets, reps, and weight automatically. Each entry is saved with a date and used to drive analytics.</Text>
+        </View>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Weight</Text>
+          <Text style={styles.tabDesc}>Log your daily body weight. Kilo tracks trends over time and flags if your pace of change is outside a healthy range.</Text>
+        </View>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Analytics</Text>
+          <Text style={styles.tabDesc}>View progress charts for exercises you've marked as tracked. Shows estimated max over time and volume trends.</Text>
+        </View>
+        <View style={[styles.tabRow, { marginBottom: 0 }]}>
+          <Text style={styles.tabName}>Deload</Text>
+          <Text style={styles.tabDesc}>Log and review planned deload weeks. Can be enabled or disabled in Settings.</Text>
+        </View>
+      </Card>
+
+      <SectionTitle>Logging Workouts</SectionTitle>
+
+      <Card>
         <Text style={styles.helpText}>
-          Enter your exercises followed by weight, reps, and sets.{"\n\n"}
-          Example: "Squat 225x5x5" or "Bench 185x8, 185x7, 185x6".
+          In the Log tab, tap a date to open the note editor. Enter exercises in plain text — one exercise per line or comma-separated sets.{"\n\n"}
+          Examples:{"\n"}
+          {"  "}Squat 225x5x5{"\n"}
+          {"  "}Bench 185x8, 185x7, 185x6{"\n"}
+          {"  "}Deadlift 315x3{"\n\n"}
+          Format: Exercise Name + weight × reps × sets. Kilo handles most common variations.
         </Text>
       </Card>
 
       <Card>
-        <Text style={styles.helpHeading}>What is "Tracked"?</Text>
+        <Text style={styles.helpHeading}>Tracking an Exercise</Text>
         <Text style={styles.helpText}>
-          Tapping "Track" on an exercise in your log tells Kilo to monitor it for progress. These exercises appear in your Analytics tab with progression markers.
+          After logging, tap an exercise in your note to see parsed details. Tap "Track" to mark it for progress monitoring. Tracked exercises appear in Analytics with charts and progression history.
         </Text>
       </Card>
 
+      <SectionTitle>Terminology</SectionTitle>
+
       <Card>
-        <Text style={styles.helpHeading}>Terminology</Text>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Est. Max</Text>
-          <Text style={styles.termDesc}>Estimated 1-Rep Max. A calculation of your maximum strength based on your best sets.</Text>
+          <Text style={styles.termDesc}>Estimated 1-Rep Max. Calculated from your best logged sets using the Epley formula.</Text>
         </View>
         <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Sets</Text>
-          <Text style={styles.termDesc}>The total number of work sets performed for a specific exercise in a session.</Text>
+          <Text style={styles.termLabel}>Kilo Max</Text>
+          <Text style={styles.termDesc}>Est. Max adjusted by the fatigue multiplier. Reflects real-world performance accounting for accumulated fatigue.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Fatigue</Text>
+          <Text style={styles.termDesc}>A session check-in metric that tracks how tired or recovered you feel. Used in Analytics to correlate training load with performance.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Pace Flag</Text>
-          <Text style={styles.termDesc}>A warning if your body weight is changing too rapidly (over 1.5% per week).</Text>
+          <Text style={styles.termDesc}>A warning when body weight is changing faster than ~1.5% per week, which may indicate an unsustainable rate of gain or loss.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Sets</Text>
+          <Text style={styles.termDesc}>The total number of work sets logged for a specific exercise in a session.</Text>
+        </View>
+        <View style={[styles.termRow, { marginBottom: 0 }]}>
+          <Text style={styles.termLabel}>Deload</Text>
+          <Text style={styles.termDesc}>A planned period of reduced training volume or intensity used to recover from accumulated fatigue.</Text>
         </View>
       </Card>
     </ScreenShell>
@@ -756,6 +799,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
+  },
+  tabRow: {
+    marginBottom: 16,
+  },
+  tabName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 3,
+  },
+  tabDesc: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
   },
   termRow: {
     marginBottom: 12,
