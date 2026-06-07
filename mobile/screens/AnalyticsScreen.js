@@ -317,16 +317,7 @@ export function AnalyticsScreen({ multiplier, section }) {
       <SectionTitle>Routine Status</SectionTitle>
     </View>) : null,
     deloadModeEnabled ? (
-    <View key="routine-status-content" style={styles.routineStatusContent}>
-      <Card style={styles.routineExposureCard}>
-        <View style={styles.routineMetric}>
-          <Text style={styles.weeksValue}>{String(sessionCount)}</Text>
-          <Text style={styles.weeksLabel}>sessions logged</Text>
-        </View>
-      </Card>
-      <SessionGauge count={sinceDeload} />
-      <Text style={styles.gaugeMetricLabel}>sessions since deload</Text>
-    </View>) : null,
+    <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} />) : null,
 
     fatigueTrackingEnabled ? (
     <View key="fatigue-title">

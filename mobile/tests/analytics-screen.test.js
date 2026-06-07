@@ -752,24 +752,25 @@ describe('AnalyticsScreen Routine Status metric display', () => {
     isCurrent: true,
   };
 
-  test('renders Routine Status section with sessions logged and sessions since deload', () => {
+  test('renders Routine Status section with gauge showing Since deload and Total', () => {
     const deloadHistory = [
       { id: 'dl_1', completed_at: '2026-05-23T12:00:00.000Z', session_count: 1, note_id: 'wn_dl_1' },
     ];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
     const root = component.root;
     expect(hasText(root, 'Routine Status')).toBe(true);
-    expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'sessions since deload')).toBe(true);
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Total')).toBe(true);
     expect(hasText(root, 'weeks on routine')).toBe(false);
     expect(hasText(root, 'weeks since deload')).toBe(false);
+    expect(hasText(root, 'sessions since deload')).toBe(false);
   });
 
-  test('legacy records without note_id render both metric labels without error', () => {
+  test('legacy records without note_id render gauge without error', () => {
     const deloadHistory = [{ id: 'dl_legacy', completed_at: '2026-04-01T00:00:00.000Z', session_count: 0 }];
     const component = setup({ hookOverrides: { notes: [ROUTINE_NOTE], currentNote: ROUTINE_NOTE, deloadHistory } });
-    expect(hasText(component.root, 'sessions logged')).toBe(true);
-    expect(hasText(component.root, 'sessions since deload')).toBe(true);
+    expect(hasText(component.root, 'Since deload')).toBe(true);
+    expect(hasText(component.root, 'Total')).toBe(true);
   });
 });
 
@@ -959,7 +960,7 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('surfaces sessions-logged and sessions-since-deload; no calendar metrics', () => {
+  test('gauge surfaces since-deload count and total; no calendar metrics', () => {
     const currentNote = {
       id: 'wn1',
       raw_text: FIVE_SESSION_RAW,
@@ -971,13 +972,13 @@ describe('AnalyticsScreen routine-status plumbing (#282)', () => {
     const component = setup({ hookOverrides: { notes: [currentNote], currentNote, deloadHistory } });
     const root = component.root;
 
-    expect(hasText(root, 'sessions logged')).toBe(true);
-    expect(hasText(root, 'sessions since deload')).toBe(true);
+    expect(hasText(root, 'Since deload')).toBe(true);
+    expect(hasText(root, 'Total')).toBe(true);
     // Calendar metrics removed — must not appear.
     expect(hasText(root, 'weeks on routine')).toBe(false);
     expect(hasText(root, 'weeks since deload')).toBe(false);
     expect(hasText(root, 'active weeks')).toBe(false);
-    // sessions logged = 5 routine + 1 deload = 6 (includes archived deloads).
+    // sessions logged (Total) = 5 routine + 1 deload = 6 (includes archived deloads).
     expect(findAllText(root).some(s => s === '6')).toBe(true);
   });
 });
