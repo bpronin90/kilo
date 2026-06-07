@@ -1879,6 +1879,20 @@ describe('deload history storage', () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(DL2.id);
   });
+
+  test('round-trip: deload_session_ordinal persists and reloads', async () => {
+    const record = { ...DL1, deload_session_ordinal: 5 };
+    await appendDeloadHistory(record);
+    const history = await loadDeloadHistory();
+    expect(history[0].deload_session_ordinal).toBe(5);
+  });
+
+  test('legacy deload record without deload_session_ordinal loads null-safe', async () => {
+    await appendDeloadHistory(DL1);
+    const history = await loadDeloadHistory();
+    expect(() => history[0].deload_session_ordinal?.toString()).not.toThrow();
+    expect(history[0].deload_session_ordinal).toBeUndefined();
+  });
 });
 
 // ── exportBackup — deload history ─────────────────────────────────────────────

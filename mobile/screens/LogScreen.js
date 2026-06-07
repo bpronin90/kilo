@@ -7,7 +7,7 @@
 // asks for that specific change.
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Modal, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
@@ -94,6 +94,9 @@ export function LogScreen({
   const [roughNoteId, setRoughNoteId] = useState(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [roughCheckInData, setRoughCheckInData] = useState(null);
+
+  const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
+  const [deloadOrdinalInput, setDeloadOrdinalInput] = useState('');
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -436,6 +439,7 @@ export function LogScreen({
       // Skip tracking: scoped to the current note being saved.
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const skip_markers = { exercise_skips, day_skips };
+
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
@@ -889,19 +893,15 @@ export function LogScreen({
   };
 
   const handleCompleteDeload = () => {
-    Alert.alert(
-      'Complete deload?',
-      'This will archive your deload note and reset the session clock.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deload complete',
-          onPress: async () => {
-            await completeDeload({ sessionCount: logSessionCount });
-          },
-        },
-      ]
-    );
+    setDeloadOrdinalInput(String(logSessionCount + 1));
+    setShowDeloadOrdinalPrompt(true);
+  };
+
+  const handleConfirmDeloadOrdinal = async () => {
+    const ordinal = parseInt(deloadOrdinalInput, 10);
+    if (!ordinal || ordinal < 1) return;
+    setShowDeloadOrdinalPrompt(false);
+    await completeDeload({ sessionCount: logSessionCount, deloadSessionOrdinal: ordinal });
   };
 
   const handleGenerateDeload = () => {
@@ -1694,6 +1694,43 @@ export function LogScreen({
           </View>
         )}
       </ScreenShell>
+      <Modal
+        visible={showDeloadOrdinalPrompt}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeloadOrdinalPrompt(false)}
+      >
+        <View style={styles.ordinalOverlay}>
+          <View style={styles.ordinalSheet}>
+            <Text style={styles.ordinalTitle}>Which session number is this deload?</Text>
+            <Text style={styles.ordinalSubtitle}>
+              Prefilled from your current note. Edit if your real session count differs.
+            </Text>
+            <TextInput
+              style={styles.ordinalInput}
+              value={deloadOrdinalInput}
+              onChangeText={setDeloadOrdinalInput}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              autoFocus
+            />
+            <View style={styles.ordinalButtons}>
+              <Pressable
+                style={styles.ordinalCancel}
+                onPress={() => setShowDeloadOrdinalPrompt(false)}
+              >
+                <Text style={styles.ordinalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.ordinalConfirm}
+                onPress={handleConfirmDeloadOrdinal}
+              >
+                <Text style={styles.ordinalConfirmText}>Deload complete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <SessionCheckInModal
         visible={showCheckInModal}
         checkInData={roughCheckInData}
@@ -1967,6 +2004,73 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
+  },
+  ordinalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31,26,23,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  ordinalSheet: {
+    backgroundColor: Colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: 24,
+    gap: 12,
+  },
+  ordinalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  ordinalSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  ordinalInput: {
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  ordinalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  ordinalCancel: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: Colors.chipBackground,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  ordinalCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  ordinalConfirm: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: Colors.accent,
+  },
+  ordinalConfirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
   },
 
 });

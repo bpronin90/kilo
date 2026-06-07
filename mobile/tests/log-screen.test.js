@@ -1,4 +1,5 @@
 import { parseWorkoutNote, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
+import { deriveRoutineStatus } from '../lib/data';
 
 // Simulates the skip-aware IIFE used in all clean-view render paths of LogScreen.
 // Returns an array of 'skip' | 'set' | 'unparsed:<raw>' tokens in order.
@@ -209,6 +210,84 @@ describe('deload date edit: sessions and weeks are independent metrics', () => {
     expect(weeksSinceLastDeload([legacyRecord])).toBe(2);
     // The record is unchanged — same values before and after.
     expect(legacyRecord.completed_at).toBe('2026-05-23T12:00:00.000Z');
+  });
+});
+
+// ── deload_session_ordinal: session-ordinal anchor (#284) ─────────────────────
+// Ordinal logic lives in deriveRoutineStatus (data.js); test via that entry point.
+
+function rawWithSessions(n) {
+  return ['Monday', '+ lifting', '1. Squat', ...Array(n).fill('- 225x5')].join('\n');
+}
+
+function sectionsWithSessions(n) {
+  return parseWorkoutNote(rawWithSessions(n)).sections;
+}
+
+describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', () => {
+  const NOTE = { saved_at: '2026-04-06T00:00:00.000Z' };
+
+  test('ordinal takes precedence over stale session_count', () => {
+    // session_count=99 is stale; ordinal=5 wins via deriveRoutineStatus.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5 }];
+    expect(deriveRoutineStatus(sectionsWithSessions(5), NOTE, history).sessionsSinceDeload).toBe(1);
+    expect(deriveRoutineStatus(sectionsWithSessions(4), NOTE, history).sessionsSinceDeload).toBe(0);
+    expect(deriveRoutineStatus(sectionsWithSessions(7), NOTE, history).sessionsSinceDeload).toBe(3);
+  });
+
+  test('freshly completed deload (no new sessions yet) reads 0', () => {
+    // 4 sessions in note, ordinal=5 → max(0, 4-5+1)=0.
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    expect(deriveRoutineStatus(sectionsWithSessions(4), NOTE, history).sessionsSinceDeload).toBe(0);
+  });
+
+  test('first post-deload session reads 1', () => {
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    expect(deriveRoutineStatus(sectionsWithSessions(5), NOTE, history).sessionsSinceDeload).toBe(1);
+  });
+
+  test('legacy records without deload_session_ordinal fall through to session_count', () => {
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 10 }];
+    expect(deriveRoutineStatus(sectionsWithSessions(14), NOTE, history).sessionsSinceDeload).toBe(4);
+  });
+
+  test('user-corrected ordinal counts correctly for partial-import scenario', () => {
+    // App note has 2 sessions (imported last 2 of a real 14-session routine).
+    // Default prefill would be 3; user corrects to 15 (real next ordinal).
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 15 }];
+    // Before the note accumulates enough sessions, still 0.
+    expect(deriveRoutineStatus(sectionsWithSessions(2), NOTE, history).sessionsSinceDeload).toBe(0);
+    // Once note reaches ordinal 15, first post-deload session = 1.
+    expect(deriveRoutineStatus(sectionsWithSessions(15), NOTE, history).sessionsSinceDeload).toBe(1);
+    expect(deriveRoutineStatus(sectionsWithSessions(17), NOTE, history).sessionsSinceDeload).toBe(3);
+  });
+});
+
+// ── deload ordinal prompt: prefill and editability contract (#284) ────────────
+// LogScreen cannot be rendered in this test environment. These source-level
+// assertions prove the behavioral contract: prefill formula, editable input,
+// and correct forwarding to completeDeload.
+
+describe('deload ordinal prompt: prefill and editability contract (#284)', () => {
+  let src;
+  beforeAll(() => {
+    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  });
+
+  test('prompt is prefilled with logSessionCount + 1', () => {
+    expect(src).toMatch(/setDeloadOrdinalInput\(String\(logSessionCount \+ 1\)\)/);
+  });
+
+  test('prompt input is editable: onChangeText wired to setDeloadOrdinalInput', () => {
+    expect(src).toMatch(/onChangeText\s*=\s*\{setDeloadOrdinalInput\}/);
+  });
+
+  test('confirm handler parses user input as integer', () => {
+    expect(src).toMatch(/parseInt\(deloadOrdinalInput,\s*10\)/);
+  });
+
+  test('confirm handler forwards parsed ordinal to completeDeload', () => {
+    expect(src).toMatch(/deloadSessionOrdinal\s*:\s*ordinal/);
   });
 });
 
