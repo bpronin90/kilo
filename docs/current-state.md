@@ -316,21 +316,17 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/AnalyticsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, separate labeled `7-day rolling average` and `30-day rolling
-  average` charts, and 7-day/30-day summary averages, alongside a `Session
-  Health` section that replaces the older workout-sessions card with a
-  three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
-  derived from the shared session-depth thresholds. The gauge now runs its
-  zones, marker, and caption off `sessions since deload`, where the session
-  count now recomputes from workout chronology relative to the latest deload
-  date when dated session history exists, so editing a past deload date moves
-  both deload-relative metrics together. When no dated session chronology
-  exists, the session counter still falls back to the stored deload snapshot
-  for legacy safety. The same section now also shows a separate
-  calendar-based `weeks since deload` metric plus a small routine-exposure card
-  with `sessions logged` (including archived deload sessions) and `weeks on
-  routine` as elapsed calendar weeks since the routine start. The deferred
-  `active weeks` metric is not currently shown. The whole `Session Health`
-  surface is hidden when the More > Settings `Deload mode` toggle is off. The redesigned `1K
+  average` charts, and 7-day/30-day summary averages, alongside a merged
+  `Routine Status` / `Fatigue` parent section. That section contains a
+  `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
+  `Approaching` / `Deload`) driven entirely by session-ordinal data (`sessions
+  since deload` and `sessions logged`; no calendar metrics). The gauge marker,
+  zone labels, and caption always render; the `Since deload` stat is hidden
+  when `Deload mode` is off. The parent section also contains a `Fatigue
+  Tracking` panel backed by persisted `session_checkins`. The `Deload mode`
+  toggle controls the sessions-status panel content; the `Fatigue tracking`
+  toggle controls the `Fatigue Tracking` panel. The parent section title is
+  `Fatigue` when fatigue tracking is enabled, `Routine Status` otherwise. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation. The screen now also includes
@@ -547,10 +543,10 @@ The session count drives a color signifier on both screens: green (1–6
 sessions), yellow/caution (7–9, approaching deload window), and red (≥ 10,
 at or past deload window), derived through a shared `getSessionTone` helper
 in UI.js. On Home the color applies to the "Week N" label text; on Analytics
-the `Session Health` card applies the tone to its sessions-since-deload hero
-count and gauge caption, and pairs that session-based signal with explicitly
-labeled routine-exposure context (`sessions logged`, `weeks on routine`) plus
-the calendar-based `weeks since deload` value.
+the `Routine Health` gauge applies the tone to its `sessions since deload`
+count and caption; `sessions logged` is shown as a `Total` stat within the
+same gauge card. No calendar-based metrics are shown in the Analytics routine
+status surface.
 The native Analytics tab now consumes those
 derived analytics directly, combining weight trends with tracked-lift
 estimated-max values, Big Three 1RM progress, progression status, Kilo max,

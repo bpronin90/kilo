@@ -219,15 +219,12 @@ export function AnalyticsScreen({ multiplier, section }) {
 
   const SLOT_LABELS = { bench: 'Bench', squat: 'Squat', deadlift: 'Deadlift' };
 
-  // Canonical routine-status metrics. Derivation is chronology-aware: editing a
-  // past deload date moves both deload-relative metrics together (see #282).
   const routineStatus = useMemo(
     () => deriveRoutineStatus(parsedSections.currentSections, currentNote, deloadHistory),
     [parsedSections.currentSections, currentNote, deloadHistory]
   );
   const sessionCount = routineStatus.sessionsLogged;
   const sinceDeload = routineStatus.sessionsSinceDeload;
-  const weeksDeload = routineStatus.weeksSinceDeload;
 
   const checkInHistory = useMemo(() => deriveCheckInHistory(notes), [notes]);
 
@@ -1214,44 +1211,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 20,
     fontSize: 15,
-  },
-  gaugeMetricLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  weeksCard: {
-    padding: 16,
-  },
-  routineStatusContent: {
-    gap: 8,
-  },
-  routineGroupLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 4,
-  },
-  routineExposureCard: {
-    padding: 16,
-  },
-  routineExposureRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    gap: 12,
-  },
-  routineMetric: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  routineMetricDivider: {
-    width: 1,
-    backgroundColor: Colors.cardBorder,
-    alignSelf: 'stretch',
   },
   weeksStat: {
     flexDirection: 'row',
