@@ -319,17 +319,17 @@ The real native app path now has a modular React Native shell:
   average` charts, and 7-day/30-day summary averages, alongside a `Session
   Health` section that replaces the older workout-sessions card with a
   three-zone gauge (`Building` / `Approaching` / `Deload`) plus a zone caption
-  derived from the shared session-depth thresholds. The gauge now runs its
-  zones, marker, and caption off `sessions since deload`, where the session
-  count now recomputes from workout chronology relative to the latest deload
-  date when dated session history exists, so editing a past deload date moves
-  both deload-relative metrics together. When no dated session chronology
-  exists, the session counter still falls back to the stored deload snapshot
-  for legacy safety. The same section now also shows a separate
-  calendar-based `weeks since deload` metric plus a small routine-exposure card
-  with `sessions logged` (including archived deload sessions) and `weeks on
-  routine` as elapsed calendar weeks since the routine start. The deferred
-  `active weeks` metric is not currently shown. The whole `Session Health`
+  derived from the shared session-depth thresholds. The gauge runs its zones,
+  marker, and caption off `sessions since deload`, where the session count is
+  anchored only to routine session position: newly completed deloads persist a
+  user-confirmed `deload_session_ordinal`, prefilled from the current note's
+  next inferred session and editable before confirmation, and legacy deload
+  records fall back to their stored `session_count`. Deload dates remain display
+  and calendar metadata only for this session-count metric. The same section
+  also shows a separate calendar-based `weeks since deload` metric plus a small
+  routine-exposure card with `sessions logged` (including archived deload
+  sessions) and `weeks on routine` as elapsed calendar weeks since the routine
+  start. The deferred `active weeks` metric is not currently shown. The whole `Session Health`
   surface is hidden when the More > Settings `Deload mode` toggle is off. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart

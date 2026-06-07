@@ -74,7 +74,9 @@ Current limitation:
   reshaping, targeted Analytics feature-toggle gating coverage that hides the
   Fatigue and Session Health sections when their settings are off, targeted
   two-metric Session Health coverage for explicit `sessions since deload` and
-  `weeks since deload` labels plus legacy deload-history rendering, targeted
+  `weeks since deload` labels plus legacy deload-history rendering, regression
+  coverage proving deload dates do not move the Analytics session-count anchor,
+  targeted
   `AnalyticsScreen` Fatigue-section interaction coverage for the
   collapsed-by-default summary, the expand/collapse toggle cycle, the
   post-expansion rough-row and ok/pending chip edit affordances, and the
@@ -248,6 +250,9 @@ retains non-test commands such as `npm run audit`.
 - verifies the two-metric deload display so Analytics explicitly labels both
   `sessions since deload` and `weeks since deload`, including the no-history
   em-dash state for the weeks metric
+- verifies Analytics derives `sessions since deload` from stored session
+  anchors rather than deload dates or check-in chronology, including date-edit
+  and multiple-deload ordering regressions
 - verifies feature-toggle gating so the `Fatigue` section disappears when
   fatigue tracking is off and the `Session Health` section disappears when
   deload mode is off while unrelated Analytics sections remain visible

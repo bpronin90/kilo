@@ -5,9 +5,7 @@ import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 import {
   parseWorkoutNote,
-  sessionsSinceLastDeload,
   weeksSinceLastDeload,
-  sessionDateMapFromNote,
 } from '../lib/parser';
 import {
   deriveRoutineStatus,
@@ -849,55 +847,69 @@ const FIVE_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
   '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
 
 describe('routine-status derivation — deload-relative metrics (#282)', () => {
-  test('deload date edits move sessions-since and weeks-since together', () => {
-    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
-    const total = 5;
+  function sectionsFor(raw) {
+    return parseWorkoutNote(raw).sections;
+  }
 
+  test('deload date edits change weeks-since but not sessions-since', () => {
+    const note = {
+      saved_at: '2026-04-06T00:00:00.000Z',
+      session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
+    };
     // Two records differing ONLY in completed_at (session_count snapshot identical).
     const historyA = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3 }];
     const historyB = [{ id: 'dl', completed_at: '2026-05-04T12:00:00.000Z', session_count: 3 }];
 
-    const sinceA = sessionsSinceLastDeload(total, historyA, dateMap);
-    const sinceB = sessionsSinceLastDeload(total, historyB, dateMap);
+    const sinceA = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, historyA).sessionsSinceDeload;
+    const sinceB = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, historyB).sessionsSinceDeload;
     const weeksA = weeksSinceLastDeload(historyA);
     const weeksB = weeksSinceLastDeload(historyB);
 
-    // Boundary at 04-20 → ordinals 0,1,2 on/before → 2 sessions after.
     expect(sinceA).toBe(2);
-    // Boundary at 05-04 → ordinals 0..4 on/before → 0 sessions after.
-    expect(sinceB).toBe(0);
-    // Both deload-relative metrics changed when only the date moved.
-    expect(sinceA).not.toBe(sinceB);
+    expect(sinceB).toBe(2);
     expect(weeksA).not.toBe(weeksB);
     expect(weeksA).toBe(5); // 2026-05-26 − 2026-04-20 = 36 days → 5 weeks
     expect(weeksB).toBe(3); // 2026-05-26 − 2026-05-04 = 22 days → 3 weeks
   });
 
-  test('chronology recompute is preferred over a stale session_count snapshot', () => {
-    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
-    // Snapshot is deliberately wrong (99); the date-located boundary must win.
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99 }];
-    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(2);
-    // Without chronology, it falls back to the (clamped) snapshot.
-    expect(sessionsSinceLastDeload(5, history)).toBe(0);
+  test('session_count beats check-in chronology for Analytics sessions-since-deload', () => {
+    const note = {
+      saved_at: '2026-04-06T00:00:00.000Z',
+      session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
+    };
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3 }];
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(2);
   });
 
-  test('a completed deload resets sessions-since-deload to 0', () => {
-    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
-    // Deload completed on the latest session date → boundary is the last ordinal.
+  test('session anchor, not completed_at, selects the deload for sessions-since-deload', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
+    const history = [
+      { id: 'dl_real_latest', completed_at: '2026-04-20T12:00:00.000Z', session_count: 5 },
+      { id: 'dl_newer_date', completed_at: '2026-05-04T12:00:00.000Z', session_count: 3 },
+    ];
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(0);
+  });
+
+  test('a completed deload using legacy session_count resets sessions-since-deload to 0', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
     const history = [{ id: 'dl', completed_at: '2026-05-04T12:00:00.000Z', session_count: 5 }];
-    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(0);
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(0);
   });
 
-  test('a deload date before all sessions counts every session as post-deload', () => {
-    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
+  test('a deload date before all sessions does not affect sessions-since-deload', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
     const history = [{ id: 'dl', completed_at: '2026-01-01T12:00:00.000Z', session_count: 0 }];
-    expect(sessionsSinceLastDeload(5, history, dateMap)).toBe(5);
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(5);
   });
 
   test('no deload history returns total sessions and null weeks', () => {
-    const dateMap = sessionDateMapFromNote({ session_checkins: checkinsFromDates(FIVE_WEEK_DATES) });
-    expect(sessionsSinceLastDeload(5, [], dateMap)).toBe(5);
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, []);
+    expect(status.sessionsSinceDeload).toBe(5);
     expect(weeksSinceLastDeload([])).toBeNull();
   });
 });
@@ -951,11 +963,11 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
       saved_at: '2026-04-06T00:00:00.000Z',
       session_checkins: checkinsFromDates(FIVE_WEEK_DATES),
     };
-    // Deload archived with one logged pass; snapshot intentionally wrong (3).
+    // Deload archived with one logged pass; snapshot says the deload anchor was session 3.
     const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3, raw_text: '-Squat\n- 135 5' }];
     const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
     expect(status.sessionsLogged).toBe(6);       // 5 routine + 1 deload
-    // Deload-relative metric is derived from chronology, not the snapshot.
+    // Deload-relative session count is derived from the stored session anchor, not dates.
     expect(status.sessionsSinceDeload).toBe(2);
     expect(status.weeksSinceDeload).toBe(5);
     expect(status.elapsedWeeks).toBe(8);         // calendar span since saved_at
@@ -1018,7 +1030,7 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
     expect(status.sessionsSinceDeload).toBe(2);
   });
 
-  test('ordinal overrides stale session_count and dateMap', () => {
+  test('ordinal overrides stale session_count and check-in dates', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z', session_checkins: checkinsFromDates(FIVE_WEEK_DATES) };
     // session_count=99 is stale; deload_session_ordinal=6 takes priority.
     const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 6 }];

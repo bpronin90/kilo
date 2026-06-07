@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66.0 - 2026-06-07
+
+- Issue #284: Anchored Analytics deload session counts to routine session
+  position instead of deload dates. Completing a deload now prompts for an
+  editable session ordinal prefilled from the current note, persists it on the
+  deload history record, and keeps dates as display/calendar metadata for
+  titles and `weeks since deload` only. Legacy records continue to use their
+  stored `session_count`, and regression tests now pin that date edits and
+  check-in chronology cannot move `sessions since deload`.
+
 ## 0.65.3 - 2026-06-06
 
 - Issue #282: Fixed the Analytics deload-cycle derivation so `sessions since

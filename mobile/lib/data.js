@@ -1,5 +1,5 @@
 // Native entry model factories and exercise catalog
-import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey, countWorkoutSessions, countWorkoutSessionsFromSections, sessionDateMapFromNote, sessionsSinceLastDeload, weeksSinceLastDeload } from './parser.js';
+import { deriveWorkoutAnalytics, deriveProgressionSignals, derivePerDaySignals, epleyPR, normalizeExerciseKey, countWorkoutSessions, countWorkoutSessionsFromSections, weeksSinceLastDeload } from './parser.js';
 
 // Canonical thresholds for weight-pace classification.
 // All weight-pace helpers in this module derive direction and severity from these values.
@@ -431,9 +431,8 @@ export function computeWeeksIn(sections) {
 // session chain (computeWeeksIn / countWorkoutSessionsFromSections) so the
 // week metrics work for any routine — including legacy history and chains with
 // no fatigue/check-in coverage. The deload-relative metrics reuse the parser
-// primitives, where sessions-since-deload is recomputed from the session-date
-// chronology relative to the latest deload boundary (so editing a past deload
-// date moves it together with weeks-since-deload).
+// primitives for elapsed calendar weeks, while sessions-since-deload is derived
+// only from stored session anchors so deload date edits cannot move it.
 
 // Total deload sessions logged across archived deload notes. Each completed
 // deload is archived separately in deloadHistory with its own raw_text, so its
@@ -479,12 +478,22 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
   return Math.round((nowMon - startMon) / _WEEK_MS) + 1;
 }
 
-// Latest deload record by completed_at. Mirrors _latestDeload in parser.js;
-// kept private here to avoid coupling to parser internals.
-function _latestDeloadRecord(deloadHistory) {
+function _deloadSessionAnchor(record) {
+  if (record?.deload_session_ordinal != null) return Number(record.deload_session_ordinal);
+  if (record?.session_count != null) return Number(record.session_count);
+  return null;
+}
+
+// Latest deload for session-count analytics is the furthest routine anchor,
+// not the newest calendar date. Date edits must not move sessionsSinceDeload.
+function _latestDeloadSessionRecord(deloadHistory) {
   if (!Array.isArray(deloadHistory) || !deloadHistory.length) return null;
-  return deloadHistory.reduce((best, r) =>
-    !best || r.completed_at > best.completed_at ? r : best, null);
+  return deloadHistory.reduce((best, r) => {
+    const anchor = _deloadSessionAnchor(r);
+    if (!Number.isFinite(anchor)) return best;
+    const bestAnchor = _deloadSessionAnchor(best);
+    return !Number.isFinite(bestAnchor) || anchor > bestAnchor ? r : best;
+  }, null);
 }
 
 // Single canonical entry point for the Analytics routine-status surface.
@@ -496,16 +505,17 @@ function _latestDeloadRecord(deloadHistory) {
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 //
-// When the latest deload record carries a deload_session_ordinal (1-based),
-// that ordinal is the authoritative anchor (#284): sessions since deload =
-// max(0, routineSessions - ordinal + 1). Legacy records without the field
-// fall through to the date-map / session_count path in sessionsSinceLastDeload.
+// Session-count analytics deliberately ignore completed_at. New records use the
+// user-confirmed 1-based deload_session_ordinal; legacy records use session_count.
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
-  const latest = _latestDeloadRecord(deloadHistory);
-  const sessionsSinceDeload = latest?.deload_session_ordinal != null
-    ? Math.max(0, routineSessions - latest.deload_session_ordinal + 1)
-    : sessionsSinceLastDeload(routineSessions, deloadHistory, sessionDateMapFromNote(note));
+  const latestSessionRecord = _latestDeloadSessionRecord(deloadHistory);
+  const anchor = _deloadSessionAnchor(latestSessionRecord);
+  const sessionsSinceDeload = !Number.isFinite(anchor)
+    ? routineSessions
+    : latestSessionRecord?.deload_session_ordinal != null
+      ? Math.max(0, routineSessions - anchor + 1)
+      : Math.max(0, routineSessions - anchor);
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
     elapsedWeeks: elapsedWeeksOnRoutine(note),

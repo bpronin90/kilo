@@ -243,7 +243,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags` |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
-| `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`); the latest `completed_at` record is the baseline for sessions-since-deload |
+| `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`, optional `deload_session_ordinal`); `completed_at` drives calendar/display behavior while Analytics session counts use the furthest stored session anchor (`deload_session_ordinal` for new records, `session_count` for legacy records) |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
 
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
