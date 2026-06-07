@@ -93,6 +93,7 @@ export function SessionGauge({ count, total, showDeload = true }) {
 
   return (
     <Card style={styles.sessionGauge}>
+      <Text style={styles.sessionGaugePanelTitle}>Routine Health</Text>
       <View style={styles.sessionGaugeHeader}>
         {showDeload && (
           <View style={styles.sessionGaugeStat}>
@@ -341,6 +342,13 @@ const styles = StyleSheet.create({
   sessionGauge: {
     flex: 1,
     gap: 10,
+  },
+  sessionGaugePanelTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   sessionGaugeHeader: {
     flexDirection: 'row',
