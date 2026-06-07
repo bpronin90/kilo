@@ -12,8 +12,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
-  return function MockDateTimePicker() {
-    return null;
+  const { View } = require('react-native');
+  return function MockDateTimePicker(props) {
+    return React.createElement(View, { testID: 'mock-datetimepicker', ...props });
   };
 });
 
@@ -343,5 +344,96 @@ describe('WeightScreen Goals two-panel layout', () => {
     const root = component.root;
     expect(hasText(root, 'Guidance')).toBe(true);
     expect(hasText(root, 'Target pace')).toBe(true);
+  });
+});
+
+describe('WeightScreen DateTimePicker onChange callbacks', () => {
+  const findPressableByText = (root, text) => {
+    const matches = root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const children = n.props.children;
+      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+      return flat.includes(text);
+    });
+    for (const match of matches) {
+      let node = match.parent;
+      while (node) {
+        if (node.props && typeof node.props.onPress === 'function') return node;
+        node = node.parent;
+      }
+    }
+    return null;
+  };
+
+  test('weigh-in date picker uses the correct onChange prop', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+      );
+    });
+    const root = component.root;
+
+    // Open date picker
+    const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
+    render.act(() => {
+      dateBtn.props.onPress();
+    });
+
+    const picker = root.findByProps({ testID: 'mock-datetimepicker' });
+    expect(picker).toBeTruthy();
+    expect(typeof picker.props.onChange).toBe('function');
+
+    // Simulate changing the date
+    const selectedDate = new Date(2026, 4, 25); // 2026-05-25 (0-indexed month)
+    render.act(() => {
+      picker.props.onChange({}, selectedDate);
+    });
+
+    const textNode = dateBtn.findByType('Text');
+    expect(textNode.props.children).toBe('2026-05-25');
+  });
+
+  test('goal target date picker uses the correct onChange prop', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    // Open goal date picker
+    const dateBtn = findPressableByText(root, 'Select date');
+    expect(dateBtn).toBeTruthy();
+    render.act(() => {
+      dateBtn.props.onPress();
+    });
+
+    const picker = root.findByProps({ testID: 'mock-datetimepicker' });
+    expect(picker).toBeTruthy();
+    expect(typeof picker.props.onChange).toBe('function');
+
+    // Simulate changing the date
+    const selectedDate = new Date(2026, 11, 25); // 2026-12-25
+    render.act(() => {
+      picker.props.onChange({}, selectedDate);
+    });
+
+    expect(findPressableByText(root, '12-25-2026')).toBeTruthy();
   });
 });

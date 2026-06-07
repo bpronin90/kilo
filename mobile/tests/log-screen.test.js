@@ -390,4 +390,10 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
     // parseInt call downstream always receives a clean integer string.
     expect(src).toMatch(/replace\s*\(\s*\/\[.*\^.*0-9.*\].*\/.*,\s*''\s*\)/);
   });
+
+  test('deload date picker uses onChange callback prop', () => {
+    // Assert that the deload DateTimePicker uses onChange prop rather than onValueChange
+    expect(src).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
+    expect(src).not.toMatch(/<DateTimePicker[\s\S]*?onValueChange\s*=\s*\{/);
+  });
 });
