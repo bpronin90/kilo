@@ -614,19 +614,54 @@ function HelpScreen({ onBack }) {
 
       <Card>
         <Text style={styles.helpText}>
-          In the Log tab, tap a date to open the note editor. Enter exercises in plain text — one exercise per line or comma-separated sets.{"\n\n"}
-          Examples:{"\n"}
-          {"  "}Squat 225x5x5{"\n"}
-          {"  "}Bench 185x8, 185x7, 185x6{"\n"}
-          {"  "}Deadlift 315x3{"\n\n"}
-          Format: Exercise Name + weight × reps × sets. Kilo handles most common variations.
+          Each workout note is plain text. Declare an exercise on its own line starting with a dash, then log each set on the lines below it starting with{" "}<Text style={styles.codeText}>{"- "}</Text>(dash-space).
         </Text>
-      </Card>
 
-      <Card>
-        <Text style={styles.helpHeading}>Tracking an Exercise</Text>
-        <Text style={styles.helpText}>
-          After logging, tap an exercise in your note to see parsed details. Tap "Track" to mark it for progress monitoring. Tracked exercises appear in Analytics with charts and progression history.
+        <View style={styles.codeBlock}>
+          <Text style={styles.codeText}>-Squat</Text>
+          <Text style={styles.codeText}>- 225 5,5,5</Text>
+          <Text style={styles.codeText}>- 185 8,8,7</Text>
+        </View>
+
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          Set row formats:
+        </Text>
+        <View style={{ marginTop: 6, gap: 6 }}>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 8</Text>
+            <Text style={styles.formatDesc}>one set at 225 lb, 8 reps</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 8,8,7</Text>
+            <Text style={styles.formatDesc}>three sets at same weight</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 8 185 8,8</Text>
+            <Text style={styles.formatDesc}>sets at different weights</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>8,8,8</Text>
+            <Text style={styles.formatDesc}>bodyweight — reps only, no weight</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>-</Text>
+            <Text style={styles.formatDesc}>skipped set slot</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          You can organize by day and block using optional labels:
+        </Text>
+        <View style={styles.codeBlock}>
+          <Text style={styles.codeText}>Monday</Text>
+          <Text style={styles.codeText}>+Lifting</Text>
+          <Text style={styles.codeText}>-Squat</Text>
+          <Text style={styles.codeText}>- 225 5,5,5</Text>
+        </View>
+
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          Day labels (Monday, Tuesday…) and block labels (+Lifting, +Warmup) are optional. Kilo uses them to group and sort analytics by day.{"\n\n"}
+          To track an exercise in Analytics: tap it in your parsed log, then tap "Track."
         </Text>
       </Card>
 
@@ -639,11 +674,19 @@ function HelpScreen({ onBack }) {
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Kilo Max</Text>
-          <Text style={styles.termDesc}>Est. Max adjusted by the fatigue multiplier. Reflects real-world performance accounting for accumulated fatigue.</Text>
+          <Text style={styles.termDesc}>Est. Max adjusted by the fatigue multiplier. Reflects real-world performance while accounting for accumulated fatigue.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>1K Progress</Text>
+          <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a 1,000 lb total. Shown on the Home screen.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Tracked</Text>
+          <Text style={styles.termDesc}>An exercise you've marked for Analytics monitoring. Tracked exercises show progress charts, Est. Max history, and overload trends.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Fatigue</Text>
-          <Text style={styles.termDesc}>A session check-in metric that tracks how tired or recovered you feel. Used in Analytics to correlate training load with performance.</Text>
+          <Text style={styles.termDesc}>An optional session check-in that records how tired or recovered you feel. Used in Analytics to correlate training load with performance.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Pace Flag</Text>
@@ -651,11 +694,11 @@ function HelpScreen({ onBack }) {
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Sets</Text>
-          <Text style={styles.termDesc}>The total number of work sets logged for a specific exercise in a session.</Text>
+          <Text style={styles.termDesc}>The number of work sets logged for an exercise in a session.</Text>
         </View>
         <View style={[styles.termRow, { marginBottom: 0 }]}>
           <Text style={styles.termLabel}>Deload</Text>
-          <Text style={styles.termDesc}>A planned period of reduced training volume or intensity used to recover from accumulated fatigue.</Text>
+          <Text style={styles.termDesc}>A planned period of reduced training volume and intensity used to recover from accumulated fatigue. Generated automatically from your routine when deload mode is enabled.</Text>
         </View>
       </Card>
     </ScreenShell>
@@ -803,6 +846,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
+  },
+  codeBlock: {
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: 10,
+    marginTop: 8,
+    gap: 2,
+  },
+  codeText: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
+    color: Colors.text,
+  },
+  formatRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  formatDesc: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
   },
   tabRow: {
     marginBottom: 16,
