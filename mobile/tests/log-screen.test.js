@@ -51,12 +51,9 @@ jest.mock('../components/SessionCheckInModal', () => {
 jest.mock('../components/ScreenShell', () => {
   const React = require('react');
   const { View } = require('react-native');
-  const mockScrollTo = jest.fn();
   const ScreenShell = React.forwardRef(({ children, headerRight }, ref) => {
-    React.useImperativeHandle(ref, () => ({ scrollTo: mockScrollTo }));
     return React.createElement(View, { testID: 'screen-shell' }, headerRight, children);
   });
-  ScreenShell._mockScrollTo = mockScrollTo;
   return {
     ScreenShell,
     ScrollContext: React.createContext({ onScroll: () => {} }),
@@ -1002,3 +999,4 @@ describe('Undo escape hatch: integration tests', () => {
     });
   });
 });
+

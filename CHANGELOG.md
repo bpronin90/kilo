@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.67.7 - 2026-06-07
+
+- Issue #294: Fixed the Log-tab truncation regression introduced by the More
+  sub-page sticky-header refactor by restoring `ScreenShell`'s root style
+  contract, so hiding the inactive Log shell now removes it from layout
+  entirely, and added focused regression coverage for that shell contract.
+
 ## 0.67.6 - 2026-06-07
 
 - Issue #292: Moved More-subpage back navigation into a persistent shared
