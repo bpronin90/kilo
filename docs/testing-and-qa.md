@@ -76,13 +76,17 @@ Current limitation:
   two-metric Session Health coverage for explicit `sessions since deload` and
   `weeks since deload` labels plus legacy deload-history rendering, regression
   coverage proving deload dates do not move the Analytics session-count anchor,
+  plus a source-contract regression asserting the past-deload
+  `DateTimePicker` uses the native `onChange` callback instead of the
+  non-functional `onValueChange` prop,
   targeted
   `AnalyticsScreen` Fatigue-section interaction coverage for the
   collapsed-by-default summary, the expand/collapse toggle cycle, the
   post-expansion rough-row and ok/pending chip edit affordances, and the
   unanswered-check-in alert badge, and targeted `WeightScreen` interaction
-  coverage for history-row scroll-to-editor behavior plus the saved-goal
-  target/guidance split.
+  coverage for history-row scroll-to-editor behavior, the saved-goal
+  target/guidance split, and the active weigh-in/goal `DateTimePicker`
+  `onChange` callback wiring.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
@@ -328,6 +332,11 @@ retains non-test commands such as `npm run audit`.
   `scrollTo` ref so the loaded editor is brought back into view
 - verifies a saved goal renders the split target + guidance presentation rather
   than collapsing all goal information into one card
+- verifies the active weigh-in date picker exposes the native `onChange`
+  callback and updates the visible ISO date when a new date is selected
+- verifies the goal target-date picker exposes the native `onChange`
+  callback and updates the visible MM-DD-YYYY label when a new date is
+  selected
 
 ---
 

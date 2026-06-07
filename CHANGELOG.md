@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.67.2 - 2026-06-07
+
+- Issue #288: Fixed the native mobile date pickers to use the correct
+  `DateTimePicker` `onChange` callback in Weight, Log, and More so date
+  selection now updates correctly on physical devices, and added regression
+  coverage for the Weight and Log picker wiring.
+
 ## 0.67.1 - 2026-06-07
 
 - Issue #286: Reframed the More tab around the current shipped baseline by

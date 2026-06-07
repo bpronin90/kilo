@@ -255,7 +255,9 @@ The real native app path now has a modular React Native shell:
   persisted opt-in date-edit path controlled from More > Settings: when the
   `Edit weigh-in dates` toggle is on, both the new-entry form and the
   existing-entry edit form expose an inline date picker capped at the local
-  calendar day, new entries splice the chosen date onto the current
+  calendar day, and those native picker changes now apply correctly on
+  physical devices through the canonical `DateTimePicker` `onChange`
+  callback; new entries splice the chosen date onto the current
   time-of-day, and edited entries preserve their original time-of-day while
   re-sorting history by `logged_at`, plus a
   denser history row treatment with per-entry delta badges for notable
@@ -305,7 +307,8 @@ The real native app path now has a modular React Native shell:
   note, or deload history; `Edit weigh-in dates` governs whether the Weight
   tab exposes date controls for new and existing weigh-ins; `Edit deload
   dates` governs whether past deload records expose the opt-in date picker on
-  the Log tab; and the same screen keeps a persisted fatigue-multiplier
+  the Log tab, with those date edits now applying correctly on physical
+  devices; and the same screen keeps a persisted fatigue-multiplier
   stepper plus reset control. The
   `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:

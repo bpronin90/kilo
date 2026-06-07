@@ -1670,7 +1670,7 @@ export function LogScreen({
                       mode="date"
                       display="default"
                       maximumDate={new Date()}
-                      onValueChange={(event, selectedDate) => {
+                      onChange={(event, selectedDate) => {
                         setShowDeloadDatePicker(false);
                         if (selectedDate) {
                           const y = selectedDate.getFullYear();
