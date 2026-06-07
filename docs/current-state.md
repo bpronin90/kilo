@@ -292,20 +292,21 @@ The real native app path now has a modular React Native shell:
   retryable `ErrorBanner` at the top of the screen instead of a silent empty
   screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
-  `User Profile`, `Data & Backup`, `Settings & Algorithm`, `Help`, and
+  `User Profile`, `Data & Backup`, `Settings & Algorithm`, `App Guide`, and
   `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
   intercept Android back presses and return to the More menu before falling
-  through to tab-level navigation, and the Settings & Algorithm screen
-  now includes a top `Training Features` section with persisted `Fatigue
-  tracking` and `Deload mode` switches so users can disable those optional
-  workout-side flows without deleting their saved check-ins, deload note, or
-  deload history,
-  now also includes a `Weight Logging` section with an `Edit weigh-in dates`
-  switch that governs whether the Weight tab exposes date controls for new and
-  existing weigh-ins, plus a `Workout Notes` section with an `Edit deload
-  dates` switch that governs whether past deload records expose the opt-in
-  date picker on the Log tab. The same screen also exposes a persisted
-  fatigue-multiplier stepper plus reset control. The
+  through to tab-level navigation. The parent More menu is now a flat
+  five-item list headed by `App Guide`, followed by `User Profile`,
+  `Settings & Algorithm`, `Data & Backup`, and `About Kilo`, while keeping the
+  existing quick actions intact. The Settings & Algorithm screen now groups its
+  controls into `Features`, `Date Editing`, and `Advanced`: persisted
+  `Fatigue tracking` and `Deload mode` switches let users disable those
+  optional workout-side flows without deleting their saved check-ins, deload
+  note, or deload history; `Edit weigh-in dates` governs whether the Weight
+  tab exposes date controls for new and existing weigh-ins; `Edit deload
+  dates` governs whether past deload records expose the opt-in date picker on
+  the Log tab; and the same screen keeps a persisted fatigue-multiplier
+  stepper plus reset control. The
   `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:
   height with ft/in or cm entry mapped to persisted `height_cm`, date of
@@ -559,14 +560,16 @@ Log screen, update immediately when Track is toggled while Analytics remains
 mounted, stay visible only for tracked lifts that appear in the current
 routine, and still aggregate each lift's full history across all saved
 routines. A separate native
-More tab now exposes Help and
-About surfaces while keeping the parent More quick actions intact; the Help
-surface now uses the shared top-safe-area header treatment, a local accessible
-header back control, and a centered Kilo logo placed above the Help and
-Terminology content only. About continues to surface attribution, displayed
-version, copyright notice, and an OTA Diagnostics panel covering the EAS
-channel, runtime version, current bundle (embedded vs. applied update),
-update-available/pending state, and a manual update check.
+More tab now exposes `App Guide` and
+About surfaces while keeping the parent More quick actions intact; the App
+Guide surface now uses the shared top-safe-area header treatment, a local
+accessible header back control, and a centered Kilo logo placed above concise
+orientation content covering what Kilo is, what each of the five tabs does,
+how workout logging syntax works, and the current terminology glossary. About
+continues to surface attribution, displayed version, copyright notice, and an
+OTA Diagnostics panel covering the EAS channel, runtime version, current
+bundle (embedded vs. applied update), update-available/pending state, and a
+manual update check.
 
 ### Parser (`mobile/lib/parser.js`)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.67.1 - 2026-06-07
+
+- Issue #286: Reframed the More tab around the current shipped baseline by
+  promoting `App Guide` to the top of the menu, flattening the menu into a
+  five-item list, rewriting the in-app guide around the real five-tab app
+  structure and workout-note syntax, and regrouping `Settings & Algorithm`
+  into clearer `Features`, `Date Editing`, and `Advanced` sections.
+
 ## 0.67.0 - 2026-06-07
 
 - Issue #283: Simplified Analytics routine status to a session-only `Routine

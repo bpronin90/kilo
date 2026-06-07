@@ -70,14 +70,14 @@ export function MoreScreen({ onNavigate, onExport, onImport, fatigueMultiplier, 
   }
 
   return (
-    <ScreenShell title="More" subtitle="Help, about, and application info.">
+    <ScreenShell title="More" subtitle="Settings, help, and your data.">
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
-          <Text style={styles.menuItemText}>User Profile</Text>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
+          <Text style={styles.menuItemText}>App Guide</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="Help and Terminology">
-          <Text style={styles.menuItemText}>Help & Terminology</Text>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
+          <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings and Algorithm">
@@ -472,15 +472,15 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
   const handleReset = () => onUpdate(1.07);
 
   return (
-    <ScreenShell title="Settings" subtitle="Algorithm and calculation defaults.">
+    <ScreenShell title="Settings" subtitle="App features and preferences.">
       <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
 
-      <SectionTitle>Training Features</SectionTitle>
+      <SectionTitle>Features</SectionTitle>
       <Card>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Fatigue tracking</Text>
-            <Text style={styles.settingHelp}>Session check-in prompts and Fatigue analytics</Text>
+            <Text style={styles.settingHelp}>Check-in prompt after each session and fatigue charts in Analytics</Text>
           </View>
           <Switch
             value={!!fatigueTrackingEnabled}
@@ -492,7 +492,7 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
         <View style={[styles.settingRow, { marginBottom: 0 }]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Deload mode</Text>
-            <Text style={styles.settingHelp}>Deload tab, generation, and past deload records</Text>
+            <Text style={styles.settingHelp}>Enables deload generation and history in the Log tab</Text>
           </View>
           <Switch
             value={!!deloadModeEnabled}
@@ -503,12 +503,40 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
         </View>
       </Card>
 
-      <SectionTitle>Algorithm</SectionTitle>
+      <SectionTitle>Date Editing</SectionTitle>
       <Card>
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Fatigue Multiplier</Text>
-            <Text style={styles.settingHelp}>Applied to epley 1RM for Kilo max</Text>
+            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
+            <Text style={styles.settingHelp}>Choose a custom date when logging or editing weight entries</Text>
+          </View>
+          <Switch
+            value={!!weightDateEditEnabled}
+            onValueChange={onUpdateWeightDateEditEnabled}
+            accessibilityLabel="Edit weigh-in dates"
+            accessibilityRole="switch"
+          />
+        </View>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Edit deload dates</Text>
+            <Text style={styles.settingHelp}>Change the date on past deload records</Text>
+          </View>
+          <Switch
+            value={!!deloadDateEditEnabled}
+            onValueChange={onUpdateDeloadDateEditEnabled}
+            accessibilityLabel="Edit deload dates"
+            accessibilityRole="switch"
+          />
+        </View>
+      </Card>
+
+      <SectionTitle>Advanced</SectionTitle>
+      <Card>
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Fatigue multiplier</Text>
+            <Text style={styles.settingHelp}>Scales your Est. Max to produce the Kilo Max. Lower = more conservative. Default: 1.07.</Text>
           </View>
           <View style={styles.stepper}>
             <Pressable style={styles.stepperButton} onPress={handleDecrement} accessibilityRole="button" accessibilityLabel="Decrease fatigue multiplier">
@@ -529,45 +557,13 @@ function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, o
           textStyle={styles.resetButtonText}
         />
       </Card>
-
-      <SectionTitle>Weight Logging</SectionTitle>
-      <Card>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
-            <Text style={styles.settingHelp}>Allow setting date on new and existing entries</Text>
-          </View>
-          <Switch
-            value={!!weightDateEditEnabled}
-            onValueChange={onUpdateWeightDateEditEnabled}
-            accessibilityLabel="Edit weigh-in dates"
-            accessibilityRole="switch"
-          />
-        </View>
-      </Card>
-
-      <SectionTitle>Workout Notes</SectionTitle>
-      <Card>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit deload dates</Text>
-            <Text style={styles.settingHelp}>Allow changing the logged date on past deload records</Text>
-          </View>
-          <Switch
-            value={!!deloadDateEditEnabled}
-            onValueChange={onUpdateDeloadDateEditEnabled}
-            accessibilityLabel="Edit deload dates"
-            accessibilityRole="switch"
-          />
-        </View>
-      </Card>
     </ScreenShell>
   );
 }
 
 function HelpScreen({ onBack }) {
   return (
-    <ScreenShell title="Help" subtitle="Terminology and usage guide.">
+    <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it.">
       <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
 
       <View style={styles.logoContainer}>
@@ -577,38 +573,113 @@ function HelpScreen({ onBack }) {
       <Card>
         <Text style={styles.helpHeading}>What is Kilo?</Text>
         <Text style={styles.helpText}>
-          Kilo is a minimalist training log designed for speed. It interprets your natural workout notes into structured data and analytics.
+          Kilo is a minimalist training log built for speed. Write your workout in plain text — Kilo parses it into structured data, tracks your progress, and surfaces analytics without extra steps.
         </Text>
       </Card>
 
+      <SectionTitle>Your Tabs</SectionTitle>
+
       <Card>
-        <Text style={styles.helpHeading}>Workout Notes</Text>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Home</Text>
+          <Text style={styles.tabDesc}>Your training dashboard. Shows current week number, latest body weight, a 7-day rolling weight average, and a breakdown of your tracked exercises by progress status (Progressing, Steady, Regressing). Also displays your active weight goal and 1K milestone progress.</Text>
+        </View>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Log</Text>
+          <Text style={styles.tabDesc}>Write your workouts as free-form text notes. Kilo parses exercises, sets, reps, and weight automatically. Tap any parsed exercise to see details or mark it as tracked. Also contains Deload: when deload mode is enabled in Settings, you can log and review planned deload weeks from within the Log tab.</Text>
+        </View>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Weight</Text>
+          <Text style={styles.tabDesc}>Log your daily body weight. Kilo tracks your trend over time, computes a rolling average, and flags if your rate of change is outside a healthy range. Supports an optional weight goal with target and weekly pace tracking.</Text>
+        </View>
+        <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Analytics</Text>
+          <Text style={styles.tabDesc}>Progress charts for exercises you've marked as tracked. Shows estimated 1-rep max and Kilo Max over time, session volume, and fatigue check-in data if fatigue tracking is enabled.</Text>
+        </View>
+        <View style={[styles.tabRow, { marginBottom: 0 }]}>
+          <Text style={styles.tabName}>More</Text>
+          <Text style={styles.tabDesc}>App settings, your user profile (used for calorie estimation), data backup and restore, and this guide.</Text>
+        </View>
+      </Card>
+
+      <SectionTitle>Logging Workouts</SectionTitle>
+
+      <Card>
         <Text style={styles.helpText}>
-          Enter your exercises followed by weight, reps, and sets.{"\n\n"}
-          Example: "Squat 225x5x5" or "Bench 185x8, 185x7, 185x6".
+          Each workout note is plain text. Declare an exercise with a dash, then write your sets on the lines below it.
+        </Text>
+
+        <View style={styles.codeBlock}>
+          <Text style={styles.codeText}>Monday</Text>
+          <Text style={styles.codeText}>+Lifting</Text>
+          <Text style={styles.codeText}>-Squat</Text>
+          <Text style={styles.codeText}>225 5,5,5</Text>
+          <Text style={styles.codeText}>-Bench Press</Text>
+          <Text style={styles.codeText}>185 8,8,7</Text>
+        </View>
+
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          Set row formats:
+        </Text>
+        <View style={{ marginTop: 6, gap: 6 }}>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 8</Text>
+            <Text style={styles.formatDesc}>one set at 225 lb, 8 reps</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 8,8,7</Text>
+            <Text style={styles.formatDesc}>three sets at same weight</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>225 5 185 8,8</Text>
+            <Text style={styles.formatDesc}>sets at different weights</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>8,8,8</Text>
+            <Text style={styles.formatDesc}>bodyweight — reps only, no weight</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          Day labels (Monday, Tuesday…) and block labels (+Lifting, +Warmup) are optional. Kilo uses them to group and sort analytics by day.{"\n\n"}
+          To track an exercise in Analytics: tap it in your parsed log, then tap "Track."
         </Text>
       </Card>
 
-      <Card>
-        <Text style={styles.helpHeading}>What is "Tracked"?</Text>
-        <Text style={styles.helpText}>
-          Tapping "Track" on an exercise in your log tells Kilo to monitor it for progress. These exercises appear in your Analytics tab with progression markers.
-        </Text>
-      </Card>
+      <SectionTitle>Terminology</SectionTitle>
 
       <Card>
-        <Text style={styles.helpHeading}>Terminology</Text>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Est. Max</Text>
-          <Text style={styles.termDesc}>Estimated 1-Rep Max. A calculation of your maximum strength based on your best sets.</Text>
+          <Text style={styles.termDesc}>Estimated 1-Rep Max. Calculated from your best logged sets using the Epley formula.</Text>
         </View>
         <View style={styles.termRow}>
-          <Text style={styles.termLabel}>Sets</Text>
-          <Text style={styles.termDesc}>The total number of work sets performed for a specific exercise in a session.</Text>
+          <Text style={styles.termLabel}>Kilo Max</Text>
+          <Text style={styles.termDesc}>Est. Max adjusted by the fatigue multiplier. Reflects real-world performance while accounting for accumulated fatigue.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>1K Progress</Text>
+          <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a 1,000 lb total. Shown on the Home screen.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Tracked</Text>
+          <Text style={styles.termDesc}>An exercise you've marked for Analytics monitoring. Tracked exercises show progress charts, Est. Max history, and overload trends.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Fatigue</Text>
+          <Text style={styles.termDesc}>An optional session check-in that records how tired or recovered you feel. Used in Analytics to correlate training load with performance.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Pace Flag</Text>
-          <Text style={styles.termDesc}>A warning if your body weight is changing too rapidly (over 1.5% per week).</Text>
+          <Text style={styles.termDesc}>A warning when body weight is changing faster than ~1.5% per week, which may indicate an unsustainable rate of gain or loss.</Text>
+        </View>
+        <View style={styles.termRow}>
+          <Text style={styles.termLabel}>Sets</Text>
+          <Text style={styles.termDesc}>The number of work sets logged for an exercise in a session.</Text>
+        </View>
+        <View style={[styles.termRow, { marginBottom: 0 }]}>
+          <Text style={styles.termLabel}>Deload</Text>
+          <Text style={styles.termDesc}>A planned period of reduced training volume and intensity used to recover from accumulated fatigue. Generated automatically from your routine when deload mode is enabled.</Text>
         </View>
       </Card>
     </ScreenShell>
@@ -756,6 +827,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
+  },
+  codeBlock: {
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: 10,
+    marginTop: 8,
+    gap: 2,
+  },
+  codeText: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
+    color: Colors.text,
+  },
+  formatRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  formatDesc: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  tabRow: {
+    marginBottom: 16,
+  },
+  tabName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: 3,
+  },
+  tabDesc: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
   },
   termRow: {
     marginBottom: 12,
