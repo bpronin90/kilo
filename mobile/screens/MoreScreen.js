@@ -589,20 +589,24 @@ function HelpScreen({ onBack }) {
 
       <Card>
         <View style={styles.tabRow}>
+          <Text style={styles.tabName}>Home</Text>
+          <Text style={styles.tabDesc}>Your training dashboard. Shows current week number, latest body weight, a 7-day rolling weight average, and a breakdown of your tracked exercises by progress status (Progressing, Steady, Regressing). Also displays your active weight goal and 1K milestone progress.</Text>
+        </View>
+        <View style={styles.tabRow}>
           <Text style={styles.tabName}>Log</Text>
-          <Text style={styles.tabDesc}>Write your workouts as free-form notes. Kilo parses exercises, sets, reps, and weight automatically. Each entry is saved with a date and used to drive analytics.</Text>
+          <Text style={styles.tabDesc}>Write your workouts as free-form text notes. Kilo parses exercises, sets, reps, and weight automatically. Tap any parsed exercise to see details or mark it as tracked. Also contains Deload: when deload mode is enabled in Settings, you can log and review planned deload weeks from within the Log tab.</Text>
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Weight</Text>
-          <Text style={styles.tabDesc}>Log your daily body weight. Kilo tracks trends over time and flags if your pace of change is outside a healthy range.</Text>
+          <Text style={styles.tabDesc}>Log your daily body weight. Kilo tracks your trend over time, computes a rolling average, and flags if your rate of change is outside a healthy range. Supports an optional weight goal with target and weekly pace tracking.</Text>
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Analytics</Text>
-          <Text style={styles.tabDesc}>View progress charts for exercises you've marked as tracked. Shows estimated max over time and volume trends.</Text>
+          <Text style={styles.tabDesc}>Progress charts for exercises you've marked as tracked. Shows estimated 1-rep max and Kilo Max over time, session volume, and fatigue check-in data if fatigue tracking is enabled.</Text>
         </View>
         <View style={[styles.tabRow, { marginBottom: 0 }]}>
-          <Text style={styles.tabName}>Deload</Text>
-          <Text style={styles.tabDesc}>Log and review planned deload weeks. Can be enabled or disabled in Settings.</Text>
+          <Text style={styles.tabName}>More</Text>
+          <Text style={styles.tabDesc}>App settings, your user profile (used for calorie estimation), data backup and restore, and this guide.</Text>
         </View>
       </Card>
 
