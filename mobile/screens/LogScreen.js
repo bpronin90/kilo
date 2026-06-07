@@ -84,6 +84,7 @@ export function LogScreen({
   const [editingText, setEditingText] = useState('');
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
+  const [originalNoteState, setOriginalNoteState] = useState(null);
 
   const [viewingNoteId, setViewingNoteId] = useState(null);
   const [deloadEditDate, setDeloadEditDate] = useState('');
@@ -160,7 +161,15 @@ export function LogScreen({
     setEditingText(viewingNote.raw_text);
     setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
     const _histRec = deloadHistory.find(r => r.note_id === viewingNote.id);
-    setDeloadEditOrdinal(_histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '');
+    const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
+    setDeloadEditOrdinal(initialOrdinal);
+    setOriginalNoteState({
+      id: viewingNote.id,
+      title: viewingNote.title || '',
+      text: viewingNote.raw_text,
+      date: viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '',
+      ordinal: initialOrdinal,
+    });
     setSaveError('');
     setSaveSuccess('');
   };
@@ -495,6 +504,7 @@ export function LogScreen({
   const finishExitCurrentEditor = () => {
     readScrollRef.current?.scrollTo({ y: 0, animated: false });
     setMode('read');
+    setOriginalNoteState(null);
   };
 
   const exitCurrentEditor = () => {
@@ -524,6 +534,10 @@ export function LogScreen({
 
   const enterCurrentEditor = () => {
     const scrollY = readScrollYRef.current;
+    setOriginalNoteState({
+      title: workoutNoteTitle,
+      text: workoutNoteText,
+    });
     setMode('edit');
     requestAnimationFrame(() => {
       editorScrollRef.current?.scrollTo({ y: scrollY, animated: false });
@@ -600,6 +614,30 @@ export function LogScreen({
     exitCurrentEditor();
   };
 
+  const handleUndoCurrent = async () => {
+    if (!currentId) {
+      setWorkoutNoteTitle('');
+      setWorkoutNoteText('');
+      return;
+    }
+    if (!originalNoteState) return;
+    if (autosaveCurrentTimerRef.current) {
+      clearTimeout(autosaveCurrentTimerRef.current);
+      autosaveCurrentTimerRef.current = null;
+    }
+    try {
+      await update(currentId, {
+        title: originalNoteState.title,
+        raw_text: originalNoteState.text,
+      });
+      setWorkoutNoteTitle(originalNoteState.title);
+      setWorkoutNoteText(originalNoteState.text);
+    } catch (err) {
+      console.warn('Undo revert failed:', err);
+      Alert.alert('Error', 'Failed to revert changes. Please try again.');
+    }
+  };
+
   const handleDoneOther = async () => {
     // Cancel any pending debounced autosave before flushing manually.
     if (autosaveOtherTimerRef.current) {
@@ -611,6 +649,7 @@ export function LogScreen({
       // New note: prompt to discard; autosave doesn't apply until an ID exists.
       if (!hasUnsavedOther) {
         setEditingNoteId(null);
+        setOriginalNoteState(null);
         return;
       }
       Alert.alert(
@@ -621,7 +660,10 @@ export function LogScreen({
           {
             text: 'Discard',
             style: 'destructive',
-            onPress: () => setEditingNoteId(null)
+            onPress: () => {
+              setEditingNoteId(null);
+              setOriginalNoteState(null);
+            }
           },
         ]
       );
@@ -634,6 +676,87 @@ export function LogScreen({
       if (!ok) return;
     }
     setEditingNoteId(null);
+    setOriginalNoteState(null);
+  };
+
+  const handleUndoOther = async () => {
+    if (editingNoteId === 'new') {
+      setEditingTitle('');
+      setEditingText('');
+      return;
+    }
+    if (!originalNoteState) return;
+    if (autosaveOtherTimerRef.current) {
+      clearTimeout(autosaveOtherTimerRef.current);
+      autosaveOtherTimerRef.current = null;
+    }
+    let rolledBackDeload = false;
+    let deloadRevertPatch = null;
+    try {
+      const patch = {
+        title: originalNoteState.title,
+        raw_text: originalNoteState.text,
+      };
+      if (isEditingDeloadNote && deloadDateEditEnabled) {
+        const histRecord = editingDeloadHasLinkedRecord
+          ? deloadHistory.find(r => r.note_id === editingNoteId)
+          : null;
+        if (histRecord) {
+          const deloadPatch = {};
+          deloadRevertPatch = {};
+          if (originalNoteState.date) {
+            const originalDate = originalNoteState.date;
+            deloadPatch.completed_at = `${originalDate}T12:00:00.000Z`;
+            patch.saved_at = `${originalDate}T12:00:00.000Z`;
+            if (deloadEditDate) {
+              deloadRevertPatch.completed_at = `${deloadEditDate}T12:00:00.000Z`;
+            }
+          }
+          if (originalNoteState.ordinal !== undefined) {
+            const originalOrdinal = parseInt(originalNoteState.ordinal, 10);
+            if (!isNaN(originalOrdinal)) {
+              deloadPatch.deload_session_ordinal = originalOrdinal;
+            } else if (originalNoteState.ordinal === '') {
+              deloadPatch.deload_session_ordinal = null;
+            }
+            const editedOrdinal = parseInt(deloadEditOrdinal, 10);
+            if (!isNaN(editedOrdinal)) {
+              deloadRevertPatch.deload_session_ordinal = editedOrdinal;
+            } else if (deloadEditOrdinal === '') {
+              deloadRevertPatch.deload_session_ordinal = null;
+            }
+          }
+          if (Object.keys(deloadPatch).length > 0) {
+            await updateDeload(histRecord.id, deloadPatch);
+            rolledBackDeload = true;
+          }
+        }
+      }
+      try {
+        await update(editingNoteId, patch);
+      } catch (updateErr) {
+        if (rolledBackDeload && deloadRevertPatch && Object.keys(deloadRevertPatch).length > 0) {
+          const histRecord = deloadHistory.find(r => r.note_id === editingNoteId);
+          if (histRecord) {
+            try {
+              await updateDeload(histRecord.id, deloadRevertPatch);
+            } catch (compensatingErr) {
+              console.warn('Compensating rollback for deload history failed:', compensatingErr);
+            }
+          }
+        }
+        throw updateErr;
+      }
+      setEditingTitle(originalNoteState.title);
+      setEditingText(originalNoteState.text);
+      if (isEditingDeloadNote && deloadDateEditEnabled) {
+        setDeloadEditDate(originalNoteState.date);
+        setDeloadEditOrdinal(originalNoteState.ordinal);
+      }
+    } catch (err) {
+      console.warn('Undo revert failed:', err);
+      Alert.alert('Error', 'Failed to revert changes. Please try again.');
+    }
   };
 
   const handleOpenOtherNote = (other) => {
@@ -641,6 +764,16 @@ export function LogScreen({
     setEditingTitle(other.title || '');
     setEditingText(other.raw_text);
     setDeloadEditDate(other.saved_at ? other.saved_at.slice(0, 10) : '');
+    const _histRec = deloadHistory.find(r => r.note_id === other.id);
+    const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
+    setDeloadEditOrdinal(initialOrdinal);
+    setOriginalNoteState({
+      id: other.id,
+      title: other.title || '',
+      text: other.raw_text,
+      date: other.saved_at ? other.saved_at.slice(0, 10) : '',
+      ordinal: initialOrdinal,
+    });
     setSaveError('');
     setSaveSuccess('');
   };
@@ -752,6 +885,7 @@ export function LogScreen({
           onPress: async () => {
             await remove(id);
             setEditingNoteId(null);
+            setOriginalNoteState(null);
             setViewingNoteId(null);
             if (isCurrent) {
               setMode('edit');
@@ -776,6 +910,7 @@ export function LogScreen({
           onPress: async () => {
             await deleteDeloadNote(editingNoteId);
             setEditingNoteId(null);
+            setOriginalNoteState(null);
           },
         },
       ]
@@ -783,6 +918,7 @@ export function LogScreen({
   };
 
   const handleCreateRoutine = () => {
+    setOriginalNoteState(null);
     setEditingNoteId('new');
     setEditingTitle('');
     setEditingText('');
@@ -809,6 +945,7 @@ export function LogScreen({
       }
       await selectCurrent(id);
       setEditingNoteId(null);
+      setOriginalNoteState(null);
       setViewingNoteId(null);
     };
 
@@ -863,6 +1000,9 @@ export function LogScreen({
   };
 
   const enterDeloadEditor = () => {
+    setOriginalNoteState({
+      text: deloadNote?.raw_text || '',
+    });
     setDeloadEditText(deloadNote?.raw_text || '');
     setDeloadMode('edit');
     requestAnimationFrame(() => {
@@ -875,6 +1015,7 @@ export function LogScreen({
     setDeloadEditText('');
     setSaveSuccess('');
     setSaveError('');
+    setOriginalNoteState(null);
   };
 
   const handleSaveDeload = async () => {
@@ -914,6 +1055,12 @@ export function LogScreen({
         },
       ]
     );
+  };
+
+  const handleUndoDeload = () => {
+    if (originalNoteState) {
+      setDeloadEditText(originalNoteState.text);
+    }
   };
 
   const handleCompleteDeload = () => {
@@ -1581,16 +1728,32 @@ export function LogScreen({
           'Edit routine'
         }
         headerRight={
-          <Pressable
-            onPress={
-              deloadMode === 'edit' ? handleDoneDeload :
-              editingNoteId ? handleDoneOther :
-              handleDoneCurrent
-            }
-            style={styles.modeToggle}
-          >
-            <Text style={styles.modeToggleText}>Done</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable
+              onPress={
+                deloadMode === 'edit' ? handleUndoDeload :
+                editingNoteId ? handleUndoOther :
+                handleUndoCurrent
+              }
+              style={[styles.modeToggle, { backgroundColor: 'transparent', marginRight: 8 }]}
+              accessibilityLabel="Undo"
+              accessibilityRole="button"
+            >
+              <Text style={[styles.modeToggleText, { color: Colors.textMuted, fontWeight: '500' }]}>Undo</Text>
+            </Pressable>
+            <Pressable
+              onPress={
+                deloadMode === 'edit' ? handleDoneDeload :
+                editingNoteId ? handleDoneOther :
+                handleDoneCurrent
+              }
+              style={styles.modeToggle}
+              accessibilityLabel="Done"
+              accessibilityRole="button"
+            >
+              <Text style={styles.modeToggleText}>Done</Text>
+            </Pressable>
+          </View>
         }
         keyboardShouldPersistTaps="handled"
       >
@@ -1689,7 +1852,7 @@ export function LogScreen({
               <TextInput
                 value={editingNoteId ? editingText : workoutNoteText}
                 onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
-                placeholder="e.g.&#10;=== Push Day ===&#10;Bench Press 135x5, 135x5, 135x5"
+                placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
                 placeholderTextColor={Colors.textMuted}
                 multiline
                 style={[styles.input, styles.editorInput]}

@@ -86,7 +86,12 @@ Current limitation:
   unanswered-check-in alert badge, and targeted `WeightScreen` interaction
   coverage for history-row scroll-to-editor behavior, the saved-goal
   target/guidance split, and the active weigh-in/goal `DateTimePicker`
-  `onChange` callback wiring.
+  `onChange` callback wiring. The same `log-screen.test.js` suite now also
+  includes `react-test-renderer` coverage for the rendered App Guide workout
+  example, the aligned Log editor placeholder, current-note Undo, saved-note
+  Undo, and failure-path handling around note-scoped Undo for editable deload
+  records. Full transactional undo guarantees across linked records are still
+  deferred until a DB-backed persistence layer exists.
 - No automated native test covers broader tab routing or an Expo
   device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
