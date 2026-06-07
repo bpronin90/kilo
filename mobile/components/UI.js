@@ -344,7 +344,6 @@ const styles = StyleSheet.create({
   },
   sessionGaugeHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
   },
   sessionGaugeStat: {
