@@ -15,7 +15,7 @@ import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
 import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
-import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn } from '../lib/data';
+import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn, findMatchingExerciseNames, rolloverOneKExercises, normalizeExerciseKey, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
 const DELOAD_NOTE_PREFIX = 'Deload · ';
@@ -354,11 +354,61 @@ export function LogScreen({
     [parsed.sections]
   );
 
+  // A/B week support: detect '---' separator and derive active week.
+  const weekBStartIndex = parsed.weekBStartIndex ?? null;
+  const hasABWeeks = weekBStartIndex !== null;
+  const effectiveActiveWeek = hasABWeeks ? (currentNote?.activeWeek ?? 'A') : null;
+
+  const handleToggleWeek = async () => {
+    if (!currentId || !hasABWeeks) return;
+    const next = effectiveActiveWeek === 'B' ? 'A' : 'B';
+    await update(currentId, { activeWeek: next });
+  };
+
+  // When editing an A/B note, show only the active week's raw text in the editor.
+  // The full text (with '---' separator) is always what gets saved to storage.
+  const activeEditText = useMemo(() => {
+    if (!hasABWeeks || !currentId) return workoutNoteText;
+    const lines = workoutNoteText.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    if (sepIdx === -1) return workoutNoteText;
+    if (effectiveActiveWeek === 'B') return lines.slice(sepIdx + 1).join('\n');
+    return lines.slice(0, sepIdx).join('\n');
+  }, [workoutNoteText, hasABWeeks, effectiveActiveWeek, currentId]);
+
+  // Parse each week's text independently so Week A and Week B are always
+  // derived from their own raw text, regardless of how weekBStartIndex lands
+  // in the full-text parse.
+  const activeWeekParsed = useMemo(
+    () => (hasABWeeks ? parseWorkoutNote(activeEditText) : parsed),
+    [hasABWeeks, activeEditText, parsed]
+  );
+
+  const handleCurrentTextChange = (newText) => {
+    if (!hasABWeeks || !currentId) {
+      setWorkoutNoteText(newText);
+      return;
+    }
+    const lines = workoutNoteText.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    if (sepIdx === -1) {
+      setWorkoutNoteText(newText);
+      return;
+    }
+    const weekAText = lines.slice(0, sepIdx).join('\n');
+    const weekBText = lines.slice(sepIdx + 1).join('\n');
+    if (effectiveActiveWeek === 'A') {
+      setWorkoutNoteText(newText + '\n---\n' + weekBText);
+    } else {
+      setWorkoutNoteText(weekAText + '\n---\n' + newText);
+    }
+  };
+
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
   const dayGroups = useMemo(() => {
     const groups = [];
-    for (const section of parsed.sections) {
+    for (const section of activeWeekParsed.sections) {
       const last = groups[groups.length - 1];
       if (last && last.heading === section.heading) {
         last.sections.push(section);
@@ -367,7 +417,7 @@ export function LogScreen({
       }
     }
     return groups;
-  }, [parsed.sections]);
+  }, [activeWeekParsed]);
 
   const deloadParsed = useMemo(() => parseWorkoutNote(deloadNote?.raw_text || ''), [deloadNote?.raw_text]);
   const deloadDayGroups = useMemo(() => {
@@ -573,27 +623,11 @@ export function LogScreen({
     }
 
     if (!currentId) {
-      // New note: prompt to discard; autosave doesn't apply until an ID exists.
-      if (!hasUnsavedCurrent) {
-        exitCurrentEditor();
-        return;
+      if (hasUnsavedCurrent) {
+        const ok = await handleSave();
+        if (!ok) return;
       }
-      Alert.alert(
-        'Discard changes?',
-        'You have not saved this new routine. Are you sure you want to discard it?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => {
-              exitCurrentEditor();
-              setWorkoutNoteText('');
-              setWorkoutNoteTitle('');
-            }
-          },
-        ]
-      );
+      exitCurrentEditor();
       return;
     }
 
@@ -638,27 +672,12 @@ export function LogScreen({
     }
 
     if (editingNoteId === 'new') {
-      // New note: prompt to discard; autosave doesn't apply until an ID exists.
-      if (!hasUnsavedOther) {
-        setEditingNoteId(null);
-        setOriginalNoteState(null);
-        return;
+      if (hasUnsavedOther) {
+        const ok = await handleSaveOtherNote();
+        if (!ok) return;
       }
-      Alert.alert(
-        'Discard changes?',
-        'You have not saved this new routine. Are you sure you want to discard it?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => {
-              setEditingNoteId(null);
-              setOriginalNoteState(null);
-            }
-          },
-        ]
-      );
+      setEditingNoteId(null);
+      setOriginalNoteState(null);
       return;
     }
 
@@ -925,7 +944,7 @@ export function LogScreen({
     // Check if there are unsaved changes in the editor for ANY routine
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
-    const doSwitch = async () => {
+    const doSwitch = async ({ rollover = false } = {}) => {
       // Cancel pending autosaves so they don't write to the wrong note after switch.
       if (autosaveCurrentTimerRef.current) {
         clearTimeout(autosaveCurrentTimerRef.current);
@@ -935,15 +954,53 @@ export function LogScreen({
         clearTimeout(autosaveOtherTimerRef.current);
         autosaveOtherTimerRef.current = null;
       }
+      if (rollover && currentNote) {
+        try {
+          const oldSections = parseWorkoutNote(currentNote.raw_text || '').sections;
+          const newSections = parseWorkoutNote(note.raw_text || '').sections;
+          const matchedNames = findMatchingExerciseNames(oldSections, newSections);
+          if (matchedNames.length > 0) {
+            const matchedKeys = new Set(matchedNames.map(n => normalizeExerciseKey(n)));
+            const oldOneK = { ...DEFAULT_1K_EXERCISES, ...(currentNote.one_k_exercises || {}) };
+            const rolledOneK = rolloverOneKExercises(oldOneK, matchedKeys);
+            if (rolledOneK) {
+              await update(id, { one_k_exercises: rolledOneK });
+            }
+          }
+        } catch (e) {
+          console.warn('[doSwitch] rollover failed, continuing with switch', e);
+        }
+      }
       await selectCurrent(id);
       setEditingNoteId(null);
       setOriginalNoteState(null);
       setViewingNoteId(null);
     };
 
+    const confirmSwitch = () => {
+      // Detect matching exercises to decide whether to offer rollover.
+      const oldSections = parseWorkoutNote(currentNote?.raw_text || '').sections;
+      const newSections = parseWorkoutNote(note.raw_text || '').sections;
+      const matchedNames = findMatchingExerciseNames(oldSections, newSections);
+      const hasMatches = matchedNames.length > 0;
+
+      if (hasMatches) {
+        Alert.alert(
+          'Keep current progress?',
+          'Some exercises match your current routine. Carry over your 1K exercise slot selections?',
+          [
+            { text: 'No', onPress: () => doSwitch({ rollover: false }) },
+            { text: 'Yes', onPress: () => doSwitch({ rollover: true }) },
+          ]
+        );
+      } else {
+        doSwitch({ rollover: false });
+      }
+    };
+
     const alertTitle = 'Set as current routine';
     let alertMessage = `Switching to "${note.title || 'Untitled Routine'}" will affect your analytics. Are you sure?`;
-    
+
     if (hasUnsaved) {
       alertMessage = `You have unsaved changes that will be lost if you switch. Continue?`;
       Alert.alert(
@@ -951,7 +1008,7 @@ export function LogScreen({
         alertMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Switch Anyway', style: 'destructive', onPress: doSwitch },
+          { text: 'Switch Anyway', style: 'destructive', onPress: confirmSwitch },
           {
             text: 'Save & Switch',
             onPress: async () => {
@@ -969,7 +1026,7 @@ export function LogScreen({
               } else {
                 ok = await handleSave();
               }
-              if (ok) await doSwitch();
+              if (ok) confirmSwitch();
             }
           },
         ]
@@ -980,7 +1037,7 @@ export function LogScreen({
         alertMessage,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Set as current routine', onPress: doSwitch },
+          { text: 'Set as current routine', onPress: confirmSwitch },
         ]
       );
     }
@@ -1469,15 +1526,30 @@ export function LogScreen({
                   >
                     <View style={styles.otherNoteInfo}>
                       <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'Untitled Routine'}</Text>
-                      <Text style={styles.otherNoteSub}>Current routine</Text>
+                      <Text style={styles.otherNoteSub}>
+                        {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
+                      </Text>
                     </View>
-                    <Pressable
-                      onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {hasABWeeks && (
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.inlineSwitchButtonText}>
+                            Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
+                          </Text>
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
+                        style={styles.inlineSwitchButton}
+                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+                      </Pressable>
+                    </View>
                   </Pressable>
 
                   <Pressable 
@@ -1557,7 +1629,10 @@ export function LogScreen({
                         ))}
                       </View>
                     ))}
-                    {!dayGroups.length && (
+                    {!dayGroups.length && hasABWeeks && activeEditText.trim() && (
+                      <Text selectable={true} style={styles.unparsedRowMuted}>{activeEditText.trim()}</Text>
+                    )}
+                    {!dayGroups.length && !(hasABWeeks && activeEditText.trim()) && (
                       <Text selectable={true} style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
                     )}
                   </Pressable>
@@ -1828,8 +1903,8 @@ export function LogScreen({
                 </>
               )}
               <TextInput
-                value={editingNoteId ? editingText : workoutNoteText}
-                onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
+                value={editingNoteId ? editingText : activeEditText}
+                onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
                 placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
                 placeholderTextColor={Colors.textMuted}
                 multiline

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.0 - 2026-06-08
+
+- Issue #295: Added alternating A/B week support to Log routines via a `---`
+  week separator plus a persisted manual week toggle, made A/B edit mode work
+  against the active week's raw text while keeping one shared routine note, and
+  added current-routine switch rollover for matching 1K slot selections while
+  documenting that PO/tracked-lift continuity already persists globally by
+  exercise name.
+
 ## 0.67.7 - 2026-06-07
 
 - Issue #294: Fixed the Log-tab truncation regression introduced by the More

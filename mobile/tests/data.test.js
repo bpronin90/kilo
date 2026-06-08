@@ -1,4 +1,5 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { parseWorkoutNote } from '../lib/parser';
 
 
 // ── computeKiloMax ────────────────────────────────────────────────────────────
@@ -3315,5 +3316,101 @@ describe('deriveCheckInHistory', () => {
     expect(list[0].note).toBe('felt rough all session');
     expect(list[0].status).toBe('rough');
     expect(list[0].reasons).toEqual(C1.reasons);
+  });
+});
+
+// ── findMatchingExerciseNames ─────────────────────────────────────────────────
+
+describe('findMatchingExerciseNames', () => {
+  function sectionsFor(text) {
+    return parseWorkoutNote(text).sections;
+  }
+
+  test('returns matching exercise names by canonical key', () => {
+    const oldS = sectionsFor('-Squat\n225 5,5,5\n-Deadlift\n315 5,5,5');
+    const newS = sectionsFor('-Squat\n235 5,5,5\n-Bench Press\n135 5,5,5');
+    const matches = findMatchingExerciseNames(oldS, newS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toBe('Squat');
+  });
+
+  test('returns empty array when no exercise names overlap', () => {
+    const oldS = sectionsFor('-Deadlift\n315 5,5,5');
+    const newS = sectionsFor('-Bench Press\n135 5,5,5');
+    expect(findMatchingExerciseNames(oldS, newS)).toHaveLength(0);
+  });
+
+  test('uses canonical key matching so aliases match', () => {
+    const oldS = sectionsFor('-Deadlift\n315 5,5,5');
+    const newS = sectionsFor('-Deadlifts\n315 5,5,5');
+    const matches = findMatchingExerciseNames(oldS, newS);
+    expect(matches).toHaveLength(1);
+  });
+
+  test('deduplicates: exercise appearing in multiple sections counts once', () => {
+    const oldS = sectionsFor('Monday\n-Squat\n225 5\nWednesday\n-Squat\n225 5');
+    const newS = sectionsFor('-Squat\n235 5');
+    const matches = findMatchingExerciseNames(oldS, newS);
+    expect(matches).toHaveLength(1);
+  });
+
+  test('handles null/empty sections gracefully', () => {
+    expect(findMatchingExerciseNames(null, null)).toHaveLength(0);
+    expect(findMatchingExerciseNames([], [])).toHaveLength(0);
+  });
+
+  test('returns display names from the new routine, not the old', () => {
+    // 'DB Bench' alias resolves to same canonical as 'DB Bench Press'
+    const oldS = sectionsFor('-DB Bench Press\n100 8,8');
+    const newS = sectionsFor('-DB Bench\n105 8,8');
+    const matches = findMatchingExerciseNames(oldS, newS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toBe('DB Bench');
+  });
+});
+
+// ── rolloverOneKExercises ─────────────────────────────────────────────────────
+
+describe('rolloverOneKExercises', () => {
+  const sqKey = k => new Set([k]);
+
+  test('keeps slots whose exercise name is in matchedNameKeys', () => {
+    const oneK = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+    const keys = new Set(['db bench press', 'squat', 'deadlift']);
+    const result = rolloverOneKExercises(oneK, keys);
+    expect(result).toEqual(oneK);
+  });
+
+  test('drops slots whose exercise name is not in matchedNameKeys', () => {
+    const oneK = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+    const keys = new Set(['squat']);
+    const result = rolloverOneKExercises(oneK, keys);
+    expect(result).toEqual({ squat: 'Squat' });
+    expect(result.bench).toBeUndefined();
+    expect(result.deadlift).toBeUndefined();
+  });
+
+  test('returns null when no slots survive the filter', () => {
+    const oneK = { bench: 'DB Bench Press' };
+    const keys = new Set(['squat']);
+    expect(rolloverOneKExercises(oneK, keys)).toBeNull();
+  });
+
+  test('returns null when oldOneK is null', () => {
+    expect(rolloverOneKExercises(null, new Set(['squat']))).toBeNull();
+  });
+
+  test('returns null when matchedNameKeys is empty', () => {
+    const oneK = { bench: 'DB Bench Press' };
+    expect(rolloverOneKExercises(oneK, new Set())).toBeNull();
+  });
+});
+
+// ── makeWorkoutNoteItem: activeWeek field ─────────────────────────────────────
+
+describe('makeWorkoutNoteItem: activeWeek field', () => {
+  test('new notes have activeWeek: null by default', () => {
+    const note = makeWorkoutNoteItem({ title: 'Test', raw_text: '' });
+    expect(note.activeWeek).toBeNull();
   });
 });

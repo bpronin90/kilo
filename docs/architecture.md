@@ -91,7 +91,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in
   `normalizeExerciseKey()` so parser and data consumers share one canonical
-  matching chain
+  matching chain. `parseWorkoutNote()` also recognizes a standalone `---` line
+  as the boundary between week A and week B inside one routine note and returns
+  `weekBStartIndex` so Log can project the active week without splitting the
+  stored routine into multiple notes
 - `mobile/lib/data.js` owns native entry factories, the exercise catalog,
   shared recompute-only workout analytics helpers such as routine-depth,
   weekly-summary shaping from persisted note fields, canonical temporal
@@ -109,7 +112,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   (`kilo_user_profile`), and the multi-note workout store
   (`kilo_workout_notes` and `kilo_current_workout_id`). Saved workout-note
   documents now also carry persisted `exercise_classifications`,
-  `skip_markers`, `attendance_flags`, and `session_checkins` alongside
+  `skip_markers`, `attendance_flags`, `session_checkins`, and `activeWeek`
+  alongside
   tracked-lift and 1k-slot selections. The old `rep_drop_off_flags` surface is
   no longer produced or consumed by the active app path. The legacy session
   key remains only a migration source and the old single-note key remains both
@@ -165,7 +169,11 @@ persist through the global `kilo_tracked_lifts` map, `useTrackedLifts()`
 fanouts the updated in-memory state to all mounted consumers immediately, and
 Analytics filters that global tracked set down to lifts present in the current
 routine while still deriving each visible lift's trend and exercise display
-casing from all routine notes through `deriveWorkoutNoteAnalytics()`.
+casing from all routine notes through `deriveWorkoutNoteAnalytics()`. Because
+that tracked-lift map is global, PO/tracked progression continuity survives
+current-routine switches without any per-routine migration step; only 1K slot
+selections are rolled from one routine note to another when the user accepts
+the switch prompt.
 
 ## Parse-to-Persistence Flow
 
