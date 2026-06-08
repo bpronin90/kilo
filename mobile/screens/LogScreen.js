@@ -359,23 +359,56 @@ export function LogScreen({
   const hasABWeeks = weekBStartIndex !== null;
   const effectiveActiveWeek = hasABWeeks ? (currentNote?.activeWeek ?? 'A') : null;
 
-  const activeWeekSections = useMemo(() => {
-    if (!hasABWeeks) return parsed.sections;
-    if (effectiveActiveWeek === 'B') return parsed.sections.slice(weekBStartIndex);
-    return parsed.sections.slice(0, weekBStartIndex);
-  }, [parsed.sections, weekBStartIndex, hasABWeeks, effectiveActiveWeek]);
-
   const handleToggleWeek = async () => {
     if (!currentId || !hasABWeeks) return;
     const next = effectiveActiveWeek === 'B' ? 'A' : 'B';
     await update(currentId, { activeWeek: next });
   };
 
+  // When editing an A/B note, show only the active week's raw text in the editor.
+  // The full text (with '---' separator) is always what gets saved to storage.
+  const activeEditText = useMemo(() => {
+    if (!hasABWeeks || !currentId) return workoutNoteText;
+    const lines = workoutNoteText.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    if (sepIdx === -1) return workoutNoteText;
+    if (effectiveActiveWeek === 'B') return lines.slice(sepIdx + 1).join('\n');
+    return lines.slice(0, sepIdx).join('\n');
+  }, [workoutNoteText, hasABWeeks, effectiveActiveWeek, currentId]);
+
+  // Parse each week's text independently so Week A and Week B are always
+  // derived from their own raw text, regardless of how weekBStartIndex lands
+  // in the full-text parse.
+  const activeWeekParsed = useMemo(
+    () => (hasABWeeks ? parseWorkoutNote(activeEditText) : parsed),
+    [hasABWeeks, activeEditText, parsed]
+  );
+
+  const handleCurrentTextChange = (newText) => {
+    if (!hasABWeeks || !currentId) {
+      setWorkoutNoteText(newText);
+      return;
+    }
+    const lines = workoutNoteText.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    if (sepIdx === -1) {
+      setWorkoutNoteText(newText);
+      return;
+    }
+    const weekAText = lines.slice(0, sepIdx).join('\n');
+    const weekBText = lines.slice(sepIdx + 1).join('\n');
+    if (effectiveActiveWeek === 'A') {
+      setWorkoutNoteText(newText + '\n---\n' + weekBText);
+    } else {
+      setWorkoutNoteText(weekAText + '\n---\n' + newText);
+    }
+  };
+
   // Group consecutive sections that share the same day heading so each day
   // renders exactly one heading, regardless of warmup/lifting splits.
   const dayGroups = useMemo(() => {
     const groups = [];
-    for (const section of activeWeekSections) {
+    for (const section of activeWeekParsed.sections) {
       const last = groups[groups.length - 1];
       if (last && last.heading === section.heading) {
         last.sections.push(section);
@@ -384,7 +417,7 @@ export function LogScreen({
       }
     }
     return groups;
-  }, [activeWeekSections]);
+  }, [activeWeekParsed]);
 
   const deloadParsed = useMemo(() => parseWorkoutNote(deloadNote?.raw_text || ''), [deloadNote?.raw_text]);
   const deloadDayGroups = useMemo(() => {
@@ -590,34 +623,11 @@ export function LogScreen({
     }
 
     if (!currentId) {
-      // New note: prompt to discard; autosave doesn't apply until an ID exists.
-      if (!hasUnsavedCurrent) {
-        exitCurrentEditor();
-        return;
+      if (hasUnsavedCurrent) {
+        const ok = await handleSave();
+        if (!ok) return;
       }
-      Alert.alert(
-        'Save new routine?',
-        'Would you like to save this routine before leaving?',
-        [
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => {
-              exitCurrentEditor();
-              setWorkoutNoteText('');
-              setWorkoutNoteTitle('');
-            }
-          },
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Save',
-            onPress: async () => {
-              const ok = await handleSave();
-              if (ok) exitCurrentEditor();
-            }
-          },
-        ]
-      );
+      exitCurrentEditor();
       return;
     }
 
@@ -662,27 +672,12 @@ export function LogScreen({
     }
 
     if (editingNoteId === 'new') {
-      // New note: prompt to discard; autosave doesn't apply until an ID exists.
-      if (!hasUnsavedOther) {
-        setEditingNoteId(null);
-        setOriginalNoteState(null);
-        return;
+      if (hasUnsavedOther) {
+        const ok = await handleSaveOtherNote();
+        if (!ok) return;
       }
-      Alert.alert(
-        'Discard changes?',
-        'You have not saved this new routine. Are you sure you want to discard it?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => {
-              setEditingNoteId(null);
-              setOriginalNoteState(null);
-            }
-          },
-        ]
-      );
+      setEditingNoteId(null);
+      setOriginalNoteState(null);
       return;
     }
 
@@ -960,16 +955,20 @@ export function LogScreen({
         autosaveOtherTimerRef.current = null;
       }
       if (rollover && currentNote) {
-        const oldSections = parseWorkoutNote(currentNote.raw_text || '').sections;
-        const newSections = parseWorkoutNote(note.raw_text || '').sections;
-        const matchedNames = findMatchingExerciseNames(oldSections, newSections);
-        if (matchedNames.length > 0) {
-          const matchedKeys = new Set(matchedNames.map(n => normalizeExerciseKey(n)));
-          const oldOneK = { ...DEFAULT_1K_EXERCISES, ...(currentNote.one_k_exercises || {}) };
-          const rolledOneK = rolloverOneKExercises(oldOneK, matchedKeys);
-          if (rolledOneK) {
-            await update(id, { one_k_exercises: rolledOneK });
+        try {
+          const oldSections = parseWorkoutNote(currentNote.raw_text || '').sections;
+          const newSections = parseWorkoutNote(note.raw_text || '').sections;
+          const matchedNames = findMatchingExerciseNames(oldSections, newSections);
+          if (matchedNames.length > 0) {
+            const matchedKeys = new Set(matchedNames.map(n => normalizeExerciseKey(n)));
+            const oldOneK = { ...DEFAULT_1K_EXERCISES, ...(currentNote.one_k_exercises || {}) };
+            const rolledOneK = rolloverOneKExercises(oldOneK, matchedKeys);
+            if (rolledOneK) {
+              await update(id, { one_k_exercises: rolledOneK });
+            }
           }
+        } catch (e) {
+          console.warn('[doSwitch] rollover failed, continuing with switch', e);
         }
       }
       await selectCurrent(id);
@@ -988,7 +987,7 @@ export function LogScreen({
       if (hasMatches) {
         Alert.alert(
           'Keep current progress?',
-          'Some exercises match your current routine. Carry over 1K and progress tracking?',
+          'Some exercises match your current routine. Carry over your 1K exercise slot selections?',
           [
             { text: 'No', onPress: () => doSwitch({ rollover: false }) },
             { text: 'Yes', onPress: () => doSwitch({ rollover: true }) },
@@ -1630,7 +1629,10 @@ export function LogScreen({
                         ))}
                       </View>
                     ))}
-                    {!dayGroups.length && (
+                    {!dayGroups.length && hasABWeeks && activeEditText.trim() && (
+                      <Text selectable={true} style={styles.unparsedRowMuted}>{activeEditText.trim()}</Text>
+                    )}
+                    {!dayGroups.length && !(hasABWeeks && activeEditText.trim()) && (
                       <Text selectable={true} style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
                     )}
                   </Pressable>
@@ -1901,8 +1903,8 @@ export function LogScreen({
                 </>
               )}
               <TextInput
-                value={editingNoteId ? editingText : workoutNoteText}
-                onChangeText={editingNoteId ? setEditingText : setWorkoutNoteText}
+                value={editingNoteId ? editingText : activeEditText}
+                onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
                 placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
                 placeholderTextColor={Colors.textMuted}
                 multiline

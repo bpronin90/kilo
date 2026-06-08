@@ -1003,73 +1003,199 @@ describe('Undo escape hatch: integration tests', () => {
 
 // ── Routine switch: progress rollover (#295) ──────────────────────────────────
 
-describe('routine switch: progress rollover source assertions (#295)', () => {
-  let src;
-  beforeAll(() => {
-    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+import { findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { Alert } from 'react-native';
+
+describe('routine switch: rollover helper behavior (#295)', () => {
+  const OLD_RAW = 'MONDAY — Push\n-DB Bench Press 3x8\n-Squat 3x6\n';
+  const NEW_RAW = 'MONDAY — Push\n-DB Bench Press 4x6\n-Deadlift 3x4\n';
+
+  test('findMatchingExerciseNames returns exercises present in both notes', () => {
+    const oldSections = parseWorkoutNote(OLD_RAW).sections;
+    const newSections = parseWorkoutNote(NEW_RAW).sections;
+    const matched = findMatchingExerciseNames(oldSections, newSections);
+    expect(matched).toContain('DB Bench Press');
+    expect(matched).not.toContain('Squat');
+    expect(matched).not.toContain('Deadlift');
   });
 
-  test('imports findMatchingExerciseNames and rolloverOneKExercises from data', () => {
-    expect(src).toMatch(/findMatchingExerciseNames/);
-    expect(src).toMatch(/rolloverOneKExercises/);
+  test('findMatchingExerciseNames returns empty array when no overlap', () => {
+    const oldSections = parseWorkoutNote('MONDAY\n-Squat 3x5\n').sections;
+    const newSections = parseWorkoutNote('MONDAY\n-Deadlift 3x5\n').sections;
+    expect(findMatchingExerciseNames(oldSections, newSections)).toHaveLength(0);
   });
 
-  test('handleSwitchCurrent calls findMatchingExerciseNames', () => {
-    expect(src).toMatch(/findMatchingExerciseNames\s*\(/);
+  test('rolloverOneKExercises carries matched 1K slots and resets unmatched', () => {
+    const oldOneK = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+    const matchedKeys = new Set(['db bench press']);
+    const result = rolloverOneKExercises(oldOneK, matchedKeys);
+    expect(result.bench).toBe('DB Bench Press');
+    expect(result.squat).toBeUndefined();
+    expect(result.deadlift).toBeUndefined();
   });
 
-  test('rollover prompt is shown only when matches exist', () => {
-    expect(src).toMatch(/matchedNames\.length\s*>\s*0/);
-  });
-
-  test('rollover prompt is a single yes/no Alert with no exercise list', () => {
-    expect(src).toMatch(/Keep current progress\?/);
-    expect(src).toMatch(/Some exercises match/);
-  });
-
-  test('rollover applies one_k_exercises patch to new note before selectCurrent', () => {
-    expect(src).toMatch(/rolloverOneKExercises\s*\(/);
-    expect(src).toMatch(/one_k_exercises\s*:\s*rolledOneK/);
-  });
-
-  test('declining rollover calls doSwitch with rollover false', () => {
-    expect(src).toMatch(/rollover\s*:\s*false/);
+  test('rolloverOneKExercises returns null when no matched slots survive', () => {
+    const oldOneK = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+    const matchedKeys = new Set(['cable fly']);
+    expect(rolloverOneKExercises(oldOneK, matchedKeys)).toBeNull();
   });
 });
 
-// ── A/B week support: source assertions (#295) ───────────────────────────────
+describe('routine switch: screen-level rollover prompt (#295)', () => {
+  let alertSpy;
 
-describe('A/B week support: source assertions (#295)', () => {
-  let src;
-  beforeAll(() => {
-    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    const sharedRaw = 'MONDAY — Push\n-DB Bench Press 3x8\n';
+    const note1 = { id: 'note1', title: 'Gym Routine', raw_text: sharedRaw, saved_at: '2026-06-01T12:00:00.000Z' };
+    const note2 = { id: 'note2', title: 'Home Routine', raw_text: sharedRaw, saved_at: '2026-06-02T12:00:00.000Z' };
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note1, note2],
+      currentId: 'note1',
+      currentNote: note1,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn() });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useUserProfile.mockReturnValue({ profile: null, save: jest.fn(), loading: false, clear: jest.fn() });
   });
 
-  test('derives weekBStartIndex from parsed result', () => {
-    expect(src).toMatch(/weekBStartIndex/);
+  afterEach(() => {
+    jest.useRealTimers();
+    alertSpy.mockRestore();
   });
 
-  test('computes hasABWeeks from weekBStartIndex', () => {
-    expect(src).toMatch(/hasABWeeks/);
+  test('switching to a note with matching exercises shows the rollover prompt', async () => {
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText="MONDAY — Push\n-DB Bench Press 3x8\n" />);
+    });
+
+    const root = component.root;
+    const homeRoutineCard = findPressableByText(root, 'Home Routine');
+    expect(homeRoutineCard).toBeTruthy();
+    render.act(() => { homeRoutineCard.props.onPress(); });
+
+    const switchBtn = findPressableByText(root, 'Set as current routine');
+    expect(switchBtn).toBeTruthy();
+    render.act(() => { switchBtn.props.onPress({ stopPropagation: () => {} }); });
+
+    // First alert: "Set as current routine" confirmation
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Set as current routine',
+      expect.any(String),
+      expect.any(Array)
+    );
+
+    // Simulate pressing the confirm button ("Set as current routine") in the first alert
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    const confirmBtn = firstAlertButtons.find(b => b.text === 'Set as current routine');
+    expect(confirmBtn).toBeTruthy();
+    await render.act(async () => {
+      confirmBtn.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Second alert: rollover prompt because notes share exercises
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Keep current progress?',
+      expect.any(String),
+      expect.any(Array)
+    );
+
+    await render.act(async () => {
+      component.unmount();
+    });
   });
 
-  test('effectiveActiveWeek defaults to A when activeWeek is not set', () => {
-    expect(src).toMatch(/activeWeek\s*\?\?\s*['"]A['"]/);
+  test('switching to a note with no matching exercises skips the rollover prompt', async () => {
+    const disjointNote = { id: 'note3', title: 'Cardio Routine', raw_text: 'MONDAY\n-Treadmill 30 min\n', saved_at: '2026-06-03T12:00:00.000Z' };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [
+        { id: 'note1', title: 'Gym Routine', raw_text: 'MONDAY\n-DB Bench Press 3x8\n', saved_at: '2026-06-01T12:00:00.000Z' },
+        disjointNote,
+      ],
+      currentId: 'note1',
+      currentNote: { id: 'note1', title: 'Gym Routine', raw_text: 'MONDAY\n-DB Bench Press 3x8\n', saved_at: '2026-06-01T12:00:00.000Z' },
+      deloadNotes: [], loading: false, error: null, refresh: jest.fn(),
+      selectCurrent: jest.fn(), update: jest.fn().mockResolvedValue({}), add: jest.fn(), remove: jest.fn(),
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText="MONDAY\n-DB Bench Press 3x8\n" />);
+    });
+
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Cardio Routine').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} }); });
+
+    // First alert: confirmation only
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    const confirmBtn = firstAlertButtons.find(b => b.text === 'Set as current routine');
+    await render.act(async () => {
+      confirmBtn.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Rollover alert must NOT appear
+    const rolloverCall = alertSpy.mock.calls.find(c => c[0] === 'Keep current progress?');
+    expect(rolloverCall).toBeUndefined();
+
+    await render.act(async () => {
+      component.unmount();
+    });
+  });
+});
+
+// ── A/B week support: behavioral tests (#295) ────────────────────────────────
+
+describe('A/B week: parser splits sections by --- separator (#295)', () => {
+  const AB_RAW = 'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8\n';
+
+  test('parseWorkoutNote detects --- and returns non-null weekBStartIndex', () => {
+    const { weekBStartIndex } = parseWorkoutNote(AB_RAW);
+    expect(weekBStartIndex).not.toBeNull();
+    expect(weekBStartIndex).toBeGreaterThan(0);
   });
 
-  test('handleToggleWeek toggles between A and B', () => {
-    expect(src).toMatch(/handleToggleWeek/);
-    expect(src).toMatch(/effectiveActiveWeek\s*===\s*['"]B['"]\s*\?\s*['"]A['"]\s*:\s*['"]B['"]/);
+  test('week A raw text parses to only week A exercises', () => {
+    const lines = AB_RAW.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    const weekAText = lines.slice(0, sepIdx).join('\n');
+    const { sections } = parseWorkoutNote(weekAText);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('DB Bench Press');
+    expect(names).not.toContain('DB Floor Press');
   });
 
-  test('activeWeekSections slices sections by week', () => {
-    expect(src).toMatch(/activeWeekSections/);
-    expect(src).toMatch(/parsed\.sections\.slice\s*\(\s*weekBStartIndex\s*\)/);
-    expect(src).toMatch(/parsed\.sections\.slice\s*\(\s*0\s*,\s*weekBStartIndex\s*\)/);
+  test('week B raw text parses to only week B exercises', () => {
+    const lines = AB_RAW.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    const weekBText = lines.slice(sepIdx + 1).join('\n');
+    const { sections } = parseWorkoutNote(weekBText);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('DB Floor Press');
+    expect(names).not.toContain('DB Bench Press');
   });
 
-  test('week toggle button only renders when hasABWeeks is true', () => {
-    expect(src).toMatch(/hasABWeeks\s*&&/);
-    expect(src).toMatch(/Week\s*\{effectiveActiveWeek/);
+  test('note without --- has null weekBStartIndex', () => {
+    const { weekBStartIndex } = parseWorkoutNote('MONDAY\n-Squat 3x5\n');
+    expect(weekBStartIndex).toBeNull();
   });
 });

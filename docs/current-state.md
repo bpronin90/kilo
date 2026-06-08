@@ -164,6 +164,13 @@ The real native app path now has a modular React Native shell:
   edit affordance, where the rendered body remains scroll-first and supports
   partial text selection, and where entering raw edit from a scrolled rendered
   note keeps the editor aligned to that same approximate scroll position.
+  Current routines can now also embed alternating A/B weeks inside one raw note
+  by separating the weeks with a standalone `---` line. When present, Log shows
+  a persisted manual `Week A`/`Week B` toggle in the current-routine header,
+  renders and edits only the active week's text in the editor while preserving
+  the full note on save, and keeps progression continuity shared across both
+  weeks because the underlying analytics still derive from the full note by
+  exercise name.
   Existing saved routines now autosave raw-note edits through the current
   workout-note store with an 800 ms debounce plus an immediate `Done` flush,
   while stale-result guards prevent in-flight saves from overwriting newer
@@ -172,9 +179,10 @@ The real native app path now has a modular React Native shell:
   exists. Existing-note editors no longer flash a visible success notice during
   debounce-driven autosave, but still preserve the muted transient `Saved!`
   confirmation for explicit user-triggered saves; leaving an editor via `Done`
-  or Android back still asks to discard a never-saved note while existing notes
-  save and exit without the old save/discard prompt, including the past-deload
-  edit path when a debounced autosave is already in flight. For the current routine
+  or Android back now saves and exits even for a never-saved new routine rather
+  than trapping the user behind a discard-only path, while existing notes save
+  and exit without the old save/discard prompt, including the past-deload edit
+  path when a debounced autosave is already in flight. For the current routine
   specifically, exiting raw edit now returns consistently to the top of the
   rendered note as the accepted fallback behavior. The editor now pairs the
   `Done` action with a visible `Undo` action that restores
@@ -190,8 +198,10 @@ The real native app path now has a modular React Native shell:
   routine`, and `Delete routine` actions inside the expanded card. Routine
   create/rename/delete controls still keep confirmation and current-selection
   cleanup guardrails; switching the current workout now requires explicit
-  confirmation, and offers a save-and-switch or switch-anyway choice when
-  there are unsaved edits. The same screen now also
+  confirmation, offers a save-and-switch or switch-anyway choice when there are
+  unsaved edits, and when the destination routine shares exercise names with
+  the current one it now asks once whether to carry over matching 1K exercise
+  slot selections before completing the switch. The same screen now also
   includes a `Routine | Deload` segmented toggle so the user can switch
   between the canonical routine note and a separate generated deload note. The
   Deload view reads and writes only the separate deload-note storage path,
