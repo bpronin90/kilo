@@ -1,0 +1,305 @@
+import React from 'react';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Card, Button, InputStyle } from './UI';
+import { Colors } from '../theme/colors';
+import { formatDate } from '../lib/format';
+
+export function GoalDerived({ info, calorieEstimate }) {
+  if (!info) return null;
+  const { direction, required_weekly_pace, warnings } = info;
+
+  const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
+  const calories_per_day = calorieEstimate?.calories_per_day ?? null;
+  const calLabel = calorieEstimate?.label ?? null;
+  const tdeeBased = calorieEstimate?.tdee_based ?? false;
+
+  const isMaintain = direction === 'maintain';
+  const hasPace = required_weekly_pace !== null;
+  const isUnrealistic = warnings.includes('unrealistic');
+  const isUnhealthy = warnings.includes('unhealthy');
+
+  return (
+    <View style={styles.goalDerived}>
+      <View style={styles.derivedRow}>
+        <Text style={styles.derivedLabel}>Target pace</Text>
+        {!hasPace && <Text style={styles.derivedValueNeutral}>-</Text>}
+        {hasPace && isMaintain && <Text style={styles.derivedValue}>Maintain</Text>}
+        {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>}
+      </View>
+
+      {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
+        <View style={styles.derivedRow}>
+          <Text style={styles.derivedLabel}>
+            {tdeeBased ? 'Est. daily consumption' : 'Suggested '}
+            {!tdeeBased && <Text style={{ fontStyle: 'italic' }}>{calLabel}</Text>}
+          </Text>
+          <Text style={styles.derivedValue}>
+            {calories_per_day} cal / day{tdeeBased ? '' : ' (estimate)'}
+          </Text>
+        </View>
+      )}
+
+      {!hasPace && (
+        <Text style={styles.goalWarningText}>Select a future target date for guidance.</Text>
+      )}
+      {hasPace && isMaintain && !tdeeBased && (
+        <Text style={styles.goalInfoText}>Current weight is within maintenance range.</Text>
+      )}
+      {hasPace && !isMaintain && isUnrealistic && (
+        <Text style={styles.goalWarningText}>Pace is unrealistic - consider a longer timeline.</Text>
+      )}
+      {hasPace && !isMaintain && isUnhealthy && (
+        <Text style={styles.goalWarningText}>Pace is aggressive - a slower target is safer.</Text>
+      )}
+    </View>
+  );
+}
+
+export function WeightGoalCard({
+  goal,
+  goalEditing,
+  goalTargetWeight,
+  setGoalTargetWeight,
+  goalTargetDate,
+  goalStartWeight,
+  setGoalStartWeight,
+  goalError,
+  showDatePicker,
+  setShowDatePicker,
+  handleSaveGoal,
+  handleClearGoal,
+  startEditGoal,
+  cancelEditGoal,
+  onDateChange,
+  pickerDate,
+  goalInfo,
+  calorieEstimate,
+  currentWeight,
+}) {
+  return (
+    <Card style={styles.goalCard}>
+      {goal && (
+        <View style={styles.goalHeader}>
+          {!goalEditing && (
+            <View style={styles.goalHeaderActions}>
+              <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                <Text style={styles.goalActionChipText}>Edit</Text>
+              </Pressable>
+              <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
+                <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
+              </Pressable>
+            </View>
+          )}
+          {goalEditing && (
+            <Pressable onPress={cancelEditGoal} hitSlop={8}>
+              <Text style={styles.goalActionText}>Cancel</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {(!goal || goalEditing) ? (
+        <>
+          {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
+          {!currentWeight && (
+            <>
+              <Text style={styles.inputLabel}>Current weight (lb)</Text>
+              <TextInput
+                value={goalStartWeight}
+                onChangeText={setGoalStartWeight}
+                placeholder="200.0"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="decimal-pad"
+                style={styles.input}
+              />
+            </>
+          )}
+          <Text style={styles.inputLabel}>Target (lb)</Text>
+          <TextInput
+            value={goalTargetWeight}
+            onChangeText={setGoalTargetWeight}
+            placeholder="175.0"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <Text style={styles.inputLabel}>By Date</Text>
+          <Pressable
+            onPress={() => setShowDatePicker(true)}
+            style={styles.input}
+          >
+            <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
+              {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
+            </Text>
+          </Pressable>
+          {showDatePicker && (
+            <DateTimePicker
+              value={pickerDate}
+              mode="date"
+              display="default"
+              onChange={onDateChange}
+              onDismiss={() => setShowDatePicker(false)}
+              minimumDate={new Date()}
+            />
+          )}
+          {goalInfo && (
+            <View style={styles.formDerived}>
+              <View style={styles.goalDivider} />
+              <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+              <View style={[styles.goalDivider, { marginBottom: 8 }]} />
+            </View>
+          )}
+          <Button onPress={() => handleSaveGoal(currentWeight)} title="Save goal" />
+        </>
+      ) : (
+        <View style={styles.goalDisplay}>
+          <View style={styles.goalDisplayRow}>
+            <View style={styles.goalDisplayItem}>
+              <Text style={styles.goalDisplayLabel}>Target</Text>
+              <Text style={styles.goalDisplayValue}>{goal.target_weight} lb</Text>
+            </View>
+            <View style={styles.goalDisplayItem}>
+              <Text style={styles.goalDisplayLabel}>By Date</Text>
+              <Text style={styles.goalDisplayDateValue}>{formatDate(goal.target_date)}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+const styles = StyleSheet.create({
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  input: {
+    ...InputStyle,
+    justifyContent: 'center',
+  },
+  goalCard: {
+    gap: 10,
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  goalHeaderActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  goalActionChip: {
+    backgroundColor: Colors.chipBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  goalActionChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.chipText,
+  },
+  goalClearText: {
+    color: Colors.error,
+  },
+  goalActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    padding: 4,
+  },
+  pickerText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+  pickerTextPlaceholder: {
+    color: Colors.textMuted,
+  },
+  goalErrorText: {
+    color: Colors.error,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  goalDisplay: {
+    gap: 12,
+  },
+  goalDisplayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalDisplayItem: {
+    flex: 1,
+    gap: 2,
+  },
+  goalDisplayValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Colors.accent,
+  },
+  goalDisplayDateValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: Colors.text,
+  },
+  goalDisplayLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  goalDivider: {
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    opacity: 0.5,
+    marginVertical: 4,
+  },
+  goalDerived: {
+    gap: 12,
+  },
+  derivedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  derivedLabel: {
+    fontSize: 15,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  derivedValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  derivedValueNeutral: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    opacity: 0.5,
+  },
+  goalInfoText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  goalWarningText: {
+    fontSize: 13,
+    color: Colors.error,
+    opacity: 0.9,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  formDerived: {
+    gap: 12,
+    marginVertical: 4,
+  },
+});

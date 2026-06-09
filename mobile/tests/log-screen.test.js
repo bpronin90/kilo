@@ -329,10 +329,23 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 // assertions prove the behavioral contract: prefill formula, editable input,
 // and correct forwarding to completeDeload.
 
+const fs = require('fs');
+const path = require('path');
+
+function readLogScreenSource() {
+  const main = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+  const deload = fs.readFileSync(path.join(__dirname, '../components/LogDeloadSection.js'), 'utf8');
+  const editor = fs.readFileSync(path.join(__dirname, '../components/LogScreenEditorCard.js'), 'utf8');
+  const active = fs.readFileSync(path.join(__dirname, '../components/LogActiveRoutineCard.js'), 'utf8');
+  const previous = fs.readFileSync(path.join(__dirname, '../components/LogPreviousRoutines.js'), 'utf8');
+  const helpers = fs.readFileSync(path.join(__dirname, '../lib/LogScreenHelpers.js'), 'utf8');
+  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers;
+}
+
 describe('deload ordinal prompt: prefill and editability contract (#284)', () => {
   let src;
   beforeAll(() => {
-    src = fs.readFileSync(path.join(__dirname, '../screens/LogScreen.js'), 'utf8');
+    src = readLogScreenSource();
   });
 
   test('prompt is prefilled with logSessionCount + 1', () => {
@@ -359,16 +372,10 @@ describe('deload ordinal prompt: prefill and editability contract (#284)', () =>
 // call site is changed back to a bare call, the test will fail and the flicker
 // will return.
 
-const fs = require('fs');
-const path = require('path');
-
 describe('autosave call sites: debounce timers pass { autosave: true }', () => {
   let src;
   beforeAll(() => {
-    src = fs.readFileSync(
-      path.join(__dirname, '../screens/LogScreen.js'),
-      'utf8'
-    );
+    src = readLogScreenSource();
   });
 
   test('current-note debounce timer calls handleSave({ autosave: true })', () => {
@@ -400,10 +407,7 @@ describe('autosave call sites: debounce timers pass { autosave: true }', () => {
 describe('deload date edit: save flow does not get stuck in pending state', () => {
   let src;
   beforeAll(() => {
-    src = fs.readFileSync(
-      path.join(__dirname, '../screens/LogScreen.js'),
-      'utf8'
-    );
+    src = readLogScreenSource();
   });
 
   test('handleSaveOtherNote uses an in-flight ref guard, not a bare noteIsSaving return', () => {
@@ -463,10 +467,7 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
 describe('Undo escape hatch: source-level assertions', () => {
   let src;
   beforeAll(() => {
-    src = fs.readFileSync(
-      path.join(__dirname, '../screens/LogScreen.js'),
-      'utf8'
-    );
+    src = readLogScreenSource();
   });
 
   test('declares originalNoteState hooks', () => {
@@ -1199,3 +1200,228 @@ describe('A/B week: parser splits sections by --- separator (#295)', () => {
     expect(weekBStartIndex).toBeNull();
   });
 });
+
+describe('A/B week: empty active card rendering', () => {
+  test('renders B-week alternative text in small inline body text instead of emptyText style', () => {
+    const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogActiveRoutineCard
+          workoutNoteTitle="My Routine"
+          hasABWeeks={true}
+          effectiveActiveWeek="B"
+          handleToggleWeek={jest.fn()}
+          enterCurrentEditor={jest.fn()}
+          handleNoteBodyPress={jest.fn()}
+          isCollapsed={false}
+          dayGroups={[]}
+          trackedLifts={{}}
+          handleToggleTrack={jest.fn()}
+          roughNoteId="note1"
+          currentId="note1"
+          roughFlaggedNames={new Set()}
+          activeEditText="Raw B-week routine text"
+        />
+      );
+    });
+
+    const root = component.root;
+    // Find the text node that renders "Raw B-week routine text"
+    const textNode = root.find(n => n.type === 'Text' && n.props.children === 'Raw B-week routine text');
+    expect(textNode).toBeTruthy();
+    
+    // Check that it does NOT have emptyText styling (which has textAlign: 'center'), and has unparsedRowMuted styling (color: Colors.text)
+    expect(textNode.props.style.textAlign).toBeUndefined();
+    expect(textNode.props.style.color).toBe(Colors.text);
+  });
+});
+
+// WorkoutContentRenderer collapsed four distinct main render modes (active routine,
+// active deload card, past deload view, past routine view) into one component. These
+// tests pin the two axes that differ across those modes — unparsed-row color and
+// whether a tracking toggle is interactive — so the modes can't silently converge.
+describe('WorkoutContentRenderer: per-mode parity with main', () => {
+  const { WorkoutContentRenderer } = require('../components/WorkoutContentRenderer');
+
+  // One lifting exercise whose only entry is unparsed raw text.
+  const liftingDayGroups = [
+    {
+      heading: 'Day 1',
+      sections: [
+        {
+          subheading: null,
+          kind: 'lifting',
+          exercises: [
+            {
+              name: 'Bench',
+              session_entries: [{ unparsed: true, raw: 'garbage text' }],
+              rows: [],
+              unparsed_positions: [],
+              unparsed_rows: [],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const findRawText = (root) =>
+    root.find(n => n.type === 'Text' && n.props.children === 'garbage text');
+
+  // Regression #3: past-deload view (isDeload, no mutedUnparsed) must keep red
+  // (unparsedRow / Colors.error) styling for unparsed lifting rows, like main:1423-1459.
+  test('past-deload view (isDeload only) renders unparsed lifting rows in error red', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={liftingDayGroups} isDeload={true} />
+      );
+    });
+    expect(findRawText(component.root).props.style.color).toBe(Colors.error);
+  });
+
+  // Active deload editor card (isDeload + mutedUnparsed) was always muted on main.
+  test('active deload card (mutedUnparsed) renders unparsed lifting rows muted', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={liftingDayGroups} isDeload={true} mutedUnparsed={true} />
+      );
+    });
+    expect(findRawText(component.root).props.style.color).toBe(Colors.text);
+  });
+
+  // Regression #4: read-only past-routine view passes no onToggleTrack. The renderer
+  // must NOT wire a (crashing) toggle closure, so ExerciseBlock shows no Track control.
+  test('no onToggleTrack handler -> no tracking toggle rendered', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={liftingDayGroups} emptyText="No exercises to display." />
+      );
+    });
+    const root = component.root;
+    const trackNodes = root.findAll(
+      n => n.type === 'Text' && (n.props.children === 'Track' || n.props.children === 'Tracked')
+    );
+    expect(trackNodes.length).toBe(0);
+  });
+
+  // Active routine card passes a real onToggleTrack -> toggle IS interactive.
+  test('with onToggleTrack handler -> tracking toggle rendered', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={liftingDayGroups} onToggleTrack={jest.fn()} />
+      );
+    });
+    const root = component.root;
+    const trackNodes = root.findAll(
+      n => n.type === 'Text' && (n.props.children === 'Track' || n.props.children === 'Tracked')
+    );
+    expect(trackNodes.length).toBeGreaterThan(0);
+  });
+});
+
+// Walk up from a matching Text node to its nearest Pressable (onPress) ancestor.
+function pressableAround(root, predicate) {
+  const matches = root.findAll(
+    n => n.type === 'Text' && predicate(
+      Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '')
+    )
+  );
+  for (const match of matches) {
+    let node = match.parent;
+    while (node) {
+      if (node.props && typeof node.props.onPress === 'function') return node;
+      node = node.parent;
+    }
+  }
+  return null;
+}
+
+// Regression #6: on main the active-card HEADER toggled collapse while the BODY
+// handled double-tap-to-edit. The refactor briefly wired both to the body handler
+// (and collapsed on every single tap), so entering the editor left the card
+// collapsed on return. These pin the two handlers to distinct callbacks.
+describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)', () => {
+  const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
+
+  const renderCard = (overrides = {}) => {
+    const props = {
+      workoutNoteTitle: 'My Routine',
+      hasABWeeks: false,
+      effectiveActiveWeek: 'A',
+      handleToggleWeek: jest.fn(),
+      enterCurrentEditor: jest.fn(),
+      handleNoteBodyPress: jest.fn(),
+      toggleCollapsed: jest.fn(),
+      isCollapsed: false,
+      dayGroups: [],
+      trackedLifts: {},
+      handleToggleTrack: jest.fn(),
+      roughNoteId: 'n1',
+      currentId: 'n1',
+      roughFlaggedNames: new Set(),
+      activeEditText: '',
+      ...overrides,
+    };
+    let component;
+    render.act(() => { component = render.create(<LogActiveRoutineCard {...props} />); });
+    return { root: component.root, props };
+  };
+
+  test('tapping the header calls toggleCollapsed, not the body handler', () => {
+    const { root, props } = renderCard();
+    const header = pressableAround(root, t => t.includes('Current routine'));
+    render.act(() => { header.props.onPress(); });
+    expect(props.toggleCollapsed).toHaveBeenCalledTimes(1);
+    expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
+  });
+
+  test('tapping the body calls the body handler, not toggleCollapsed', () => {
+    const { root, props } = renderCard();
+    const body = pressableAround(root, t => t.includes('Double-tap to edit'));
+    render.act(() => { body.props.onPress(); });
+    expect(props.handleNoteBodyPress).toHaveBeenCalledTimes(1);
+    expect(props.toggleCollapsed).not.toHaveBeenCalled();
+  });
+});
+
+// Regression #5: the extracted viewed-note body handler was stubbed to a no-op,
+// killing double-tap-to-edit on saved routines. This pins the restored 300ms
+// double-tap that opens the routine in the editor.
+describe('LogPreviousRoutines: double-tap viewed routine opens editor', () => {
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  test('two quick taps on the viewed body call handleEditViewedNote; one tap does not', () => {
+    const handleEditViewedNote = jest.fn();
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogPreviousRoutines
+          otherNotes={[{ id: 'r1', title: 'Routine 1', raw_text: 'x' }]}
+          handleViewOtherNote={jest.fn()}
+          viewingNoteId="r1"
+          viewingNote={{ id: 'r1', title: 'Routine 1', raw_text: 'x' }}
+          viewingNoteDayGroups={[]}
+          handleSwitchCurrent={jest.fn()}
+          handleEditViewedNote={handleEditViewedNote}
+          handleDeleteRoutine={jest.fn()}
+          handleCreateRoutine={jest.fn()}
+        />
+      );
+    });
+    const body = pressableAround(component.root, t => t.includes('Double-tap to edit'));
+    expect(body).toBeTruthy();
+
+    render.act(() => { body.props.onPress(); });
+    expect(handleEditViewedNote).not.toHaveBeenCalled(); // single tap is a no-op
+
+    render.act(() => { body.props.onPress(); }); // second tap within 300ms
+    expect(handleEditViewedNote).toHaveBeenCalledTimes(1);
+  });
+});
+
