@@ -437,3 +437,80 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
     expect(findPressableByText(root, '12-25-2026')).toBeTruthy();
   });
 });
+
+describe('WeightScreen Goal Editor Live Preview', () => {
+  const hasText = (root, text) =>
+    root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const flat = Array.isArray(n.props.children)
+        ? n.props.children.join('')
+        : String(n.props.children ?? '');
+      return flat.includes(text);
+    }).length > 0;
+
+  const findPressableByText = (root, text) => {
+    const matches = root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const children = n.props.children;
+      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+      return flat.includes(text);
+    });
+    for (const match of matches) {
+      let node = match.parent;
+      while (node) {
+        if (node.props && typeof node.props.onPress === 'function') return node;
+        node = node.parent;
+      }
+    }
+    return null;
+  };
+
+  test('renders live preview info card/warnings as form values change', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null,
+      save: jest.fn(),
+      clear: jest.fn(),
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    // The target weight input starts empty
+    const targetWeightInput = root.findByProps({ placeholder: '175.0' });
+    expect(targetWeightInput).toBeTruthy();
+
+    render.act(() => {
+      targetWeightInput.props.onChangeText('175.0');
+    });
+
+    // Select date pressable should be visible
+    const dateBtn = findPressableByText(root, 'Select date');
+    expect(dateBtn).toBeTruthy();
+    render.act(() => {
+      dateBtn.props.onPress();
+    });
+
+    const picker = root.findByProps({ testID: 'mock-datetimepicker' });
+    expect(picker).toBeTruthy();
+
+    // Select a date 1 week in the future (June 1st, 2026 since MOCK_NOW is May 24th, 2026)
+    const selectedDate = new Date('2026-06-01T12:00:00Z');
+    render.act(() => {
+      picker.props.onChange({}, selectedDate);
+    });
+
+    // It should calculate a 10 lb / week pace, which triggers the warnings since current weight is 185 and target is 175 in 1 week.
+    expect(hasText(root, 'Pace is unrealistic - consider a longer timeline.')).toBe(true);
+  });
+});
+

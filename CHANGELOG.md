@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.68.1 - 2026-06-08
+
+- Issue #296: Refactored the oversized mobile screen files (`LogScreen`,
+  `AnalyticsScreen`, `MoreScreen`, `WeightScreen`) into smaller screen-local
+  components, hooks, and pure helpers without changing shipped behavior, and
+  caught/fixed six behavior regressions introduced during extraction: the
+  weight goal editor live preview, the A/B-week active-card text style, the
+  past-deload unparsed-row red styling, a crashing phantom Track toggle on the
+  read-only routine viewer, the stubbed-out double-tap-to-edit on saved
+  routines and past deload records, and the active routine card auto-collapsing
+  after exiting the editor. Added focused render/behavior coverage pinning the
+  per-mode rendering, the header-collapse vs body-edit split, and the restored
+  double-tap-to-edit.
+
 ## 0.68.0 - 2026-06-08
 
 - Issue #295: Added alternating A/B week support to Log routines via a `---`

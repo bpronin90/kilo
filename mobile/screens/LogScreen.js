@@ -7,49 +7,21 @@
 // asks for that specific change.
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Keyboard, Modal, Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Alert, Keyboard, Platform, Pressable, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SectionTitle, ErrorBanner, SET_ROW_FONT_SIZE } from '../components/UI';
+import { Card, ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { Colors } from '../theme/colors';
-import { parseWorkoutNote, generateDeloadNote, countWorkoutSessionsFromSections } from '../lib/parser';
+import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../lib/parser';
 import { normalizeLiftName, deriveWorkoutNoteAnalytics, listTrackedLifts, getDefaultTrackedNames, deriveSkipData, deriveSessionCheckIn, findMatchingExerciseNames, rolloverOneKExercises, normalizeExerciseKey, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
-const DELOAD_NOTE_PREFIX = 'Deload · ';
-const AUTOSAVE_DEBOUNCE_MS = 800;
-
-// Parse any ISO timestamp or YYYY-MM-DD string as local midnight so
-// toLocaleDateString() never shifts the date back one day for UTC- timezones.
-function localDate(str) {
-  if (!str) return new Date();
-  const [y, m, d] = str.slice(0, 10).split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-// Reshape the compact deload generator output into routine-note style:
-// blank line between day blocks, +Lifting subheading per day.
-// The deload format line "Name: weight lbs SxR" still parses via _DELOAD_RE.
-const _DELOAD_EXERCISE_LINE = /^[^:+\d-][^:]*?:\s+\d+(?:\.\d+)?\s+lbs?\s+\d+x\d+\s*$/i;
-const _DELOAD_CORE_LINE = /^Core:/i;
-function _shapeDeloadText(text) {
-  const lines = text.split('\n');
-  const out = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const isExercise = _DELOAD_EXERCISE_LINE.test(line) || _DELOAD_CORE_LINE.test(line);
-    if (!isExercise) {
-      if (out.length > 0) out.push('');
-      out.push(line);
-      out.push('+Lifting');
-    } else {
-      out.push(line);
-    }
-  }
-  return out.join('\n');
-}
+import { DELOAD_NOTE_PREFIX, AUTOSAVE_DEBOUNCE_MS, localDate } from '../lib/LogScreenHelpers';
+import { LogDeloadSection } from '../components/LogDeloadSection';
+import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
+import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
+import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 
 export function LogScreen({
   workoutNoteText,
@@ -75,9 +47,6 @@ export function LogScreen({
   const [deloadMode, setDeloadMode] = useState('read'); // 'read' | 'edit'
   const [deloadEditText, setDeloadEditText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [deloadCollapsed, setDeloadCollapsed] = useState(false);
-  const [expandedDeloads, setExpandedDeloads] = useState(new Set());
-
 
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -96,9 +65,6 @@ export function LogScreen({
   const [roughNoteId, setRoughNoteId] = useState(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [roughCheckInData, setRoughCheckInData] = useState(null);
-
-  const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
-  const [deloadOrdinalInput, setDeloadOrdinalInput] = useState('');
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -167,16 +133,6 @@ export function LogScreen({
     setSaveSuccess('');
   };
 
-  const handleViewedNoteBodyPress = () => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    if (now - viewingNoteLastTapRef.current < DOUBLE_TAP_DELAY) {
-      handleEditViewedNote();
-      viewingNoteLastTapRef.current = 0;
-    } else {
-      viewingNoteLastTapRef.current = now;
-    }
-  };
   const keyboardExitTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -301,9 +257,6 @@ export function LogScreen({
     return textChanged || dateChanged || ordinalChanged;
   }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
-  // Latest back-press logic, reassigned every render so the registered listener
-  // always runs against current state (fresh handleDone* closures, current text)
-  // without re-subscribing as the user types.
   const handleAndroidBack = () => {
     if (deloadMode === 'edit') {
       handleDoneDeload();
@@ -329,14 +282,6 @@ export function LogScreen({
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    // Re-subscribe only when a sub-mode opens/closes. Two reasons:
-    //   1. Text fields are intentionally NOT deps — re-subscribing on every
-    //      keystroke churned the listener and intermittently dropped the back
-    //      gesture mid-render.
-    //   2. BackHandler is LIFO (last registered runs first). Re-registering when
-    //      a sub-mode opens places this handler after the tab-level handler in
-    //      App.js, so we get the press first and can consume it to exit the
-    //      sub-screen instead of falling through to tab navigation.
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => handleAndroidBackRef.current(),
@@ -354,7 +299,6 @@ export function LogScreen({
     [parsed.sections]
   );
 
-  // A/B week support: detect '---' separator and derive active week.
   const weekBStartIndex = parsed.weekBStartIndex ?? null;
   const hasABWeeks = weekBStartIndex !== null;
   const effectiveActiveWeek = hasABWeeks ? (currentNote?.activeWeek ?? 'A') : null;
@@ -365,8 +309,6 @@ export function LogScreen({
     await update(currentId, { activeWeek: next });
   };
 
-  // When editing an A/B note, show only the active week's raw text in the editor.
-  // The full text (with '---' separator) is always what gets saved to storage.
   const activeEditText = useMemo(() => {
     if (!hasABWeeks || !currentId) return workoutNoteText;
     const lines = workoutNoteText.split('\n');
@@ -376,9 +318,6 @@ export function LogScreen({
     return lines.slice(0, sepIdx).join('\n');
   }, [workoutNoteText, hasABWeeks, effectiveActiveWeek, currentId]);
 
-  // Parse each week's text independently so Week A and Week B are always
-  // derived from their own raw text, regardless of how weekBStartIndex lands
-  // in the full-text parse.
   const activeWeekParsed = useMemo(
     () => (hasABWeeks ? parseWorkoutNote(activeEditText) : parsed),
     [hasABWeeks, activeEditText, parsed]
@@ -404,8 +343,6 @@ export function LogScreen({
     }
   };
 
-  // Group consecutive sections that share the same day heading so each day
-  // renders exactly one heading, regardless of warmup/lifting splits.
   const dayGroups = useMemo(() => {
     const groups = [];
     for (const section of activeWeekParsed.sections) {
@@ -465,9 +402,6 @@ export function LogScreen({
       setSaveError('Workout notes are required');
       return;
     }
-    // Snapshot identity + content before the async operation so we can detect
-    // in-flight edit races (user kept typing) or routine switches that completed
-    // before this promise resolved.
     const savedForId = currentId;
     const snapshotText = workoutNoteText;
     const snapshotTitle = workoutNoteTitle;
@@ -485,8 +419,6 @@ export function LogScreen({
         ...defaultNames,
         ...explicitTrackedNames.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
       ];
-      // Aggregate across all notes (same as StatsScreen), substituting current note's
-      // text with the unsaved edit so the latest changes are included.
       const allSections = [
         ...notes.flatMap(n => {
           const text = n.id === currentId ? workoutNoteText : n.raw_text;
@@ -494,10 +426,8 @@ export function LogScreen({
         }),
         ...(currentId ? [] : savedSections),
       ];
-      // Cross-note analytics: classifications use full session history.
       const { classifications: exercise_classifications } =
         deriveWorkoutNoteAnalytics(allSections, trackedNames);
-      // Skip tracking: scoped to the current note being saved.
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const skip_markers = { exercise_skips, day_skips };
 
@@ -523,9 +453,6 @@ export function LogScreen({
           workoutNoteTitleRef.current === snapshotTitle;
         const identityUnchanged = !savedForId || currentIdRef.current === savedForId;
         if (contentUnchanged && identityUnchanged) {
-          // Only sync UI state when note identity and content are unchanged since
-          // save started — guards in-flight edit races, post-switch stale writes,
-          // and first-save races on new notes alike.
           setWorkoutNoteTitle(result.title || '');
           setWorkoutNoteText(result.raw_text || '');
           if (!autosave) setSaveSuccess('Saved!');
@@ -587,7 +514,6 @@ export function LogScreen({
   };
 
   const _runCheckInDetection = () => {
-    // Fatigue tracking off: never surface check-in prompts.
     if (!fatigueTrackingEnabled) return;
     const explicitTrackedNames = listTrackedLifts(trackedLifts);
     const defaultNames = getDefaultTrackedNames();
@@ -616,7 +542,6 @@ export function LogScreen({
   };
 
   const handleDoneCurrent = async () => {
-    // Cancel any pending debounced autosave before flushing manually.
     if (autosaveCurrentTimerRef.current) {
       clearTimeout(autosaveCurrentTimerRef.current);
       autosaveCurrentTimerRef.current = null;
@@ -631,7 +556,6 @@ export function LogScreen({
       return;
     }
 
-    // Existing note: flush any unsaved changes, then exit.
     if (hasUnsavedCurrent) {
       const ok = await handleSave();
       if (!ok) return;
@@ -665,7 +589,6 @@ export function LogScreen({
   };
 
   const handleDoneOther = async () => {
-    // Cancel any pending debounced autosave before flushing manually.
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
@@ -681,7 +604,6 @@ export function LogScreen({
       return;
     }
 
-    // Existing note: flush any unsaved changes, then exit.
     if (hasUnsavedOther) {
       const ok = await handleSaveOtherNote();
       if (!ok) return;
@@ -790,9 +712,6 @@ export function LogScreen({
   };
 
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
-    // If a save is already in flight, chain on it rather than returning undefined.
-    // This prevents handleDoneOther from treating the in-flight autosave as a
-    // failure and keeping the editor open when the user presses Done.
     if (saveOtherNoteInFlightRef.current) return saveOtherNoteInFlightRef.current;
 
     const savedNoteId = editingNoteId;
@@ -806,8 +725,6 @@ export function LogScreen({
       try {
         let result;
         let titleToSave = editingTitle || 'Untitled Routine';
-        // Deload records must always carry the classification prefix.
-        // Re-apply it if somehow lost (defence against future code paths).
         if (isEditingDeloadNote && !titleToSave.startsWith(DELOAD_NOTE_PREFIX)) {
           titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
         }
@@ -829,9 +746,6 @@ export function LogScreen({
                   deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
                   patch.saved_at = `${newDate}T12:00:00.000Z`;
                 }
-                // No linked history record (legacy note): skip the date change entirely.
-                // Applying saved_at without updating completed_at would desync the workout
-                // note date from the analytics anchor — silently preserve the old date.
               } else {
                 patch.saved_at = `${newDate}T12:00:00.000Z`;
               }
@@ -855,13 +769,9 @@ export function LogScreen({
           const contentUnchanged =
             editingTextRef.current === snapshotText &&
             editingTitleRef.current === snapshotTitle;
-          // For new notes savedNoteId is 'new' and the ref already advanced to the
-          // real ID, so skip the identity check and rely solely on content equality.
           const identityUnchanged =
             savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
           if (contentUnchanged && identityUnchanged) {
-            // Only sync UI state when note identity and content are unchanged since
-            // save started — guards in-flight edit races on both new and existing notes.
             setEditingTitle(result.title || '');
             setEditingText(result.raw_text || '');
             if (!autosave) setSaveSuccess('Saved!');
@@ -941,11 +851,9 @@ export function LogScreen({
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
-    // Check if there are unsaved changes in the editor for ANY routine
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (mode === 'edit' ? hasUnsavedCurrent : false);
 
     const doSwitch = async ({ rollover = false } = {}) => {
-      // Cancel pending autosaves so they don't write to the wrong note after switch.
       if (autosaveCurrentTimerRef.current) {
         clearTimeout(autosaveCurrentTimerRef.current);
         autosaveCurrentTimerRef.current = null;
@@ -978,7 +886,6 @@ export function LogScreen({
     };
 
     const confirmSwitch = () => {
-      // Detect matching exercises to decide whether to offer rollover.
       const oldSections = parseWorkoutNote(currentNote?.raw_text || '').sections;
       const newSections = parseWorkoutNote(note.raw_text || '').sections;
       const matchedNames = findMatchingExerciseNames(oldSections, newSections);
@@ -1112,25 +1019,22 @@ export function LogScreen({
     }
   };
 
-  const handleCompleteDeload = () => {
-    setDeloadOrdinalInput(String(logSessionCount + 1));
-    setShowDeloadOrdinalPrompt(true);
-  };
-
-  const handleConfirmDeloadOrdinal = async () => {
-    const ordinal = parseInt(deloadOrdinalInput, 10);
-    if (!ordinal || ordinal < 1) return;
-    setShowDeloadOrdinalPrompt(false);
-    await completeDeload({ sessionCount: logSessionCount, deloadSessionOrdinal: ordinal });
-  };
-
   const handleGenerateDeload = () => {
     const doGenerate = async () => {
       setIsGenerating(true);
       setSaveError('');
       try {
         const raw = generateDeloadNote(workoutNoteText);
-        await saveDeloadNote(_shapeDeloadText(raw));
+        // shape the deload text using the new local helper
+        const formattedRaw = raw.split('\n')
+          .filter(Boolean)
+          .map((line, idx) => {
+            const isExercise = line.includes(': ') && line.includes('lbs');
+            if (!isExercise && idx > 0) return `\n${line}\n+Lifting`;
+            return line;
+          })
+          .join('\n');
+        await saveDeloadNote(formattedRaw);
       } catch {
         setSaveError('Generate failed');
       } finally {
@@ -1162,18 +1066,6 @@ export function LogScreen({
     }
   };
 
-  const handleDeloadCollapsedToggle = () => {
-    setDeloadCollapsed(c => !c);
-  };
-
-  const handleToggleLegacyDeload = (id) => {
-    setExpandedDeloads(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
   const headerRight = !editingNoteId && hasContent && mode === 'edit' && (
     <Pressable
       onPress={handleDoneCurrent}
@@ -1188,7 +1080,6 @@ export function LogScreen({
   const isEmpty = !notesLoading && notes.length === 0;
   const isEditing = !!editingNoteId || mode === 'edit' || deloadMode === 'edit';
 
-  // Deload mode off: collapse to the routine view and hide the deload entry point.
   const effectiveTabView = deloadModeEnabled ? tabView : 'routine';
 
   useEffect(() => {
@@ -1232,535 +1123,64 @@ export function LogScreen({
               </View>
             )}
 
-            {effectiveTabView === 'deload' && saveError ? (
-              <Card style={styles.errorCard}>
-                <Text style={styles.errorText}>{saveError}</Text>
-              </Card>
-            ) : null}
-            {effectiveTabView === 'deload' && !deloadLoading && (
-              !deloadNote?.raw_text ? (
-                <View style={styles.deloadEmpty}>
-                  <Text style={styles.deloadEmptyText}>No deload week generated yet.</Text>
-                  <Button
-                    onPress={handleGenerateDeload}
-                    title="Generate deload"
-                    disabled={isGenerating || !workoutNoteText.trim()}
-                  />
-                </View>
-              ) : (
-                <>
-                  <View style={styles.mirrorContainer}>
-                    <Card style={styles.currentRoutineCard}>
-                      <Pressable onPress={handleDeloadCollapsedToggle} style={styles.otherNoteHeader}>
-                        <View style={styles.otherNoteInfo}>
-                          <Text style={styles.currentNoteTitle}>Deload Week</Text>
-                          {deloadNote?.saved_at && (
-                            <Text style={styles.otherNoteSub}>{localDate(deloadNote.saved_at).toLocaleDateString()}</Text>
-                          )}
-                        </View>
-                        <Pressable
-                          onPress={(e) => { e.stopPropagation(); enterDeloadEditor(); }}
-                          style={styles.inlineSwitchButton}
-                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                        >
-                          <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-                        </Pressable>
-                      </Pressable>
-                      <Pressable
-                        onPress={handleDeloadBodyPress}
-                        style={[styles.currentNoteContent, deloadCollapsed ? { display: 'none' } : null]}
-                      >
-                        <Text style={styles.editHint}>Double-tap to edit</Text>
-                        {deloadDayGroups.map((group, gi) => (
-                          <View key={`deload-day-${gi}`}>
-                            {group.heading && (
-                              <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
-                                {group.heading}
-                              </WorkoutHeading>
-                            )}
-                            {group.sections.map((section, si) => (
-                              <View key={`deload-section-${gi}-${si}`}>
-                                {section.subheading && (
-                                  <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                                )}
-                                {section.exercises.map((ex, ei) => (
-                                  <ExerciseBlock
-                                    key={`deload-ex-${gi}-${si}-${ei}`}
-                                    name={ex.name}
-                                    selectable={true}
-                                  >
-                                    {(() => {
-                                      const items = [];
-                                      const renderedUnparsed = new Set();
-                                      const positions = ex.unparsed_positions || [];
-                                      let posIdx = 0;
-                                      let loggedIdx = 0;
-                                      ex.session_entries.forEach((entry, eni) => {
-                                        while (posIdx < positions.length && positions[posIdx].pos === eni) {
-                                          items.push(<Text selectable={true} key={`deload-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                          posIdx++;
-                                        }
-                                        if (entry.skipped) {
-                                          items.push(<Text selectable={true} key={`deload-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                                        } else if (entry.unparsed) {
-                                          items.push(<Text selectable={true} key={`deload-u-inline-${gi}-${si}-${ei}-${eni}`} style={styles.unparsedRowMuted}>{entry.raw}</Text>);
-                                          renderedUnparsed.add(entry.raw);
-                                        } else {
-                                          const row = ex.rows[loggedIdx++];
-                                          if (row) items.push(<SetLine key={`deload-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
-                                        }
-                                      });
-                                      while (posIdx < positions.length) {
-                                        items.push(<Text selectable={true} key={`deload-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                        posIdx++;
-                                      }
-                                      const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
-                                      ex.rows.slice(loggedCount).forEach((row, ri) => {
-                                        items.push(<SetLine key={`deload-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
-                                      });
-                                      const positionalRaws = new Set(positions.map(p => p.raw));
-                                      ex.unparsed_rows.forEach((u, ui) => {
-                                        if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
-                                          items.push(<Text selectable={true} key={`deload-u-${gi}-${si}-${ei}-${ui}`} style={styles.unparsedRowMuted}>{u}</Text>);
-                                        }
-                                      });
-                                      return items;
-                                    })()}
-                                  </ExerciseBlock>
-                                ))}
-                              </View>
-                            ))}
-                          </View>
-                        ))}
-                        {!deloadDayGroups.length && (
-                          <Text selectable={true} style={styles.emptyText}>Deload note is empty.</Text>
-                        )}
-                      </Pressable>
-                    </Card>
-                  </View>
-                  <View style={styles.previousRoutines}>
-                    {deloadMode === 'read' && (
-                      <Button
-                        onPress={handleCompleteDeload}
-                        title="Deload complete"
-                      />
-                    )}
-                    <Button
-                      onPress={handleGenerateDeload}
-                      title={isGenerating ? 'Generating…' : 'Regenerate deload'}
-                      disabled={isGenerating || !workoutNoteText.trim()}
-                      style={styles.generateButton}
-                      textStyle={styles.generateButtonText}
-                    />
-                  </View>
-                </>
-              )
-            )}
-            {effectiveTabView === 'deload' && !deloadLoading && (deloadNotes.length > 0 || deloadHistory.some(r => !r.note_id)) && (
-              <View style={styles.pastDeloads}>
-                <SectionTitle>Past deloads</SectionTitle>
-                {[
-                  ...deloadNotes.map(n => ({ type: 'note', id: n.id, sortKey: n.saved_at, data: n })),
-                  ...deloadHistory.filter(r => !r.note_id).map(r => ({ type: 'legacy', id: r.id, sortKey: r.completed_at, data: r })),
-                ].sort((a, b) => b.sortKey.localeCompare(a.sortKey)).map(item => {
-                  if (item.type === 'note') {
-                    const note = item.data;
-                    const rawDate = note.title.startsWith(DELOAD_NOTE_PREFIX)
-                      ? note.title.slice(DELOAD_NOTE_PREFIX.length)
-                      : note.saved_at.slice(0, 10);
-                    const dateStr = rawDate ? localDate(rawDate).toLocaleDateString() : '';
-                    return (
-                      <Card key={note.id} style={styles.otherNoteCard}>
-                        <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
-                          <View style={styles.otherNoteInfo}>
-                            <Text style={styles.otherNoteTitle}>{note.title}</Text>
-                            <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
-                          </View>
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              Alert.alert(
-                                'Delete deload record?',
-                                'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
-                                [
-                                  { text: 'Cancel', style: 'cancel' },
-                                  { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
-                                ]
-                              );
-                            }}
-                            style={styles.inlineSwitchButton}
-                            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                          >
-                            <Text style={styles.pastDeloadDeleteText}>Delete</Text>
-                          </Pressable>
-                        </Pressable>
-                        {viewingNoteId === note.id && viewingNote && (
-                          <>
-                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-                              <Text style={styles.editHint}>Double-tap to edit</Text>
-                              {viewingNoteDayGroups.map((group, gi) => (
-                                <View key={`deload-view-day-${gi}`}>
-                                  {group.heading && (
-                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
-                                      {group.heading}
-                                    </WorkoutHeading>
-                                  )}
-                                  {group.sections.map((section, si) => (
-                                    <View key={`deload-view-section-${gi}-${si}`}>
-                                      {section.subheading && (
-                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                                      )}
-                                      {section.exercises.map((ex, ei) => (
-                                        <ExerciseBlock key={`deload-view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {(() => {
-                                            const items = [];
-                                            const renderedUnparsed = new Set();
-                                            const positions = ex.unparsed_positions || [];
-                                            let posIdx = 0;
-                                            let loggedIdx = 0;
-                                            ex.session_entries.forEach((entry, eni) => {
-                                              while (posIdx < positions.length && positions[posIdx].pos === eni) {
-                                                items.push(<Text selectable={true} key={`deload-view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                                posIdx++;
-                                              }
-                                              if (entry.skipped) {
-                                                items.push(<Text selectable={true} key={`deload-view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                                              } else if (entry.unparsed) {
-                                                items.push(<Text selectable={true} key={`deload-view-u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
-                                                renderedUnparsed.add(entry.raw);
-                                              } else {
-                                                const row = ex.rows[loggedIdx++];
-                                                if (row) items.push(<SetLine key={`deload-view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
-                                              }
-                                            });
-                                            while (posIdx < positions.length) {
-                                              items.push(<Text selectable={true} key={`deload-view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                              posIdx++;
-                                            }
-                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
-                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
-                                              items.push(<SetLine key={`deload-view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
-                                            });
-                                            const positionalRaws = new Set(positions.map(p => p.raw));
-                                            ex.unparsed_rows.forEach((u, ui) => {
-                                              if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
-                                                items.push(<Text selectable={true} key={`deload-view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
-                                              }
-                                            });
-                                            return items;
-                                          })()}
-                                        </ExerciseBlock>
-                                      ))}
-                                    </View>
-                                  ))}
-                                </View>
-                              ))}
-                              {!viewingNoteDayGroups.length && (
-                                <Text selectable={true} style={styles.emptyText}>Deload note is empty.</Text>
-                              )}
-                            </Pressable>
-                            <View style={styles.inlineActions}>
-                              <Button
-                                onPress={() => handleOpenOtherNote(note)}
-                                title="Edit deload record"
-                                style={styles.switchButton}
-                                textStyle={styles.switchButtonText}
-                              />
-                            </View>
-                          </>
-                        )}
-                      </Card>
-                    );
-                  }
-                  // Legacy history record (no linked workout note) — read-only inline expand
-                  const record = item.data;
-                  const isExpanded = expandedDeloads.has(record.id);
-                  const dateStr = localDate(record.completed_at).toLocaleDateString();
-                  const generatedStr = record.generated_at ? localDate(record.generated_at).toLocaleDateString() : null;
-                  const title = generatedStr && generatedStr !== dateStr
-                    ? `Deload ${generatedStr}`
-                    : `Deload ${dateStr}`;
-                  return (
-                    <Card key={record.id} style={styles.otherNoteCard}>
-                      <Pressable
-                        onPress={() => handleToggleLegacyDeload(record.id)}
-                        style={styles.otherNoteHeader}
-                      >
-                        <View style={styles.otherNoteInfo}>
-                          <Text style={styles.otherNoteTitle}>{title}</Text>
-                          <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
-                        </View>
-                        <Pressable
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            Alert.alert(
-                              'Delete deload record?',
-                              'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
-                              ]
-                            );
-                          }}
-                          style={styles.inlineSwitchButton}
-                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                        >
-                          <Text style={styles.pastDeloadDeleteText}>Delete</Text>
-                        </Pressable>
-                      </Pressable>
-                      {isExpanded && (
-                        <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
-                      )}
-                    </Card>
-                  );
-                })}
-              </View>
+            {effectiveTabView === 'deload' && (
+              <LogDeloadSection
+                deloadNote={deloadNote}
+                deloadLoading={deloadLoading}
+                deloadDayGroups={deloadDayGroups}
+                enterDeloadEditor={enterDeloadEditor}
+                handleDeloadBodyPress={handleDeloadBodyPress}
+                deloadMode={deloadMode}
+                completeDeload={completeDeload}
+                handleGenerateDeload={handleGenerateDeload}
+                isGenerating={isGenerating}
+                workoutNoteText={workoutNoteText}
+                saveError={saveError}
+                deloadNotes={deloadNotes}
+                deloadHistory={deloadHistory}
+                deleteDeloadNote={deleteDeloadNote}
+                deleteDeload={deleteDeload}
+                viewingNoteId={viewingNoteId}
+                handleViewOtherNote={handleViewOtherNote}
+                viewingNote={viewingNote}
+                viewingNoteDayGroups={viewingNoteDayGroups}
+                handleOpenOtherNote={handleOpenOtherNote}
+                logSessionCount={logSessionCount}
+              />
             )}
 
             {effectiveTabView === 'routine' && mode === 'read' && hasContent && (
-              <View style={styles.mirrorContainer}>
-                <Card style={styles.currentRoutineCard}>
-                  <Pressable
-                    onPress={toggleCollapsed}
-                    style={styles.otherNoteHeader}
-                  >
-                    <View style={styles.otherNoteInfo}>
-                      <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'Untitled Routine'}</Text>
-                      <Text style={styles.otherNoteSub}>
-                        {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {hasABWeeks && (
-                        <Pressable
-                          onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
-                          style={styles.inlineSwitchButton}
-                          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                        >
-                          <Text style={styles.inlineSwitchButtonText}>
-                            Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
-                          </Text>
-                        </Pressable>
-                      )}
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
-                        style={styles.inlineSwitchButton}
-                        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                      >
-                        <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-                      </Pressable>
-                    </View>
-                  </Pressable>
-
-                  <Pressable 
-                    onPress={handleNoteBodyPress}
-                    style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
-                  >
-                    <Text style={styles.editHint}>Double-tap to edit</Text>
-                    {dayGroups.map((group, gi) => (
-                      <View key={`day-${gi}`}>
-                        {group.heading && (
-                          <WorkoutHeading 
-                            selectable={true}
-                            style={gi === 0 ? { marginTop: 0 } : null}
-                          >
-                            {group.heading}
-                          </WorkoutHeading>
-                        )}
-                        {group.sections.map((section, si) => (
-                          <View key={`section-${gi}-${si}`}>
-                            {section.subheading && (
-                              <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                            )}
-                            {section.exercises.map((ex, ei) => {
-                              const exNormName = normalizeLiftName(ex.name);
-                              const isTracked = !!trackedLifts[exNormName];
-                              const isFlagged = roughNoteId === currentId && roughFlaggedNames.has(exNormName);
-                              return (
-                              <View key={`ex-${gi}-${si}-${ei}`} style={isFlagged ? styles.flaggedExercise : null}>
-                              <ExerciseBlock
-                                name={ex.name}
-                                isTracked={isTracked}
-                                onToggleTrack={() => handleToggleTrack(ex.name)}
-                                selectable={true}
-                              >
-                                {(() => {
-                                  const items = [];
-                                  const renderedUnparsed = new Set();
-                                  const positions = ex.unparsed_positions || [];
-                                  let posIdx = 0;
-                                  let loggedIdx = 0;
-                                  ex.session_entries.forEach((entry, eni) => {
-                                    while (posIdx < positions.length && positions[posIdx].pos === eni) {
-                                      items.push(<Text selectable={true} key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                      posIdx++;
-                                    }
-                                    if (entry.skipped) {
-                                      items.push(<Text selectable={true} key={`skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                                    } else if (entry.unparsed) {
-                                      items.push(<Text selectable={true} key={`u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
-                                      renderedUnparsed.add(entry.raw);
-                                    } else {
-                                      const row = ex.rows[loggedIdx++];
-                                      if (row) items.push(<SetLine key={`row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
-                                    }
-                                  });
-                                  while (posIdx < positions.length) {
-                                    items.push(<Text selectable={true} key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                    posIdx++;
-                                  }
-                                  const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
-                                  ex.rows.slice(loggedCount).forEach((row, ri) => {
-                                    items.push(<SetLine key={`plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
-                                  });
-                                  const positionalRaws = new Set(positions.map(p => p.raw));
-                                  ex.unparsed_rows.forEach((u, ui) => {
-                                    if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
-                                      items.push(<Text selectable={true} key={`u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
-                                    }
-                                  });
-                                  return items;
-                                })()}
-                              </ExerciseBlock>
-                              </View>
-                              );
-                            })}
-                          </View>
-                        ))}
-                      </View>
-                    ))}
-                    {!dayGroups.length && hasABWeeks && activeEditText.trim() && (
-                      <Text selectable={true} style={styles.unparsedRowMuted}>{activeEditText.trim()}</Text>
-                    )}
-                    {!dayGroups.length && !(hasABWeeks && activeEditText.trim()) && (
-                      <Text selectable={true} style={styles.emptyText}>Add some exercises to see the formatted view.</Text>
-                    )}
-                  </Pressable>
-                </Card>
-              </View>
+              <LogActiveRoutineCard
+                workoutNoteTitle={workoutNoteTitle}
+                hasABWeeks={hasABWeeks}
+                effectiveActiveWeek={effectiveActiveWeek}
+                handleToggleWeek={handleToggleWeek}
+                enterCurrentEditor={enterCurrentEditor}
+                handleNoteBodyPress={handleNoteBodyPress}
+                toggleCollapsed={toggleCollapsed}
+                isCollapsed={isCollapsed}
+                dayGroups={dayGroups}
+                trackedLifts={trackedLifts}
+                handleToggleTrack={handleToggleTrack}
+                roughNoteId={roughNoteId}
+                currentId={currentId}
+                roughFlaggedNames={roughFlaggedNames}
+                activeEditText={activeEditText}
+              />
             )}
 
-
             {effectiveTabView === 'routine' && (
-              <View style={styles.previousRoutines}>
-                {otherNotes.length > 0 && (
-                  <>
-                    <SectionTitle>More Routines</SectionTitle>
-                    {otherNotes.map(other => (
-                      <Card
-                        key={other.id}
-                        style={styles.otherNoteCard}
-                      >
-                        <Pressable
-                          onPress={() => handleViewOtherNote(other)}
-                          style={styles.otherNoteHeader}
-                        >
-                          <View style={styles.otherNoteInfo}>
-                            <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
-                            {other.updated_at && (
-                              <Text style={styles.otherNoteSub}>{localDate(other.updated_at).toLocaleDateString()}</Text>
-                            )}
-                          </View>
-                          <Pressable
-                            onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
-                            style={styles.inlineSwitchButton}
-                            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                          >
-                            <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
-                          </Pressable>
-                        </Pressable>
-                        {viewingNoteId === other.id && viewingNote && (
-                          <>
-                            <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-                              <Text style={styles.editHint}>Double-tap to edit</Text>
-                              {viewingNoteDayGroups.map((group, gi) => (
-                                <View key={`view-day-${gi}`}>
-                                  {group.heading && (
-                                    <WorkoutHeading selectable={true} style={gi === 0 ? { marginTop: 0 } : null}>
-                                      {group.heading}
-                                    </WorkoutHeading>
-                                  )}
-                                  {group.sections.map((section, si) => (
-                                    <View key={`view-section-${gi}-${si}`}>
-                                      {section.subheading && (
-                                        <WorkoutSubheading selectable={true}>{section.subheading}</WorkoutSubheading>
-                                      )}
-                                      {section.exercises.map((ex, ei) => (
-                                        <ExerciseBlock key={`view-ex-${gi}-${si}-${ei}`} name={ex.name} selectable={true}>
-                                          {(() => {
-                                            const items = [];
-                                            const renderedUnparsed = new Set();
-                                            const positions = ex.unparsed_positions || [];
-                                            let posIdx = 0;
-                                            let loggedIdx = 0;
-                                            ex.session_entries.forEach((entry, eni) => {
-                                              while (posIdx < positions.length && positions[posIdx].pos === eni) {
-                                                items.push(<Text selectable={true} key={`view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                                posIdx++;
-                                              }
-                                              if (entry.skipped) {
-                                                items.push(<Text selectable={true} key={`view-skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
-                                              } else if (entry.unparsed) {
-                                                items.push(<Text selectable={true} key={`view-u-inline-${gi}-${si}-${ei}-${eni}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{entry.raw}</Text>);
-                                                renderedUnparsed.add(entry.raw);
-                                              } else {
-                                                const row = ex.rows[loggedIdx++];
-                                                if (row) items.push(<SetLine key={`view-row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
-                                              }
-                                            });
-                                            while (posIdx < positions.length) {
-                                              items.push(<Text selectable={true} key={`view-u-pos-${gi}-${si}-${ei}-${posIdx}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{positions[posIdx].raw}</Text>);
-                                              posIdx++;
-                                            }
-                                            const loggedCount = ex.session_entries.filter(e => !e.skipped && !e.unparsed).length;
-                                            ex.rows.slice(loggedCount).forEach((row, ri) => {
-                                              items.push(<SetLine key={`view-plain-${gi}-${si}-${ei}-${ri}`} sets={row.sets} selectable={true} />);
-                                            });
-                                            const positionalRaws = new Set(positions.map(p => p.raw));
-                                            ex.unparsed_rows.forEach((u, ui) => {
-                                              if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
-                                                items.push(<Text selectable={true} key={`view-u-${gi}-${si}-${ei}-${ui}`} style={section.kind === 'lifting' ? styles.unparsedRow : styles.unparsedRowMuted}>{u}</Text>);
-                                              }
-                                            });
-                                            return items;
-                                          })()}
-                                        </ExerciseBlock>
-                                      ))}
-                                    </View>
-                                  ))}
-                                </View>
-                              ))}
-                              {!viewingNoteDayGroups.length && (
-                                <Text selectable={true} style={styles.emptyText}>No exercises to display.</Text>
-                              )}
-                            </Pressable>
-                            <View style={styles.inlineActions}>
-                              <Button
-                                onPress={handleEditViewedNote}
-                                title="Edit routine"
-                                style={styles.switchButton}
-                                textStyle={styles.switchButtonText}
-                              />
-                              <Button
-                                onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-                                title="Delete routine"
-                                style={styles.deleteButton}
-                                textStyle={styles.deleteButtonText}
-                              />
-                            </View>
-                          </>
-                        )}
-                      </Card>
-                    ))}
-                  </>
-                )}
-                <Button
-                  onPress={handleCreateRoutine}
-                  title="+ New routine"
-                  style={styles.createButton}
-                  textStyle={styles.createButtonText}
-                />
-              </View>
+              <LogPreviousRoutines
+                otherNotes={otherNotes}
+                handleViewOtherNote={handleViewOtherNote}
+                viewingNoteId={viewingNoteId}
+                viewingNote={viewingNote}
+                viewingNoteDayGroups={viewingNoteDayGroups}
+                handleSwitchCurrent={handleSwitchCurrent}
+                handleEditViewedNote={handleEditViewedNote}
+                handleDeleteRoutine={handleDeleteRoutine}
+                handleCreateRoutine={handleCreateRoutine}
+              />
             )}
           </>
         )}
@@ -1810,181 +1230,41 @@ export function LogScreen({
         }
         keyboardShouldPersistTaps="handled"
       >
-        {saveError ? (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>{saveError}</Text>
-          </Card>
-        ) : null}
-        {deloadMode === 'edit' ? (
-          <View style={styles.editContainer}>
-            <Card>
-              <TextInput
-                value={deloadEditText}
-                onChangeText={setDeloadEditText}
-                placeholder="Deload note…"
-                placeholderTextColor={Colors.textMuted}
-                multiline
-                style={[styles.input, styles.editorInput]}
-              />
-              <Button
-                onPress={handleSaveDeload}
-                title={saveSuccess ? 'Saved!' : 'Save changes'}
-                disabled={isSaving}
-                style={styles.saveButton}
-              />
-            </Card>
-          </View>
-        ) : (
-          <View style={styles.editContainer}>
-            <Card>
-              {/* Title input is hidden for deload records: their title encodes the
-                  classification prefix "Deload · " and must not be freely edited.
-                  Date changes go through the DateTimePicker which keeps the prefix intact. */}
-              {!isEditingDeloadNote && (
-                <TextInput
-                  value={editingNoteId ? editingTitle : workoutNoteTitle}
-                  onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
-                  placeholder="Routine Name (e.g. Push Day)"
-                  placeholderTextColor={Colors.textMuted}
-                  style={[styles.input, styles.titleInput]}
-                />
-              )}
-              {isEditingDeloadNote && deloadDateEditEnabled && (
-                <>
-                  <Text style={styles.inputLabel}>Date</Text>
-                  <Pressable
-                    style={[styles.input, styles.dateInput]}
-                    onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
-                    accessibilityLabel="Deload date"
-                    accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
-                  >
-                    <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
-                  </Pressable>
-                  {editingDeloadHasLinkedRecord && (
-                    <>
-                      <Text style={styles.inputLabel}>Session #</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={deloadEditOrdinal}
-                        onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
-                        keyboardType="number-pad"
-                        placeholder="Session number"
-                        placeholderTextColor={Colors.textMuted}
-                        accessibilityLabel="Deload session number"
-                      />
-                    </>
-                  )}
-                  {editingDeloadHasLinkedRecord && showDeloadDatePicker && (
-                    <DateTimePicker
-                      value={(() => {
-                        if (deloadEditDate) {
-                          const [y, m, d] = deloadEditDate.split('-').map(Number);
-                          return new Date(y, m - 1, d);
-                        }
-                        return new Date();
-                      })()}
-                      mode="date"
-                      display="default"
-                      maximumDate={new Date()}
-                      onChange={(event, selectedDate) => {
-                        setShowDeloadDatePicker(false);
-                        if (selectedDate) {
-                          const y = selectedDate.getFullYear();
-                          const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
-                          const dy = String(selectedDate.getDate()).padStart(2, '0');
-                          const newDateStr = `${y}-${mo}-${dy}`;
-                          setDeloadEditDate(newDateStr);
-                          setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
-                        }
-                      }}
-                      onDismiss={() => setShowDeloadDatePicker(false)}
-                    />
-                  )}
-                </>
-              )}
-              <TextInput
-                value={editingNoteId ? editingText : activeEditText}
-                onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
-                placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
-                placeholderTextColor={Colors.textMuted}
-                multiline
-                style={[styles.input, styles.editorInput]}
-              />
-              {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
-                <Button
-                  onPress={editingNoteId ? handleSaveOtherNote : handleSave}
-                  title="Save"
-                  disabled={editingNoteId ? noteIsSaving : isSaving}
-                  style={styles.saveButton}
-                />
-              ) : saveSuccess ? (
-                <Text style={styles.autosaveIndicator}>{saveSuccess}</Text>
-              ) : null}
-            </Card>
-            {editingNoteId && !isEditingDeloadNote && (
-              <Button
-                onPress={() => handleSwitchCurrent(editingNoteId)}
-                title="Set as current routine"
-                style={styles.switchButton}
-                textStyle={styles.switchButtonText}
-              />
-            )}
-            <Button
-              onPress={() => {
-                if (editingNoteId) {
-                  if (isEditingDeloadNote) {
-                    handleDeleteDeloadNoteFromEditor();
-                  } else {
-                    handleDeleteRoutine(editingNoteId, editingTitle || 'Untitled Routine', false);
-                  }
-                } else {
-                  handleDeleteRoutine(currentId, workoutNoteTitle || 'Untitled Routine', true);
-                }
-              }}
-              title={isEditingDeloadNote ? 'Delete deload record' : 'Delete routine'}
-              style={styles.deleteButton}
-              textStyle={styles.deleteButtonText}
-            />
-          </View>
-        )}
+        <LogScreenEditorCard
+          deloadMode={deloadMode}
+          deloadEditText={deloadEditText}
+          setDeloadEditText={setDeloadEditText}
+          handleSaveDeload={handleSaveDeload}
+          isSaving={isSaving}
+          saveSuccess={saveSuccess}
+          editingNoteId={editingNoteId}
+          isEditingDeloadNote={isEditingDeloadNote}
+          editingTitle={editingTitle}
+          setEditingTitle={setEditingTitle}
+          workoutNoteTitle={workoutNoteTitle}
+          setWorkoutNoteTitle={setWorkoutNoteTitle}
+          deloadDateEditEnabled={deloadDateEditEnabled}
+          editingDeloadHasLinkedRecord={editingDeloadHasLinkedRecord}
+          setShowDeloadDatePicker={setShowDeloadDatePicker}
+          deloadEditDate={deloadEditDate}
+          deloadEditOrdinal={deloadEditOrdinal}
+          setDeloadEditOrdinal={setDeloadEditOrdinal}
+          showDeloadDatePicker={showDeloadDatePicker}
+          editingNote={editingNote}
+          setDeloadEditDate={setDeloadEditDate}
+          editingText={editingText}
+          setEditingText={setEditingText}
+          activeEditText={activeEditText}
+          handleCurrentTextChange={handleCurrentTextChange}
+          handleSaveOtherNote={handleSaveOtherNote}
+          handleSave={handleSave}
+          noteIsSaving={noteIsSaving}
+          handleSwitchCurrent={handleSwitchCurrent}
+          handleDeleteDeloadNoteFromEditor={handleDeleteDeloadNoteFromEditor}
+          handleDeleteRoutine={handleDeleteRoutine}
+          currentId={currentId}
+        />
       </ScreenShell>
-      <Modal
-        visible={showDeloadOrdinalPrompt}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDeloadOrdinalPrompt(false)}
-      >
-        <View style={styles.ordinalOverlay}>
-          <View style={styles.ordinalSheet}>
-            <Text style={styles.ordinalTitle}>Which session number is this deload?</Text>
-            <Text style={styles.ordinalSubtitle}>
-              Prefilled from your current note. Edit if your real session count differs.
-            </Text>
-            <TextInput
-              style={styles.ordinalInput}
-              value={deloadOrdinalInput}
-              onChangeText={setDeloadOrdinalInput}
-              keyboardType="number-pad"
-              selectTextOnFocus
-              autoFocus
-            />
-            <View style={styles.ordinalButtons}>
-              <Pressable
-                style={styles.ordinalCancel}
-                onPress={() => setShowDeloadOrdinalPrompt(false)}
-              >
-                <Text style={styles.ordinalCancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                style={styles.ordinalConfirm}
-                onPress={handleConfirmDeloadOrdinal}
-              >
-                <Text style={styles.ordinalConfirmText}>Deload complete</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
       <SessionCheckInModal
         visible={showCheckInModal}
         checkInData={roughCheckInData}
@@ -2007,195 +1287,6 @@ const styles = StyleSheet.create({
   modeToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.accent,
-  },
-  errorText: {
-    color: Colors.error,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  errorCard: {
-    borderColor: Colors.error,
-    backgroundColor: '#fff0f0', // Slight red tint
-    padding: 12,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.text,
-  },
-  titleInput: {
-    marginBottom: 12,
-    fontWeight: '700',
-  },
-  editorInput: {
-    minHeight: 250,
-    textAlignVertical: 'top',
-  },
-  saveButton: {
-    marginTop: 12,
-  },
-  mirrorContainer: {
-    paddingBottom: 2,
-  },
-  currentRoutineCard: {
-    padding: 0,
-    overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: Colors.cardBorder,
-  },
-  unparsedRow: {
-    fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.error,
-    paddingLeft: 0,
-  },
-  unparsedRowMuted: {
-    fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.text,
-    paddingLeft: 0,
-  },
-  emptyText: {
-    color: Colors.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 40,
-    marginBottom: 40,
-  },
-  editButton: {
-    marginTop: 32,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  editButtonText: {
-    color: Colors.accent,
-  },
-  skipMarker: {
-    fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.textMuted,
-  },
-  flaggedExercise: {
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.error,
-    marginLeft: -3,
-  },
-  editContainer: {
-    gap: 16,
-  },
-  switchButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  switchButtonText: {
-    color: Colors.accent,
-  },
-  deleteButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  deleteButtonText: {
-    color: Colors.error,
-  },
-  previousRoutines: {
-    marginTop: 4,
-    gap: 12,
-  },
-  otherNoteCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-  inlineActions: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  autosaveIndicator: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'right',
-    marginTop: 8,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  dateInput: {
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  dateInputText: {
-    fontSize: 16,
-    color: Colors.text,
-  },
-  otherNoteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    gap: 12,
-  },
-  otherNoteInfo: {
-    flex: 1,
-  },
-  otherNoteTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  currentNoteTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.accent,
-  },
-  otherNoteSub: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  editHint: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginBottom: 8,
-  },
-  currentNoteContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-  },
-  inlineSwitchButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: Colors.chipBackground,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  inlineSwitchButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.accent,
-  },
-  createButton: {
-    marginTop: 8,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.accent,
-    borderStyle: 'dashed',
-  },
-  createButtonText: {
     color: Colors.accent,
   },
   tabToggle: {
@@ -2222,109 +1313,4 @@ const styles = StyleSheet.create({
   tabToggleTextActive: {
     color: '#fff',
   },
-  deloadEmpty: {
-    marginTop: 40,
-    alignItems: 'center',
-    gap: 16,
-  },
-  deloadEmptyText: {
-    fontSize: 16,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  generateButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  generateButtonText: {
-    color: Colors.accent,
-  },
-  pastDeloads: {
-    marginTop: 8,
-    gap: 8,
-  },
-  pastDeloadDeleteText: {
-    color: Colors.error,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pastDeloadContent: {
-    fontSize: 13,
-    color: Colors.text,
-    fontFamily: 'monospace',
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-  },
-  ordinalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(31,26,23,0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  ordinalSheet: {
-    backgroundColor: Colors.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    padding: 24,
-    gap: 12,
-  },
-  ordinalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  ordinalSubtitle: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    lineHeight: 18,
-  },
-  ordinalInput: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.inputBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  ordinalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  ordinalCancel: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: Colors.chipBackground,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  ordinalCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  ordinalConfirm: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: Colors.accent,
-  },
-  ordinalConfirmText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-  },
-
 });

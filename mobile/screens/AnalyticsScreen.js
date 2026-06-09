@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel, SessionGauge, InputStyle } from '../components/UI';
+import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
@@ -10,12 +10,11 @@ import { normalizeExerciseKey } from '../lib/parser';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
-// Interpolate hex color a→b by t (0..1). Mirrors HomeScreen's 1K progress gradient.
-function lerpColor(a, b, t) {
-  const p = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-  const [ar, ag, ab] = p(a), [br, bg, bb] = p(b);
-  return `rgb(${Math.round(ar + (br - ar) * t)},${Math.round(ag + (bg - ag) * t)},${Math.round(ab + (bb - ab) * t)})`;
-}
+import { lerpColor } from '../lib/AnalyticsScreenHelpers';
+import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
+import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
+import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
+import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 
 export function AnalyticsScreen({ multiplier, section }) {
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
@@ -246,68 +245,14 @@ export function AnalyticsScreen({ multiplier, section }) {
   );
 
   const screenContent = React.Children.toArray([
-    <View key="weight-trends-title" onLayout={handleWeightLayout}>
-      <SectionTitle>Weight Trends</SectionTitle>
-    </View>,
-    <Card key="weight-card" style={styles.weightCard}>
-      <View style={styles.weightHeader}>
-        <View>
-          <Text style={styles.weightLabel}>Latest weigh-in</Text>
-          <Text style={styles.weightValueLarge}>
-            {weightSummary.latestWeightValue}
-            {weightSummary.showUnit && <Text style={styles.weightUnit}>lb</Text>}
-          </Text>
-        </View>
-        {weightSummary.paceFlag && (
-          <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
-            <Text style={styles.paceText}>
-              {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.chartBlock}>
-        <Text style={styles.chartLabel}>7-day rolling average</Text>
-        <View style={styles.chartArea}>
-          {rolling7.length > 1 ? (
-            <LineChart data={rolling7} height={100} hideHeader />
-          ) : (
-            <View style={styles.chartPlaceholder}>
-              {isWeightLoading
-                ? <ActivityIndicator size="small" color={Colors.accent} />
-                : <Text style={styles.chartEmpty}>Not enough data</Text>}
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.chartBlock}>
-        <Text style={styles.chartLabel}>30-day rolling average</Text>
-        <View style={styles.chartArea}>
-          {rolling30.length > 1 ? (
-            <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} />
-          ) : (
-            <View style={styles.chartPlaceholder}>
-              {isWeightLoading
-                ? <ActivityIndicator size="small" color={Colors.accent} />
-                : <Text style={styles.chartEmpty}>Not enough data</Text>}
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.weightFooter}>
-        <View style={styles.weightStat}>
-          <Text style={styles.weightStatValue}>{weightSummary.avg7}</Text>
-          <Text style={styles.weightStatLabel}>7-day avg</Text>
-        </View>
-        <View style={styles.weightStat}>
-          <Text style={styles.weightStatValue}>{weightSummary.avg30}</Text>
-          <Text style={styles.weightStatLabel}>30-day avg</Text>
-        </View>
-      </View>
-    </Card>,
+    <AnalyticsWeightTrendsCard
+      key="weight-trends-card"
+      handleWeightLayout={handleWeightLayout}
+      weightSummary={weightSummary}
+      rolling7={rolling7}
+      rolling30={rolling30}
+      isWeightLoading={isWeightLoading}
+    />,
 
     <View key="combined-section-title">
       <SectionTitle>Fatigue</SectionTitle>
@@ -315,174 +260,33 @@ export function AnalyticsScreen({ multiplier, section }) {
     <SessionGauge key="session-gauge" count={sinceDeload} total={sessionCount} showDeload={deloadModeEnabled} />,
 
     fatigueTrackingEnabled ? (
-    <Card key="fatigue-card" style={styles.fatigueCard}>
-      <Text style={styles.fatiguePanelLabel}>Fatigue Tracking</Text>
-      {checkInHistory.rough.length === 0 && checkInHistory.ok.length === 0 && checkInHistory.pending.length === 0 ? (
-        <Text style={styles.fatigueEmpty}>No check-ins logged yet.</Text>
-      ) : (
-        <>
-          <Pressable
-            style={styles.fatigueSummary}
-            onPress={() => setFatigueExpanded(e => !e)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: fatigueExpanded }}
-            accessibilityLabel={fatigueExpanded ? 'Collapse fatigue details' : 'Expand fatigue details'}
-          >
-            <View style={styles.fatigueSummaryMain}>
-              <Text style={styles.fatigueInsightLabel}>
-                {checkInHistory.summary.top_reason ? 'Most common reason' : 'Fatigue'}
-              </Text>
-              <Text style={styles.fatigueInsightValue} numberOfLines={1}>
-                {checkInHistory.summary.top_reason
-                  || (checkInHistory.summary.roughTotal > 0
-                    ? `${checkInHistory.summary.roughTotal} flagged session${checkInHistory.summary.roughTotal > 1 ? 's' : ''}`
-                    : 'No rough sessions')}
-              </Text>
-            </View>
-            {checkInHistory.summary.pendingTotal > 0 && (
-              <View
-                style={styles.fatigueAlert}
-                accessibilityLabel={`${checkInHistory.summary.pendingTotal} unanswered check-in${checkInHistory.summary.pendingTotal > 1 ? 's' : ''}`}
-              >
-                <MaterialIcons name="error-outline" size={14} color={Colors.caution} />
-                <Text style={styles.fatigueAlertText}>{checkInHistory.summary.pendingTotal} unanswered</Text>
-              </View>
-            )}
-            <MaterialIcons
-              name={fatigueExpanded ? 'expand-less' : 'expand-more'}
-              size={22}
-              color={Colors.textMuted}
-            />
-          </Pressable>
-          {fatigueExpanded && (
-            <View style={styles.fatigueDetails}>
-              {checkInHistory.rough.length > 0 && (
-                <FatigueSection
-                  status="rough"
-                  label="Not great"
-                  count={checkInHistory.summary.roughTotal}
-                  rows={checkInHistory.rough}
-                  onEdit={handleCheckInEdit}
-                />
-              )}
-              {checkInHistory.ok.length > 0 && (
-                <FatigueSection
-                  status="ok"
-                  label="All good"
-                  count={checkInHistory.summary.okTotal}
-                  rows={checkInHistory.ok}
-                  onEdit={handleCheckInEdit}
-                  variant="chips"
-                />
-              )}
-              {checkInHistory.pending.length > 0 && (
-                <FatigueSection
-                  status="pending"
-                  label="Unanswered"
-                  count={checkInHistory.summary.pendingTotal}
-                  rows={checkInHistory.pending}
-                  onEdit={handleCheckInEdit}
-                  variant="chips"
-                />
-              )}
-            </View>
-          )}
-        </>
-      )}
-    </Card>) : null,
+      <AnalyticsFatigueCard
+        key="fatigue-card"
+        checkInHistory={checkInHistory}
+        fatigueExpanded={fatigueExpanded}
+        setFatigueExpanded={setFatigueExpanded}
+        handleCheckInEdit={handleCheckInEdit}
+      />
+    ) : null,
 
-    <View key="strength-section" onLayout={handleStrengthLayout} style={styles.strengthSection}>
-      <SectionTitle>Strength</SectionTitle>
-    {(isNotesLoading || analytics?.oneK?.total) ? (
-      <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
-        {isNotesLoading ? (
-          <ActivityIndicator size="large" color={Colors.accent} />
-        ) : (
-          <>
-            <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (analytics.oneK.total || 0) / 1000)) }]}>
-              {analytics.oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
-            </Text>
-            
-            <View style={styles.oneKProgressBarContainer}>
-              <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (analytics.oneK.total / 1000) * 100)}%` }]} />
-            </View>
-
-            <View style={styles.oneKBreakdown}>
-              <View style={styles.oneKItem}>
-                <Text style={styles.oneKItemValue}>{analytics.oneK.squat?.toFixed(0) || '—'}</Text>
-                <Text style={styles.oneKItemLabel}>Squats</Text>
-              </View>
-              <View style={styles.oneKItem}>
-                <Text style={styles.oneKItemValue}>{analytics.oneK.bench?.toFixed(0) || '—'}</Text>
-                <Text style={styles.oneKItemLabel}>Bench</Text>
-              </View>
-              <View style={styles.oneKItem}>
-                <Text style={styles.oneKItemValue}>{analytics.oneK.deadlift?.toFixed(0) || '—'}</Text>
-                <Text style={styles.oneKItemLabel}>Deadlifts</Text>
-              </View>
-            </View>
-
-            {oneKChartData.length > 1 && (
-              <View style={styles.oneKChartBlock}>
-                <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
-                <LineChart data={oneKChartData} height={120} hideHeader />
-              </View>
-            )}
-          </>
-        )}
-      </ArtisanalPanel>
-    ) : (
-      <Card style={styles.infoCard}>
-        <Text style={styles.infoText}>
-          Choose your squat, bench, and deadlift exercises below to track 1k progress.
-        </Text>
-      </Card>
-    )}
-
-    <Card style={styles.slotCard}>
-      <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
-      {(['bench', 'squat', 'deadlift']).map(slot => (
-        <View key={slot}>
-          <Pressable
-            style={styles.slotRow}
-            onPress={() => handleSlotTap(slot)}
-            accessibilityRole="button"
-            accessibilityLabel={`${SLOT_LABELS[slot]}, ${oneKSelections[slot]}, ${activeSlot === slot ? 'collapse' : 'expand'}`}
-          >
-            <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
-            <View style={styles.slotValueRow}>
-              <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
-              <Text style={styles.slotChevron} accessible={false}>{activeSlot === slot ? '▲' : '▼'}</Text>
-            </View>
-          </Pressable>
-          {activeSlot === slot && noteExerciseNames.length > 0 && (
-            <View style={styles.slotPicker}>
-              {noteExerciseNames.map(name => (
-                <Pressable
-                  key={name}
-                  style={[styles.slotOption, oneKSelections[slot] === name && styles.slotOptionSelected]}
-                  onPress={() => handleSelectExercise(slot, name)}
-                >
-                  <Text style={[styles.slotOptionText, oneKSelections[slot] === name && styles.slotOptionTextSelected]}>
-                    {name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          {activeSlot === slot && noteExerciseNames.length === 0 && (
-            <Text style={styles.slotEmpty}>Add exercises to your note first.</Text>
-          )}
-        </View>
-      ))}
-    </Card>
-    </View>,
+    <AnalyticsStrengthSection
+      key="strength-section"
+      handleStrengthLayout={handleStrengthLayout}
+      isNotesLoading={isNotesLoading}
+      oneK={analytics.oneK}
+      oneKChartData={oneKChartData}
+      activeSlot={activeSlot}
+      handleSlotTap={handleSlotTap}
+      SLOT_LABELS={SLOT_LABELS}
+      oneKSelections={oneKSelections}
+      noteExerciseNames={noteExerciseNames}
+      handleSelectExercise={handleSelectExercise}
+    />,
 
     <View 
       key="sticky-header"
       style={styles.signalStickyHeader} 
-      testID="sticky-header" // Note: testID is used at runtime by stickyHeaderIndex calculation below
+      testID="sticky-header"
     >
       <SectionTitle>Progressive Overload</SectionTitle>
       <View style={styles.searchContainer}>
@@ -531,7 +335,6 @@ export function AnalyticsScreen({ multiplier, section }) {
                 <View style={styles.exerciseList}>
                   {group.exercises.map((sig) => {
                     const normName = normalizeLiftName(sig.name);
-                    // For multi-day exercises, use per-day metrics for this row's heading.
                     const dayRow = sig.isMultiDay && sig.daySignals ? sig.daySignals[sig.currentDayHeading] : null;
                     const rowPr = dayRow ? dayRow.latest_pr : sig.latest_pr;
                     const rowTopWeight = dayRow ? dayRow.latest_top_weight : sig.latest_top_weight;
@@ -621,8 +424,6 @@ export function AnalyticsScreen({ multiplier, section }) {
   ]);
 
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
-  // foundIndex + 1 to account for ScreenShell's internal headerWrapper.
-  // If not found, we pass an empty array to disable sticky behavior rather than sticking a random element.
   const stickyHeaderIndices = foundIndex !== -1 ? [foundIndex + 1] : [];
 
   const editCheckInData = editPendingCheckIn ? {
@@ -662,385 +463,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   );
 }
 
-function formatCheckInDate(responded_at) {
-  // Parse only the YYYY-MM-DD portion to avoid UTC→local-timezone day shift
-  const [year, month, day] = responded_at.slice(0, 10).split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-// Detailed entry — used only for "Not great" check-ins, which carry the
-// reasons and metrics worth reading. Each is a calm callout card so entries
-// read as distinct units rather than a bunched-up wall of text.
-function FatigueRow({ ci, onEdit }) {
-  const metrics = [];
-  if (ci.exercises_skipped > 0) {
-    metrics.push(`${ci.exercises_skipped} skipped`);
-  }
-  if (ci.volume_decline_pct != null) {
-    metrics.push(`${ci.volume_decline_pct}% volume drop`);
-  }
-  return (
-    <Pressable
-      style={styles.fatigueEntry}
-      onPress={() => onEdit(ci)}
-      accessibilityRole="button"
-      accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
-    >
-      <View style={styles.fatigueEntryAccent} />
-      <View style={styles.fatigueEntryBody}>
-        <Text style={styles.fatigueDate}>{formatCheckInDate(ci.responded_at)}</Text>
-        {ci.reasons.length > 0 && (
-          <Text style={styles.fatigueReasons}>{ci.reasons.join(' · ')}</Text>
-        )}
-        {metrics.length > 0 && (
-          <Text style={styles.fatigueMeta}>{metrics.join('  ·  ')}</Text>
-        )}
-      </View>
-      <MaterialIcons name="chevron-right" size={18} color={Colors.textMuted} style={styles.fatigueChevron} />
-    </Pressable>
-  );
-}
-
-// Compact chip — used for low-signal "All good" / "Unanswered" check-ins,
-// which are mostly just a date. Chips wrap instead of stacking, and tapping
-// still opens the full editor.
-function FatigueChip({ ci, onEdit }) {
-  return (
-    <Pressable
-      style={styles.fatigueChip}
-      onPress={() => onEdit(ci)}
-      accessibilityRole="button"
-      accessibilityLabel={`Edit check-in for ${formatCheckInDate(ci.responded_at)}`}
-    >
-      <Text style={styles.fatigueChipText}>{formatCheckInDate(ci.responded_at)}</Text>
-    </Pressable>
-  );
-}
-
-function FatigueSection({ status, label, count, rows, onEdit, variant = 'detailed' }) {
-  return (
-    <View style={styles.fatigueSection}>
-      <View style={styles.fatigueSectionHeader}>
-        <View style={[styles.fatigueDot, styles[`fatigueDot_${status}`]]} />
-        <Text style={styles.fatigueSectionLabel}>{label}</Text>
-        <Text style={styles.fatigueSectionCount}>{count}</Text>
-      </View>
-      {variant === 'chips' ? (
-        <View style={styles.fatigueChipRow}>
-          {rows.map(ci => (
-            <FatigueChip key={ci.responded_at} ci={ci} onEdit={onEdit} />
-          ))}
-        </View>
-      ) : (
-        <View style={styles.fatigueEntryList}>
-          {rows.map(ci => (
-            <FatigueRow key={ci.responded_at} ci={ci} onEdit={onEdit} />
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-function CrossDayComparison({ daySignals, currentDay, otherDays }) {
-  const allDays = currentDay ? [currentDay, ...otherDays] : otherDays;
-  return (
-    <View style={styles.crossDayRow}>
-      {allDays.map((day, i) => {
-        const d = daySignals[day];
-        const trendColor = d?.overload_trend === 'up' ? Colors.success
-          : d?.overload_trend === 'down' ? Colors.error
-          : Colors.caution;
-        const trendChar = d?.overload_trend === 'up' ? '↑'
-          : d?.overload_trend === 'down' ? '↓'
-          : d?.overload_trend === 'flat' ? '↔' : null;
-        return (
-          <React.Fragment key={day}>
-            {i > 0 && <Text style={styles.crossDaySep}>·</Text>}
-            <View style={styles.crossDayChip}>
-              <Text style={[styles.crossDayChipLabel, day === currentDay && styles.crossDayChipLabelCurrent]}>
-                {day ? day.slice(0, 3).toUpperCase() : '—'}
-              </Text>
-              <Text style={styles.crossDayChipValue}>
-                {d?.latest_top_weight != null ? `${d.latest_top_weight}` : '—'}
-                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>{d.is_bodyweight ? 'reps' : 'lb'}</Text>}
-              </Text>
-              {trendChar && <Text style={[styles.crossDayTrend, { color: trendColor }]}>{trendChar}</Text>}
-            </View>
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
-}
-
-function formatOverload(trend) {
-  switch (trend) {
-    case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
-    case 'flat': return <Text style={{ color: Colors.caution, fontSize: 14 }}>↔</Text>;
-    case 'dash': return <Text style={{ color: Colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
-    case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
-    case 'baseline':
-    case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={Colors.textMuted} style={{ opacity: 0.4 }} />;
-    default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
-  }
-}
-
 const styles = StyleSheet.create({
-  statRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  strengthSection: {
-    gap: 16,
-  },
-  weightCard: {
-    padding: 20,
-    gap: 16,
-    backgroundColor: Colors.panelBackground,
-  },
-  chartBlock: {
-    gap: 4,
-  },
-  chartLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  chartArea: {
-    height: 100,
-    justifyContent: 'center',
-  },
-  chartPlaceholder: {
-    height: 100,
-    backgroundColor: Colors.subtleBg,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chartEmpty: {
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  weightHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  weightLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  weightValueLarge: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Colors.accent,
-  },
-  weightUnit: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginLeft: 4,
-  },
-  paceBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  paceSpike: {
-    backgroundColor: Colors.error,
-  },
-  paceNotable: {
-    backgroundColor: Colors.caution,
-  },
-  paceText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.textLight,
-  },
-  weightFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-    paddingTop: 16,
-  },
-  weightStat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  weightStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  weightStatLabel: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  oneKCard: {
-    padding: 24,
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.panelBackground,
-  },
-  oneKLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  oneKValue: {
-    ...HeroMetric.hero,
-    color: Colors.text,
-  },
-  oneKUnit: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    marginLeft: 4,
-  },
-  oneKProgressBarContainer: {
-    width: '100%',
-    height: 8,
-    backgroundColor: Colors.divider,
-    borderRadius: 4,
-    marginVertical: 12,
-    overflow: 'hidden',
-  },
-  oneKProgressBar: {
-    height: '100%',
-    backgroundColor: Colors.accent,
-    borderRadius: 4,
-  },
-  oneKBreakdown: {
-    flexDirection: 'row',
-    width: '100%',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  oneKChartBlock: {
-    width: '100%',
-    marginTop: 16,
-  },
-  oneKChartLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
-  oneKItem: {
-    alignItems: 'center',
-    gap: 2,
-    flex: 1,
-  },
-  oneKItemValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  oneKItemLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-  },
-  infoCard: {
-    backgroundColor: 'transparent',
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    padding: 20,
-  },
-  infoText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  slotCard: {
-    gap: 4,
-    padding: 16,
-  },
-  slotCardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  slotRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
-  },
-  slotLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    width: 72,
-  },
-  slotValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  slotValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-    textAlign: 'right',
-  },
-  slotChevron: {
-    fontSize: 10,
-    color: Colors.textMuted,
-  },
-  slotPicker: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 10,
-    marginBottom: 4,
-    overflow: 'hidden',
-  },
-  slotOption: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  slotOptionSelected: {
-    backgroundColor: Colors.chipBackground,
-  },
-  slotOptionText: {
-    fontSize: 14,
-    color: Colors.text,
-  },
-  slotOptionTextSelected: {
-    fontWeight: '700',
-    color: Colors.accent,
-  },
-  slotEmpty: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    fontStyle: 'italic',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
   signalStickyHeader: {
     backgroundColor: Colors.background,
     paddingBottom: 8,
@@ -1050,7 +473,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: {
-    ...InputStyle,
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: Colors.text,
   },
   signalColumnHeader: {
     flexDirection: 'row',
@@ -1118,12 +548,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     flex: 1,
   },
-  classifBadge: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    marginLeft: 8,
-  },
   signalMetricsGrid: {
     flexDirection: 'row',
   },
@@ -1155,46 +579,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontStyle: 'italic',
   },
-  crossDayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  crossDaySep: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginHorizontal: 2,
-  },
-  crossDayChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  crossDayChipLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  crossDayChipLabelCurrent: {
-    color: Colors.text,
-  },
-  crossDayChipValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.text,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-  },
-  crossDayUnit: {
-    fontSize: 11,
-    opacity: 0.5,
-  },
-  crossDayTrend: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   emptySearch: {
     padding: 32,
     alignItems: 'center',
@@ -1205,161 +589,4 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 15,
   },
-  fatigueCard: {
-    padding: 20,
-    gap: 8,
-    backgroundColor: Colors.panelBackground,
-  },
-  fatiguePanelLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  fatigueEmpty: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: 8,
-  },
-  fatigueSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  fatigueSummaryMain: {
-    flex: 1,
-    gap: 2,
-  },
-  fatigueAlert: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(212, 160, 23, 0.12)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  fatigueAlertText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.caution,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  fatigueDetails: {
-    gap: 20,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
-  },
-  fatigueInsightLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.textMuted,
-  },
-  fatigueInsightValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  fatigueSection: {
-    gap: 0,
-  },
-  fatigueSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  fatigueDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  fatigueDot_rough: {
-    backgroundColor: Colors.error,
-  },
-  fatigueDot_ok: {
-    backgroundColor: Colors.success,
-  },
-  fatigueDot_pending: {
-    backgroundColor: Colors.caution,
-  },
-  fatigueSectionLabel: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  fatigueSectionCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  fatigueEntryList: {
-    gap: 8,
-  },
-  fatigueEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.subtleBg,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  fatigueEntryAccent: {
-    alignSelf: 'stretch',
-    width: 3,
-    backgroundColor: Colors.error,
-  },
-  fatigueEntryBody: {
-    flex: 1,
-    gap: 4,
-    paddingVertical: 12,
-    paddingLeft: 14,
-  },
-  fatigueChevron: {
-    opacity: 0.5,
-    marginRight: 10,
-  },
-  fatigueDate: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  fatigueReasons: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.text,
-  },
-  fatigueMeta: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
-  fatigueChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingLeft: 16,
-  },
-  fatigueChip: {
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  fatigueChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-
 });
