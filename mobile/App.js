@@ -127,12 +127,14 @@ export default function App() {
       return false;
     }
     let loggedAt = parsed.logged_at || new Date().toISOString();
+    const d = new Date();
+    const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      const d = new Date();
-      const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       if (date <= localToday) {
         loggedAt = date + loggedAt.slice(10);
       }
+    } else {
+      loggedAt = localToday + loggedAt.slice(10);
     }
     const entry = makeWeightEntry({
       weight_value: parsed.weight_value,

@@ -3,12 +3,48 @@ import render from 'react-test-renderer';
 import { Alert } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
+import App from '../App';
+import { parseWeightEntry } from '../lib/parser';
+
+jest.mock('../lib/parser', () => {
+  const actual = jest.requireActual('../lib/parser');
+  return {
+    ...actual,
+    parseWeightEntry: jest.fn(actual.parseWeightEntry),
+  };
+});
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
 }));
+
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  return { MaterialIcons: () => null };
+}, { virtual: true });
+
+jest.mock('../screens/HomeScreen', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { HomeScreen: () => React.createElement(View) };
+});
+jest.mock('../screens/LogScreen', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { LogScreen: () => React.createElement(View) };
+});
+jest.mock('../screens/AnalyticsScreen', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { AnalyticsScreen: () => React.createElement(View) };
+});
+jest.mock('../screens/MoreScreen', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { MoreScreen: () => React.createElement(View) };
+});
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
@@ -511,6 +547,130 @@ describe('WeightScreen Goal Editor Live Preview', () => {
 
     // It should calculate a 10 lb / week pace, which triggers the warnings since current weight is 185 and target is 175 in 1 week.
     expect(hasText(root, 'Pace is unrealistic - consider a longer timeline.')).toBe(true);
+  });
+});
+
+describe('App weight saving local-date handling', () => {
+  let mockAdd;
+  let mockEntries;
+  let originalGetFullYear;
+  let originalGetMonth;
+  let originalGetDate;
+  let originalToISOString;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const actualParser = jest.requireActual('../lib/parser');
+    parseWeightEntry.mockImplementation(actualParser.parseWeightEntry);
+
+    mockEntries = [];
+    mockAdd = jest.fn().mockImplementation(async (entry) => {
+      mockEntries.push(entry);
+      return entry;
+    });
+
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: mockEntries,
+      add: mockAdd,
+      remove: jest.fn(),
+      update: jest.fn(),
+      refresh: jest.fn(),
+    });
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [],
+      currentNote: null,
+      currentId: null,
+      add: jest.fn(),
+      update: jest.fn(),
+      selectCurrent: jest.fn(),
+      refresh: jest.fn(),
+    });
+
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null,
+      save: jest.fn(),
+      clear: jest.fn(),
+    });
+
+    useEntries.useTrackedLifts.mockReturnValue({
+      trackedLifts: [],
+      refresh: jest.fn(),
+    });
+
+    useEntries.useUserProfile.mockReturnValue(null);
+
+    originalGetFullYear = Date.prototype.getFullYear;
+    originalGetMonth = Date.prototype.getMonth;
+    originalGetDate = Date.prototype.getDate;
+    originalToISOString = Date.prototype.toISOString;
+  });
+
+  afterEach(() => {
+    Date.prototype.getFullYear = originalGetFullYear;
+    Date.prototype.getMonth = originalGetMonth;
+    Date.prototype.getDate = originalGetDate;
+    Date.prototype.toISOString = originalToISOString;
+  });
+
+  test('saves new weight entry under local date when logged in late evening (UTC next day)', async () => {
+    Date.prototype.getFullYear = jest.fn(() => 2026);
+    Date.prototype.getMonth = jest.fn(() => 5); // June (0-indexed)
+    Date.prototype.getDate = jest.fn(() => 11);
+    Date.prototype.toISOString = jest.fn(() => '2026-06-12T03:30:00.000Z');
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    const weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+    });
+
+    await render.act(async () => {
+      await weightScreen.props.onSaveWeight();
+    });
+
+    expect(mockAdd).toHaveBeenCalled();
+    const savedEntry = mockAdd.mock.calls[0][0];
+    expect(savedEntry.logged_at).toBe('2026-06-11T03:30:00.000Z');
+  });
+
+  test('does not crash and saves correctly under local date when parsed.logged_at is undefined', async () => {
+    Date.prototype.getFullYear = jest.fn(() => 2026);
+    Date.prototype.getMonth = jest.fn(() => 5); // June (0-indexed)
+    Date.prototype.getDate = jest.fn(() => 11);
+    Date.prototype.toISOString = jest.fn(() => '2026-06-12T03:30:00.000Z');
+
+    parseWeightEntry.mockReturnValue({
+      ok: true,
+      raw: '185',
+      weight_value: 185,
+      weight_unit: 'lb',
+      logged_at: undefined,
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    const weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+    });
+
+    await render.act(async () => {
+      await weightScreen.props.onSaveWeight();
+    });
+
+    expect(mockAdd).toHaveBeenCalled();
+    const savedEntry = mockAdd.mock.calls[0][0];
+    expect(savedEntry.logged_at).toBe('2026-06-11T03:30:00.000Z');
   });
 });
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.68.2 - 2026-06-11
+
+- Issue #298: Fixed new weight-entry saves to keep the user's local calendar
+  date instead of drifting to the next UTC day during late-evening logs, and
+  added regression coverage for both the UTC-rollover case and the fallback
+  path when the parsed entry does not provide `logged_at`.
+
 ## 0.68.1 - 2026-06-08
 
 - Issue #296: Refactored the oversized mobile screen files (`LogScreen`,
