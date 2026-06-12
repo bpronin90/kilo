@@ -59,7 +59,7 @@ function ScaleIcon({ color = Colors.accent, size = 22 }) {
   );
 }
 
-export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate }) {
+export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading }) {
   const { goal: weightGoal } = useWeightGoal();
   const { trackedLifts } = useTrackedLifts();
 
@@ -139,10 +139,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     : null;
 
   const isEmptyState = useMemo(() => {
+    if (loading) return false;
     return (!weightEntries || weightEntries.length === 0) &&
            (!notes || notes.length === 0) &&
            (!workoutNote?.raw_text || !workoutNote.raw_text.trim());
-  }, [weightEntries, notes, workoutNote]);
+  }, [loading, weightEntries, notes, workoutNote]);
 
   return (
     <ScreenShell
