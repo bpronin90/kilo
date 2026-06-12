@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.3 - 2026-06-11
+
+- Issue #299: Hardened the Home and Weight goal UI for overdue targets so
+  expired goals no longer show negative weeks-left text or invalid pace math.
+  The Home goal card now renders a stable `Goal ended` state, and the Weight
+  guidance card now suppresses the misleading future-date prompt for both past
+  and same-day `weeks_remaining <= 0` goals while the mobile tests pin those
+  overdue-state regressions.
+
 ## 0.68.2 - 2026-06-11
 
 - Issue #298: Fixed new weight-entry saves to keep the user's local calendar

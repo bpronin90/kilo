@@ -137,7 +137,8 @@ The real native app path now has a modular React Native shell:
   `Cutting` / `Maintaining` heading row with the mode word accent-emphasized,
   separate Target and Pace stat columns, and semantic pace coloring driven by
   `goalInfo.warnings` (`unrealistic` = error, `unhealthy` = caution, otherwise
-  success) while still showing weeks remaining. The 1K card now uses a centered
+  success) while showing weeks remaining only for active goals and a stable
+  `Goal ended` state for overdue ones. The 1K card now uses a centered
   `1K Progress` label and total, keeps the shared progress bar plus three-column
   breakdown with full exercise names (Squats/Bench/Deadlifts) matching the
   canonical structure on Analytics, and adds progress-based hero-number color
@@ -290,8 +291,11 @@ The real native app path now has a modular React Native shell:
   Mifflin-St Jeor BMR formula and activity multipliers, including maintenance
   targets. Without a complete profile, it falls back to the legacy estimated
   deficit/surplus helper. Maintain-goal fallback cases still render semantic
-  maintenance guidance instead of gain/loss math, the no-estimate state keeps
-  the panel hierarchy visible with neutral fallback messaging, and when no
+  maintenance guidance instead of gain/loss math, overdue or same-day-complete
+  goals now render a terminal `Goal ended.` guidance state without negative
+  weeks-left or invalid pace output, the no-estimate state keeps the panel
+  hierarchy visible with neutral fallback messaging for goals that still need a
+  future target date, and when no
   saved weight entries exist the goal form still requires a current-weight
   fallback so the pace and calorie guidance can render from the saved goal
   state. Saved goals now render as a singular `Goal` section with a compact
