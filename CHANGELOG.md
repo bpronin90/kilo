@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.68.4 - 2026-06-11
+
+- Issue #300: Aligned non-SVG mobile accent-color usage with shared theme
+  tokens by routing the Home 1K progress interpolation through `Colors.accent`
+  and `Colors.success`, centralizing the session check-in modal's rough-state
+  button colors in `mobile/theme/colors.js`, and leaving the intentional
+  `#FF5C00` SVG brand fills unchanged.
+
 ## 0.68.3 - 2026-06-11
 
 - Issue #299: Hardened the Home and Weight goal UI for overdue targets so

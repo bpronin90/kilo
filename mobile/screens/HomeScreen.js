@@ -230,7 +230,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       {/* ══ TIER 3: 1k Club Progress ══ */}
       <Card style={styles.oneKCard}>
         <Text style={styles.oneKLabel}>1K Progress</Text>
-        <Text style={[styles.oneKHeroValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+        <Text style={[styles.oneKHeroValue, { color: lerpColor(Colors.accent, Colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
           {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
           <Text style={styles.oneKHeroUnit}> lb</Text>
         </Text>

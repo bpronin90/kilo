@@ -18,4 +18,6 @@ export const Colors = {
   divider: 'rgba(31, 26, 23, 0.05)',
   subtleBg: 'rgba(31, 26, 23, 0.02)',
   panelBackground: '#ffffff',
+  roughBackground: '#fff0e8',
+  roughBorder: '#e8c4a0',
 };
