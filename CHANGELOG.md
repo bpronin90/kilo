@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.68.5 - 2026-06-11
+
+- Issue #301: Added a first-run Home welcome card that appears only when the
+  user has no meaningful dashboard data yet, guides them into the `Log
+  Workout` and `Log Weight` flows, and tightened the Home card spacing around
+  a shared 24px padding baseline without flattening the existing hierarchy.
+
 ## 0.68.4 - 2026-06-11
 
 - Issue #300: Aligned non-SVG mobile accent-color usage with shared theme
