@@ -60,8 +60,8 @@ function ScaleIcon({ color = Colors.accent, size = 22 }) {
 }
 
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading }) {
-  const { goal: weightGoal } = useWeightGoal();
-  const { trackedLifts } = useTrackedLifts();
+  const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
+  const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
 
   const allSections = useMemo(
     () => (notes || []).flatMap(n => getNoteSections(n)),
@@ -138,19 +138,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     : weekTone === 'success' ? Colors.success
     : null;
 
+  // Gate the whole first paint on every data source Home renders, not just
+  // weight/notes: weight goal and tracked lifts feed the dashboard too, so
+  // including their loading prevents those sections from popping in after
+  // first paint.
+  const isLoading = loading || goalLoading || trackedLiftsLoading;
+
   const isEmptyState = useMemo(() => {
-    if (loading) return false;
+    if (isLoading) return false;
     return (!weightEntries || weightEntries.length === 0) &&
            (!notes || notes.length === 0) &&
            (!workoutNote?.raw_text || !workoutNote.raw_text.trim());
-  }, [loading, weightEntries, notes, workoutNote]);
+  }, [isLoading, weightEntries, notes, workoutNote]);
 
   return (
     <ScreenShell
       title={<KiloWordmark />}
       subtitle="Current routine progress."
     >
-      {isEmptyState ? (
+      {isLoading ? null : isEmptyState ? (
         <Card style={styles.welcomeCard}>
           <View style={styles.welcomeHeader}>
             <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
