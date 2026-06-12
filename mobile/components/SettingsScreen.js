@@ -7,7 +7,7 @@ import { useFeatureToggles } from '../hooks/useEntries';
 
 export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
-  const handleIncrement = () => onUpdate(Math.round((multiplier + 0.01) * 100) / 100);
+  const handleIncrement = () => onUpdate(Math.min(2.0, Math.round((multiplier + 0.01) * 100) / 100));
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
 
