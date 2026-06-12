@@ -87,6 +87,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
     const sessionCount = countWorkoutSessionsFromSections(sections || []);
 
+    let sanitizedGoalInfo = null;
+    if (goalInfo) {
+      const rawWeeks = goalInfo.weeks_remaining;
+      const weeks_remaining = (rawWeeks === null || rawWeeks === undefined || isNaN(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
+      const isOverdue = weeks_remaining <= 0;
+
+      let required_weekly_pace = goalInfo.required_weekly_pace;
+      if (isOverdue || required_weekly_pace === null || required_weekly_pace === undefined || isNaN(required_weekly_pace) || !isFinite(required_weekly_pace)) {
+        required_weekly_pace = null;
+      }
+
+      sanitizedGoalInfo = {
+        ...goalInfo,
+        weeks_remaining,
+        required_weekly_pace,
+        isOverdue,
+      };
+    }
+
     return {
       weightSeries,
       oneK,
@@ -94,7 +113,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
       weeksIn,
       weeklySummary,
       sessionCount,
-      goalInfo: goalInfo ? { ...goalInfo } : null,
+      goalInfo: sanitizedGoalInfo,
     };
   }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
 
@@ -178,7 +197,9 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               <Text style={styles.goalDirectionText}>
                 Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
               </Text>
-              <Text style={styles.goalWeeksText}>{Math.round(gi.weeks_remaining)} weeks left</Text>
+              <Text style={styles.goalWeeksText}>
+                {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
+              </Text>
             </View>
             <View style={styles.goalStatsGrid}>
               <View style={styles.goalStatCol}>
@@ -192,8 +213,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 <Text style={styles.goalStatLabel}>Pace</Text>
                 <View style={styles.goalStatValueRow}>
                   <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
-                    {gi.required_weekly_pace > 0 ? '+' : ''}
-                    {gi.required_weekly_pace.toFixed(1)}
+                    {gi.required_weekly_pace !== null ? (
+                      `${gi.required_weekly_pace > 0 ? '+' : ''}${gi.required_weekly_pace.toFixed(1)}`
+                    ) : (
+                      '—'
+                    )}
                   </Text>
                   <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>lb/wk</Text>
                 </View>

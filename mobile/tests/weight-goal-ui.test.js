@@ -26,7 +26,33 @@ jest.mock('../hooks/useEntries');
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
+import { deriveWeightGoalAnalytics } from '../lib/data';
+
 describe('WeightScreen', () => {
+  test('renders overdue goal state', () => {
+    const goal = { target_weight: 180, target_date: '2026-05-20', start_weight: 200 };
+    const entries = [
+      { id: '1', date: '2026-05-24', weight_value: 195.0, note: '' },
+      { id: '2', date: '2026-05-23', weight_value: 196.0, note: '' },
+    ];
+    const component = setup(goal, entries);
+    const root = component.root;
+
+    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
+
+    const allTexts = root.findAllByType('Text').map(t => {
+      const children = t.props.children;
+      return Array.isArray(children) ? children.join('') : String(children ?? '');
+    });
+
+    for (const txt of allTexts) {
+      expect(txt.includes('NaN')).toBe(false);
+      expect(txt.includes('Infinity')).toBe(false);
+      expect(txt).not.toMatch(/-\d+\s+weeks/);
+    }
+  });
+
   const defaultProps = {
     weightValue: '',
     setWeightValue: jest.fn(),
@@ -61,14 +87,13 @@ describe('WeightScreen', () => {
     return match;
   };
 
-  test('renders "no-estimate" state (future target date missing)', () => {
+  test('renders today target date as completed/overdue state (weeks_remaining <= 0)', () => {
     const goal = { target_weight: 180, target_date: '2026-05-24', start_weight: 200 };
     const component = setup(goal);
     const root = component.root;
 
-    expect(findText(root, 'Target pace')).toBeTruthy();
-    expect(findText(root, '-')).toBeTruthy();
-    expect(findText(root, 'Select a future target date for guidance.')).toBeTruthy();
+    expect(findText(root, 'Goal ended.')).toBeTruthy();
+    expect(findText(root, 'Select a future target date for guidance.')).toBeFalsy();
   });
 
   test('renders "maintain" state', () => {

@@ -41,7 +41,7 @@ export function WeightScreen({
   const {
     trendSummary: trends,
     paceLevel,
-    goalInfo,
+    goalInfo: rawGoalInfo,
     calorieEstimate,
   } = useMemo(
     () =>
@@ -67,6 +67,27 @@ export function WeightScreen({
       profile,
     ]
   );
+
+  const goalInfo = useMemo(() => {
+    if (!rawGoalInfo) return null;
+    const rawWeeks = rawGoalInfo.weeks_remaining;
+    const weeks_remaining = (rawWeeks === null || rawWeeks === undefined || isNaN(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
+
+    const activeTargetDate = goalForm.goalEditing ? goalForm.goalTargetDate : goal?.target_date;
+    const isOverdue = !!(activeTargetDate && weeks_remaining <= 0);
+
+    let required_weekly_pace = rawGoalInfo.required_weekly_pace;
+    if (isOverdue || required_weekly_pace === null || required_weekly_pace === undefined || isNaN(required_weekly_pace) || !isFinite(required_weekly_pace)) {
+      required_weekly_pace = null;
+    }
+
+    return {
+      ...rawGoalInfo,
+      weeks_remaining,
+      required_weekly_pace,
+      isOverdue,
+    };
+  }, [rawGoalInfo, goalForm.goalEditing, goalForm.goalTargetDate, goal?.target_date]);
 
   const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
 
@@ -264,7 +285,11 @@ export function WeightScreen({
       {goal && !goalForm.goalEditing && goalInfo && (
         <Card style={styles.guidanceCard}>
           <Text style={styles.guidanceTitle}>Guidance</Text>
-          <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+          {goalInfo.isOverdue ? (
+            <Text style={styles.guidanceWarningText}>Goal ended.</Text>
+          ) : (
+            <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+          )}
         </Card>
       )}
 
@@ -359,5 +384,10 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  guidanceWarningText: {
+    fontSize: 14,
+    color: Colors.error,
+    fontWeight: '600',
   },
 });
