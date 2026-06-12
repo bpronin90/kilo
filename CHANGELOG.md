@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.8 - 2026-06-11
+
+- Issue #304: Fixed the Log editor header so a long routine/note title no
+  longer pushes the `Undo` and `Done` actions off screen. In `ScreenShell`,
+  string titles now truncate to a single line (`numberOfLines={1}`,
+  `ellipsizeMode="tail"`) inside a shrinkable title group, keeping the header
+  actions fully visible and tappable regardless of title length while leaving
+  short titles and custom-node titles unchanged.
+
 ## 0.68.7 - 2026-06-11
 
 - Issue #303: Fixed three low-severity mobile defects surfaced by the #287
