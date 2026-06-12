@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.9 - 2026-06-11
+
+- Issue #305: Fixed the failing Dependency Audit CI job by resolving the
+  critical `shell-quote` advisory (GHSA-w7jw-789q-3m8p) in the mobile
+  lockfile via `npm audit fix` (no `--force`), bumping `shell-quote`
+  `1.8.3 → 1.8.4`. `mobile/` `npm audit --audit-level=high` now exits clean;
+  `package.json` deps and `expo` remain in-range. The remaining moderate
+  advisories require an `expo@56` breaking upgrade and are deferred.
+
 ## 0.68.8 - 2026-06-11
 
 - Issue #304: Fixed the Log editor header so a long routine/note title no
