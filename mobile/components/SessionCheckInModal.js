@@ -359,8 +359,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.cardBorder,
   },
   tierBtnRough: {
-    backgroundColor: '#fff0e8',
-    borderColor: '#e8c4a0',
+    backgroundColor: Colors.roughBackground,
+    borderColor: Colors.roughBorder,
   },
   tierBtnText: {
     fontSize: 15,
