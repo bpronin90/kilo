@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, LineChart, getSessionTone } from '../components/UI';
+import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
@@ -43,6 +43,21 @@ function KiloWordmark({ width = 140, height = 48 }) {
   );
 }
 
+function BarbellIcon({ color = Colors.accent, size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M18 4v16M6 4v16M2 8v8M22 8v8M6 12h12" />
+    </Svg>
+  );
+}
+
+function ScaleIcon({ color = Colors.accent, size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M3 6h18M12 6v14M12 20H9m3 0h3M5 6l3 8h8l3-8" />
+    </Svg>
+  );
+}
 
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate }) {
   const { goal: weightGoal } = useWeightGoal();
@@ -123,154 +138,205 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     : weekTone === 'success' ? Colors.success
     : null;
 
+  const isEmptyState = useMemo(() => {
+    return (!weightEntries || weightEntries.length === 0) &&
+           (!notes || notes.length === 0) &&
+           (!workoutNote?.raw_text || !workoutNote.raw_text.trim());
+  }, [weightEntries, notes, workoutNote]);
+
   return (
     <ScreenShell
       title={<KiloWordmark />}
       subtitle="Current routine progress."
     >
-      {/* ══ TIER 1: Weekly Summary ══ */}
-      <Card style={styles.weeklyHero}>
-        <View style={styles.heroContent}>
-          {/* #2 inline week label */}
-          <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
-            {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
-          </Text>
-
-          <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-            {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
-            {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
-          </Text>
-
-          {/* #4 sparkline strip below weight */}
-          <View style={styles.heroSparklineStrip}>
-            <LineChart
-              data={dashboardData.weightSeries}
-              color={Colors.textMuted}
-              height={44}
-              paddingHorizontal={0}
-              hideHeader
-            />
-            <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+      {isEmptyState ? (
+        <Card style={styles.welcomeCard}>
+          <View style={styles.welcomeHeader}>
+            <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
+            <Text style={styles.welcomeSubtitle}>
+              Your strength journal and body weight tracker. Let's get started with your routine.
+            </Text>
           </View>
 
-          {/* Classification band */}
-          <View style={styles.classifSection}>
-            <View style={styles.classifSectionHeader}>
-              <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
-            </View>
-            <View style={styles.classifRow}>
-              {[
-                { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
-                { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
-                { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
-              ].map((item, idx) => (
-                <View key={idx} style={styles.classifCol}>
-                  <View style={[styles.classifDot, { backgroundColor: item.color }]} />
-                  <Text style={styles.classifCount}>{item.count}</Text>
-                  <Text style={styles.classifLabel}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
+          <View style={styles.welcomeDivider} />
 
-          {/* #7 quiet CTA */}
-          <View style={styles.heroFooter}>
-            <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
-              <Text style={styles.insightsLinkText}>Full history and insights</Text>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
-            </Pressable>
-          </View>
-        </View>
-      </Card>
-
-      {/* ══ TIER 2: Weight Goal ══ */}
-      {dashboardData.goalInfo ? (() => {
-        const gi = dashboardData.goalInfo;
-        const warnings = gi.warnings || [];
-        const paceColor = warnings.includes('unrealistic') ? Colors.error
-          : warnings.includes('unhealthy') ? Colors.caution
-          : Colors.success;
-        const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
-        return (
-          <Card style={styles.goalCard}>
-            <View style={styles.goalModeRow}>
-              <Text style={styles.goalDirectionText}>
-                Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
-              </Text>
-              <Text style={styles.goalWeeksText}>
-                {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
-              </Text>
-            </View>
-            <View style={styles.goalStatsGrid}>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Target</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
-                  <Text style={styles.goalStatUnitLabel}>lb</Text>
-                </View>
+          <View style={styles.welcomeStep}>
+            <View style={styles.welcomeStepHeader}>
+              <View style={styles.welcomeIconContainer}>
+                <BarbellIcon />
               </View>
-              <View style={styles.goalStatCol}>
-                <Text style={styles.goalStatLabel}>Pace</Text>
-                <View style={styles.goalStatValueRow}>
-                  <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
-                    {gi.required_weekly_pace !== null ? (
-                      `${gi.required_weekly_pace > 0 ? '+' : ''}${gi.required_weekly_pace.toFixed(1)}`
-                    ) : (
-                      '—'
-                    )}
+              <View style={styles.welcomeStepTextContainer}>
+                <Text style={styles.welcomeStepTitle}>1. Log a Workout</Text>
+                <Text style={styles.welcomeStepDesc}>
+                  Write sets in plain text (e.g. "Squat: 315x5, 315x5"). Kilo automatically parses and tracks your volume.
+                </Text>
+              </View>
+            </View>
+            <Button
+              title="Log Workout"
+              onPress={() => onNavigate('Log')}
+              style={styles.welcomeButton}
+            />
+          </View>
+
+          <View style={styles.welcomeStep}>
+            <View style={styles.welcomeStepHeader}>
+              <View style={styles.welcomeIconContainer}>
+                <ScaleIcon />
+              </View>
+              <View style={styles.welcomeStepTextContainer}>
+                <Text style={styles.welcomeStepTitle}>2. Track Weight & Goals</Text>
+                <Text style={styles.welcomeStepDesc}>
+                  Set a target weight and log entries to visualize your 7-day average trend and weekly pace.
+                </Text>
+              </View>
+            </View>
+            <Button
+              title="Log Weight"
+              onPress={() => onNavigate('Weight')}
+              style={styles.welcomeButton}
+            />
+          </View>
+        </Card>
+      ) : (
+        <>
+          {/* ══ TIER 1: Weekly Summary ══ */}
+          <Card style={styles.weeklyHero}>
+            {/* #2 inline week label */}
+            <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
+              {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
+            </Text>
+
+            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
+              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
+              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
+            </Text>
+
+            {/* #4 sparkline strip below weight */}
+            <View style={styles.heroSparklineStrip}>
+              <LineChart
+                data={dashboardData.weightSeries}
+                color={Colors.textMuted}
+                height={44}
+                paddingHorizontal={0}
+                hideHeader
+              />
+              <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+            </View>
+
+            {/* Classification band */}
+            <View style={styles.classifSection}>
+              <View style={styles.classifSectionHeader}>
+                <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
+              </View>
+              <View style={styles.classifRow}>
+                {[
+                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
+                  { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
+                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
+                ].map((item, idx) => (
+                  <View key={idx} style={styles.classifCol}>
+                    <View style={[styles.classifDot, { backgroundColor: item.color }]} />
+                    <Text style={styles.classifCount}>{item.count}</Text>
+                    <Text style={styles.classifLabel}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* #7 quiet CTA */}
+            <View style={styles.heroFooter}>
+              <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
+                <Text style={styles.insightsLinkText}>Full history and insights</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
+          </Card>
+
+          {/* ══ TIER 2: Weight Goal ══ */}
+          {dashboardData.goalInfo ? (() => {
+            const gi = dashboardData.goalInfo;
+            const warnings = gi.warnings || [];
+            const paceColor = warnings.includes('unrealistic') ? Colors.error
+              : warnings.includes('unhealthy') ? Colors.caution
+              : Colors.success;
+            const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
+            return (
+              <Card style={styles.goalCard}>
+                <View style={styles.goalModeRow}>
+                  <Text style={styles.goalDirectionText}>
+                    Goal: <Text style={styles.goalModeAccent}>{modeLabel}</Text>
                   </Text>
-                  <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>lb/wk</Text>
+                  <Text style={styles.goalWeeksText}>
+                    {gi.isOverdue ? 'Goal ended' : `${Math.round(gi.weeks_remaining)} weeks left`}
+                  </Text>
                 </View>
+                <View style={styles.goalStatsGrid}>
+                  <View style={styles.goalStatCol}>
+                    <Text style={styles.goalStatLabel}>Target</Text>
+                    <View style={styles.goalStatValueRow}>
+                      <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
+                      <Text style={styles.goalStatUnitLabel}>lb</Text>
+                    </View>
+                  </View>
+                  <View style={styles.goalStatCol}>
+                    <Text style={styles.goalStatLabel}>Pace</Text>
+                    <View style={styles.goalStatValueRow}>
+                      <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
+                        {gi.required_weekly_pace !== null ? (
+                          `${gi.required_weekly_pace > 0 ? '+' : ''}${gi.required_weekly_pace.toFixed(1)}`
+                        ) : (
+                          '—'
+                        )}
+                      </Text>
+                      <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>lb/wk</Text>
+                    </View>
+                  </View>
+                </View>
+              </Card>
+            );
+          })() : null}
+
+          {/* ══ TIER 3: 1k Club Progress ══ */}
+          <Card style={styles.oneKCard}>
+            <Text style={styles.oneKLabel}>1K Progress</Text>
+            <Text style={[styles.oneKHeroValue, { color: lerpColor(Colors.accent, Colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+              {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
+              <Text style={styles.oneKHeroUnit}> lb</Text>
+            </Text>
+            <View style={styles.progressBarLarge}>
+              <View
+                style={[
+                  styles.progressFillLarge,
+                  { width: `${Math.min(100, ((dashboardData.oneK?.total || 0) / 1000) * 100)}%` }
+                ]}
+              />
+            </View>
+            <View style={styles.oneKGrid}>
+              <View style={styles.oneKGridItem}>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridLabel}>Squats</Text>
+              </View>
+              <View style={[styles.oneKGridItem, styles.oneKGridItemBorder]}>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridLabel}>Bench</Text>
+              </View>
+              <View style={styles.oneKGridItem}>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridLabel}>Deadlifts</Text>
               </View>
             </View>
           </Card>
-        );
-      })() : null}
-
-      {/* ══ TIER 3: 1k Club Progress ══ */}
-      <Card style={styles.oneKCard}>
-        <Text style={styles.oneKLabel}>1K Progress</Text>
-        <Text style={[styles.oneKHeroValue, { color: lerpColor(Colors.accent, Colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
-          {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-          <Text style={styles.oneKHeroUnit}> lb</Text>
-        </Text>
-        <View style={styles.progressBarLarge}>
-          <View
-            style={[
-              styles.progressFillLarge,
-              { width: `${Math.min(100, ((dashboardData.oneK?.total || 0) / 1000) * 100)}%` }
-            ]}
-          />
-        </View>
-        <View style={styles.oneKGrid}>
-          <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat?.toFixed(0) || '—'}</Text>
-            <Text style={styles.oneKGridLabel}>Squats</Text>
-          </View>
-          <View style={[styles.oneKGridItem, styles.oneKGridItemBorder]}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench?.toFixed(0) || '—'}</Text>
-            <Text style={styles.oneKGridLabel}>Bench</Text>
-          </View>
-          <View style={styles.oneKGridItem}>
-            <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift?.toFixed(0) || '—'}</Text>
-            <Text style={styles.oneKGridLabel}>Deadlifts</Text>
-          </View>
-        </View>
-      </Card>
+        </>
+      )}
     </ScreenShell>
   );
 }
 const styles = StyleSheet.create({
   weeklyHero: {
-    padding: 0,
-    backgroundColor: Colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    marginTop: 12,
-  },
-  heroContent: {
     padding: 24,
+    gap: 0,
+    marginTop: 12,
   },
   heroWeekLabel: {
     fontSize: 12,
@@ -360,7 +426,6 @@ const styles = StyleSheet.create({
   },
   goalCard: {
     padding: 24,
-    borderRadius: 24,
   },
   goalModeRow: {
     flexDirection: 'row',
@@ -411,7 +476,6 @@ const styles = StyleSheet.create({
   },
   oneKCard: {
     padding: 24,
-    borderRadius: 24,
     alignItems: 'center',
   },
   oneKLabel: {
@@ -482,5 +546,64 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     fontStyle: 'italic',
+  },
+  welcomeCard: {
+    padding: 24,
+    marginTop: 12,
+  },
+  welcomeHeader: {
+    marginBottom: 8,
+  },
+  welcomeTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  welcomeDivider: {
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    marginVertical: 16,
+  },
+  welcomeStep: {
+    marginBottom: 20,
+  },
+  welcomeStepHeader: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  welcomeIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.8,
+  },
+  welcomeStepTextContainer: {
+    flex: 1,
+  },
+  welcomeStepTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  welcomeStepDesc: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  welcomeButton: {
+    borderRadius: 14,
+    paddingVertical: 12,
   },
 });

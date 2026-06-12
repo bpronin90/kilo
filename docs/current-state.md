@@ -124,15 +124,21 @@ The real native app path now has a modular React Native shell:
   independent Kilo wordmark header drawn as an inline `react-native-svg`
   component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`)
   and sentence-case `Current routine progress.` subtitle. The screen uses a
-  three-panel hierarchy: a Weekly Summary hero card, a conditional Weight Goal
-  card, and a 1K Club Progress card. The hero card contains an inline week
-  label, a dominant 48px latest-weight value (the only accent-colored text
-  element on the screen besides the wordmark), a full-width 7-day sparkline
-  strip, and a separated classification section labeled `Exercise Progress`
-  with three semantic color dots (green/yellow/red) for live `Progressing`,
-  `Steady`, and `Regressing` overload counts mirrored from the current
-  Analytics row contract, and a quiet `Full history and insights` link into
-  Analytics. The Weight Goal card renders only when a goal is set
+  first-run/steady-state split: when the user has no weight history, no saved
+  workout notes, and no active draft workout note, Home now renders a welcome
+  onboarding card with `Log Workout` and `Log Weight` CTA buttons plus short
+  guidance for the two starter flows; otherwise it renders the established
+  three-panel hierarchy of a Weekly Summary hero card, a conditional Weight
+  Goal card, and a 1K Club Progress card. The steady-state hero card contains
+  an inline week label, a dominant 48px latest-weight value (the only
+  accent-colored text element on the screen besides the wordmark), a full-
+  width 7-day sparkline strip, and a separated classification section labeled
+  `Exercise Progress` with three semantic color dots (green/yellow/red) for
+  live `Progressing`, `Steady`, and `Regressing` overload counts mirrored from
+  the current Analytics row contract, and a quiet `Full history and insights`
+  link into Analytics. The Home cards now share a consistent 24px internal
+  padding baseline while preserving the intentional visual hierarchy between
+  the hero, goal, and 1K sections. The Weight Goal card renders only when a goal is set
   (`dashboardData.goalInfo !== null`) and now uses a `Goal: Bulking` /
   `Cutting` / `Maintaining` heading row with the mode word accent-emphasized,
   separate Target and Pace stat columns, and semantic pace coloring driven by
