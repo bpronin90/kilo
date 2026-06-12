@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.7 - 2026-06-11
+
+- Issue #303: Fixed three low-severity mobile defects surfaced by the #287
+  audit — imperial profile height can now be fully cleared without snapping
+  back to `0 ft` while single-field edits (e.g. clearing inches on `5 ft 10
+  in`) preserve the sibling value, the fatigue multiplier stepper increment is
+  now capped at `2.0` to mirror its existing floor, and a dead `InputStyle`
+  import was removed from `BackupScreen.js`.
+
 ## 0.68.6 - 2026-06-11
 
 - Issue #302: Reduced avoidable root-level mobile re-renders during active

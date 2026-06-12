@@ -108,13 +108,21 @@ export function ProfileScreen({ onBack }) {
     if (type === 'cm') {
       updateField('height_cm', val ? parseFloat(val) : null);
     } else if (type === 'ft') {
-      const f = parseFloat(val) || 0;
-      const i = parseFloat(inches) || 0;
-      updateField('height_cm', (f * 12 + i) * 2.54);
+      if (!val && !inches) {
+        updateField('height_cm', null);
+      } else {
+        const f = parseFloat(val) || 0;
+        const i = parseFloat(inches) || 0;
+        updateField('height_cm', (f * 12 + i) * 2.54);
+      }
     } else if (type === 'in') {
-      const f = parseFloat(feet) || 0;
-      const i = parseFloat(val) || 0;
-      updateField('height_cm', (f * 12 + i) * 2.54);
+      if (!val && !feet) {
+        updateField('height_cm', null);
+      } else {
+        const f = parseFloat(feet) || 0;
+        const i = parseFloat(val) || 0;
+        updateField('height_cm', (f * 12 + i) * 2.54);
+      }
     }
   };
 

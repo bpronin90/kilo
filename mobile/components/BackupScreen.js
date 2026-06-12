@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Share, StyleSheet, Text, TextInput } from 'react-native';
 import { ScreenShell } from './ScreenShell';
-import { Card, SectionTitle, Button, InputStyle } from './UI';
+import { Card, SectionTitle, Button } from './UI';
 import { Colors } from '../theme/colors';
 
 export function BackupScreen({ onBack, onExport, onImport }) {
