@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.68.10 - 2026-06-11
+
+- Issue #306: Taught `scripts/sync-version.mjs` to also keep
+  `mobile/package-lock.json`'s self-version (`.version` and
+  `.packages[""].version`) aligned with the canonical root version, in both
+  write and `--check` modes, and reconciled the pre-existing lockfile drift.
+  The lockfile is updated via a JSON round-trip (byte-identical apart from the
+  self-version fields), so version bumps no longer leave the mobile lockfile
+  trailing behind `package.json`/`app.json`.
+
 ## 0.68.9 - 2026-06-11
 
 - Issue #305: Fixed the failing Dependency Audit CI job by resolving the

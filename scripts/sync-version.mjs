@@ -46,6 +46,28 @@ for (const target of targets) {
   }
 }
 
+// The lockfile carries its own self-version in two places: the top-level
+// `.version` and `.packages[""].version`. These are not safely reachable with
+// the shared `versionRe` (the file has hundreds of dependency "version" keys),
+// so handle it via JSON. Re-serializing with 2-space indent round-trips the
+// npm lockfile byte-for-byte, so only the self-version fields actually change.
+const lockPath = join(root, 'mobile', 'package-lock.json');
+const lockLabel = 'mobile/package-lock.json';
+const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+const lockSelf = lock.packages && lock.packages[''];
+const lockCurrent = lock.version;
+if (lockCurrent !== canonical || (lockSelf && lockSelf.version !== canonical)) {
+  drift = true;
+  if (check) {
+    console.error(`Version drift: ${lockLabel} is ${lockCurrent}, expected ${canonical}`);
+  } else {
+    lock.version = canonical;
+    if (lockSelf) lockSelf.version = canonical;
+    writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
+    console.log(`Updated ${lockLabel}: ${lockCurrent} -> ${canonical}`);
+  }
+}
+
 if (check && drift) {
   console.error(`\nRun "node scripts/sync-version.mjs" to align mobile versions to ${canonical}.`);
   process.exit(1);
