@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.68.6 - 2026-06-11
+
+- Issue #302: Reduced avoidable root-level mobile re-renders during active
+  scrolling by replacing per-tick App scroll state churn with a localized
+  TabBar listener path, preserving the approved fade behavior while narrowing
+  the work triggered by scroll interactions.
+
 ## 0.68.5 - 2026-06-11
 
 - Issue #301: Added a first-run Home welcome card that appears only when the

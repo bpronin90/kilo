@@ -22,14 +22,26 @@ const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
-  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollListeners = useRef(new Set());
+  const isScrollingRef = useRef(false);
   const scrollTimeout = useRef(null);
 
+  const addScrollListener = useCallback((listener) => {
+    scrollListeners.current.add(listener);
+    return () => {
+      scrollListeners.current.delete(listener);
+    };
+  }, []);
+
   const handleScroll = useCallback(() => {
-    setIsScrolling(true);
+    if (!isScrollingRef.current) {
+      isScrollingRef.current = true;
+      scrollListeners.current.forEach((listener) => listener(true));
+    }
     if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
     scrollTimeout.current = setTimeout(() => {
-      setIsScrolling(false);
+      isScrollingRef.current = false;
+      scrollListeners.current.forEach((listener) => listener(false));
     }, 150);
   }, []);
 
@@ -274,7 +286,7 @@ export default function App() {
             tabs={TABS}
             activeTab={activeTab}
             onTabPress={handleTabPress}
-            isScrolling={isScrolling}
+            addScrollListener={addScrollListener}
           />
         </SafeAreaView>
       </View>

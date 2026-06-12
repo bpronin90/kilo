@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { Colors } from '../theme/colors';
 
-export function TabBar({ tabs, activeTab, onTabPress, isScrolling }) {
+export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const timeoutRef = useRef(null);
 
@@ -37,10 +37,13 @@ export function TabBar({ tabs, activeTab, onTabPress, isScrolling }) {
 
   // Handle external scroll activity
   useEffect(() => {
-    if (isScrolling) {
-      setTransparent(false);
-    }
-  }, [isScrolling]);
+    if (!addScrollListener) return;
+    return addScrollListener((scrolling) => {
+      if (scrolling) {
+        setTransparent(false);
+      }
+    });
+  }, [addScrollListener]);
 
   const handleInteractionStart = () => {
     setSolid(false); // Smooth but quick appearance on touch
