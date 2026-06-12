@@ -49,8 +49,14 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
             )}
             {title && (
               <View style={styles.titleRow}>
-                <View style={styles.titleGroup}>
-                  {typeof title === 'string' ? <Text style={styles.title}>{title}</Text> : title}
+                <View style={[styles.titleGroup, typeof title === 'string' && styles.titleGroupShrink]}>
+                  {typeof title === 'string' ? (
+                    <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                      {title}
+                    </Text>
+                  ) : (
+                    title
+                  )}
                 </View>
                 {!onBack && headerRight}
               </View>
@@ -118,6 +124,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  titleGroupShrink: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   title: {
     fontSize: 34,
