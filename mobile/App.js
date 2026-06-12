@@ -215,6 +215,7 @@ export default function App() {
             notes={noteHook.notes}
             successMessage={saveSuccess}
             onNavigate={handleTabPress}
+            loading={weightHook.loading || noteHook.loading}
           />
         </View>
         <View style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>

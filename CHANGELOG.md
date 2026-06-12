@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.68.11 - 2026-06-12
+
+- Issue #307: Fixed the cold-launch Home flicker where the Welcome card (and a
+  zero-valued dashboard) briefly flashed before data loaded. Home now gates its
+  first paint on all of its data sources — weight entries, workout notes, weight
+  goal, and tracked lifts — rendering nothing for the content region until they
+  resolve, then showing the dashboard (or the Welcome card only for a genuinely
+  empty first-run user). No more empty-state flash on launch.
+
 ## 0.68.10 - 2026-06-11
 
 - Issue #306: Taught `scripts/sync-version.mjs` to also keep
