@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.68.12 - 2026-06-14
+
+- Issue #308: Captured the phone-connectivity troubleshooting chain in
+  `docs/phone-runbook.md` so it is not re-derived. Documented that
+  `expo start --tunnel` no longer works on the free ngrok plan (it requests a
+  random `*.ngrok.app` domain free accounts cannot bind → `ERR_NGROK_316`, a
+  server-side policy change absent from the ngrok/Expo changelogs), and replaced
+  the preferred flow with self-run `ngrok http 8081` on the account's reserved
+  static domain plus `EXPO_PACKAGER_PROXY_URL` so Metro advertises the public
+  tunnel URL instead of baking in `:8081` (which otherwise breaks JS bundle
+  loading). Also added symptom-indexed entries for the WSL `netsh portproxy`
+  fallback gotchas (`iphlpsvc`, IPv6-only `[::1]:8081`, WSL-IP churn), the
+  QR-encodes-WSL-IP case, and the benign `@react-native-community/datetimepicker`
+  update notice (do not "fix" via `expo install --fix`).
+
 ## 0.68.11 - 2026-06-12
 
 - Issue #307: Fixed the cold-launch Home flicker where the Welcome card (and a

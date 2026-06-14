@@ -4,33 +4,48 @@ Use this when the Kilo Expo app is run from WSL and loaded in Expo Go on a phone
 
 ## TL;DR
 
-Preferred path: use Expo tunnel.
+> **`npx expo start --tunnel` no longer works on the free ngrok plan.** It demands
+> a random `*.ngrok.app` domain that free accounts cannot bind (`ERR_NGROK_316`).
+> Run ngrok yourself on your reserved static domain instead. See
+> [`ERR_NGROK_316`](#err_ngrok_316--credential-acl-policy-does-not-permit-binding-this-name)
+> for the full root cause.
 
-1. From repo root in WSL, start Expo tunnel:
+Preferred path: self-run ngrok bound to your static domain, with Expo pointed at
+the public tunnel URL.
+
+1. Terminal 1 — bind ngrok (auto-uses your one reserved static domain):
 
 ```bash
-npx expo start --tunnel
+ngrok http 8081
 ```
 
-2. Open the Expo Go link or scan the QR code shown in the terminal.
+2. Terminal 2 — from `mobile/`, start Metro advertising the public tunnel URL:
 
-3. If tunnel is unavailable or unstable, use the WSL port-forward fallback in `Working WSL Fix` below.
+```bash
+EXPO_PACKAGER_PROXY_URL=https://<your-static>.ngrok-free.dev npx expo start
+```
+
+3. In Expo Go, **Enter URL manually**: `exp://<your-static>.ngrok-free.dev` (no port).
+
+4. If ngrok is unavailable, use the WSL port-forward fallback in `Working WSL Fix` below.
 
 ## Preferred Start
 
-From repo root in WSL:
+Two terminals from WSL. **`EXPO_PACKAGER_PROXY_URL` is required** — without it Metro
+bakes its local `:8081` into the bundle URL and the JS bundle fails to load over
+the tunnel (see the `ERR_NGROK_316` troubleshooting entry for why).
 
 ```bash
-npm run mobile:start:tunnel
+# Terminal 1: bind ngrok to your reserved static domain (no --url needed)
+ngrok http 8081
+
+# Terminal 2 (from mobile/): Metro, advertising the public tunnel URL
+EXPO_PACKAGER_PROXY_URL=https://<your-static>.ngrok-free.dev npx expo start
 ```
 
-Equivalent direct command from `mobile/`:
-
-```bash
-npx expo start --tunnel
-```
-
-This avoids the usual WSL-local-IP problem and is the default phone workflow for this repo.
+Then open `exp://<your-static>.ngrok-free.dev` in Expo Go (no port). This replaces
+the old `npm run mobile:start:tunnel` / `expo start --tunnel` flow, which the free
+ngrok plan can no longer serve.
 
 ## WSL Fallback Start
 
@@ -101,6 +116,114 @@ If WSL restarted, the `172.x.x.x` IP may change. When that happens:
 1. Stop using the old forward.
 2. Re-run the `portproxy delete` command.
 3. Re-run the `portproxy add` command with the new WSL IP.
+
+## Troubleshooting
+
+Symptom-indexed fixes for failures that have cost real debugging time. Find the
+symptom, apply the fix, do not re-derive the chain.
+
+### `ERR_NGROK_316` — "credential ACL policy does not permit binding this name"
+
+Symptom: `npx expo start --tunnel` fails with `ERR_NGROK_316` and a line like
+`Name: <random>.ngrok.app`.
+
+**Root cause (free ngrok plan):** the free plan no longer grants random/ephemeral
+domains — each account gets exactly **one reserved static domain**
+(`*.ngrok-free.app` / `*.ngrok-free.dev`). But `expo start --tunnel` always asks
+ngrok for a **random `*.ngrok.app`** name, which the free account is not allowed
+to bind → `316`. This is a server-side ngrok policy change and does **not** appear
+in the ngrok-agent or Expo changelogs, so a setup that worked for months can
+break overnight with no local change. **No token swap fixes this** — the token is
+fine; the plan simply can't bind a random name.
+
+Confirm it is the plan, not the token: run the standalone agent with no requested
+name. On a free account it silently substitutes your static domain instead of a
+random one (proof the random grant is gone):
+
+```bash
+ngrok http 8081          # -> url=https://<your-static>.ngrok-free.dev, no 316
+```
+
+**Fix: stop using `expo start --tunnel`. Run ngrok yourself on your static domain
+and point Expo at it via `EXPO_PACKAGER_PROXY_URL`.** Two terminals:
+
+```bash
+# Terminal 1 — bind ngrok (auto-uses your one static domain; no --url needed)
+ngrok http 8081
+
+# Terminal 2 (from mobile/) — start Metro advertising the PUBLIC tunnel URL
+EXPO_PACKAGER_PROXY_URL=https://<your-static>.ngrok-free.dev npx expo start
+```
+
+Then in Expo Go open `exp://<your-static>.ngrok-free.dev` (no port).
+
+`EXPO_PACKAGER_PROXY_URL` is required, not optional: without it Metro bakes its
+local port into the manifest's bundle URL
+(`https://<your-static>.ngrok-free.dev:8081/index.bundle`). The phone loads the
+manifest over the tunnel (443) but then fails to fetch the JS bundle from `:8081`,
+which the tunnel does not serve — the app connects, then hangs/errors loading
+JavaScript. `EXPO_PACKAGER_PROXY_URL` overrides both host and port (https → 443),
+so manifest and bundle both flow through the tunnel.
+
+Verify the full chain from WSL before blaming the phone — bundle URL must have no
+`:8081`, and the bundle itself must return `200`:
+
+```bash
+curl -s -H 'expo-platform: android' -H 'Accept: application/expo+json' \
+  https://<your-static>.ngrok-free.dev/ | grep -o '"url":"[^"]*index.bundle[^"]*"'
+```
+
+Secondary cause (token, not plan): `@expo/ngrok` reads the **v2** config at
+`~/.expo/ngrok.yml`, while the v3 standalone CLI reads
+`~/.config/ngrok/ngrok.yml`. A stale token in the v2 file (re-issuing tokens via
+the v3 CLI does not touch it) can surface as `ERR_NGROK_108` (session limit) or a
+genuinely ACL-restricted token. Check for drift and sync if needed:
+
+```bash
+diff <(grep -i authtoken ~/.expo/ngrok.yml) \
+     <(grep -i authtoken ~/.config/ngrok/ngrok.yml)
+printf 'version: "2"\nauthtoken: YOUR_TOKEN\n' > ~/.expo/ngrok.yml
+```
+
+### "localhost works but LAN doesn't" — WSL port-forward fallback gotchas
+
+When using the `netsh portproxy` fallback in `Working WSL Fix`, these silently
+break the forward:
+
+- **`iphlpsvc` (Windows IP Helper) must be running**, or `netsh portproxy`
+  silently no-ops. Verify it is started before trusting any portproxy rule.
+- **WSL2 auto-forwards localhost as IPv6 `[::1]:8081` only.** `curl localhost:8081`
+  on Windows can succeed while the LAN IP fails. Verify an IPv4 listener exists:
+
+  ```powershell
+  netstat -an | findstr :8081
+  ```
+
+  Look for a `0.0.0.0:8081 ... LISTENING` line. If only `[::1]:8081` appears, the
+  LAN path is not actually forwarded.
+- **The portproxy `connectaddress` is the WSL `172.x` IP, which changes on every
+  WSL restart.** Re-add the rule with the fresh `hostname -I` (run in WSL); do
+  not touch ngrok for this.
+- **`netsh interface portproxy reset` wipes the rule.** Re-add it afterward.
+
+### "QR doesn't connect" — QR encodes the unreachable WSL IP
+
+Symptom: without tunneling, `npx expo start` advertises `exp://172.x:8081`, a
+WSL-internal IP the phone cannot reach, so scanning the QR never connects.
+
+Fix: either manually open `exp://<windows-wifi-ip>:8081` in Expo Go, or start
+Expo so the QR encodes the reachable Windows Wi-Fi IP:
+
+```bash
+REACT_NATIVE_PACKAGER_HOSTNAME=<windows-wifi-ip> npx expo start
+```
+
+### `@react-native-community/datetimepicker` "should be updated" notice
+
+The startup notice that `@react-native-community/datetimepicker` "should be
+updated for best compatibility" is **benign**. Do **not** "fix" it with
+`expo install --fix` — that churns the repo's intended dependency set. Leave it
+as-is (see `Dependency Note` below).
 
 ## Dependency Note
 
