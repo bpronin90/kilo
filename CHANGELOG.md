@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.68.13 - 2026-06-14
+
+- Issue #309: Added `docs/backend-roadmap.md` as the build-ready roadmap for
+  moving Kilo from local-only personal use to a public web-first self-serve
+  product on Supabase. The roadmap preserves the shipped note-first workout
+  model, maps every current AsyncStorage key to a cloud target, defines RLS and
+  last-write-wins sync expectations, covers account export/deletion plus
+  privacy/abuse obligations, names the Expo web static-export path, and spun out
+  the ordered `backend-v1` follow-up issue series #310-#324 with tight per-card
+  scope, allowed-file, verification, and stop-condition contracts.
+
 ## 0.68.12 - 2026-06-14
 
 - Issue #308: Captured the phone-connectivity troubleshooting chain in

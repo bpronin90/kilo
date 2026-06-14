@@ -35,6 +35,7 @@ docs/
   current-state.md
   architecture.md
   testing-and-qa.md
+  backend-roadmap.md
   mvp-v4.5-roadmap.md
   mvp-refine-roadmap.md
   design-system-map.md ← cross-screen style audit: every color, font, spacing token with file and line
@@ -144,6 +145,7 @@ npm --prefix mobile test
 | `docs/current-state.md` | Single source of truth for MVP status: what is implemented, known gaps, and the launch prerequisite checklist. Read this first. |
 | `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
+| `docs/backend-roadmap.md` | Active public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
 | `docs/mvp-v4.5-roadmap.md` | Roadmap for the MVP4.5 pass, covering data stability, shared derivation ownership, test hardening, and app-shell consistency. |
 | `docs/mvp-refine-roadmap.md` | Roadmap for the MVP-Refine pass, which ran after MVP4.5. Now complete and retained as a historical reference. |
 | `docs/design-system-map.md` | Cross-screen style audit: every color token, font size, spacing value, and card treatment with file paths and line numbers. Reference for manual visual refinement. |
