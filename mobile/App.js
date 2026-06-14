@@ -208,7 +208,7 @@ export default function App() {
   const renderContent = () => {
     return (
       <>
-        <View style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}>
+        <View testID="tab-content-Home" style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}>
           <HomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
@@ -218,7 +218,7 @@ export default function App() {
             loading={weightHook.loading || noteHook.loading}
           />
         </View>
-        <View style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
+        <View testID="tab-content-Log" style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
           <LogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
@@ -230,7 +230,7 @@ export default function App() {
             deloadDateEditEnabled={deloadDateEditEnabled}
           />
         </View>
-        <View style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
+        <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
           <WeightScreen
             weightValue={weightValue}
             setWeightValue={setWeightValue}
@@ -242,10 +242,10 @@ export default function App() {
             weightDateEditEnabled={weightDateEditEnabled}
           />
         </View>
-        <View style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
+        <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
           <AnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
         </View>
-        <View style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
+        <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MoreScreen
             onNavigate={handleTabPress}
             onExport={handleExport}
