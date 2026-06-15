@@ -1,9 +1,49 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { Colors } from '../theme/colors';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
+
+function localDateToday() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Web-safe date input. The native @react-native-community/datetimepicker has no
+// usable rendering on web, so on web we render a real DOM <input type="date">
+// (react-native-web passes lowercase string element types through to the DOM).
+// It writes the YYYY-MM-DD value straight back via onChangeDate, mirroring the
+// native onChange path which also normalizes to a YYYY-MM-DD string. Capped at
+// today via max, matching the native maximumDate.
+function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
+  return React.createElement('input', {
+    type: 'date',
+    value: value || '',
+    max: localDateToday(),
+    'aria-label': accessibilityLabel,
+    onChange: (e) => {
+      const next = e?.target?.value;
+      if (next) onChangeDate(next);
+    },
+    style: {
+      backgroundColor: Colors.inputBackground,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderStyle: 'solid',
+      borderColor: Colors.inputBorder,
+      padding: 14,
+      fontSize: 16,
+      color: Colors.text,
+      fontFamily: 'inherit',
+      width: '100%',
+      boxSizing: 'border-box',
+    },
+  });
+}
 
 export function LogScreenEditorCard({
   deloadMode,
@@ -73,14 +113,27 @@ export function LogScreenEditorCard({
             {isEditingDeloadNote && deloadDateEditEnabled && (
               <>
                 <Text style={styles.inputLabel}>Date</Text>
-                <Pressable
-                  style={[styles.input, styles.dateInput]}
-                  onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
-                  accessibilityLabel="Deload date"
-                  accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
-                >
-                  <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
-                </Pressable>
+                {Platform.OS === 'web' && editingDeloadHasLinkedRecord ? (
+                  <View style={styles.dateInputWebWrap}>
+                    <WebDateInput
+                      value={deloadEditDate}
+                      onChangeDate={(newDateStr) => {
+                        setDeloadEditDate(newDateStr);
+                        setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
+                      }}
+                      accessibilityLabel="Deload date"
+                    />
+                  </View>
+                ) : (
+                  <Pressable
+                    style={[styles.input, styles.dateInput]}
+                    onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
+                    accessibilityLabel="Deload date"
+                    accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
+                  >
+                    <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
+                  </Pressable>
+                )}
                 {editingDeloadHasLinkedRecord && (
                   <>
                     <Text style={styles.inputLabel}>Session #</Text>
@@ -228,6 +281,9 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     justifyContent: 'center',
+    marginBottom: 12,
+  },
+  dateInputWebWrap: {
     marginBottom: 12,
   },
   dateInputText: {
