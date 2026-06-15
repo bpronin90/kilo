@@ -780,6 +780,11 @@ The shipped native Android launcher, adaptive icon, splash icon, and web
 favicon assets now use Kilo-branded PNG files instead of the default Expo
 placeholder artwork.
 
+The Expo web target is configured for static export with Metro and single-output
+web output in `mobile/app.json`. `npx expo export --platform web` now emits the
+static web artifact from `mobile/`; desktop usability fallbacks, local-data web
+smoke verification, and hosting remain the follow-on Phase 2 work.
+
 **iOS device build blockers:** the `ios-device` profile uses internal
 (ad hoc) distribution, which requires an Apple Developer account and the target
 device UDID registered in the Apple Developer portal before the build starts. The
