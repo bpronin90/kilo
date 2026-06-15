@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.68.15 - 2026-06-15
+
+- Issue #313: Enabled Expo web static export by configuring the mobile Expo
+  web target for Metro bundling and single-output export. `npx expo export
+  --platform web` now emits a static web build without changing native Android
+  behavior or adding a new runtime dependency.
+
 ## 0.68.14 - 2026-06-15
 
 - Issue #311: Added focused storage-seam regression coverage for the
