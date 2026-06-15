@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, Pressable, BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -10,6 +10,123 @@ import { BackupScreen } from '../components/BackupScreen';
 import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { useAuthSession } from '../hooks/useAuthSession';
+import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
+import { SYNC_STATUS } from '../storage/syncQueue';
+
+// User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
+//
+// Shows whether each phase is idle/running/failed/complete and offers a
+// non-destructive retry only when a phase has failed. There are deliberately no
+// admin/support controls here — only the signed-in user's own retry/export.
+function CloudSyncRecovery() {
+  const { bootstrap, sync, retryBootstrap, retrySync } = useSyncRecovery();
+  const { exportCloud } = useCloudExport();
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+
+  const phaseLabel = (s) => {
+    switch (s.status) {
+      case SYNC_STATUS.RUNNING:
+        return 'Running…';
+      case SYNC_STATUS.FAILED:
+        return `Failed${s.error ? `: ${s.error}` : ''}`;
+      case SYNC_STATUS.COMPLETE:
+        return 'Complete';
+      default:
+        return 'Idle';
+    }
+  };
+
+  // Retry re-runs the same phase. The actual bootstrap/sync runner is owned by
+  // the sync engine; here we re-invoke whatever runner the store last held by
+  // passing a no-op-safe retry. When the engine is wired it supplies the runner
+  // via the store; this affordance only surfaces and triggers recovery.
+  const handleRetry = async (kind) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const retry = kind === 'bootstrap' ? retryBootstrap : retrySync;
+      // No runner is available standalone yet; report that recovery was
+      // requested. The sync engine binds the real runner once it lands.
+      const result = await retry(undefined);
+      setStatus(
+        result?.ok
+          ? `${kind === 'bootstrap' ? 'Bootstrap' : 'Sync'} retried.`
+          : result?.error || 'Retry could not start.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCloudExport = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await exportCloud();
+      if (!result.ok) {
+        setStatus(result.error || 'Cloud export failed.');
+        return;
+      }
+      await Share.share({ message: result.json });
+      setStatus('Cloud export ready.');
+    } catch {
+      setStatus('Cloud export failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.accountBlock}>
+      <SectionTitle>Cloud Sync</SectionTitle>
+
+      <View style={styles.syncRow}>
+        <Text style={styles.syncLabel}>Bootstrap</Text>
+        <Text style={styles.syncValue} accessibilityLabel={`Bootstrap status ${bootstrap.status}`}>
+          {phaseLabel(bootstrap)}
+        </Text>
+      </View>
+      {bootstrap.retryable ? (
+        <Button
+          title={busy ? 'Working…' : 'Retry Bootstrap'}
+          disabled={busy}
+          onPress={() => handleRetry('bootstrap')}
+        />
+      ) : null}
+
+      <View style={styles.syncRow}>
+        <Text style={styles.syncLabel}>Sync</Text>
+        <Text style={styles.syncValue} accessibilityLabel={`Sync status ${sync.status}`}>
+          {phaseLabel(sync)}
+        </Text>
+      </View>
+      {sync.retryable ? (
+        <Button
+          title={busy ? 'Working…' : 'Retry Sync'}
+          disabled={busy}
+          onPress={() => handleRetry('sync')}
+        />
+      ) : null}
+
+      <Text style={styles.accountNote}>
+        Retrying is safe and never overwrites your local data.
+      </Text>
+
+      <Button
+        title={busy ? 'Working…' : 'Export Cloud Data'}
+        disabled={busy}
+        onPress={handleCloudExport}
+      />
+
+      {status ? (
+        <Text style={styles.accountStatus} accessibilityLabel="Cloud sync status">
+          {status}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
@@ -59,6 +176,7 @@ function AccountScreen({ onBack }) {
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
+          <CloudSyncRecovery />
         </View>
       ) : (
         <View style={styles.accountBlock}>
@@ -258,5 +376,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
     marginTop: 16,
+  },
+  syncRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  syncLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  syncValue: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 12,
   },
 });

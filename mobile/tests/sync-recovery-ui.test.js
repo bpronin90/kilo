@@ -1,0 +1,215 @@
+// Sync recovery + cloud export UX coverage (Phase 4 / Task 12).
+//
+// Covers the user-facing recovery surface and the cloud export hook:
+// - syncQueue state machine: idle/running/failed/complete per phase
+// - non-destructive retry: a failing runner leaves local AsyncStorage untouched
+// - useSyncRecovery hook reflects store state and triggers retry
+// - useCloudExport hook produces a v3-compatible payload plus cloud-only fields
+//
+// The sync algorithm itself is out of scope and not exercised here; these tests
+// only prove the recovery/status/export affordances behave safely.
+
+import React from 'react';
+import renderer, { act } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import {
+  SYNC_STATUS,
+  SYNC_PHASE,
+  getSyncState,
+  markRunning,
+  markComplete,
+  markFailed,
+  runPhase,
+  retryPhase,
+  resetPhase,
+  subscribeSyncState,
+  __resetSyncQueue,
+} from '../storage/syncQueue';
+import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
+import { saveWeightEntry } from '../storage/entries';
+
+beforeEach(() => {
+  AsyncStorage.clear();
+  __resetSyncQueue();
+});
+
+function flush() {
+  return act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe('syncQueue state machine', () => {
+  test('both phases start idle', () => {
+    const state = getSyncState();
+    expect(state[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
+    expect(state[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
+    expect(state[SYNC_PHASE.BOOTSTRAP].retryable).toBe(false);
+  });
+
+  test('markRunning/markComplete/markFailed transition a single phase', () => {
+    markRunning(SYNC_PHASE.SYNC);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.RUNNING);
+    // Bootstrap is unaffected.
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
+
+    markComplete(SYNC_PHASE.SYNC);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+
+    markFailed(SYNC_PHASE.BOOTSTRAP, new Error('network down'));
+    const bs = getSyncState()[SYNC_PHASE.BOOTSTRAP];
+    expect(bs.status).toBe(SYNC_STATUS.FAILED);
+    expect(bs.error).toBe('network down');
+    expect(bs.retryable).toBe(true);
+  });
+
+  test('resetPhase returns a phase to idle', () => {
+    markFailed(SYNC_PHASE.SYNC, 'boom');
+    resetPhase(SYNC_PHASE.SYNC);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
+    expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(false);
+  });
+
+  test('subscribeSyncState notifies on change and unsubscribe stops it', () => {
+    const seen = [];
+    const unsubscribe = subscribeSyncState((s) => seen.push(s[SYNC_PHASE.SYNC].status));
+    markRunning(SYNC_PHASE.SYNC);
+    markComplete(SYNC_PHASE.SYNC);
+    unsubscribe();
+    markFailed(SYNC_PHASE.SYNC, 'x');
+    expect(seen).toEqual([SYNC_STATUS.RUNNING, SYNC_STATUS.COMPLETE]);
+  });
+});
+
+describe('runPhase / retryPhase', () => {
+  test('successful runner drives running -> complete and returns ok', async () => {
+    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, async () => 'done');
+    expect(result.ok).toBe(true);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('throwing runner leaves phase failed and retryable', async () => {
+    const result = await runPhase(SYNC_PHASE.SYNC, async () => {
+      throw new Error('sync exploded');
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('sync exploded');
+    const s = getSyncState()[SYNC_PHASE.SYNC];
+    expect(s.status).toBe(SYNC_STATUS.FAILED);
+    expect(s.retryable).toBe(true);
+  });
+
+  test('runner returning { ok: false } is treated as recoverable failure', async () => {
+    const result = await runPhase(SYNC_PHASE.SYNC, async () => ({ ok: false, error: 'conflict' }));
+    expect(result.ok).toBe(false);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+    expect(getSyncState()[SYNC_PHASE.SYNC].error).toBe('conflict');
+  });
+
+  test('a failed bootstrap leaves local AsyncStorage untouched (non-destructive)', async () => {
+    await saveWeightEntry({
+      id: 'w_keep_1',
+      entry_type: 'weight',
+      date: '2026-06-01',
+      weight_value: 180,
+      logged_at: '2026-06-01T08:00:00.000Z',
+    });
+    const before = await AsyncStorage.getItem('kilo_weight_entries');
+
+    await runPhase(SYNC_PHASE.BOOTSTRAP, async () => {
+      throw new Error('upload failed');
+    });
+
+    const after = await AsyncStorage.getItem('kilo_weight_entries');
+    expect(after).toBe(before);
+    expect(JSON.parse(after).map((e) => e.id)).toContain('w_keep_1');
+  });
+
+  test('retry of a previously failed phase can succeed and clears retryable', async () => {
+    let attempt = 0;
+    const runner = async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error('first fails');
+      return 'ok';
+    };
+    await runPhase(SYNC_PHASE.SYNC, runner);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+
+    const retry = await retryPhase(SYNC_PHASE.SYNC, runner);
+    expect(retry.ok).toBe(true);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(getSyncState()[SYNC_PHASE.SYNC].retryable).toBe(false);
+  });
+
+  test('unknown phase or missing runner returns ok:false without throwing', async () => {
+    expect((await runPhase('bogus', async () => 1)).ok).toBe(false);
+    expect((await runPhase(SYNC_PHASE.SYNC, null)).ok).toBe(false);
+  });
+});
+
+function renderHook(useHook) {
+  const ref = { current: null };
+  function Probe() {
+    ref.current = useHook();
+    return null;
+  }
+  let tree;
+  act(() => {
+    tree = renderer.create(React.createElement(Probe));
+  });
+  return { ref, tree };
+}
+
+describe('useSyncRecovery hook', () => {
+  test('reflects current store state and live updates', async () => {
+    const { ref } = renderHook(useSyncRecovery);
+    await flush();
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.IDLE);
+    expect(ref.current.sync.status).toBe(SYNC_STATUS.IDLE);
+
+    await act(async () => {
+      markFailed(SYNC_PHASE.BOOTSTRAP, 'offline');
+    });
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.FAILED);
+    expect(ref.current.bootstrap.retryable).toBe(true);
+  });
+
+  test('retryBootstrap/retrySync drive the store through a runner', async () => {
+    const { ref } = renderHook(useSyncRecovery);
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.retrySync(async () => 'ok');
+    });
+    expect(result.ok).toBe(true);
+    expect(ref.current.sync.status).toBe(SYNC_STATUS.COMPLETE);
+  });
+});
+
+describe('useCloudExport hook', () => {
+  test('produces a v3-compatible JSON payload with cloud-only fields', async () => {
+    await saveWeightEntry({
+      id: 'w_export_1',
+      entry_type: 'weight',
+      date: '2026-06-02',
+      weight_value: 181,
+      logged_at: '2026-06-02T08:00:00.000Z',
+    });
+    const { ref } = renderHook(useCloudExport);
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.exportCloud({ id: 'u_9', email: 'me@x.co' });
+    });
+    expect(result.ok).toBe(true);
+    const parsed = JSON.parse(result.json);
+    expect(parsed.version).toBe('3');
+    expect(parsed.weight_entries.map((e) => e.id)).toContain('w_export_1');
+    expect(parsed.cloud.cloud_export_format).toBe('cloud-1');
+    expect(parsed.cloud.account).toEqual({ id: 'u_9', email: 'me@x.co' });
+  });
+});

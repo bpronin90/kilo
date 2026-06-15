@@ -408,6 +408,72 @@ export async function exportBackup() {
   };
 }
 
+// Cloud export parity (Phase 4 / Task 12).
+//
+// Cloud users need an export that is a strict superset of the v3 backup shape so
+// it stays importable via importBackup(), but also carries the account-scoped
+// data the roadmap calls out for self-serve cloud users: profile, feature
+// toggles, and the preferences/pointers that live on user_profile in the cloud
+// model (roadmap "Self-Serve Product Obligations": "v3 backup shape plus
+// account/profile/toggle additions needed for cloud users").
+//
+// The base payload is exactly exportBackup() (version "3"), so any v3 importer
+// ignores the extra `cloud` block. The cloud-only additions are namespaced
+// under `cloud` to keep the v3 top-level contract untouched.
+const CLOUD_EXPORT_FORMAT = 'cloud-1';
+
+export async function buildCloudExport({ account = null } = {}) {
+  // v3-compatible base. Reusing exportBackup keeps the parity guarantee in one
+  // place instead of duplicating the field list.
+  const base = await exportBackup();
+
+  const [
+    profile,
+    weightDateEditEnabled,
+    deloadDateEditEnabled,
+    fatigueTrackingEnabled,
+    deloadModeEnabled,
+    trackedLifts,
+    deloadNote,
+    logCurrentCollapsed,
+  ] = await Promise.all([
+    loadUserProfile(),
+    loadWeightDateEditEnabled(),
+    loadDeloadDateEditEnabled(),
+    loadFatigueTrackingEnabled(),
+    loadDeloadModeEnabled(),
+    loadTrackedLifts(),
+    loadDeloadNote(),
+    loadWorkoutCollapsed(),
+  ]);
+
+  return {
+    ...base,
+    // Documented cloud-only additions. Namespaced so v3 importers are unaffected.
+    cloud: {
+      cloud_export_format: CLOUD_EXPORT_FORMAT,
+      // Account context for the signed-in user. Never includes secrets/tokens;
+      // only the non-sensitive identity the export belongs to.
+      account: account
+        ? { id: account.id ?? null, email: account.email ?? null }
+        : null,
+      // user_profile-mapped fields (roadmap AsyncStorage Key Mapping).
+      user_profile: profile,
+      current_workout_id: base.current_workout_id,
+      current_deload_note: deloadNote,
+      tracked_lifts: trackedLifts,
+      ui_state: { log_current_collapsed: logCurrentCollapsed },
+      // feature_toggles-mapped fields.
+      feature_toggles: {
+        weight_date_edit_enabled: weightDateEditEnabled,
+        deload_date_edit_enabled: deloadDateEditEnabled,
+        fatigue_tracking_enabled: fatigueTrackingEnabled,
+        deload_mode_enabled: deloadModeEnabled,
+      },
+    },
+  };
+}
+
 const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
 
 function validateWeightEntries(entries) {

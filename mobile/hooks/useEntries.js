@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
+import {
+  SYNC_PHASE,
+  getSyncState,
+  subscribeSyncState,
+  retryPhase,
+} from '../storage/syncQueue';
 
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while
@@ -445,4 +451,57 @@ export function useUserProfile() {
   }, []);
 
   return { profile, loading, save, clear };
+}
+
+// ── cloud sync recovery + cloud export (Phase 4 / Task 12) ────────────────────
+//
+// useSyncRecovery exposes the bootstrap/sync recovery state from the syncQueue
+// store so screens can show idle/running/failed/complete and offer a retry. The
+// retry is non-destructive: it re-invokes a caller-provided runner via the
+// store, and a failure leaves local data untouched. Until the bootstrap (#319)
+// and sync (#320) engines exist, the runner is supplied by the caller; this
+// hook owns presentation/retry orchestration only, not the sync algorithm.
+
+export function useSyncRecovery() {
+  const [snapshot, setSnapshot] = useState(getSyncState);
+
+  useEffect(() => {
+    // Resync once on mount in case state changed before subscribe attached.
+    setSnapshot(getSyncState());
+    const unsubscribe = subscribeSyncState((next) => setSnapshot(next));
+    return unsubscribe;
+  }, []);
+
+  const retryBootstrap = useCallback(
+    (runner) => retryPhase(SYNC_PHASE.BOOTSTRAP, runner),
+    []
+  );
+
+  const retrySync = useCallback(
+    (runner) => retryPhase(SYNC_PHASE.SYNC, runner),
+    []
+  );
+
+  return {
+    bootstrap: snapshot[SYNC_PHASE.BOOTSTRAP],
+    sync: snapshot[SYNC_PHASE.SYNC],
+    retryBootstrap,
+    retrySync,
+  };
+}
+
+// useCloudExport builds a v3-compatible export plus the documented cloud-only
+// fields. It is read-only and works regardless of sync state. `account` is the
+// optional non-sensitive identity for the signed-in user.
+export function useCloudExport() {
+  const exportCloud = useCallback(async (account = null) => {
+    try {
+      const payload = await Storage.buildCloudExport({ account });
+      return { ok: true, json: JSON.stringify(payload, null, 2), payload };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Failed to export cloud data.' };
+    }
+  }, []);
+
+  return { exportCloud };
 }

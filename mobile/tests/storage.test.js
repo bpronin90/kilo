@@ -14,6 +14,7 @@ import {
   clearWorkoutNote,
   migrateWorkoutNote,
   exportBackup,
+  buildCloudExport,
   importBackup,
   loadWorkoutNotes,
   saveWorkoutNoteItem,
@@ -742,6 +743,58 @@ describe('exportBackup', () => {
     const backup = await exportBackup();
     expect(backup.workout_notes).toEqual([]);
     expect(backup.current_workout_id).toBeNull();
+  });
+});
+
+describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
+  test('emits a v3-compatible base payload', async () => {
+    await saveWeightEntry(W1);
+    const payload = await buildCloudExport();
+    // v3 top-level contract is preserved exactly.
+    expect(payload).toHaveProperty('version', '3');
+    expect(payload).toHaveProperty('exported_at');
+    expect(Array.isArray(payload.weight_entries)).toBe(true);
+    expect(Array.isArray(payload.workout_notes)).toBe(true);
+    expect('current_workout_id' in payload).toBe(true);
+    expect('weight_goal' in payload).toBe(true);
+    expect('fatigue_multiplier' in payload).toBe(true);
+    expect('deload_history' in payload).toBe(true);
+    expect(payload.weight_entries.map(e => e.id)).toContain(W1.id);
+  });
+
+  test('cloud-only block is namespaced and importable by a v3 importer', async () => {
+    await saveWeightEntry(W1);
+    const payload = await buildCloudExport();
+    expect(payload).toHaveProperty('cloud');
+    // The v3 importer must accept the cloud-augmented payload unchanged.
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(true);
+  });
+
+  test('cloud block includes profile, toggles, tracked lifts, and ui_state', async () => {
+    await saveWeightDateEditEnabled(true);
+    await saveDeloadModeEnabled(false);
+    const payload = await buildCloudExport();
+    expect(payload.cloud.cloud_export_format).toBe('cloud-1');
+    expect(payload.cloud).toHaveProperty('user_profile');
+    expect(payload.cloud).toHaveProperty('tracked_lifts');
+    expect(payload.cloud).toHaveProperty('ui_state');
+    expect(payload.cloud.feature_toggles).toEqual({
+      weight_date_edit_enabled: true,
+      deload_date_edit_enabled: false,
+      fatigue_tracking_enabled: true,
+      deload_mode_enabled: false,
+    });
+  });
+
+  test('includes non-sensitive account identity when provided, null otherwise', async () => {
+    const withAccount = await buildCloudExport({ account: { id: 'u_1', email: 'a@b.co', token: 'SECRET' } });
+    expect(withAccount.cloud.account).toEqual({ id: 'u_1', email: 'a@b.co' });
+    // Secrets/tokens must never leak into the export.
+    expect(JSON.stringify(withAccount)).not.toContain('SECRET');
+
+    const noAccount = await buildCloudExport();
+    expect(noAccount.cloud.account).toBeNull();
   });
 });
 
