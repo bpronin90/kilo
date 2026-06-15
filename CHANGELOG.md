@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.69.1 - 2026-06-15
+
+- Issue #315: Added the repeatable web export smoke verification path. Root and
+  mobile scripts now export, serve, and run a served-entrypoint pre-flight for
+  the static web build, while `docs/testing-and-qa.md` defines the required
+  browser local-data boot pass that verifies mount, save, reload, and
+  persistence.
+
 ## 0.69.0 - 2026-06-15
 
 - Issue #314: Made the local-data app usable on desktop web without changing

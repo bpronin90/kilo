@@ -1,12 +1,15 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.69.0",
+  "version": "0.69.1",
   "scripts": {
     "mobile:start": "npm --prefix mobile start",
     "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
+    "web:export": "npm --prefix mobile run export:web",
+    "web:serve": "npm --prefix mobile run serve:web",
+    "web:smoke": "npm --prefix mobile run smoke:web",
     "audit": "npm audit --audit-level=high"
   }
 }

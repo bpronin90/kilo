@@ -414,3 +414,93 @@ Before declaring the packaged preview ready, a human tester must pass every step
 6. On **Log**, enter one simple workout row such as `135 5,5,5`. Confirm the parse preview appears, the header **Save** action becomes enabled, and saving shows the "Workout saved" confirmation screen.  **[BLOCKER]**
 7. Return to **Home** and confirm the new workout appears in Recent history with the most recent entry first.  **[BLOCKER]**
 8. Do one basic touch pass on the device: scroll Recent history, switch tabs a few times, and confirm taps register cleanly without missed or stuck interactions.  **[BLOCKER]**
+
+---
+
+## Web Export Smoke Check
+
+This is the minimum repeatable verification for the static web export path
+(Phase 2 / Task 4, issue #313). It has two parts: a fast automated **pre-flight**
+that only proves the static entrypoint is served, and a **required** manual
+browser + local-data pass that actually proves the exported app boots and reads
+and writes local data. It is intentionally narrow: it is a boot/local-data smoke
+check, not full web E2E. No browser automation framework is added as a repo
+dependency.
+
+Boot is only considered verified once the required browser + local-data pass
+below is performed. The automated pre-flight alone does not prove boot.
+
+Dependency: relies on the static web export from Task 4 / #313
+(`app.json` `web.bundler: "metro"` and `web.output: "single"`) being present
+after merge. The pre-flight does not inspect or validate that config itself; it
+fails fast with a clear message only if `expo export --platform web` does not
+emit a `dist/index.html` single-output build.
+
+### Automated pre-flight (`web:smoke`)
+
+This is a fast pre-flight only. Run it first to catch gross export/serve
+failures, but **do not** treat a pass as proof that the app boots or reads local
+data — it does neither.
+
+Run from the repo root:
+
+```sh
+npm run web:smoke
+```
+
+This single command:
+
+1. Builds the static web export (`expo export --platform web`) into
+   `mobile/dist/`.
+2. Asserts `mobile/dist/index.html` exists (proves a single-output web build,
+   not a native bundle).
+3. Serves the exported output locally with `expo serve` on port `8099`.
+4. Fetches the served entrypoint and confirms it is served: an HTTP `200`, the
+   `root` mount node in the static HTML, and a referenced `_expo/static/js`
+   bundle.
+5. Prints `SMOKE PASS` and exits `0` on success, or `SMOKE FAIL: <reason>` and
+   exits non-zero so a human or CI runner can gate on it.
+
+What this pre-flight does **not** prove: it never executes the JS bundle, never
+observes React Native Web mounting, and never exercises local-data
+(AsyncStorage/`localStorage`) behavior. It only confirms the static entrypoint is
+served. It can still pass with a bundle that crashes before mount. Use it as a
+cheap gate, then run the required pass below for actual boot verification.
+
+### Required browser + local-data boot verification (human)
+
+This is the authoritative boot check. The export is not considered verified until
+this pass succeeds. It must be performed in a real browser against the served
+export.
+
+```sh
+npm run web:export   # build the static export into mobile/dist/
+npm run web:serve    # serve mobile/dist/ at http://127.0.0.1:8081/
+```
+
+Open `http://127.0.0.1:8081/` in a browser, then:
+
+1. Confirm the app shell **visibly mounts**: the Kilo Home screen renders with
+   real content (Welcome card and the five tabs Home, Log, Weight, Analytics,
+   More), not just an empty `#root` and no blank screen or console boot crash.
+   An empty or text-less `#root` is a failure even if the pre-flight passed.
+2. On **Weight**, enter a value such as `185` in the Weight (lb) field and tap
+   **Save weigh-in**. Confirm it appears in the History list (the local browser
+   storage write path works). Optionally confirm the browser dev tools show a
+   `kilo_weight_entries` key in `localStorage`/IndexedDB (the AsyncStorage web
+   backend).
+3. Reload the page and confirm the saved entry **persists** in the History list
+   and trends, proving the export boots against local data rather than a fresh
+   empty shell.
+
+Stop and reload from native QA if the served export cannot mount the shell or the
+saved entry does not survive reload; that indicates a Task 4 export-config or
+local-data regression rather than a smoke-tooling issue.
+
+### Static hosting note
+
+The exported `mobile/dist/` is the static artifact for the documented hosting
+target (Cloudflare Pages, Netlify, Vercel static output, or equivalent). The
+selected host must serve `index.html` as the SPA fallback entrypoint. `expo
+serve` is the local stand-in for that static host during smoke verification; it
+is not a production hosting dependency.
