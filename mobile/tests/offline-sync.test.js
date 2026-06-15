@@ -1,0 +1,331 @@
+// Offline last-write-wins sync tests (Phase 4 / Task 11).
+//
+// Drives the cloud storage adapter and sync engine fully offline using an
+// in-memory fake cloud transport. Covers the acceptance criteria:
+//   - offline weight create/edit/delete syncs after reconnect
+//   - offline workout-note create/edit/delete syncs after reconnect
+//   - LWW uses updated_at; exact ties break by deterministic client id
+//   - delete tombstones sync before physical deletion
+//   - derived JSON conflict on unchanged raw_text resolves by recompute, not a
+//     user-facing conflict
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import * as Storage from '../storage/entries';
+import { cloudAdapter, setCloudTransport, setRecomputeDerived } from '../storage/cloudAdapter';
+import {
+  pickWinner,
+  resolveRecord,
+  mergeRecords,
+  stampWrite,
+  stampTombstone,
+  isTombstone,
+  maxUpdatedAt,
+  resetClientIdCacheForTests,
+  SYNC_TABLES,
+} from '../storage/syncQueue';
+
+// ── in-memory fake cloud ───────────────────────────────────────────────────────
+//
+// Models a remote keyed by (table, id). `online` gates connectivity so we can
+// simulate edits made while offline that only push after "reconnect".
+function makeFakeCloud() {
+  const tables = {
+    [SYNC_TABLES.WEIGHT_ENTRIES]: new Map(),
+    [SYNC_TABLES.WORKOUT_NOTES]: new Map(),
+  };
+  const state = { online: true };
+
+  const transport = {
+    async pull(table, cursor) {
+      if (!state.online) throw new Error('offline');
+      const rows = [...tables[table].values()];
+      const changed = cursor ? rows.filter((r) => (r.updated_at || '') > cursor) : rows;
+      return changed.sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''));
+    },
+    async push(table, records) {
+      if (!state.online) throw new Error('offline');
+      for (const rec of records) {
+        // Server-side LWW guard: a stale push must not clobber a newer remote.
+        const existing = tables[table].get(rec.id);
+        tables[table].set(rec.id, existing ? pickWinner(existing, rec) : rec);
+      }
+    },
+  };
+
+  return {
+    transport,
+    state,
+    remoteRow: (table, id) => tables[table].get(id),
+    seedRemote: (table, rec) => tables[table].set(rec.id, rec),
+    setOnline: (v) => {
+      state.online = v;
+    },
+  };
+}
+
+let cloud;
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  resetClientIdCacheForTests();
+  cloud = makeFakeCloud();
+  setCloudTransport(cloud.transport);
+  Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+});
+
+afterEach(() => {
+  setCloudTransport(null);
+  setRecomputeDerived(null);
+  Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+});
+
+// ── pure LWW unit coverage ──────────────────────────────────────────────────────
+
+describe('LWW resolution', () => {
+  it('newer updated_at wins', () => {
+    const a = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a' };
+    const b = { id: '1', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a' };
+    expect(pickWinner(a, b)).toBe(b);
+    expect(pickWinner(b, a)).toBe(b);
+  });
+
+  it('exact updated_at tie breaks by lexicographically greater client_id', () => {
+    const same = '2026-06-15T10:00:00.000Z';
+    const a = { id: '1', updated_at: same, client_id: 'aaa' };
+    const z = { id: '1', updated_at: same, client_id: 'zzz' };
+    expect(pickWinner(a, z)).toBe(z);
+    expect(pickWinner(z, a)).toBe(z);
+    // Deterministic regardless of argument order.
+  });
+
+  it('a later delete tombstone wins over an earlier edit, and a later edit revives', () => {
+    const edit = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a' };
+    const del = { id: '1', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a', deleted_at: '2026-06-15T11:00:00.000Z' };
+    expect(isTombstone(pickWinner(edit, del))).toBe(true);
+
+    const revive = { id: '1', updated_at: '2026-06-15T12:00:00.000Z', client_id: 'a', deleted_at: null };
+    expect(isTombstone(pickWinner(del, revive))).toBe(false);
+  });
+
+  it('maxUpdatedAt advances the cursor to the highest seen timestamp', () => {
+    const recs = [
+      { updated_at: '2026-06-15T10:00:00.000Z' },
+      { updated_at: '2026-06-15T12:00:00.000Z' },
+      { updated_at: '2026-06-15T11:00:00.000Z' },
+    ];
+    expect(maxUpdatedAt(recs, '2026-06-15T09:00:00.000Z')).toBe('2026-06-15T12:00:00.000Z');
+    expect(maxUpdatedAt([], '2026-06-15T09:00:00.000Z')).toBe('2026-06-15T09:00:00.000Z');
+  });
+});
+
+describe('derived-JSON conflict resolves by recompute, not user conflict', () => {
+  it('same raw_text but divergent derived fields recomputes from raw_text', () => {
+    const recompute = (raw) => ({ tracked_exercises: [`derived:${raw}`] });
+    const local = {
+      id: 'n1',
+      raw_text: 'Squat 3x5',
+      updated_at: '2026-06-15T10:00:00.000Z',
+      client_id: 'a',
+      tracked_exercises: ['STALE-LOCAL'],
+    };
+    const remote = {
+      id: 'n1',
+      raw_text: 'Squat 3x5',
+      updated_at: '2026-06-15T11:00:00.000Z',
+      client_id: 'a',
+      tracked_exercises: ['STALE-REMOTE'],
+    };
+    const resolved = resolveRecord(local, remote, {
+      table: SYNC_TABLES.WORKOUT_NOTES,
+      recomputeDerived: recompute,
+    });
+    // Neither stale snapshot survives; derived is recomputed from raw_text.
+    expect(resolved.tracked_exercises).toEqual(['derived:Squat 3x5']);
+    expect(resolved.raw_text).toBe('Squat 3x5');
+  });
+
+  it('different raw_text is a normal LWW pick (no recompute short-circuit)', () => {
+    const recompute = () => ({ tracked_exercises: ['RECOMPUTED'] });
+    const local = { id: 'n1', raw_text: 'A', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a' };
+    const remote = { id: 'n1', raw_text: 'B', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a' };
+    const resolved = resolveRecord(local, remote, {
+      table: SYNC_TABLES.WORKOUT_NOTES,
+      recomputeDerived: recompute,
+    });
+    expect(resolved.raw_text).toBe('B');
+    expect(resolved.tracked_exercises).toBeUndefined();
+  });
+});
+
+describe('mergeRecords (keyed, no nested scan)', () => {
+  it('merges remote into local by id applying LWW', () => {
+    const local = [
+      { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a', weight_value: 180 },
+      { id: '2', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a', weight_value: 200 },
+    ];
+    const remote = [
+      { id: '1', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a', weight_value: 181 },
+      { id: '3', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a', weight_value: 150 },
+    ];
+    const merged = mergeRecords(local, remote);
+    expect(merged.get('1').weight_value).toBe(181); // remote newer
+    expect(merged.get('2').weight_value).toBe(200); // local only
+    expect(merged.get('3').weight_value).toBe(150); // remote only
+  });
+});
+
+// ── weight entries: offline create / edit / delete ──────────────────────────────
+
+describe('weight entries offline create/edit/delete sync', () => {
+  function weightEntry(id, value) {
+    return {
+      id,
+      entry_type: 'weight',
+      date: '2026-06-15',
+      logged_at: '2026-06-15T12:00:00.000Z',
+      weight_value: value,
+    };
+  }
+
+  it('offline create pushes to cloud after reconnect', async () => {
+    cloud.setOnline(false);
+    await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
+    // Local cache reflects it immediately while offline.
+    expect((await cloudAdapter.loadWeightEntries()).map((e) => e.id)).toContain('w1');
+    // Nothing reached the cloud yet.
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1')).toBeUndefined();
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    const remote = cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1');
+    expect(remote).toBeDefined();
+    expect(remote.weight_value).toBe(180);
+    expect(remote.client_id).toBeTruthy();
+  });
+
+  it('offline edit pushes the updated value after reconnect', async () => {
+    await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
+    await cloudAdapter.sync();
+
+    cloud.setOnline(false);
+    await cloudAdapter.updateWeightEntry('w1', 185, 'after meal', '2026-06-15');
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(185);
+  });
+
+  it('offline delete syncs a tombstone before physical deletion, hiding it locally', async () => {
+    await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
+    await cloudAdapter.sync();
+
+    cloud.setOnline(false);
+    await cloudAdapter.deleteWeightEntry('w1');
+    // Hidden from user-facing reads immediately.
+    expect((await cloudAdapter.loadWeightEntries()).map((e) => e.id)).not.toContain('w1');
+    // But still physically present as a tombstone in the raw cache (not deleted).
+    const raw = await Storage.loadWeightEntriesRaw();
+    const row = raw.find((r) => r.id === 'w1');
+    expect(row).toBeDefined();
+    expect(isTombstone(row)).toBe(true);
+    // Tombstone has not reached the cloud while offline.
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1')).toBeDefined(); // live row from earlier sync
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(false);
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    // The tombstone reached the cloud (delete synced before any physical purge).
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(true);
+  });
+
+  it('remote newer edit wins over older local on pull (multi-device LWW)', async () => {
+    await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
+    await cloudAdapter.sync();
+
+    // Another device wrote a newer value directly to the cloud.
+    cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
+      ...weightEntry('w1', 199),
+      updated_at: '2099-01-01T00:00:00.000Z',
+      client_id: 'other-device',
+    });
+
+    await cloudAdapter.sync();
+    const local = await cloudAdapter.loadWeightEntries();
+    expect(local.find((e) => e.id === 'w1').weight_value).toBe(199);
+  });
+});
+
+// ── workout notes: offline create / edit / delete + derived recompute ────────────
+
+describe('workout notes offline create/edit/delete sync', () => {
+  function note(id, raw_text) {
+    return {
+      id,
+      title: 'Routine',
+      raw_text,
+      saved_at: '2026-06-15T12:00:00.000Z',
+      tracked_exercises: [],
+    };
+  }
+
+  it('offline create/edit/delete reconcile after reconnect', async () => {
+    cloud.setOnline(false);
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5'));
+    expect((await cloudAdapter.loadWorkoutNotes()).map((n) => n.id)).toContain('n1');
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1').raw_text).toBe('Squat 3x5');
+
+    cloud.setOnline(false);
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5\nBench 3x5'));
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1').raw_text).toBe('Squat 3x5\nBench 3x5');
+
+    cloud.setOnline(false);
+    await cloudAdapter.deleteWorkoutNoteItem('n1');
+    expect((await cloudAdapter.loadWorkoutNotes()).map((n) => n.id)).not.toContain('n1');
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'))).toBe(true);
+  });
+
+  it('derived-only divergence on unchanged raw_text recomputes silently on sync', async () => {
+    // Inject a deterministic recompute so we can assert it ran.
+    setRecomputeDerived((raw) => ({ tracked_exercises: [`recomputed:${raw}`] }));
+
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Deadlift 1x5'));
+    await cloudAdapter.sync();
+
+    // A remote copy with the SAME raw_text but stale/different derived cache and
+    // a newer updated_at arrives from another device.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      ...note('n1', 'Deadlift 1x5'),
+      tracked_exercises: ['STALE-FROM-OTHER-DEVICE'],
+      updated_at: '2099-01-01T00:00:00.000Z',
+      client_id: 'other-device',
+    });
+
+    await cloudAdapter.sync();
+    const merged = (await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === 'n1');
+    // Conflict resolved by recompute from raw_text, not by trusting either cache.
+    expect(merged.tracked_exercises).toEqual(['recomputed:Deadlift 1x5']);
+  });
+});
+
+describe('sync metadata stamping', () => {
+  it('stampWrite advances updated_at, sets client_id, clears tombstone', () => {
+    const stamped = stampWrite({ id: 'x' }, 'client-7', '2026-06-15T10:00:00.000Z');
+    expect(stamped.updated_at).toBe('2026-06-15T10:00:00.000Z');
+    expect(stamped.client_id).toBe('client-7');
+    expect(stamped.deleted_at).toBeNull();
+  });
+
+  it('stampTombstone sets deleted_at = updated_at', () => {
+    const ts = stampTombstone({ id: 'x' }, 'client-7', '2026-06-15T10:00:00.000Z');
+    expect(ts.deleted_at).toBe('2026-06-15T10:00:00.000Z');
+    expect(ts.updated_at).toBe('2026-06-15T10:00:00.000Z');
+    expect(isTombstone(ts)).toBe(true);
+  });
+});

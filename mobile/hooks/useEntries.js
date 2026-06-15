@@ -1,7 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
+import { getStorageAdapter, getStorageMode, STORAGE_MODES } from '../storage/entries';
 import { makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
+
+// Trigger a cloud sync pass when cloud mode is active (Phase 4 / Task 11). This
+// is how offline edits reconcile after reconnect: the adapter pulls changed
+// rows, LWW-merges them into the local cache, and pushes dirty records
+// (including delete tombstones). In local mode this is a no-op. Sync failures
+// (e.g. still offline) are swallowed so the UI keeps showing the offline cache;
+// the persisted dirty queue means nothing is lost and the next pass retries.
+async function maybeSyncCloud() {
+  if (getStorageMode() !== STORAGE_MODES.CLOUD) return;
+  const adapter = getStorageAdapter();
+  if (typeof adapter.sync !== 'function') return;
+  try {
+    await adapter.sync();
+  } catch {
+    // Offline or transient failure: keep the local cache, retry on next refresh.
+  }
+}
+
+// Read through the active adapter when in cloud mode so tombstoned rows are
+// filtered out of user-facing reads; fall back to the named Storage function in
+// local mode (the hooks are migrated onto the adapter seam incrementally).
+function readVia(method, localFn) {
+  if (getStorageMode() === STORAGE_MODES.CLOUD) {
+    const adapter = getStorageAdapter();
+    if (typeof adapter[method] === 'function') return adapter[method]();
+  }
+  return localFn();
+}
 
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while
@@ -72,7 +101,10 @@ export function useWeightEntries() {
 
   const refresh = useCallback(() => {
     setError(null);
-    Storage.loadWeightEntries()
+    // In cloud mode, reconcile with the cloud (pull/merge/push) before reading
+    // so a refresh after reconnect reflects synced state. No-op in local mode.
+    maybeSyncCloud()
+      .then(() => readVia('loadWeightEntries', Storage.loadWeightEntries))
       .then(setEntries)
       .catch(e => setError(e))
       .finally(() => setLoading(false));
@@ -129,7 +161,15 @@ export function useWorkoutNotes() {
 
   const refresh = useCallback(() => {
     setError(null);
-    Promise.all([Storage.loadWorkoutNotes(), Storage.loadCurrentWorkoutId()])
+    // In cloud mode, reconcile before reading so a refresh after reconnect
+    // reflects synced notes and filters tombstoned ones. No-op in local mode.
+    maybeSyncCloud()
+      .then(() =>
+        Promise.all([
+          readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
+          Storage.loadCurrentWorkoutId(),
+        ])
+      )
       .then(([ns, id]) => {
         setNotes(ns);
         setCurrentId(id);
