@@ -1,10 +1,16 @@
 import React, { useContext, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, SafeAreaView } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, SafeAreaView, useWindowDimensions } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Button } from './UI';
 import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
+
+// Desktop web readability cap: on wide viewports the single-column mobile
+// layout stretches uncomfortably, so center the content within a fixed max
+// width. Native (phone) layout is unaffected because the viewport is narrower
+// than the cap.
+const DESKTOP_CONTENT_MAX_WIDTH = 640;
 
 /**
  * Shared Shell Contract:
@@ -16,6 +22,11 @@ export const ScrollContext = createContext({ onScroll: () => {} });
 export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideWeb = Platform.OS === 'web' && windowWidth > DESKTOP_CONTENT_MAX_WIDTH;
+  const wideContentStyle = isWideWeb
+    ? { maxWidth: DESKTOP_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' }
+    : null;
 
   const handleScroll = (e) => {
     if (contextOnScroll) contextOnScroll(e);
@@ -26,14 +37,16 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
     <View style={[styles.outerContainer, style]}>
       {onBack && (
         <View style={styles.stickyHeader}>
-          <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
-          {headerRight}
+          <View style={[styles.stickyHeaderInner, wideContentStyle]}>
+            <Button title="← Back" onPress={onBack} style={styles.backButton} textStyle={styles.backButtonText} />
+            {headerRight}
+          </View>
         </View>
       )}
       <ScrollView
         ref={ref}
         style={styles.scroll}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[styles.container, wideContentStyle]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -76,15 +89,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   stickyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
     backgroundColor: Colors.background,
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
+  },
+  stickyHeaderInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
     backgroundColor: 'transparent',

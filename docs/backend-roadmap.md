@@ -281,6 +281,9 @@ Ordered tasks:
 - Dependency: Phase 1 / Task 1 complete.
 - Verification target: `npx expo export --platform web` produces a static output.
 - Stop condition: native Android still starts with existing local storage behavior.
+- Status: complete in issue #313; `mobile/app.json` now sets `web.bundler:
+  "metro"` and `web.output: "single"`, and the export command completed from
+  `mobile/`.
 
 #### Task 5: Add desktop responsive and touch-idiom fallbacks
 - GitHub title: `Phase 2 / Task 5: Add desktop responsive and touch-idiom fallbacks`
@@ -290,6 +293,10 @@ Ordered tasks:
 - Dependency: Phase 2 / Task 4 complete.
 - Verification target: Log, Weight, More/settings, and shell flows work without double-tap-only, Android-back-only, or native-date-picker-only interactions.
 - Stop condition: no visual redesign beyond web usability.
+- Status: complete in issue #314; web now has an explicit Home back affordance,
+  a wide-content readability cap, explicit single-press Log edit paths, and DOM
+  date-input fallbacks for Weight date edits and linked Log deload-date edits.
+  Native Android back and native date-picker paths remain in place.
 
 #### Task 6: Add web export smoke verification
 - GitHub title: `Phase 2 / Task 6: Add web export smoke verification`

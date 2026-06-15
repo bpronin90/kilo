@@ -228,3 +228,70 @@ describe('App shell back handler (Android)', () => {
     expect(getTabStyle(component, 'Home').display).not.toBe('none');
   });
 });
+
+describe('App shell web back affordance (#314)', () => {
+  let component;
+  let originalOS;
+
+  beforeAll(() => {
+    originalOS = Platform.OS;
+    Platform.OS = 'web';
+  });
+
+  afterAll(() => {
+    Platform.OS = originalOS;
+  });
+
+  beforeEach(() => {
+    capturedTabPress = null;
+    renderer.act(() => {
+      component = renderer.create(<App />);
+    });
+  });
+
+  afterEach(() => {
+    component = null;
+    capturedTabPress = null;
+  });
+
+  // Recursively collect props of any node carrying the given accessibilityLabel.
+  function findByAccessibilityLabel(node, label) {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = findByAccessibilityLabel(child, label);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (node.props?.accessibilityLabel === label) return node;
+    if (node.children) {
+      for (const child of node.children) {
+        const found = findByAccessibilityLabel(child, label);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  test('no web back control is shown on the Home tab', () => {
+    const tree = component.toJSON();
+    expect(findByAccessibilityLabel(tree, 'Back to Home')).toBeNull();
+  });
+
+  test('web back control appears on a non-Home tab', () => {
+    renderer.act(() => { capturedTabPress('Log'); });
+    const tree = component.toJSON();
+    expect(findByAccessibilityLabel(tree, 'Back to Home')).not.toBeNull();
+  });
+
+  test('pressing the web back control returns to Home', () => {
+    renderer.act(() => { capturedTabPress('Weight'); });
+    expect(getTabStyle(component, 'Weight').display).not.toBe('none');
+    const back = component.root.findByProps({ accessibilityLabel: 'Back to Home' });
+    expect(back).toBeTruthy();
+    renderer.act(() => { back.props.onPress(); });
+    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+    expect(getTabStyle(component, 'Weight').display).toBe('none');
+  });
+});

@@ -463,6 +463,75 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
   });
 });
 
+// ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
+// Web has no reliable double-tap idiom, so Log must expose an explicit tap-once
+// edit affordance. LogScreen passes enterCurrentEditor (single-press editor
+// entry) to the active routine card alongside the legacy double-tap body
+// handler, so the explicit "Edit" button works on web without a double-tap.
+describe('Log web edit path: explicit edit control is wired (#314)', () => {
+  let src;
+  beforeAll(() => {
+    src = readLogScreenSource();
+  });
+
+  test('enterCurrentEditor performs a single-press editor entry (no double-tap gate)', () => {
+    // The explicit handler must set edit mode directly, unlike handleNoteBodyPress
+    // which is gated behind a 300ms double-tap window.
+    expect(src).toMatch(/const\s+enterCurrentEditor\s*=\s*\(\)\s*=>\s*\{[\s\S]*?setMode\('edit'\)/);
+  });
+
+  test('LogScreen forwards enterCurrentEditor to the active routine card', () => {
+    expect(src).toMatch(/enterCurrentEditor=\{enterCurrentEditor\}/);
+  });
+
+  test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
+    // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
+    // separate from the double-tap body handler.
+    expect(src).toMatch(/enterCurrentEditor\(\)/);
+    expect(src).toMatch(/>Edit</);
+  });
+});
+
+// ── Web deload-date fallback: web-compatible date editing path (#314) ─────────
+// The native @react-native-community/datetimepicker has no usable web rendering,
+// so the Log deload-date editor must render a real DOM <input type="date"> on
+// web while keeping the native Android Pressable + DateTimePicker modal path.
+describe('Log deload date web fallback renders a DOM date input (#314)', () => {
+  const fsLocal = require('fs');
+  const pathLocal = require('path');
+  let editorSrc;
+  beforeAll(() => {
+    editorSrc = fsLocal.readFileSync(
+      pathLocal.join(__dirname, '../components/LogScreenEditorCard.js'),
+      'utf8'
+    );
+  });
+
+  test('branches the deload date control on Platform.OS === "web"', () => {
+    expect(editorSrc).toMatch(/Platform\.OS\s*===\s*'web'\s*&&\s*editingDeloadHasLinkedRecord/);
+  });
+
+  test('web path renders a real <input type="date"> via WebDateInput', () => {
+    expect(editorSrc).toMatch(/function\s+WebDateInput/);
+    expect(editorSrc).toMatch(/createElement\(\s*'input'/);
+    expect(editorSrc).toMatch(/type:\s*'date'/);
+  });
+
+  test('web date input is capped at today via max', () => {
+    expect(editorSrc).toMatch(/max:\s*localDateToday\(\)/);
+  });
+
+  test('web date input writes the new date back through the existing setters', () => {
+    expect(editorSrc).toMatch(/onChangeDate=\{\(newDateStr\)\s*=>\s*\{[\s\S]*?setDeloadEditDate\(newDateStr\)/);
+    expect(editorSrc).toMatch(/setEditingTitle\(DELOAD_NOTE_PREFIX\s*\+\s*newDateStr\)/);
+  });
+
+  test('native Android path keeps the Pressable + DateTimePicker modal', () => {
+    expect(editorSrc).toMatch(/onPress=\{editingDeloadHasLinkedRecord\s*\?\s*\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
+    expect(editorSrc).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
+  });
+});
+
 // ── Undo escape hatch: source-level assertions ─────────────────────
 describe('Undo escape hatch: source-level assertions', () => {
   let src;
