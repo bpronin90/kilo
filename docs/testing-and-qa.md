@@ -90,10 +90,12 @@ Current limitation:
   includes `react-test-renderer` coverage for the rendered App Guide workout
   example, the aligned Log editor placeholder, current-note Undo, saved-note
   Undo, and failure-path handling around note-scoped Undo for editable deload
-  records. Full transactional undo guarantees across linked records are still
-  deferred until a DB-backed persistence layer exists.
-- No automated native test covers broader tab routing or an Expo
-  device/emulator pass yet.
+  records, plus `mobile/App.js` app-shell coverage for initial tab visibility,
+  tab switching through the shared `TabBar` contract, and Android hardware-back
+  behavior from Home and non-Home tabs. Full transactional undo guarantees
+  across linked records are still deferred until a DB-backed persistence layer
+  exists.
+- No automated native test covers an Expo device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
   surface end to end from a saved workout note. The current suite covers the
   underlying helper behavior and persisted field shaping, but not the rendered
@@ -350,9 +352,10 @@ retains non-test commands such as `npm run audit`.
 The following MVP behaviors have no automated test coverage:
 
 **End-to-end**
-- No automated native test covers `mobile/App.js`, native tab routing, native
-  forms, native validation/success UI feedback, or native layout/runtime
-  behavior
+- No automated native test covers native forms, native validation/success UI
+  feedback, or native layout/runtime behavior. `mobile/App.js` now has focused
+  app-shell coverage for tab switching and Android hardware-back behavior, but
+  not a real Expo device/emulator pass.
 
 ---
 

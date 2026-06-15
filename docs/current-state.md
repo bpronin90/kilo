@@ -701,12 +701,10 @@ Log flow rather than the prototype exercise-row form, and it still lacks full
 parity for seeded history presentation and the prototype's live per-row parse
 preview treatment.
 
-### No automated tests for native app shell, workout logging, or correction flows
+### No automated tests for full native runtime, workout logging, or correction flows
 
 The following MVP behaviors have no automated test coverage:
 
-- `mobile/App.js` five-tab shell routing, persistent tab mounting, and
-  hardware-back behavior
 - `mobile/screens/LogScreen.js` end-to-end save/error UI, raw-edit
   transitions, and the rendered parse-preview/logging loop
 - `mobile/screens/WeightScreen.js` delete and edit correction flows
@@ -715,8 +713,10 @@ The following MVP behaviors have no automated test coverage:
 - full Expo device/emulator runtime behavior and layout validation across the
   mounted tab set
 
-These gaps mean the automated suite passing does not confirm that the workout
-logging loop or correction flows work correctly. Manual smoke testing (per
+`mobile/App.js` now has focused automated coverage for five-tab shell routing
+and Android hardware-back behavior, but these remaining gaps mean the automated
+suite passing does not confirm that the workout logging loop, correction flows,
+or real-device runtime behavior work correctly. Manual smoke testing (per
 `docs/testing-and-qa.md`) is required to cover these paths.
 
 ### No Supabase or backend

@@ -2,6 +2,11 @@
 
 ## 0.68.13 - 2026-06-14
 
+- Issue #310: Added focused native app-shell regression coverage for initial
+  tab visibility, switching across the five-tab `mobile/App.js` shell, and
+  Android hardware-back behavior from Home and non-Home tabs. Added only
+  `testID` seams to the tab content containers; shipped runtime behavior is
+  unchanged.
 - Issue #309: Added `docs/backend-roadmap.md` as the build-ready roadmap for
   moving Kilo from local-only personal use to a public web-first self-serve
   product on Supabase. The roadmap preserves the shipped note-first workout
