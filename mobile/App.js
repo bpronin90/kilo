@@ -1,6 +1,6 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useState, useRef } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, View, BackHandler, Alert, StatusBar } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, Alert, StatusBar } from 'react-native';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -128,6 +128,11 @@ export default function App() {
     setAnalyticsSection(section);
     setActiveTab(tab);
   }, []);
+
+  // Browser-safe back affordance: web has no Android hardware back button, so a
+  // non-Home tab would otherwise have no on-screen way to return to Home short
+  // of the tab bar. Render an explicit back control on web when off Home.
+  const showWebBack = Platform.OS === 'web' && activeTab !== 'Home';
 
   const saveWeight = useCallback(async (date) => {
     if (weightSaving) return false;
@@ -280,6 +285,18 @@ export default function App() {
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          {showWebBack && (
+            <View style={styles.webBackBar}>
+              <Pressable
+                onPress={() => handleTabPress('Home')}
+                style={styles.webBackButton}
+                accessibilityRole="button"
+                accessibilityLabel="Back to Home"
+              >
+                <Text style={styles.webBackButtonText}>← Home</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
         <SafeAreaView style={styles.tabBarSafeArea} pointerEvents="box-none">
@@ -323,5 +340,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  webBackBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    backgroundColor: Colors.background,
+  },
+  webBackButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    backgroundColor: 'transparent',
+  },
+  webBackButtonText: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

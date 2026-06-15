@@ -722,3 +722,61 @@ describe('App weight saving local-date handling', () => {
   });
 });
 
+// ── Web date input fallback (#314) ────────────────────────────────────────────
+// On web the native DateTimePicker has no usable rendering, so WeightScreen must
+// render a real DOM <input type="date"> that writes the chosen date straight
+// back. Native (default jest-expo Platform.OS) keeps the Pressable + picker path.
+describe('WeightScreen web date fallback (#314)', () => {
+  const { Platform } = require('react-native');
+  let originalOS;
+
+  beforeAll(() => {
+    originalOS = Platform.OS;
+    Platform.OS = 'web';
+  });
+
+  afterAll(() => {
+    Platform.OS = originalOS;
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+  });
+
+  test('renders a DOM date input instead of the native picker for new entries', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+      );
+    });
+    const root = component.root;
+    const dateInputs = root.findAll(n => n.type === 'input' && n.props.type === 'date');
+    expect(dateInputs.length).toBe(1);
+    // The native picker must NOT be mounted on web.
+    expect(root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker').length).toBe(0);
+  });
+
+  test('changing the DOM date input updates the new-entry date value', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+      );
+    });
+    const root = component.root;
+    const dateInput = root.find(n => n.type === 'input' && n.props.type === 'date');
+    render.act(() => {
+      dateInput.props.onChange({ target: { value: '2026-05-20' } });
+    });
+    const updated = root.find(n => n.type === 'input' && n.props.type === 'date');
+    expect(updated.props.value).toBe('2026-05-20');
+  });
+});
+

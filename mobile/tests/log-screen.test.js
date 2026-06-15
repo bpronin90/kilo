@@ -463,6 +463,35 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
   });
 });
 
+// ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
+// Web has no reliable double-tap idiom, so Log must expose an explicit tap-once
+// edit affordance. LogScreen passes enterCurrentEditor (single-press editor
+// entry) to the active routine card alongside the legacy double-tap body
+// handler, so the explicit "Edit" button works on web without a double-tap.
+describe('Log web edit path: explicit edit control is wired (#314)', () => {
+  let src;
+  beforeAll(() => {
+    src = readLogScreenSource();
+  });
+
+  test('enterCurrentEditor performs a single-press editor entry (no double-tap gate)', () => {
+    // The explicit handler must set edit mode directly, unlike handleNoteBodyPress
+    // which is gated behind a 300ms double-tap window.
+    expect(src).toMatch(/const\s+enterCurrentEditor\s*=\s*\(\)\s*=>\s*\{[\s\S]*?setMode\('edit'\)/);
+  });
+
+  test('LogScreen forwards enterCurrentEditor to the active routine card', () => {
+    expect(src).toMatch(/enterCurrentEditor=\{enterCurrentEditor\}/);
+  });
+
+  test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
+    // LogActiveRoutineCard exposes a single-press "Edit" button (web-usable path)
+    // separate from the double-tap body handler.
+    expect(src).toMatch(/enterCurrentEditor\(\)/);
+    expect(src).toMatch(/>Edit</);
+  });
+});
+
 // ── Undo escape hatch: source-level assertions ─────────────────────
 describe('Undo escape hatch: source-level assertions', () => {
   let src;

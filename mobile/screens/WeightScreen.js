@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
@@ -10,6 +10,37 @@ import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
+
+// Web-safe date input. The native @react-native-community/datetimepicker has no
+// usable rendering on web, so on web we render a real DOM <input type="date">
+// (react-native-web passes lowercase string element types through to the DOM).
+// It writes the YYYY-MM-DD value straight back via onChangeDate, matching the
+// native onChange path which also normalizes to a YYYY-MM-DD string.
+function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
+  return React.createElement('input', {
+    type: 'date',
+    value: value || '',
+    max: localDateToday(),
+    'aria-label': accessibilityLabel,
+    onChange: (e) => {
+      const next = e?.target?.value;
+      if (next) onChangeDate(next);
+    },
+    style: {
+      backgroundColor: Colors.inputBackground,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderStyle: 'solid',
+      borderColor: Colors.inputBorder,
+      padding: 14,
+      fontSize: 16,
+      color: Colors.text,
+      fontFamily: 'inherit',
+      width: '100%',
+      boxSizing: 'border-box',
+    },
+  });
+}
 import { TrendSection } from '../components/WeightTrendSection';
 import { WeightGoalCard, GoalDerived } from '../components/WeightGoalCard';
 import { WeightHistoryList } from '../components/WeightHistoryList';
@@ -223,46 +254,66 @@ export function WeightScreen({
         {weightDateEditEnabled && !editingId && (
           <>
             <Text style={styles.inputLabel}>Date</Text>
-            <Pressable
-              style={styles.input}
-              onPress={() => setShowNewEntryDatePicker(true)}
-              accessibilityLabel="Weigh-in date"
-              accessibilityRole="button"
-            >
-              <Text style={styles.pickerText}>{newEntryDate}</Text>
-            </Pressable>
-            {showNewEntryDatePicker && (
-              <DateTimePicker
-                value={newEntryDateObj}
-                mode="date"
-                display="default"
-                onChange={onNewEntryDateChange}
-                onDismiss={() => setShowNewEntryDatePicker(false)}
-                maximumDate={new Date()}
+            {Platform.OS === 'web' ? (
+              <WebDateInput
+                value={newEntryDate}
+                onChangeDate={setNewEntryDate}
+                accessibilityLabel="Weigh-in date"
               />
+            ) : (
+              <>
+                <Pressable
+                  style={styles.input}
+                  onPress={() => setShowNewEntryDatePicker(true)}
+                  accessibilityLabel="Weigh-in date"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.pickerText}>{newEntryDate}</Text>
+                </Pressable>
+                {showNewEntryDatePicker && (
+                  <DateTimePicker
+                    value={newEntryDateObj}
+                    mode="date"
+                    display="default"
+                    onChange={onNewEntryDateChange}
+                    onDismiss={() => setShowNewEntryDatePicker(false)}
+                    maximumDate={new Date()}
+                  />
+                )}
+              </>
             )}
           </>
         )}
         {weightDateEditEnabled && editingId && (
           <>
             <Text style={styles.inputLabel}>Date</Text>
-            <Pressable
-              style={styles.input}
-              onPress={() => setShowEditDatePicker(true)}
-              accessibilityLabel="Entry date"
-              accessibilityRole="button"
-            >
-              <Text style={styles.pickerText}>{editDate}</Text>
-            </Pressable>
-            {showEditDatePicker && (
-              <DateTimePicker
-                value={editDateObj}
-                mode="date"
-                display="default"
-                onChange={onEditDateChange}
-                onDismiss={() => setShowEditDatePicker(false)}
-                maximumDate={new Date()}
+            {Platform.OS === 'web' ? (
+              <WebDateInput
+                value={editDate}
+                onChangeDate={setEditDate}
+                accessibilityLabel="Entry date"
               />
+            ) : (
+              <>
+                <Pressable
+                  style={styles.input}
+                  onPress={() => setShowEditDatePicker(true)}
+                  accessibilityLabel="Entry date"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.pickerText}>{editDate}</Text>
+                </Pressable>
+                {showEditDatePicker && (
+                  <DateTimePicker
+                    value={editDateObj}
+                    mode="date"
+                    display="default"
+                    onChange={onEditDateChange}
+                    onDismiss={() => setShowEditDatePicker(false)}
+                    maximumDate={new Date()}
+                  />
+                )}
+              </>
             )}
           </>
         )}
