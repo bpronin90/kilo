@@ -34,22 +34,22 @@ $$;
 
 -- Seed one owned row per table as each user (also proves owner inserts pass).
 select pg_temp.login_as(:'user_a'::uuid);
-insert into public.user_profile (user_id) values (:'user_a'::uuid);
-insert into public.feature_toggles (user_id) values (:'user_a'::uuid);
-insert into public.weight_entries (user_id, id, weight_value) values (:'user_a'::uuid, 'wa', 80);
-insert into public.weight_goal (user_id) values (:'user_a'::uuid);
-insert into public.workout_notes (user_id, id) values (:'user_a'::uuid, 'na');
-insert into public.deload_history (user_id, id) values (:'user_a'::uuid, 'da');
-insert into public.fatigue_checkins (user_id, id) values (:'user_a'::uuid, 'fa');
+insert into kilo.user_profile (user_id) values (:'user_a'::uuid);
+insert into kilo.feature_toggles (user_id) values (:'user_a'::uuid);
+insert into kilo.weight_entries (user_id, id, weight_value) values (:'user_a'::uuid, 'wa', 80);
+insert into kilo.weight_goal (user_id) values (:'user_a'::uuid);
+insert into kilo.workout_notes (user_id, id) values (:'user_a'::uuid, 'na');
+insert into kilo.deload_history (user_id, id) values (:'user_a'::uuid, 'da');
+insert into kilo.fatigue_checkins (user_id, id) values (:'user_a'::uuid, 'fa');
 
 select pg_temp.login_as(:'user_b'::uuid);
-insert into public.user_profile (user_id) values (:'user_b'::uuid);
-insert into public.feature_toggles (user_id) values (:'user_b'::uuid);
-insert into public.weight_entries (user_id, id, weight_value) values (:'user_b'::uuid, 'wb', 90);
-insert into public.weight_goal (user_id) values (:'user_b'::uuid);
-insert into public.workout_notes (user_id, id) values (:'user_b'::uuid, 'nb');
-insert into public.deload_history (user_id, id) values (:'user_b'::uuid, 'db');
-insert into public.fatigue_checkins (user_id, id) values (:'user_b'::uuid, 'fb');
+insert into kilo.user_profile (user_id) values (:'user_b'::uuid);
+insert into kilo.feature_toggles (user_id) values (:'user_b'::uuid);
+insert into kilo.weight_entries (user_id, id, weight_value) values (:'user_b'::uuid, 'wb', 90);
+insert into kilo.weight_goal (user_id) values (:'user_b'::uuid);
+insert into kilo.workout_notes (user_id, id) values (:'user_b'::uuid, 'nb');
+insert into kilo.deload_history (user_id, id) values (:'user_b'::uuid, 'db');
+insert into kilo.fatigue_checkins (user_id, id) values (:'user_b'::uuid, 'fb');
 
 -- As user A, assert isolation across read/update/delete and spoofed insert.
 select pg_temp.login_as(:'user_a'::uuid);
@@ -59,32 +59,32 @@ declare
   v int;
 begin
   -- SELECT isolation: A sees exactly its own rows.
-  select count(*) into v from public.weight_entries;
+  select count(*) into v from kilo.weight_entries;
   if v <> 1 then raise exception 'weight_entries select leak: % visible', v; end if;
-  select count(*) into v from public.workout_notes;
+  select count(*) into v from kilo.workout_notes;
   if v <> 1 then raise exception 'workout_notes select leak: % visible', v; end if;
-  select count(*) into v from public.user_profile where user_id = '22222222-2222-2222-2222-222222222222';
+  select count(*) into v from kilo.user_profile where user_id = '22222222-2222-2222-2222-222222222222';
   if v <> 0 then raise exception 'user_profile cross-read leak'; end if;
 
   -- UPDATE isolation: zero rows of B affected.
-  update public.weight_entries set note = 'hacked' where id = 'wb';
+  update kilo.weight_entries set note = 'hacked' where id = 'wb';
   get diagnostics v = row_count;
   if v <> 0 then raise exception 'weight_entries cross-update leak'; end if;
-  update public.workout_notes set raw_text = 'hacked' where id = 'nb';
+  update kilo.workout_notes set raw_text = 'hacked' where id = 'nb';
   get diagnostics v = row_count;
   if v <> 0 then raise exception 'workout_notes cross-update leak'; end if;
 
   -- DELETE isolation: zero rows of B affected.
-  delete from public.deload_history where id = 'db';
+  delete from kilo.deload_history where id = 'db';
   get diagnostics v = row_count;
   if v <> 0 then raise exception 'deload_history cross-delete leak'; end if;
-  delete from public.fatigue_checkins where id = 'fb';
+  delete from kilo.fatigue_checkins where id = 'fb';
   get diagnostics v = row_count;
   if v <> 0 then raise exception 'fatigue_checkins cross-delete leak'; end if;
 
   -- WITH CHECK: spoofed owner insert must fail.
   begin
-    insert into public.weight_entries (user_id, id, weight_value)
+    insert into kilo.weight_entries (user_id, id, weight_value)
       values ('22222222-2222-2222-2222-222222222222', 'spoof', 1);
     raise exception 'spoofed insert was allowed';
   exception when insufficient_privilege then
