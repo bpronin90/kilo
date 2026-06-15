@@ -82,10 +82,19 @@ describe('adapter surface', () => {
   });
 
   it('cloud shell mirrors the local adapter method surface exactly', () => {
+    // The cloud adapter mirrors every local domain method 1:1, plus the one
+    // implemented cloud-only capability for this phase: bootstrapFromLocal
+    // (Phase 4 / Task 10). Exclude that extra method from the surface mirror.
     const cloudMethods = Object.keys(cloudAdapter).filter(
-      (k) => typeof cloudAdapter[k] === 'function'
+      (k) => typeof cloudAdapter[k] === 'function' && k !== 'bootstrapFromLocal'
     );
     expect(cloudMethods.sort()).toEqual([...ADAPTER_METHODS].sort());
+  });
+
+  it('cloud adapter exposes an implemented bootstrapFromLocal beyond the shell', () => {
+    expect(typeof cloudAdapter.bootstrapFromLocal).toBe('function');
+    // bootstrapFromLocal is a real implementation, not a not-implemented stub.
+    expect(ADAPTER_METHODS).not.toContain('bootstrapFromLocal');
   });
 
   it('local adapter delegates to the real local implementation', async () => {

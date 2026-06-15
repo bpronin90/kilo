@@ -738,14 +738,21 @@ transaction-rollback dry run, then applied for real), and an unauthenticated
 REST call is correctly denied (`permission denied for schema kilo`). The app
 enters cloud-aware mode only when `EXPO_PUBLIC_SUPABASE_URL` /
 `EXPO_PUBLIC_SUPABASE_ANON_KEY` are configured; absent that it runs entirely
-local, and signed-out users stay local-only regardless. No local data is moved
-to the cloud yet — bootstrap and sync are Phase 4. `docs/backend-schema.md`
-documents the schema and source-of-truth policy, `docs/backend-activation.md`
-the activation runbook, and `docs/backend-roadmap.md` the remaining cloud work.
+local, and signed-out users stay local-only regardless. The Phase 4 bootstrap
+import path now exists in the cloud adapter (#319): `bootstrapFromLocal` reads
+the mapped AsyncStorage keys read-only and upserts them idempotently into the
+note-first `kilo` tables, with legacy `kilo_workout_sessions` synthesized into
+note-first `workout_notes`. It is not yet wired to a user trigger and runs no
+data on its own, so no local data is moved to the cloud yet; continuous sync
+(Task 11) and the bootstrap/sync trigger and recovery UI (Task 12) remain.
+`docs/backend-schema.md` documents the schema and source-of-truth policy,
+`docs/backend-activation.md` the activation runbook, and
+`docs/backend-roadmap.md` the remaining cloud work.
 
 Launch validation must still treat AsyncStorage as the runtime persistence
-layer until cloud bootstrap and sync (Phase 4) land; the schema being live does
-not yet move or back up any local data.
+layer until cloud bootstrap and sync (Phase 4) are user-invokable; the schema
+being live and the bootstrap path existing do not yet move or back up any local
+data without a trigger.
 
 ### Legacy Capacitor shell removed
 

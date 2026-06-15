@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.71.0 - 2026-06-15
+
+- Issue #319 (Phase 4 / Task 10): Implemented a user-initiated, one-way cloud
+  bootstrap on the storage cloud adapter (`bootstrapFromLocal`). It reads every
+  mapped AsyncStorage key through read-only local accessors and writes them to
+  the note-first `kilo` schema with one idempotent, PK-keyed upsert per table,
+  so re-running for the same user updates rather than duplicates rows. Legacy
+  `kilo_workout_sessions` is synthesized into note-first `workout_notes`
+  (`raw_text` + original array retained in `source_snapshot`), never normalized
+  per-set tables, and legacy `kilo_workout_note` is tagged via `source_snapshot`.
+  Local AsyncStorage is never mutated, so a failed bootstrap leaves local state
+  intact and is retryable. Continuous sync and a user-facing trigger remain
+  Phase 4 Tasks 11–12; other cloud domain methods still throw
+  `CloudNotImplementedError`.
+
 ## 0.70.1 - 2026-06-15
 
 - Issue #327: Added `docs/backend-activation.md`, the operator runbook for
