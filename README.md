@@ -9,6 +9,17 @@ Kilo is a local-only fitness tracking app built with Expo/React Native.
 
 There is no backend or Supabase wiring. All persistence is local.
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| App runtime | Expo / React Native native app under `mobile/` |
+| Language | JavaScript modules for screens, parser, storage, and shared data helpers |
+| Persistence | Local AsyncStorage-backed storage modules under `mobile/storage/` |
+| Testing | Jest suites under `mobile/tests/`, run with `npm --prefix mobile test` |
+| Native packaging | EAS Build for physical-device Android preview builds |
+| Backend/services | None; the app is local-only and has no Supabase wiring |
+
 ## Run The Native App
 
 From the repo root, the default native dev entrypoint is:
