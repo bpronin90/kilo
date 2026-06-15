@@ -89,16 +89,17 @@ Current limitation:
   coverage for history-row scroll-to-editor behavior, edit/date threading
   through the existing update seam, delete confirmation/refresh behavior, the
   saved-goal target/guidance split, and the active weigh-in/goal
-  `DateTimePicker` `onChange` callback wiring. The same `log-screen.test.js`
-  suite now also
+  `DateTimePicker` `onChange` callback wiring, plus web fallback coverage for
+  Weight DOM date inputs. The same `log-screen.test.js` suite now also
   includes `react-test-renderer` coverage for the rendered App Guide workout
   example, the aligned Log editor placeholder, current-note Undo, saved-note
   Undo, and failure-path handling around note-scoped Undo for editable deload
-  records, plus `mobile/App.js` app-shell coverage for initial tab visibility,
-  tab switching through the shared `TabBar` contract, and Android hardware-back
-  behavior from Home and non-Home tabs. Full transactional undo guarantees
-  across linked records are still deferred until a DB-backed persistence layer
-  exists.
+  records, plus source-contract coverage for the explicit single-press Log edit
+  path and Log deload-date web fallback. `mobile/App.js` app-shell coverage now
+  covers initial tab visibility, tab switching through the shared `TabBar`
+  contract, Android hardware-back behavior from Home and non-Home tabs, and the
+  web-only Home back affordance. Full transactional undo guarantees across
+  linked records are still deferred until a DB-backed persistence layer exists.
 - No automated native test covers an Expo device/emulator pass yet.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
   surface end to end from a saved workout note. The current suite covers the
