@@ -299,6 +299,7 @@ Ordered tasks:
 - Dependency: Phase 2 / Task 4 complete.
 - Verification target: a command or documented QA path confirms the exported web build boots with local data.
 - Stop condition: no hosting provider lock-in beyond documenting the selected static-hosting path.
+- Verification path: `npm run web:smoke` exports the web build, serves it locally with `expo serve`, and asserts the served entrypoint boots (HTTP 200 with the `root` mount and an `_expo/static/js` bundle). `npm run web:export` / `npm run web:serve` plus an optional manual local-data pass are documented in `docs/testing-and-qa.md` under "Web Export Smoke Check". The automated check fails fast when the Task 4 single-output export config (`web.bundler: "metro"`, `web.output: "single"`) is absent.
 
 ### Phase 3: Supabase Foundation
 

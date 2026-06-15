@@ -7,6 +7,9 @@
     "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:android:tunnel": "npm --prefix mobile run android:tunnel",
+    "web:export": "npm --prefix mobile run export:web",
+    "web:serve": "npm --prefix mobile run serve:web",
+    "web:smoke": "npm --prefix mobile run smoke:web",
     "audit": "npm audit --audit-level=high"
   }
 }
