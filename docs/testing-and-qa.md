@@ -38,7 +38,9 @@ when a native-incompatible change actually requires it.
 Current limitation:
 
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
-  including tracked-exercise persistence on the canonical workout note and a
+  including tracked-exercise persistence on the canonical workout note, a
+  focused note-first Log workflow suite pinning raw note save, edit-through-
+  upsert persistence, and parser-derived display from stored raw text, and a
   fixture-driven migration contract suite for legacy structured workout
   history, plus weight-goal persistence/derivation coverage, explicit
   weight-pace threshold boundary coverage, canonical goal current-weight
@@ -84,9 +86,11 @@ Current limitation:
   collapsed-by-default summary, the expand/collapse toggle cycle, the
   post-expansion rough-row and ok/pending chip edit affordances, and the
   unanswered-check-in alert badge, and targeted `WeightScreen` interaction
-  coverage for history-row scroll-to-editor behavior, the saved-goal
-  target/guidance split, and the active weigh-in/goal `DateTimePicker`
-  `onChange` callback wiring. The same `log-screen.test.js` suite now also
+  coverage for history-row scroll-to-editor behavior, edit/date threading
+  through the existing update seam, delete confirmation/refresh behavior, the
+  saved-goal target/guidance split, and the active weigh-in/goal
+  `DateTimePicker` `onChange` callback wiring. The same `log-screen.test.js`
+  suite now also
   includes `react-test-renderer` coverage for the rendered App Guide workout
   example, the aligned Log editor placeholder, current-note Undo, saved-note
   Undo, and failure-path handling around note-scoped Undo for editable deload
@@ -287,9 +291,11 @@ retains non-test commands such as `npm run audit`.
   `mobile/storage/entries.js`
 - verifies empty-load behavior, newest-first sorting, update misses, workout
   note save/overwrite/clear behavior, tracked-exercise persistence across note
-  edits, optional user-profile persistence, the deload dual-write linkage
-  contract (`note_id` plus `Deload · ` note filtering and deletion pattern),
-  tolerance for pre-#257 history rows without `note_id`, direct
+  edits, note-first Log raw-text save/edit/parser-display coverage,
+  weight-entry value/note/date correction coverage, invalid date rejection,
+  delete-refresh ordering, optional user-profile persistence, the deload
+  dual-write linkage contract (`note_id` plus `Deload · ` note filtering and
+  deletion pattern), tolerance for pre-#257 history rows without `note_id`, direct
   `updateDeloadHistory(id, patch)` coverage for linked deload-date sync,
   persisted default and round-trip behavior for the `Fatigue tracking` and
   `Deload mode` settings, and migration of legacy structured sessions into the
@@ -330,10 +336,13 @@ retains non-test commands such as `npm run audit`.
   (sets `editingId`, populates weight and note inputs)
 - verifies edit submit reruns `parseWeightEntry` validation and calls `update`
   with the correct entry id and note on valid input
+- verifies date-enabled edit submit threads the corrected ISO date through the
+  existing `update` seam
 - verifies edit submit shows a validation error and does not call `update` when
   the weight field contains invalid input
 - verifies tapping the delete affordance (✕) triggers `Alert.alert` with a
-  confirm prompt and calls `remove` on the destructive confirmation
+  confirm prompt, calls `remove` on the destructive confirmation, and refreshes
+  the rendered history
 - verifies cancelling the delete prompt does not call `remove`
 - verifies tapping a history row also calls the forwarded `ScreenShell`
   `scrollTo` ref so the loaded editor is brought back into view

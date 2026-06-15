@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.68.14 - 2026-06-15
+
+- Issue #311: Added focused storage-seam regression coverage for the
+  note-first Log workflow, pinning raw workout note saves, existing-note edits
+  through the upsert path, sibling-note preservation, and parser-derived display
+  state from persisted raw text before backend sync work lands.
+- Issue #312: Added focused Weight correction coverage for value/note/date
+  edits, invalid future or malformed date rejection, storage refresh ordering
+  after deletes, and date-enabled edit submission through the existing
+  `update` seam. Runtime behavior is unchanged.
+- Issue #325: Updated the repo README with a clear `Tech Stack` section
+  covering the active Expo/React Native app, JavaScript modules,
+  AsyncStorage-backed local persistence, Jest tests, EAS Build, and the current
+  absence of backend/Supabase wiring.
+
 ## 0.68.13 - 2026-06-14
 
 - Issue #310: Added focused native app-shell regression coverage for initial
