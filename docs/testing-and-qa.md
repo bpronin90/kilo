@@ -429,10 +429,11 @@ dependency.
 Boot is only considered verified once the required browser + local-data pass
 below is performed. The automated pre-flight alone does not prove boot.
 
-Dependency: requires the static web export from Task 4 / #313 to be configured
-(`app.json` `web.bundler: "metro"` and `web.output: "single"`). Without that
-single-output config, `expo export --platform web` does not emit a
-`dist/index.html` and the automated check fails fast with a clear message.
+Dependency: relies on the static web export from Task 4 / #313
+(`app.json` `web.bundler: "metro"` and `web.output: "single"`) being present
+after merge. The pre-flight does not inspect or validate that config itself; it
+fails fast with a clear message only if `expo export --platform web` does not
+emit a `dist/index.html` single-output build.
 
 ### Automated pre-flight (`web:smoke`)
 
