@@ -16,12 +16,14 @@ Kilo is a single-path native app:
   `docs/archive/browser-prototype/`. The Capacitor Android shell and vitest
   config have been removed (issue #213).
 
-There is no running server and no active Supabase connection at runtime. As of
-`0.70.0` the backend foundation has landed on `main` — the note-first `kilo`
-Supabase schema and RLS (#316), the auth/session client (#317), and the
-storage-seam cloud adapter (#318) — but it stays dormant behind the local-only
-default: no Supabase project is wired up, the migration is not deployed, and the
-app runs entirely on AsyncStorage unless Supabase env config is provided.
+There is no running app server. As of `0.70.0` the backend foundation landed on
+`main` — the note-first `kilo` Supabase schema and RLS (#316), the auth/session
+client (#317), and the storage-seam cloud adapter (#318). The `kilo` schema has
+since been applied to and exposed in the shared Supabase project
+(`anime-streaming-tracker`). The app activates cloud mode only when
+`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` are provided (e.g. a
+local gitignored `mobile/.env`); with no env config it runs entirely on
+AsyncStorage, and signed-out users stay local-only either way.
 
 Roadmap status:
 
@@ -724,20 +726,26 @@ suite passing does not confirm that the workout logging loop, correction flows,
 or real-device runtime behavior work correctly. Manual smoke testing (per
 `docs/testing-and-qa.md`) is required to cover these paths.
 
-### No Supabase or backend
+### Supabase backend (schema live, app local-only by default)
 
 Runtime persistence is local device storage via AsyncStorage in the native Expo
-app. As of `0.70.0` the backend foundation has landed on `main` but is inert:
-the note-first `kilo` Supabase schema and RLS (#316, isolation verified against
-real `auth.uid()` via a transaction-rollback dry run, not deployed), the
-auth/session client (#317), and the storage-seam cloud adapter with local mode
-as the default (#318). No Supabase project is wired up, no migration is applied,
-and there is no active connection, authentication, or network persistence at
-runtime. `docs/backend-schema.md` documents the schema and source-of-truth
-policy; `docs/backend-roadmap.md` sequences the remaining cloud work.
+app. As of `0.70.0` the backend foundation landed on `main` — the note-first
+`kilo` Supabase schema and RLS (#316), the auth/session client (#317), and the
+storage-seam cloud adapter with local mode as the default (#318). The `kilo`
+schema has since been applied to the shared Supabase project and exposed:
+per-user RLS isolation was proven against real `auth.uid()` (first via a
+transaction-rollback dry run, then applied for real), and an unauthenticated
+REST call is correctly denied (`permission denied for schema kilo`). The app
+enters cloud-aware mode only when `EXPO_PUBLIC_SUPABASE_URL` /
+`EXPO_PUBLIC_SUPABASE_ANON_KEY` are configured; absent that it runs entirely
+local, and signed-out users stay local-only regardless. No local data is moved
+to the cloud yet — bootstrap and sync are Phase 4. `docs/backend-schema.md`
+documents the schema and source-of-truth policy, `docs/backend-activation.md`
+the activation runbook, and `docs/backend-roadmap.md` the remaining cloud work.
 
 Launch validation must still treat AsyncStorage as the runtime persistence
-layer until the Supabase backend is actually deployed and wired up.
+layer until cloud bootstrap and sync (Phase 4) land; the schema being live does
+not yet move or back up any local data.
 
 ### Legacy Capacitor shell removed
 

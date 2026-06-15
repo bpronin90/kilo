@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.70.1 - 2026-06-15
+
+- Issue #327: Added `docs/backend-activation.md`, the operator runbook for
+  activating Kilo's Supabase backend (apply migration → expose `kilo` → set
+  client env → verify) with revert/safety notes and the exact env var names.
+- Docs: Updated `docs/current-state.md` to reflect that the `kilo` schema has
+  been applied to and exposed in the shared Supabase project, with the app
+  entering cloud-aware mode only when `EXPO_PUBLIC_SUPABASE_*` env is configured
+  (otherwise local-only). No local data is moved to the cloud yet (Phase 4).
+
 ## 0.70.0 - 2026-06-15
 
 - Issue #316: Added the note-first Supabase schema and RLS foundation in a
