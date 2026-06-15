@@ -16,7 +16,12 @@ Kilo is a single-path native app:
   `docs/archive/browser-prototype/`. The Capacitor Android shell and vitest
   config have been removed (issue #213).
 
-There is still no server, no backend, and no Supabase connection.
+There is no running server and no active Supabase connection at runtime. As of
+`0.70.0` the backend foundation has landed on `main` — the note-first `kilo`
+Supabase schema and RLS (#316), the auth/session client (#317), and the
+storage-seam cloud adapter (#318) — but it stays dormant behind the local-only
+default: no Supabase project is wired up, the migration is not deployed, and the
+app runs entirely on AsyncStorage unless Supabase env config is provided.
 
 Roadmap status:
 
@@ -721,15 +726,18 @@ or real-device runtime behavior work correctly. Manual smoke testing (per
 
 ### No Supabase or backend
 
-All persistence is local device storage via AsyncStorage in the native Expo
-app. There is no Supabase connection, no authentication, no server, and no
-network persistence. This is a known native-app constraint, not a regression.
-The MVP roadmap (Phase 2) defines the Supabase schema and write-boundary
-contract, but those have not been implemented or wired up.
+Runtime persistence is local device storage via AsyncStorage in the native Expo
+app. As of `0.70.0` the backend foundation has landed on `main` but is inert:
+the note-first `kilo` Supabase schema and RLS (#316, isolation verified against
+real `auth.uid()` via a transaction-rollback dry run, not deployed), the
+auth/session client (#317), and the storage-seam cloud adapter with local mode
+as the default (#318). No Supabase project is wired up, no migration is applied,
+and there is no active connection, authentication, or network persistence at
+runtime. `docs/backend-schema.md` documents the schema and source-of-truth
+policy; `docs/backend-roadmap.md` sequences the remaining cloud work.
 
-Launch validation must treat AsyncStorage as the persistence layer. Any
-evaluation of the app against the Supabase-based data model described in
-`docs/mvp-roadmap.md` Phase 2 is premature.
+Launch validation must still treat AsyncStorage as the runtime persistence
+layer until the Supabase backend is actually deployed and wired up.
 
 ### Legacy Capacitor shell removed
 

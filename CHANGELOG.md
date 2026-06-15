@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.70.0 - 2026-06-15
+
+- Issue #316: Added the note-first Supabase schema and RLS foundation in a
+  dedicated `kilo` schema (the project is shared with another app), with seven
+  owner-scoped tables, indexes, RLS enabled on every table, owner-only
+  select/insert/update/delete policies, and explicit schema/table grants for
+  `authenticated` and `service_role` (never `anon`). Per-user isolation was
+  verified against real `auth.uid()` via a transaction-rollback dry run.
+- Issue #317: Added the Supabase auth/session client behind the app shell —
+  email/password, password reset, OAuth callback handling, and secure native
+  session storage (`expo-secure-store`, no token material in plain
+  AsyncStorage) with web localStorage — plus a minimal Account surface in More.
+  Signed-out users keep using local data with no account; the app stays
+  local-only when Supabase env config is absent.
+- Issue #318: Introduced the storage-seam cloud adapter behind
+  `mobile/storage/entries.js` with local-only mode as the default, an explicit
+  local adapter surface, a cloud adapter shell (no bootstrap/sync yet), and a
+  test that fails if `mobile/screens/**` imports Supabase directly. The #317 and
+  #318 Supabase client modules were reconciled into one auth-aware client during
+  integration.
+- Issue #326: Added `docs/backend-schema.md` documenting Kilo's single-schema
+  tenancy, single-schema rationale, source-of-truth rule, naming conventions,
+  grants/isolation posture, and operational notes.
+
 ## 0.69.1 - 2026-06-15
 
 - Issue #315: Added the repeatable web export smoke verification path. Root and
