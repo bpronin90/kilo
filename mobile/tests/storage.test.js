@@ -212,6 +212,58 @@ describe('weight entry storage', () => {
     const updated = entries.find(e => e.id === W1.id);
     expect(updated.date).toBe(W1.date);
   });
+
+  // Issue #312: a single correction can change value, note, and date together.
+  test('updateWeightEntry corrects weight_value, note, and date in one call', async () => {
+    await saveWeightEntry(W1);
+    const ok = await updateWeightEntry(W1.id, 188.4, 'Corrected', '2026-05-09');
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.weight_value).toBe(188.4);
+    expect(updated.note).toBe('Corrected');
+    expect(updated.date).toBe('2026-05-09');
+    expect(updated.logged_at.startsWith('2026-05-09')).toBe(true);
+  });
+
+  // Issue #312: an invalid future date must not block the value/note correction;
+  // only the date is rejected.
+  test('updateWeightEntry rejects a future date but still applies value and note', async () => {
+    await saveWeightEntry(W1);
+    const ok = await updateWeightEntry(W1.id, 187.3, 'Future attempt', '2099-12-31');
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.weight_value).toBe(187.3);
+    expect(updated.note).toBe('Future attempt');
+    expect(updated.date).toBe(W1.date);
+    expect(updated.logged_at).toBe(W1.logged_at);
+  });
+
+  // Issue #312: a malformed date string is ignored (not spliced into logged_at),
+  // while value/note still update.
+  test('updateWeightEntry ignores a malformed date string', async () => {
+    await saveWeightEntry(W1);
+    const ok = await updateWeightEntry(W1.id, 186.0, 'note', '05/09/2026');
+    expect(ok).toBe(true);
+    const entries = await loadWeightEntries();
+    const updated = entries.find(e => e.id === W1.id);
+    expect(updated.weight_value).toBe(186.0);
+    expect(updated.date).toBe(W1.date);
+    expect(updated.logged_at).toBe(W1.logged_at);
+  });
+
+  // Issue #312: deleting one of several rows refreshes the loaded history,
+  // leaving the remaining rows intact and sorted newest-first.
+  test('deleteWeightEntry refreshes loaded history to remaining rows', async () => {
+    const W3 = { ...W1, id: 'w_2026-05-03_3', date: '2026-05-03', logged_at: '2026-05-03T08:00:00.000Z' };
+    await saveWeightEntry(W1);
+    await saveWeightEntry(W2);
+    await saveWeightEntry(W3);
+    await deleteWeightEntry(W2.id);
+    const entries = await loadWeightEntries();
+    expect(entries.map(e => e.id)).toEqual([W3.id, W1.id]);
+  });
 });
 
 describe('weight date edit setting', () => {

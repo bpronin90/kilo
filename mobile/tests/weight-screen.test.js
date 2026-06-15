@@ -115,9 +115,16 @@ describe('WeightScreen edit and delete correction flows', () => {
       update: mockUpdate,
     });
 
-    mockUpdate = jest.fn().mockImplementation(async (id, weight, note) => {
+    mockUpdate = jest.fn().mockImplementation(async (id, weight, note, date) => {
       currentEntries = currentEntries.map(e =>
-        e.id === id ? { ...e, weight_value: weight, note: note || '' } : e
+        e.id === id
+          ? {
+              ...e,
+              weight_value: weight,
+              note: note || '',
+              ...(date ? { date, logged_at: `${date}T08:00:00Z` } : {}),
+            }
+          : e
       );
       useEntries.useWeightEntries.mockReturnValue(makeMockReturn());
     });
@@ -214,6 +221,47 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'Editing entry')).toBe(false);
     expect(hasText(root, '190')).toBe(true);
     expect(hasText(root, '185 lb')).toBe(false);
+  });
+
+  // Issue #312: with date editing enabled, an edit threads the corrected date
+  // through to update() and the refreshed row reflects the new date.
+  test('edit submit threads corrected date through update when date editing is enabled', async () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen
+          onSaveWeight={jest.fn()}
+          errorMessage=""
+          saving={false}
+          weightDateEditEnabled={true}
+        />
+      );
+    });
+    const root = component.root;
+
+    // Enter editing mode for the existing 185 / 2026-05-24 entry
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    // Open the edit date picker and choose an earlier, valid date
+    const dateBtn = root.findByProps({ accessibilityLabel: 'Entry date' });
+    render.act(() => {
+      dateBtn.props.onPress();
+    });
+    const picker = root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => {
+      picker.props.onChange({}, new Date(2026, 4, 20)); // 2026-05-20
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    await render.act(async () => {
+      await updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 185, 'morning', '2026-05-20');
+    expect(hasText(root, 'Editing entry')).toBe(false);
   });
 
   test('edit submit shows validation error and does not call update for invalid weight', async () => {
