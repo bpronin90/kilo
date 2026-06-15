@@ -1,7 +1,10 @@
 // Supabase auth/session client boundary.
 //
-// This module is the single place the app constructs a Supabase client. It
-// wires platform-appropriate, secure session persistence:
+// This module is the single authorized place the app constructs a Supabase
+// client. Screens and hooks must never import `@supabase/supabase-js` directly;
+// auth flows reach it through `useAuthSession`, and cloud storage reaches it
+// through the storage adapter seam. It wires platform-appropriate, secure
+// session persistence:
 //
 //   - Native (iOS/Android): token material is stored in `expo-secure-store`
 //     (Keychain / Keystore), never in plain AsyncStorage. Secure store has a
@@ -13,6 +16,14 @@
 // signed-out, local-only users never trigger any network/auth setup. Existing
 // app behavior is unchanged when `EXPO_PUBLIC_SUPABASE_URL` /
 // `EXPO_PUBLIC_SUPABASE_ANON_KEY` are not configured.
+//
+// Reconciliation note (issues #317 + #318): #317 created the auth/session
+// client and #318 created a storage-seam shell, each adding this file. They are
+// merged here into one module: #317's auth-aware client + secure-store
+// persistence is canonical, and #318's explicit config probes
+// (`getSupabaseConfig` / `isSupabaseConfigured`) are kept so the cloud storage
+// adapter can decide whether cloud is viable without constructing a client.
+// `getSupabaseClient()` returns null (does not throw) when unconfigured.
 
 import { Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
@@ -111,8 +122,22 @@ export function resolveAuthStorage(platformOS = Platform.OS) {
   return makeSecureStoreAdapter();
 }
 
+// Reads Supabase connection config from the environment. Returns null when the
+// app is not configured for cloud mode, which keeps local-only the safe default.
+// Used by the storage adapter seam to decide whether cloud is viable without
+// constructing a client.
+export function getSupabaseConfig() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  return { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY };
+}
+
 export function hasSupabaseConfig() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+  return getSupabaseConfig() != null;
+}
+
+// Alias retained from #318's seam contract; same meaning as hasSupabaseConfig().
+export function isSupabaseConfigured() {
+  return getSupabaseConfig() != null;
 }
 
 let cachedClient;

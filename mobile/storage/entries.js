@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { localAdapter } from './localAdapter';
+import { cloudAdapter } from './cloudAdapter';
 
 const WEIGHT_KEY = 'kilo_weight_entries';
 const WEIGHT_GOAL_KEY = 'kilo_weight_goal';
@@ -678,3 +680,41 @@ export async function migrateWorkoutNote() {
 
   return saveWorkoutNote(lines.join('\n'));
 }
+
+// ── storage-seam adapter selection ─────────────────────────────────────────────
+//
+// The named exports above remain the canonical local persistence implementation
+// and continue to work unchanged; local mode is the default and existing callers
+// keep using them directly.
+//
+// This selection layer lets the app choose local-only or cloud-backed mode
+// behind the storage seam. Screens never see this; they reach storage through
+// useEntries.js, which can be migrated onto getStorageAdapter() in a later phase.
+//
+// Scope (Phase 3 / Task 9): cloud mode resolves to a not-implemented shell. No
+// bootstrap or sync behavior exists yet. Selecting cloud only changes which
+// adapter object is returned; it does not move any data.
+
+const STORAGE_MODES = Object.freeze({ LOCAL: 'local', CLOUD: 'cloud' });
+
+let activeStorageMode = STORAGE_MODES.LOCAL;
+
+// Returns the current storage mode ('local' by default).
+export function getStorageMode() {
+  return activeStorageMode;
+}
+
+// Selects local-only or cloud-backed mode. Defaults to local on invalid input
+// so callers can never accidentally leave local-only behavior.
+export function setStorageMode(mode) {
+  activeStorageMode = mode === STORAGE_MODES.CLOUD ? STORAGE_MODES.CLOUD : STORAGE_MODES.LOCAL;
+  return activeStorageMode;
+}
+
+// Returns the adapter for the active mode. Local is the default; cloud returns
+// the not-implemented shell until a later phase wires real cloud behavior.
+export function getStorageAdapter() {
+  return activeStorageMode === STORAGE_MODES.CLOUD ? cloudAdapter : localAdapter;
+}
+
+export { STORAGE_MODES };
