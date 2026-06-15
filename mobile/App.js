@@ -13,6 +13,7 @@ import { WeightScreen } from './screens/WeightScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
 import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
+import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
 import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
@@ -53,6 +54,19 @@ export default function App() {
 
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
+  const auth = useAuthSession();
+
+  // Web OAuth / password-reset callback handling. After a provider redirect or
+  // a reset link, the app reloads at its web URL carrying the auth payload; this
+  // exchanges it into a persisted session once on mount. Native delivers these
+  // via deep links, so this is web-only and does not affect signed-out users.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !auth.configured) return;
+    if (typeof window === 'undefined') return;
+    const href = window.location?.href || '';
+    if (!/[?#&](code|access_token|error)=/.test(href)) return;
+    auth.handleAuthCallbackUrl(href).catch(() => {});
+  }, [auth.configured]);
 
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
