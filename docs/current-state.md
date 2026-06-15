@@ -782,8 +782,16 @@ placeholder artwork.
 
 The Expo web target is configured for static export with Metro and single-output
 web output in `mobile/app.json`. `npx expo export --platform web` now emits the
-static web artifact from `mobile/`; desktop usability fallbacks, local-data web
-smoke verification, and hosting remain the follow-on Phase 2 work.
+static web artifact from `mobile/`.
+
+Desktop web has the minimum local-data usability fallbacks needed before backend
+work: non-Home tabs render an explicit web-only Home back control, wide web
+viewports center the single-column app within a 640px content cap, Log edit
+entry is available through explicit single-press edit controls, and Weight plus
+linked Log deload date edits use DOM `input type="date"` controls on web while
+native Android keeps the existing hardware-back and native `DateTimePicker`
+paths. Local-data web smoke verification and hosting remain follow-on Phase 2
+work.
 
 **iOS device build blockers:** the `ios-device` profile uses internal
 (ad hoc) distribution, which requires an Apple Developer account and the target

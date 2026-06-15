@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.69.0 - 2026-06-15
+
+- Issue #314: Made the local-data app usable on desktop web without changing
+  parser or storage behavior. Added a web-only Home back affordance for
+  non-Home tabs, centered wide web content, kept native Android back/date
+  behavior intact, and added DOM date-input fallbacks for Weight date edits and
+  linked Log deload-date edits.
+
 ## 0.68.15 - 2026-06-15
 
 - Issue #313: Enabled Expo web static export by configuring the mobile Expo
