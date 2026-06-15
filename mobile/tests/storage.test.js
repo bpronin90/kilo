@@ -43,8 +43,9 @@ import {
   loadDeloadModeEnabled,
   saveDeloadModeEnabled,
 } from '../storage/entries';
-import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate } from '../lib/data';
+import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate, makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
+import { getNoteSections } from '../hooks/useEntries';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -2123,5 +2124,140 @@ describe('updateDeloadHistory', () => {
     const history = await loadDeloadHistory();
     expect(history[0].completed_at).toBe('2026-05-08T12:00:00.000Z');
     expect(history[0].note_id).toBe('wn_dl_rt');
+  });
+});
+
+// ── Log note-first workflow: save, edit, and parse-derived display (#311) ──────
+// Phase 1 / Task 2. These pin the note-first Log flow against the
+// storage/useEntries seams before backend sync or web edit fallbacks land.
+// They exercise the SAME path the Log screen uses:
+//   - new note creation via makeWorkoutNoteItem -> saveWorkoutNoteItem
+//   - edit via the loadWorkoutNotes -> saveWorkoutNoteItem upsert (the seam the
+//     useWorkoutNotes().update callback wraps)
+//   - parser-derived display via getNoteSections (the exact memoized parse the
+//     Log/Home/Analytics render paths call on a stored note)
+// No production storage shape is changed — these read/write the shipped record.
+
+describe('Log note-first workflow: save raw note (#311)', () => {
+  test('saving a new routine persists the exact raw workout note text', async () => {
+    const RAW = 'Push day\n-Bench\n135 5,5,5\n-OHP\n95 8,8,8';
+    const note = makeWorkoutNoteItem({ title: 'Push day', raw_text: RAW });
+    await saveWorkoutNoteItem(note);
+
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    // Fails if raw workout note text is not saved.
+    expect(notes[0].raw_text).toBe(RAW);
+  });
+
+  test('raw note text is stored verbatim, including skip slots and blank lines', async () => {
+    // Skip-aware syntax ("-" rows) and trailing blanks must survive untouched so
+    // the parser can reconstruct session alignment on read.
+    const RAW = '-Bench\n100 5,5,5\n-\n-\n120 5,5,5\n';
+    const note = makeWorkoutNoteItem({ title: 'Routine', raw_text: RAW });
+    await saveWorkoutNoteItem(note);
+
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].raw_text).toBe(RAW);
+  });
+});
+
+describe('Log note-first workflow: edit existing note persists through storage seam (#311)', () => {
+  // Mirrors useWorkoutNotes().update: load the note list, patch the target note,
+  // re-save via the upsert seam. This is the exact seam web edit fallbacks rely on.
+  async function editNoteRawText(id, raw_text) {
+    const list = await loadWorkoutNotes();
+    const note = list.find(n => n.id === id);
+    if (!note) return false;
+    const updated = { ...note, raw_text, updated_at: '2026-06-14T12:00:00.000Z' };
+    await saveWorkoutNoteItem(updated);
+    return updated;
+  }
+
+  test('editing an existing note raw_text persists across a reload', async () => {
+    const note = makeWorkoutNoteItem({ title: 'Routine', raw_text: 'Monday\n-Squat\n225 5,5,5' });
+    await saveWorkoutNoteItem(note);
+
+    const result = await editNoteRawText(note.id, 'Monday\n-Squat\n225 5,5,5\n-Deadlift\n315 3,3,3');
+    expect(result).not.toBe(false);
+
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(1);
+    // Fails if editing an existing note does not persist through the storage seam.
+    expect(notes[0].raw_text).toBe('Monday\n-Squat\n225 5,5,5\n-Deadlift\n315 3,3,3');
+  });
+
+  test('editing one note does not corrupt or duplicate sibling notes', async () => {
+    const a = makeWorkoutNoteItem({ title: 'A', raw_text: 'Bench 135 5,5,5' });
+    const b = makeWorkoutNoteItem({ title: 'B', raw_text: 'Row 95 8,8,8' });
+    // Distinct ids: makeWorkoutNoteItem mints id from Date.now(); force uniqueness.
+    const noteA = { ...a, id: 'wn_a' };
+    const noteB = { ...b, id: 'wn_b' };
+    await saveWorkoutNoteItem(noteA);
+    await saveWorkoutNoteItem(noteB);
+
+    await editNoteRawText('wn_a', 'Bench 145 5,5,5');
+
+    const notes = await loadWorkoutNotes();
+    expect(notes).toHaveLength(2);
+    const reloadedA = notes.find(n => n.id === 'wn_a');
+    const reloadedB = notes.find(n => n.id === 'wn_b');
+    expect(reloadedA.raw_text).toBe('Bench 145 5,5,5');
+    expect(reloadedB.raw_text).toBe('Row 95 8,8,8');
+  });
+
+  test('edit preserves the original saved_at timestamp on the stored note', async () => {
+    const note = { ...makeWorkoutNoteItem({ title: 'R', raw_text: 'Bench 135 5,5,5' }), id: 'wn_keep', saved_at: '2026-05-01T00:00:00.000Z' };
+    await saveWorkoutNoteItem(note);
+    await editNoteRawText('wn_keep', 'Bench 155 5,5,5');
+    const notes = await loadWorkoutNotes();
+    expect(notes[0].saved_at).toBe('2026-05-01T00:00:00.000Z');
+  });
+});
+
+describe('Log note-first workflow: parser-derived display reflects stored raw note (#311)', () => {
+  // getNoteSections is the memoized parse the Log/Home/Analytics render paths run
+  // on a stored note. These pin that displayed exercise/set state is derived from
+  // the persisted raw_text — not a separate structured store.
+
+  test('parser-derived sections reflect the exercises in the stored raw note', async () => {
+    const note = makeWorkoutNoteItem({ title: 'Push', raw_text: 'Push\n-Bench\n135 5,5,5\n-OHP\n95 8,8,8' });
+    await saveWorkoutNoteItem(note);
+
+    const stored = (await loadWorkoutNotes())[0];
+    const sections = getNoteSections(stored);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Bench');
+    expect(names).toContain('OHP');
+  });
+
+  test('parser-derived sets reflect the weights stored in the raw note', async () => {
+    const note = makeWorkoutNoteItem({ title: 'Squat day', raw_text: 'Monday\n-Squat\n225 5,5,5' });
+    await saveWorkoutNoteItem(note);
+
+    const stored = (await loadWorkoutNotes())[0];
+    const sections = getNoteSections(stored);
+    const allSets = sections.flatMap(s => s.exercises.flatMap(e => e.sets));
+    expect(allSets.some(s => s.weight_value === 225)).toBe(true);
+  });
+
+  test('editing the stored raw note changes the parser-derived displayed state', async () => {
+    const note = { ...makeWorkoutNoteItem({ title: 'R', raw_text: 'Monday\n-Squat\n225 5,5,5' }), id: 'wn_parse' };
+    await saveWorkoutNoteItem(note);
+
+    // Before edit: only Squat is displayed.
+    let stored = (await loadWorkoutNotes())[0];
+    let names = getNoteSections(stored).flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toContain('Squat');
+    expect(names).not.toContain('Deadlift');
+
+    // Edit through the storage seam (cache key is note id; raw_text guard forces reparse).
+    await saveWorkoutNoteItem({ ...note, raw_text: 'Monday\n-Squat\n225 5,5,5\n-Deadlift\n315 3,3,3' });
+
+    stored = (await loadWorkoutNotes())[0];
+    names = getNoteSections(stored).flatMap(s => s.exercises.map(e => e.name));
+    // Fails if parser-derived displayed state no longer reflects the stored raw note.
+    expect(names).toContain('Squat');
+    expect(names).toContain('Deadlift');
   });
 });
