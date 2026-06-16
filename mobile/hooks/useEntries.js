@@ -387,7 +387,7 @@ export function useDeloadHistory() {
       note_id: noteId,
     };
     await Storage.appendDeloadHistory(record);
-    await Storage.saveWorkoutNoteItem(workoutNote);
+    await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, workoutNote);
     await Storage.clearDeloadNote();
     notifyDeloadHistory();
     notifyDeloadNote();
@@ -402,7 +402,7 @@ export function useDeloadHistory() {
       await Storage.deleteDeloadHistory(record.id);
       notifyDeloadHistory();
     }
-    await Storage.deleteWorkoutNoteItem(noteId);
+    await writeVia('deleteWorkoutNoteItem', Storage.deleteWorkoutNoteItem, noteId);
     notifyWorkoutNotes();
   }, []);
 

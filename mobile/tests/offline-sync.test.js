@@ -30,7 +30,7 @@ import {
 
 import React from 'react';
 import TestRenderer from 'react-test-renderer';
-import { useWeightEntries } from '../hooks/useEntries';
+import { useWeightEntries, useDeloadHistory } from '../hooks/useEntries';
 import { getSupabaseClient } from '../lib/supabaseClient';
 
 // Mock the Supabase client module so the user_id-stamping test can drive the
@@ -532,5 +532,70 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
       expect(row.user_id).toBe('user-123');
     }
     expect(upserts.find((r) => r.id === 'w1')).toBeTruthy();
+  });
+});
+
+// ── Latest review finding: deload-derived workout notes must sync too ────────────
+//
+// completeDeload() creates a workout-note row and deleteDeloadNote() removes one.
+// These previously called raw Storage.* directly, so in cloud mode they bypassed
+// the adapter — never stamping sync metadata nor enqueuing a dirty record. These
+// tests drive the REAL useDeloadHistory hook to prove the deload create routes
+// through the dirty queue and syncs after reconnect, and the deload delete syncs
+// a tombstone instead of silently removing the row locally.
+describe('deload-derived workout notes sync (latest review finding)', () => {
+  it('an offline deload-completed note enters the dirty queue and syncs after reconnect', async () => {
+    const hook = driveHook(useDeloadHistory);
+    await flushAsync(); // settle the on-mount refresh against the empty cloud
+
+    // Stage an active deload note the way the app does before completion.
+    await Storage.saveDeloadNote('squat 5x5');
+
+    cloud.setOnline(false);
+    let record;
+    await TestRenderer.act(async () => {
+      record = await hook.current.completeDeload({ sessionCount: 6, deloadSessionOrdinal: 1 });
+    });
+    expect(record).toBeTruthy();
+    const noteId = record.note_id;
+
+    // Routed through the cloud adapter: the deload-created note is in the dirty
+    // queue. (A raw Storage.saveWorkoutNoteItem would have left it empty.)
+    const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+    expect(dirty.map((d) => d.id)).toContain(noteId);
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    const remote = cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, noteId);
+    expect(remote).toBeTruthy();
+    expect(remote.raw_text).toBe('squat 5x5');
+    expect(isTombstone(remote)).toBe(false);
+  });
+
+  it('deleting a deload note syncs a tombstone, not a silent physical removal', async () => {
+    const hook = driveHook(useDeloadHistory);
+    await flushAsync();
+
+    await Storage.saveDeloadNote('squat 5x5');
+    let record;
+    await TestRenderer.act(async () => {
+      record = await hook.current.completeDeload({ sessionCount: 6, deloadSessionOrdinal: 1 });
+    });
+    const noteId = record.note_id;
+
+    // Sync the create up first so the remote has a live row to be tombstoned.
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, noteId))).toBe(false);
+
+    cloud.setOnline(false);
+    await TestRenderer.act(async () => {
+      await hook.current.deleteDeloadNote(noteId);
+    });
+    // Tombstone enqueued, not a physical purge.
+    expect((await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).map((d) => d.id)).toContain(noteId);
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, noteId))).toBe(true);
   });
 });
