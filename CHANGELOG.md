@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.73.0 - 2026-06-16
+
+- Issue #321 (Phase 4 / Task 12): Added cloud export parity and sync recovery
+  UX. The signed-in Account screen now has a Cloud Sync panel showing per-phase
+  bootstrap/sync status (idle/running/failed/complete), with Run Bootstrap / Run
+  Sync actions that drive the real operations through a non-destructive recovery
+  store (`mobile/storage/syncRecovery.js`) and failure-only retry that re-invokes
+  the same bound runner — bootstrap binds to `cloudAdapter.bootstrapFromLocal`,
+  sync to the adapter's `sync()` engine. Added `buildCloudExport()`: the v3
+  backup payload plus a namespaced `cloud` block (profile, feature toggles,
+  tracked lifts, ui_state, current deload note, and the non-sensitive signed-in
+  account identity), importable by existing v3 importers and never carrying
+  secrets/tokens. No admin/support controls are exposed.
+
 ## 0.72.0 - 2026-06-16
 
 - Issue #320 (Phase 4 / Task 11): Implemented last-write-wins offline sync for

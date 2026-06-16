@@ -747,17 +747,23 @@ implemented too: a transport-agnostic last-write-wins engine with per-install
 `client_id`, monotonic `updated_at` stamping, persisted per-table dirty queues
 and pull cursors, tombstone-first deletes, and derived-JSON recompute, wired
 behind the cloud adapter so cloud-mode reads/writes stamp and enqueue and
-reconcile on reconnect. Both remain gated behind cloud mode and are not yet
-surfaced in the UI, so no local data is moved to the cloud on its own; the
-bootstrap/sync trigger and recovery UI (Task 12) remain.
+reconcile on reconnect. The Task 12 (#321) recovery UX now surfaces this: the
+signed-in Account screen has a Cloud Sync panel with Run Bootstrap / Run Sync
+actions plus failure-only retry that drive a visible idle/running/failed/
+complete status per phase, and a v3-compatible cloud export (the existing backup
+shape plus a namespaced `cloud` block with profile, feature toggles, and the
+non-sensitive signed-in account identity). Retry/run are non-destructive — a
+failed run leaves local AsyncStorage intact. These paths still only act when the
+user is signed in and cloud mode is configured.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.
 
 Launch validation must still treat AsyncStorage as the runtime persistence
-layer until cloud bootstrap and sync (Phase 4) are user-invokable; the schema
-being live and the bootstrap path existing do not yet move or back up any local
-data without a trigger.
+layer and the local data model as the source of truth: the Phase 4 cloud paths
+are now user-invokable from the Account screen, but only when the user is signed
+in and `EXPO_PUBLIC_SUPABASE_*` is configured, and AsyncStorage remains the
+immediate offline cache that cloud bootstrap/sync mirror rather than replace.
 
 ### Legacy Capacitor shell removed
 
