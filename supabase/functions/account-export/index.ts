@@ -49,6 +49,11 @@ function allowed(key: string, max: number, windowMs: number): boolean {
   return true
 }
 
+function refund(key: string): void {
+  const b = buckets.get(key)
+  if (b && b.count > 0) b.count--
+}
+
 function clientIp(req: Request): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
          req.headers.get('x-real-ip') ??
@@ -94,8 +99,11 @@ serve(async (req) => {
     })
   }
 
-  // Per-user rate check (post-auth).
-  if (!allowed(`user:${user.id}`, USER_MAX, USER_WINDOW_MS)) {
+  // Per-user rate check (post-auth). Quota is only spent on successful exports;
+  // failed export attempts refund the bucket so transient errors don't exhaust
+  // the user's one-success-per-window allowance.
+  const userKey = `user:${user.id}`
+  if (!allowed(userKey, USER_MAX, USER_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -132,6 +140,8 @@ serve(async (req) => {
   ].find(r => r.error)?.error
 
   if (firstError) {
+    // Refund the user bucket: a failed export should not spend the quota.
+    refund(userKey)
     return new Response(JSON.stringify({ error: firstError.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
