@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.76.1 - 2026-06-16
+
+- Issue #329 (Phase 5 / Task 14 follow-up): Documented the production Supabase
+  Auth abuse posture gate before open signup. The backend activation runbook now
+  requires CAPTCHA dashboard configuration plus frontend CAPTCHA token
+  integration for public auth forms, requires production-owned SMTP before public
+  email signup/password recovery, and defines release verification and
+  closed-beta deferral wording for both checks. The QA checklist now points
+  release reviewers to that runbook step.
+
 ## 0.76.0 - 2026-06-16
 
 - Issue #328 (Phase 5 / Task 14 follow-up): Added app-owned abuse controls to

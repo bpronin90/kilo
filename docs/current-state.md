@@ -39,8 +39,9 @@ Roadmap status:
   current note-first workout model and local daily-use path between cards. The
   public-account lifecycle slice now includes server-owned requester-only export
   and deletion (#322), conservative account lifecycle endpoint throttles (#328),
-  and placeholder privacy/terms link placements on the signup, account
-  lifecycle, and About Kilo surfaces (#330); CAPTCHA/SMTP configuration remains.
+  placeholder privacy/terms link placements on the signup, account lifecycle,
+  and About Kilo surfaces (#330), and the documented Auth abuse posture gate for
+  CAPTCHA plus production SMTP before open signup (#329).
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
