@@ -228,9 +228,13 @@ public email signup, and enables CAPTCHA before open signup unless a closed-beta
 release explicitly records a temporary deferral.
 
 Kilo-owned Edge Functions remain responsible for app-specific abuse controls.
-`account-export` and `account-delete` must require the caller JWT, perform no
+`account-export` and `account-delete` require the caller JWT, perform no
 unauthenticated writes, keep service-role credentials server-side only, and
-apply both per-user and per-IP rate limits before public launch.
+apply conservative in-memory per-user and per-IP rate limits. `account-export`
+limits successful exports to one per signed-in user per 10 minutes by default,
+while `account-delete` limits delete attempts to three per signed-in user per
+hour by default; both functions also reject repeated callers through an IP
+bucket.
 
 ## Session Check-In (Fatigue) Flow
 

@@ -380,6 +380,9 @@ retains non-test commands such as `npm run audit`.
 - verifies cross-user delete attempts affect zero rows under RLS
 - verifies owner self-delete removes the requester's rows while preserving
   another user's rows
+- rate-limit coverage is at the Edge Function layer and requires manual
+  verification (see Public Signup Legal And Abuse Checks above); the pgTAP suite
+  covers only DB-layer isolation
 - run with `supabase test db --file supabase/tests/account-lifecycle.test.sql`
   from repo root, or `supabase test db --file tests/account-lifecycle.test.sql`
   from inside `supabase/`
@@ -397,6 +400,11 @@ retains non-test commands such as `npm run audit`.
 - verify `account-export` and `account-delete` reject unauthenticated requests,
   include no service-role or secret key in client requests, and enforce both
   per-user and per-IP throttles before open signup
+- manual throttle verification (issue #328): call `account-export` twice within
+  10 minutes as the same user — second call must return HTTP 429; call
+  `account-delete` four times within one hour as the same user — fourth call must
+  return HTTP 429; call either function six or more times from the same IP within
+  the window — calls beyond the IP limit (5 per window) must return HTTP 429
 
 ---
 
