@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from './ScreenShell';
@@ -83,6 +83,26 @@ export function AboutScreen({ onBack }) {
           <Text style={styles.diagCheckResult}>{checkResult}</Text>
         ) : null}
       </Card>
+
+      <View style={styles.legalLinks}>
+        <Text
+          style={styles.legalLink}
+          onPress={() => Linking.openURL('https://example.com/privacy')}
+          accessibilityLabel="Privacy Policy"
+          accessibilityRole="link"
+        >
+          Privacy Policy
+        </Text>
+        <Text style={styles.legalSep}>·</Text>
+        <Text
+          style={styles.legalLink}
+          onPress={() => Linking.openURL('https://example.com/terms')}
+          accessibilityLabel="Terms of Service"
+          accessibilityRole="link"
+        >
+          Terms of Service
+        </Text>
+      </View>
     </ScreenShell>
   );
 }
@@ -155,5 +175,21 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+  },
+  legalLink: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textDecorationLine: 'underline',
+  },
+  legalSep: {
+    fontSize: 13,
+    color: Colors.textMuted,
   },
 });
