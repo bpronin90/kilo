@@ -7,7 +7,7 @@ import {
   getSyncState,
   subscribeSyncState,
   retryPhase,
-} from '../storage/syncQueue';
+} from '../storage/syncRecovery';
 
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while

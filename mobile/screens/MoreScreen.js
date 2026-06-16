@@ -11,7 +11,7 @@ import { SettingsScreen } from '../components/SettingsScreen';
 import { ProfileScreen } from '../components/ProfileScreen';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
-import { SYNC_STATUS } from '../storage/syncQueue';
+import { SYNC_STATUS } from '../storage/syncRecovery';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //

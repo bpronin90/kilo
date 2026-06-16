@@ -25,7 +25,7 @@ import {
   resetPhase,
   subscribeSyncState,
   __resetSyncQueue,
-} from '../storage/syncQueue';
+} from '../storage/syncRecovery';
 import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
 import { saveWeightEntry } from '../storage/entries';
 
