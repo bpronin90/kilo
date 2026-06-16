@@ -66,6 +66,38 @@ If any of these three checks fails, stop and reconcile before treating the backe
 - **To deactivate the client without touching the database:** unset `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` in `mobile/.env` and restart the Expo dev server. The app reverts to local-only mode; the cloud schema is untouched.
 - Never modify the other app's schemas as part of any activation or revert step.
 
+## Step 5: Auth Abuse Posture (Open Signup Gate)
+
+Open signup must not go live without passing both checks in this section. If a check cannot be completed before launch, record an explicit closed-beta deferral inline and re-evaluate before enabling open signup.
+
+### CAPTCHA
+
+**Requirement:** CAPTCHA must be enabled on the signup and password-recovery flows before open signup.
+
+**Dashboard location:** Authentication → Settings → Enable CAPTCHA protection
+
+Choose HCaptcha or Cloudflare Turnstile, paste the site key and secret from your provider account. Both flows are protected once the setting is saved.
+
+**Release verification:** Attempt signup from the public auth surface. The form must present a CAPTCHA challenge. A request that skips the challenge must be rejected by Supabase Auth with a 422.
+
+**Closed-beta deferral:** If open signup is not active, record: `CAPTCHA: deferred — closed-beta, open signup not yet live. Enable before opening signup.` Re-evaluate before open signup.
+
+### Production SMTP
+
+**Requirement:** Custom SMTP must be configured before production email signup or password-recovery flows are reachable by users.
+
+The built-in Supabase SMTP relay is a shared dev aid: low per-hour rate limits, unbranded sender, and not suitable for production delivery.
+
+**Dashboard location:** Authentication → Settings → Email → SMTP Settings
+
+Provide: SMTP host, port (587 with STARTTLS or 465 with SSL), sender address from a verified sending domain, SMTP username, and SMTP password.
+
+Supported providers: SendGrid, Postmark, Resend, or any SMTP-capable transactional email service. The sending domain must have SPF and DKIM records verified with the provider before production use.
+
+**Release verification:** Trigger a password-recovery email from the production project. Confirm the email arrives from your branded sending domain (not `noreply@mail.app.supabase.io`) and is not throttled by a shared relay rate limit.
+
+**Closed-beta deferral:** If password recovery and email signup are not reachable by public users, record: `SMTP: deferred — password recovery and email signup not publicly reachable. Configure before enabling.` Re-evaluate before open signup.
+
 ## Relationship To Other Docs
 
 - `docs/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.

@@ -396,7 +396,8 @@ retains non-test commands such as `npm run audit`.
 - verify Supabase Auth launch configuration keeps platform rate limits active,
   uses production-owned SMTP for email signup/password recovery, and has CAPTCHA
   enabled for open signup, or records an explicit closed-beta deferral before
-  release
+  release; see `docs/backend-activation.md` Step 5 for dashboard locations and
+  release verification steps for CAPTCHA and SMTP
 - verify `account-export` and `account-delete` reject unauthenticated requests,
   include no service-role or secret key in client requests, and enforce both
   per-user and per-IP throttles before open signup
