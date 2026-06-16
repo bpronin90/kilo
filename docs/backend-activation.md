@@ -78,9 +78,19 @@ Open signup must not go live without passing both checks in this section. If a c
 
 Choose HCaptcha or Cloudflare Turnstile, paste the site key and secret from your provider account. Both flows are protected once the setting is saved.
 
-**Release verification:** Attempt signup from the public auth surface. The form must present a CAPTCHA challenge. A request that skips the challenge must be rejected by Supabase Auth with a 422.
+**Frontend integration required:** Enabling the dashboard toggle alone is not sufficient. The app must also render a CAPTCHA widget on every affected auth form (sign-in, sign-up, password reset) and pass the resulting token into the Auth call, for example:
 
-**Closed-beta deferral:** If open signup is not active, record: `CAPTCHA: deferred — closed-beta, open signup not yet live. Enable before opening signup.` Re-evaluate before open signup.
+```js
+supabase.auth.signUp({ email, password, options: { captchaToken } })
+supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
+supabase.auth.resetPasswordForEmail(email, { captchaToken })
+```
+
+Without this app-side step, the dashboard setting blocks server-side bypass but the public auth forms will call Auth without a token and receive an error. The frontend integration work must be complete before open signup, or a closed-beta deferral must be recorded below.
+
+**Release verification:** Confirm all three flows — sign-in, sign-up, and password reset — present a CAPTCHA widget and successfully pass the token through to Supabase Auth. Attempt a direct API signup call without a CAPTCHA token; Supabase Auth must reject it with a 422.
+
+**Closed-beta deferral:** If open signup is not active and the frontend CAPTCHA integration is not yet implemented, record: `CAPTCHA: deferred — closed-beta, open signup and frontend token integration not yet live. Complete app-side integration and enable dashboard setting before opening signup.` Re-evaluate before open signup.
 
 ### Production SMTP
 
