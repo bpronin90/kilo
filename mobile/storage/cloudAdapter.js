@@ -555,7 +555,10 @@ function makeSupabaseTransport() {
       const client = getSupabaseClient();
       if (!client) return [];
       let query = client.schema(SCHEMA).from(table).select('*');
-      if (cursor) query = query.gt('updated_at', cursor);
+      // Inclusive cursor (`>=`): after advancing to T, a tied remote row at
+      // exactly T (winning by client_id) must still be pulled. The LWW merge is
+      // idempotent, so re-pulling the boundary rows is safe.
+      if (cursor) query = query.gte('updated_at', cursor);
       const { data, error } = await query.order('updated_at', { ascending: true });
       if (error) throw error;
       return data || [];
@@ -563,7 +566,16 @@ function makeSupabaseTransport() {
     async push(table, records) {
       const client = getSupabaseClient();
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
-      const { error } = await client.schema(SCHEMA).from(table).upsert(records, { onConflict: 'user_id,id' });
+      // Stamp user_id on every pushed row so the upsert satisfies the RLS
+      // with-check policy (user_id = auth.uid()) and the (user_id,id) conflict
+      // target. The pure sync engine and injectable fake transport stay
+      // user-agnostic; only the real transport resolves the authenticated user.
+      const { data: userData, error: userError } = await client.auth.getUser();
+      if (userError) throw userError;
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error('Cloud sync requires an authenticated user.');
+      const rows = records.map((rec) => ({ ...rec, user_id: userId }));
+      const { error } = await client.schema(SCHEMA).from(table).upsert(rows, { onConflict: 'user_id,id' });
       if (error) throw error;
     },
   };

@@ -32,6 +32,20 @@ function readVia(method, localFn) {
   return localFn();
 }
 
+// Write through the active adapter when in cloud mode so the mutation stamps
+// sync metadata (client_id/updated_at/deleted_at) and enqueues onto the dirty
+// queue; fall back to the raw Storage function in local mode. Without this,
+// offline creates/edits/deletes made through the app never enter the dirty
+// queue and never sync after reconnect. `args` are forwarded unchanged so each
+// call site keeps its exact signature/behavior.
+function writeVia(method, localFn, ...args) {
+  if (getStorageMode() === STORAGE_MODES.CLOUD) {
+    const adapter = getStorageAdapter();
+    if (typeof adapter[method] === 'function') return adapter[method](...args);
+  }
+  return localFn(...args);
+}
+
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
 // sections were parsed from so a note edit only reparses that one note while
 // unrelated notes reuse their cached sections. Replaces the full-notebook
@@ -119,17 +133,17 @@ export function useWeightEntries() {
   }, [refresh]);
 
   const add = useCallback(async (entry) => {
-    await Storage.saveWeightEntry(entry);
+    await writeVia('saveWeightEntry', Storage.saveWeightEntry, entry);
     notifyWeight();
   }, []);
 
   const remove = useCallback(async (id) => {
-    await Storage.deleteWeightEntry(id);
+    await writeVia('deleteWeightEntry', Storage.deleteWeightEntry, id);
     notifyWeight();
   }, []);
 
   const update = useCallback(async (id, weight_value, note, date) => {
-    const ok = await Storage.updateWeightEntry(id, weight_value, note, date);
+    const ok = await writeVia('updateWeightEntry', Storage.updateWeightEntry, id, weight_value, note, date);
     if (ok) {
       notifyWeight();
     }
@@ -191,23 +205,23 @@ export function useWorkoutNotes() {
 
   const add = useCallback(async (title, raw_text = '') => {
     const note = makeWorkoutNoteItem({ title, raw_text });
-    await Storage.saveWorkoutNoteItem(note);
+    await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, note);
     notifyWorkoutNotes();
     return note;
   }, []);
 
   const update = useCallback(async (id, patch) => {
-    const list = await Storage.loadWorkoutNotes();
+    const list = await readVia('loadWorkoutNotes', Storage.loadWorkoutNotes);
     const note = list.find(n => n.id === id);
     if (!note) return false;
     const updated = { ...note, ...patch, updated_at: new Date().toISOString() };
-    await Storage.saveWorkoutNoteItem(updated);
+    await writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, updated);
     notifyWorkoutNotes();
     return updated;
   }, []);
 
   const remove = useCallback(async (id) => {
-    await Storage.deleteWorkoutNoteItem(id);
+    await writeVia('deleteWorkoutNoteItem', Storage.deleteWorkoutNoteItem, id);
     if (id === currentId) {
       await Storage.clearCurrentWorkoutId();
     }

@@ -28,6 +28,16 @@ import {
   SYNC_TABLES,
 } from '../storage/syncQueue';
 
+import React from 'react';
+import TestRenderer from 'react-test-renderer';
+import { useWeightEntries } from '../hooks/useEntries';
+import { getSupabaseClient } from '../lib/supabaseClient';
+
+// Mock the Supabase client module so the user_id-stamping test can drive the
+// REAL transport without a network. Every other test injects its own fake
+// transport via setCloudTransport, so this mock stays dormant for them.
+jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
+
 // ── in-memory fake cloud ───────────────────────────────────────────────────────
 //
 // Models a remote keyed by (table, id). `online` gates connectivity so we can
@@ -43,7 +53,10 @@ function makeFakeCloud() {
     async pull(table, cursor) {
       if (!state.online) throw new Error('offline');
       const rows = [...tables[table].values()];
-      const changed = cursor ? rows.filter((r) => (r.updated_at || '') > cursor) : rows;
+      // Inclusive cursor (`>=`) mirrors the real transport so an exact-timestamp
+      // LWW tie at the boundary is still pulled. Idempotent merge makes the
+      // re-pull safe.
+      const changed = cursor ? rows.filter((r) => (r.updated_at || '') >= cursor) : rows;
       return changed.sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''));
     },
     async push(table, records) {
@@ -243,6 +256,29 @@ describe('weight entries offline create/edit/delete sync', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(true);
   });
 
+  it('pulls an exact-timestamp tie at the cursor boundary and converges to the winning client_id', async () => {
+    // Create + sync so this device's cursor advances to the row's updated_at.
+    await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
+    await cloudAdapter.sync();
+
+    const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(cursor).toBeTruthy();
+
+    // Another device wrote a row at EXACTLY the cursor timestamp with a winning
+    // (lexicographically greater) client_id. An exclusive `>` cursor would skip
+    // this forever; an inclusive `>=` re-pulls the boundary and LWW resolves it.
+    cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
+      ...weightEntry('w1', 199),
+      updated_at: cursor,
+      client_id: 'zzzz-winning-device',
+    });
+
+    await cloudAdapter.sync();
+    const local = await cloudAdapter.loadWeightEntries();
+    expect(local.find((e) => e.id === 'w1').weight_value).toBe(199);
+    expect(local.find((e) => e.id === 'w1').client_id).toBe('zzzz-winning-device');
+  });
+
   it('remote newer edit wins over older local on pull (multi-device LWW)', async () => {
     await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
     await cloudAdapter.sync();
@@ -374,5 +410,127 @@ describe('failed offline push is safe (no data loss, retryable)', () => {
     expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(180);
     expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
     expect(await getCursor(SYNC_TABLES.WEIGHT_ENTRIES)).toBeTruthy();
+  });
+});
+
+// ── Finding 1: cloud-mode writes through the app hooks enter the dirty queue ─────
+//
+// The gap: useEntries mutators previously called raw Storage.* directly, which
+// only writes AsyncStorage and never stamps sync metadata or enqueues a dirty
+// record — so offline edits made through the app never synced. These tests
+// exercise the REAL hook (not just the adapter) to prove the write path now
+// routes through the cloud adapter.
+function driveHook(useHook) {
+  const ref = { current: null };
+  function Probe() {
+    ref.current = useHook();
+    return null;
+  }
+  TestRenderer.act(() => {
+    TestRenderer.create(React.createElement(Probe));
+  });
+  return ref;
+}
+
+async function flushAsync() {
+  await TestRenderer.act(async () => {
+    await Promise.resolve();
+  });
+}
+
+describe('cloud-mode writes through the app hooks (Finding 1)', () => {
+  const wEntry = (id, value) => ({
+    id,
+    entry_type: 'weight',
+    date: '2026-06-15',
+    logged_at: '2026-06-15T12:00:00.000Z',
+    weight_value: value,
+  });
+
+  it('a create via useWeightEntries stamps + enqueues and syncs after reconnect', async () => {
+    const hook = driveHook(useWeightEntries);
+    await flushAsync(); // settle the on-mount refresh against the empty cloud
+
+    cloud.setOnline(false);
+    await TestRenderer.act(async () => {
+      await hook.current.add(wEntry('w1', 180));
+    });
+
+    // Routed through the cloud adapter, so it entered the persisted dirty queue.
+    // (A raw Storage.saveWeightEntry would have left the queue empty.)
+    const dirty = await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(dirty.map((d) => d.id)).toContain('w1');
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(180);
+  });
+
+  it('an offline edit + delete via useWeightEntries reconcile after reconnect', async () => {
+    const hook = driveHook(useWeightEntries);
+    await flushAsync();
+
+    cloud.setOnline(false);
+    await TestRenderer.act(async () => {
+      await hook.current.add(wEntry('w1', 180));
+      await hook.current.update('w1', 181, 'edit', '2026-06-15');
+    });
+    expect((await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).map((d) => d.id)).toContain('w1');
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(181);
+
+    cloud.setOnline(false);
+    await TestRenderer.act(async () => {
+      await hook.current.remove('w1');
+    });
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+    // The delete tombstone reached the cloud (synced before any physical purge).
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(true);
+  });
+});
+
+// ── Finding 2: the real Supabase transport stamps user_id on every pushed row ────
+describe('real Supabase transport stamps user_id (Finding 2)', () => {
+  const wEntry = (id, value) => ({
+    id,
+    entry_type: 'weight',
+    date: '2026-06-15',
+    logged_at: '2026-06-15T12:00:00.000Z',
+    weight_value: value,
+  });
+
+  it('adds user_id = auth user id to every upserted row', async () => {
+    const upserts = [];
+    const query = { gte: () => query, order: async () => ({ data: [], error: null }) };
+    const fakeClient = {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'user-123' } }, error: null }),
+      },
+      schema: () => ({
+        from: () => ({
+          select: () => query,
+          upsert: async (rows) => {
+            upserts.push(...rows);
+            return { error: null };
+          },
+        }),
+      }),
+    };
+    getSupabaseClient.mockReturnValue(fakeClient);
+
+    // Enqueue a dirty record through the adapter, then force the REAL transport
+    // (not the injected fake) so the push path runs auth + user_id stamping.
+    await cloudAdapter.saveWeightEntry(wEntry('w1', 180));
+    setCloudTransport(null);
+    await cloudAdapter.sync();
+
+    expect(upserts.length).toBeGreaterThan(0);
+    for (const row of upserts) {
+      expect(row.user_id).toBe('user-123');
+    }
+    expect(upserts.find((r) => r.id === 'w1')).toBeTruthy();
   });
 });
