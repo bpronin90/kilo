@@ -13,6 +13,10 @@
 //
 // The kilo schema must be listed in the PostgREST exposed schemas for .from()
 // calls to reach it (API Settings → Extra Search Path, or config.toml [api] schemas).
+//
+// Rate limits (in-memory, per isolate):
+//   - Per user: 1 export per 10 minutes.
+//   - Per IP: 5 exports per 10 minutes.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -22,9 +26,49 @@ import { extractToken } from '../_shared/auth.ts'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 
+// ---------------------------------------------------------------------------
+// In-memory rate limiter (per-isolate sliding window)
+// ---------------------------------------------------------------------------
+
+const USER_WINDOW_MS = 10 * 60 * 1000   // 10 minutes
+const USER_MAX       = 1                 // 1 export per user per window
+const IP_WINDOW_MS   = 10 * 60 * 1000   // 10 minutes
+const IP_MAX         = 5                 // 5 exports per IP per window
+
+const buckets = new Map<string, { count: number; resetAt: number }>()
+
+function allowed(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now()
+  const b = buckets.get(key)
+  if (!b || now >= b.resetAt) {
+    buckets.set(key, { count: 1, resetAt: now + windowMs })
+    return true
+  }
+  if (b.count >= max) return false
+  b.count++
+  return true
+}
+
+function clientIp(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+         req.headers.get('x-real-ip') ??
+         'unknown'
+}
+
+// ---------------------------------------------------------------------------
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  // IP rate check (pre-auth, blocks hammering callers before JWT verification).
+  const ip = clientIp(req)
+  if (!allowed(`ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
+    return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+      status: 429,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
+    })
   }
 
   const token = extractToken(req)
@@ -47,6 +91,14 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Per-user rate check (post-auth).
+  if (!allowed(`user:${user.id}`, USER_MAX, USER_WINDOW_MS)) {
+    return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+      status: 429,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
     })
   }
 

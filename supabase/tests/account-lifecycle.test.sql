@@ -5,6 +5,16 @@
 -- user B's. The service-role DELETE path used by account-delete is also exercised
 -- with an explicit user_id filter to prove isolation.
 --
+-- Rate-limit coverage (issue #328):
+--   Throttling is enforced at the Edge Function layer (in-memory per-isolate buckets)
+--   and cannot be exercised via pgTAP. Manual verification steps:
+--     account-export  — call the function twice within 10 min as the same user;
+--                       the second call must return HTTP 429.
+--     account-delete  — call the function four times within 1 hour as the same user;
+--                       the fourth call must return HTTP 429.
+--     IP bucket       — repeat either function 6+ times from the same IP within the
+--                       window; calls beyond the IP limit must return HTTP 429.
+--
 -- Harness: pgTAP. Run inside a transaction:
 --   psql "$DATABASE_URL" -f supabase/tests/account-lifecycle.test.sql
 -- or via Supabase CLI:
