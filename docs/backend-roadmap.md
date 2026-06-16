@@ -394,6 +394,7 @@ Ordered tasks:
 
 #### Task 13: Add account export and deletion
 - GitHub title: `Phase 5 / Task 13: Add account export and deletion`
+- Status: Complete in issue #322.
 - Intended agent: `claude`
 - Labels: `backend-v1`, `agent:claude`, `area:supabase`, `area:ui`, `type:implementation`, `effort:heavy`, `reasoning:high`
 - Session goal: implement server-owned full export and account deletion flows without exposing privileged keys.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.74.0 - 2026-06-16
+
+- Issue #322 (Phase 5 / Task 13): Added requester-only account export and
+  account deletion. Signed-in users can export all app-owned cloud rows through
+  the server-owned `account-export` Edge Function in a v3-compatible JSON
+  shape, and can delete their account through `account-delete`, which deletes
+  app rows under requester-scoped RLS before using the server-side auth admin
+  path to remove the auth user. The mobile Account screen now exposes account
+  data export and two-step destructive deletion, clears local session state
+  after successful deletion, and never sends a service-role key to the client.
+  Live Supabase verification confirmed 26/26 requester-isolation checks.
+
 ## 0.73.0 - 2026-06-16
 
 - Issue #321 (Phase 4 / Task 12): Added cloud export parity and sync recovery

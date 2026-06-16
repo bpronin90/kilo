@@ -30,6 +30,7 @@ CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 .gitignore             ← root ignore policy for generated output and local-only runtime state
 package.json
 mobile/                ← active Expo / React Native app path
+supabase/              ← Supabase Edge Functions and DB tests for cloud account lifecycle
 
 docs/
   current-state.md
@@ -90,6 +91,14 @@ mobile/
     analytics-screen.test.js ← native Analytics screen consumer checks
     storage.test.js    ← native AsyncStorage tests
     weight-goal-ui.test.js ← native Weight goal rendering checks
+
+supabase/
+  functions/
+    _shared/            ← shared Edge Function helpers
+    account-export/     ← requester-only cloud account export endpoint
+    account-delete/     ← requester-only app-data deletion + auth-user deletion endpoint
+  tests/
+    account-lifecycle.test.sql ← pgTAP requester-isolation checks
 ```
 
 ---
@@ -129,6 +138,8 @@ These files define the current real native app path.
 | `mobile/tests/analytics-screen.test.js` | Native Analytics-screen consumer checks for shared weight-goal and per-day signal rendering. |
 | `mobile/tests/storage.test.js` | Native storage tests for `mobile/storage/entries.js` using the AsyncStorage Jest mock. |
 | `mobile/tests/weight-goal-ui.test.js` | Native Weight-screen goal-card rendering checks using `react-test-renderer`. |
+| `mobile/tests/account-lifecycle-ui.test.js` | Account export/delete hook and UI tests, including JWT function calls and no service-role-key client exposure. |
+| `supabase/tests/account-lifecycle.test.sql` | pgTAP requester-isolation checks for account export/delete table access. |
 
 Run the native test suite:
 

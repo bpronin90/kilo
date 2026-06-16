@@ -90,7 +90,10 @@ Current limitation:
   through the existing update seam, delete confirmation/refresh behavior, the
   saved-goal target/guidance split, and the active weigh-in/goal
   `DateTimePicker` `onChange` callback wiring, plus web fallback coverage for
-  Weight DOM date inputs. The same `log-screen.test.js` suite now also
+  Weight DOM date inputs, plus targeted account lifecycle UI coverage for
+  server-owned export/delete calls, local session clearing after successful
+  deletion, function error surfacing, and absence of service-role keys in
+  client fetch headers. The same `log-screen.test.js` suite now also
   includes `react-test-renderer` coverage for the rendered App Guide workout
   example, the aligned Log editor placeholder, current-note Undo, saved-note
   Undo, and failure-path handling around note-scoped Undo for editable deload
@@ -354,6 +357,32 @@ retains non-test commands such as `npm run audit`.
 - verifies the goal target-date picker exposes the native `onChange`
   callback and updates the visible MM-DD-YYYY label when a new date is
   selected
+
+### `mobile/tests/account-lifecycle-ui.test.js`
+
+- rendered hook/UI-adjacent coverage for the signed-in account export/delete
+  flow in `mobile/hooks/useAuthSession.js`
+- verifies `serverExport()` calls `/functions/v1/account-export` with the
+  current session JWT and returns the JSON payload on success
+- verifies export and deletion function errors are surfaced without clearing
+  local session state
+- verifies `deleteAccount()` calls `/functions/v1/account-delete`, then signs
+  out and clears local session state only after a successful server response
+- verifies the mobile/web client never includes a service-role or secret key in
+  fetch headers
+
+### `supabase/tests/account-lifecycle.test.sql`
+
+- pgTAP requester-isolation coverage for the `kilo` schema account lifecycle
+  contract
+- verifies a signed-in user can select only their own rows across all seven app
+  tables
+- verifies cross-user delete attempts affect zero rows under RLS
+- verifies owner self-delete removes the requester's rows while preserving
+  another user's rows
+- run with `supabase test db --file supabase/tests/account-lifecycle.test.sql`
+  from repo root, or `supabase test db --file tests/account-lifecycle.test.sql`
+  from inside `supabase/`
 
 ---
 

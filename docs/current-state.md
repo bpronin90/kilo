@@ -36,7 +36,9 @@ Roadmap status:
 - `docs/backend-roadmap.md` is the active public self-serve planning roadmap.
   It sequences the `backend-v1` issue series (#310-#324) for moving from
   local-only personal use to a web-first Supabase product while preserving the
-  current note-first workout model and local daily-use path between cards.
+  current note-first workout model and local daily-use path between cards. The
+  public-account lifecycle slice now includes server-owned requester-only export
+  and deletion (#322); privacy/terms and abuse-posture work remains.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -334,7 +336,12 @@ The real native app path now has a modular React Native shell:
   screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
   `User Profile`, `Data & Backup`, `Settings & Algorithm`, `App Guide`, and
-  `About` sub-screens extracted out of `HomeScreen.js`. Those More subviews
+  `About` sub-screens extracted out of `HomeScreen.js`. When Supabase cloud
+  accounts are configured and the user is signed in, the Account surface also
+  exposes server-side account export and a two-step account deletion flow:
+  export shares a v3-compatible JSON payload from the requester-scoped
+  `account-export` Edge Function, and deletion calls `account-delete` before
+  signing out and clearing local session state. Those More subviews
   intercept Android back presses and return to the More menu before falling
   through to tab-level navigation. The parent More menu is now a flat
   five-item list headed by `App Guide`, followed by `User Profile`,
@@ -753,8 +760,14 @@ actions plus failure-only retry that drive a visible idle/running/failed/
 complete status per phase, and a v3-compatible cloud export (the existing backup
 shape plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
-failed run leaves local AsyncStorage intact. These paths still only act when the
-user is signed in and cloud mode is configured.
+failed run leaves local AsyncStorage intact. The Phase 5 account lifecycle path
+now adds server-owned Edge Functions for requester-only account export and
+account deletion (#322): `account-export` uses the caller JWT and RLS to return
+only the signed-in user's app rows, while `account-delete` deletes app rows
+under requester-scoped RLS and then uses the server-side auth admin deletion
+path for the auth user. The service-role key stays server-side and is never
+sent to the mobile/web bundle. These paths still only act when the user is
+signed in and cloud mode is configured.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.
@@ -865,7 +878,8 @@ These were the prerequisites for manual launch validation on issue #17.
 - Seeded entries cannot be corrected via the product UI
 - Home quick-log is not manually reachable in the seeded prototype state (covered
   by automated tests)
-- Supabase is not wired up; AsyncStorage is the persistence layer for MVP validation
+- Cloud account flows are still gated by Supabase env config and sign-in;
+  AsyncStorage remains the immediate offline cache for MVP validation
 
 ## Ownership Split For Native Migration
 
