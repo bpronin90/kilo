@@ -38,7 +38,9 @@ Roadmap status:
   local-only personal use to a web-first Supabase product while preserving the
   current note-first workout model and local daily-use path between cards. The
   public-account lifecycle slice now includes server-owned requester-only export
-  and deletion (#322); privacy/terms and abuse-posture work remains.
+  and deletion (#322) plus placeholder privacy/terms link placements on the
+  signup, account lifecycle, and About Kilo surfaces (#330); CAPTCHA/SMTP and
+  endpoint throttling work remains.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -767,7 +769,15 @@ only the signed-in user's app rows, while `account-delete` deletes app rows
 under requester-scoped RLS and then uses the server-side auth admin deletion
 path for the auth user. The service-role key stays server-side and is never
 sent to the mobile/web bundle. These paths still only act when the user is
-signed in and cloud mode is configured.
+signed in and cloud mode is configured. The Phase 5 launch posture for issue
+#323 is now defined, and issue #330 adds placeholder Privacy Policy and Terms
+of Service links beside public signup, on the signed-in Account lifecycle
+surface near export/delete actions, and in More > About Kilo. Remaining
+launch-posture follow-ups are Supabase Auth configuration and endpoint abuse
+limits: Auth must keep platform rate limits, use production-owned SMTP before
+email signup, and enable CAPTCHA before open signup unless a closed-beta
+release explicitly defers it; `account-export` and `account-delete` must add
+per-user and per-IP throttles before open signup.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.
