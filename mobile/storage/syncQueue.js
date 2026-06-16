@@ -87,10 +87,31 @@ export function resetClientIdCacheForTests() {
 
 // ── sync metadata stamping ─────────────────────────────────────────────────────
 
+// Per-device monotonic clock. `new Date().toISOString()` only has millisecond
+// resolution, so a fast create→edit→delete burst on one device can stamp two
+// writes with the SAME `updated_at`. That makes their order depend on the
+// client_id tie-break, which is meaningless against a device's own prior write
+// and can drop the later edit/delete. Minting strictly increasing stamps per
+// device keeps a device's successive writes correctly ordered; other devices
+// still differ by client_id.
+let lastStampMs = 0;
+function monotonicNowIso() {
+  let ms = Date.now();
+  if (ms <= lastStampMs) ms = lastStampMs + 1;
+  lastStampMs = ms;
+  return new Date(ms).toISOString();
+}
+
+// Test hook: reset the monotonic clock so suites start from a clean slate.
+export function resetStampClockForTests() {
+  lastStampMs = 0;
+}
+
 // Stamp a record with the sync metadata LWW needs. `updated_at` advances to now
 // on every write; `client_id` records which install last wrote the record so
-// exact `updated_at` ties resolve deterministically.
-export function stampWrite(record, clientId, now = new Date().toISOString()) {
+// exact `updated_at` ties resolve deterministically. The default `now` is minted
+// from the per-device monotonic clock; callers may pass an explicit value.
+export function stampWrite(record, clientId, now = monotonicNowIso()) {
   return {
     ...record,
     updated_at: now,
@@ -102,7 +123,7 @@ export function stampWrite(record, clientId, now = new Date().toISOString()) {
 
 // Stamp a record as a tombstone. The row is retained (not physically removed)
 // so the delete can sync before any later physical cleanup.
-export function stampTombstone(record, clientId, now = new Date().toISOString()) {
+export function stampTombstone(record, clientId, now = monotonicNowIso()) {
   return {
     ...record,
     updated_at: now,
@@ -124,7 +145,9 @@ export function isTombstone(record) {
 //      so all devices converge on the same survivor.
 // A tombstone does not get special precedence; it competes on `updated_at` like
 // any other write, so a later edit can revive a record and a later delete wins
-// over an earlier edit.
+// over an earlier edit. Per-device monotonic stamping (see stampWrite) keeps a
+// device's successive create/edit/delete strictly ordered, so the same device
+// never relies on the client_id tie-break against itself.
 export function pickWinner(a, b) {
   if (!a) return b;
   if (!b) return a;

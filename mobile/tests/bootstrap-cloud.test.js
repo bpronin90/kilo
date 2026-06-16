@@ -1,138 +1,356 @@
-// Cloud bootstrap-substrate tests (Phase 4 / Task 11).
+// Bootstrap-to-cloud tests (Phase 4 / Task 10).
 //
-// Task 11 implements the offline LWW sync layer that bootstrap (#319) sits on
-// top of. Bootstrap itself (the explicit, reversible import of existing local
-// AsyncStorage data into the cloud model) is a separate issue and is not present
-// on this branch. These tests pin the sync-layer invariants bootstrap depends
-// on, so they hold regardless of bootstrap's own import flow:
+// Covers the roadmap "AsyncStorage Key Mapping" contract:
+//   1. Every mapped AsyncStorage key lands in its target cloud table/field.
+//   2. Legacy kilo_workout_sessions migrates into note-first workout_notes
+//      (raw_text + source_snapshot), never normalized per-set tables.
+//   3. A failed bootstrap leaves local AsyncStorage untouched and is retryable.
+//   4. Re-running bootstrap for the same user does not duplicate rows (idempotent
+//      upserts keyed on the table primary key).
 //
-//   - first sync against an empty cloud pushes existing local records up and
-//     leaves the local cache intact (the "seed the cloud from local" direction)
-//   - a failed push (still offline) leaves local AsyncStorage untouched and the
-//     dirty queue retained, so a failed bootstrap/sync never loses local data
-//   - per-table cursors only advance after a successful push, so an interrupted
-//     pass safely re-pulls and re-pushes
-//
-// If/when #319 lands, its bootstrap-specific assertions can extend this file.
+// A fake Supabase client records every upsert so we can assert the mapping
+// without a live database. AsyncStorage uses the standard jest mock.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import * as Storage from '../storage/entries';
-import { cloudAdapter, setCloudTransport } from '../storage/cloudAdapter';
 import {
-  pickWinner,
-  getCursor,
-  getDirtyRecords,
-  resetClientIdCacheForTests,
-  SYNC_TABLES,
-} from '../storage/syncQueue';
+  bootstrapFromLocal,
+  buildBootstrapPlan,
+  synthesizeSessionsNote,
+  BootstrapError,
+} from '../storage/cloudAdapter';
 
-function makeFakeCloud() {
-  const tables = {
-    [SYNC_TABLES.WEIGHT_ENTRIES]: new Map(),
-    [SYNC_TABLES.WORKOUT_NOTES]: new Map(),
-  };
-  const state = { online: true };
-  const transport = {
-    async pull(table, cursor) {
-      if (!state.online) throw new Error('offline');
-      const rows = [...tables[table].values()];
-      return cursor ? rows.filter((r) => (r.updated_at || '') > cursor) : rows;
+const USER_ID = '11111111-1111-1111-1111-111111111111';
+
+// ── fake Supabase client ────────────────────────────────────────────────────
+//
+// Mirrors the supabase-js chain the adapter uses: client.schema(s).from(t).upsert(rows, opts).
+// Records calls and lets a test force a per-table failure.
+function makeFakeClient({ failTable = null } = {}) {
+  const calls = []; // { table, rows, opts }
+  const upsertsByTable = {};
+
+  const client = {
+    schema(schema) {
+      client.lastSchema = schema;
+      return {
+        from(table) {
+          return {
+            async upsert(rows, opts) {
+              calls.push({ table, rows, opts });
+              if (failTable && table === failTable) {
+                return { data: null, error: { message: `boom in ${table}` } };
+              }
+              // Simulate idempotent upsert keyed on primary key: replace rows
+              // with the same conflict key instead of appending duplicates.
+              const conflict = (opts?.onConflict || 'id').split(',');
+              const store = (upsertsByTable[table] = upsertsByTable[table] || []);
+              for (const row of rows) {
+                const key = conflict.map((c) => row[c]).join('|');
+                const idx = store.findIndex(
+                  (existing) => conflict.map((c) => existing[c]).join('|') === key
+                );
+                if (idx >= 0) store[idx] = row;
+                else store.push(row);
+              }
+              return { data: rows, error: null };
+            },
+          };
+        },
+      };
     },
-    async push(table, records) {
-      if (!state.online) throw new Error('offline');
-      for (const rec of records) {
-        const existing = tables[table].get(rec.id);
-        tables[table].set(rec.id, existing ? pickWinner(existing, rec) : rec);
-      }
-    },
   };
-  return {
-    transport,
-    state,
-    remoteRow: (table, id) => tables[table].get(id),
-    setOnline: (v) => {
-      state.online = v;
-    },
-  };
+  client.calls = calls;
+  client.upsertsByTable = upsertsByTable;
+  return client;
 }
 
-let cloud;
+// Full local dataset exercising every mapped AsyncStorage key.
+async function seedLocalData() {
+  await AsyncStorage.setItem(
+    'kilo_weight_entries',
+    JSON.stringify([
+      {
+        id: 'w1',
+        entry_type: 'weight',
+        date: '2026-06-10',
+        logged_at: '2026-06-10T08:00:00.000Z',
+        weight_value: 180,
+        note: 'morning',
+        saved_at: '2026-06-10T08:00:01.000Z',
+      },
+    ])
+  );
+  await AsyncStorage.setItem(
+    'kilo_weight_goal',
+    JSON.stringify({
+      target_weight: 170,
+      target_date: '2026-12-01',
+      start_weight: 185,
+      start_date: '2026-01-01',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      extra_local_field: 'keep-me',
+    })
+  );
+  await AsyncStorage.setItem(
+    'kilo_workout_sessions',
+    JSON.stringify([
+      {
+        id: 's1',
+        date: '2026-06-01',
+        items: [
+          { exercise_name: 'Bench', sets: [{ weight_value: 135, rep_count: 5 }] },
+        ],
+      },
+    ])
+  );
+  await AsyncStorage.setItem(
+    'kilo_workout_note',
+    JSON.stringify({
+      raw_text: '-Squat\n- 225 5,5,5',
+      saved_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-02T00:00:00.000Z',
+    })
+  );
+  await AsyncStorage.setItem(
+    'kilo_workout_notes',
+    JSON.stringify([
+      {
+        id: 'wn1',
+        title: 'Routine A',
+        raw_text: '-Deadlift\n- 315 3,3,3',
+        saved_at: '2026-06-01T00:00:00.000Z',
+        updated_at: '2026-06-02T00:00:00.000Z',
+        tracked_exercises: ['deadlift'],
+        one_k_exercises: { deadlift: true },
+        isCurrent: true,
+      },
+    ])
+  );
+  await AsyncStorage.setItem('kilo_current_workout_id', JSON.stringify('wn1'));
+  await AsyncStorage.setItem('kilo_fatigue_multiplier', JSON.stringify(1.1));
+  await AsyncStorage.setItem('kilo_weight_date_edit_enabled', JSON.stringify(true));
+  await AsyncStorage.setItem(
+    'kilo_workout_deload_note',
+    JSON.stringify({
+      raw_text: 'deload draft',
+      saved_at: '2026-06-05T00:00:00.000Z',
+      updated_at: '2026-06-06T00:00:00.000Z',
+    })
+  );
+  await AsyncStorage.setItem(
+    'kilo_workout_deload_history',
+    JSON.stringify([
+      {
+        id: 'dl1',
+        date: '2026-04-01',
+        raw_text: 'old deload',
+        saved_at: '2026-04-01T00:00:00.000Z',
+        session_count: 12,
+        note_id: 'wn_dl_x',
+      },
+    ])
+  );
+  await AsyncStorage.setItem(
+    'kilo_tracked_lifts',
+    JSON.stringify({ bench: true, squat: true })
+  );
+  await AsyncStorage.setItem('kilo_log_current_collapsed', JSON.stringify(true));
+  await AsyncStorage.setItem(
+    'kilo_user_profile',
+    JSON.stringify({ display_name: 'Ben', unit_system: 'imperial', custom: 'x' })
+  );
+  await AsyncStorage.setItem('kilo_deload_date_edit_enabled', JSON.stringify(true));
+  await AsyncStorage.setItem('kilo_fatigue_tracking_enabled', JSON.stringify(false));
+  await AsyncStorage.setItem('kilo_deload_mode_enabled', JSON.stringify(false));
+}
+
+// Snapshot of every mapped local key for untouched-after-failure assertions.
+const LOCAL_KEYS = [
+  'kilo_weight_entries',
+  'kilo_weight_goal',
+  'kilo_workout_sessions',
+  'kilo_workout_note',
+  'kilo_workout_notes',
+  'kilo_current_workout_id',
+  'kilo_fatigue_multiplier',
+  'kilo_weight_date_edit_enabled',
+  'kilo_workout_deload_note',
+  'kilo_workout_deload_history',
+  'kilo_tracked_lifts',
+  'kilo_log_current_collapsed',
+  'kilo_user_profile',
+  'kilo_deload_date_edit_enabled',
+  'kilo_fatigue_tracking_enabled',
+  'kilo_deload_mode_enabled',
+];
+
+async function snapshotLocal() {
+  const out = {};
+  for (const key of LOCAL_KEYS) {
+    // eslint-disable-next-line no-await-in-loop
+    out[key] = await AsyncStorage.getItem(key);
+  }
+  return out;
+}
 
 beforeEach(async () => {
   await AsyncStorage.clear();
-  resetClientIdCacheForTests();
-  cloud = makeFakeCloud();
-  setCloudTransport(cloud.transport);
-  Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
 });
 
-afterEach(() => {
-  setCloudTransport(null);
-  Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
-});
+describe('synthesizeSessionsNote', () => {
+  it('returns null when there are no sessions', () => {
+    expect(synthesizeSessionsNote([])).toBeNull();
+    expect(synthesizeSessionsNote(null)).toBeNull();
+  });
 
-const entry = (id, value) => ({
-  id,
-  entry_type: 'weight',
-  date: '2026-06-15',
-  logged_at: '2026-06-15T12:00:00.000Z',
-  weight_value: value,
-});
-
-describe('first sync against an empty cloud (seed-from-local direction)', () => {
-  it('pushes existing local records to the cloud and keeps the local cache intact', async () => {
-    await cloudAdapter.saveWeightEntry(entry('w1', 180));
-    await cloudAdapter.saveWeightEntry(entry('w2', 181));
-
-    // Cloud is empty before the first sync.
-    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1')).toBeUndefined();
-
-    await cloudAdapter.sync();
-
-    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(180);
-    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w2').weight_value).toBe(181);
-
-    // Local cache still holds both records.
-    const local = await cloudAdapter.loadWeightEntries();
-    expect(local.map((e) => e.id).sort()).toEqual(['w1', 'w2']);
-
-    // Dirty queue drained after a successful push.
-    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
+  it('synthesizes a parseable note-first raw text from legacy sessions', () => {
+    const text = synthesizeSessionsNote([
+      {
+        date: '2026-06-01',
+        items: [
+          { exercise_name: 'Bench', sets: [{ weight_value: 135, rep_count: 5 }] },
+        ],
+      },
+    ]);
+    expect(text).toContain('-Bench');
+    expect(text).toContain('- 135 5');
   });
 });
 
-describe('failed sync leaves local data intact (failed-bootstrap invariant)', () => {
-  it('keeps local records and retains the dirty queue when the push fails offline', async () => {
-    await cloudAdapter.saveWeightEntry(entry('w1', 180));
+describe('buildBootstrapPlan mapping', () => {
+  it('maps every AsyncStorage key to its target table/field', async () => {
+    await seedLocalData();
+    const { cloudAdapter } = require('../storage/cloudAdapter');
+    void cloudAdapter;
+    // Read through the adapter's snapshot path by running bootstrap with a fake.
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+    const t = client.upsertsByTable;
 
-    cloud.setOnline(false);
-    await expect(cloudAdapter.sync()).rejects.toThrow('offline');
+    // user_profile: pointer + preferences + draft deload note + unpromoted json.
+    expect(t.user_profile).toHaveLength(1);
+    const profile = t.user_profile[0];
+    expect(profile.user_id).toBe(USER_ID);
+    expect(profile.current_workout_note_id).toBe('wn1'); // kilo_current_workout_id
+    expect(profile.fatigue_multiplier).toBe(1.1); // kilo_fatigue_multiplier
+    expect(profile.tracked_lifts).toEqual({ bench: true, squat: true }); // kilo_tracked_lifts
+    expect(profile.ui_state.log_current_collapsed).toBe(true); // kilo_log_current_collapsed
+    expect(profile.display_name).toBe('Ben'); // kilo_user_profile promoted
+    expect(profile.profile_json).toEqual({ custom: 'x' }); // kilo_user_profile unpromoted
+    expect(profile.current_deload_note_raw_text).toBe('deload draft'); // kilo_workout_deload_note
+    expect(profile.current_deload_note_saved_at).toBe('2026-06-05T00:00:00.000Z');
 
-    // Local AsyncStorage cache is untouched.
-    const local = await cloudAdapter.loadWeightEntries();
-    expect(local.map((e) => e.id)).toEqual(['w1']);
-    expect(local[0].weight_value).toBe(180);
+    // feature_toggles: four boolean settings.
+    const toggles = t.feature_toggles[0];
+    expect(toggles.weight_date_edit_enabled).toBe(true);
+    expect(toggles.deload_date_edit_enabled).toBe(true);
+    expect(toggles.fatigue_tracking_enabled).toBe(false);
+    expect(toggles.deload_mode_enabled).toBe(false);
 
-    // Dirty queue retained so the record re-pushes on the next pass.
-    const dirty = await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES);
-    expect(dirty.map((d) => d.id)).toEqual(['w1']);
+    // weight_entries: one row, id preserved.
+    expect(t.weight_entries).toHaveLength(1);
+    expect(t.weight_entries[0].id).toBe('w1');
+    expect(t.weight_entries[0].weight_value).toBe(180);
 
-    // Cursor never advanced, so nothing was silently marked as synced.
-    expect(await getCursor(SYNC_TABLES.WEIGHT_ENTRIES)).toBeNull();
+    // weight_goal: singleton, unpromoted field carried in goal_json.
+    expect(t.weight_goal).toHaveLength(1);
+    expect(t.weight_goal[0].target_weight).toBe(170);
+    expect(t.weight_goal[0].goal_json).toEqual({ extra_local_field: 'keep-me' });
+
+    // deload_history: one row, unknown fields → record_json.
+    expect(t.deload_history).toHaveLength(1);
+    expect(t.deload_history[0].id).toBe('dl1');
+    expect(t.deload_history[0].record_json).toMatchObject({
+      session_count: 12,
+      note_id: 'wn_dl_x',
+    });
   });
 
-  it('re-pushes successfully once back online with no data loss', async () => {
-    await cloudAdapter.saveWeightEntry(entry('w1', 180));
+  it('migrates legacy kilo_workout_sessions into note-first workout_notes', async () => {
+    await seedLocalData();
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
 
-    cloud.setOnline(false);
-    await expect(cloudAdapter.sync()).rejects.toThrow('offline');
+    const notes = client.upsertsByTable.workout_notes;
+    // notebook item + legacy single note + synthesized sessions note.
+    const sessionsNote = notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_sessions'
+    );
+    expect(sessionsNote).toBeTruthy();
+    expect(sessionsNote.raw_text).toContain('-Bench');
+    // Original session array is retained in source_snapshot, not normalized.
+    expect(sessionsNote.source_snapshot.sessions).toHaveLength(1);
 
-    cloud.setOnline(true);
-    await cloudAdapter.sync();
+    // The legacy single note is preserved with its origin marker.
+    const legacyNote = notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(legacyNote).toBeTruthy();
+    expect(legacyNote.raw_text).toContain('-Squat');
 
-    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(180);
-    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
-    expect(await getCursor(SYNC_TABLES.WEIGHT_ENTRIES)).toBeTruthy();
+    // The notebook item carries through with derived JSON and current pointer.
+    const notebookNote = notes.find((n) => n.id === 'wn1');
+    expect(notebookNote).toBeTruthy();
+    expect(notebookNote.is_current).toBe(true);
+    expect(notebookNote.tracked_exercises).toEqual(['deadlift']);
+
+    // No normalized per-set table is written — only the mapped note-first tables.
+    const writtenTables = new Set(client.calls.map((c) => c.table));
+    expect(writtenTables.has('workout_sessions')).toBe(false);
+    expect(writtenTables.has('workout_sets')).toBe(false);
+  });
+});
+
+describe('bootstrap failure safety', () => {
+  it('leaves local AsyncStorage untouched and is retryable on failure', async () => {
+    await seedLocalData();
+    const before = await snapshotLocal();
+
+    const failing = makeFakeClient({ failTable: 'workout_notes' });
+    await expect(bootstrapFromLocal(USER_ID, failing)).rejects.toBeInstanceOf(
+      BootstrapError
+    );
+
+    // Local data is byte-for-byte unchanged after the failed run.
+    const after = await snapshotLocal();
+    expect(after).toEqual(before);
+
+    // Retry on a healthy client succeeds from the same untouched local data.
+    const healthy = makeFakeClient();
+    const result = await bootstrapFromLocal(USER_ID, healthy);
+    expect(result.ok).toBe(true);
+    expect(healthy.upsertsByTable.workout_notes.length).toBeGreaterThan(0);
+  });
+
+  it('rejects when no user id or no client is provided', async () => {
+    await expect(bootstrapFromLocal(null, makeFakeClient())).rejects.toBeInstanceOf(
+      BootstrapError
+    );
+    await expect(bootstrapFromLocal(USER_ID, null)).rejects.toBeInstanceOf(
+      BootstrapError
+    );
+  });
+});
+
+describe('bootstrap idempotency', () => {
+  it('does not duplicate rows when run twice for the same user', async () => {
+    await seedLocalData();
+    const client = makeFakeClient();
+
+    await bootstrapFromLocal(USER_ID, client);
+    const firstCounts = Object.fromEntries(
+      Object.entries(client.upsertsByTable).map(([k, v]) => [k, v.length])
+    );
+
+    await bootstrapFromLocal(USER_ID, client);
+    const secondCounts = Object.fromEntries(
+      Object.entries(client.upsertsByTable).map(([k, v]) => [k, v.length])
+    );
+
+    // Upserts keyed on the primary key replace rather than append.
+    expect(secondCounts).toEqual(firstCounts);
+    expect(secondCounts.weight_entries).toBe(1);
+    expect(secondCounts.user_profile).toBe(1);
   });
 });

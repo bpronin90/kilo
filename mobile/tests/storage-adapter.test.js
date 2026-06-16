@@ -82,10 +82,19 @@ describe('adapter surface', () => {
   });
 
   it('cloud shell mirrors the local adapter method surface exactly', () => {
+    // The cloud adapter mirrors every local domain method 1:1, plus the one
+    // implemented cloud-only capability for this phase: bootstrapFromLocal
+    // (Phase 4 / Task 10). Exclude that extra method from the surface mirror.
     const cloudMethods = Object.keys(cloudAdapter).filter(
-      (k) => typeof cloudAdapter[k] === 'function'
+      (k) => typeof cloudAdapter[k] === 'function' && k !== 'bootstrapFromLocal'
     );
     expect(cloudMethods.sort()).toEqual([...ADAPTER_METHODS].sort());
+  });
+
+  it('cloud adapter exposes an implemented bootstrapFromLocal beyond the shell', () => {
+    expect(typeof cloudAdapter.bootstrapFromLocal).toBe('function');
+    // bootstrapFromLocal is a real implementation, not a not-implemented stub.
+    expect(ADAPTER_METHODS).not.toContain('bootstrapFromLocal');
   });
 
   it('local adapter delegates to the real local implementation', async () => {
@@ -104,8 +113,26 @@ describe('adapter surface', () => {
 });
 
 describe('cloud adapter shell', () => {
-  it('throws CloudNotImplementedError for every domain method (no bootstrap/sync)', () => {
-    for (const method of ADAPTER_METHODS) {
+  // Phase 4 implemented these cloud methods for real: bootstrap (Task 10) and
+  // offline LWW sync for weight entries + workout notes (Task 11). Every OTHER
+  // domain method still throws until a later phase wires it through the same
+  // mechanism, keeping the cloud surface 1:1 with the local adapter.
+  const IMPLEMENTED_CLOUD_METHODS = new Set([
+    'sync',
+    'loadWeightEntries',
+    'saveWeightEntry',
+    'updateWeightEntry',
+    'deleteWeightEntry',
+    'loadWorkoutNotes',
+    'saveWorkoutNoteItem',
+    'deleteWorkoutNoteItem',
+  ]);
+
+  it('throws CloudNotImplementedError for every still-unimplemented domain method', () => {
+    const unimplemented = ADAPTER_METHODS.filter((m) => !IMPLEMENTED_CLOUD_METHODS.has(m));
+    // Guard against the list silently emptying if the surface changes.
+    expect(unimplemented.length).toBeGreaterThan(0);
+    for (const method of unimplemented) {
       expect(() => cloudAdapter[method]()).toThrow(CloudNotImplementedError);
     }
   });

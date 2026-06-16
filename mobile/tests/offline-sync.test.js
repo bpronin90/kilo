@@ -22,6 +22,9 @@ import {
   isTombstone,
   maxUpdatedAt,
   resetClientIdCacheForTests,
+  resetStampClockForTests,
+  getCursor,
+  getDirtyRecords,
   SYNC_TABLES,
 } from '../storage/syncQueue';
 
@@ -69,6 +72,7 @@ let cloud;
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetClientIdCacheForTests();
+  resetStampClockForTests();
   cloud = makeFakeCloud();
   setCloudTransport(cloud.transport);
   Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
@@ -327,5 +331,48 @@ describe('sync metadata stamping', () => {
     expect(ts.deleted_at).toBe('2026-06-15T10:00:00.000Z');
     expect(ts.updated_at).toBe('2026-06-15T10:00:00.000Z');
     expect(isTombstone(ts)).toBe(true);
+  });
+});
+
+// ── failed-push safety (folded in from the Task 11 bootstrap-substrate set) ──────
+//
+// These invariants — that a failed offline push loses no local data, retains the
+// dirty queue, never advances the cursor, and re-pushes cleanly on reconnect —
+// are exactly the safety guarantees a cloud bootstrap (#319) sits on top of.
+describe('failed offline push is safe (no data loss, retryable)', () => {
+  const w = (id, value) => ({
+    id,
+    entry_type: 'weight',
+    date: '2026-06-15',
+    logged_at: '2026-06-15T12:00:00.000Z',
+    weight_value: value,
+  });
+
+  it('retains local data, the dirty queue, and the cursor when a push fails offline', async () => {
+    await cloudAdapter.saveWeightEntry(w('w1', 180));
+
+    cloud.setOnline(false);
+    await expect(cloudAdapter.sync()).rejects.toThrow('offline');
+
+    const local = await cloudAdapter.loadWeightEntries();
+    expect(local.map((e) => e.id)).toEqual(['w1']);
+    expect(local[0].weight_value).toBe(180);
+
+    expect((await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).map((d) => d.id)).toEqual(['w1']);
+    expect(await getCursor(SYNC_TABLES.WEIGHT_ENTRIES)).toBeNull();
+  });
+
+  it('re-pushes successfully with no data loss once back online', async () => {
+    await cloudAdapter.saveWeightEntry(w('w1', 180));
+
+    cloud.setOnline(false);
+    await expect(cloudAdapter.sync()).rejects.toThrow('offline');
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1').weight_value).toBe(180);
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
+    expect(await getCursor(SYNC_TABLES.WEIGHT_ENTRIES)).toBeTruthy();
   });
 });
