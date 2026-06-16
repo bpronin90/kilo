@@ -27,7 +27,9 @@ import {
   __resetSyncQueue,
 } from '../storage/syncRecovery';
 import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
+import * as entries from '../storage/entries';
 import { saveWeightEntry } from '../storage/entries';
+import { cloudAdapter } from '../storage/cloudAdapter';
 
 beforeEach(() => {
   AsyncStorage.clear();
@@ -163,8 +165,16 @@ function renderHook(useHook) {
 }
 
 describe('useSyncRecovery hook', () => {
+  const USER = { id: 'u_1', email: 'me@x.co' };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    // Leave storage mode local for other suites.
+    entries.setStorageMode('local');
+  });
+
   test('reflects current store state and live updates', async () => {
-    const { ref } = renderHook(useSyncRecovery);
+    const { ref } = renderHook(() => useSyncRecovery(USER));
     await flush();
     expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.IDLE);
     expect(ref.current.sync.status).toBe(SYNC_STATUS.IDLE);
@@ -176,16 +186,98 @@ describe('useSyncRecovery hook', () => {
     expect(ref.current.bootstrap.retryable).toBe(true);
   });
 
-  test('retryBootstrap/retrySync drive the store through a runner', async () => {
-    const { ref } = renderHook(useSyncRecovery);
+  test('bootstrap runner calls cloudAdapter.bootstrapFromLocal with the user id and drives running -> complete', async () => {
+    const spy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
     await flush();
 
     let result;
     await act(async () => {
-      result = await ref.current.retrySync(async () => 'ok');
+      result = await ref.current.runBootstrap();
     });
+    expect(spy).toHaveBeenCalledWith('u_1');
+    expect(result.ok).toBe(true);
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('retry re-invokes the bound bootstrap runner: failed/retryable on throw, then complete on retry', async () => {
+    const spy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockRejectedValueOnce(new Error('upload failed'))
+      .mockResolvedValueOnce({ ok: true });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    await act(async () => {
+      await ref.current.runBootstrap();
+    });
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.FAILED);
+    expect(ref.current.bootstrap.retryable).toBe(true);
+
+    let retry;
+    await act(async () => {
+      retry = await ref.current.retryBootstrap();
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenLastCalledWith('u_1');
+    expect(retry.ok).toBe(true);
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.COMPLETE);
+    expect(ref.current.bootstrap.retryable).toBe(false);
+  });
+
+  test('no signed-in user: bootstrap reports honestly without calling the adapter', async () => {
+    const spy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+
+    const { ref } = renderHook(() => useSyncRecovery(null));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/sign in/i);
+  });
+
+  test('sync runner is feature-detected: drives running -> complete when adapter.sync exists', async () => {
+    const sync = jest.fn().mockResolvedValue({ ok: true });
+    jest
+      .spyOn(entries, 'getStorageAdapter')
+      .mockReturnValue({ mode: 'cloud', sync });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runSync();
+    });
+    expect(sync).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(true);
     expect(ref.current.sync.status).toBe(SYNC_STATUS.COMPLETE);
+  });
+
+  test('sync reports honestly (not silent success) when no adapter.sync runner is available', async () => {
+    jest
+      .spyOn(entries, 'getStorageAdapter')
+      .mockReturnValue({ mode: 'cloud' }); // no sync method
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runSync();
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/not available/i);
+    // Status must not flip to complete on a missing runner.
+    expect(ref.current.sync.status).not.toBe(SYNC_STATUS.COMPLETE);
   });
 });
 
@@ -211,5 +303,24 @@ describe('useCloudExport hook', () => {
     expect(parsed.weight_entries.map((e) => e.id)).toContain('w_export_1');
     expect(parsed.cloud.cloud_export_format).toBe('cloud-1');
     expect(parsed.cloud.account).toEqual({ id: 'u_9', email: 'me@x.co' });
+  });
+
+  test('cloud.account carries the signed-in id/email when a user is present, and is null when signed out', async () => {
+    const { ref } = renderHook(useCloudExport);
+    await flush();
+
+    let signedIn;
+    await act(async () => {
+      signedIn = await ref.current.exportCloud({ id: 'u_42', email: 'a@b.co' });
+    });
+    expect(signedIn.ok).toBe(true);
+    expect(JSON.parse(signedIn.json).cloud.account).toEqual({ id: 'u_42', email: 'a@b.co' });
+
+    let signedOut;
+    await act(async () => {
+      signedOut = await ref.current.exportCloud();
+    });
+    expect(signedOut.ok).toBe(true);
+    expect(JSON.parse(signedOut.json).cloud.account).toBeNull();
   });
 });

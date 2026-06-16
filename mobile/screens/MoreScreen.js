@@ -18,8 +18,8 @@ import { SYNC_STATUS } from '../storage/syncRecovery';
 // Shows whether each phase is idle/running/failed/complete and offers a
 // non-destructive retry only when a phase has failed. There are deliberately no
 // admin/support controls here — only the signed-in user's own retry/export.
-function CloudSyncRecovery() {
-  const { bootstrap, sync, retryBootstrap, retrySync } = useSyncRecovery();
+function CloudSyncRecovery({ user }) {
+  const { bootstrap, sync, retryBootstrap, retrySync } = useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -37,21 +37,19 @@ function CloudSyncRecovery() {
     }
   };
 
-  // Retry re-runs the same phase. The actual bootstrap/sync runner is owned by
-  // the sync engine; here we re-invoke whatever runner the store last held by
-  // passing a no-op-safe retry. When the engine is wired it supplies the runner
-  // via the store; this affordance only surfaces and triggers recovery.
+  // Retry re-runs the same phase against its bound runner (the hook binds
+  // bootstrap to cloudAdapter.bootstrapFromLocal(userId) and sync to the active
+  // adapter's sync(), feature-detected). The store drives running → complete /
+  // failed and leaves local data untouched on failure.
   const handleRetry = async (kind) => {
     setBusy(true);
     setStatus('');
     try {
       const retry = kind === 'bootstrap' ? retryBootstrap : retrySync;
-      // No runner is available standalone yet; report that recovery was
-      // requested. The sync engine binds the real runner once it lands.
-      const result = await retry(undefined);
+      const result = await retry();
       setStatus(
         result?.ok
-          ? `${kind === 'bootstrap' ? 'Bootstrap' : 'Sync'} retried.`
+          ? `${kind === 'bootstrap' ? 'Bootstrap' : 'Sync'} complete.`
           : result?.error || 'Retry could not start.'
       );
     } finally {
@@ -63,7 +61,10 @@ function CloudSyncRecovery() {
     setBusy(true);
     setStatus('');
     try {
-      const result = await exportCloud();
+      // Pass the signed-in identity so the export carries cloud.account.
+      // buildCloudExport reduces this to non-sensitive { id, email }.
+      const account = user ? { id: user.id, email: user.email } : null;
+      const result = await exportCloud(account);
       if (!result.ok) {
         setStatus(result.error || 'Cloud export failed.');
         return;
@@ -176,7 +177,7 @@ function AccountScreen({ onBack }) {
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
-          <CloudSyncRecovery />
+          <CloudSyncRecovery user={auth.user} />
         </View>
       ) : (
         <View style={styles.accountBlock}>

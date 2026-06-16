@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../storage/entries';
+import { cloudAdapter } from '../storage/cloudAdapter';
 import { makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   SYNC_PHASE,
   getSyncState,
   subscribeSyncState,
-  retryPhase,
+  runPhase,
 } from '../storage/syncRecovery';
 
 // Per-note parsed-sections cache, keyed by note id. We store the raw_text the
@@ -455,14 +456,35 @@ export function useUserProfile() {
 
 // ── cloud sync recovery + cloud export (Phase 4 / Task 12) ────────────────────
 //
-// useSyncRecovery exposes the bootstrap/sync recovery state from the syncQueue
+// useSyncRecovery exposes the bootstrap/sync recovery state from the recovery
 // store so screens can show idle/running/failed/complete and offer a retry. The
-// retry is non-destructive: it re-invokes a caller-provided runner via the
-// store, and a failure leaves local data untouched. Until the bootstrap (#319)
-// and sync (#320) engines exist, the runner is supplied by the caller; this
-// hook owns presentation/retry orchestration only, not the sync algorithm.
+// retry is non-destructive: it re-invokes the bound runner via the store, and a
+// failure leaves local data untouched.
+//
+// Runner binding lives here (not in the screen) so MoreScreen stays declarative
+// and never imports the supabase client directly:
+//   - BOOTSTRAP: bound to cloudAdapter.bootstrapFromLocal(userId) using the
+//     signed-in user's id. Available now (#319 is on this branch).
+//   - SYNC: feature-detected from the active storage adapter. When #320's
+//     offline-sync engine lands it exposes adapter.sync(); until then no sync
+//     runner is available and retry reports an honest "not available" state
+//     instead of silently succeeding.
+//
+// Passing no user (signed out / pre-auth) yields no bootstrap runner, so retry
+// reports honestly rather than calling the adapter with a missing id.
 
-export function useSyncRecovery() {
+function makeBootstrapRunner(user) {
+  const userId = user?.id;
+  if (!userId) return null;
+  return () => cloudAdapter.bootstrapFromLocal(userId);
+}
+
+function makeSyncRunner() {
+  const adapter = Storage.getStorageAdapter();
+  return typeof adapter.sync === 'function' ? () => adapter.sync() : null;
+}
+
+export function useSyncRecovery(user = null) {
   const [snapshot, setSnapshot] = useState(getSyncState);
 
   useEffect(() => {
@@ -472,21 +494,39 @@ export function useSyncRecovery() {
     return unsubscribe;
   }, []);
 
-  const retryBootstrap = useCallback(
-    (runner) => retryPhase(SYNC_PHASE.BOOTSTRAP, runner),
-    []
-  );
+  const userId = user?.id ?? null;
 
-  const retrySync = useCallback(
-    (runner) => retryPhase(SYNC_PHASE.SYNC, runner),
-    []
-  );
+  const runBootstrap = useCallback(() => {
+    const runner = makeBootstrapRunner(user);
+    if (!runner) {
+      return Promise.resolve({
+        ok: false,
+        error: 'Sign in to bootstrap your cloud data.',
+      });
+    }
+    return runPhase(SYNC_PHASE.BOOTSTRAP, runner);
+  }, [userId]);
+
+  const runSync = useCallback(() => {
+    const runner = makeSyncRunner();
+    if (!runner) {
+      return Promise.resolve({
+        ok: false,
+        error: 'Cloud sync is not available in this build yet.',
+      });
+    }
+    return runPhase(SYNC_PHASE.SYNC, runner);
+  }, []);
 
   return {
     bootstrap: snapshot[SYNC_PHASE.BOOTSTRAP],
     sync: snapshot[SYNC_PHASE.SYNC],
-    retryBootstrap,
-    retrySync,
+    // Retry re-invokes the same bound runner; initial action and retry share
+    // one path so a failed run becomes retryable and actually re-runs.
+    runBootstrap,
+    retryBootstrap: runBootstrap,
+    runSync,
+    retrySync: runSync,
   };
 }
 
