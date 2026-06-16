@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -151,6 +151,111 @@ function CloudSyncRecovery({ user }) {
   );
 }
 
+// Server-side export and account deletion panel (Phase 5 / Task 13).
+//
+// Both actions call Edge Functions with the user's JWT. The Edge Functions hold
+// the service-role key server-side; no privileged credential is exposed here.
+// Deletion uses a two-step confirmation: the user must tap once to arm, then
+// confirm, reducing accidental destructive actions.
+function AccountLifecycle({ auth }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [deleteArmed, setDeleteArmed] = useState(false);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await fn();
+      if (result?.ok) {
+        setStatus(result.message || 'Done.');
+      } else {
+        setStatus(result?.error || 'Something went wrong.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleServerExport = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await auth.serverExport();
+      if (!result.ok) {
+        setStatus(result.error || 'Export failed.');
+        return;
+      }
+      await Share.share({ message: result.json });
+      setStatus('Account data exported.');
+    } catch {
+      setStatus('Export failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteArm = () => {
+    setDeleteArmed(true);
+    setStatus('Tap "Confirm Delete Account" to permanently remove all your data and sign out.');
+  };
+
+  const handleDeleteConfirm = () => {
+    Alert.alert(
+      'Delete Account',
+      'This permanently deletes all your cloud data and cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => { setDeleteArmed(false); setStatus(''); } },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => run(async () => {
+            const result = await auth.deleteAccount();
+            if (result.ok) return { ok: true, message: 'Account deleted.' };
+            setDeleteArmed(false);
+            return result;
+          }),
+        },
+      ],
+    );
+  };
+
+  return (
+    <View style={styles.accountBlock}>
+      <SectionTitle>Account Data</SectionTitle>
+
+      <Button
+        title={busy ? 'Working…' : 'Export Account Data'}
+        disabled={busy}
+        onPress={handleServerExport}
+        accessibilityLabel="Export account data"
+      />
+
+      {!deleteArmed ? (
+        <Button
+          title="Delete Account"
+          disabled={busy}
+          onPress={handleDeleteArm}
+          accessibilityLabel="Delete account"
+        />
+      ) : (
+        <Button
+          title={busy ? 'Working…' : 'Confirm Delete Account'}
+          disabled={busy}
+          onPress={handleDeleteConfirm}
+          accessibilityLabel="Confirm delete account"
+        />
+      )}
+
+      {status ? (
+        <Text style={styles.accountStatus} accessibilityLabel="Account lifecycle status">
+          {status}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
 // it does not gate any local-only app behavior. When cloud accounts are not
@@ -200,6 +305,7 @@ function AccountScreen({ onBack }) {
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
           <CloudSyncRecovery user={auth.user} />
+          <AccountLifecycle auth={auth} />
         </View>
       ) : (
         <View style={styles.accountBlock}>

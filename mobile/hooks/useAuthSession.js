@@ -12,7 +12,7 @@
 // behavior is unchanged for signed-out users.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabaseClient';
+import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from '../lib/supabaseClient';
 
 const LOCAL_ONLY_RESULT = Object.freeze({
   ok: false,
@@ -108,6 +108,55 @@ export function useAuthSession() {
     return { ok: true };
   }, [requireClient]);
 
+  // Call the account-export Edge Function with the requester's JWT.
+  // Returns { ok, json } on success or { ok: false, error } on failure.
+  const serverExport = useCallback(async () => {
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const supabaseUrl = getSupabaseConfig()?.url;
+    if (!supabaseUrl) return LOCAL_ONLY_RESULT;
+    const { data: { session } } = await client.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'Not signed in.' };
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/account-export`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+      );
+      const body = await res.json();
+      if (!res.ok) return { ok: false, error: body?.error || 'Export failed.' };
+      return { ok: true, json: JSON.stringify(body, null, 2), payload: body };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Export failed.' };
+    }
+  }, [requireClient]);
+
+  // Call the account-delete Edge Function, then clear the local session.
+  // Returns { ok: true } after successful deletion or { ok: false, error }.
+  const deleteAccount = useCallback(async () => {
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const supabaseUrl = getSupabaseConfig()?.url;
+    if (!supabaseUrl) return LOCAL_ONLY_RESULT;
+    const { data: { session } } = await client.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return { ok: false, error: 'Not signed in.' };
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/account-delete`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+      );
+      const body = await res.json();
+      if (!res.ok) return { ok: false, error: body?.error || 'Account deletion failed.' };
+      // Clear local session state — the auth user is gone server-side.
+      await client.auth.signOut();
+      applySession(null);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Account deletion failed.' };
+    }
+  }, [requireClient, applySession]);
+
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
@@ -157,5 +206,7 @@ export function useAuthSession() {
     resetPasswordForEmail,
     signInWithOAuth,
     handleAuthCallbackUrl,
+    serverExport,
+    deleteAccount,
   };
 }
