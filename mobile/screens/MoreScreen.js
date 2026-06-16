@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, BackHandler, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -12,6 +12,30 @@ import { ProfileScreen } from '../components/ProfileScreen';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
 import { SYNC_STATUS } from '../storage/syncRecovery';
+
+function LegalLinks() {
+  return (
+    <View style={styles.legalLinks}>
+      <Text
+        style={styles.legalLink}
+        onPress={() => Linking.openURL('https://example.com/privacy')}
+        accessibilityLabel="Privacy Policy"
+        accessibilityRole="link"
+      >
+        Privacy Policy
+      </Text>
+      <Text style={styles.legalSep}>·</Text>
+      <Text
+        style={styles.legalLink}
+        onPress={() => Linking.openURL('https://example.com/terms')}
+        accessibilityLabel="Terms of Service"
+        accessibilityRole="link"
+      >
+        Terms of Service
+      </Text>
+    </View>
+  );
+}
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
@@ -157,7 +181,7 @@ function CloudSyncRecovery({ user }) {
 // the service-role key server-side; no privileged credential is exposed here.
 // Deletion uses a two-step confirmation: the user must tap once to arm, then
 // confirm, reducing accidental destructive actions.
-function AccountLifecycle({ auth }) {
+export function AccountLifecycle({ auth }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -252,6 +276,7 @@ function AccountLifecycle({ auth }) {
           {status}
         </Text>
       ) : null}
+      <LegalLinks />
     </View>
   );
 }
@@ -343,6 +368,7 @@ function AccountScreen({ onBack }) {
             disabled={busy}
             onPress={() => run(() => auth.resetPasswordForEmail(email).then((r) => (r.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : r)))}
           />
+          <LegalLinks />
         </View>
       )}
       {status ? (
@@ -460,6 +486,7 @@ export function MoreScreen({
         <Button title="Log Workout" onPress={() => onNavigate('Log')} style={{ flex: 1 }} />
         <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={{ flex: 1 }} />
       </View>
+      <LegalLinks />
     </ScreenShell>
   );
 }
@@ -523,5 +550,21 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: 'right',
     marginLeft: 12,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+  },
+  legalLink: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textDecorationLine: 'underline',
+  },
+  legalSep: {
+    fontSize: 13,
+    color: Colors.textMuted,
   },
 });

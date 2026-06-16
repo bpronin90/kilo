@@ -1,4 +1,4 @@
-// Account lifecycle UI tests (Phase 5 / Task 13 / issue #322).
+// Account lifecycle UI tests (Phase 5 / Task 13 / issue #322, #330).
 //
 // Covers the two new useAuthSession methods (serverExport, deleteAccount) and
 // the AccountLifecycle component's export + delete flows:
@@ -7,9 +7,33 @@
 //   - Export errors surface the error message from the function response.
 //   - deleteAccount success results in a signed-out state.
 //   - No privileged key appears in any test path (service-role key is server-only).
+//   - AccountLifecycle renders Privacy Policy and Terms of Service links (issue #330).
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+
+// Mocks needed when importing AccountLifecycle from MoreScreen for UI tests.
+// These prevent cascading native deps (expo-updates, Pressable hooks) from
+// breaking the hook-level tests that run in the same file.
+jest.mock('../components/HelpScreen', () => ({ HelpScreen: () => null }));
+jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
+jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
+jest.mock('../components/SettingsScreen', () => ({ SettingsScreen: () => null }));
+jest.mock('../components/ProfileScreen', () => ({ ProfileScreen: () => null }));
+jest.mock('../components/ScreenShell', () => ({ ScreenShell: ({ children }) => children }));
+jest.mock('../components/UI', () => {
+  const React = require('react');
+  const { View, Text } = require('react-native');
+  return {
+    Button: ({ title, accessibilityLabel }) => React.createElement(View, { accessibilityLabel }, React.createElement(Text, null, title)),
+    SectionTitle: ({ children }) => React.createElement(View, null, React.createElement(Text, null, children)),
+    InputStyle: {},
+  };
+});
+jest.mock('../hooks/useEntries', () => ({
+  useSyncRecovery: () => ({ bootstrap: { status: 'idle', retryable: false }, sync: { status: 'idle', retryable: false }, runBootstrap: jest.fn(), runSync: jest.fn(), retryBootstrap: jest.fn(), retrySync: jest.fn() }),
+  useCloudExport: () => ({ exportCloud: jest.fn() }),
+}));
 
 // --- fetch mock -----------------------------------------------------------
 let mockFetch;
@@ -28,6 +52,9 @@ process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
 const { useAuthSession } = require('../hooks/useAuthSession');
 const { resetSupabaseClientForTests } = require('../lib/supabaseClient');
+
+// AccountLifecycle component — required after env and Supabase mock are set.
+const { AccountLifecycle } = require('../screens/MoreScreen');
 
 function makeMockAuth(session = null) {
   let authStateCb = null;
@@ -231,5 +258,34 @@ describe('deleteAccount', () => {
     const headerValues = Object.values(headers).join(' ');
     expect(headerValues).not.toMatch(/service_role/i);
     expect(headerValues).not.toMatch(/secret/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AccountLifecycle privacy and terms links (issue #330)
+// ---------------------------------------------------------------------------
+
+describe('AccountLifecycle legal link placements', () => {
+  function makeAuth() {
+    return {
+      serverExport: jest.fn().mockResolvedValue({ ok: true, json: '{}' }),
+      deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
+    };
+  }
+
+  function renderLifecycle() {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountLifecycle, { auth: makeAuth() }));
+    });
+    return JSON.stringify(tree.toJSON());
+  }
+
+  test('renders Privacy Policy link', () => {
+    expect(renderLifecycle()).toMatch(/Privacy Policy/);
+  });
+
+  test('renders Terms of Service link', () => {
+    expect(renderLifecycle()).toMatch(/Terms of Service/);
   });
 });
