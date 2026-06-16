@@ -95,7 +95,9 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   Backup, Settings, Help, About, and signed-in Account lifecycle sub-screens,
   including server-side account export and two-step deletion calls that stay
   behind Supabase Edge Functions rather than exposing privileged credentials to
-  the client, leaving `HomeScreen.js` focused on dashboard rendering
+  the client, leaving `HomeScreen.js` focused on dashboard rendering. The same
+  public-account surfaces expose placeholder privacy and terms links beside
+  signup, near Account export/delete actions, and in More > About Kilo.
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
@@ -216,6 +218,19 @@ one-time forward migration from the legacy single-note key by seeding a
 `Routine 1` notebook entry with `isCurrent: true` and `currentSince: null`,
 and normalizes pre-existing notebook rows that predate the new metadata fields.
 No remote sync is involved.
+
+## Launch Abuse Boundary
+
+Supabase Auth owns platform authentication throttles and CAPTCHA enforcement for
+signup, password recovery, verification, and token endpoints. Kilo's launch
+configuration keeps those platform limits active, uses production-owned SMTP for
+public email signup, and enables CAPTCHA before open signup unless a closed-beta
+release explicitly records a temporary deferral.
+
+Kilo-owned Edge Functions remain responsible for app-specific abuse controls.
+`account-export` and `account-delete` must require the caller JWT, perform no
+unauthenticated writes, keep service-role credentials server-side only, and
+apply both per-user and per-IP rate limits before public launch.
 
 ## Session Check-In (Fatigue) Flow
 

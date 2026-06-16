@@ -384,6 +384,20 @@ retains non-test commands such as `npm run audit`.
   from repo root, or `supabase test db --file tests/account-lifecycle.test.sql`
   from inside `supabase/`
 
+### Public Signup Legal And Abuse Checks
+
+- before open signup, verify the public web auth/signup surface links privacy
+  and terms beside the signup action, the signed-in Account lifecycle surface
+  links them near export/delete actions, and More > About Kilo links them for
+  existing users
+- verify Supabase Auth launch configuration keeps platform rate limits active,
+  uses production-owned SMTP for email signup/password recovery, and has CAPTCHA
+  enabled for open signup, or records an explicit closed-beta deferral before
+  release
+- verify `account-export` and `account-delete` reject unauthenticated requests,
+  include no service-role or secret key in client requests, and enforce both
+  per-user and per-IP throttles before open signup
+
 ---
 
 ## Coverage Gaps

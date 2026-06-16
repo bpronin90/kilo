@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.75.0 - 2026-06-16
+
+- Issue #330 (Phase 5 / Task 14 follow-up): Added placeholder Privacy Policy
+  and Terms of Service links to the public-account launch surfaces without
+  adding production legal claims: beside the signed-out Account signup action,
+  near signed-in Account export/delete actions, and in More > About Kilo.
+  Existing account lifecycle export/delete behavior is unchanged.
+
 ## 0.74.0 - 2026-06-16
 
 - Issue #322 (Phase 5 / Task 13): Added requester-only account export and

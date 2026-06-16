@@ -195,8 +195,10 @@ The v3 backup payload remains the migration/export shape reference: `weight_entr
 - Signup, login, logout, OAuth callback, and password reset must work on web before public launch.
 - Account deletion must be available to the signed-in user and must remove app data plus the auth user through server-owned code.
 - Data export must return a JSON payload compatible with the v3 backup shape plus account/profile/toggle additions needed for cloud users.
-- Privacy policy and terms must be linked from the public web surface before open signup.
-- Abuse posture before public launch: Supabase Auth rate limits reviewed, CAPTCHA enabled or explicitly deferred with reason, server-side export/delete endpoints rate-limited per user and IP, and no unauthenticated write endpoints.
+- Privacy policy and terms are linked from the public web auth surface next to the signup action, from the signed-in Account lifecycle surface near export/delete actions, and from More > About Kilo for already signed-in users (#330).
+- Supabase Auth launch posture: keep Supabase's platform rate limits enabled, use custom SMTP before production email signup so email send quotas are production-owned instead of the built-in best-effort sender, and enable CAPTCHA for signup/password-recovery abuse protection before open signup. Defer CAPTCHA only for a closed invite/beta launch with that decision recorded in the release checklist.
+- Server-owned abuse posture: `account-export` and `account-delete` remain authenticated-only Edge Functions, receive no public service-role key, reject unauthenticated calls, and must enforce per-user plus per-IP rate limits before open signup. Target launch limits are conservative by default: export no more than once per 10 minutes per signed-in user and delete no more than 3 attempts per hour per signed-in user, with a separate IP bucket to slow unauthenticated or repeatedly failing callers.
+- No unauthenticated app write endpoint may be exposed for public launch.
 
 ## Web-First Distribution Contract
 
@@ -404,11 +406,16 @@ Ordered tasks:
 
 #### Task 14: Add privacy, terms, and abuse-limiting posture
 - GitHub title: `Phase 5 / Task 14: Add privacy, terms, and abuse-limiting posture`
+- Status: Complete in issue #323 once the linked follow-up implementation issues exist.
 - Intended agent: `codex`
 - Labels: `backend-v1`, `agent:codex`, `area:docs`, `area:supabase`, `type:planning`, `effort:default`, `model:gpt-5.4`, `reasoning:medium`
 - Session goal: create the launch-blocking legal/abuse checklist and wire follow-up implementation issues only where needed.
 - Dependency: Phase 5 / Task 13 complete.
 - Verification target: public web surface has linked privacy/terms placeholders or final docs, and Auth/server endpoint rate-limit/CAPTCHA decisions are documented.
+- Follow-up implementation required:
+  - #330: Add privacy/terms links on the signup/auth surface, signed-in Account lifecycle surface, and More > About Kilo. Complete.
+  - #329: Enable or explicitly release-defer Supabase Auth CAPTCHA and custom SMTP configuration before open signup.
+  - #328: Add per-user and per-IP throttling to the `account-export` and `account-delete` Edge Functions.
 - Stop condition: no legal claims beyond user-approved copy.
 
 ### Phase 6: Public Web Readiness Review
