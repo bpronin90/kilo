@@ -742,9 +742,14 @@ local, and signed-out users stay local-only regardless. The Phase 4 bootstrap
 import path now exists in the cloud adapter (#319): `bootstrapFromLocal` reads
 the mapped AsyncStorage keys read-only and upserts them idempotently into the
 note-first `kilo` tables, with legacy `kilo_workout_sessions` synthesized into
-note-first `workout_notes`. It is not yet wired to a user trigger and runs no
-data on its own, so no local data is moved to the cloud yet; continuous sync
-(Task 11) and the bootstrap/sync trigger and recovery UI (Task 12) remain.
+note-first `workout_notes`. Continuous offline sync (Task 11, #320) is now
+implemented too: a transport-agnostic last-write-wins engine with per-install
+`client_id`, monotonic `updated_at` stamping, persisted per-table dirty queues
+and pull cursors, tombstone-first deletes, and derived-JSON recompute, wired
+behind the cloud adapter so cloud-mode reads/writes stamp and enqueue and
+reconcile on reconnect. Both remain gated behind cloud mode and are not yet
+surfaced in the UI, so no local data is moved to the cloud on its own; the
+bootstrap/sync trigger and recovery UI (Task 12) remain.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.

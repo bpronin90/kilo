@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.72.0 - 2026-06-16
+
+- Issue #320 (Phase 4 / Task 11): Implemented last-write-wins offline sync for
+  weight entries and workout notes behind the cloud storage adapter. A
+  transport-agnostic engine (`mobile/storage/syncQueue.js`) owns sync metadata
+  (`client_id`, monotonic `updated_at`, `deleted_at`), persisted per-table dirty
+  queues and pull cursors, deterministic LWW resolution, tombstone-first deletes,
+  and derived-JSON recompute from canonical `raw_text`. Cloud-mode reads/writes
+  (including the deload-derived workout note path) route through the adapter so
+  offline create/edit/delete stamp and enqueue and reconcile on reconnect; the
+  pull cursor is inclusive so exact-timestamp ties converge; real pushes stamp
+  `user_id` to satisfy the `kilo` schema RLS and `(user_id,id)` conflict target.
+  Bootstrap and sync now coexist on the adapter; other cloud domains still throw
+  `CloudNotImplementedError`. Still gated behind cloud mode and not yet surfaced
+  in the UI (Task 12).
+
 ## 0.71.0 - 2026-06-15
 
 - Issue #319 (Phase 4 / Task 10): Implemented a user-initiated, one-way cloud
