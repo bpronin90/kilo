@@ -147,6 +147,19 @@ export async function loadWeightEntries() {
   return list.sort((a, b) => b.logged_at.localeCompare(a.logged_at));
 }
 
+// Raw cache accessors for the cloud sync engine (Phase 4 / Task 11). Unlike
+// loadWeightEntries(), these expose the unfiltered, unsorted backing list
+// (including delete tombstones and sync metadata) so the sync loop can merge,
+// push, and advance cursors over the full record set. Local mode never uses
+// these; they exist only for the cloud adapter / sync engine.
+export async function loadWeightEntriesRaw() {
+  return readList(WEIGHT_KEY);
+}
+
+export async function replaceWeightEntriesRaw(list) {
+  await writeList(WEIGHT_KEY, Array.isArray(list) ? list : []);
+}
+
 export async function saveWeightEntry(entry) {
   const list = await readList(WEIGHT_KEY);
   list.push(entry);
@@ -325,6 +338,18 @@ export async function updateDeloadHistory(id, patch) {
 
 export async function loadWorkoutNotes() {
   return readList(WORKOUT_NOTES_KEY);
+}
+
+// Raw cache accessors for the cloud sync engine (Phase 4 / Task 11). Expose the
+// unfiltered backing notebook list (including delete tombstones and sync
+// metadata) so the sync loop can merge, push, and advance cursors over the full
+// record set. Local mode never uses these.
+export async function loadWorkoutNotesRaw() {
+  return readList(WORKOUT_NOTES_KEY);
+}
+
+export async function replaceWorkoutNotesRaw(list) {
+  await writeList(WORKOUT_NOTES_KEY, Array.isArray(list) ? list : []);
 }
 
 export async function saveWorkoutNoteItem(note) {

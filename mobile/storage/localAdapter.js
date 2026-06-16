@@ -24,6 +24,10 @@ export const localAdapter = {
   deleteWeightEntry: (...args) => Storage.deleteWeightEntry(...args),
   updateWeightEntry: (...args) => Storage.updateWeightEntry(...args),
 
+  // Local mode has no cloud sync; this is a no-op so the adapter surface stays
+  // 1:1 with the cloud adapter, which implements real LWW sync here.
+  sync: async () => [],
+
   // ── weight goal ─────────────────────────────────────────────────────────
   loadWeightGoal: (...args) => Storage.loadWeightGoal(...args),
   saveWeightGoal: (...args) => Storage.saveWeightGoal(...args),

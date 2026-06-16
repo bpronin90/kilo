@@ -113,8 +113,26 @@ describe('adapter surface', () => {
 });
 
 describe('cloud adapter shell', () => {
-  it('throws CloudNotImplementedError for every domain method (no bootstrap/sync)', () => {
-    for (const method of ADAPTER_METHODS) {
+  // Phase 4 implemented these cloud methods for real: bootstrap (Task 10) and
+  // offline LWW sync for weight entries + workout notes (Task 11). Every OTHER
+  // domain method still throws until a later phase wires it through the same
+  // mechanism, keeping the cloud surface 1:1 with the local adapter.
+  const IMPLEMENTED_CLOUD_METHODS = new Set([
+    'sync',
+    'loadWeightEntries',
+    'saveWeightEntry',
+    'updateWeightEntry',
+    'deleteWeightEntry',
+    'loadWorkoutNotes',
+    'saveWorkoutNoteItem',
+    'deleteWorkoutNoteItem',
+  ]);
+
+  it('throws CloudNotImplementedError for every still-unimplemented domain method', () => {
+    const unimplemented = ADAPTER_METHODS.filter((m) => !IMPLEMENTED_CLOUD_METHODS.has(m));
+    // Guard against the list silently emptying if the surface changes.
+    expect(unimplemented.length).toBeGreaterThan(0);
+    for (const method of unimplemented) {
       expect(() => cloudAdapter[method]()).toThrow(CloudNotImplementedError);
     }
   });
