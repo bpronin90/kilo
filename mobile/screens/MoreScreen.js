@@ -19,7 +19,8 @@ import { SYNC_STATUS } from '../storage/syncRecovery';
 // non-destructive retry only when a phase has failed. There are deliberately no
 // admin/support controls here — only the signed-in user's own retry/export.
 function CloudSyncRecovery({ user }) {
-  const { bootstrap, sync, retryBootstrap, retrySync } = useSyncRecovery(user);
+  const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
+    useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -37,25 +38,32 @@ function CloudSyncRecovery({ user }) {
     }
   };
 
-  // Retry re-runs the same phase against its bound runner (the hook binds
-  // bootstrap to cloudAdapter.bootstrapFromLocal(userId) and sync to the active
-  // adapter's sync(), feature-detected). The store drives running → complete /
-  // failed and leaves local data untouched on failure.
-  const handleRetry = async (kind) => {
+  // Run a phase against its bound runner. Used both for the initial action
+  // (drives idle → running → complete/failed for normal, first-time work) and
+  // for retry after a failure. The hook binds bootstrap to
+  // cloudAdapter.bootstrapFromLocal(userId) and sync to the active adapter's
+  // sync() (feature-detected). The store drives the status transitions and
+  // leaves local data untouched on failure.
+  const handleRun = async (kind, runner) => {
     setBusy(true);
     setStatus('');
     try {
-      const retry = kind === 'bootstrap' ? retryBootstrap : retrySync;
-      const result = await retry();
+      const result = await runner();
       setStatus(
         result?.ok
           ? `${kind === 'bootstrap' ? 'Bootstrap' : 'Sync'} complete.`
-          : result?.error || 'Retry could not start.'
+          : result?.error || 'Could not start.'
       );
     } finally {
       setBusy(false);
     }
   };
+
+  const isRunning = (s) => s.status === SYNC_STATUS.RUNNING;
+  // The initial action is offered while a phase has never run (idle) and is not
+  // already running. Once it fails it becomes retryable and the retry button
+  // takes over.
+  const canStart = (s) => s.status === SYNC_STATUS.IDLE;
 
   const handleCloudExport = async () => {
     setBusy(true);
@@ -88,11 +96,18 @@ function CloudSyncRecovery({ user }) {
           {phaseLabel(bootstrap)}
         </Text>
       </View>
+      {canStart(bootstrap) ? (
+        <Button
+          title={busy ? 'Working…' : 'Run Bootstrap'}
+          disabled={busy || isRunning(bootstrap)}
+          onPress={() => handleRun('bootstrap', runBootstrap)}
+        />
+      ) : null}
       {bootstrap.retryable ? (
         <Button
           title={busy ? 'Working…' : 'Retry Bootstrap'}
           disabled={busy}
-          onPress={() => handleRetry('bootstrap')}
+          onPress={() => handleRun('bootstrap', retryBootstrap)}
         />
       ) : null}
 
@@ -102,11 +117,18 @@ function CloudSyncRecovery({ user }) {
           {phaseLabel(sync)}
         </Text>
       </View>
+      {canStart(sync) ? (
+        <Button
+          title={busy ? 'Working…' : 'Run Sync'}
+          disabled={busy || isRunning(sync)}
+          onPress={() => handleRun('sync', runSync)}
+        />
+      ) : null}
       {sync.retryable ? (
         <Button
           title={busy ? 'Working…' : 'Retry Sync'}
           disabled={busy}
-          onPress={() => handleRetry('sync')}
+          onPress={() => handleRun('sync', retrySync)}
         />
       ) : null}
 

@@ -203,6 +203,65 @@ describe('useSyncRecovery hook', () => {
     expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.COMPLETE);
   });
 
+  test('initial bootstrap action drives idle -> running -> complete on success (no prior failure)', async () => {
+    // Inject a fake adapter result via the bootstrap export; assert the runner
+    // both calls bootstrapFromLocal(userId) and transitions the visible status
+    // for normal (first-time) work, not just retry.
+    const order = [];
+    const unsubscribe = subscribeSyncState((s) =>
+      order.push(s[SYNC_PHASE.BOOTSTRAP].status)
+    );
+    const spy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+    // Starts idle (never failed first).
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.IDLE);
+    expect(ref.current.bootstrap.retryable).toBe(false);
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+    unsubscribe();
+
+    expect(spy).toHaveBeenCalledWith('u_1');
+    expect(result.ok).toBe(true);
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.COMPLETE);
+    // The initial action passed through running before completing.
+    expect(order).toContain(SYNC_STATUS.RUNNING);
+    expect(order).toContain(SYNC_STATUS.COMPLETE);
+  });
+
+  test('initial bootstrap action drives running -> failed/retryable on a throwing runner', async () => {
+    const order = [];
+    const unsubscribe = subscribeSyncState((s) =>
+      order.push(s[SYNC_PHASE.BOOTSTRAP].status)
+    );
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockRejectedValue(new Error('bootstrap exploded'));
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.IDLE);
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+    unsubscribe();
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('bootstrap exploded');
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.FAILED);
+    expect(ref.current.bootstrap.retryable).toBe(true);
+    expect(order).toContain(SYNC_STATUS.RUNNING);
+    expect(order).toContain(SYNC_STATUS.FAILED);
+  });
+
   test('retry re-invokes the bound bootstrap runner: failed/retryable on throw, then complete on retry', async () => {
     const spy = jest
       .spyOn(cloudAdapter, 'bootstrapFromLocal')
