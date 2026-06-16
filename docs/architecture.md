@@ -21,6 +21,12 @@ graph TD
         NativeStorage["mobile/storage/entries.js"]
         AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
+    subgraph supabase["Supabase Project"]
+        EdgeExport["account-export Edge Function"]
+        EdgeDelete["account-delete Edge Function"]
+        KiloSchema[("kilo schema\nRLS app tables")]
+        Auth[("Supabase Auth")]
+    end
 
     ExpoEntry --> AppJs
     AppJs --> NativeScreens
@@ -28,6 +34,11 @@ graph TD
     NativeScreens --> NativeHooks
     NativeHooks --> NativeStorage
     NativeStorage <--> AS
+    NativeScreens --> EdgeExport
+    NativeScreens --> EdgeDelete
+    EdgeExport --> KiloSchema
+    EdgeDelete --> KiloSchema
+    EdgeDelete --> Auth
 ```
 
 ## Preview OTA Update Path
@@ -81,8 +92,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   into More and Analytics
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the extracted More-tab menu plus Profile,
-  Backup, Settings, Help, and About sub-screens, leaving `HomeScreen.js`
-  focused on dashboard rendering
+  Backup, Settings, Help, About, and signed-in Account lifecycle sub-screens,
+  including server-side account export and two-step deletion calls that stay
+  behind Supabase Edge Functions rather than exposing privileged credentials to
+  the client, leaving `HomeScreen.js` focused on dashboard rendering
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
