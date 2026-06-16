@@ -486,7 +486,6 @@ export function MoreScreen({
         <Button title="Log Workout" onPress={() => onNavigate('Log')} style={{ flex: 1 }} />
         <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={{ flex: 1 }} />
       </View>
-      <LegalLinks />
     </ScreenShell>
   );
 }
