@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.76.0 - 2026-06-16
+
+- Issue #328 (Phase 5 / Task 14 follow-up): Added app-owned abuse controls to
+  the account lifecycle Edge Functions. `account-export` now limits successful
+  exports to one per signed-in user per 10 minutes by default, and
+  `account-delete` limits delete attempts to three per signed-in user per hour;
+  both functions also apply an IP bucket and return HTTP 429 throttled
+  responses without exposing cross-account state. Rate-limit verification is
+  documented as manual Edge Function QA while requester-isolation remains
+  covered by the existing pgTAP suite.
+
 ## 0.75.0 - 2026-06-16
 
 - Issue #330 (Phase 5 / Task 14 follow-up): Added placeholder Privacy Policy
