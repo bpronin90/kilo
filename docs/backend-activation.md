@@ -108,6 +108,16 @@ Supported providers: SendGrid, Postmark, Resend, or any SMTP-capable transaction
 
 **Closed-beta deferral:** If password recovery and email signup are not reachable by public users, record: `SMTP: deferred — password recovery and email signup not publicly reachable. Configure before enabling.` Re-evaluate before open signup.
 
+### Published Privacy Policy and Terms of Service
+
+**Requirement:** Published privacy policy and terms of service documents must be live and linked from the auth surface, Account lifecycle surface, and More > About before open public signup.
+
+**Published URLs:**
+- Privacy Policy: `https://bpronin90.github.io/privacy.html`
+- Terms of Service: `https://bpronin90.github.io/terms.html`
+
+**Release verification:** Open each URL and confirm it resolves to the published document. Run `grep -r 'example.com' mobile/screens/MoreScreen.js mobile/components/AboutScreen.js` and confirm no results.
+
 ### OAuth Provider (GitHub - Web Only)
 
 **Requirement:** GitHub OAuth must be configured in the Supabase Dashboard and GitHub developer settings before open public signup for the web distribution surface.

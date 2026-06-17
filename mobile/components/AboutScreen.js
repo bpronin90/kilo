@@ -87,7 +87,7 @@ export function AboutScreen({ onBack }) {
       <View style={styles.legalLinks}>
         <Text
           style={styles.legalLink}
-          onPress={() => Linking.openURL('https://example.com/privacy')}
+          onPress={() => Linking.openURL('https://bpronin90.github.io/privacy.html')}
           accessibilityLabel="Privacy Policy"
           accessibilityRole="link"
         >
@@ -96,7 +96,7 @@ export function AboutScreen({ onBack }) {
         <Text style={styles.legalSep}>·</Text>
         <Text
           style={styles.legalLink}
-          onPress={() => Linking.openURL('https://example.com/terms')}
+          onPress={() => Linking.openURL('https://bpronin90.github.io/terms.html')}
           accessibilityLabel="Terms of Service"
           accessibilityRole="link"
         >
