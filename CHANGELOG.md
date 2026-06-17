@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.3 - 2026-06-17
+
+- Issue #344: Refreshed the mobile lockfile's high-severity audit paths for
+  `@babel/core`, `form-data`, `hasown`, and `ws` so the mobile
+  `npm audit --audit-level=high` gate passes without taking the breaking
+  Expo/Jest upgrade path required for the remaining moderate-only advisories.
+
 ## 0.77.2 - 2026-06-17
 
 - Issue #335: Refactored the Log screen controller logic into local
