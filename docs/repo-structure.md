@@ -78,6 +78,7 @@ mobile/
     HomeScreen.js
     MoreScreen.js
     LogScreen.js
+    log/              ← Log screen local editor/controller hooks
     WeightScreen.js
     AnalyticsScreen.js
   theme/
@@ -119,7 +120,8 @@ These files define the current real native app path.
 | `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
 | `mobile/screens/MoreScreen.js` | Native More tab menu plus Profile, Backup, Settings, Help, and About sub-screens. |
-| `mobile/screens/LogScreen.js` | Native workout logging form UI. |
+| `mobile/screens/LogScreen.js` | Native workout logging form UI and composition shell for Log-tab visual components. |
+| `mobile/screens/log/` | Local Log screen editor/controller hooks and helpers for current-routine, non-current-routine, and deload editing flows. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/AnalyticsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
 | `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries, workout notes, tracked lifts, weight goals, backup/import, and related UI state. |

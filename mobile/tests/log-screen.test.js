@@ -339,7 +339,11 @@ function readLogScreenSource() {
   const active = fs.readFileSync(path.join(__dirname, '../components/LogActiveRoutineCard.js'), 'utf8');
   const previous = fs.readFileSync(path.join(__dirname, '../components/LogPreviousRoutines.js'), 'utf8');
   const helpers = fs.readFileSync(path.join(__dirname, '../lib/LogScreenHelpers.js'), 'utf8');
-  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers;
+  const currentEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogCurrentRoutineEditor.js'), 'utf8');
+  const otherEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogOtherRoutineEditor.js'), 'utf8');
+  const deloadEditorHook = fs.readFileSync(path.join(__dirname, '../screens/log/useLogDeloadEditor.js'), 'utf8');
+  const logHelpersLocal = fs.readFileSync(path.join(__dirname, '../screens/log/logScreenHelpers.js'), 'utf8');
+  return main + '\n' + deload + '\n' + editor + '\n' + active + '\n' + previous + '\n' + helpers + '\n' + currentEditorHook + '\n' + otherEditorHook + '\n' + deloadEditorHook + '\n' + logHelpersLocal;
 }
 
 describe('deload ordinal prompt: prefill and editability contract (#284)', () => {
@@ -481,7 +485,7 @@ describe('Log web edit path: explicit edit control is wired (#314)', () => {
   });
 
   test('LogScreen forwards enterCurrentEditor to the active routine card', () => {
-    expect(src).toMatch(/enterCurrentEditor=\{enterCurrentEditor\}/);
+    expect(src).toMatch(/enterCurrentEditor=\{(?:currentEditor\.)?enterCurrentEditor\}/);
   });
 
   test('active routine card renders an explicit Edit control bound to enterCurrentEditor', () => {
@@ -550,7 +554,8 @@ describe('Undo escape hatch: source-level assertions', () => {
   });
 
   test('undo buttons are rendered in the headerRight section', () => {
-    expect(src).toMatch(/onPress\s*=\s*\{\s*deloadMode\s*===\s*'edit'\s*\?\s*handleUndoDeload\s*:\s*editingNoteId\s*\?\s*handleUndoOther\s*:\s*handleUndoCurrent\s*\}/);
+    // Matches both original flat names and hook-prefixed names (e.g. deloadEditor.handleUndoDeload)
+    expect(src).toMatch(/onPress\s*=\s*\{[\s\S]{0,60}deload[A-Za-z.]*Mode\s*===\s*'edit'\s*\?[\s\S]{0,100}handleUndoDeload[\s\S]{0,100}handleUndoOther[\s\S]{0,100}handleUndoCurrent/);
   });
 
   test('handleAndroidBack invokes done handlers for swipe-to-save behavior', () => {
