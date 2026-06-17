@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.77.0 - 2026-06-17
+
+- Issue #331 (Phase 6 follow-up): Surfaced GitHub OAuth sign-in on the web build
+  alongside email/password. The Account screen renders a "Continue with GitHub"
+  action only on web and only when cloud accounts are configured, passes an
+  explicit `redirectTo` of the web origin for a deterministic callback, and
+  reuses the existing web auth-callback handler to complete the round-trip.
+  Native OAuth is intentionally out of scope for Phase 6 (the button does not
+  render on native). The backend activation runbook documents the GitHub OAuth
+  App and dashboard setup as a web-only open-signup gate.
+
 ## 0.76.1 - 2026-06-16
 
 - Issue #329 (Phase 5 / Task 14 follow-up): Documented the production Supabase

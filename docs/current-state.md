@@ -41,7 +41,10 @@ Roadmap status:
   and deletion (#322), conservative account lifecycle endpoint throttles (#328),
   placeholder privacy/terms link placements on the signup, account lifecycle,
   and About Kilo surfaces (#330), and the documented Auth abuse posture gate for
-  CAPTCHA plus production SMTP before open signup (#329).
+  CAPTCHA plus production SMTP before open signup (#329). The web distribution
+  surface now also offers GitHub OAuth sign-in alongside email/password,
+  surfaced web-only behind cloud config (#331); native OAuth is out of scope for
+  Phase 6.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
