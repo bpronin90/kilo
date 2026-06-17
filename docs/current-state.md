@@ -39,8 +39,8 @@ Roadmap status:
   current note-first workout model and local daily-use path between cards. The
   public-account lifecycle slice now includes server-owned requester-only export
   and deletion (#322), conservative account lifecycle endpoint throttles (#328),
-  placeholder privacy/terms link placements on the signup, account lifecycle,
-  and About Kilo surfaces (#330), and the documented Auth abuse posture gate for
+  published privacy/terms links on the signup, account lifecycle, and About
+  Kilo surfaces (#330, #332), and the documented Auth abuse posture gate for
   CAPTCHA plus production SMTP before open signup (#329). The web distribution
   surface now also offers GitHub OAuth sign-in alongside email/password,
   surfaced web-only behind cloud config (#331); native OAuth is out of scope for
@@ -782,8 +782,9 @@ successful export per signed-in user per 10 minutes plus an IP bucket, and
 `account-delete` allows three delete attempts per signed-in user per hour plus
 an IP bucket. Remaining launch-posture follow-ups are Supabase Auth
 configuration: Auth must keep platform rate limits, use production-owned SMTP
-before email signup, and enable CAPTCHA before open signup unless a closed-beta
-release explicitly defers it.
+before email signup, keep the published Privacy Policy and Terms of Service
+documents live, and enable CAPTCHA before open signup unless a closed-beta
+release explicitly defers the still-pending gates.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.
