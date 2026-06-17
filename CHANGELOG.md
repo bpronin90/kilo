@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.77.2 - 2026-06-17
+
+- Issue #335: Refactored the Log screen controller logic into local
+  `mobile/screens/log/` hooks for current-routine editing, non-current routine
+  editing, and deload editing while preserving the existing Log UI and
+  behavior. Updated the repo-structure documentation for the new local module
+  folder.
+
 ## 0.77.1 - 2026-06-17
 
 - Issue #332 (Phase 6 follow-up): Replaced the placeholder Privacy Policy and
