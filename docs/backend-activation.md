@@ -108,6 +108,30 @@ Supported providers: SendGrid, Postmark, Resend, or any SMTP-capable transaction
 
 **Closed-beta deferral:** If password recovery and email signup are not reachable by public users, record: `SMTP: deferred — password recovery and email signup not publicly reachable. Configure before enabling.` Re-evaluate before open signup.
 
+### OAuth Provider (GitHub - Web Only)
+
+**Requirement:** GitHub OAuth must be configured in the Supabase Dashboard and GitHub developer settings before open public signup for the web distribution surface.
+
+> [!NOTE]
+> OAuth is currently supported on the **web build only**; native OAuth is disabled/out of scope for Phase 6.
+
+**GitHub Setup (Create OAuth App):**
+- In GitHub, go to your profile Settings → Developer settings → OAuth Apps → New OAuth App.
+- Application name: `Kilo` (or `Kilo Dev` for local development).
+- Homepage URL: Your web production website URL (or `http://localhost:8081` for local web development).
+- Authorization callback URL: `https://<project-ref>.supabase.co/auth/v1/callback` (where `<project-ref>` is your Supabase project reference).
+
+**Dashboard Configuration:**
+- In the Supabase Dashboard, go to Authentication → Providers → GitHub.
+- Toggle "Enable GitHub provider" to active.
+- Paste the Client ID and Client Secret from your GitHub OAuth App settings.
+- Ensure the Redirect URLs under Authentication → URL Configuration include your production web URL and any local web development URL (e.g., `http://localhost:8081`).
+
+**Release Verification:**
+- Launch the web build and navigate to the Account screen.
+- Tap "Continue with GitHub" and confirm it redirects to the GitHub authorization page.
+- Log in and verify that the flow successfully redirects back to the web app in a signed-in state.
+
 ## Relationship To Other Docs
 
 - `docs/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.

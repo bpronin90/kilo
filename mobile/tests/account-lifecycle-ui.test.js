@@ -10,7 +10,8 @@
 //   - AccountLifecycle renders Privacy Policy and Terms of Service links (issue #330).
 
 import React from 'react';
-import renderer, { act } from 'react-test-renderer';
+let renderer;
+let act;
 
 // Mocks needed when importing AccountLifecycle from MoreScreen for UI tests.
 // These prevent cascading native deps (expo-updates, Pressable hooks) from
@@ -25,7 +26,7 @@ jest.mock('../components/UI', () => {
   const React = require('react');
   const { View, Text } = require('react-native');
   return {
-    Button: ({ title, accessibilityLabel }) => React.createElement(View, { accessibilityLabel }, React.createElement(Text, null, title)),
+    Button: ({ title, accessibilityLabel, onPress }) => React.createElement(View, { accessibilityLabel, onPress }, React.createElement(Text, null, title)),
     SectionTitle: ({ children }) => React.createElement(View, null, React.createElement(Text, null, children)),
     InputStyle: {},
   };
@@ -50,11 +51,12 @@ jest.mock('@supabase/supabase-js', () => ({
 process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
-const { useAuthSession } = require('../hooks/useAuthSession');
-const { resetSupabaseClientForTests } = require('../lib/supabaseClient');
-
-// AccountLifecycle component — required after env and Supabase mock are set.
-const { AccountLifecycle } = require('../screens/MoreScreen');
+let useAuthSession;
+let resetSupabaseClientForTests;
+let AccountLifecycle;
+let AccountScreen;
+let Platform;
+let Linking;
 
 function makeMockAuth(session = null) {
   let authStateCb = null;
@@ -99,8 +101,26 @@ async function flush() {
 }
 
 beforeEach(() => {
+  process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
+
   mockSession = { ...FAKE_SESSION };
   mockAuth = makeMockAuth(mockSession);
+
+  const testRenderer = require('react-test-renderer');
+  renderer = testRenderer.default || testRenderer;
+  act = testRenderer.act;
+
+  const rn = require('react-native');
+  Platform = rn.Platform;
+  Linking = rn.Linking;
+
+  useAuthSession = require('../hooks/useAuthSession').useAuthSession;
+  resetSupabaseClientForTests = require('../lib/supabaseClient').resetSupabaseClientForTests;
+  const moreScreen = require('../screens/MoreScreen');
+  AccountLifecycle = moreScreen.AccountLifecycle;
+  AccountScreen = moreScreen.AccountScreen;
+
   resetSupabaseClientForTests();
   mockFetch = jest.fn();
 });
@@ -287,5 +307,119 @@ describe('AccountLifecycle legal link placements', () => {
 
   test('renders Terms of Service link', () => {
     expect(renderLifecycle()).toMatch(/Terms of Service/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AccountScreen OAuth Flow
+// ---------------------------------------------------------------------------
+
+describe('AccountScreen OAuth Flow', () => {
+  let originalPlatformOS;
+  let originalWindow;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    originalWindow = global.window;
+    // Set up a clean signed-out mock auth
+    mockSession = null;
+    mockAuth = makeMockAuth(null);
+    resetSupabaseClientForTests();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+    jest.restoreAllMocks();
+    if (originalWindow !== undefined) {
+      global.window = originalWindow;
+    } else {
+      delete global.window;
+    }
+  });
+
+  test('does not render Continue with GitHub button on native (iOS/Android)', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const buttons = tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' });
+    expect(buttons.length).toBe(0);
+  });
+
+  test('calls signInWithOAuth with github and redirects on web', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-web' },
+      error: null,
+    });
+
+    // Mock window.location and window.location.origin
+    const mockLocation = { href: '', origin: 'https://kilo-app.example.com' };
+    global.window = { location: mockLocation };
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    expect(mockAuth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'github',
+      options: { redirectTo: 'https://kilo-app.example.com' },
+    });
+    expect(global.window.location.href).toBe('https://github.com/login/oauth-web');
+  });
+
+  test('displays error message when OAuth fails on web', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: null },
+      error: new Error('OAuth authentication failed'),
+    });
+
+    // Mock window.location
+    global.window = { location: { href: '', origin: 'https://kilo-app.example.com' } };
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    expect(mockAuth.signInWithOAuth).toHaveBeenCalled();
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('OAuth authentication failed');
+  });
+
+  test('does not render Continue with GitHub button when Supabase is not configured', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+
+    const authSessionModule = require('../hooks/useAuthSession');
+    jest.spyOn(authSessionModule, 'useAuthSession').mockReturnValue({
+      configured: false,
+      loading: false,
+      session: null,
+      user: null,
+      signedIn: false,
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const buttons = tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' });
+    expect(buttons.length).toBe(0);
   });
 });

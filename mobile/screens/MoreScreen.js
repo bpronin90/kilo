@@ -286,7 +286,7 @@ export function AccountLifecycle({ auth }) {
 // it does not gate any local-only app behavior. When cloud accounts are not
 // configured in the build, it explains that local data still works without an
 // account.
-function AccountScreen({ onBack }) {
+export function AccountScreen({ onBack }) {
   const auth = useAuthSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -303,6 +303,25 @@ function AccountScreen({ onBack }) {
       } else {
         setStatus(result?.error || 'Something went wrong.');
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGitHubSignIn = async () => {
+    if (Platform.OS !== 'web') return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const result = await auth.signInWithOAuth('github', redirectTo ? { redirectTo } : undefined);
+      if (result.ok && result.url) {
+        window.location.href = result.url;
+      } else if (!result.ok) {
+        setStatus(result.error || 'GitHub sign in failed.');
+      }
+    } catch (e) {
+      setStatus(e.message || 'GitHub sign in failed.');
     } finally {
       setBusy(false);
     }
@@ -368,6 +387,14 @@ function AccountScreen({ onBack }) {
             disabled={busy}
             onPress={() => run(() => auth.resetPasswordForEmail(email).then((r) => (r.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : r)))}
           />
+          {Platform.OS === 'web' && (
+            <Button
+              title={busy ? 'Working…' : 'Continue with GitHub'}
+              disabled={busy}
+              onPress={handleGitHubSignIn}
+              accessibilityLabel="Continue with GitHub"
+            />
+          )}
           <LegalLinks />
         </View>
       )}
