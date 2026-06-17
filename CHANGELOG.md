@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.77.1 - 2026-06-17
+
+- Issue #332 (Phase 6 follow-up): Replaced the placeholder Privacy Policy and
+  Terms of Service URLs with the published GitHub Pages policy documents on the
+  auth/signup, Account lifecycle, and More > About surfaces. The backend
+  activation runbook now records published privacy/terms documents as an
+  open-signup gate.
+
 ## 0.77.0 - 2026-06-17
 
 - Issue #331 (Phase 6 follow-up): Surfaced GitHub OAuth sign-in on the web build

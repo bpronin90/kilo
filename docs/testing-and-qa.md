@@ -392,7 +392,8 @@ retains non-test commands such as `npm run audit`.
 - before open signup, verify the public web auth/signup surface links privacy
   and terms beside the signup action, the signed-in Account lifecycle surface
   links them near export/delete actions, and More > About Kilo links them for
-  existing users
+  existing users; each link must resolve to the published policy document and
+  no `example.com` privacy/terms placeholder may remain
 - verify Supabase Auth launch configuration keeps platform rate limits active,
   uses production-owned SMTP for email signup/password recovery, and has CAPTCHA
   enabled for open signup, or records an explicit closed-beta deferral before
