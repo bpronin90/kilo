@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.7 - 2026-06-22
+
+- Issue #340: Split the shared `mobile/lib/data.js` implementation into focused
+  domain modules under `mobile/lib/data/` while preserving the existing public
+  exports and behavior. Updated the parser to import the exercise catalog
+  directly, removing the parser/data-barrel dependency cycle.
+
 ## 0.77.6 - 2026-06-22
 
 - Issue #338: Extracted Analytics screen derivation and grouping helpers into

@@ -69,7 +69,8 @@ mobile/
     UI.js              ← shared native UI primitives
     SessionCheckInModal.js ← fatigue session check-in prompt modal (Log + Analytics)
   lib/
-    data.js            ← native entry factories + exercise catalog
+    data.js            ← compatibility barrel for shared data exports
+    data/              ← domain exercise, weight, routine, fatigue, 1K, and analytics helpers
     format.js          ← native timestamp formatter
     parser.js          ← native MVP parser port
   hooks/
@@ -122,7 +123,8 @@ These files define the current real native app path.
 | `mobile/components/SessionCheckInModal.js` | Centered fatigue check-in prompt modal. Opened from `LogScreen.js` after a rough detected session and reopened from `AnalyticsScreen.js` to edit an existing entry; writes the `I'm okay` / `Not great` / dismissed (`status: null`) response with `responded_at` onto the note's `session_checkins[sessionIndex]`. |
 | `mobile/hooks/useEntries.js` | Compatibility barrel preserving the public entry-hook exports used by native screens. |
 | `mobile/hooks/entries/` | Domain implementations for weight entries and goals, workout notes, tracked lifts, deloads, feature toggles, profile, storage-mode routing, and sync recovery/export. |
-| `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
+| `mobile/lib/data.js` | Compatibility barrel preserving the public shared-data exports used by native consumers. |
+| `mobile/lib/data/` | Domain implementations for the exercise catalog and entry factories, weight goals, routine status, fatigue, skip data, workout analytics, 1K totals, and non-weighted metrics. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
 | `mobile/screens/home/` | Local Home screen dashboard derivation helper. |
 | `mobile/screens/MoreScreen.js` | Native More tab menu/router plus Profile, Backup, Settings, Help, and About sub-screens. |
