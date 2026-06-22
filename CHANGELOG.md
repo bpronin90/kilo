@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.4 - 2026-06-22
+
+- Issue #336: Extracted the More screen account, cloud sync recovery, account
+  lifecycle, and legal-link panels into `mobile/screens/more/` while preserving
+  existing UI, behavior, routing, and compatibility exports. Updated the
+  repo-structure documentation for the new local module folder.
+
 ## 0.77.3 - 2026-06-17
 
 - Issue #344: Refreshed the mobile lockfile's high-severity audit paths for
