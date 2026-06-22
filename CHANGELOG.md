@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.5 - 2026-06-22
+
+- Issue #337: Extracted Home dashboard data derivation and goal sanitization
+  into `mobile/screens/home/` while preserving existing values, loading and
+  empty-state behavior, layout, navigation, and styling. Updated the
+  repo-structure documentation for the new local helper folder.
+
 ## 0.77.4 - 2026-06-22
 
 - Issue #336: Extracted the More screen account, cloud sync recovery, account

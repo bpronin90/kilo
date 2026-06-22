@@ -76,6 +76,7 @@ mobile/
     useEntries.js      ← native read/write hooks for weight entries, workout notes, tracked lifts, goals, and profile
   screens/
     HomeScreen.js
+    home/             ← Home screen local dashboard derivation helper
     MoreScreen.js
     more/             ← More screen local account, cloud recovery, lifecycle, and legal-link panels
     LogScreen.js
@@ -120,6 +121,7 @@ These files define the current real native app path.
 | `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries, workout notes, tracked lifts, weight goals, and the user profile. |
 | `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
+| `mobile/screens/home/` | Local Home screen dashboard derivation helper. |
 | `mobile/screens/MoreScreen.js` | Native More tab menu/router plus Profile, Backup, Settings, Help, and About sub-screens. |
 | `mobile/screens/more/` | Local More screen panels for account auth, cloud sync recovery, account lifecycle actions, and legal links. |
 | `mobile/screens/LogScreen.js` | Native workout logging form UI and composition shell for Log-tab visual components. |
