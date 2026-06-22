@@ -73,7 +73,8 @@ mobile/
     format.js          ← native timestamp formatter
     parser.js          ← native MVP parser port
   hooks/
-    useEntries.js      ← native read/write hooks for weight entries, workout notes, tracked lifts, goals, and profile
+    useEntries.js      ← compatibility barrel for native entry hooks
+    entries/           ← domain hook implementations for entries, settings, profile, and sync
   screens/
     HomeScreen.js
     home/             ← Home screen local dashboard derivation helper
@@ -118,7 +119,8 @@ These files define the current real native app path.
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
 | `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
 | `mobile/components/SessionCheckInModal.js` | Centered fatigue check-in prompt modal. Opened from `LogScreen.js` after a rough detected session and reopened from `AnalyticsScreen.js` to edit an existing entry; writes the `I'm okay` / `Not great` / dismissed (`status: null`) response with `responded_at` onto the note's `session_checkins[sessionIndex]`. |
-| `mobile/hooks/useEntries.js` | React hooks exposing native load/add/remove/update APIs for weight entries, workout notes, tracked lifts, weight goals, and the user profile. |
+| `mobile/hooks/useEntries.js` | Compatibility barrel preserving the public entry-hook exports used by native screens. |
+| `mobile/hooks/entries/` | Domain implementations for weight entries and goals, workout notes, tracked lifts, deloads, feature toggles, profile, storage-mode routing, and sync recovery/export. |
 | `mobile/lib/data.js` | Native exercise catalog plus shared workout/weight derivation helpers and entry factories. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
 | `mobile/screens/home/` | Local Home screen dashboard derivation helper. |
