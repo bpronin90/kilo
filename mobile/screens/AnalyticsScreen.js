@@ -4,9 +4,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
-import { deriveWeightGoalAnalytics, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES, isStrengthExerciseName, deriveWorkoutNoteAnalytics, normalizeLiftName, deriveNonWeightedTrackedExerciseMetrics, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, getNoteSections, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
-import { normalizeExerciseKey } from '../lib/parser';
+import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
+import {
+  deriveParsedSections,
+  deriveNoteExerciseNames,
+  deriveAnalytics,
+  deriveGroupedSignals,
+  deriveOneKChartData,
+  shapeEditCheckInData,
+} from './analytics/analyticsDerivations';
 import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
@@ -107,94 +114,19 @@ export function AnalyticsScreen({ multiplier, section }) {
     ...(currentNote?.one_k_exercises || {}),
   }), [currentNote]);
 
-  // Parse sections once — single canonical source for all workout consumers in this screen
-  const parsedSections = useMemo(() => {
-    const allSections = notes.flatMap(n => getNoteSections(n));
-    const currentSections = getNoteSections(currentNote);
-    return { allSections, currentSections };
-  }, [notes, currentNote]);
+  const parsedSections = useMemo(() => deriveParsedSections(notes, currentNote), [notes, currentNote]);
 
-  const noteExerciseNames = useMemo(() => {
-    const names = parsedSections.currentSections.flatMap(s => s.exercises.map(e => e.name));
-    return [...new Set(names)].filter(isStrengthExerciseName);
-  }, [parsedSections]);
+  const noteExerciseNames = useMemo(() => deriveNoteExerciseNames(parsedSections.currentSections), [parsedSections]);
 
-  const analytics = useMemo(() => {
-    const { allSections, currentSections } = parsedSections;
+  const analytics = useMemo(
+    () => deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier),
+    [parsedSections, trackedLifts, oneKSelections, multiplier]
+  );
 
-    // Tracked lifts visible in the current routine — canonicalize exercise names so
-    // alias variants in the note (e.g. 'DB Bench' for 'DB Bench Press') still match
-    // tracked lift names stored under the canonical form.
-    const namesInCurrent = new Set(
-      currentSections.flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
-    );
-    const globallyTrackedNames = Object.keys(trackedLifts).filter(k => trackedLifts[k]);
-    const visibleTrackedNames = globallyTrackedNames.filter(
-      name => namesInCurrent.has(normalizeExerciseKey(name))
-    );
-
-    // Canonical derivation: signals, nameDisplayMap, and perDaySignals from shared sections
-    const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
-
-    // Non-weighted metrics for reps-only and time-based exercises (from #165 derivation)
-    const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
-
-    // Big Three 1RM total is scoped to the current routine per issue contract
-    const oneK = derive1kTotal(currentSections, oneKSelections);
-    const oneKSeries = derive1kTotalSeries(currentSections, oneKSelections);
-
-    return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
-  }, [parsedSections, trackedLifts, oneKSelections, multiplier]);
-
-  const groupedSignals = useMemo(() => {
-    const groups = [];
-    const sections = parsedSections.currentSections;
-    const signals = analytics.signals || [];
-    const perDaySignals = analytics.perDaySignals || {};
-    const normCanon = normalizeExerciseKey;
-    const nameToSignal = new Map(signals.map(s => [normCanon(s.name), s]));
-
-    // To detect multi-day exercises
-    const exerciseGroupCount = new Map();
-    sections.forEach(s => s.exercises.forEach(e => {
-      const norm = normCanon(e.name);
-      exerciseGroupCount.set(norm, (exerciseGroupCount.get(norm) || 0) + 1);
-    }));
-
-    sections.forEach(section => {
-      let groupExercises = section.exercises
-        .map(e => nameToSignal.get(normCanon(e.name)))
-        .filter(Boolean);
-
-      if (searchQuery) {
-        groupExercises = groupExercises.filter(sig =>
-          sig.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-
-      if (groupExercises.length > 0) {
-        groups.push({
-          name: section.heading,
-          exercises: groupExercises.map(sig => {
-            const norm = normCanon(sig.name);
-            const isMultiDay = exerciseGroupCount.get(norm) > 1;
-            const canonName = normalizeExerciseKey(sig.name);
-
-            return {
-              ...sig,
-              isMultiDay,
-              currentDayHeading: section.heading,
-              otherDays: sections
-                .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
-                .map(s => s.heading),
-              daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
-            };
-          })
-        });
-      }
-    });
-    return groups;
-  }, [parsedSections, analytics.signals, analytics.perDaySignals, searchQuery]);
+  const groupedSignals = useMemo(
+    () => deriveGroupedSignals(parsedSections, analytics, searchQuery),
+    [parsedSections, analytics, searchQuery]
+  );
 
   function handleSlotTap(slot) {
     setActiveSlot(prev => (prev === slot ? null : slot));
@@ -235,14 +167,7 @@ export function AnalyticsScreen({ multiplier, section }) {
     setEditPendingCheckIn({ ci, note });
   }
 
-  const oneKChartData = useMemo(
-    () => (analytics.oneKSeries || []).map(p => ({
-      value: Math.round(p.total),
-      label: `#${p.session}`,
-      unit: 'lb',
-    })),
-    [analytics.oneKSeries]
-  );
+  const oneKChartData = useMemo(() => deriveOneKChartData(analytics.oneKSeries), [analytics.oneKSeries]);
 
   const screenContent = React.Children.toArray([
     <AnalyticsWeightTrendsCard
@@ -426,19 +351,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   const foundIndex = screenContent.findIndex(child => child?.props?.testID === 'sticky-header');
   const stickyHeaderIndices = foundIndex !== -1 ? [foundIndex + 1] : [];
 
-  const editCheckInData = editPendingCheckIn ? {
-    sessionIndex: editPendingCheckIn.ci.sessionIndex,
-    responded_at: editPendingCheckIn.ci.responded_at,
-    status: editPendingCheckIn.ci.status,
-    reasons: editPendingCheckIn.ci.reasons,
-    note: editPendingCheckIn.ci.note,
-    detectors: editPendingCheckIn.ci.detectors,
-    flagged: editPendingCheckIn.ci.flagged,
-    metrics: {
-      exercises_skipped: editPendingCheckIn.ci.exercises_skipped,
-      volume_decline_pct: editPendingCheckIn.ci.volume_decline_pct,
-    },
-  } : null;
+  const editCheckInData = shapeEditCheckInData(editPendingCheckIn);
 
   return (
     <>
