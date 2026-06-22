@@ -1,5 +1,5 @@
 // Kilo freeform input parser — ES module, no window globals
-import { KILO_EXERCISES } from './data.js';
+import { KILO_EXERCISES } from './data/exerciseCatalog.js';
 
 export function parseWeightEntry(raw) {
   if (!raw || raw.trim() === '') {
