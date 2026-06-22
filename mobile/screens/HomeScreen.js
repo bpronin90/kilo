@@ -5,15 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
-import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../lib/parser';
-import {
-  deriveWeightGoalAnalytics,
-  derive1kTotal,
-  DEFAULT_1K_EXERCISES,
-  deriveWorkoutNoteAnalytics,
-  deriveOverloadCounts,
-  computeWeeklySummary,
-} from '../lib/data';
+import { deriveHomeDashboardData } from './home/homeDashboardData';
 
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
@@ -68,69 +60,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     [notes]
   );
 
-  const dashboardData = useMemo(() => {
-    let oneK = null;
-    let sections = null;
-
-    if (workoutNote?.raw_text) {
-      sections = getNoteSections(workoutNote);
-
-      const oneKSelections = {
-        ...DEFAULT_1K_EXERCISES,
-        ...(workoutNote?.one_k_exercises || {}),
-      };
-      oneK = derive1kTotal(sections, oneKSelections);
-    }
-
-    const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
-    const latestWeight = weightTrends.currentWeight;
-    const { weeksIn } = deriveWorkoutNoteAnalytics(sections, []);
-
-    // Mirror StatsScreen: derive signals for tracked exercises visible in the current note only.
-    const namesInCurrent = new Set(
-      (sections || []).flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
-    );
-    const globallyTracked = Object.keys(trackedLifts || {}).filter(k => trackedLifts[k]);
-    const visibleTrackedNames = globallyTracked.filter(
-      name => namesInCurrent.has(normalizeExerciseKey(name))
-    );
-    const { signals, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames);
-    const counts = deriveOverloadCounts(sections, signals, perDaySignals);
-
-    const weeklySummary = computeWeeklySummary(sections, workoutNote);
-    weeklySummary.classifications = counts;
-
-    const sessionCount = countWorkoutSessionsFromSections(sections || []);
-
-    let sanitizedGoalInfo = null;
-    if (goalInfo) {
-      const rawWeeks = goalInfo.weeks_remaining;
-      const weeks_remaining = (rawWeeks === null || rawWeeks === undefined || isNaN(rawWeeks)) ? 0 : Math.max(0, rawWeeks);
-      const isOverdue = weeks_remaining <= 0;
-
-      let required_weekly_pace = goalInfo.required_weekly_pace;
-      if (isOverdue || required_weekly_pace === null || required_weekly_pace === undefined || isNaN(required_weekly_pace) || !isFinite(required_weekly_pace)) {
-        required_weekly_pace = null;
-      }
-
-      sanitizedGoalInfo = {
-        ...goalInfo,
-        weeks_remaining,
-        required_weekly_pace,
-        isOverdue,
-      };
-    }
-
-    return {
-      weightSeries,
-      oneK,
-      latestWeight,
-      weeksIn,
-      weeklySummary,
-      sessionCount,
-      goalInfo: sanitizedGoalInfo,
-    };
-  }, [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]);
+  const dashboardData = useMemo(
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, trackedLifts }),
+    [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]
+  );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
   const weekToneColor = weekTone === 'error' ? Colors.error
