@@ -92,6 +92,8 @@ mobile/
   storage/
     entries.js         ← compatibility barrel for local persistence exports
     entries/           ← domain storage, backup/import, migration, and adapter-mode modules
+    cloudAdapter.js    ← compatibility barrel and assembler for cloud storage exports
+    cloud/             ← cloud bootstrap, transport, sync, domain-method, and error modules
   tests/
     parser.test.js     ← native parser parity tests
     data.test.js       ← native analytics/data helper contract tests
@@ -140,6 +142,8 @@ These files define the current real native app path.
 | `mobile/screens/analytics/` | Local Analytics screen derivation and progressive-overload grouping helpers. |
 | `mobile/storage/entries.js` | Compatibility barrel preserving the public local-persistence exports used by native consumers. |
 | `mobile/storage/entries/` | Domain implementations for storage keys and JSON access, settings, weight data, workout notes, deloads, profile, backup/import, migrations, and adapter-mode selection. |
+| `mobile/storage/cloudAdapter.js` | Compatibility barrel and assembler preserving the public cloud-storage adapter exports. |
+| `mobile/storage/cloud/` | Cloud bootstrap planning and execution, Supabase transport, sync orchestration, cloud-backed domain methods, and cloud error implementations. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
 
