@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.9 - 2026-06-22
+
+- Issue #342: Split `mobile/storage/entries.js` into focused local-persistence,
+  settings, backup/import, migration, and storage-mode domain modules under
+  `mobile/storage/entries/` while preserving the existing public exports and
+  behavior. Updated the repo-structure documentation for the new module folder.
+
 ## 0.77.8 - 2026-06-22
 
 - Issue #341: Split `mobile/lib/parser.js` into focused parser, session,

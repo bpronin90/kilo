@@ -90,7 +90,8 @@ mobile/
   theme/
     colors.js          ← shared native color tokens
   storage/
-    entries.js         ← AsyncStorage CRUD for weight/workout entries
+    entries.js         ← compatibility barrel for local persistence exports
+    entries/           ← domain storage, backup/import, migration, and adapter-mode modules
   tests/
     parser.test.js     ← native parser parity tests
     data.test.js       ← native analytics/data helper contract tests
@@ -137,7 +138,8 @@ These files define the current real native app path.
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/AnalyticsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
 | `mobile/screens/analytics/` | Local Analytics screen derivation and progressive-overload grouping helpers. |
-| `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries, workout notes, tracked lifts, weight goals, backup/import, and related UI state. |
+| `mobile/storage/entries.js` | Compatibility barrel preserving the public local-persistence exports used by native consumers. |
+| `mobile/storage/entries/` | Domain implementations for storage keys and JSON access, settings, weight data, workout notes, deloads, profile, backup/import, migrations, and adapter-mode selection. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
 
