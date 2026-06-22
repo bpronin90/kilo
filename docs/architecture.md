@@ -16,7 +16,7 @@ graph TD
         ExpoEntry["mobile/index.js\n(Expo entry)"]
         AppJs["mobile/App.js\ntab state · save wiring"]
         NativeScreens["mobile/screens/\nHome · Log · Weight · Analytics · More"]
-        NativeLib["mobile/lib/\nparser.js · data.js · format.js"]
+        NativeLib["mobile/lib/\nparser.js · data.js/data/ · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
         AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
@@ -110,16 +110,15 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   as the boundary between week A and week B inside one routine note and returns
   `weekBStartIndex` so Log can project the active week without splitting the
   stored routine into multiple notes
-- `mobile/lib/data.js` owns native entry factories, the exercise catalog,
-  shared recompute-only workout analytics helpers such as routine-depth,
-  weekly-summary shaping from persisted note fields, canonical temporal
-  helpers such as `rollingWindowStart()` for weight-trend rolling windows,
-  and the canonical `deriveWorkoutNoteAnalytics()` entry point that wraps
-  all shared workout analytics derivation (classifications, skip data,
-  routine depth, visible-lift signal rows, and
-  display-name casing) into one call for downstream consumers. It also owns the
-  fatigue helpers `deriveSessionCheckIn()` (latest-session rough detection) and
-  `deriveCheckInHistory()` (the Analytics-side check-in history consumer)
+- `mobile/lib/data.js` is the compatibility barrel for shared data exports.
+  Domain implementations live under `mobile/lib/data/`: exercise catalog and
+  entry factories, weight goals, routine status, fatigue, skip data, workout
+  analytics, 1K totals, and non-weighted metrics. The barrel preserves the
+  existing consumer API, including the canonical `deriveWorkoutNoteAnalytics()`
+  entry point and fatigue helpers `deriveSessionCheckIn()` and
+  `deriveCheckInHistory()`. `parser.js` imports the exercise catalog directly
+  from `data/exerciseCatalog.js` so the barrel does not create a parser/data
+  dependency cycle
 - `mobile/storage/entries.js` owns AsyncStorage reads/writes for recent-history
   data plus the local weight-goal key (`kilo_weight_goal`), the persisted
   fatigue-multiplier key (`kilo_fatigue_multiplier`), the global tracked-lift
@@ -393,19 +392,19 @@ recomputation at render time is permitted.
 | `tracked_exercises` | Log tracked-lift toggles via global `kilo_tracked_lifts` | Persisted on note document + global key | Home, Analytics | No |
 | `one_k_exercises` | Analytics 1k slot selection | Persisted on note document | Home 1k card, Analytics 1k card | No |
 | `big_3_deltas` | _Removed from active contract in issue `#182`_ | Still persisted on legacy note documents but no longer consumed | None | N/A |
-| Estimated 1RM per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Kilo max per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Latest top weight | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| Overload trend | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
-| 1k total | `derive1kTotal()` in `parser.js` | Not persisted | Home 1k card, Analytics 1k card | Yes — recompute-only |
-| Weight rolling averages | `computeWeightTrends()` / `computeWeightRollingAverageSeries()` in `data.js` | Not persisted | Home chart, Weight trends card, Analytics weight section | Yes — recompute-only |
-| Weight trend prior-window summary | `computeWeightTrendSummary()` via `deriveWeightGoalAnalytics()` in `data.js` | Not persisted | Weight trends card, Home weight summary, Analytics weight section | Yes — recompute-only |
-| Weight pace level | `computeWeightPaceLevel()` in `data.js` | Not persisted | Weight trends card, Analytics weight section | Yes — recompute-only |
-| Weight goal guidance | `resolveGoalCurrentWeight()` / `computeWeightGoal()` / `computeCalorieEstimate()` in `data.js` | Goal persisted; guidance recomputed | Weight goal card only | Yes — recompute-only (from persisted goal plus latest-entry/start-weight fallback contract) |
-| Weeks In | `computeWeeksIn()` in `data.js` | Not persisted | Home summary card | Yes — recompute-only |
+| Estimated 1RM per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data/workoutAnalytics.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Kilo max per lift | `deriveProgressionSignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data/workoutAnalytics.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Latest top weight | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data/workoutAnalytics.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| Overload trend | `deriveProgressionSignals()` / `derivePerDaySignals()` in `parser.js`, surfaced through `deriveWorkoutNoteAnalytics()` in `data/workoutAnalytics.js` | Not persisted | Analytics strength rows | Yes — recompute-only |
+| 1k total | `derive1kTotal()` in `data/oneK.js` | Not persisted | Home 1k card, Analytics 1k card | Yes — recompute-only |
+| Weight rolling averages | `computeWeightTrends()` / `computeWeightRollingAverageSeries()` in `data/weightGoal.js` | Not persisted | Home chart, Weight trends card, Analytics weight section | Yes — recompute-only |
+| Weight trend prior-window summary | `computeWeightTrendSummary()` via `deriveWeightGoalAnalytics()` in `data/weightGoal.js` | Not persisted | Weight trends card, Home weight summary, Analytics weight section | Yes — recompute-only |
+| Weight pace level | `computeWeightPaceLevel()` in `data/weightGoal.js` | Not persisted | Weight trends card, Analytics weight section | Yes — recompute-only |
+| Weight goal guidance | `resolveGoalCurrentWeight()` / `computeWeightGoal()` / `computeCalorieEstimate()` in `data/weightGoal.js` | Goal persisted; guidance recomputed | Weight goal card only | Yes — recompute-only (from persisted goal plus latest-entry/start-weight fallback contract) |
+| Weeks In | `computeWeeksIn()` in `data/routineStatus.js` | Not persisted | Home summary card | Yes — recompute-only |
 | Session/activity count | `countWorkoutSessions()` in `parser.js` | Not persisted | Home, Analytics | Yes — recompute-only |
 | Big 3 asymmetry notes | `detectBig3Asymmetry()` in `data.js` | Not persisted | No current UI consumer after `#174`; available for future use | Yes — recompute-only |
-| Weekly summary aggregation | `computeWeeklySummary()` in `data.js` | Not persisted | Home only | Yes — recompute-only (reads persisted note fields) |
+| Weekly summary aggregation | `computeWeeklySummary()` in `data/workoutAnalytics.js` | Not persisted | Home only | Yes — recompute-only (reads persisted note fields) |
 
 ### Producer/Consumer Map
 
