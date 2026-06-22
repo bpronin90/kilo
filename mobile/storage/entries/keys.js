@@ -1,0 +1,16 @@
+export const WEIGHT_KEY = 'kilo_weight_entries';
+export const WEIGHT_GOAL_KEY = 'kilo_weight_goal';
+export const WORKOUT_KEY = 'kilo_workout_sessions';
+export const WORKOUT_NOTE_KEY = 'kilo_workout_note';
+export const WORKOUT_NOTES_KEY = 'kilo_workout_notes';
+export const CURRENT_WORKOUT_ID_KEY = 'kilo_current_workout_id';
+export const FATIGUE_MULTIPLIER_KEY = 'kilo_fatigue_multiplier';
+export const WEIGHT_DATE_EDIT_KEY = 'kilo_weight_date_edit_enabled';
+export const WORKOUT_DELOAD_NOTE_KEY = 'kilo_workout_deload_note';
+export const WORKOUT_DELOAD_HISTORY_KEY = 'kilo_workout_deload_history';
+export const TRACKED_LIFTS_KEY = 'kilo_tracked_lifts';
+export const COLLAPSED_STATE_KEY = 'kilo_log_current_collapsed';
+export const USER_PROFILE_KEY = 'kilo_user_profile';
+export const DELOAD_DATE_EDIT_KEY = 'kilo_deload_date_edit_enabled';
+export const FATIGUE_TRACKING_KEY = 'kilo_fatigue_tracking_enabled';
+export const DELOAD_MODE_KEY = 'kilo_deload_mode_enabled';
