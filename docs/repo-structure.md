@@ -72,7 +72,8 @@ mobile/
     data.js            ← compatibility barrel for shared data exports
     data/              ← domain exercise, weight, routine, fatigue, 1K, and analytics helpers
     format.js          ← native timestamp formatter
-    parser.js          ← native MVP parser port
+    parser.js          ← compatibility barrel for parser and derived-analytics exports
+    parser/            ← domain weight/workout parsing, sessions, analytics, exercise names, and deload helpers
   hooks/
     useEntries.js      ← compatibility barrel for native entry hooks
     entries/           ← domain hook implementations for entries, settings, profile, and sync
@@ -125,6 +126,8 @@ These files define the current real native app path.
 | `mobile/hooks/entries/` | Domain implementations for weight entries and goals, workout notes, tracked lifts, deloads, feature toggles, profile, storage-mode routing, and sync recovery/export. |
 | `mobile/lib/data.js` | Compatibility barrel preserving the public shared-data exports used by native consumers. |
 | `mobile/lib/data/` | Domain implementations for the exercise catalog and entry factories, weight goals, routine status, fatigue, skip data, workout analytics, 1K totals, and non-weighted metrics. |
+| `mobile/lib/parser.js` | Compatibility barrel preserving the public parser and derived-analytics exports used by native consumers. |
+| `mobile/lib/parser/` | Domain implementations for weight entries, workout rows and notes, session construction and counting, exercise-name normalization, progression analytics, and deload history/generation. |
 | `mobile/screens/HomeScreen.js` | Native dashboard with weekly summary, weight goal, and 1k Club progress cards. |
 | `mobile/screens/home/` | Local Home screen dashboard derivation helper. |
 | `mobile/screens/MoreScreen.js` | Native More tab menu/router plus Profile, Backup, Settings, Help, and About sub-screens. |
@@ -144,7 +147,7 @@ These files define the current real native app path.
 
 | File | Role |
 |------|------|
-| `mobile/tests/parser.test.js` | Native parser parity tests for `mobile/lib/parser.js`. |
+| `mobile/tests/parser.test.js` | Native parser and derived-analytics contract tests for the public `mobile/lib/parser.js` barrel and its domain implementations. |
 | `mobile/tests/data.test.js` | Native workout/weight analytics helper contract tests for `mobile/lib/data.js`. |
 | `mobile/tests/format.test.js` | Native formatting and weight-delta helper tests for `mobile/lib/format.js`. |
 | `mobile/tests/analytics-screen.test.js` | Native Analytics-screen consumer checks for shared weight-goal and per-day signal rendering. |
