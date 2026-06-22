@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.8 - 2026-06-22
+
+- Issue #341: Split `mobile/lib/parser.js` into focused parser, session,
+  analytics, exercise-name, and deload domain modules under
+  `mobile/lib/parser/` while preserving the existing public exports and
+  behavior. Updated the repo-structure documentation for the new module folder.
+
 ## 0.77.7 - 2026-06-22
 
 - Issue #340: Split the shared `mobile/lib/data.js` implementation into focused
