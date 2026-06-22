@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.77.6 - 2026-06-22
+
+- Issue #338: Extracted Analytics screen derivation and grouping helpers into
+  `mobile/screens/analytics/` while preserving weight trends, routine status,
+  fatigue, 1K progress, progressive-overload grouping, search, collapse, and
+  edit-check-in behavior. Updated the repo-structure documentation for the new
+  local helper folder.
+
 ## 0.77.5 - 2026-06-22
 
 - Issue #337: Extracted Home dashboard data derivation and goal sanitization

@@ -84,6 +84,7 @@ mobile/
     log/              ← Log screen local editor/controller hooks
     WeightScreen.js
     AnalyticsScreen.js
+    analytics/        ← Analytics screen local derivation and grouping helpers
   theme/
     colors.js          ← shared native color tokens
   storage/
@@ -130,6 +131,7 @@ These files define the current real native app path.
 | `mobile/screens/log/` | Local Log screen editor/controller hooks and helpers for current-routine, non-current-routine, and deload editing flows. |
 | `mobile/screens/WeightScreen.js` | Native weight logging form UI. |
 | `mobile/screens/AnalyticsScreen.js` | Native Analytics tab UI for tracked-lift and bodyweight detail. |
+| `mobile/screens/analytics/` | Local Analytics screen derivation and progressive-overload grouping helpers. |
 | `mobile/storage/entries.js` | AsyncStorage persistence module for weight entries, workout notes, tracked lifts, weight goals, backup/import, and related UI state. |
 | `mobile/theme/colors.js` | Shared native color tokens. |
 | `mobile/lib/format.js` | Shared native timestamp formatting helper. |
