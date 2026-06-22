@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.10 - 2026-06-22
+
+- Issue #343: Split `mobile/storage/cloudAdapter.js` into focused cloud
+  bootstrap, transport, sync, domain-method, and error modules under
+  `mobile/storage/cloud/` while preserving the existing public exports and
+  behavior. Updated the repo-structure documentation for the new module folder.
+
 ## 0.77.9 - 2026-06-22
 
 - Issue #342: Split `mobile/storage/entries.js` into focused local-persistence,
