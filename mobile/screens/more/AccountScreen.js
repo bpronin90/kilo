@@ -1,0 +1,152 @@
+import React, { useState } from 'react';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScreenShell } from '../../components/ScreenShell';
+import { Button, InputStyle } from '../../components/UI';
+import { Colors } from '../../theme/colors';
+import { useAuthSession } from '../../hooks/useAuthSession';
+import { CloudSyncRecovery } from './CloudSyncRecovery';
+import { AccountLifecycle } from './AccountLifecycle';
+import { LegalLinks } from './LegalLinks';
+
+// Minimal account surface to exercise sign in / sign out / session restore /
+// password reset against the auth/session hook. This is intentionally narrow:
+// it does not gate any local-only app behavior. When cloud accounts are not
+// configured in the build, it explains that local data still works without an
+// account.
+export function AccountScreen({ onBack }) {
+  const auth = useAuthSession();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await fn();
+      if (result?.ok) {
+        setStatus(result.message || 'Done.');
+      } else {
+        setStatus(result?.error || 'Something went wrong.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGitHubSignIn = async () => {
+    if (Platform.OS !== 'web') return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const result = await auth.signInWithOAuth('github', redirectTo ? { redirectTo } : undefined);
+      if (result.ok && result.url) {
+        window.location.href = result.url;
+      } else if (!result.ok) {
+        setStatus(result.error || 'GitHub sign in failed.');
+      }
+    } catch (e) {
+      setStatus(e.message || 'GitHub sign in failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ScreenShell
+      title="Account"
+      subtitle="Cloud sign in is optional. Your data works locally without an account."
+      onBack={onBack}
+    >
+      {!auth.configured ? (
+        <Text style={styles.accountNote} accessibilityLabel="Cloud accounts unavailable">
+          Cloud accounts are not configured in this build. The app continues to
+          work fully offline with your local data.
+        </Text>
+      ) : auth.signedIn ? (
+        <View style={styles.accountBlock}>
+          <Text style={styles.accountNote}>
+            Signed in as {auth.user?.email || 'your account'}.
+          </Text>
+          <Button
+            title={busy ? 'Working…' : 'Sign Out'}
+            disabled={busy}
+            onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
+          />
+          <CloudSyncRecovery user={auth.user} />
+          <AccountLifecycle auth={auth} />
+        </View>
+      ) : (
+        <View style={styles.accountBlock}>
+          <TextInput
+            style={InputStyle}
+            placeholder="Email"
+            placeholderTextColor={Colors.textMuted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            accessibilityLabel="Email"
+          />
+          <TextInput
+            style={InputStyle}
+            placeholder="Password"
+            placeholderTextColor={Colors.textMuted}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            accessibilityLabel="Password"
+          />
+          <Button
+            title={busy ? 'Working…' : 'Sign In'}
+            disabled={busy}
+            onPress={() => run(() => auth.signInWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : r)))}
+          />
+          <Button
+            title="Create Account"
+            disabled={busy}
+            onPress={() => run(() => auth.signUpWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Account created. Check your email if confirmation is required.' } : r)))}
+          />
+          <Button
+            title="Reset Password"
+            disabled={busy}
+            onPress={() => run(() => auth.resetPasswordForEmail(email).then((r) => (r.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : r)))}
+          />
+          {Platform.OS === 'web' && (
+            <Button
+              title={busy ? 'Working…' : 'Continue with GitHub'}
+              disabled={busy}
+              onPress={handleGitHubSignIn}
+              accessibilityLabel="Continue with GitHub"
+            />
+          )}
+          <LegalLinks />
+        </View>
+      )}
+      {status ? (
+        <Text style={styles.accountStatus} accessibilityLabel="Account status">
+          {status}
+        </Text>
+      ) : null}
+    </ScreenShell>
+  );
+}
+
+const styles = StyleSheet.create({
+  accountBlock: {
+    gap: 12,
+  },
+  accountNote: {
+    fontSize: 15,
+    color: Colors.text,
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  accountStatus: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    marginTop: 16,
+  },
+});
