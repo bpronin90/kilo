@@ -57,7 +57,13 @@ export async function exportBackup() {
 // The base payload is exactly exportBackup() (version "3"), so any v3 importer
 // ignores the extra `cloud` block. The cloud-only additions are namespaced
 // under `cloud` to keep the v3 top-level contract untouched.
-export async function buildCloudExport({ account = null } = {}) {
+// Security (#350): the cloud block can carry account identity. The account `id`
+// is an opaque, non-PII identifier and is always safe to include. The account
+// `email` is personal data, so it is excluded from the shareable artifact unless
+// the caller explicitly opts in via `includeEmail: true`. This keeps email out
+// of any incidentally-shared export by default while preserving the option for
+// flows that genuinely need the signed-in identity in the payload.
+export async function buildCloudExport({ account = null, includeEmail = false } = {}) {
   const base = await exportBackup();
 
   const [
@@ -85,7 +91,11 @@ export async function buildCloudExport({ account = null } = {}) {
     cloud: {
       cloud_export_format: CLOUD_EXPORT_FORMAT,
       account: account
-        ? { id: account.id ?? null, email: account.email ?? null }
+        ? {
+            id: account.id ?? null,
+            // Email is personal data and is omitted unless explicitly opted in.
+            ...(includeEmail ? { email: account.email ?? null } : {}),
+          }
         : null,
       user_profile: profile,
       current_workout_id: base.current_workout_id,
