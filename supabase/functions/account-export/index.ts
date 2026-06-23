@@ -4,7 +4,9 @@
 //   - The caller supplies their JWT in Authorization: Bearer <token>.
 //   - A user-scoped Supabase client is constructed from that JWT; all queries run
 //     under the authenticated role so RLS limits every result to auth.uid() rows.
-//   - The service-role key is never used here: RLS alone is sufficient for export.
+//   - The export query itself uses only the user-scoped (RLS) client; the
+//     service-role key is used solely for the durable rate-limit RPCs and is
+//     never used to read or return user data.
 //   - No cross-user access is possible because auth.uid() is derived from the JWT
 //     passed by the caller, not from any server-side parameter.
 //
@@ -14,20 +16,27 @@
 // The kilo schema must be listed in the PostgREST exposed schemas for .from()
 // calls to reach it (API Settings → Extra Search Path, or config.toml [api] schemas).
 //
-// Rate limits (in-memory, per isolate):
+// Rate limits (durable, shared across isolates via kilo.rate_limit_check):
 //   - Per user: 1 export per 10 minutes.
 //   - Per IP: 5 exports per 10 minutes.
+// State lives in Postgres so the limits hold across isolate recycling and cold
+// starts; see supabase/functions/_shared/rate-limit.ts and migration
+// 20260622120000_edge_rate_limit.sql.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
+import { clientIp, rateLimitAllowed, rateLimitRefund } from '../_shared/rate-limit.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // ---------------------------------------------------------------------------
-// In-memory rate limiter (per-isolate sliding window)
+// Rate limit windows. Enforcement is durable/shared (see rate-limit.ts):
+// state is kept in Postgres, not an in-memory Map, so it survives isolate
+// recycling and cold starts.
 // ---------------------------------------------------------------------------
 
 const USER_WINDOW_MS = 10 * 60 * 1000   // 10 minutes
@@ -35,30 +44,13 @@ const USER_MAX       = 1                 // 1 export per user per window
 const IP_WINDOW_MS   = 10 * 60 * 1000   // 10 minutes
 const IP_MAX         = 5                 // 5 exports per IP per window
 
-const buckets = new Map<string, { count: number; resetAt: number }>()
-
-function allowed(key: string, max: number, windowMs: number): boolean {
-  const now = Date.now()
-  const b = buckets.get(key)
-  if (!b || now >= b.resetAt) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs })
-    return true
-  }
-  if (b.count >= max) return false
-  b.count++
-  return true
-}
-
-function refund(key: string): void {
-  const b = buckets.get(key)
-  if (b && b.count > 0) b.count--
-}
-
-function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-         req.headers.get('x-real-ip') ??
-         'unknown'
-}
+// Service-role client used only for the durable rate-limit RPCs. The throttle
+// table and its functions are granted to service_role only; this key is never
+// returned to callers.
+const rlAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  db: { schema: 'kilo' },
+  auth: { autoRefreshToken: false, persistSession: false },
+})
 
 // ---------------------------------------------------------------------------
 
@@ -69,7 +61,7 @@ serve(async (req) => {
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
   const ip = clientIp(req)
-  if (!allowed(`ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
+  if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -102,8 +94,8 @@ serve(async (req) => {
   // Per-user rate check (post-auth). Quota is only spent on successful exports;
   // failed export attempts refund the bucket so transient errors don't exhaust
   // the user's one-success-per-window allowance.
-  const userKey = `user:${user.id}`
-  if (!allowed(userKey, USER_MAX, USER_WINDOW_MS)) {
+  const userKey = `export:user:${user.id}`
+  if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
       headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
@@ -141,7 +133,7 @@ serve(async (req) => {
 
   if (firstError) {
     // Refund the user bucket: a failed export should not spend the quota.
-    refund(userKey)
+    await rateLimitRefund(rlAdmin, userKey)
     return new Response(JSON.stringify({ error: firstError.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
