@@ -1,0 +1,63 @@
+name: Dependabot Auto-merge
+
+# Enables GitHub native auto-merge for narrowly-scoped Dependabot patch
+# updates. Auto-merge only takes effect after all repository-required
+# status checks and branch protections pass; this workflow never performs
+# an unconditional or immediate merge.
+
+on:
+  pull_request:
+
+# Least privilege: only what `gh pr merge --auto` and metadata require.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Guarded patch auto-merge
+    runs-on: ubuntu-latest
+    # Only ever run for Dependabot-authored PRs.
+    if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]' }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout PR head (no dependency code executed)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify changed files are limited to approved manifests/lockfiles
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
+          CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          echo "Changed files:"
+          echo "$CHANGED"
+          # Allowlist: only dependency manifests/lockfiles for root and mobile.
+          ALLOWED='^(package\.json|package-lock\.json|mobile/package\.json|mobile/package-lock\.json)$'
+          UNEXPECTED="$(echo "$CHANGED" | grep -vE "$ALLOWED" || true)"
+          if [ -n "$UNEXPECTED" ]; then
+            echo "Disallowed changed files present; refusing auto-merge:"
+            echo "$UNEXPECTED"
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Enable GitHub auto-merge for SemVer patch updates
+        if: >-
+          steps.changed.outputs.allowed == 'true' &&
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Repository root npm dependencies
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - "area:docs"
+    commit-message:
+      prefix: "deps(root)"
+    groups:
+      # Group compatible patch/minor updates to reduce PR volume.
+      # security-update-related advisories are excluded so security
+      # fixes remain independently visible and are not obscured.
+      root-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+        exclude-patterns: []
+
+  # Mobile workspace npm dependencies
+  - package-ecosystem: npm
+    directory: "/mobile"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - "area:docs"
+    commit-message:
+      prefix: "deps(mobile)"
+    groups:
+      mobile-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+        exclude-patterns: []

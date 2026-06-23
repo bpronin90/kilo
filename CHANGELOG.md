@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.77.12 - 2026-06-22
+
+- Issue #346: Added proactive dependency automation. New `.github/dependabot.yml`
+  schedules weekly npm version checks for the repo root and `mobile/`, grouping
+  compatible minor/patch updates while keeping security updates as separate PRs.
+  Extended `.github/workflows/audit.yml` with a weekly schedule (alongside the
+  existing push/PR triggers), preserving the high-severity blocking gate. Added
+  `.github/workflows/dependabot-automerge.yml`, a least-privilege workflow that
+  enables GitHub auto-merge for Dependabot SemVer-patch PRs limited to dependency
+  manifests/lockfiles, gated behind required checks (no unconditional merge).
+  Updated the dependency-audit documentation. Auto-merge requires maintainer-side
+  repo settings (Allow auto-merge, branch protection with the audit check,
+  Dependabot alerts).
+
 ## 0.77.11 - 2026-06-22
 
 - Issue #345: Refreshed the mobile lockfile's transitive `undici` resolution
