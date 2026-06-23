@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.77.11 - 2026-06-22
+
+- Issue #345: Refreshed the mobile lockfile's transitive `undici` resolution
+  from 6.26.0 to 6.27.0 so the high-severity dependency audit gate passes
+  without upgrading Expo or changing declared dependencies.
+
 ## 0.77.10 - 2026-06-22
 
 - Issue #343: Split `mobile/storage/cloudAdapter.js` into focused cloud
