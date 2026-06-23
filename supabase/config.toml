@@ -1,0 +1,24 @@
+# Supabase project configuration.
+#
+# project_id links this repo to the hosted project. Edge Function settings
+# here (verify_jwt) must match the live-deployed values; a CLI deploy driven
+# by this file preserves them rather than silently resetting to the default.
+#
+# Exposed schemas were confirmed against the live project on 2026-06-23 via
+# the PostgREST PGRST106 response:
+#   "Only the following schemas are exposed: public, graphql_public,
+#    canonical, raw, serving, ops, kilo"
+# The kilo schema is required for account-export and account-delete
+# (PostgREST .from() calls target kilo tables; see migration
+# 20260615120000_note_first_schema.sql and function index comments).
+
+project_id = "ogzhnscdqcdrhfqcobuv"
+
+[api]
+schemas = ["public", "graphql_public", "canonical", "raw", "serving", "ops", "kilo"]
+
+[functions.account-export]
+verify_jwt = false
+
+[functions.account-delete]
+verify_jwt = false
