@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly run (Mondays 06:00 UTC) to detect new advisories
+    # against an otherwise-unchanged lockfile before unrelated work merges.
+    - cron: "0 6 * * 1"
 
 jobs:
   audit:
