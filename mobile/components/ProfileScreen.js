@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, InputStyle } from './UI';
@@ -88,15 +88,21 @@ export function ProfileScreen({ onBack }) {
     return new Date(1990, 0, 1);
   };
 
+  const formatDob = (selectedDate) => {
+    const y = selectedDate.getFullYear();
+    const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const d = String(selectedDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const handleDobChange = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) {
-      const y = selectedDate.getFullYear();
-      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
-      const d = String(selectedDate.getDate()).padStart(2, '0');
-      updateField('date_of_birth', `${y}-${m}-${d}`);
+      updateField('date_of_birth', formatDob(selectedDate));
     }
   };
+
+  const todayDobMax = formatDob(new Date());
 
   const heightCm = localProfile?.height_cm || null;
   const totalInches = heightCm ? heightCm / 2.54 : 0;
@@ -232,20 +238,36 @@ export function ProfileScreen({ onBack }) {
             </Pressable>
           )}
         </View>
-        <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-          <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: Colors.textMuted }]}>
-            {localProfile?.date_of_birth || 'Select Date'}
-          </Text>
-        </Pressable>
-        {showDatePicker && (
-          <DateTimePicker
-            value={getDobDate()}
-            mode="date"
-            display="default"
-            onChange={handleDobChange}
-            onDismiss={() => setShowDatePicker(false)}
-            maximumDate={new Date()}
+        {Platform.OS === 'web' ? (
+          <input
+            type="date"
+            value={localProfile?.date_of_birth || ''}
+            max={todayDobMax}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (!val || val > todayDobMax) return;
+              updateField('date_of_birth', val);
+            }}
+            style={webDateInputStyle}
           />
+        ) : (
+          <>
+            <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
+              <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: Colors.textMuted }]}>
+                {localProfile?.date_of_birth || 'Select Date'}
+              </Text>
+            </Pressable>
+            {showDatePicker && (
+              <DateTimePicker
+                value={getDobDate()}
+                mode="date"
+                display="default"
+                onChange={handleDobChange}
+                onDismiss={() => setShowDatePicker(false)}
+                maximumDate={new Date()}
+              />
+            )}
+          </>
         )}
       </Card>
 
@@ -289,6 +311,22 @@ export function ProfileScreen({ onBack }) {
     </ScreenShell>
   );
 }
+
+// Plain DOM style object for the web-only <input type="date"> (react-native-web
+// renders this as a real HTML element, so it takes CSS, not an RN StyleSheet).
+const webDateInputStyle = {
+  backgroundColor: Colors.inputBackground,
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: Colors.cardBorder,
+  borderRadius: 12,
+  padding: 16,
+  fontSize: 16,
+  fontWeight: '700',
+  color: Colors.text,
+  width: '100%',
+  boxSizing: 'border-box',
+};
 
 const styles = StyleSheet.create({
   inputLabel: {
