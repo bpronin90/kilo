@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share, StyleSheet, Text, TextInput } from 'react-native';
+import { Alert, Share, StyleSheet, Text, TextInput } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { Colors } from '../theme/colors';
@@ -9,7 +9,9 @@ export function BackupScreen({ onBack, onExport, onImport }) {
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
   const [busy, setBusy] = useState(false);
 
-  const handleExport = async () => {
+  // Actually produces and shares the export. Only reached after the user has
+  // acknowledged that the artifact is unencrypted (see handleExport).
+  const shareExport = async () => {
     setBusy(true);
     setStatus(null);
     try {
@@ -18,12 +20,29 @@ export function BackupScreen({ onBack, onExport, onImport }) {
         setStatus({ ok: false, message: result.error || 'Export failed.' });
         return;
       }
+      // No expo-sharing in this app, so the payload is shared as a raw message
+      // string. The pre-share warning below makes the unencrypted, readable
+      // nature of that payload explicit before it leaves the device.
       await Share.share({ message: result.json });
     } catch (e) {
       setStatus({ ok: false, message: 'Export failed.' });
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleExport = () => {
+    if (busy) return;
+    // Security: the export is plaintext and unencrypted. Make that explicit and
+    // require an acknowledgement before the data can leave the device.
+    Alert.alert(
+      'Export is unencrypted',
+      'Your backup is plain, unencrypted text. Anyone you share or save it with — clipboard, notes, messengers — can read all of your weight and workout data. Only share it somewhere you trust.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Export anyway', style: 'destructive', onPress: shareExport },
+      ],
+    );
   };
 
   const handleImport = async () => {
@@ -67,6 +86,9 @@ export function BackupScreen({ onBack, onExport, onImport }) {
         <Text style={styles.helpText}>
           Exports all your weight entries and workout notes as a JSON file you can save or share.
         </Text>
+        <Text style={styles.warnText}>
+          This file is unencrypted. Anyone you share or save it with can read your data.
+        </Text>
         <Button title="Export Data" onPress={handleExport} disabled={busy} style={styles.actionButton} />
       </Card>
 
@@ -103,6 +125,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
+  },
+  warnText: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    color: Colors.warning ?? Colors.error ?? Colors.textMuted,
   },
   actionButton: {
     marginTop: 12,
