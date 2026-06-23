@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.77.14 - 2026-06-22
+
+- Issue #350: Hardened backup/export data exposure (audit #347 Finding #2). The
+  backup export now shows a blocking "export is unencrypted" confirmation before
+  sharing and a persistent on-screen caution, and `buildCloudExport` omits the
+  signed-in account email by default — it is included only when a caller opts in,
+  which the cloud-recovery identity flow now does explicitly.
+- Issue #351: Capped untrusted input size on the parse, import, and recompute
+  paths (audit #347 Finding #3). Oversized note text and oversized import arrays
+  are rejected with a clear error before the per-line/per-element loops run, so a
+  pathological paste or synced row cannot freeze the device.
+- Issue #352: Replaced the per-isolate in-memory rate limiting in the
+  `account-export`/`account-delete` Edge Functions with durable, shared
+  Postgres-backed limits (audit #347 Finding #4). A `kilo.rate_limit_hits` table
+  plus a `SECURITY DEFINER` `rate_limit_check` (service_role only) holds state
+  across isolate recycling/cold starts, and a per-bucket advisory lock makes each
+  check atomic under concurrency; the limiter fails open on backend error. New
+  migration must be applied to the remote Supabase project.
+
 ## 0.77.13 - 2026-06-22
 
 - Issue #349: Hardened the cloud-sync write path against last-write-wins

@@ -229,11 +229,17 @@ release explicitly records a temporary deferral.
 Kilo-owned Edge Functions remain responsible for app-specific abuse controls.
 `account-export` and `account-delete` require the caller JWT, perform no
 unauthenticated writes, keep service-role credentials server-side only, and
-apply conservative in-memory per-user and per-IP rate limits. `account-export`
-limits successful exports to one per signed-in user per 10 minutes by default,
-while `account-delete` limits delete attempts to three per signed-in user per
-hour by default; both functions also reject repeated callers through an IP
-bucket.
+apply durable, shared per-user and per-IP rate limits. Limit state lives in
+Postgres (`kilo.rate_limit_hits` via the `kilo.rate_limit_check` SECURITY
+DEFINER function, granted to `service_role` only), so the limits hold across
+Edge-Function isolate recycling and cold starts rather than resetting per
+isolate; a per-bucket advisory lock makes each check-and-record atomic under
+concurrency. `account-export` limits successful exports to one per signed-in
+user per 10 minutes by default, while `account-delete` limits delete attempts to
+three per signed-in user per hour by default; both functions also reject
+repeated callers through an IP bucket. The limiter fails open if the durable
+check itself errors, so an infrastructure outage cannot lock users out of
+export or deletion.
 
 ## Session Check-In (Fatigue) Flow
 
