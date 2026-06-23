@@ -787,11 +787,17 @@ describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
     });
   });
 
-  test('includes non-sensitive account identity when provided, null otherwise', async () => {
+  test('includes only non-sensitive account id by default, email only on opt-in, null otherwise', async () => {
+    // Default: email is omitted (issue #350) so an incidentally-shared export
+    // does not leak personal data; only the opaque id is carried.
     const withAccount = await buildCloudExport({ account: { id: 'u_1', email: 'a@b.co', token: 'SECRET' } });
-    expect(withAccount.cloud.account).toEqual({ id: 'u_1', email: 'a@b.co' });
-    // Secrets/tokens must never leak into the export.
+    expect(withAccount.cloud.account).toEqual({ id: 'u_1' });
+    // Opt-in (used by the cloud-recovery identity flow) includes email.
+    const withEmail = await buildCloudExport({ account: { id: 'u_1', email: 'a@b.co', token: 'SECRET' }, includeEmail: true });
+    expect(withEmail.cloud.account).toEqual({ id: 'u_1', email: 'a@b.co' });
+    // Secrets/tokens must never leak into the export, with or without opt-in.
     expect(JSON.stringify(withAccount)).not.toContain('SECRET');
+    expect(JSON.stringify(withEmail)).not.toContain('SECRET');
 
     const noAccount = await buildCloudExport();
     expect(noAccount.cloud.account).toBeNull();

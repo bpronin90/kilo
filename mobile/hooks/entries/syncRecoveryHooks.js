@@ -65,7 +65,10 @@ export function useSyncRecovery(user = null) {
 export function useCloudExport() {
   const exportCloud = useCallback(async (account = null) => {
     try {
-      const payload = await Storage.buildCloudExport({ account });
+      // Cloud recovery is the explicit account-identity flow: the user is
+      // exporting their own data to re-link an account, so it opts into the
+      // signed-in email. The default backup export omits email (issue #350).
+      const payload = await Storage.buildCloudExport({ account, includeEmail: true });
       return { ok: true, json: JSON.stringify(payload, null, 2), payload };
     } catch (e) {
       return { ok: false, error: e?.message || 'Failed to export cloud data.' };
