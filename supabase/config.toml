@@ -1,8 +1,13 @@
 # Supabase project configuration.
 #
-# project_id links this repo to the hosted project. Edge Function settings
-# here (verify_jwt) must match the live-deployed values; a CLI deploy driven
-# by this file preserves them rather than silently resetting to the default.
+# project_id is the local identifier for this project (used to distinguish
+# projects sharing the same host). It is NOT the remote deploy target.
+# Remote linkage requires: supabase link --project-ref ogzhnscdqcdrhfqcobuv
+# or passing --project-ref ogzhnscdqcdrhfqcobuv to each CLI deploy command.
+#
+# Edge Function settings here (verify_jwt) must match the live-deployed
+# values; a CLI deploy driven by this file preserves them rather than
+# silently resetting to the default.
 #
 # Exposed schemas were confirmed against the live project on 2026-06-23 via
 # the PostgREST PGRST106 response:
