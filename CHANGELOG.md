@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.77.13 - 2026-06-22
+
+- Issue #349: Hardened the cloud-sync write path against last-write-wins
+  manipulation (audit #347 Finding #1). `push()` now builds each upsert row from
+  a per-table column whitelist plus the server-bound `user_id` instead of
+  spreading arbitrary client fields, and a new migration adds a server-side
+  `BEFORE INSERT/UPDATE` trigger (`kilo.set_updated_at`) that forces
+  `updated_at = now()` so a forged or future-dated client timestamp can no longer
+  win a sync conflict. Pull/bootstrap behavior unchanged; migration must be
+  applied to the remote Supabase project.
+
 ## 0.77.12 - 2026-06-22
 
 - Issue #346: Added proactive dependency automation. New `.github/dependabot.yml`
