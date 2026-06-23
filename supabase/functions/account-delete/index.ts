@@ -18,7 +18,7 @@
 //   - Per IP: 5 delete attempts per hour.
 // State lives in Postgres so the limits hold across isolate recycling and cold
 // starts; see supabase/functions/_shared/rate-limit.ts and migration
-// 20260622120000_edge_rate_limit.sql.
+// 20260622120001_edge_rate_limit.sql.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'

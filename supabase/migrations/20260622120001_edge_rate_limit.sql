@@ -62,6 +62,13 @@ declare
   v_cutoff timestamptz := now() - v_window;
   v_count integer;
 begin
+  -- Serialize concurrent checks for the same bucket so the count-and-insert is
+  -- atomic across isolates: without this, two transactions could both read a
+  -- sub-limit count and both insert, admitting more than p_max. The lock is
+  -- xact-scoped (released on commit) and keyed by the bucket hash, so different
+  -- buckets never contend.
+  perform pg_advisory_xact_lock(hashtext(p_bucket));
+
   -- Opportunistic prune of this bucket's expired rows keeps the table small
   -- without a separate scheduled job. Scoped to one bucket so it stays cheap.
   delete from kilo.rate_limit_hits
