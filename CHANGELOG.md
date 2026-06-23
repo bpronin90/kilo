@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.77.15 - 2026-06-23
+
+- Issue #353: Added tracked Supabase configuration for the project-local
+  identifier, exact Data API exposed schemas, and `verify_jwt = false` on the
+  account export/delete Edge Functions. Added a repository deployment script
+  that supplies the hosted project ref explicitly and deploys only the two
+  Kilo-owned functions, preventing fresh-checkout deploys from drifting auth
+  settings or targeting the unrelated function in the shared project.
+
 ## 0.77.14 - 2026-06-22
 
 - Issue #350: Hardened backup/export data exposure (audit #347 Finding #2). The

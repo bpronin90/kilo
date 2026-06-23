@@ -41,6 +41,19 @@ graph TD
     EdgeDelete --> Auth
 ```
 
+## Supabase Deployment Configuration
+
+`supabase/config.toml` records the local project identifier, the exact exposed
+schema set, and `verify_jwt = false` for `account-export` and
+`account-delete`. Those functions perform their own JWT validation and must
+receive CORS preflight and pre-auth rate-limit requests before authentication.
+
+The config's `project_id` is not the remote deployment target. Run
+`scripts/deploy-kilo-functions.sh` from the repository root to deploy the two
+Kilo-owned functions; the script supplies project ref
+`ogzhnscdqcdrhfqcobuv` explicitly and does not deploy the unrelated `anime`
+function hosted in the same Supabase project.
+
 ## Preview OTA Update Path
 
 The native Expo app uses unsigned `expo-updates` for the preview workflow on

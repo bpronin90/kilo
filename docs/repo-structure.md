@@ -30,7 +30,8 @@ CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
 .gitignore             ← root ignore policy for generated output and local-only runtime state
 package.json
 mobile/                ← active Expo / React Native app path
-supabase/              ← Supabase Edge Functions and DB tests for cloud account lifecycle
+scripts/               ← repository maintenance and deployment entrypoints
+supabase/              ← tracked Supabase config, Edge Functions, and DB tests
 
 docs/
   current-state.md
@@ -103,12 +104,16 @@ mobile/
     weight-goal-ui.test.js ← native Weight goal rendering checks
 
 supabase/
+  config.toml           ← project-local config, exposed schemas, and Edge Function JWT settings
   functions/
     _shared/            ← shared Edge Function helpers
     account-export/     ← requester-only cloud account export endpoint
     account-delete/     ← requester-only app-data deletion + auth-user deletion endpoint
   tests/
     account-lifecycle.test.sql ← pgTAP requester-isolation checks
+
+scripts/
+  deploy-kilo-functions.sh ← deploys kilo Edge Functions to the tracked remote project ref
 ```
 
 ---
