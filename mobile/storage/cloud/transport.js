@@ -38,9 +38,19 @@ export function getTransport() {
 }
 
 let recomputeDerivedFn = (raw_text) => {
+  // Require the parser submodule directly (not the barrel) so the shared
+  // MAX_RAW_TEXT_LENGTH cap is available without touching the parser barrel.
   // eslint-disable-next-line global-require
-  const { parseWorkoutNote } = require('../../lib/parser');
-  const { sections } = parseWorkoutNote(raw_text || '');
+  const { parseWorkoutNote, MAX_RAW_TEXT_LENGTH } = require('../../lib/parser/workoutNote.js');
+  const text = raw_text || '';
+  // Enforce the same untrusted-input cap on synced remote rows so a remote-origin
+  // raw_text cannot bypass the parser bound. parseWorkoutNote also rejects
+  // oversized text and returns an empty `sections`; this explicit guard keeps the
+  // limit visible on the recompute path and skips the call entirely.
+  if (text.length > MAX_RAW_TEXT_LENGTH) {
+    return { derived_sections: [] };
+  }
+  const { sections } = parseWorkoutNote(text);
   return { derived_sections: sections };
 };
 

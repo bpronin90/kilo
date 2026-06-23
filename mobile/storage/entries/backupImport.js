@@ -26,6 +26,17 @@ const BACKUP_VERSION = '3';
 const CLOUD_EXPORT_FORMAT = 'cloud-1';
 const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
 
+// Untrusted-input bounds for imported backups. importBackup() receives arbitrary
+// pasted/JSON-parsed text and validates arrays element-by-element, so without a
+// length bound a pathologically large payload can freeze the device. These caps
+// sit far above any realistic backup (a heavy user accumulates thousands of
+// entries, not hundreds of thousands) but reject oversized payloads with a clear
+// error before the per-element validation loops run.
+const MAX_IMPORT_ARRAY_LENGTH = 100000;
+// Per-note raw_text cap, matching the workout-note parser's MAX_RAW_TEXT_LENGTH,
+// so an imported note cannot smuggle in text the parser would later reject.
+const MAX_IMPORT_RAW_TEXT_LENGTH = 200000;
+
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
   const workout_notes = await readList(WORKOUT_NOTES_KEY);
@@ -105,6 +116,8 @@ export async function buildCloudExport({ account = null } = {}) {
 function validateWeightEntries(entries) {
   if (!Array.isArray(entries))
     return { ok: false, error: 'Invalid backup: weight_entries must be an array' };
+  if (entries.length > MAX_IMPORT_ARRAY_LENGTH)
+    return { ok: false, error: `Invalid backup: weight_entries too large (${entries.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
   for (const e of entries) {
     if (!e || typeof e !== 'object')
       return { ok: false, error: 'Invalid backup: weight entry is not an object' };
@@ -134,6 +147,8 @@ function validateBackup(payload) {
   if (payload.version === '2' || payload.version === BACKUP_VERSION) {
     if (!Array.isArray(payload.workout_notes))
       return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
+    if (payload.workout_notes.length > MAX_IMPORT_ARRAY_LENGTH)
+      return { ok: false, error: `Invalid backup: workout_notes too large (${payload.workout_notes.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
     for (const n of payload.workout_notes) {
       if (!n || typeof n !== 'object' || Array.isArray(n))
         return { ok: false, error: 'Invalid backup: workout note is not an object' };
@@ -143,6 +158,8 @@ function validateBackup(payload) {
         return { ok: false, error: 'Invalid backup: workout note missing title' };
       if (typeof n.raw_text !== 'string')
         return { ok: false, error: 'Invalid backup: workout note missing raw_text' };
+      if (n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
+        return { ok: false, error: `Invalid backup: workout note raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
     }
     if (payload.current_workout_id !== null && typeof payload.current_workout_id !== 'string')
       return { ok: false, error: 'Invalid backup: current_workout_id must be a string or null' };
@@ -158,6 +175,8 @@ function validateBackup(payload) {
     if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
       if (!Array.isArray(payload.deload_history))
         return { ok: false, error: 'Invalid backup: deload_history must be an array' };
+      if (payload.deload_history.length > MAX_IMPORT_ARRAY_LENGTH)
+        return { ok: false, error: `Invalid backup: deload_history too large (${payload.deload_history.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
     }
   }
 

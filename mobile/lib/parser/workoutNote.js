@@ -1,5 +1,13 @@
 import { parseWorkoutRow } from './workoutRow.js';
 
+// Upper bound on untrusted note text fed to the per-line parser. Real workout
+// notes are at most a few KB; this cap (~200KB, thousands of lines) sits far
+// above any legitimate note but bounds the work an attacker-influenced payload
+// can force. Oversized input is rejected before the per-line split/loop so a
+// pathological paste or synced note cannot freeze the device. Reused on the
+// cloud recompute path so synced remote rows cannot bypass the limit.
+export const MAX_RAW_TEXT_LENGTH = 200000;
+
 const _DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i;
 const _EXERCISE_DASH_RE = /^-([^-\s].*)/;
 const _SESSION_ENTRY_RE = /^-\s+(.+)/;
@@ -36,6 +44,19 @@ function _makeSet(setIndex, repCount, weightValue, weightUnit) {
 
 export function parseWorkoutNote(noteText) {
   if (!noteText || noteText.trim() === '') return { ok: true, sections: [], weekBStartIndex: null };
+
+  // Reject untrusted text over the cap before the per-line split/loop runs.
+  // Returns the safe-empty shape so existing callers that only read `sections`
+  // degrade to "no parse" instead of doing unbounded work, while `ok: false`
+  // and `error` are available to callers that surface the rejection.
+  if (noteText.length > MAX_RAW_TEXT_LENGTH) {
+    return {
+      ok: false,
+      error: `Note text is too large to parse (${noteText.length} characters; limit ${MAX_RAW_TEXT_LENGTH}).`,
+      sections: [],
+      weekBStartIndex: null,
+    };
+  }
 
   const sections = [];
   let currentDay = null;
