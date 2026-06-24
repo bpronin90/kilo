@@ -78,9 +78,10 @@ export function AccountLifecycle({ auth }) {
       <SectionTitle>Account Data</SectionTitle>
 
       <Text style={styles.accountNote}>
-        These actions affect the copy of your data stored in your cloud account.
-        Exporting downloads it as a file. Deleting your account removes the cloud
-        copy only; the training history on this device is always kept.
+        Export Account Data fetches what the server currently holds for your
+        account — not what is on this device. It may differ from your local
+        data if you have not recently synced. Deleting your account removes the
+        cloud copy only; the training history on this device is always kept.
       </Text>
 
       <Button
