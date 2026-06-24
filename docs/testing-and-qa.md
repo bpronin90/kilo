@@ -104,6 +104,14 @@ Current limitation:
   web-only Home back affordance. Full transactional undo guarantees across
   linked records are still deferred until a DB-backed persistence layer exists.
 - No automated native test covers an Expo device/emulator pass yet.
+- Android GitHub OAuth has rendered regression coverage for button visibility,
+  browser success/cancellation/provider errors, PKCE code exchange, missing
+  callback data, and session-exchange failures. The custom
+  `kilo://auth/callback` return and restart persistence still require an
+  installed development/preview build; Expo Go is not sufficient. Because the
+  OAuth implementation adds `expo-web-browser` and a native URL scheme, the
+  first release containing it requires a fresh APK/AAB rather than OTA-only
+  delivery.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
   surface end to end from a saved workout note. The current suite covers the
   underlying helper behavior and persisted field shaping, but not the rendered
@@ -362,6 +370,9 @@ retains non-test commands such as `npm run audit`.
 
 - rendered hook/UI-adjacent coverage for the signed-in account export/delete
   flow in `mobile/hooks/useAuthSession.js`
+- verifies configured Android builds render GitHub sign-in, open the system auth
+  browser with `kilo://auth/callback`, exchange only the returned PKCE code, and
+  surface cancellation, provider, missing-callback, and exchange failures
 - verifies `serverExport()` calls `/functions/v1/account-export` with the
   current session JWT and returns the JSON payload on success
 - verifies export and deletion function errors are surfaced without clearing

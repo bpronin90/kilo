@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.79.0 - 2026-06-24
+
+- Issue #363: Added GitHub sign-in to configured Android builds using a stable
+  `kilo://auth/callback` deep link, an SDK-compatible system browser auth
+  session, and Supabase PKCE code exchange with persisted sessions. Added clear
+  cancellation, provider, missing-callback, and exchange-error feedback while
+  preserving the existing web OAuth path and unconfigured local-only mode. The
+  Supabase redirect is configured; installed-build callback and restart
+  persistence verification was deferred by owner direction. This native module
+  and URL-scheme change requires a fresh APK/AAB rather than an OTA-only update.
+
 ## 0.78.0 - 2026-06-24
 
 - Issue #359: Reorganized the More tab into balanced `Profile & Account`,

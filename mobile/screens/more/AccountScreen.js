@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
@@ -7,6 +8,8 @@ import { useAuthSession } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
+
+const KILO_AUTH_REDIRECT = 'kilo://auth/callback';
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
@@ -46,6 +49,44 @@ export function AccountScreen({ onBack }) {
         window.location.href = result.url;
       } else if (!result.ok) {
         setStatus(result.error || 'GitHub sign in failed.');
+      }
+    } catch (e) {
+      setStatus(e.message || 'GitHub sign in failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGitHubSignInNative = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const oauthResult = await auth.signInWithOAuth('github', {
+        redirectTo: KILO_AUTH_REDIRECT,
+        skipBrowserRedirect: true,
+      });
+      if (!oauthResult.ok) {
+        setStatus(oauthResult.error || 'GitHub sign in failed.');
+        return;
+      }
+      if (!oauthResult.url) {
+        setStatus('Could not get GitHub sign in URL.');
+        return;
+      }
+      const browserResult = await WebBrowser.openAuthSessionAsync(oauthResult.url, KILO_AUTH_REDIRECT);
+      if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
+        setStatus('Sign in cancelled.');
+        return;
+      }
+      if (browserResult.type !== 'success' || !browserResult.url) {
+        setStatus('GitHub sign in failed.');
+        return;
+      }
+      const exchangeResult = await auth.handleAuthCallbackUrl(browserResult.url);
+      if (exchangeResult.ok) {
+        setStatus('Signed in.');
+      } else {
+        setStatus(exchangeResult.error || 'GitHub sign in failed.');
       }
     } catch (e) {
       setStatus(e.message || 'GitHub sign in failed.');
@@ -131,12 +172,12 @@ export function AccountScreen({ onBack }) {
             disabled={busy}
             onPress={() => run(() => auth.resetPasswordForEmail(email).then((r) => (r.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : r)))}
           />
-          {Platform.OS === 'web' && (
+          {(Platform.OS === 'web' || Platform.OS === 'android') && (
             <Button
               title="Continue with GitHub"
               loadingTitle="Working…"
               disabled={busy}
-              onPress={handleGitHubSignIn}
+              onPress={Platform.OS === 'web' ? handleGitHubSignIn : handleGitHubSignInNative}
               accessibilityLabel="Continue with GitHub"
             />
           )}

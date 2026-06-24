@@ -85,6 +85,7 @@ describe('supabaseClient', () => {
     // jest-expo, so this asserts the native default instead).
     expect(mockCreateClientCalls[0].opts.auth.persistSession).toBe(true);
     expect(mockCreateClientCalls[0].opts.auth.autoRefreshToken).toBe(true);
+    expect(mockCreateClientCalls[0].opts.auth.flowType).toBe('pkce');
   });
 
   test('web resolves to built-in storage (null), native to secure adapter', () => {
@@ -202,7 +203,7 @@ describe('useAuthSession', () => {
     let result;
     await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/?code=abc123'); });
     expect(result.ok).toBe(true);
-    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('https://app/?code=abc123');
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('abc123');
     expect(ref.current.user.email).toBe('oauth@b.com');
   });
 
@@ -213,6 +214,33 @@ describe('useAuthSession', () => {
     let result;
     await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/#access_token=tok'); });
     expect(result.ok).toBe(true);
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  test('callback with error param surfaces error without calling exchange or getSession', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    const callsBefore = mockAuth.getSession.mock.calls.length;
+    let result;
+    await act(async () => {
+      result = await ref.current.handleAuthCallbackUrl(
+        'https://app/?error=access_denied&error_description=User+cancelled+login',
+      );
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('User cancelled login');
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+    expect(mockAuth.getSession.mock.calls.length).toBe(callsBefore);
+  });
+
+  test('callback without code returns error when session is not established', async () => {
+    // getSession remains null — sign-in did not complete (e.g. empty callback URL)
+    const { ref } = renderAuthHook();
+    await flush();
+    let result;
+    await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/'); });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/did not complete/i);
     expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
   });
 });

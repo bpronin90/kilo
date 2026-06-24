@@ -160,10 +160,13 @@ export function useAuthSession() {
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider,
-      options: options ? { redirectTo: options.redirectTo } : undefined,
-    });
+    const oauthOptions = options
+      ? {
+          redirectTo: options.redirectTo,
+          ...(options.skipBrowserRedirect != null ? { skipBrowserRedirect: options.skipBrowserRedirect } : {}),
+        }
+      : undefined;
+    const { data, error } = await client.auth.signInWithOAuth({ provider, options: oauthOptions });
     if (error) return { ok: false, error: error.message };
     return { ok: true, url: data?.url || null };
   }, [requireClient]);
@@ -180,18 +183,35 @@ export function useAuthSession() {
     const target = url || (typeof window !== 'undefined' ? window.location?.href : undefined);
     if (!target) return { ok: false, error: 'No callback URL available.' };
 
-    const hasCode = /[?&]code=/.test(target);
-    if (hasCode && typeof client.auth.exchangeCodeForSession === 'function') {
-      const { data, error } = await client.auth.exchangeCodeForSession(target);
-      if (error) return { ok: false, error: error.message };
-      applySession(data?.session || null);
-      return { ok: true, session: data?.session || null };
+    // Surface any provider/Supabase error in the callback URL immediately.
+    const errorMatch = /[?&]error=([^&#]*)/.exec(target);
+    if (errorMatch) {
+      const errorCode = decodeURIComponent(errorMatch[1].replace(/\+/g, ' '));
+      const descMatch = /[?&]error_description=([^&#]*)/.exec(target);
+      const desc = descMatch
+        ? decodeURIComponent(descMatch[1].replace(/\+/g, ' '))
+        : errorCode;
+      return { ok: false, error: desc };
     }
 
+    // Extract and pass only the code value (not the full URL) to exchangeCodeForSession.
+    const codeMatch = /[?&]code=([^&#]+)/.exec(target);
+    if (codeMatch && typeof client.auth.exchangeCodeForSession === 'function') {
+      const code = decodeURIComponent(codeMatch[1]);
+      const { data, error } = await client.auth.exchangeCodeForSession(code);
+      if (error) return { ok: false, error: error.message };
+      if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
+      applySession(data.session);
+      return { ok: true, session: data.session };
+    }
+
+    // Fallback for web implicit flow: supabase-js with detectSessionInUrl=true
+    // restores the session from the URL fragment automatically.
     const { data, error } = await client.auth.getSession();
     if (error) return { ok: false, error: error.message };
-    applySession(data?.session || null);
-    return { ok: true, session: data?.session || null };
+    if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
+    applySession(data.session);
+    return { ok: true, session: data.session };
   }, [requireClient, applySession]);
 
   return {
