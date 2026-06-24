@@ -194,10 +194,11 @@ export function useAuthSession() {
       return { ok: false, error: desc };
     }
 
-    // Require a non-empty code for the PKCE exchange path.
-    const hasCode = /[?&]code=([^&#]+)/.test(target);
-    if (hasCode && typeof client.auth.exchangeCodeForSession === 'function') {
-      const { data, error } = await client.auth.exchangeCodeForSession(target);
+    // Extract and pass only the code value (not the full URL) to exchangeCodeForSession.
+    const codeMatch = /[?&]code=([^&#]+)/.exec(target);
+    if (codeMatch && typeof client.auth.exchangeCodeForSession === 'function') {
+      const code = decodeURIComponent(codeMatch[1]);
+      const { data, error } = await client.auth.exchangeCodeForSession(code);
       if (error) return { ok: false, error: error.message };
       if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
       applySession(data.session);

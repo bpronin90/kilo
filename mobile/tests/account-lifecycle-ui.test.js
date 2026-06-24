@@ -477,7 +477,7 @@ describe('AccountScreen OAuth Flow', () => {
       'https://github.com/login/oauth-android',
       'kilo://auth/callback',
     );
-    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('kilo://auth/callback?code=abc123');
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('abc123');
     const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
     expect(statusText.props.children).toBe('Signed in.');
   });

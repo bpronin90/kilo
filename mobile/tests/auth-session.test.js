@@ -203,7 +203,7 @@ describe('useAuthSession', () => {
     let result;
     await act(async () => { result = await ref.current.handleAuthCallbackUrl('https://app/?code=abc123'); });
     expect(result.ok).toBe(true);
-    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('https://app/?code=abc123');
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('abc123');
     expect(ref.current.user.email).toBe('oauth@b.com');
   });
 
