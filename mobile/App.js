@@ -327,6 +327,7 @@ export default function App() {
               <Pressable
                 onPress={() => handleTabPress('Home')}
                 style={styles.webBackButton}
+                hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Back to Home"
               >
@@ -392,6 +393,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
     backgroundColor: 'transparent',
+    // WCAG 2.5.5 / mobile a11y: guarantee a >=44x44 tappable area.
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
   },
   webBackButtonText: {
     color: Colors.text,

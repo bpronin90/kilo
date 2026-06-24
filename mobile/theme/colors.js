@@ -15,6 +15,15 @@ export const Colors = {
   success: '#4a7c44',
   error: '#b03a2e',
   caution: '#d4a017',
+  // Darkened tone backgrounds used only for filled tone cards (UI.js Card/StatCard),
+  // tuned so the existing light card text (textLight #f7f1e8) meets WCAG AA 4.5:1.
+  // These are intentionally separate from the palette tones above so SessionGauge
+  // meter segments, badges, and other direct users of success/caution/accent are
+  // not visually changed. Resulting card contrast (textLight on bg):
+  //   success #3a6035 -> 6.44:1, caution #7f6310 -> 5.06:1, accent #96571c -> 5.09:1.
+  cardSuccessBg: '#3a6035',
+  cardCautionBg: '#7f6310',
+  cardAccentBg: '#96571c',
   divider: 'rgba(31, 26, 23, 0.05)',
   subtleBg: 'rgba(31, 26, 23, 0.02)',
   panelBackground: '#ffffff',

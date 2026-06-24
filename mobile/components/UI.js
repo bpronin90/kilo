@@ -308,21 +308,25 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
+  // Filled tone cards render light text (textLight), so they use the darkened
+  // card-only tone backgrounds (cardAccentBg/cardSuccessBg/cardCautionBg) tuned
+  // to meet WCAG AA 4.5:1. Error already passes with light text on Colors.error
+  // (5.36:1), so it keeps the palette color.
   cardAccent: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
+    backgroundColor: Colors.cardAccentBg,
+    borderColor: Colors.cardAccentBg,
   },
   cardSuccess: {
-    backgroundColor: Colors.success,
-    borderColor: Colors.success,
+    backgroundColor: Colors.cardSuccessBg,
+    borderColor: Colors.cardSuccessBg,
   },
   cardError: {
     backgroundColor: Colors.error,
     borderColor: Colors.error,
   },
   cardWarn: {
-    backgroundColor: Colors.caution,
-    borderColor: Colors.caution,
+    backgroundColor: Colors.cardCautionBg,
+    borderColor: Colors.cardCautionBg,
   },
   sectionTitle: {
     fontSize: 18,

@@ -108,6 +108,10 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    // WCAG 2.5.5 / mobile a11y: guarantee a >=44x44 tappable area.
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
   },
   backButtonText: {
     color: Colors.text,
