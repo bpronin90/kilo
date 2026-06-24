@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.78.0 - 2026-06-24
+
+- Issue #359: Reorganized the More tab into balanced `Profile & Account`,
+  `Settings & Data`, and `Help & Support` sections; removed duplicate workout
+  and weight quick actions; aligned the Settings label; clarified how Profile
+  data supports Weight calorie targets; added Account state headings; and
+  differentiated local-device, client-built cloud, and server-held exports.
+
 ## 0.77.21 - 2026-06-24
 
 - Issue #362: Fixed the remaining low-contrast More-tab surfaces left out of
