@@ -45,11 +45,10 @@ export function BackupScreen({ onBack, onExport, onImport }) {
     );
   };
 
-  const handleImport = async () => {
-    if (!importText.trim()) {
-      setStatus({ ok: false, message: 'Paste your backup JSON first.' });
-      return;
-    }
+  // Actually parses and applies the import, replacing all local data. Only
+  // reached after the user has confirmed the irreversible replace (see
+  // handleImport).
+  const runImport = async () => {
     setBusy(true);
     setStatus(null);
     try {
@@ -70,6 +69,26 @@ export function BackupScreen({ onBack, onExport, onImport }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleImport = () => {
+    if (busy) return;
+    // Keep the empty-input guard before the Alert so an empty paste gives
+    // direct feedback without prompting a destructive confirmation.
+    if (!importText.trim()) {
+      setStatus({ ok: false, message: 'Paste your backup JSON first.' });
+      return;
+    }
+    // Data-safety: importing replaces all current local data and cannot be
+    // undone. Require an explicit acknowledgement before anything is replaced.
+    Alert.alert(
+      'Replace all data?',
+      'Importing this backup will permanently replace all of your current weight and workout data on this device. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Replace data', style: 'destructive', onPress: runImport },
+      ],
+    );
   };
 
   return (
@@ -131,7 +150,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
-    color: Colors.warning ?? Colors.error ?? Colors.textMuted,
+    color: Colors.caution ?? Colors.error ?? Colors.textMuted,
   },
   actionButton: {
     marginTop: 12,

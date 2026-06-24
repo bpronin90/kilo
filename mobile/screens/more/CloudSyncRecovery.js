@@ -101,14 +101,16 @@ export function CloudSyncRecovery({ user }) {
       </Text>
       {canStart(bootstrap) ? (
         <Button
-          title={busy ? 'Working…' : 'Upload Local History'}
+          title="Upload Local History"
+          loadingTitle="Working…"
           disabled={busy || isRunning(bootstrap)}
           onPress={() => handleRun('bootstrap', runBootstrap)}
         />
       ) : null}
       {bootstrap.retryable ? (
         <Button
-          title={busy ? 'Working…' : 'Retry Upload'}
+          title="Retry Upload"
+          loadingTitle="Working…"
           disabled={busy}
           onPress={() => handleRun('bootstrap', retryBootstrap)}
         />
@@ -127,14 +129,16 @@ export function CloudSyncRecovery({ user }) {
       </Text>
       {canStart(sync) ? (
         <Button
-          title={busy ? 'Working…' : 'Sync Now'}
+          title="Sync Now"
+          loadingTitle="Working…"
           disabled={busy || isRunning(sync)}
           onPress={() => handleRun('sync', runSync)}
         />
       ) : null}
       {sync.retryable ? (
         <Button
-          title={busy ? 'Working…' : 'Retry Sync'}
+          title="Retry Sync"
+          loadingTitle="Working…"
           disabled={busy}
           onPress={() => handleRun('sync', retrySync)}
         />
@@ -147,7 +151,8 @@ export function CloudSyncRecovery({ user }) {
       </Text>
 
       <Button
-        title={busy ? 'Working…' : 'Export Cloud Data'}
+        title="Export Cloud Data"
+        loadingTitle="Working…"
         disabled={busy}
         onPress={handleCloudExport}
       />

@@ -61,10 +61,13 @@ export function AccountScreen({ onBack }) {
       onBack={onBack}
     >
       {!auth.configured ? (
-        <Text style={styles.accountNote} accessibilityLabel="Cloud accounts unavailable">
-          Cloud accounts are not configured in this build. The app continues to
-          work fully offline with your local data.
-        </Text>
+        <View style={styles.accountBlock}>
+          <Text style={styles.accountNote} accessibilityLabel="Cloud accounts unavailable">
+            Cloud accounts are not configured in this build. The app continues to
+            work fully offline with your local data.
+          </Text>
+          <LegalLinks />
+        </View>
       ) : auth.signedIn ? (
         <View style={styles.accountBlock}>
           <Text style={styles.accountNote}>
@@ -74,7 +77,8 @@ export function AccountScreen({ onBack }) {
             Cloud Sync below to keep this device and your account matched.
           </Text>
           <Button
-            title={busy ? 'Working…' : 'Sign Out'}
+            title="Sign Out"
+            loadingTitle="Working…"
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
@@ -109,7 +113,8 @@ export function AccountScreen({ onBack }) {
             accessibilityLabel="Password"
           />
           <Button
-            title={busy ? 'Working…' : 'Sign In'}
+            title="Sign In"
+            loadingTitle="Working…"
             disabled={busy}
             onPress={() => run(() => auth.signInWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : r)))}
           />
@@ -125,7 +130,8 @@ export function AccountScreen({ onBack }) {
           />
           {Platform.OS === 'web' && (
             <Button
-              title={busy ? 'Working…' : 'Continue with GitHub'}
+              title="Continue with GitHub"
+              loadingTitle="Working…"
               disabled={busy}
               onPress={handleGitHubSignIn}
               accessibilityLabel="Continue with GitHub"
