@@ -16,6 +16,10 @@ let act;
 // Mocks needed when importing AccountLifecycle from MoreScreen for UI tests.
 // These prevent cascading native deps (expo-updates, Pressable hooks) from
 // breaking the hook-level tests that run in the same file.
+jest.mock('expo-web-browser', () => ({
+  openAuthSessionAsync: jest.fn(),
+}));
+
 jest.mock('../components/HelpScreen', () => ({ HelpScreen: () => null }));
 jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
 jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
@@ -57,6 +61,7 @@ let AccountLifecycle;
 let AccountScreen;
 let Platform;
 let Linking;
+let WebBrowser;
 
 function makeMockAuth(session = null) {
   let authStateCb = null;
@@ -72,6 +77,7 @@ function makeMockAuth(session = null) {
     signUp: jest.fn().mockResolvedValue({ data: { session: null }, error: null }),
     resetPasswordForEmail: jest.fn().mockResolvedValue({ error: null }),
     signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: null }, error: null }),
+    exchangeCodeForSession: jest.fn().mockResolvedValue({ data: { session: { user: { email: 'oauth@test.com' } } }, error: null }),
     _emit: (event, s) => authStateCb && authStateCb(event, s),
     ...({} ),
   };
@@ -120,6 +126,7 @@ beforeEach(() => {
   const moreScreen = require('../screens/MoreScreen');
   AccountLifecycle = moreScreen.AccountLifecycle;
   AccountScreen = moreScreen.AccountScreen;
+  WebBrowser = require('expo-web-browser');
 
   resetSupabaseClientForTests();
   mockFetch = jest.fn();
@@ -325,6 +332,9 @@ describe('AccountScreen OAuth Flow', () => {
     mockSession = null;
     mockAuth = makeMockAuth(null);
     resetSupabaseClientForTests();
+    if (WebBrowser && WebBrowser.openAuthSessionAsync) {
+      WebBrowser.openAuthSessionAsync.mockClear();
+    }
   });
 
   afterEach(() => {
@@ -337,7 +347,7 @@ describe('AccountScreen OAuth Flow', () => {
     }
   });
 
-  test('does not render Continue with GitHub button on native (iOS/Android)', () => {
+  test('does not render Continue with GitHub button on iOS', () => {
     Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
 
     let tree;
@@ -421,5 +431,131 @@ describe('AccountScreen OAuth Flow', () => {
 
     const buttons = tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' });
     expect(buttons.length).toBe(0);
+  });
+
+  test('renders Continue with GitHub button on Android', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    // findByProps throws if not exactly one host element matches; this verifies
+    // the button is present without depending on fiber-count implementation details.
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    expect(button).toBeTruthy();
+  });
+
+  test('Android OAuth success: opens browser and exchanges code for session', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-android' },
+      error: null,
+    });
+    WebBrowser.openAuthSessionAsync.mockResolvedValueOnce({
+      type: 'success',
+      url: 'kilo://auth/callback?code=abc123',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    expect(mockAuth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'github',
+      options: { redirectTo: 'kilo://auth/callback', skipBrowserRedirect: true },
+    });
+    expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalledWith(
+      'https://github.com/login/oauth-android',
+      'kilo://auth/callback',
+    );
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('kilo://auth/callback?code=abc123');
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('Signed in.');
+  });
+
+  test('Android OAuth cancellation shows cancelled message', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-android' },
+      error: null,
+    });
+    WebBrowser.openAuthSessionAsync.mockResolvedValueOnce({ type: 'cancel' });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('Sign in cancelled.');
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  test('Android OAuth error: signInWithOAuth failure shows error', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: null },
+      error: { message: 'provider not enabled' },
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('provider not enabled');
+    expect(WebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
+  });
+
+  test('Android OAuth error: exchange failure shows error message', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-android' },
+      error: null,
+    });
+    WebBrowser.openAuthSessionAsync.mockResolvedValueOnce({
+      type: 'success',
+      url: 'kilo://auth/callback?code=badcode',
+    });
+    mockAuth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'invalid code' },
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('invalid code');
   });
 });

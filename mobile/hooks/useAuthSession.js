@@ -160,10 +160,13 @@ export function useAuthSession() {
   const signInWithOAuth = useCallback(async (provider, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider,
-      options: options ? { redirectTo: options.redirectTo } : undefined,
-    });
+    const oauthOptions = options
+      ? {
+          redirectTo: options.redirectTo,
+          ...(options.skipBrowserRedirect != null ? { skipBrowserRedirect: options.skipBrowserRedirect } : {}),
+        }
+      : undefined;
+    const { data, error } = await client.auth.signInWithOAuth({ provider, options: oauthOptions });
     if (error) return { ok: false, error: error.message };
     return { ok: true, url: data?.url || null };
   }, [requireClient]);
