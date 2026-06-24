@@ -74,7 +74,8 @@ export function AboutScreen({ onBack }) {
           </View>
         ) : null}
         <Button
-          title={checking ? 'Checking…' : 'Check for Update'}
+          title="Check for Update"
+          loadingTitle="Checking…"
           onPress={handleCheckForUpdate}
           disabled={checking}
           style={styles.diagButton}

@@ -84,7 +84,8 @@ export function AccountLifecycle({ auth }) {
       </Text>
 
       <Button
-        title={busy ? 'Working…' : 'Export Account Data'}
+        title="Export Account Data"
+        loadingTitle="Working…"
         disabled={busy}
         onPress={handleServerExport}
         accessibilityLabel="Export account data"
@@ -99,7 +100,8 @@ export function AccountLifecycle({ auth }) {
         />
       ) : (
         <Button
-          title={busy ? 'Working…' : 'Confirm Delete Account'}
+          title="Confirm Delete Account"
+          loadingTitle="Working…"
           disabled={busy}
           onPress={handleDeleteConfirm}
           accessibilityLabel="Confirm delete account"
