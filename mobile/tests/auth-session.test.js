@@ -85,6 +85,7 @@ describe('supabaseClient', () => {
     // jest-expo, so this asserts the native default instead).
     expect(mockCreateClientCalls[0].opts.auth.persistSession).toBe(true);
     expect(mockCreateClientCalls[0].opts.auth.autoRefreshToken).toBe(true);
+    expect(mockCreateClientCalls[0].opts.auth.flowType).toBe('pkce');
   });
 
   test('web resolves to built-in storage (null), native to secure adapter', () => {

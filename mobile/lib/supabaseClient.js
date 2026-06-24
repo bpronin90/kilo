@@ -162,8 +162,12 @@ export function getSupabaseClient() {
       ...(storage ? { storage } : {}),
       autoRefreshToken: true,
       persistSession: true,
-      // Native apps deliver OAuth/reset redirects via deep links, not URL hash,
-      // so only the web build should auto-detect the session in the URL.
+      // PKCE is required for native Android so the OAuth callback carries
+      // ?code= rather than an implicit #access_token= fragment. detectSessionInUrl
+      // is kept true only on web so supabase-js can auto-exchange the code after
+      // the provider redirects back; native delivers the callback via deep link
+      // and we call exchangeCodeForSession explicitly.
+      flowType: 'pkce',
       detectSessionInUrl: isWeb,
     },
   });
