@@ -529,6 +529,60 @@ describe('AccountScreen OAuth Flow', () => {
     expect(WebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
   });
 
+  test('Android OAuth error: provider callback contains error param shows error', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-android' },
+      error: null,
+    });
+    WebBrowser.openAuthSessionAsync.mockResolvedValueOnce({
+      type: 'success',
+      url: 'kilo://auth/callback?error=access_denied&error_description=User+cancelled+login',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toBe('User cancelled login');
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  test('Android OAuth success result with no code or error shows error', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    mockAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: { url: 'https://github.com/login/oauth-android' },
+      error: null,
+    });
+    WebBrowser.openAuthSessionAsync.mockResolvedValueOnce({
+      type: 'success',
+      url: 'kilo://auth/callback',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+    });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
+    await act(async () => {
+      await button.props.onPress();
+    });
+
+    const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(statusText.props.children).toMatch(/did not complete/i);
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
   test('Android OAuth error: exchange failure shows error message', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
 
