@@ -31,12 +31,6 @@ jest.mock('../screens/AnalyticsScreen', () => {
   const { View } = require('react-native');
   return { AnalyticsScreen: () => React.createElement(View) };
 });
-jest.mock('../screens/MoreScreen', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return { MoreScreen: () => React.createElement(View) };
-});
-
 jest.mock('../hooks/useEntries', () => ({
   useWeightEntries: () => ({ entries: [], loading: false, refresh: jest.fn() }),
   useWorkoutNotes: () => ({
@@ -81,7 +75,10 @@ jest.mock('../components/TabBar', () => {
 
 jest.mock('../components/ScreenShell', () => {
   const React = require('react');
-  return { ScrollContext: React.createContext({ onScroll: () => {} }) };
+  return {
+    ScrollContext: React.createContext({ onScroll: () => {} }),
+    ScreenShell: ({ children }) => React.createElement(React.Fragment, null, children),
+  };
 });
 
 function findByTestID(tree, testID) {
@@ -227,6 +224,36 @@ describe('App shell back handler (Android)', () => {
     renderer.act(() => { handler(); });
     expect(getTabStyle(component, 'Home').display).not.toBe('none');
   });
+
+  test('back press from a More sub-screen returns to the More menu, not Home (#355)', () => {
+    renderer.act(() => { capturedTabPress('More'); });
+    const guideLink = component.root.findByProps({ accessibilityLabel: 'App Guide' });
+    renderer.act(() => { guideLink.props.onPress(); });
+    expect(component.root.findAllByProps({ accessibilityLabel: 'App Guide' })).toHaveLength(0);
+
+    const handler = getLatestBackHandler();
+    let result;
+    renderer.act(() => { result = handler(); });
+
+    // Back is consumed by the tab: it pops to the menu and stays on More.
+    expect(result).toBe(true);
+    expect(component.root.findByProps({ accessibilityLabel: 'App Guide' })).toBeTruthy();
+    expect(getTabStyle(component, 'More').display).not.toBe('none');
+    expect(getTabStyle(component, 'Home').display).toBe('none');
+  });
+
+  test('a second back from the More menu falls back to Home (#355)', () => {
+    renderer.act(() => { capturedTabPress('More'); });
+    const guideLink = component.root.findByProps({ accessibilityLabel: 'App Guide' });
+    renderer.act(() => { guideLink.props.onPress(); });
+
+    const handler = getLatestBackHandler();
+    renderer.act(() => { handler(); }); // sub-view -> menu
+    renderer.act(() => { handler(); }); // menu -> Home
+
+    expect(getTabStyle(component, 'Home').display).not.toBe('none');
+    expect(getTabStyle(component, 'More').display).toBe('none');
+  });
 });
 
 describe('App shell web back affordance (#314)', () => {
@@ -293,5 +320,14 @@ describe('App shell web back affordance (#314)', () => {
     renderer.act(() => { back.props.onPress(); });
     expect(getTabStyle(component, 'Home').display).not.toBe('none');
     expect(getTabStyle(component, 'Weight').display).toBe('none');
+  });
+
+  test('global "← Home" bar is hidden when a More sub-screen owns its own back (#355)', () => {
+    renderer.act(() => { capturedTabPress('More'); });
+    // On the More menu the global web back bar is still shown.
+    expect(findByAccessibilityLabel(component.toJSON(), 'Back to Home')).not.toBeNull();
+    const guideLink = component.root.findByProps({ accessibilityLabel: 'App Guide' });
+    renderer.act(() => { guideLink.props.onPress(); });
+    expect(findByAccessibilityLabel(component.toJSON(), 'Back to Home')).toBeNull();
   });
 });

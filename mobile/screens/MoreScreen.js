@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Platform, Pressable, BackHandler, StyleSheet, Text, View } from 'react-native';
+import React, { useState, useLayoutEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { Button, SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -15,6 +15,9 @@ export { AccountScreen } from './more/AccountScreen';
 export { AccountLifecycle } from './more/AccountLifecycle';
 
 export function MoreScreen({
+  isActive = true,
+  registerBackConsumer,
+  onOwnsBackChange,
   onNavigate,
   onExport,
   onImport,
@@ -27,24 +30,29 @@ export function MoreScreen({
 }) {
   const [activeView, setActiveView] = useState('menu');
 
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
+  const inSubView = activeView !== 'menu';
 
-    const backAction = () => {
-      if (activeView !== 'menu') {
-        setActiveView('menu');
-        return true;
-      }
-      return false;
+  // When this tab is active and showing a sub-view, register a back consumer so
+  // the app shell's global back handler returns to the menu (instead of Home) and
+  // flag that this screen owns its own back so the web "← Home" bar is suppressed
+  // (the sub-screen renders its own "← Back"). Gating on isActive prevents
+  // consuming back events meant for another tab while a stale More sub-view stays
+  // mounted in the background. Props are optional so the screen renders safely
+  // when used standalone (e.g. in tests) without the app shell.
+  useLayoutEffect(() => {
+    if (!isActive || !inSubView) return undefined;
+
+    onOwnsBackChange?.(true);
+    const unregister = registerBackConsumer?.(() => {
+      setActiveView('menu');
+      return true;
+    });
+
+    return () => {
+      unregister?.();
+      onOwnsBackChange?.(false);
     };
-
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      backAction,
-    );
-
-    return () => backHandler.remove();
-  }, [activeView]);
+  }, [isActive, inSubView, registerBackConsumer, onOwnsBackChange]);
 
   if (activeView === 'help') {
     return <HelpScreen onBack={() => setActiveView('menu')} />;
