@@ -110,7 +110,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   behind Supabase Edge Functions rather than exposing privileged credentials to
   the client, leaving `HomeScreen.js` focused on dashboard rendering. The same
   public-account surfaces expose placeholder privacy and terms links beside
-  signup, near Account export/delete actions, and in More > About Kilo.
+  signup, near Account export/delete actions, and in More > About Kilo. The
+  Account screen also starts GitHub OAuth on web and Android; Android uses
+  `expo-web-browser` with `kilo://auth/callback`, then exchanges the returned
+  PKCE code through the shared Supabase auth/session hook.
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
@@ -175,8 +178,10 @@ while an active child is visible. The shell consults that consumer before its
 Android Home/exit fallback, and the same child-ownership signal suppresses the
 global web Home control in a pre-paint layout effect. `App.js` also provides shared scroll
 activity down through `ScreenShell` so the tab bar can react to content
-scrolling as an overlay surface. There is no router library, deep linking, or
-persisted navigation state in the native path yet.
+scrolling as an overlay surface. There is no router library or persisted
+navigation state in the native path. The only registered deep link is the
+dedicated `kilo://auth/callback` OAuth return path; it is consumed by the active
+Android browser auth session rather than routed as an app screen.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
 correction surface. Tapping a row reloads that entry into the shared form

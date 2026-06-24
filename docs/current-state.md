@@ -42,9 +42,11 @@ Roadmap status:
   published privacy/terms links on the signup, account lifecycle, and About
   Kilo surfaces (#330, #332), and the documented Auth abuse posture gate for
   CAPTCHA plus production SMTP before open signup (#329). The web distribution
-  surface now also offers GitHub OAuth sign-in alongside email/password,
-  surfaced web-only behind cloud config (#331); native OAuth is out of scope for
-  Phase 6.
+  surface now also offers GitHub OAuth sign-in alongside email/password behind
+  cloud config (#331). Installed Android builds expose the same provider through
+  the stable `kilo://auth/callback` deep link and a PKCE browser session (#363).
+  The redirect is allow-listed in Supabase; the first installed-build callback
+  and restart-persistence pass remains deferred by owner direction.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
