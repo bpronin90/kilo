@@ -155,7 +155,7 @@ export function ProfileScreen({ onBack }) {
   return (
     <ScreenShell
       title="User Profile"
-      subtitle="Personal details for calorie estimation."
+      subtitle="Used to estimate your daily calorie target on the Weight tab."
       onBack={onBack}
       headerRight={headerRight}
     >

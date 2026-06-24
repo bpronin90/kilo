@@ -151,7 +151,7 @@ export function CloudSyncRecovery({ user }) {
       </Text>
 
       <Button
-        title="Export Cloud Data"
+        title="Export Cloud Copy"
         loadingTitle="Working…"
         disabled={busy}
         onPress={handleCloudExport}

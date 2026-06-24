@@ -96,25 +96,34 @@ export function MoreScreen({
 
   return (
     <ScreenShell title="More" subtitle="Settings, help, and your data.">
+      <SectionTitle>You</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
-          <Text style={styles.menuItemText}>App Guide</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
-        </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
+          <Text style={styles.menuItemText}>Settings</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+        </Pressable>
+      </View>
+
+      <SectionTitle>Data & Account</SectionTitle>
+      <View style={styles.list}>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('account')} accessibilityRole="button" accessibilityLabel="Account">
           <Text style={styles.menuItemText}>Account</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings and Algorithm">
-          <Text style={styles.menuItemText}>Settings & Algorithm</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
-        </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <Text style={styles.menuItemText}>Data & Backup</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+        </Pressable>
+      </View>
+
+      <SectionTitle>About & Support</SectionTitle>
+      <View style={styles.list}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
+          <Text style={styles.menuItemText}>App Guide</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
