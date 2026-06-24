@@ -136,9 +136,8 @@ The real native app path now has a modular React Native shell:
   multi-note workout store, now keeps Android hardware-back inside the app by returning
   non-Home tabs to Home and gating root exit behind confirmation, keeps the
   Kilo fatigue multiplier in app state for deterministic Analytics
-  recomputation, and exposes a separate More tab for Help, About, local Data &
-  Backup export/import/recovery, and a low-prominence Settings & Algorithm
-  sub-screen
+  recomputation, and exposes a separate More tab for Profile, Account, Settings,
+  local Data & Backup export/import/recovery, Help, and About
 - `mobile/screens/HomeScreen.js` renders a native dashboard with a resolution-
   independent Kilo wordmark header drawn as an inline `react-native-svg`
   component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`)
@@ -341,18 +340,19 @@ The real native app path now has a modular React Native shell:
   retryable `ErrorBanner` at the top of the screen instead of a silent empty
   screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
-  `User Profile`, `Data & Backup`, `Settings & Algorithm`, `App Guide`, and
-  `About` sub-screens extracted out of `HomeScreen.js`. When Supabase cloud
+  `User Profile`, `Account`, `Settings`, `Data & Backup`, `App Guide`, and
+  `About Kilo` sub-screens extracted out of `HomeScreen.js`. When Supabase cloud
   accounts are configured and the user is signed in, the Account surface also
   exposes server-side account export and a two-step account deletion flow:
   export shares a v3-compatible JSON payload from the requester-scoped
   `account-export` Edge Function, and deletion calls `account-delete` before
   signing out and clearing local session state. Those More subviews
   intercept Android back presses and return to the More menu before falling
-  through to tab-level navigation. The parent More menu is now a flat
-  five-item list headed by `App Guide`, followed by `User Profile`,
-  `Settings & Algorithm`, `Data & Backup`, and `About Kilo`, while keeping the
-  existing quick actions intact. The Settings & Algorithm screen now groups its
+  through to tab-level navigation. The parent More menu groups six destinations
+  into three balanced sections: `Profile & Account` (`User Profile`, `Account`),
+  `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
+  (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions
+  are no longer shown there. The Settings screen groups its
   controls into `Features`, `Date Editing`, and `Advanced`: persisted
   `Fatigue tracking` and `Deload mode` switches let users disable those
   optional workout-side flows without deleting their saved check-ins, deload
@@ -621,9 +621,8 @@ tracked-lift cards now use the same reactive global tracked-lift state as the
 Log screen, update immediately when Track is toggled while Analytics remains
 mounted, stay visible only for tracked lifts that appear in the current
 routine, and still aggregate each lift's full history across all saved
-routines. A separate native
-More tab now exposes `App Guide` and
-About surfaces while keeping the parent More quick actions intact; the App
+routines. A separate native More tab now exposes `App Guide` and About surfaces
+inside the three-section menu without duplicate quick actions; the App
 Guide surface now uses the shared top-safe-area header treatment, a local
 accessible header back control, and a centered Kilo logo placed above concise
 orientation content covering what Kilo is, what each of the five tabs does,

@@ -1,7 +1,7 @@
 import React, { useState, useLayoutEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
-import { Button, SectionTitle } from '../components/UI';
+import { SectionTitle } from '../components/UI';
 import { Colors } from '../theme/colors';
 
 import { HelpScreen } from '../components/HelpScreen';
@@ -18,7 +18,6 @@ export function MoreScreen({
   isActive = true,
   registerBackConsumer,
   onOwnsBackChange,
-  onNavigate,
   onExport,
   onImport,
   fatigueMultiplier,
@@ -96,11 +95,8 @@ export function MoreScreen({
 
   return (
     <ScreenShell title="More" subtitle="Settings, help, and your data.">
+      <SectionTitle>Profile & Account</SectionTitle>
       <View style={styles.list}>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
-          <Text style={styles.menuItemText}>App Guide</Text>
-          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
-        </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('profile')} accessibilityRole="button" accessibilityLabel="User Profile">
           <Text style={styles.menuItemText}>User Profile</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
@@ -109,12 +105,24 @@ export function MoreScreen({
           <Text style={styles.menuItemText}>Account</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
-        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings and Algorithm">
-          <Text style={styles.menuItemText}>Settings & Algorithm</Text>
+      </View>
+
+      <SectionTitle>Settings & Data</SectionTitle>
+      <View style={styles.list}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('settings')} accessibilityRole="button" accessibilityLabel="Settings">
+          <Text style={styles.menuItemText}>Settings</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('backup')} accessibilityRole="button" accessibilityLabel="Data and Backup">
           <Text style={styles.menuItemText}>Data & Backup</Text>
+          <Text style={styles.menuItemChevron} accessible={false}>→</Text>
+        </Pressable>
+      </View>
+
+      <SectionTitle>Help & Support</SectionTitle>
+      <View style={styles.list}>
+        <Pressable style={styles.menuItem} onPress={() => setActiveView('help')} accessibilityRole="button" accessibilityLabel="App Guide">
+          <Text style={styles.menuItemText}>App Guide</Text>
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
         <Pressable style={styles.menuItem} onPress={() => setActiveView('about')} accessibilityRole="button" accessibilityLabel="About Kilo">
@@ -122,21 +130,11 @@ export function MoreScreen({
           <Text style={styles.menuItemChevron} accessible={false}>→</Text>
         </Pressable>
       </View>
-
-      <SectionTitle>Quick Actions</SectionTitle>
-      <View style={styles.grid}>
-        <Button title="Log Workout" onPress={() => onNavigate('Log')} style={{ flex: 1 }} />
-        <Button title="Log Weight" onPress={() => onNavigate('Weight')} style={{ flex: 1 }} />
-      </View>
     </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   list: {
     gap: 12,
   },

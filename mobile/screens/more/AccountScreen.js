@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
-import { Button, InputStyle } from '../../components/UI';
+import { Button, InputStyle, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
@@ -62,6 +62,7 @@ export function AccountScreen({ onBack }) {
     >
       {!auth.configured ? (
         <View style={styles.accountBlock}>
+          <SectionTitle>Cloud Account</SectionTitle>
           <Text style={styles.accountNote} accessibilityLabel="Cloud accounts unavailable">
             Cloud accounts are not configured in this build. The app continues to
             work fully offline with your local data.
@@ -70,6 +71,7 @@ export function AccountScreen({ onBack }) {
         </View>
       ) : auth.signedIn ? (
         <View style={styles.accountBlock}>
+          <SectionTitle>Signed In</SectionTitle>
           <Text style={styles.accountNote}>
             Signed in as {auth.user?.email || 'your account'}. Your training
             history is the offline working copy on this device. An account keeps a
@@ -87,6 +89,7 @@ export function AccountScreen({ onBack }) {
         </View>
       ) : (
         <View style={styles.accountBlock}>
+          <SectionTitle>Sign In</SectionTitle>
           <Text style={styles.accountNote}>
             Your training history is saved on this device and works without an
             account. Signing in lets you keep it synced to the cloud and continue

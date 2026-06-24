@@ -103,12 +103,12 @@ export function BackupScreen({ onBack, onExport, onImport }) {
       <SectionTitle>Export</SectionTitle>
       <Card>
         <Text style={styles.helpText}>
-          Exports all your weight entries and workout notes as a JSON file you can save or share.
+          Exports all locally saved weight entries and workout notes as a JSON snapshot you can save or share.
         </Text>
         <Text style={styles.warnText}>
           This file is unencrypted. Anyone you share or save it with can read your data.
         </Text>
-        <Button title="Export Data" onPress={handleExport} disabled={busy} style={styles.actionButton} />
+        <Button title="Export Local Backup" onPress={handleExport} disabled={busy} style={styles.actionButton} />
       </Card>
 
       <SectionTitle>Import</SectionTitle>

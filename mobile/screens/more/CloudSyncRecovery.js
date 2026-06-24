@@ -150,8 +150,13 @@ export function CloudSyncRecovery({ user }) {
         is kept.
       </Text>
 
+      <Text style={styles.phaseDesc}>
+        Exports the training history and settings currently saved on this
+        device, with your account identity attached. Use this to move your
+        local data elsewhere.
+      </Text>
       <Button
-        title="Export Cloud Data"
+        title="Export Cloud Copy"
         loadingTitle="Working…"
         disabled={busy}
         onPress={handleCloudExport}
