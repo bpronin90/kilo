@@ -50,13 +50,13 @@ export function AccountLifecycle({ auth }) {
 
   const handleDeleteArm = () => {
     setDeleteArmed(true);
-    setStatus('Tap "Confirm Delete Account" to permanently remove all your data and sign out.');
+    setStatus('Tap "Confirm Delete Account" to permanently delete your cloud account and sign out. The training history on this device is kept.');
   };
 
   const handleDeleteConfirm = () => {
     Alert.alert(
       'Delete Account',
-      'This permanently deletes all your cloud data and cannot be undone. Continue?',
+      'This permanently deletes your cloud account and the cloud copy stored in it, and cannot be undone. The training history on this device is kept. Continue?',
       [
         { text: 'Cancel', style: 'cancel', onPress: () => { setDeleteArmed(false); setStatus(''); } },
         {
@@ -76,6 +76,12 @@ export function AccountLifecycle({ auth }) {
   return (
     <View style={styles.accountBlock}>
       <SectionTitle>Account Data</SectionTitle>
+
+      <Text style={styles.accountNote}>
+        These actions affect the copy of your data stored in your cloud account.
+        Exporting downloads it as a file. Deleting your account removes the cloud
+        copy only; the training history on this device is always kept.
+      </Text>
 
       <Button
         title={busy ? 'Working…' : 'Export Account Data'}
@@ -113,6 +119,11 @@ export function AccountLifecycle({ auth }) {
 const styles = StyleSheet.create({
   accountBlock: {
     gap: 12,
+  },
+  accountNote: {
+    fontSize: 15,
+    color: Colors.text,
+    lineHeight: 22,
   },
   accountStatus: {
     fontSize: 14,

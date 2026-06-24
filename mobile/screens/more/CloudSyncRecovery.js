@@ -43,7 +43,7 @@ export function CloudSyncRecovery({ user }) {
       const result = await runner();
       setStatus(
         result?.ok
-          ? `${kind === 'bootstrap' ? 'Bootstrap' : 'Sync'} complete.`
+          ? `${kind === 'bootstrap' ? 'Local history uploaded' : 'Sync'} complete.`
           : result?.error || 'Could not start.'
       );
     } finally {
@@ -82,36 +82,52 @@ export function CloudSyncRecovery({ user }) {
     <View style={styles.accountBlock}>
       <SectionTitle>Cloud Sync</SectionTitle>
 
+      <Text style={styles.accountNote}>
+        Your training history is your offline working copy and is always saved on
+        this device. Your account keeps a cloud copy in sync with it, so you can
+        continue on another device or after reinstalling. Syncing reconciles the
+        two — for any item changed in both places, the most recent change wins.
+      </Text>
+
       <View style={styles.syncRow}>
-        <Text style={styles.syncLabel}>Bootstrap</Text>
+        <Text style={styles.syncLabel}>Upload your local history</Text>
         <Text style={styles.syncValue} accessibilityLabel={`Bootstrap status ${bootstrap.status}`}>
           {phaseLabel(bootstrap)}
         </Text>
       </View>
+      <Text style={styles.phaseDesc}>
+        First-time setup. Sends the history already on this device up to your
+        account. Run this once after signing in.
+      </Text>
       {canStart(bootstrap) ? (
         <Button
-          title={busy ? 'Working…' : 'Run Bootstrap'}
+          title={busy ? 'Working…' : 'Upload Local History'}
           disabled={busy || isRunning(bootstrap)}
           onPress={() => handleRun('bootstrap', runBootstrap)}
         />
       ) : null}
       {bootstrap.retryable ? (
         <Button
-          title={busy ? 'Working…' : 'Retry Bootstrap'}
+          title={busy ? 'Working…' : 'Retry Upload'}
           disabled={busy}
           onPress={() => handleRun('bootstrap', retryBootstrap)}
         />
       ) : null}
 
       <View style={styles.syncRow}>
-        <Text style={styles.syncLabel}>Sync</Text>
+        <Text style={styles.syncLabel}>Keep device and account in sync</Text>
         <Text style={styles.syncValue} accessibilityLabel={`Sync status ${sync.status}`}>
           {phaseLabel(sync)}
         </Text>
       </View>
+      <Text style={styles.phaseDesc}>
+        Ongoing sync. Sends your newer changes up and pulls newer changes down so
+        this device and your account match. Run this after logging new workouts or
+        when switching devices.
+      </Text>
       {canStart(sync) ? (
         <Button
-          title={busy ? 'Working…' : 'Run Sync'}
+          title={busy ? 'Working…' : 'Sync Now'}
           disabled={busy || isRunning(sync)}
           onPress={() => handleRun('sync', runSync)}
         />
@@ -125,7 +141,9 @@ export function CloudSyncRecovery({ user }) {
       ) : null}
 
       <Text style={styles.accountNote}>
-        Retrying is safe and never overwrites your local data.
+        Retrying is safe to run as often as you like. It never deletes your
+        history; if the same item was edited in two places, the most recent edit
+        is kept.
       </Text>
 
       <Button
@@ -152,6 +170,12 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 22,
     marginBottom: 12,
+  },
+  phaseDesc: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginTop: -2,
   },
   accountStatus: {
     fontSize: 14,

@@ -764,11 +764,17 @@ implemented too: a transport-agnostic last-write-wins engine with per-install
 `client_id`, monotonic `updated_at` stamping, persisted per-table dirty queues
 and pull cursors, tombstone-first deletes, and derived-JSON recompute, wired
 behind the cloud adapter so cloud-mode reads/writes stamp and enqueue and
-reconcile on reconnect. The Task 12 (#321) recovery UX now surfaces this: the
-signed-in Account screen has a Cloud Sync panel with Run Bootstrap / Run Sync
-actions plus failure-only retry that drive a visible idle/running/failed/
-complete status per phase, and a v3-compatible cloud export (the existing backup
-shape plus a namespaced `cloud` block with profile, feature toggles, and the
+reconcile on reconnect. The Task 12 (#321) recovery UX now surfaces this, and
+issue #360 replaces its implementation jargon with a user-facing cloud model:
+the signed-in Account screen offers Upload Local History for the one-time local
+upload and Sync Now for bidirectional reconciliation, with descriptions and
+visible idle/running/failed/complete status per phase. The App Guide and Account
+surface explain the device as the offline working copy, the account as the
+synchronized cloud copy, most-recent-edit-wins conflict handling, and that
+account deletion preserves local history. Live last-synced/dirty-state status
+and automatic first-sign-in upload remain deferred backend follow-ups. The
+surface also provides a v3-compatible cloud export (the existing backup shape
+plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
 failed run leaves local AsyncStorage intact. The Phase 5 account lifecycle path
 now adds server-owned Edge Functions for requester-only account export and
@@ -793,11 +799,11 @@ release explicitly defers the still-pending gates.
 `docs/backend-activation.md` the activation runbook, and
 `docs/backend-roadmap.md` the remaining cloud work.
 
-Launch validation must still treat AsyncStorage as the runtime persistence
-layer and the local data model as the source of truth: the Phase 4 cloud paths
-are now user-invokable from the Account screen, but only when the user is signed
-in and `EXPO_PUBLIC_SUPABASE_*` is configured, and AsyncStorage remains the
-immediate offline cache that cloud bootstrap/sync mirror rather than replace.
+Launch validation must still treat AsyncStorage as the immediate offline cache:
+the Phase 4 cloud paths are user-invokable from the Account screen only when the
+user is signed in and `EXPO_PUBLIC_SUPABASE_*` is configured. Initial upload is
+one-way from that cache to the account; ongoing sync is bidirectional and
+reconciles local and cloud rows with the most recent edit winning.
 
 ### Legacy Capacitor shell removed
 
