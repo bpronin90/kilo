@@ -308,14 +308,14 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
-  // Filled success/caution tone cards render light text (textLight), so they use
-  // the darkened card-only tone backgrounds (cardSuccessBg/cardCautionBg) tuned
-  // to meet WCAG AA 4.5:1. Error already passes with light text on Colors.error
-  // (5.36:1), and accent is out of scope for this fix, so both keep the palette
-  // color.
+  // Filled accent/success/caution tone cards render light text (textLight), so
+  // they use the darkened card-only tone backgrounds
+  // (cardAccentBg/cardSuccessBg/cardCautionBg) tuned to meet WCAG AA 4.5:1.
+  // Error already passes with light text on Colors.error (5.36:1), so it keeps
+  // the palette color.
   cardAccent: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
+    backgroundColor: Colors.cardAccentBg,
+    borderColor: Colors.cardAccentBg,
   },
   cardSuccess: {
     backgroundColor: Colors.cardSuccessBg,
@@ -465,14 +465,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: Colors.chipBackground,
   },
+  // Trend badges render light text (textLight) for improved/held/regressed, so
+  // improved/held use the darkened tone backgrounds to meet WCAG AA 4.5:1
+  // (success #3a6035 -> 6.44:1, accent #96571c -> 5.09:1). regressed already
+  // passes with light text on Colors.error (5.36:1), so it keeps the palette tone.
   badge_improved: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.cardSuccessBg,
   },
   badge_regressed: {
     backgroundColor: Colors.error,
   },
   badge_held: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.cardAccentBg,
   },
   badge_first_session: {
     backgroundColor: Colors.chipBackground,
