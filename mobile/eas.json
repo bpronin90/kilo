@@ -8,6 +8,7 @@
         "buildType": "apk"
       },
       "channel": "preview",
+      "environment": "preview",
       "env": {
         "APP_ENV": "preview"
       }
