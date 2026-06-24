@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.77.19 - 2026-06-23
+
+- Issue #357: Improved More-tab accessibility. Filled success and caution tone
+  cards now use darkened card-only background constants so light text meets WCAG
+  AA contrast (success 6.44:1, caution 5.06:1) without altering the shared
+  palette used by the session gauge and badges; error cards were already
+  compliant and left unchanged. Back-button touch targets in the screen shell
+  and web header are now at least 44x44.
+
 ## 0.77.18 - 2026-06-23
 
 - Issue #356: Hardened More-tab correctness and data safety. Data import now
