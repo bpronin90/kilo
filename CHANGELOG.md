@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.16 - 2026-06-23
+
+- Issue #360: Replaced user-facing cloud bootstrap jargon with plain-language
+  first-upload and bidirectional-sync guidance across Account and the App Guide.
+  Clarified the offline working copy, synchronized cloud copy, conflict behavior,
+  and that deleting an account preserves training history on the device.
+
 ## 0.77.15 - 2026-06-23
 
 - Issue #353: Added tracked Supabase configuration for the project-local

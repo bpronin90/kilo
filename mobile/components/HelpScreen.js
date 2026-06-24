@@ -42,7 +42,40 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={[styles.tabRow, { marginBottom: 0 }]}>
           <Text style={styles.tabName}>More</Text>
-          <Text style={styles.tabDesc}>App settings, your user profile (used for calorie estimation), data backup and restore, and this guide.</Text>
+          <Text style={styles.tabDesc}>App settings, your user profile (used for calorie estimation), local data backup and restore, your optional cloud Account, and this guide.</Text>
+        </View>
+      </Card>
+
+      <SectionTitle>Account & Cloud Backup</SectionTitle>
+
+      <Card>
+        <Text style={styles.helpText}>
+          Kilo works fully offline. Everything you log — workouts, body weight, tracked exercises, and settings — is stored on this device, and you never need an account to use the app.
+        </Text>
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          An optional Account (in the More tab) keeps your data synced to the cloud, so you can pick up on a new phone or after reinstalling. Your device holds the offline working copy you use day to day; your account holds a cloud copy that stays in step with it. When you sync, the two are reconciled — if the same item was changed in both places, the most recent change wins.
+        </Text>
+        <View style={{ marginTop: 12, gap: 10 }}>
+          <View style={styles.termRow}>
+            <Text style={styles.termLabel}>On this device</Text>
+            <Text style={styles.termDesc}>Your offline working copy of the full training history. Always available, with or without an account.</Text>
+          </View>
+          <View style={styles.termRow}>
+            <Text style={styles.termLabel}>In your account</Text>
+            <Text style={styles.termDesc}>A cloud copy that stays in sync with your device once you sign in and sync. Used to restore or continue your data on another device.</Text>
+          </View>
+          <View style={styles.termRow}>
+            <Text style={styles.termLabel}>Upload local history</Text>
+            <Text style={styles.termDesc}>The first-time setup. Run it once after signing in to send the history already on your device up to your account.</Text>
+          </View>
+          <View style={styles.termRow}>
+            <Text style={styles.termLabel}>Sync now</Text>
+            <Text style={styles.termDesc}>The ongoing sync. Sends your newer changes up and pulls newer changes down so your device and account match. Run it after logging new workouts or when switching devices.</Text>
+          </View>
+          <View style={[styles.termRow, { marginBottom: 0 }]}>
+            <Text style={styles.termLabel}>Deleting your account</Text>
+            <Text style={styles.termDesc}>Removes the cloud copy only. The training history on your device is kept and the app keeps working offline.</Text>
+          </View>
         </View>
       </Card>
 

@@ -68,7 +68,10 @@ export function AccountScreen({ onBack }) {
       ) : auth.signedIn ? (
         <View style={styles.accountBlock}>
           <Text style={styles.accountNote}>
-            Signed in as {auth.user?.email || 'your account'}.
+            Signed in as {auth.user?.email || 'your account'}. Your training
+            history is the offline working copy on this device. An account keeps a
+            cloud copy in sync with it so you can continue on another device. Use
+            Cloud Sync below to keep this device and your account matched.
           </Text>
           <Button
             title={busy ? 'Working…' : 'Sign Out'}
@@ -80,6 +83,12 @@ export function AccountScreen({ onBack }) {
         </View>
       ) : (
         <View style={styles.accountBlock}>
+          <Text style={styles.accountNote}>
+            Your training history is saved on this device and works without an
+            account. Signing in lets you keep it synced to the cloud and continue
+            on another device. Signing in by itself does not change or erase your
+            local data.
+          </Text>
           <TextInput
             style={InputStyle}
             placeholder="Email"
