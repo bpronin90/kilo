@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.77.21 - 2026-06-24
+
+- Issue #362: Fixed the remaining low-contrast More-tab surfaces left out of
+  #357's scope. Accent tone cards and the improved/held trend badges now meet
+  WCAG AA via card-/badge-scoped darkened background constants (accent
+  2.39:1 -> 5.09:1, success badge 4.39:1 -> 6.44:1); error surfaces were already
+  compliant and are unchanged. The shared color palette is untouched, so the
+  session gauge and other palette consumers are visually identical.
+
 ## 0.77.20 - 2026-06-24
 
 - Issue #361: Added automated coverage for the Backup import-confirm flow shipped
