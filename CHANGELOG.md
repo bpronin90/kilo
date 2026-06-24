@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.77.18 - 2026-06-23
+
+- Issue #356: Hardened More-tab correctness and data safety. Data import now
+  requires an explicit destructive confirmation before replacing local data;
+  busy buttons show their intended label (e.g. "Working…", "Checking…") via a new
+  `loadingTitle` prop instead of always reading "Saving…"; the Backup unencrypted
+  warning renders in the caution color instead of error red; and Privacy/Terms
+  links are reachable from the Account screen in the cloud-unconfigured state.
+
 ## 0.77.17 - 2026-06-23
 
 - Issue #355: Coordinated App-shell and More-tab back handling so Android

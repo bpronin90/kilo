@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kilo",
     "slug": "kilo-native",
-    "version": "0.77.17",
+    "version": "0.77.18",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
