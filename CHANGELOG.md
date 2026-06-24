@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.77.17 - 2026-06-23
+
+- Issue #355: Coordinated App-shell and More-tab back handling so Android
+  system back returns from a More child to the More menu before returning Home,
+  while web More children show one stable local Back control without the global
+  Home control or a transition flicker.
+
 ## 0.77.16 - 2026-06-23
 
 - Issue #360: Replaced user-facing cloud bootstrap jargon with plain-language

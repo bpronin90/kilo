@@ -535,7 +535,8 @@ keep the bottom tab bar reachable above the iOS keyboard. Successful native
 weight saves now keep the user on the Weight screen instead of bouncing them
 back to Home. Android hardware-back now stays inside the native app flow:
 non-Home tabs return to Home first, the More and Log screens pop their own
-subviews before yielding, and the Home root shows an exit confirmation.
+subviews before yielding, a second back from the More menu returns Home, and
+the Home root shows an exit confirmation.
 The native Weight screen now also lets the user reopen saved entries from a
 denser scannable history list, correct them in place, delete mistakes from
 inline row affordances, and immediately refresh the shared weight views after
@@ -859,13 +860,14 @@ web output in `mobile/app.json`. `npx expo export --platform web` now emits the
 static web artifact from `mobile/`.
 
 Desktop web has the minimum local-data usability fallbacks needed before backend
-work: non-Home tabs render an explicit web-only Home back control, wide web
-viewports center the single-column app within a 640px content cap, Log edit
-entry is available through explicit single-press edit controls, and Weight plus
-linked Log deload date edits use DOM `input type="date"` controls on web while
-native Android keeps the existing hardware-back and native `DateTimePicker`
-paths. Local-data web smoke verification and hosting remain follow-on Phase 2
-work.
+work: non-Home tab roots render an explicit web-only Home back control, while a
+More child replaces it before paint with one local Back control that returns to
+the More menu. Wide web viewports center the single-column app within a 640px
+content cap, Log edit entry is available through explicit single-press edit
+controls, and Weight plus linked Log deload date edits use DOM
+`input type="date"` controls on web while native Android keeps the existing
+hardware-back and native `DateTimePicker` paths. Local-data web smoke
+verification and hosting remain follow-on Phase 2 work.
 
 **iOS device build blockers:** the `ios-device` profile uses internal
 (ad hoc) distribution, which requires an Apple Developer account and the target

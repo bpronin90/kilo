@@ -27,6 +27,19 @@ export default function App() {
   const isScrollingRef = useRef(false);
   const scrollTimeout = useRef(null);
 
+  // Back consumer registered by the active tab. Returns true if it handled the
+  // back event (e.g. popped a sub-view), false to let the shell fall back to Home.
+  const backConsumerRef = useRef(null);
+  const registerBackConsumer = useCallback((consumer) => {
+    backConsumerRef.current = consumer;
+    return () => {
+      if (backConsumerRef.current === consumer) backConsumerRef.current = null;
+    };
+  }, []);
+  // True when the active tab's sub-screen renders its own back affordance; used to
+  // suppress the web "← Home" bar so two back controls do not stack.
+  const [tabOwnsBack, setTabOwnsBack] = useState(false);
+
   const addScrollListener = useCallback((listener) => {
     scrollListeners.current.add(listener);
     return () => {
@@ -106,11 +119,17 @@ export default function App() {
     if (Platform.OS !== 'android') return;
 
     const backAction = () => {
+      // Defer to the active tab's in-tab back first (e.g. More sub-view → menu).
+      // Only fall back to Home/exit when the tab does not consume the event.
+      if (backConsumerRef.current && backConsumerRef.current()) {
+        return true;
+      }
+
       if (activeTab !== 'Home') {
         setActiveTab('Home');
         return true;
       }
-      
+
       Alert.alert('Exit app?', 'Are you sure you want to exit?', [
         {
           text: 'Cancel',
@@ -145,8 +164,9 @@ export default function App() {
 
   // Browser-safe back affordance: web has no Android hardware back button, so a
   // non-Home tab would otherwise have no on-screen way to return to Home short
-  // of the tab bar. Render an explicit back control on web when off Home.
-  const showWebBack = Platform.OS === 'web' && activeTab !== 'Home';
+  // of the tab bar. Render an explicit back control on web when off Home, unless
+  // the current sub-screen already renders its own back (avoids stacked controls).
+  const showWebBack = Platform.OS === 'web' && activeTab !== 'Home' && !tabOwnsBack;
 
   const saveWeight = useCallback(async (date) => {
     if (weightSaving) return false;
@@ -266,6 +286,9 @@ export default function App() {
         </View>
         <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MoreScreen
+            isActive={activeTab === 'More'}
+            registerBackConsumer={registerBackConsumer}
+            onOwnsBackChange={setTabOwnsBack}
             onNavigate={handleTabPress}
             onExport={handleExport}
             onImport={handleImport}
