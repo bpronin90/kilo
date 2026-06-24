@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.77.20 - 2026-06-24
+
+- Issue #361: Added automated coverage for the Backup import-confirm flow shipped
+  in #356. New `mobile/tests/backup-screen.test.js` verifies that import requires
+  the destructive confirmation before `onImport` runs, that cancel is a safe
+  no-op, that confirming restores data, and that empty input is rejected without
+  firing the alert. Test-only change; no product code affected.
+
 ## 0.77.19 - 2026-06-23
 
 - Issue #357: Improved More-tab accessibility. Filled success and caution tone

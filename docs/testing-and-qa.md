@@ -371,6 +371,18 @@ retains non-test commands such as `npm run audit`.
 - verifies the mobile/web client never includes a service-role or secret key in
   fetch headers
 
+### `mobile/tests/backup-screen.test.js`
+
+- rendered UI coverage for the `BackupScreen` import-confirm flow
+  (`mobile/components/BackupScreen.js`)
+- verifies tapping Import with valid pasted JSON raises the destructive
+  confirmation alert and does not call `onImport` until the user confirms
+- verifies the alert's Cancel path is a safe no-op that leaves data untouched
+- verifies confirming the destructive action calls `onImport` and surfaces the
+  restored-data success state
+- verifies empty or whitespace-only input is rejected with guidance and without
+  raising the alert
+
 ### `supabase/tests/account-lifecycle.test.sql`
 
 - pgTAP requester-isolation coverage for the `kilo` schema account lifecycle
