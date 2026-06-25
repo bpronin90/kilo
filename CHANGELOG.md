@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.79.1 - 2026-06-25
+
+- Issue #365: Fixed the Account screen's session-restore flicker by suppressing
+  the configured signed-out form while the persisted-session probe is still in
+  flight. Restored sessions now resolve to the signed-in view without briefly
+  flashing the Sign In form, while unconfigured local-only builds and signed-out
+  configured builds keep their existing behavior.
+
 ## 0.79.0 - 2026-06-24
 
 - Issue #363: Added GitHub sign-in to configured Android builds using a stable

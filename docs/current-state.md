@@ -45,8 +45,11 @@ Roadmap status:
   surface now also offers GitHub OAuth sign-in alongside email/password behind
   cloud config (#331). Installed Android builds expose the same provider through
   the stable `kilo://auth/callback` deep link and a PKCE browser session (#363).
-  The redirect is allow-listed in Supabase; the first installed-build callback
-  and restart-persistence pass remains deferred by owner direction.
+  The Account screen suppresses the signed-out form while the persisted session
+  restore probe is in flight, so returning signed-in users no longer see a
+  transient sign-in flash on entry (#365). The redirect is allow-listed in
+  Supabase; the first installed-build callback and restart-persistence pass
+  remains deferred by owner direction.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -792,7 +795,10 @@ surface near export/delete actions, and in More > About Kilo. Issue #328 adds
 conservative in-memory Edge Function abuse controls: `account-export` allows one
 successful export per signed-in user per 10 minutes plus an IP bucket, and
 `account-delete` allows three delete attempts per signed-in user per hour plus
-an IP bucket. Remaining launch-posture follow-ups are Supabase Auth
+an IP bucket. The Account screen now gates the configured signed-out form during
+the initial persisted-session restore probe, preventing a transient sign-in form
+flash before a restored session resolves (#365). Remaining launch-posture
+follow-ups are Supabase Auth
 configuration: Auth must keep platform rate limits, use production-owned SMTP
 before email signup, keep the published Privacy Policy and Terms of Service
 documents live, and enable CAPTCHA before open signup unless a closed-beta
