@@ -88,6 +88,67 @@ const FAKE_SESSION = {
   user: { id: 'uid-1', email: 'a@test.com' },
 };
 
+// AccountScreen now consumes an `auth` instance threaded down from the app shell
+// (#366) instead of calling useAuthSession() itself. These helpers build the
+// `auth` prop the screen expects, delegating OAuth plumbing to the current
+// `mockAuth` so the existing flow assertions still hold.
+//
+// `makeResolvedAuthProp` mirrors a fully-restored shell session: loading=false,
+// so the screen renders its terminal view immediately with no probe window.
+// `makeLoadingAuthProp` mirrors a genuine cold-start restore window:
+// loading=true, signedIn=false (the #365 gate input).
+function makeOAuthDelegates() {
+  return {
+    signInWithOAuth: async (provider, options) => {
+      const oauthOptions = options
+        ? {
+            redirectTo: options.redirectTo,
+            ...(options.skipBrowserRedirect != null ? { skipBrowserRedirect: options.skipBrowserRedirect } : {}),
+          }
+        : undefined;
+      const { data, error } = await mockAuth.signInWithOAuth({ provider, options: oauthOptions });
+      if (error) return { ok: false, error: error.message };
+      return { ok: true, url: data?.url || null };
+    },
+    handleAuthCallbackUrl: async (url) => {
+      const errorMatch = /[?&]error=([^&#]*)/.exec(url);
+      if (errorMatch) {
+        const errorCode = decodeURIComponent(errorMatch[1].replace(/\+/g, ' '));
+        const descMatch = /[?&]error_description=([^&#]*)/.exec(url);
+        const desc = descMatch ? decodeURIComponent(descMatch[1].replace(/\+/g, ' ')) : errorCode;
+        return { ok: false, error: desc };
+      }
+      const codeMatch = /[?&]code=([^&#]+)/.exec(url);
+      if (codeMatch) {
+        const code = decodeURIComponent(codeMatch[1]);
+        const { data, error } = await mockAuth.exchangeCodeForSession(code);
+        if (error) return { ok: false, error: error.message };
+        if (!data?.session) return { ok: false, error: 'Sign in did not complete.' };
+        return { ok: true, session: data.session };
+      }
+      return { ok: false, error: 'Sign in did not complete.' };
+    },
+  };
+}
+
+function makeResolvedAuthProp(session = null, overrides = {}) {
+  return {
+    configured: true,
+    loading: false,
+    session,
+    user: session?.user || null,
+    signedIn: Boolean(session),
+    ...makeOAuthDelegates(),
+    signInWithPassword: jest.fn().mockResolvedValue({ ok: true }),
+    signUpWithPassword: jest.fn().mockResolvedValue({ ok: true }),
+    signOut: jest.fn().mockResolvedValue({ ok: true }),
+    resetPasswordForEmail: jest.fn().mockResolvedValue({ ok: true }),
+    serverExport: jest.fn().mockResolvedValue({ ok: true, json: '{}' }),
+    deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
+    ...overrides,
+  };
+}
+
 function renderHook() {
   const ref = { current: null };
   function Probe() {
@@ -352,10 +413,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    // Let the session-restore probe resolve so the signed-out form renders.
-    await flush();
 
     const buttons = tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' });
     expect(buttons.length).toBe(0);
@@ -374,9 +433,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -402,9 +460,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -419,18 +476,17 @@ describe('AccountScreen OAuth Flow', () => {
   test('does not render Continue with GitHub button when Supabase is not configured', () => {
     Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
 
-    const authSessionModule = require('../hooks/useAuthSession');
-    jest.spyOn(authSessionModule, 'useAuthSession').mockReturnValue({
+    const auth = {
       configured: false,
       loading: false,
       session: null,
       user: null,
       signedIn: false,
-    });
+    };
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth }));
     });
 
     const buttons = tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' });
@@ -442,10 +498,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    // Let the session-restore probe resolve so the signed-out form renders.
-    await flush();
 
     // findByProps throws if not exactly one host element matches; this verifies
     // the button is present without depending on fiber-count implementation details.
@@ -467,9 +521,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -500,9 +553,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -524,9 +576,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -552,9 +603,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -580,9 +630,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {
@@ -594,52 +643,69 @@ describe('AccountScreen OAuth Flow', () => {
     expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
   });
 
-  test('does not flash Sign In form while session-restore probe is in flight (#365)', async () => {
+  test('does not flash Sign In form while the shell session is still loading (#365)', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
 
-    // Configured build with a restored/persisted session. getSession resolves
-    // asynchronously, so on first paint loading=true and signedIn=false.
-    mockSession = { ...FAKE_SESSION };
-    mockAuth = makeMockAuth(mockSession);
-    resetSupabaseClientForTests();
+    // Genuine cold-start restore window: the shell auth instance threaded down
+    // is still loading (configured && loading && !signedIn). The Sign In form /
+    // email input must not be rendered during this window, and the loading
+    // placeholder is shown instead. (#366 keeps the #365 gate for this case.)
+    const loadingAuth = makeResolvedAuthProp(null, { loading: true });
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: loadingAuth }));
     });
 
-    // While the probe is in flight (configured && loading), the Sign In form /
-    // email input must not be rendered.
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Email' }).length).toBe(0);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Continue with GitHub' }).length).toBe(0);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Account loading' }).length).toBeGreaterThanOrEqual(1);
 
-    // Once the probe resolves to a signed-in session, the signed-in view shows
+    // Once the shell session resolves to signed-in, the signed-in view shows
     // and the Sign In form is still absent.
-    await flush();
+    act(() => {
+      tree.update(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
+    });
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Email' }).length).toBe(0);
   });
 
-  test('renders Sign In form once probe resolves to a signed-out state (#365)', async () => {
+  test('renders Sign In form once the shell session resolves to signed-out (#365)', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
-
-    // Configured build with no persisted session: probe resolves to signed-out.
-    mockSession = null;
-    mockAuth = makeMockAuth(null);
-    resetSupabaseClientForTests();
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null, { loading: true }) }));
     });
 
-    // In flight: no form yet.
+    // Still loading: no form yet.
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Email' }).length).toBe(0);
 
-    // After loading resolves to signed-out, the Sign In form appears.
-    await flush();
+    // After the shell session resolves to signed-out, the Sign In form appears.
+    act(() => {
+      tree.update(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
+    });
     expect(tree.root.findByProps({ accessibilityLabel: 'Email' })).toBeTruthy();
     expect(tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' })).toBeTruthy();
+  });
+
+  test('renders the Signed-In view immediately when a resolved session is passed in (#366)', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+
+    // The shell already holds a restored session: loading=false, signedIn=true.
+    // No per-mount probe runs, so the Signed-In view renders on first paint with
+    // no loading placeholder and no Sign In form flash.
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
+    });
+
+    // Signed-In view is present on the very first synchronous paint.
+    const json = JSON.stringify(tree.toJSON());
+    expect(json).toMatch(/Signed In/);
+    expect(json).toMatch(/a@test\.com/);
+    // No loading placeholder and no Sign In form.
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Account loading' }).length).toBe(0);
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Email' }).length).toBe(0);
   });
 
   test('Android OAuth error: exchange failure shows error message', async () => {
@@ -660,9 +726,8 @@ describe('AccountScreen OAuth Flow', () => {
 
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn() }));
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
     });
-    await flush();
 
     const button = tree.root.findByProps({ accessibilityLabel: 'Continue with GitHub' });
     await act(async () => {

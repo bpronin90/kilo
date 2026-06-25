@@ -16,6 +16,7 @@ export { AccountLifecycle } from './more/AccountLifecycle';
 
 export function MoreScreen({
   isActive = true,
+  auth,
   registerBackConsumer,
   onOwnsBackChange,
   onExport,
@@ -90,7 +91,7 @@ export function MoreScreen({
   }
 
   if (activeView === 'account') {
-    return <AccountScreen onBack={() => setActiveView('menu')} />;
+    return <AccountScreen auth={auth} onBack={() => setActiveView('menu')} />;
   }
 
   return (

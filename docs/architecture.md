@@ -101,8 +101,9 @@ The `mobile/` app is a separate runtime from the browser prototype. `mobile/inde
 registers `mobile/App.js` with Expo. The current native architecture is narrow:
 
 - `mobile/App.js` owns tab state plus the native save/reload orchestration
-  layer, including the persisted fatigue-multiplier state that is threaded
-  into More and Analytics
+  layer, including the persisted fatigue-multiplier state threaded into More
+  and Analytics and the shared auth/session hook threaded through More into
+  Account so Account entry does not create a second session probe
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the extracted More-tab menu plus Profile,
   Backup, Settings, Help, About, and signed-in Account lifecycle sub-screens,
@@ -113,7 +114,8 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   signup, near Account export/delete actions, and in More > About Kilo. The
   Account screen also starts GitHub OAuth on web and Android; Android uses
   `expo-web-browser` with `kilo://auth/callback`, then exchanges the returned
-  PKCE code through the shared Supabase auth/session hook.
+  PKCE code through the app-shell Supabase auth/session hook passed down from
+  `App.js`.
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a

@@ -47,9 +47,11 @@ Roadmap status:
   the stable `kilo://auth/callback` deep link and a PKCE browser session (#363).
   The Account screen suppresses the signed-out form while the persisted session
   restore probe is in flight, so returning signed-in users no longer see a
-  transient sign-in flash on entry (#365). The redirect is allow-listed in
-  Supabase; the first installed-build callback and restart-persistence pass
-  remains deferred by owner direction.
+  transient sign-in flash on cold start (#365), and Account now consumes the
+  app-shell auth session instead of re-probing on each entry, so a resolved
+  signed-in session renders immediately when the screen opens (#366). The
+  redirect is allow-listed in Supabase; the first installed-build callback and
+  restart-persistence pass remains deferred by owner direction.
 
 The prototype is a seeded fitness-logging app with approximately 221 synthetic
 workout sessions and bodyweight entries used as history scaffolding. User-created
@@ -797,8 +799,9 @@ successful export per signed-in user per 10 minutes plus an IP bucket, and
 `account-delete` allows three delete attempts per signed-in user per hour plus
 an IP bucket. The Account screen now gates the configured signed-out form during
 the initial persisted-session restore probe, preventing a transient sign-in form
-flash before a restored session resolves (#365). Remaining launch-posture
-follow-ups are Supabase Auth
+flash before a restored session resolves (#365), and it uses the app-shell auth
+session rather than creating a second session probe when the Account subview
+opens (#366). Remaining launch-posture follow-ups are Supabase Auth
 configuration: Auth must keep platform rate limits, use production-owned SMTP
 before email signup, keep the published Privacy Policy and Terms of Service
 documents live, and enable CAPTCHA before open signup unless a closed-beta
