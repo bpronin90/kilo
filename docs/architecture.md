@@ -61,7 +61,7 @@ both Android and iOS.
 
 - `mobile/app.json` keeps `updates.enabled` and the EAS project `updates.url`.
   `mobile/app.config.js` gives preview builds a stable manual runtime string
-  (`preview-1`) so compatible installed preview builds can fetch JavaScript and
+  (`preview-2`) so compatible installed preview builds can fetch JavaScript and
   bundled-asset updates from the `preview` channel on launch. Production builds
   continue to use `runtimeVersion.policy: "appVersion"`.
 - `mobile/eas.json` binds the `preview` (Android), `ios-simulator`, and

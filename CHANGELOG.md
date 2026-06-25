@@ -6,6 +6,10 @@
   for an available update now fetches it and exposes a working restart/apply
   action only after a new update is actually downloaded. No-update and error
   paths no longer show a misleading restart prompt.
+- Issue #369: Bumped the preview OTA runtime silo from `preview-1` to
+  `preview-2` for the Expo SDK 56 native runtime change, keeping SDK-56 preview
+  updates separate from existing SDK-54 preview installs while leaving
+  production `runtimeVersion.policy: "appVersion"` unchanged.
 
 ## 0.79.3 - 2026-06-25
 
