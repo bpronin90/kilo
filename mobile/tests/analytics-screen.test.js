@@ -1118,4 +1118,17 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
     const status = deriveRoutineStatus(sectionsFor(SIX_SESSION_RAW), note, history);
     expect(status.sessionsSinceDeload).toBe(3);
   });
+
+  test('mixed old/new history selects the correct latest deload boundary (#371)', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
+    // Old record: session_count=3, ordinal=4 (no flag) → normalized boundary=3.
+    // New record: session_count=4, ordinal=4, flag=true → normalized boundary=4.
+    // New record has higher boundary; with 5 total sessions: 5-4=1 (not 5-4+1=2).
+    const history = [
+      { id: 'dl_old', completed_at: '2026-04-01T00:00:00.000Z', session_count: 3, deload_session_ordinal: 4 },
+      { id: 'dl_new', completed_at: '2026-04-20T00:00:00.000Z', session_count: 4, deload_session_ordinal: 4, deload_ordinal_is_count: true },
+    ];
+    const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(1);
+  });
 });
