@@ -25,6 +25,14 @@ since been applied to and exposed in the shared Supabase project
 local gitignored `mobile/.env`); with no env config it runs entirely on
 AsyncStorage, and signed-out users stay local-only either way.
 
+As of issue #367, the active mobile runtime is Expo SDK 56 with React Native
+0.85.x and React 19.2.x. The SDK upgrade cleared the `postcss` and `js-yaml`
+moderate dependency advisories that were tied to the previous Expo/Jest
+dependency graph; the remaining moderate `uuid` advisory is intentionally
+tracked as separate dev-tooling work. Because SDK 56 changes the native runtime,
+shipping this upgrade requires fresh Android/iOS native builds; OTA/EAS Update
+cannot move installed SDK-54 builds onto SDK 56.
+
 Roadmap status:
 
 - MVP4.0 through MVP4.5 are complete roadmap passes. Their roadmap documents
@@ -867,7 +875,11 @@ placeholder artwork.
 
 The Expo web target is configured for static export with Metro and single-output
 web output in `mobile/app.json`. `npx expo export --platform web` now emits the
-static web artifact from `mobile/`.
+static web artifact from `mobile/`. The SDK 56 upgrade validated the local web
+export pre-flight and a headless Chromium boot pass against the exported app;
+live Cloudflare Pages verification still requires the pushed issue branch or a
+superseding PR because that build configuration is account-side rather than
+tracked in the repository.
 
 Desktop web has the minimum local-data usability fallbacks needed before backend
 work: non-Home tab roots render an explicit web-only Home back control, while a
@@ -876,8 +888,10 @@ the More menu. Wide web viewports center the single-column app within a 640px
 content cap, Log edit entry is available through explicit single-press edit
 controls, and Weight plus linked Log deload date edits use DOM
 `input type="date"` controls on web while native Android keeps the existing
-hardware-back and native `DateTimePicker` paths. Local-data web smoke
-verification and hosting remain follow-on Phase 2 work.
+hardware-back and native `DateTimePicker` paths. Local exported-web boot is now
+covered by the documented pre-flight plus browser boot check; production static
+hosting remains dependent on the selected host serving `index.html` as the SPA
+fallback.
 
 **iOS device build blockers:** the `ios-device` profile uses internal
 (ad hoc) distribution, which requires an Apple Developer account and the target
