@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.79.4 - 2026-06-25
+
+- Issue #368: Fixed the About screen's manual OTA update control so checking
+  for an available update now fetches it and exposes a working restart/apply
+  action only after a new update is actually downloaded. No-update and error
+  paths no longer show a misleading restart prompt.
+
 ## 0.79.3 - 2026-06-25
 
 - Issue #367: Upgraded the mobile app to Expo SDK 56 with the aligned React
