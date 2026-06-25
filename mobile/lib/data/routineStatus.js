@@ -88,7 +88,14 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
 }
 
 function _deloadSessionAnchor(record) {
-  if (record?.deload_session_ordinal != null) return Number(record.deload_session_ordinal);
+  if (record?.deload_session_ordinal != null) {
+    const ordinal = Number(record.deload_session_ordinal);
+    const count = record?.session_count != null ? Number(record.session_count) : 0;
+    // Legacy records stored ordinal as count+1 ("first post-deload session").
+    // Normalize to pre-deload count so the formula routineSessions - anchor is uniform.
+    if (count > 0 && ordinal === count + 1) return count;
+    return ordinal;
+  }
   if (record?.session_count != null) return Number(record.session_count);
   return null;
 }

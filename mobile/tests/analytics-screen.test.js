@@ -1106,4 +1106,15 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
     const status = deriveRoutineStatus(sectionsFor(SIX_SESSION_RAW), note, history);
     expect(status.sessionsSinceDeload).toBe(3);
   });
+
+  test('legacy ordinal=count+1 records read correctly after backward-compat normalization (#371)', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
+    // Record created under old logSessionCount+1 semantic: count=3, ordinal=4.
+    // After 3 post-deload sessions (6 total), should still show 3 since deload.
+    const SIX_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
+      '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3, deload_session_ordinal: 4 }];
+    const status = deriveRoutineStatus(sectionsFor(SIX_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(3);
+  });
 });
