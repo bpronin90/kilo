@@ -1070,8 +1070,8 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('ordinal anchor produces correct sessions-since-deload in deriveRoutineStatus', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // 5 sessions, deload ordinal = 4 → 2 sessions after deload (sessions 4 and 5)
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 0, deload_session_ordinal: 4 }];
+    // 5 sessions, pre-deload count = 3 → 2 sessions after deload (sessions 4 and 5)
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 0, deload_session_ordinal: 3 }];
     const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
     expect(status.sessionsLogged).toBe(5);
     expect(status.sessionsSinceDeload).toBe(2);
@@ -1079,21 +1079,31 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('ordinal overrides stale session_count and check-in dates', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z', session_checkins: checkinsFromDates(FIVE_WEEK_DATES) };
-    // session_count=99 is stale; deload_session_ordinal=6 takes priority.
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 6 }];
+    // session_count=99 is stale; deload_session_ordinal=5 takes priority.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5 }];
     const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
-    // ordinal=6 with totalSessions=5: max(0, 5-6+1)=0
+    // ordinal=5 with totalSessions=5: max(0, 5-5)=0
     expect(status.sessionsSinceDeload).toBe(0);
   });
 
   test('freshly completed deload with matching ordinal reads 0', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // 4 sessions in note, deload_session_ordinal=5 → max(0, 4-5+1)=0
-    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    // 4 sessions in note, deload_session_ordinal=4 (pre-deload count) → max(0, 4-4)=0
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 4 }];
     const sections = parseWorkoutNote(
       ['Monday', '+ lifting', '1. Squat', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n')
     ).sections;
     const status = deriveRoutineStatus(sections, note, history);
     expect(status.sessionsSinceDeload).toBe(0);
+  });
+
+  test('3 post-deload sessions shows sessionsSinceDeload of 3, not 4 — off-by-one regression (#371)', () => {
+    const note = { saved_at: '2026-04-06T00:00:00.000Z' };
+    // User deloaded after 3 sessions (ordinal=3); now has 3 more (6 total).
+    const SIX_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
+      '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3, deload_session_ordinal: 3 }];
+    const status = deriveRoutineStatus(sectionsFor(SIX_SESSION_RAW), note, history);
+    expect(status.sessionsSinceDeload).toBe(3);
   });
 });

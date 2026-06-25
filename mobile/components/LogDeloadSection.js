@@ -46,7 +46,7 @@ export function LogDeloadSection({
   };
 
   const handleCompleteDeload = () => {
-    setDeloadOrdinalInput(String(logSessionCount + 1));
+    setDeloadOrdinalInput(String(logSessionCount));
     setShowDeloadOrdinalPrompt(true);
   };
 

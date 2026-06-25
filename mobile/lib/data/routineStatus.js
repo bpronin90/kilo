@@ -114,17 +114,15 @@ function _latestDeloadSessionRecord(deloadHistory) {
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 //
-// Session-count analytics deliberately ignore completed_at. New records use the
-// user-confirmed 1-based deload_session_ordinal; legacy records use session_count.
+// Session-count analytics deliberately ignore completed_at. Both deload_session_ordinal
+// and session_count represent the pre-deload session count (anchor); formula is the same.
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
   const latestSessionRecord = _latestDeloadSessionRecord(deloadHistory);
   const anchor = _deloadSessionAnchor(latestSessionRecord);
   const sessionsSinceDeload = !Number.isFinite(anchor)
     ? routineSessions
-    : latestSessionRecord?.deload_session_ordinal != null
-      ? Math.max(0, routineSessions - anchor + 1)
-      : Math.max(0, routineSessions - anchor);
+    : Math.max(0, routineSessions - anchor);
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
