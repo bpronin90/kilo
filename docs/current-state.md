@@ -645,7 +645,8 @@ how workout logging syntax works, and the current terminology glossary. About
 continues to surface attribution, displayed version, copyright notice, and an
 OTA Diagnostics panel covering the EAS channel, runtime version, current
 bundle (embedded vs. applied update), update-available/pending state, and a
-manual update check.
+manual update check that fetches available OTA updates and offers a restart
+action only after a new update is downloaded.
 
 ### Parser (`mobile/lib/parser.js`)
 

@@ -11,13 +11,26 @@ export function AboutScreen({ onBack }) {
   const { currentlyRunning, isUpdateAvailable, isUpdatePending, isChecking } = useUpdates();
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
   const handleCheckForUpdate = async () => {
     setChecking(true);
     setCheckResult(null);
+    setDownloaded(false);
     try {
       const result = await Updates.checkForUpdateAsync();
-      setCheckResult(result.isAvailable ? 'Update available — restart to apply.' : 'Already up to date.');
+      if (result.isAvailable) {
+        setCheckResult('Downloading update...');
+        const fetchResult = await Updates.fetchUpdateAsync();
+        if (fetchResult.isNew) {
+          setDownloaded(true);
+          setCheckResult('Update downloaded — restart to apply.');
+        } else {
+          setCheckResult('Already up to date.');
+        }
+      } else {
+        setCheckResult('Already up to date.');
+      }
     } catch (e) {
       setCheckResult('Check failed (run from a built binary to test OTA).');
     } finally {
@@ -73,13 +86,21 @@ export function AboutScreen({ onBack }) {
             </Text>
           </View>
         ) : null}
-        <Button
-          title="Check for Update"
-          loadingTitle="Checking…"
-          onPress={handleCheckForUpdate}
-          disabled={checking}
-          style={styles.diagButton}
-        />
+        {isUpdatePending || downloaded ? (
+          <Button
+            title="Restart to Apply"
+            onPress={() => Updates.reloadAsync()}
+            style={styles.diagButton}
+          />
+        ) : (
+          <Button
+            title="Check for Update"
+            loadingTitle="Checking…"
+            onPress={handleCheckForUpdate}
+            disabled={checking}
+            style={styles.diagButton}
+          />
+        )}
         {checkResult ? (
           <Text style={styles.diagCheckResult}>{checkResult}</Text>
         ) : null}
