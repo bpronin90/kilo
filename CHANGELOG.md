@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.79.2 - 2026-06-25
+
+- Issue #366: Removed the Account screen's per-entry auth session re-probe by
+  threading the app-shell `useAuthSession()` instance through More into Account.
+  Returning signed-in users now see the Signed In view immediately when opening
+  Account, while the cold-start restore loading gate from #365 remains in place.
+
 ## 0.79.1 - 2026-06-25
 
 - Issue #365: Fixed the Account screen's session-restore flicker by suppressing

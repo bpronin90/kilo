@@ -373,6 +373,9 @@ retains non-test commands such as `npm run audit`.
 - verifies configured Android builds render GitHub sign-in, open the system auth
   browser with `kilo://auth/callback`, exchange only the returned PKCE code, and
   surface cancellation, provider, missing-callback, and exchange failures
+- verifies Account consumes an injected app-shell auth object, preserving the
+  cold-start loading gate while rendering a resolved signed-in session
+  immediately without a signed-out form flash
 - verifies `serverExport()` calls `/functions/v1/account-export` with the
   current session JWT and returns the JSON payload on success
 - verifies export and deletion function errors are surfaced without clearing
