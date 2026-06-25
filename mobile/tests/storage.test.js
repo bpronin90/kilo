@@ -51,8 +51,11 @@ import {
   loadArchivedWeightGoals,
   saveArchivedWeightGoal,
   clearArchivedWeightGoals,
+  loadArchivedWeightGoalsRaw,
+  replaceArchivedWeightGoalsRaw,
 } from '../storage/entries/weightGoal';
 import { isGoalMet } from '../lib/data/weightGoal';
+import { getDirtyRecords, SYNC_TABLES, resetStampClockForTests } from '../storage/syncQueue';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -1451,6 +1454,62 @@ describe('archived weight goal storage', () => {
   test('saveArchivedWeightGoal returns the saved record', async () => {
     const result = await saveArchivedWeightGoal(AG1);
     expect(result).toEqual(AG1);
+  });
+
+  test('loadArchivedWeightGoalsRaw returns same list including sync fields', async () => {
+    const stamped = { ...AG1, updated_at: '2026-09-02T08:00:01.000Z', client_id: 'c_test', deleted_at: null };
+    const list = [stamped];
+    await replaceArchivedWeightGoalsRaw(list);
+    const raw = await loadArchivedWeightGoalsRaw();
+    expect(raw).toHaveLength(1);
+    expect(raw[0].updated_at).toBe('2026-09-02T08:00:01.000Z');
+    expect(raw[0].client_id).toBe('c_test');
+  });
+
+  test('replaceArchivedWeightGoalsRaw overwrites the full list', async () => {
+    await saveArchivedWeightGoal(AG1);
+    await replaceArchivedWeightGoalsRaw([AG2]);
+    const raw = await loadArchivedWeightGoalsRaw();
+    expect(raw).toHaveLength(1);
+    expect(raw[0].id).toBe(AG2.id);
+  });
+});
+
+// ── archived goal sync dirty-queue integration ────────────────────────────────
+
+describe('archived weight goal sync dirty-queue integration', () => {
+  beforeEach(() => {
+    resetStampClockForTests();
+  });
+
+  test('SYNC_TABLES includes archived_weight_goals', () => {
+    expect(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS).toBe('archived_weight_goals');
+  });
+
+  test('getDirtyRecords returns an archived goal enqueued via enqueueDirty path', async () => {
+    // Simulate what archiveGoal does: stamp + enqueue via the sync infrastructure.
+    const { getClientId, stampWrite, enqueueDirty } = require('../storage/syncQueue');
+    const clientId = await getClientId();
+    const base = { id: 'ag_test_1', target_weight: 175, archived_at: '2026-09-02T08:00:00.000Z' };
+    const stamped = stampWrite(base, clientId);
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stamped);
+    const dirty = await getDirtyRecords(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS);
+    expect(dirty).toHaveLength(1);
+    expect(dirty[0].id).toBe('ag_test_1');
+    expect(dirty[0].updated_at).toBeTruthy();
+    expect(dirty[0].client_id).toBe(clientId);
+    expect(dirty[0].deleted_at).toBeNull();
+  });
+
+  test('re-archiving same id overwrites prior dirty snapshot without growing queue', async () => {
+    const { getClientId, stampWrite, enqueueDirty } = require('../storage/syncQueue');
+    const clientId = await getClientId();
+    const base = { id: 'ag_test_dup', target_weight: 175, archived_at: '2026-09-02T08:00:00.000Z' };
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stampWrite(base, clientId));
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stampWrite({ ...base, target_weight: 180 }, clientId));
+    const dirty = await getDirtyRecords(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS);
+    expect(dirty).toHaveLength(1);
+    expect(dirty[0].target_weight).toBe(180);
   });
 });
 
