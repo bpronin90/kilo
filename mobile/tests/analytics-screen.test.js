@@ -1,6 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
+import { deriveAnalytics } from '../screens/analytics/analyticsDerivations';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 import {
@@ -568,6 +569,52 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
     const component = setup();
     const root = component.root;
     expect(hasText(root, '1K total over sessions')).toBe(false);
+  });
+});
+
+// ── 1k series alignment — allSections not currentSections (issue #370) ───────
+
+describe('deriveAnalytics 1k series — uses allSections to include synced sessions', () => {
+  // Reproduces issue #370: 1k chart stuck at 2 sessions when new sessions exist
+  // only in historical notes rather than in the current note.
+  //
+  // Setup: currentNote has 2 logged sessions per lift; a historical note has 1
+  // additional session per lift. allSections = historical + current = 3 sessions.
+  // With currentSections only, the series stops at 2.
+
+  const historicalText = [
+    'Monday', '+ lifting', '1. DB Bench Press', '- 135 5',
+    '', 'Wednesday', '+ lifting', '1. Squat', '- 225 5',
+    '', 'Friday', '+ lifting', '1. Deadlift', '- 315 5',
+  ].join('\n');
+
+  const currentText = [
+    'Monday', '+ lifting', '1. DB Bench Press', '- 140 5', '- 145 5',
+    '', 'Wednesday', '+ lifting', '1. Squat', '- 230 5', '- 235 5',
+    '', 'Friday', '+ lifting', '1. Deadlift', '- 320 5', '- 325 5',
+  ].join('\n');
+
+  const oneKSelections = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+
+  test('series has 3 points when historical note adds one earlier session per lift', () => {
+    const historicalSections = parseWorkoutNote(historicalText).sections;
+    const currentSections = parseWorkoutNote(currentText).sections;
+    const allSections = [...historicalSections, ...currentSections];
+
+    const analytics = deriveAnalytics({ allSections, currentSections }, {}, oneKSelections, 1.0);
+
+    expect(analytics.oneKSeries.length).toBe(3);
+    expect(analytics.oneKSeries[2].session).toBe(3);
+  });
+
+  test('series stops at 2 when only currentSections are used — confirms the pre-fix behavior', () => {
+    const historicalSections = parseWorkoutNote(historicalText).sections;
+    const currentSections = parseWorkoutNote(currentText).sections;
+
+    // Simulate the old (broken) behavior: pass currentSections as allSections too.
+    const analytics = deriveAnalytics({ allSections: currentSections, currentSections }, {}, oneKSelections, 1.0);
+
+    expect(analytics.oneKSeries.length).toBe(2);
   });
 });
 

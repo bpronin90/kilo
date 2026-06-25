@@ -32,8 +32,8 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
 
   const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
   const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
-  const oneK = derive1kTotal(currentSections, oneKSelections);
-  const oneKSeries = derive1kTotalSeries(currentSections, oneKSelections);
+  const oneK = derive1kTotal(allSections, oneKSelections);
+  const oneKSeries = derive1kTotalSeries(allSections, oneKSelections);
 
   return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
 }
