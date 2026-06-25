@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.80.0 - 2026-06-25
+
+- Issue #372: Added the completed weight-goal lifecycle. Active goals now show a
+  completed state when the latest weight reaches the target, can be archived
+  explicitly, clear active-goal analytics after archive, and persist archived
+  goal history locally and through Supabase sync/export/delete paths. Added
+  focused UI, storage, sync, RLS, and account lifecycle coverage. Follow-up
+  issue #373 tracks adding a visible archived-goal history section.
+
 ## 0.79.6 - 2026-06-25
 
 - Issue #371: Fixed the Analytics fatigue/deload session count so

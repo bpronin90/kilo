@@ -506,9 +506,11 @@ The real native app path now has a modular React Native shell:
   `rep_drop_off_flags`, but the active save pipeline no longer writes that
   surface. It also
   persists a lightweight
-  weight-goal record under `kilo_weight_goal` with `target_weight`,
-  `target_date`, optional `start_weight`, and `saved_at`, plus a persisted
-  Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
+  active weight-goal record under `kilo_weight_goal` with `target_weight`,
+  `target_date`, optional `start_weight`, and `saved_at`, plus archived
+  completed weight goals under `kilo_archived_weight_goals` so completed
+  goals can clear the active-goal analytics path without losing history. It
+  also persists a Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
   weight-date-edit setting under `kilo_weight_date_edit_enabled`, separate
   fatigue-tracking and deload-mode feature toggles under
   `kilo_fatigue_tracking_enabled` and `kilo_deload_mode_enabled`, a separate
@@ -524,8 +526,8 @@ The real native app path now has a modular React Native shell:
   single-note key is now also migrated forward into the notebook model by
   synthesizing a `Routine 1` current entry. The local Data & Backup recovery
   path now exports a versioned v3 snapshot (weight entries, workout notes,
-  current workout id, optional weight goal, optional fatigue multiplier, and
-  completed deload history),
+  current workout id, optional active weight goal, archived completed weight
+  goals, optional fatigue multiplier, and completed deload history),
   validates that payload before
   any write, restores the full multi-note model plus weight goal, fatigue
   multiplier, and deload history on v2/v3 import, and still accepts older v1
@@ -775,7 +777,9 @@ transaction-rollback dry run, then applied for real), and an unauthenticated
 REST call is correctly denied (`permission denied for schema kilo`). The app
 enters cloud-aware mode only when `EXPO_PUBLIC_SUPABASE_URL` /
 `EXPO_PUBLIC_SUPABASE_ANON_KEY` are configured; absent that it runs entirely
-local, and signed-out users stay local-only regardless. The Phase 4 bootstrap
+local, and signed-out users stay local-only regardless. Archived completed
+weight goals have their own owner-scoped `kilo.archived_weight_goals` table and
+participate in account export, account delete, and the cloud sync loop. The Phase 4 bootstrap
 import path now exists in the cloud adapter (#319): `bootstrapFromLocal` reads
 the mapped AsyncStorage keys read-only and upserts them idempotently into the
 note-first `kilo` tables, with legacy `kilo_workout_sessions` synthesized into

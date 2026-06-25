@@ -19,7 +19,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js/data/ · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
     subgraph supabase["Supabase Project"]
         EdgeExport["account-export Edge Function"]
@@ -197,8 +197,11 @@ screen also saves an optional weight-goal record (target weight + target date),
 derives direction and required weekly pace from a centralized current-weight
 resolution contract in `mobile/lib/data.js` (latest saved entry by date when
 present, otherwise the saved goal `start_weight`, or the in-progress typed
-fallback while editing), and renders advisory warnings without blocking the
-save path. Shared prior-window comparison ownership for weight trends also now
+fallback while editing), renders advisory warnings without blocking the
+save path, detects when the active goal has been met, and lets the user archive
+the completed goal so current analytics clear back to the new-goal path while
+the completed target/start/completion fields are preserved as history. Shared
+prior-window comparison ownership for weight trends also now
 lives in `computeWeightTrendSummary()` in `mobile/lib/data.js`, and Weight,
 Home, and Analytics now all consume that shared weight/goal derivation contract
 through `deriveWeightGoalAnalytics()` instead of carrying screen-local
@@ -308,6 +311,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 |-----|----------|
 | `kilo_weight_entries` | JSON array of native weight entries |
 | `kilo_weight_goal` | Optional native weight-goal object |
+| `kilo_archived_weight_goals` | JSON array of archived completed weight-goal records, including target/start/completed weights plus archive/sync metadata |
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |

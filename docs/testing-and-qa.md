@@ -305,7 +305,8 @@ retains non-test commands such as `npm run audit`.
 - verifies empty-load behavior, newest-first sorting, update misses, workout
   note save/overwrite/clear behavior, tracked-exercise persistence across note
   edits, note-first Log raw-text save/edit/parser-display coverage,
-  weight-entry value/note/date correction coverage, invalid date rejection,
+  weight-entry value/note/date correction coverage, archived weight-goal
+  persistence/raw-list coverage, invalid date rejection,
   delete-refresh ordering, optional user-profile persistence, the deload
   dual-write linkage contract (`note_id` plus `Deload · ` note filtering and
   deletion pattern), tolerance for pre-#257 history rows without `note_id`, direct
@@ -340,6 +341,9 @@ retains non-test commands such as `npm run audit`.
 - verifies advisory warning copy for aggressive and unrealistic pace states
 - exercises the saved-goal display path with `start_weight` fallback coverage
   rather than only pure helper-level calculation tests
+- covers the met-goal lifecycle UI, including the `Goal Met!` badge, archive
+  action visibility only after the target is reached, and preservation of the
+  normal in-progress goal actions
 
 ### `mobile/tests/weight-screen.test.js`
 
@@ -366,6 +370,16 @@ retains non-test commands such as `npm run audit`.
 - verifies the goal target-date picker exposes the native `onChange`
   callback and updates the visible MM-DD-YYYY label when a new date is
   selected
+
+### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
+
+- cover archived weight-goal cloud transport wiring so dirty
+  `archived_weight_goals` records are pushed, remote archived goals are pulled
+  into local storage, and the sync result set includes the table alongside
+  weight entries and workout notes
+- keep the fake offline-sync cloud table map aligned with all tables processed
+  by the sync adapter, preventing new sync tables from regressing existing
+  offline create/edit/delete tests
 
 ### `mobile/tests/account-lifecycle-ui.test.js`
 
