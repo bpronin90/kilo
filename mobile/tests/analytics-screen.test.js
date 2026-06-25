@@ -1070,8 +1070,8 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('ordinal anchor produces correct sessions-since-deload in deriveRoutineStatus', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // 5 sessions, pre-deload count = 3 → 2 sessions after deload (sessions 4 and 5)
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 0, deload_session_ordinal: 3 }];
+    // New-format record (deload_ordinal_is_count=true): pre-deload count=3, 5 total → 2 after deload.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 0, deload_session_ordinal: 3, deload_ordinal_is_count: true }];
     const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
     expect(status.sessionsLogged).toBe(5);
     expect(status.sessionsSinceDeload).toBe(2);
@@ -1079,16 +1079,16 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('ordinal overrides stale session_count and check-in dates', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z', session_checkins: checkinsFromDates(FIVE_WEEK_DATES) };
-    // session_count=99 is stale; deload_session_ordinal=5 takes priority.
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5 }];
+    // New-format record: session_count=99 is stale; ordinal=5 (pre-deload count) takes priority.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5, deload_ordinal_is_count: true }];
     const status = deriveRoutineStatus(sectionsFor(FIVE_SESSION_RAW), note, history);
-    // ordinal=5 with totalSessions=5: max(0, 5-5)=0
+    // ordinal=5 equals routineSessions=5: max(0, 5-5)=0
     expect(status.sessionsSinceDeload).toBe(0);
   });
 
   test('freshly completed deload with matching ordinal reads 0', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // 4 sessions in note, deload_session_ordinal=4 (pre-deload count) → max(0, 4-4)=0
+    // ordinal=4 equals session_count=4: auto-detected as count-semantic; max(0, 4-4)=0
     const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 4 }];
     const sections = parseWorkoutNote(
       ['Monday', '+ lifting', '1. Squat', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n')
@@ -1099,7 +1099,8 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('3 post-deload sessions shows sessionsSinceDeload of 3, not 4 — off-by-one regression (#371)', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // User deloaded after 3 sessions (ordinal=3); now has 3 more (6 total).
+    // Existing record where user entered count directly (ordinal=session_count=3).
+    // Auto-detected as count-semantic (no flag needed); 6 total → 6-3=3.
     const SIX_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
       '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
     const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3, deload_session_ordinal: 3 }];
@@ -1107,10 +1108,10 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
     expect(status.sessionsSinceDeload).toBe(3);
   });
 
-  test('legacy ordinal=count+1 records read correctly after backward-compat normalization (#371)', () => {
+  test('legacy ordinal=count+1 records read correctly via old formula (#371)', () => {
     const note = { saved_at: '2026-04-06T00:00:00.000Z' };
-    // Record created under old logSessionCount+1 semantic: count=3, ordinal=4.
-    // After 3 post-deload sessions (6 total), should still show 3 since deload.
+    // Old-format record (no flag, ordinal=count+1=4): uses old formula routineSessions-ordinal+1.
+    // 6 total sessions, anchor=4: max(0, 6-4+1)=3.
     const SIX_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
       '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5', '- 225x5'].join('\n');
     const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 3, deload_session_ordinal: 4 }];

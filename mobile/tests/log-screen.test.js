@@ -289,8 +289,8 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
   const NOTE = { saved_at: '2026-04-06T00:00:00.000Z' };
 
   test('ordinal takes precedence over stale session_count', () => {
-    // session_count=99 is stale; ordinal=4 (pre-deload count) wins via deriveRoutineStatus.
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 4 }];
+    // New-format record: session_count=99 is stale; ordinal=4 (pre-deload count, deload_ordinal_is_count=true) wins.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 4, deload_ordinal_is_count: true }];
     expect(deriveRoutineStatus(sectionsWithSessions(5), NOTE, history).sessionsSinceDeload).toBe(1);
     expect(deriveRoutineStatus(sectionsWithSessions(4), NOTE, history).sessionsSinceDeload).toBe(0);
     expect(deriveRoutineStatus(sectionsWithSessions(7), NOTE, history).sessionsSinceDeload).toBe(3);
@@ -314,8 +314,8 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('user-corrected ordinal counts correctly for partial-import scenario', () => {
     // App note has 2 sessions (imported last 2 of a real 14-session routine).
-    // Default prefill would be 2; user corrects to 14 (real pre-deload session count).
-    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 14 }];
+    // Default prefill would be 2; user corrects to 14 (real pre-deload count, deload_ordinal_is_count=true).
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 14, deload_ordinal_is_count: true }];
     // Before the note accumulates enough sessions past anchor 14, still 0.
     expect(deriveRoutineStatus(sectionsWithSessions(2), NOTE, history).sessionsSinceDeload).toBe(0);
     // Once note reaches session 15 (one beyond ordinal 14), first post-deload session = 1.

@@ -88,14 +88,7 @@ export function elapsedWeeksOnRoutine(note, nowMs) {
 }
 
 function _deloadSessionAnchor(record) {
-  if (record?.deload_session_ordinal != null) {
-    const ordinal = Number(record.deload_session_ordinal);
-    const count = record?.session_count != null ? Number(record.session_count) : 0;
-    // Legacy records stored ordinal as count+1 ("first post-deload session").
-    // Normalize to pre-deload count so the formula routineSessions - anchor is uniform.
-    if (count > 0 && ordinal === count + 1) return count;
-    return ordinal;
-  }
+  if (record?.deload_session_ordinal != null) return Number(record.deload_session_ordinal);
   if (record?.session_count != null) return Number(record.session_count);
   return null;
 }
@@ -121,15 +114,30 @@ function _latestDeloadSessionRecord(deloadHistory) {
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 //
-// Session-count analytics deliberately ignore completed_at. Both deload_session_ordinal
-// and session_count represent the pre-deload session count (anchor); formula is the same.
+// Session-count analytics deliberately ignore completed_at.
+//
+// deload_session_ordinal semantics:
+//   deload_ordinal_is_count=true  → ordinal = pre-deload count; formula: routineSessions - anchor
+//   ordinal === session_count     → user entered count directly (bug/early); same formula
+//   otherwise (old format)        → ordinal = first post-deload session; formula: routineSessions - anchor + 1
+//   session_count (no ordinal)    → pre-deload count; formula: routineSessions - anchor
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
   const latestSessionRecord = _latestDeloadSessionRecord(deloadHistory);
   const anchor = _deloadSessionAnchor(latestSessionRecord);
-  const sessionsSinceDeload = !Number.isFinite(anchor)
-    ? routineSessions
-    : Math.max(0, routineSessions - anchor);
+  let sessionsSinceDeload;
+  if (!Number.isFinite(anchor)) {
+    sessionsSinceDeload = routineSessions;
+  } else if (latestSessionRecord?.deload_session_ordinal != null) {
+    const r = latestSessionRecord;
+    const countSemantic = r.deload_ordinal_is_count ||
+      (r.session_count != null && anchor === Number(r.session_count));
+    sessionsSinceDeload = countSemantic
+      ? Math.max(0, routineSessions - anchor)
+      : Math.max(0, routineSessions - anchor + 1);
+  } else {
+    sessionsSinceDeload = Math.max(0, routineSessions - anchor);
+  }
   return {
     sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
