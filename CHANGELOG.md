@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.79.6 - 2026-06-25
+
+- Issue #371: Fixed the Analytics fatigue/deload session count so
+  user-confirmed deload counts derive from the actual pre-deload session count
+  instead of overcounting by one. New deload records now mark count-semantic
+  ordinals explicitly, while legacy first-post-deload ordinal records remain
+  compatible and mixed old/new histories are ranked on a normalized deload
+  boundary.
+
 ## 0.79.5 - 2026-06-25
 
 - Issue #370: Fixed the Analytics 1K total and `1K total over sessions` chart

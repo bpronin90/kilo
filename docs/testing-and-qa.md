@@ -279,7 +279,8 @@ retains non-test commands such as `npm run audit`.
   em-dash state for the weeks metric
 - verifies Analytics derives `sessions since deload` from stored session
   anchors rather than deload dates or check-in chronology, including date-edit
-  and multiple-deload ordering regressions
+  and multiple-deload ordering regressions, count-vs-first-post-deload ordinal
+  compatibility, and mixed old/new deload-history boundary ordering
 - verifies feature-toggle gating so the `Fatigue` section disappears when
   fatigue tracking is off and the `Session Health` section disappears when
   deload mode is off while unrelated Analytics sections remain visible
