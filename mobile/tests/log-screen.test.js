@@ -289,21 +289,21 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
   const NOTE = { saved_at: '2026-04-06T00:00:00.000Z' };
 
   test('ordinal takes precedence over stale session_count', () => {
-    // session_count=99 is stale; ordinal=5 wins via deriveRoutineStatus.
-    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 5 }];
+    // New-format record: session_count=99 is stale; ordinal=4 (pre-deload count, deload_ordinal_is_count=true) wins.
+    const history = [{ id: 'dl', completed_at: '2026-04-20T12:00:00.000Z', session_count: 99, deload_session_ordinal: 4, deload_ordinal_is_count: true }];
     expect(deriveRoutineStatus(sectionsWithSessions(5), NOTE, history).sessionsSinceDeload).toBe(1);
     expect(deriveRoutineStatus(sectionsWithSessions(4), NOTE, history).sessionsSinceDeload).toBe(0);
     expect(deriveRoutineStatus(sectionsWithSessions(7), NOTE, history).sessionsSinceDeload).toBe(3);
   });
 
   test('freshly completed deload (no new sessions yet) reads 0', () => {
-    // 4 sessions in note, ordinal=5 → max(0, 4-5+1)=0.
-    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    // 4 sessions in note, ordinal=4 (pre-deload count) → max(0, 4-4)=0.
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 4 }];
     expect(deriveRoutineStatus(sectionsWithSessions(4), NOTE, history).sessionsSinceDeload).toBe(0);
   });
 
   test('first post-deload session reads 1', () => {
-    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 5 }];
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 4, deload_session_ordinal: 4 }];
     expect(deriveRoutineStatus(sectionsWithSessions(5), NOTE, history).sessionsSinceDeload).toBe(1);
   });
 
@@ -314,11 +314,11 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
 
   test('user-corrected ordinal counts correctly for partial-import scenario', () => {
     // App note has 2 sessions (imported last 2 of a real 14-session routine).
-    // Default prefill would be 3; user corrects to 15 (real next ordinal).
-    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 15 }];
-    // Before the note accumulates enough sessions, still 0.
+    // Default prefill would be 2; user corrects to 14 (real pre-deload count, deload_ordinal_is_count=true).
+    const history = [{ id: 'dl', completed_at: '2026-05-01T00:00:00.000Z', session_count: 2, deload_session_ordinal: 14, deload_ordinal_is_count: true }];
+    // Before the note accumulates enough sessions past anchor 14, still 0.
     expect(deriveRoutineStatus(sectionsWithSessions(2), NOTE, history).sessionsSinceDeload).toBe(0);
-    // Once note reaches ordinal 15, first post-deload session = 1.
+    // Once note reaches session 15 (one beyond ordinal 14), first post-deload session = 1.
     expect(deriveRoutineStatus(sectionsWithSessions(15), NOTE, history).sessionsSinceDeload).toBe(1);
     expect(deriveRoutineStatus(sectionsWithSessions(17), NOTE, history).sessionsSinceDeload).toBe(3);
   });
@@ -352,8 +352,8 @@ describe('deload ordinal prompt: prefill and editability contract (#284)', () =>
     src = readLogScreenSource();
   });
 
-  test('prompt is prefilled with logSessionCount + 1', () => {
-    expect(src).toMatch(/setDeloadOrdinalInput\(String\(logSessionCount \+ 1\)\)/);
+  test('prompt is prefilled with logSessionCount (pre-deload session count)', () => {
+    expect(src).toMatch(/setDeloadOrdinalInput\(String\(logSessionCount\)\)/);
   });
 
   test('prompt input is editable: onChangeText wired to setDeloadOrdinalInput', () => {

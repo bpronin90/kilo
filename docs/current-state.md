@@ -391,10 +391,12 @@ The real native app path now has a modular React Native shell:
   `Fatigue` parent section. That section contains a
   `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
   `Approaching` / `Deload`) driven entirely by session-ordinal data. Newly
-  completed deloads now persist a user-confirmed `deload_session_ordinal`,
-  prefilled from the current routine's next inferred session and editable
-  before confirmation; legacy deload records still fall back to stored
-  `session_count`. On the Analytics surface, `sessions since deload` and
+  completed deloads now persist a user-confirmed `deload_session_ordinal`
+  prefilled from the current routine's inferred pre-deload session count,
+  mark that ordinal as count-semantic, and remain editable before
+  confirmation; legacy first-post-deload ordinal records and records that only
+  have `session_count` remain compatible through normalized deload-boundary
+  comparison. On the Analytics surface, `sessions since deload` and
   `sessions logged` are the only routine-status metrics shown; no calendar
   metrics appear in this panel. The gauge marker, zone labels, and caption
   always render, while `Deload mode` hides only the `Since deload` stat. The

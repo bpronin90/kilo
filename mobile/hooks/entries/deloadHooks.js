@@ -96,6 +96,7 @@ export function useDeloadHistory() {
       completed_at,
       session_count: sessionCount,
       deload_session_ordinal: deloadSessionOrdinal ?? null,
+      deload_ordinal_is_count: true,
       note_id: noteId,
     };
     await Storage.appendDeloadHistory(record);
