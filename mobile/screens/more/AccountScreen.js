@@ -128,6 +128,13 @@ export function AccountScreen({ onBack }) {
           <CloudSyncRecovery user={auth.user} />
           <AccountLifecycle auth={auth} />
         </View>
+      ) : auth.loading ? (
+        // Configured but the initial session-restore probe is still in flight.
+        // Suppress the Sign In form during this window so a restored/persisted
+        // session does not flash the signed-out view before it resolves
+        // (mirrors the #307 Home first-paint gate). When unconfigured, loading
+        // is already false, so the local-only message above is unaffected.
+        <View style={styles.accountBlock} accessibilityLabel="Account loading" />
       ) : (
         <View style={styles.accountBlock}>
           <SectionTitle>Sign In</SectionTitle>
