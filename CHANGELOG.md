@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.79.3 - 2026-06-25
+
+- Issue #367: Upgraded the mobile app to Expo SDK 56 with the aligned React
+  Native, React, Expo module, and Jest Expo dependency set. The web export now
+  resolves the SDK 56 icon/font path, `postcss` and `js-yaml` moderate
+  advisories are cleared, the high-severity audit gate remains green, and the
+  remaining `uuid` advisory is intentionally left to separate dev-tooling work.
+  This native runtime upgrade requires fresh native builds; OTA cannot move
+  SDK-54 installs to SDK 56.
+
 ## 0.79.2 - 2026-06-25
 
 - Issue #366: Removed the Account screen's per-entry auth session re-probe by

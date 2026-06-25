@@ -3,16 +3,10 @@
     "name": "Kilo",
     "slug": "kilo-native",
     "scheme": "kilo",
-    "version": "0.79.2",
+    "version": "0.79.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f4efe5"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.benpronin.kilo"
@@ -22,8 +16,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f4efe5"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -31,7 +24,15 @@
       "output": "single"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#f4efe5"
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/60e052a9-629b-4e48-ae58-52642e951c9c",

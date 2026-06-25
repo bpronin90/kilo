@@ -452,6 +452,12 @@ The following MVP behaviors have no automated test coverage:
 
 A CI workflow (`.github/workflows/audit.yml`) runs `npm audit --audit-level=high` against both the root and `mobile/` package trees on every push to `main`, on every pull request, and on a weekly schedule (Mondays 06:00 UTC). The job fails if any high-severity or critical vulnerability is found. The weekly run catches new advisories that land against an otherwise-unchanged lockfile before unrelated work merges.
 
+The Expo SDK 56 upgrade in issue #367 cleared the prior mobile `postcss` and
+`js-yaml` moderate advisories while preserving the high-severity gate. A
+moderate `uuid` advisory remains on the mobile dependency tree through
+dev-tooling paths and is tracked separately; it is not part of the blocking
+high-severity gate.
+
 Run the same check locally:
 
 ```sh
