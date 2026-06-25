@@ -4,7 +4,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
-import { useAuthSession } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
@@ -16,8 +15,11 @@ const KILO_AUTH_REDIRECT = 'kilo://auth/callback';
 // it does not gate any local-only app behavior. When cloud accounts are not
 // configured in the build, it explains that local data still works without an
 // account.
-export function AccountScreen({ onBack }) {
-  const auth = useAuthSession();
+// `auth` is the app-shell useAuthSession() instance threaded down from App.js
+// via MoreScreen. Consuming the shared instance (instead of calling the hook
+// here) means the session is already resolved when this screen mounts, so the
+// Signed-In view renders immediately with no per-mount re-probe (#366).
+export function AccountScreen({ onBack, auth }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('');

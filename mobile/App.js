@@ -287,6 +287,7 @@ export default function App() {
         <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MoreScreen
             isActive={activeTab === 'More'}
+            auth={auth}
             registerBackConsumer={registerBackConsumer}
             onOwnsBackChange={setTabOwnsBack}
             onNavigate={handleTabPress}
