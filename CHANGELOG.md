@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.79.5 - 2026-06-25
+
+- Issue #370: Fixed the Analytics 1K total and `1K total over sessions` chart
+  so the derivation uses all synced workout notes instead of only the active
+  note. Newly synced or historical note sessions now advance the 1K series when
+  the selected Big 3 lifts form complete aligned cycles.
+
 ## 0.79.4 - 2026-06-25
 
 - Issue #368: Fixed the About screen's manual OTA update control so checking

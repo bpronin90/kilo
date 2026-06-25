@@ -404,7 +404,9 @@ The real native app path now has a modular React Native shell:
   edit path. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
-  driven by a shared per-session Big-3 derivation. The screen now also includes
+  driven by a shared per-session Big-3 derivation across all synced workout
+  notes, so newly synced historical/current note sessions are included when
+  they form complete aligned Big-3 cycles. The screen now also includes
   a fatigue-tracking panel that stays collapsed by default into a signal-first
   summary row highlighting the most common rough reason when available and an
   unanswered-count alert when pending check-ins exist. Expanding the panel
