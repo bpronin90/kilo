@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
+import {
+  loadArchivedWeightGoals,
+  loadArchivedWeightGoalsRaw,
+  replaceArchivedWeightGoalsRaw,
+} from '../../storage/entries/weightGoal';
+import { getClientId, stampWrite, enqueueDirty, SYNC_TABLES } from '../../storage/syncQueue';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 
@@ -37,7 +43,55 @@ export function useWeightGoal() {
     notifyGoal();
   }, []);
 
-  return { goal, loading, save, clear };
+  const archiveGoal = useCallback(async (completedWeight) => {
+    if (!goal) return;
+    const now = new Date().toISOString();
+    const base = {
+      id: `ag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      target_weight: goal.target_weight ?? null,
+      target_date: goal.target_date ?? null,
+      start_weight: goal.start_weight ?? null,
+      start_date: goal.start_date ?? null,
+      completed_weight: completedWeight ?? null,
+      archived_at: now,
+      saved_at: now,
+    };
+    const clientId = await getClientId();
+    const stamped = stampWrite(base, clientId);
+    const list = await loadArchivedWeightGoalsRaw();
+    list.push(stamped);
+    await replaceArchivedWeightGoalsRaw(list);
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stamped);
+    await Storage.clearWeightGoal();
+    setGoal(null);
+    notifyGoal();
+  }, [goal]);
+
+  return { goal, loading, save, clear, archiveGoal };
+}
+
+let archivedGoalListeners = [];
+const notifyArchivedGoals = () => safeNotify(archivedGoalListeners);
+
+export function useArchivedWeightGoals() {
+  const [archivedGoals, setArchivedGoals] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(() => {
+    loadArchivedWeightGoals()
+      .then(setArchivedGoals)
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    archivedGoalListeners.push(refresh);
+    return () => {
+      archivedGoalListeners = archivedGoalListeners.filter(l => l !== refresh);
+    };
+  }, [refresh]);
+
+  return { archivedGoals, loading, refresh };
 }
 
 let weightListeners = [];

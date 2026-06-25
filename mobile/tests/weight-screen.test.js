@@ -135,7 +135,7 @@ describe('WeightScreen edit and delete correction flows', () => {
     });
 
     useEntries.useWeightEntries.mockReturnValue(makeMockReturn());
-    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
   // Walk up from each Text node containing `text` and return the first one
@@ -394,6 +394,7 @@ describe('WeightScreen Goals two-panel layout', () => {
       goal: { target_weight: 175, target_date: '2026-12-01', start_weight: 190 },
       save: jest.fn(),
       clear: jest.fn(),
+      archiveGoal: jest.fn(),
     });
     useEntries.useUserProfile = jest.fn().mockReturnValue(null);
   });
@@ -455,7 +456,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       remove: jest.fn(),
       update: jest.fn(),
     });
-    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
 
     let component;
     render.act(() => {
@@ -491,7 +492,7 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
       remove: jest.fn(),
       update: jest.fn(),
     });
-    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
 
     let component;
     render.act(() => {
@@ -559,6 +560,7 @@ describe('WeightScreen Goal Editor Live Preview', () => {
       goal: null,
       save: jest.fn(),
       clear: jest.fn(),
+      archiveGoal: jest.fn(),
     });
 
     let component;
@@ -639,6 +641,7 @@ describe('App weight saving local-date handling', () => {
       goal: null,
       save: jest.fn(),
       clear: jest.fn(),
+      archiveGoal: jest.fn(),
     });
 
     useEntries.useTrackedLifts.mockReturnValue({
@@ -746,7 +749,7 @@ describe('WeightScreen web date fallback (#314)', () => {
       remove: jest.fn(),
       update: jest.fn(),
     });
-    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
   test('renders a DOM date input instead of the native picker for new entries', () => {

@@ -18,7 +18,18 @@ import {
   buildBootstrapPlan,
   synthesizeSessionsNote,
   BootstrapError,
+  setCloudTransport,
+  sync,
 } from '../storage/cloudAdapter';
+import {
+  enqueueDirty,
+  stampWrite,
+  getClientId,
+  SYNC_TABLES,
+  resetClientIdCacheForTests,
+  resetStampClockForTests,
+} from '../storage/syncQueue';
+import { replaceArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -352,5 +363,92 @@ describe('bootstrap idempotency', () => {
     expect(secondCounts).toEqual(firstCounts);
     expect(secondCounts.weight_entries).toBe(1);
     expect(secondCounts.user_profile).toBe(1);
+  });
+});
+
+// ── sync adapter: archived_weight_goals transport ───────────────────────────
+//
+// Proves that archived_weight_goals is processed by the sync adapter (pushed
+// to and pulled from the transport layer), not merely accumulated in the dirty
+// queue. Uses an injected fake transport so no network or Supabase client is
+// needed.
+
+describe('sync adapter: archived_weight_goals transport', () => {
+  let pushed;
+  let remoteRows;
+  let fakeTransport;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+    pushed = {};
+    remoteRows = {};
+    fakeTransport = {
+      async pull(table, _cursor) {
+        return remoteRows[table] || [];
+      },
+      async push(table, records) {
+        pushed[table] = (pushed[table] || []).concat(records);
+      },
+    };
+    setCloudTransport(fakeTransport);
+  });
+
+  afterEach(() => {
+    setCloudTransport(null);
+  });
+
+  it('pushes dirty archived goals to the transport layer on sync()', async () => {
+    const clientId = await getClientId();
+    const base = {
+      id: 'ag_sync_test_1',
+      target_weight: 175,
+      archived_at: '2026-09-02T08:00:00.000Z',
+      saved_at: '2026-09-02T08:00:00.000Z',
+    };
+    const stamped = stampWrite(base, clientId);
+    // Simulate what archiveGoal does: write to local list and enqueue dirty.
+    await replaceArchivedWeightGoalsRaw([stamped]);
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, stamped);
+
+    const results = await sync();
+
+    // sync() returns one result per table; the archived_weight_goals pass exists.
+    const agResult = results.find((r) => r.table === SYNC_TABLES.ARCHIVED_WEIGHT_GOALS);
+    expect(agResult).toBeTruthy();
+    expect(agResult.pushed).toBe(1);
+
+    // The fake transport received the archived goal in its push call.
+    expect(pushed[SYNC_TABLES.ARCHIVED_WEIGHT_GOALS]).toHaveLength(1);
+    expect(pushed[SYNC_TABLES.ARCHIVED_WEIGHT_GOALS][0].id).toBe('ag_sync_test_1');
+  });
+
+  it('pulls remote archived goals into local storage on sync()', async () => {
+    const clientId = await getClientId();
+    const remote = stampWrite(
+      {
+        id: 'ag_remote_1',
+        target_weight: 180,
+        archived_at: '2026-10-01T08:00:00.000Z',
+        saved_at: '2026-10-01T08:00:00.000Z',
+      },
+      clientId
+    );
+    remoteRows[SYNC_TABLES.ARCHIVED_WEIGHT_GOALS] = [remote];
+
+    await sync();
+
+    const { loadArchivedWeightGoalsRaw: readRaw } = require('../storage/entries/weightGoal');
+    const local = await readRaw();
+    expect(local.some((r) => r.id === 'ag_remote_1')).toBe(true);
+  });
+
+  it('sync() processes archived_weight_goals in addition to weight_entries and workout_notes', async () => {
+    const results = await sync();
+    const tables = results.map((r) => r.table);
+    expect(tables).toContain(SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(tables).toContain(SYNC_TABLES.WORKOUT_NOTES);
+    expect(tables).toContain(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS);
   });
 });

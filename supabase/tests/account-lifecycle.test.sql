@@ -22,7 +22,7 @@
 
 begin;
 
-select plan(26);
+select plan(29);
 
 \set user_a '33333333-3333-3333-3333-333333333333'
 \set user_b '44444444-4444-4444-4444-444444444444'
@@ -62,6 +62,7 @@ insert into kilo.weight_goal (user_id) values (:'user_a'::uuid);
 insert into kilo.workout_notes (user_id, id) values (:'user_a'::uuid, 'lc_na');
 insert into kilo.deload_history (user_id, id) values (:'user_a'::uuid, 'lc_da');
 insert into kilo.fatigue_checkins (user_id, id) values (:'user_a'::uuid, 'lc_fa');
+insert into kilo.archived_weight_goals (user_id, id) values (:'user_a'::uuid, 'lc_aga');
 
 select pg_temp.login_as(:'user_b'::uuid);
 
@@ -72,9 +73,10 @@ insert into kilo.weight_goal (user_id) values (:'user_b'::uuid);
 insert into kilo.workout_notes (user_id, id) values (:'user_b'::uuid, 'lc_nb');
 insert into kilo.deload_history (user_id, id) values (:'user_b'::uuid, 'lc_db');
 insert into kilo.fatigue_checkins (user_id, id) values (:'user_b'::uuid, 'lc_fb');
+insert into kilo.archived_weight_goals (user_id, id) values (:'user_b'::uuid, 'lc_agb');
 
 -- ---------------------------------------------------------------------------
--- Export isolation: as user A, SELECT returns only user A rows (7 tables).
+-- Export isolation: as user A, SELECT returns only user A rows (8 tables).
 -- ---------------------------------------------------------------------------
 select pg_temp.login_as(:'user_a'::uuid);
 
@@ -84,7 +86,8 @@ select is((select count(*)::int from kilo.weight_entries),     1, 'export: user 
 select is((select count(*)::int from kilo.weight_goal),        1, 'export: user A sees only own weight_goal');
 select is((select count(*)::int from kilo.workout_notes),      1, 'export: user A sees only own workout_notes');
 select is((select count(*)::int from kilo.deload_history),     1, 'export: user A sees only own deload_history');
-select is((select count(*)::int from kilo.fatigue_checkins),   1, 'export: user A sees only own fatigue_checkins');
+select is((select count(*)::int from kilo.fatigue_checkins),        1, 'export: user A sees only own fatigue_checkins');
+select is((select count(*)::int from kilo.archived_weight_goals),   1, 'export: user A sees only own archived_weight_goals');
 
 -- Cross-user reads return nothing.
 select is((select count(*)::int from kilo.weight_entries where id = 'lc_wb'),   0, 'export: user A cannot read user B weight_entries');
@@ -115,6 +118,9 @@ select is(
 select is(
   (with d as (delete from kilo.fatigue_checkins where id = 'lc_fb' returning 1) select count(*)::int from d),
   0, 'delete: user A cannot delete user B fatigue_checkins');
+select is(
+  (with d as (delete from kilo.archived_weight_goals where id = 'lc_agb' returning 1) select count(*)::int from d),
+  0, 'delete: user A cannot delete user B archived_weight_goals');
 
 -- User A can delete their own rows (simulates the account-delete flow).
 select is(
@@ -135,6 +141,9 @@ select is(
 select is(
   (with d as (delete from kilo.feature_toggles where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
   1, 'delete: user A can delete own feature_toggles');
+select is(
+  (with d as (delete from kilo.archived_weight_goals where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
+  1, 'delete: user A can delete own archived_weight_goals');
 select is(
   (with d as (delete from kilo.user_profile where user_id = :'user_a'::uuid returning 1) select count(*)::int from d),
   1, 'delete: user A can delete own user_profile');

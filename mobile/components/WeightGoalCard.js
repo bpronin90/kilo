@@ -69,6 +69,7 @@ export function WeightGoalCard({
   setShowDatePicker,
   handleSaveGoal,
   handleClearGoal,
+  handleArchiveGoal,
   startEditGoal,
   cancelEditGoal,
   onDateChange,
@@ -76,12 +77,26 @@ export function WeightGoalCard({
   goalInfo,
   calorieEstimate,
   currentWeight,
+  isGoalMet,
 }) {
   return (
-    <Card style={styles.goalCard}>
+    <Card style={[styles.goalCard, isGoalMet && goal && !goalEditing ? styles.goalCardMet : null]}>
       {goal && (
         <View style={styles.goalHeader}>
-          {!goalEditing && (
+          {!goalEditing && isGoalMet && (
+            <View style={styles.goalHeaderMet}>
+              <Text style={styles.goalMetBadge}>Goal Met!</Text>
+              <View style={styles.goalHeaderActions}>
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={8} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
+                </Pressable>
+                <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                  <Text style={styles.goalActionChipText}>Edit</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+          {!goalEditing && !isGoalMet && (
             <View style={styles.goalHeaderActions}>
               <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
                 <Text style={styles.goalActionChipText}>Edit</Text>
@@ -183,14 +198,36 @@ const styles = StyleSheet.create({
   goalCard: {
     gap: 10,
   },
+  goalCardMet: {
+    borderColor: Colors.success,
+    borderWidth: 1.5,
+  },
   goalHeader: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
+  goalHeaderMet: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   goalHeaderActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  goalMetBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.success,
+    letterSpacing: 0.3,
+  },
+  goalArchiveChip: {
+    backgroundColor: Colors.cardSuccessBg,
+  },
+  goalArchiveText: {
+    color: Colors.textLight,
   },
   goalActionChip: {
     backgroundColor: Colors.chipBackground,

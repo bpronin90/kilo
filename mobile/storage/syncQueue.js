@@ -30,10 +30,12 @@ const DIRTY_KEY_PREFIX = 'kilo_sync_dirty_';
 const CURSOR_KEY_PREFIX = 'kilo_sync_cursor_';
 
 // The roadmap tables this engine syncs. Weight entries and workout notes are the
-// Task 11 acceptance targets; both are keyed by stable record id.
+// Task 11 acceptance targets; archived_weight_goals was added in issue #372.
+// All are keyed by stable record id.
 export const SYNC_TABLES = Object.freeze({
   WEIGHT_ENTRIES: 'weight_entries',
   WORKOUT_NOTES: 'workout_notes',
+  ARCHIVED_WEIGHT_GOALS: 'archived_weight_goals',
 });
 
 // Canonical workout-note derived fields. These are a recomputable cache of

@@ -46,6 +46,7 @@ function makeFakeCloud() {
   const tables = {
     [SYNC_TABLES.WEIGHT_ENTRIES]: new Map(),
     [SYNC_TABLES.WORKOUT_NOTES]: new Map(),
+    [SYNC_TABLES.ARCHIVED_WEIGHT_GOALS]: new Map(),
   };
   const state = { online: true };
 
