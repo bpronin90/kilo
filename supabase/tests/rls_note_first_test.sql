@@ -14,7 +14,7 @@
 
 begin;
 
-select plan(42);
+select plan(47);
 
 -- Two fixed test user ids.
 \set user_a '11111111-1111-1111-1111-111111111111'
@@ -76,6 +76,9 @@ select lives_ok(
 select lives_ok(
   $$insert into kilo.fatigue_checkins (user_id, id) values ('11111111-1111-1111-1111-111111111111', 'fa')$$,
   'user A can insert own fatigue_checkins');
+select lives_ok(
+  $$insert into kilo.archived_weight_goals (user_id, id) values ('11111111-1111-1111-1111-111111111111', 'aga')$$,
+  'user A can insert own archived_weight_goals');
 
 select pg_temp.login_as(:'user_b'::uuid);
 
@@ -100,6 +103,9 @@ select lives_ok(
 select lives_ok(
   $$insert into kilo.fatigue_checkins (user_id, id) values ('22222222-2222-2222-2222-222222222222', 'fb')$$,
   'user B can insert own fatigue_checkins');
+select lives_ok(
+  $$insert into kilo.archived_weight_goals (user_id, id) values ('22222222-2222-2222-2222-222222222222', 'agb')$$,
+  'user B can insert own archived_weight_goals');
 
 -- ---------------------------------------------------------------------------
 -- As user A: SELECT must only see own rows, never user B's rows.
@@ -127,6 +133,9 @@ select is(
 select is(
   (select count(*)::int from kilo.fatigue_checkins),
   1, 'user A sees only own fatigue_checkins row');
+select is(
+  (select count(*)::int from kilo.archived_weight_goals),
+  1, 'user A sees only own archived_weight_goals row');
 
 -- Direct attempts to read user B's specific rows return nothing.
 select is(
@@ -163,6 +172,9 @@ select is(
 select is(
   (with u as (update kilo.fatigue_checkins set status = 'hacked' where id = 'fb' returning 1) select count(*)::int from u),
   0, 'user A update of user B fatigue_checkins affects no rows');
+select is(
+  (with u as (update kilo.archived_weight_goals set target_weight = 1 where id = 'agb' returning 1) select count(*)::int from u),
+  0, 'user A update of user B archived_weight_goals affects no rows');
 
 -- ---------------------------------------------------------------------------
 -- As user A: DELETE of user B rows must affect zero rows.
@@ -188,6 +200,9 @@ select is(
 select is(
   (with d as (delete from kilo.fatigue_checkins where id = 'fb' returning 1) select count(*)::int from d),
   0, 'user A delete of user B fatigue_checkins affects no rows');
+select is(
+  (with d as (delete from kilo.archived_weight_goals where id = 'agb' returning 1) select count(*)::int from d),
+  0, 'user A delete of user B archived_weight_goals affects no rows');
 
 -- ---------------------------------------------------------------------------
 -- An owner-spoofed insert (writing user B's id while authenticated as A)

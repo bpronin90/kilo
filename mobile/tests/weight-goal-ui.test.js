@@ -65,7 +65,7 @@ describe('WeightScreen', () => {
 
   const setup = (goal, entries = []) => {
     useEntries.useWeightEntries.mockReturnValue({ entries, remove: jest.fn(), update: jest.fn() });
-    useEntries.useWeightGoal.mockReturnValue({ goal, save: jest.fn(), clear: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
     let component;
     render.act(() => {
       component = render.create(<WeightScreen {...defaultProps} />);
@@ -264,6 +264,75 @@ describe('WeightScreen', () => {
       const negColor = getStyleProp(negativeDeltaText, 'color');
       expect(negColor).not.toBe(Colors.textMuted);
       expect(negColor).toBeTruthy();
+    });
+  });
+
+  describe('met-goal lifecycle', () => {
+    // Safe text search that does not fall back to JSON.stringify (avoids
+    // circular-fiber crash for "not found" assertions).
+    const hasTextSafe = (root, text) =>
+      root.findAllByType('Text').some(t => {
+        const children = t.props.children;
+        const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+        return flat.includes(text);
+      });
+
+    test('shows "Goal Met!" badge when current weight has reached a loss goal', () => {
+      // Loss goal: target 175, start 200. Current weight entry at 175 → goal met.
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 175, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(true);
+    });
+
+    test('shows "Archive" action chip when goal is met', () => {
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 174, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(true);
+    });
+
+    test('does not show "Goal Met!" or "Archive" when goal is in progress', () => {
+      // Loss goal: target 175, start 200. Current at 185 — not yet met.
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(false);
+    });
+
+    test('shows "Clear" action when goal is in progress (not met)', () => {
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Clear')).toBe(true);
+    });
+
+    test('shows "Goal Met!" for a gain goal when current reaches target', () => {
+      const goal = { target_weight: 185, target_date: '2026-09-01', start_weight: 160 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 186, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(true);
+    });
+
+    test('no goal shows the new-goal entry form (not met state)', () => {
+      const component = setup(null, []);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(false);
+      // Form inputs present
+      const root = component.root;
+      const inputs = root.findAll(n => n.type === 'TextInput');
+      expect(inputs.some(i => i.props.placeholder === '175.0')).toBe(true);
     });
   });
 });

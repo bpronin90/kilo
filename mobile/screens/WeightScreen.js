@@ -8,6 +8,7 @@ import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEnt
 import { formatDate, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
+import { isGoalMet as computeIsGoalMet } from '../lib/data/weightGoal';
 
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 
@@ -57,7 +58,7 @@ export function WeightScreen({
   weightDateEditEnabled,
 }) {
   const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
-  const { goal, save: saveGoal, clear: clearGoal } = useWeightGoal();
+  const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const profile = useUserProfile()?.profile ?? null;
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
@@ -67,7 +68,7 @@ export function WeightScreen({
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const scrollRef = useRef(null);
 
-  const goalForm = useWeightGoalForm(goal, saveGoal, clearGoal);
+  const goalForm = useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal);
 
   const {
     trendSummary: trends,
@@ -121,6 +122,11 @@ export function WeightScreen({
   }, [rawGoalInfo, goalForm.goalEditing, goalForm.goalTargetDate, goal?.target_date]);
 
   const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
+
+  const isGoalMet = useMemo(
+    () => computeIsGoalMet(goal, trends.currentWeight),
+    [goal, trends.currentWeight]
+  );
 
   const newEntryDateObj = useMemo(() => {
     if (newEntryDate) {
@@ -330,6 +336,7 @@ export function WeightScreen({
         goalInfo={goalInfo}
         calorieEstimate={calorieEstimate}
         currentWeight={trends.currentWeight}
+        isGoalMet={isGoalMet}
         {...goalForm}
       />
 

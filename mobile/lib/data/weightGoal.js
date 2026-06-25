@@ -277,6 +277,25 @@ export function computeWeightRollingAverageSeries(entries, limit = 7, windowDays
   }).filter(d => d.value !== null);
 }
 
+// Determine whether the active weight goal has been met.
+// A loss goal is met when currentWeight ≤ target_weight.
+// A gain goal is met when currentWeight ≥ target_weight.
+// A maintain-style goal (delta < 0.5 lb from start) is met when within 0.5 lb of target.
+// Returns false when goal or currentWeight is missing.
+export function isGoalMet(goal, currentWeight) {
+  if (!goal || currentWeight == null || goal.target_weight == null) return false;
+  const { target_weight, start_weight } = goal;
+  const refWeight = start_weight ?? currentWeight;
+  const goalDelta = target_weight - refWeight;
+  if (Math.abs(goalDelta) < 0.5) {
+    return Math.abs(target_weight - currentWeight) < 0.5;
+  }
+  if (goalDelta < 0) {
+    return currentWeight <= target_weight;
+  }
+  return currentWeight >= target_weight;
+}
+
 // ── Canonical weight and goal derivation layer ────────────────────────────────
 
 // Derives the full set of shared weight and goal analytics from raw entries and persisted goal state.

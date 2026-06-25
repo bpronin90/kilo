@@ -47,6 +47,12 @@ import {
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate, makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
 import { getNoteSections } from '../hooks/useEntries';
+import {
+  loadArchivedWeightGoals,
+  saveArchivedWeightGoal,
+  clearArchivedWeightGoals,
+} from '../storage/entries/weightGoal';
+import { isGoalMet } from '../lib/data/weightGoal';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
 const W2 = { id: 'w_2026-05-02_2', entry_type: 'weight', date: '2026-05-02', weight_value: 191.5, weight_unit: 'lb', logged_at: '2026-05-02T08:00:00.000Z', saved_at: '2026-05-02T08:00:00.000Z' };
@@ -1376,6 +1382,136 @@ describe('weight goal storage', () => {
     const entries = await loadWeightEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe(W1.id);
+  });
+});
+
+// ── archived weight goal storage ──────────────────────────────────────────────
+
+describe('archived weight goal storage', () => {
+  const AG1 = {
+    id: 'ag_1',
+    target_weight: 175,
+    target_date: '2026-09-01',
+    start_weight: 200,
+    start_date: '2026-01-01',
+    completed_weight: 174.5,
+    archived_at: '2026-09-02T08:00:00.000Z',
+    saved_at: '2026-09-02T08:00:00.000Z',
+  };
+  const AG2 = {
+    id: 'ag_2',
+    target_weight: 170,
+    target_date: '2026-12-01',
+    start_weight: 174.5,
+    start_date: '2026-09-03',
+    completed_weight: 169.8,
+    archived_at: '2026-12-03T08:00:00.000Z',
+    saved_at: '2026-12-03T08:00:00.000Z',
+  };
+
+  test('returns empty array when no archived goals exist', async () => {
+    const goals = await loadArchivedWeightGoals();
+    expect(goals).toEqual([]);
+  });
+
+  test('saves and retrieves an archived goal', async () => {
+    await saveArchivedWeightGoal(AG1);
+    const goals = await loadArchivedWeightGoals();
+    expect(goals).toHaveLength(1);
+    expect(goals[0].id).toBe(AG1.id);
+    expect(goals[0].target_weight).toBe(AG1.target_weight);
+    expect(goals[0].completed_weight).toBe(AG1.completed_weight);
+    expect(goals[0].archived_at).toBe(AG1.archived_at);
+  });
+
+  test('accumulates multiple archived goals', async () => {
+    await saveArchivedWeightGoal(AG1);
+    await saveArchivedWeightGoal(AG2);
+    const goals = await loadArchivedWeightGoals();
+    expect(goals).toHaveLength(2);
+    expect(goals.map(g => g.id)).toEqual([AG1.id, AG2.id]);
+  });
+
+  test('clearArchivedWeightGoals removes all archived goals', async () => {
+    await saveArchivedWeightGoal(AG1);
+    await saveArchivedWeightGoal(AG2);
+    await clearArchivedWeightGoals();
+    const goals = await loadArchivedWeightGoals();
+    expect(goals).toEqual([]);
+  });
+
+  test('active weight goal is unaffected by archived goal operations', async () => {
+    await saveWeightGoal({ target_weight: 175, target_date: '2026-09-01' });
+    await saveArchivedWeightGoal(AG1);
+    await clearArchivedWeightGoals();
+    const goal = await loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+  });
+
+  test('saveArchivedWeightGoal returns the saved record', async () => {
+    const result = await saveArchivedWeightGoal(AG1);
+    expect(result).toEqual(AG1);
+  });
+});
+
+// ── isGoalMet ─────────────────────────────────────────────────────────────────
+
+describe('isGoalMet', () => {
+  test('returns false when goal is null', () => {
+    expect(isGoalMet(null, 175)).toBe(false);
+  });
+
+  test('returns false when currentWeight is null', () => {
+    expect(isGoalMet({ target_weight: 175, start_weight: 200 }, null)).toBe(false);
+  });
+
+  test('returns false when target_weight is missing', () => {
+    expect(isGoalMet({ start_weight: 200 }, 175)).toBe(false);
+  });
+
+  test('loss goal: met when current is at or below target', () => {
+    const goal = { target_weight: 175, start_weight: 200 };
+    expect(isGoalMet(goal, 175)).toBe(true);
+    expect(isGoalMet(goal, 173)).toBe(true);
+  });
+
+  test('loss goal: not met when current is above target', () => {
+    const goal = { target_weight: 175, start_weight: 200 };
+    expect(isGoalMet(goal, 176)).toBe(false);
+    expect(isGoalMet(goal, 200)).toBe(false);
+  });
+
+  test('gain goal: met when current is at or above target', () => {
+    const goal = { target_weight: 185, start_weight: 160 };
+    expect(isGoalMet(goal, 185)).toBe(true);
+    expect(isGoalMet(goal, 187)).toBe(true);
+  });
+
+  test('gain goal: not met when current is below target', () => {
+    const goal = { target_weight: 185, start_weight: 160 };
+    expect(isGoalMet(goal, 184)).toBe(false);
+    expect(isGoalMet(goal, 160)).toBe(false);
+  });
+
+  test('maintain goal: met when within 0.5 lb of target', () => {
+    const goal = { target_weight: 175, start_weight: 175 };
+    expect(isGoalMet(goal, 175)).toBe(true);
+    expect(isGoalMet(goal, 175.4)).toBe(true);
+    expect(isGoalMet(goal, 174.6)).toBe(true);
+  });
+
+  test('maintain goal: not met when more than 0.5 lb from target', () => {
+    const goal = { target_weight: 175, start_weight: 175 };
+    expect(isGoalMet(goal, 175.6)).toBe(false);
+    expect(isGoalMet(goal, 174.4)).toBe(false);
+  });
+
+  test('no start_weight: exactly at target is met (within 0.5 lb threshold)', () => {
+    // Without start_weight the function cannot determine loss vs gain direction,
+    // but it detects "exactly at target" via the 0.5 lb maintain threshold.
+    const goal = { target_weight: 175 };
+    expect(isGoalMet(goal, 175)).toBe(true); // exactly at target — within 0.5 threshold
+    expect(isGoalMet(goal, 175.4)).toBe(true); // within threshold
   });
 });
 

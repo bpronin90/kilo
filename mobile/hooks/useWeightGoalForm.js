@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Alert, BackHandler } from 'react-native';
 
-export function useWeightGoalForm(goal, saveGoal, clearGoal) {
+export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState('');
@@ -69,6 +69,19 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal) {
     ]);
   };
 
+  const handleArchiveGoal = (completedWeight) => {
+    Alert.alert('Archive Goal', 'Save this completed goal to history and set a new target?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Archive', style: 'destructive', onPress: async () => {
+        await archiveGoal(completedWeight);
+        setGoalTargetWeight('');
+        setGoalTargetDate('');
+        setGoalStartWeight('');
+        setGoalEditing(false);
+      }},
+    ]);
+  };
+
   const startEditGoal = () => {
     if (goal) {
       setGoalTargetWeight(String(goal.target_weight));
@@ -123,6 +136,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal) {
     setShowDatePicker,
     handleSaveGoal,
     handleClearGoal,
+    handleArchiveGoal,
     startEditGoal,
     cancelEditGoal,
     onDateChange,

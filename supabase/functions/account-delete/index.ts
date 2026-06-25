@@ -104,6 +104,7 @@ serve(async (req) => {
     userClient.from('deload_history').delete().neq('id', ''),
     userClient.from('workout_notes').delete().neq('id', ''),
     userClient.from('weight_entries').delete().neq('id', ''),
+    userClient.from('archived_weight_goals').delete().neq('id', ''),
     userClient.from('weight_goal').delete().eq('user_id', user.id),
     userClient.from('feature_toggles').delete().eq('user_id', user.id),
     userClient.from('user_profile').delete().eq('user_id', user.id),
