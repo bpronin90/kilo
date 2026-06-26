@@ -403,12 +403,15 @@ The real native app path now has a modular React Native shell:
   have `session_count` remain compatible through normalized deload-boundary
   comparison. On the Analytics surface, `sessions since deload` and
   `sessions logged` are the only routine-status metrics shown; no calendar
-  metrics appear in this panel. The gauge marker, zone labels, and caption
-  always render, while `Deload mode` hides only the `Since deload` stat. The
-  same parent section contains a `Fatigue Tracking` panel backed by persisted
-  `session_checkins`. The parent title now stays statically `Fatigue`;
-  turning fatigue tracking off hides only the fatigue panel and its Analytics
-  edit path. The redesigned `1K
+  metrics appear in this panel. Archived deload records completed before the
+  current routine's `saved_at` start are excluded from that routine-status
+  derivation so prior-routine deloads cannot inflate the current routine's
+  total or anchor its deload-relative clock. The gauge marker, zone labels,
+  and caption always render, while `Deload mode` hides only the `Since deload`
+  stat. The same parent section contains a `Fatigue Tracking` panel backed by
+  persisted `session_checkins`. The parent title now stays statically
+  `Fatigue`; turning fatigue tracking off hides only the fatigue panel and its
+  Analytics edit path. The redesigned `1K
   Progress` card now keeps the hero total and progress bar, full breakdown
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation across all synced workout

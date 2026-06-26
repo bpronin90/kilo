@@ -1035,6 +1035,31 @@ describe('deriveRoutineStatus — composite contract (#282)', () => {
     expect(status.weeksSinceDeload).toBeNull();
     expect(status.elapsedWeeks).toBeNull();
   });
+
+  test('deload from a prior routine does not inflate session count for the new routine (#377)', () => {
+    // Regression: a deload completed before the current routine's saved_at was being
+    // included in deloadSessionsLogged and _latestDeloadSessionRecord, causing
+    // sessionsLogged to overcount by 1 and sessionsSinceDeload to read as 0.
+    const THREE_SESSION_RAW = ['Monday', '+ lifting', '1. Squat',
+      '- 225x5', '- 225x5', '- 225x5'].join('\n');
+    const note = { saved_at: '2026-06-08T00:00:00.000Z' }; // new routine starts Jun 8
+    // Deload from the prior routine: completed Jun 6, two days before the new routine.
+    const priorDeload = {
+      id: 'dl_prior',
+      completed_at: '2026-06-06T04:40:09.026Z',
+      session_count: 14,
+      deload_session_ordinal: 10,
+      deload_ordinal_is_count: true,
+      raw_text: 'Squat: 155 lbs 3x8\nBench: 95 lbs 3x8',
+    };
+    const status = deriveRoutineStatus(parseWorkoutNote(THREE_SESSION_RAW).sections, note, [priorDeload]);
+    // sessionsLogged must be 3 (routine only), not 4 (routine + prior deload).
+    expect(status.sessionsLogged).toBe(3);
+    // sessionsSinceDeload must be 3 (no deload on this routine), not 0.
+    expect(status.sessionsSinceDeload).toBe(3);
+    // weeksSinceDeload must be null (no deload on this routine).
+    expect(status.weeksSinceDeload).toBeNull();
+  });
 });
 
 describe('AnalyticsScreen routine-status plumbing (#282)', () => {
