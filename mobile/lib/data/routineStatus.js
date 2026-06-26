@@ -130,7 +130,8 @@ function _latestDeloadSessionRecord(deloadHistory) {
 //   sessionsSinceDeload: sessions after the latest deload boundary (excludes it)
 //   weeksSinceDeload:    full weeks since the latest deload (null if no deload)
 //
-// Session-count analytics deliberately ignore completed_at.
+// Deload records from previous routines (completed_at before note.saved_at) are
+// excluded — they must not inflate session counts for the current routine.
 //
 // deload_session_ordinal semantics:
 //   deload_ordinal_is_count=true  → ordinal = pre-deload count; formula: routineSessions - anchor
@@ -139,7 +140,14 @@ function _latestDeloadSessionRecord(deloadHistory) {
 //   session_count (no ordinal)    → pre-deload count; formula: routineSessions - anchor
 export function deriveRoutineStatus(currentSections, note, deloadHistory) {
   const routineSessions = countWorkoutSessionsFromSections(currentSections || []);
-  const latestSessionRecord = _latestDeloadSessionRecord(deloadHistory);
+  const routineStartMs = note?.saved_at ? Date.parse(note.saved_at) : null;
+  const relevantDeloads = Array.isArray(deloadHistory) && routineStartMs != null
+    ? deloadHistory.filter(r => {
+        const completedMs = r?.completed_at ? Date.parse(r.completed_at) : null;
+        return completedMs == null || completedMs >= routineStartMs;
+      })
+    : (deloadHistory || []);
+  const latestSessionRecord = _latestDeloadSessionRecord(relevantDeloads);
   const anchor = _deloadSessionAnchor(latestSessionRecord);
   let sessionsSinceDeload;
   if (!Number.isFinite(anchor)) {
@@ -155,9 +163,9 @@ export function deriveRoutineStatus(currentSections, note, deloadHistory) {
     sessionsSinceDeload = Math.max(0, routineSessions - anchor);
   }
   return {
-    sessionsLogged: routineSessions + deloadSessionsLogged(deloadHistory),
+    sessionsLogged: routineSessions + deloadSessionsLogged(relevantDeloads),
     elapsedWeeks: elapsedWeeksOnRoutine(note),
     sessionsSinceDeload,
-    weeksSinceDeload: weeksSinceLastDeload(deloadHistory),
+    weeksSinceDeload: weeksSinceLastDeload(relevantDeloads),
   };
 }
