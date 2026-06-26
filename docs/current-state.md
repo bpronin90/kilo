@@ -339,11 +339,14 @@ The real native app path now has a modular React Native shell:
   fallback so the pace and calorie guidance can render from the saved goal
   state. Saved goals now render as a singular `Goal` section with a compact
   target card plus a separate `Guidance` card so the target values and derived
-  pace/calorie guidance are easier to scan, the Trends card now colors both
+  pace/calorie guidance are easier to scan, and archived completed goals now
+  appear in a compact conditional `Goal History` list beneath the active/new
+  goal flow, ordered newest first with target weight, completed weight when
+  available, target date, and archived date. The Trends card now colors both
   pace-severity states and directional gain/loss cues instead of leaving the
   trend column uniformly neutral, and tapping a history row now scrolls back
   to the top editor as it loads the selected entry. The Weight tab now reads
-  top-to-bottom as weight entry, `Goal`, `Trends`, and `History`, with `Goal`
+  top-to-bottom as weight entry, `Goal`, optional `Goal History`, `Trends`, and `History`, with `Goal`
   / `Trends` using the shared section-heading treatment and a merged Trends card that
   now consumes the same canonical `deriveWeightGoalAnalytics()` output used by
   Home and Analytics for trend summary, pace severity, goal guidance, and

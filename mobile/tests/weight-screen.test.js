@@ -3,8 +3,19 @@ import render from 'react-test-renderer';
 import { Alert } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
+import * as weightHooks from '../hooks/entries/weightHooks';
 import App from '../App';
 import { parseWeightEntry } from '../lib/parser';
+
+jest.mock('../hooks/entries/weightHooks', () => ({
+  useArchivedWeightGoals: () => ({
+    archivedGoals: [],
+    loading: false,
+    refresh: jest.fn(),
+  }),
+  useWeightGoal: jest.fn(),
+  useWeightEntries: jest.fn(),
+}));
 
 jest.mock('../lib/parser', () => {
   const actual = jest.requireActual('../lib/parser');
