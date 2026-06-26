@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.81.2 - 2026-06-26
+
+- Issue #375: Bumped the preview-channel OTA `runtimeVersion`
+  (`PREVIEW_RUNTIME` `preview-2` → `preview-3`) after the Expo SDK was reverted
+  56 → 54. Prevents SDK-54 preview OTA bundles from being advertised as
+  compatible with older SDK-56 `preview-2` installs; those installs now require
+  a fresh preview build instead of a mismatched OTA. No app code changed.
+
 ## 0.81.1 - 2026-06-26
 
 - Issue #374: Made agent instruction files (`AGENTS.md`, `CODEX.md`, `CLAUDE.md`,
