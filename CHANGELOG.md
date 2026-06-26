@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.81.6 - 2026-06-26
+
+- Issue #379: Fixed the Home 1K Progress total so it derives from all workout
+  notes, matching Analytics. Historical squat sessions now contribute
+  consistently to Home and Analytics when the selected Big 3 lifts form a
+  complete aligned cycle.
+
 ## 0.81.5 - 2026-06-26
 
 - Issue #378: Updated the Analytics weight-trends selection behavior so tapping
