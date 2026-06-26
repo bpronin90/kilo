@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.81.4 - 2026-06-26
+
+- Issue #377: Fixed the Analytics fatigue/routine-health session total so
+  deload records completed before the current routine's `saved_at` start are
+  excluded from `sessions logged`, latest deload anchor selection, and
+  `weeks since deload`. A new routine with 3 qualifying sessions and a prior
+  routine's archived deload now reports 3 total sessions instead of 4.
+
 ## 0.81.3 - 2026-06-26
 
 - Issue #376: Exposed the Weight goal archive action for overdue ended goals

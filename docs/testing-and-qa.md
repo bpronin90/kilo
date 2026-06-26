@@ -280,7 +280,9 @@ retains non-test commands such as `npm run audit`.
 - verifies Analytics derives `sessions since deload` from stored session
   anchors rather than deload dates or check-in chronology, including date-edit
   and multiple-deload ordering regressions, count-vs-first-post-deload ordinal
-  compatibility, and mixed old/new deload-history boundary ordering
+  compatibility, mixed old/new deload-history boundary ordering, and
+  prior-routine deload exclusion so a new routine with 3 qualifying sessions
+  does not show 4 total sessions
 - verifies feature-toggle gating so the `Fatigue` section disappears when
   fatigue tracking is off and the `Session Health` section disappears when
   deload mode is off while unrelated Analytics sections remain visible
