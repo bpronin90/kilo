@@ -332,7 +332,9 @@ The real native app path now has a modular React Native shell:
   deficit/surplus helper. Maintain-goal fallback cases still render semantic
   maintenance guidance instead of gain/loss math, overdue or same-day-complete
   goals now render a terminal `Goal ended.` guidance state without negative
-  weeks-left or invalid pace output, the no-estimate state keeps the panel
+  weeks-left or invalid pace output, overdue ended goals expose the same
+  archive action as met goals so the archived-history path can clear the active
+  goal and reopen the new-goal form, the no-estimate state keeps the panel
   hierarchy visible with neutral fallback messaging for goals that still need a
   future target date, and when no
   saved weight entries exist the goal form still requires a current-weight
