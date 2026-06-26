@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.81.7 - 2026-06-26
+
+- Issue #380: Restored fatigue explanation prompts after later bad or skipped
+  sessions by lowering the intra-session collapse threshold to catch 2-rep
+  drop-offs, keeping skip detection anchored to the lowest prior skip baseline,
+  and allowing answered whole-day skip prompts with no flagged exercises to clear
+  their rough-session state. Earlier answered check-ins no longer suppress new
+  qualifying sessions, while answered session indices remain protected from
+  duplicate prompts.
+
 ## 0.81.6 - 2026-06-26
 
 - Issue #379: Fixed the Home 1K Progress total so it derives from all workout

@@ -104,7 +104,7 @@ export function computeRepDropOff(sets) {
   const atMax = working.filter(s => s.weight_value === maxWeight);
   if (atMax.length < 2) return null; // only 1 set at heaviest weight → ambiguous
   const dropOff = atMax[0].rep_count - atMax[atMax.length - 1].rep_count;
-  if (dropOff >= 3) return 'hit_wall';
+  if (dropOff >= 2) return 'hit_wall';
   return null;
 }
 
@@ -213,14 +213,17 @@ export function deriveSessionCheckIn(sections, trackedNames) {
     skipByIndex[s.session_index] = (skipByIndex[s.session_index] || 0) + 1;
   }
   const latestSkipCount = skipByIndex[sessionIndex] || 0;
-  let baselineAvgSkips = 0;
+  let baselineSkips = 0;
   if (sessionIndex > 0) {
-    let sum = 0;
-    for (let i = 0; i < sessionIndex; i++) sum += skipByIndex[i] || 0;
-    baselineAvgSkips = sum / sessionIndex;
+    let min = Infinity;
+    for (let i = 0; i < sessionIndex; i++) {
+      const v = skipByIndex[i] || 0;
+      if (v < min) min = v;
+    }
+    baselineSkips = min === Infinity ? 0 : min;
   }
   const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
-    && latestSkipCount > baselineAvgSkips + SESSION_CHECKIN_SKIP_MARGIN;
+    && latestSkipCount > baselineSkips + SESSION_CHECKIN_SKIP_MARGIN;
   const dayFired = skipData.day_skips.some(d => d.session_index === sessionIndex);
 
   // ── Per-exercise volume_drop / collapse on the latest entry ──
