@@ -98,6 +98,11 @@ export function WeightGoalCard({
           )}
           {!goalEditing && !isGoalMet && (
             <View style={styles.goalHeaderActions}>
+              {goalInfo?.isOverdue && (
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={8} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                  <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
+                </Pressable>
+              )}
               <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
                 <Text style={styles.goalActionChipText}>Edit</Text>
               </Pressable>

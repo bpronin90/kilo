@@ -328,6 +328,16 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(true);
     });
 
+    test('shows "Archive" action chip when goal is overdue (target date passed, weight not reached)', () => {
+      // Loss goal: target 175 not yet reached; target date in the past (overdue).
+      const goal = { target_weight: 175, target_date: '2026-05-20', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(true);
+    });
+
     test('no goal shows the new-goal entry form (not met state)', () => {
       const component = setup(null, []);
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
