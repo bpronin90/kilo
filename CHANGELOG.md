@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.81.1 - 2026-06-26
+
+- Issue #374: Made agent instruction files (`AGENTS.md`, `CODEX.md`, `CLAUDE.md`,
+  `GEMINI.md`) local-only by untracking them from version control (local copies
+  retained) and adding `.gitignore` rules so future copies stay local. Added a
+  public `CONTRIBUTING.md` covering contributor-facing setup, issue/PR workflow,
+  testing/verification, and versioning guidance. No app code changed.
+
 ## 0.81.0 - 2026-06-26
 
 - Issue #373: Added a compact Weight-screen `Goal History` section for archived

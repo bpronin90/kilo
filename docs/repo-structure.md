@@ -25,9 +25,10 @@ npm run mobile:android
 
 ```
 README.md
-AGENTS.md              ← shared repo protocol
-CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions
-.gitignore             ← root ignore policy for generated output and local-only runtime state
+CONTRIBUTING.md        ← public contributor guide (setup, issue/PR workflow, testing, versioning)
+AGENTS.md              ← shared repo protocol (local-only, gitignored — not tracked)
+CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions (local-only, gitignored — not tracked)
+.gitignore             ← root ignore policy for generated output, local-only runtime state, and agent instruction files
 package.json
 mobile/                ← active Expo / React Native app path
 scripts/               ← repository maintenance and deployment entrypoints
