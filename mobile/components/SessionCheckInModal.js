@@ -158,11 +158,12 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   const title = deriveTitle(checkInData.detectors, checkInData.flagged);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={[styles.overlay, tier === 'rough' && styles.overlayTop]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.sheet, tier === 'rough' ? styles.sheetExpanded : styles.sheetBounded]}>
           <View style={styles.header}>
             {tier !== null ? (
