@@ -85,7 +85,10 @@ Current limitation:
   `AnalyticsScreen` Fatigue-section interaction coverage for the
   collapsed-by-default summary, the expand/collapse toggle cycle, the
   post-expansion rough-row and ok/pending chip edit affordances, and the
-  unanswered-check-in alert badge, and targeted `WeightScreen` interaction
+  unanswered-check-in alert badge, plus focused `SessionCheckInModal`
+  rendered-handler coverage proving backdrop taps and Android `onRequestClose`
+  defer without storage writes while the explicit close control writes a
+  `session_checkins` entry, and targeted `WeightScreen` interaction
   coverage for history-row scroll-to-editor behavior, edit/date threading
   through the existing update seam, delete confirmation/refresh behavior, the
   saved-goal target/guidance split, and the active weigh-in/goal
@@ -289,6 +292,10 @@ retains non-test commands such as `npm run audit`.
 - verifies the `Fatigue` card's collapsed default summary, expand-then-collapse
   toggle cycle, post-expansion rough-row edit affordances, post-expansion
   ok/pending chip edit affordances, and the unanswered-check-in badge
+- verifies the `SessionCheckInModal` rendered handler wiring so backdrop taps
+  and Android `onRequestClose` call the defer path without writing
+  `session_checkins`, while the explicit close control writes a session check-in
+  entry before closing
 - verifies exercises are grouped by routine day with correct group headers
 - verifies multi-day exercises render per-day row metrics from
   `perDaySignals`, including null-trend fallback to the global signal and

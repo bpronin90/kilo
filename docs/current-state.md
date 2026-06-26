@@ -289,11 +289,14 @@ The real native app path now has a modular React Native shell:
   exercises in red in the rendered routine view, opens a centered
   `SessionCheckInModal` with a detector-aware title plus flagged exercise names
   where available, and persists either an `I'm okay`, `Not great`, or
-  dismissed/pending (`status: null`) state back onto that session index. The
-  highlight and modal prompt both suppress once a matching
-  `session_checkins[sessionIndex]` entry exists. The old `rep_drop_off_flags` surface is no
-  longer populated or consumed. The legacy `hit_wall` chip/badge and its
-  helper reads are removed from Log and Analytics, and within-row skipped sets
+  explicit dismissed/pending (`status: null`) state back onto that session
+  index. Backdrop taps and Android modal close defer without writing
+  `session_checkins`, so the same session can be rechecked after the next
+  relevant edit/save/close decision point. The highlight and modal prompt both
+  suppress once a matching `session_checkins[sessionIndex]` entry exists. The
+  old `rep_drop_off_flags` surface is no longer populated or consumed. The
+  legacy `hit_wall` chip/badge and its helper reads are removed from Log and
+  Analytics, and within-row skipped sets
   now render in structured read mode as `-` at their original weight
   (`80 4,-` → `80 lb 4, -`); Android back now exits edit subviews before
   falling through to tab-level navigation.

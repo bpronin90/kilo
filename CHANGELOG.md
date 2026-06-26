@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.81.8 - 2026-06-26
+
+- Issue #381: Fixed fatigue check-in backdrop dismissal so backdrop taps and
+  Android modal close defer the prompt without writing `session_checkins`.
+  Accidental outside-modal dismissal no longer suppresses reevaluation for the
+  same active session, while the explicit close control still records the
+  intended dismissed/pending state.
+
 ## 0.81.7 - 2026-06-26
 
 - Issue #380: Restored fatigue explanation prompts after later bad or skipped
