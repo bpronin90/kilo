@@ -1,6 +1,7 @@
 import React from 'react';
 import { act } from 'react';
 import render from 'react-test-renderer';
+import { Modal } from 'react-native';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 
 jest.mock('@expo/vector-icons', () => ({ MaterialIcons: 'MaterialIcons' }));
@@ -26,74 +27,99 @@ function makeProps(overrides = {}) {
   };
 }
 
-describe('SessionCheckInModal backdrop dismissal', () => {
-  it('backdrop press calls onClose without writing to session_checkins', async () => {
+// Returns all nodes that have an onPress handler, in tree order.
+function findPressables(root) {
+  return root.findAll(node => typeof node.props?.onPress === 'function', { deep: true });
+}
+
+// The backdrop Pressable is the first in tree order (absoluteFill, before sheet content).
+function findBackdrop(root) {
+  return findPressables(root)[0];
+}
+
+// The X close button is the Pressable whose text children include '✕'.
+function findCloseButton(root) {
+  return findPressables(root).find(node => {
+    try {
+      return node
+        .findAll(c => typeof c.type === 'string' && c.type === 'Text', { deep: true })
+        .some(t => t.props.children === '✕');
+    } catch {
+      return false;
+    }
+  });
+}
+
+describe('SessionCheckInModal — backdrop defers (no storage write)', () => {
+  it('backdrop Pressable onPress is wired to onClose and does not call update', async () => {
     const props = makeProps();
-    let tree;
+    let instance;
     await act(async () => {
-      tree = render.create(<SessionCheckInModal {...props} />);
+      instance = render.create(<SessionCheckInModal {...props} />);
     });
 
-    // Find the absoluteFill backdrop Pressable (first Pressable child of KAV)
-    const root = tree.toJSON();
-    // The modal renders: overlay KAV → [backdrop Pressable, sheet View]
-    // backdrop is the first child of the overlay
-    const overlay = root; // Modal > KAV
-    expect(overlay).toBeTruthy();
+    const backdrop = findBackdrop(instance.root);
+    expect(backdrop).toBeTruthy();
 
-    // simulate backdrop press via onClose — update must NOT be called
+    // The backdrop's onPress IS the onClose prop — defer, no storage write.
+    expect(backdrop.props.onPress).toBe(props.onClose);
+
     await act(async () => {
-      props.onClose();
+      backdrop.props.onPress();
     });
 
     expect(props.update).not.toHaveBeenCalled();
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('explicit X dismiss calls update to write session_checkins', async () => {
+  it('Modal onRequestClose is wired to onClose and does not call update', async () => {
     const props = makeProps();
     let instance;
     await act(async () => {
       instance = render.create(<SessionCheckInModal {...props} />);
     });
 
-    // Find close button (✕) by traversing rendered tree
-    function findPressableWithText(node, text) {
-      if (!node) return null;
-      if (node.type === 'Text' && node.children?.[0] === text) return node;
-      for (const child of node.children || []) {
-        const found = findPressableWithText(child, text);
-        if (found) return found;
-      }
-      return null;
-    }
+    const modal = instance.root.findByType(Modal);
+    expect(typeof modal.props.onRequestClose).toBe('function');
 
-    // We can't easily fire the ✕ press through react-test-renderer without
-    // testID, so we verify the contract via unit-level: handleDismiss writes
-    // session_checkins. Test that update IS called when the close handler runs.
-    // This is verified by the component not calling onClose until update resolves.
-    // For now verify structure: backdrop onPress is onClose (deferred), not handleDismiss.
-    // The Modal's onRequestClose prop should be onClose (defer, not write).
-    const json = instance.toJSON();
-    // JSON structure for Modal is transparent — just verify component renders without error.
-    expect(json).toBeTruthy();
-  });
-});
+    // onRequestClose IS the onClose prop — Android back = defer, no write.
+    expect(modal.props.onRequestClose).toBe(props.onClose);
 
-describe('SessionCheckInModal onRequestClose defers (no write)', () => {
-  it('onRequestClose on android back button defers without writing session_checkins', async () => {
-    const props = makeProps();
-    let instance;
     await act(async () => {
-      instance = render.create(<SessionCheckInModal {...props} />);
-    });
-
-    // Simulate Android back (onRequestClose) by calling onClose directly
-    // The component wires onRequestClose={onClose}, so back press just defers.
-    await act(async () => {
-      props.onClose();
+      modal.props.onRequestClose();
     });
 
     expect(props.update).not.toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SessionCheckInModal — explicit X dismiss writes session_checkins', () => {
+  it('X button onPress calls update with a session_checkins entry then calls onClose', async () => {
+    const props = makeProps();
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    const closeBtn = findCloseButton(instance.root);
+    expect(closeBtn).toBeTruthy();
+
+    // X button is NOT wired to onClose directly — it goes through handleDismiss which writes first.
+    expect(closeBtn.props.onPress).not.toBe(props.onClose);
+
+    await act(async () => {
+      await closeBtn.props.onPress();
+    });
+
+    expect(props.update).toHaveBeenCalledWith(
+      'note-1',
+      expect.objectContaining({
+        session_checkins: expect.objectContaining({
+          0: expect.objectContaining({ responded_at: expect.any(String) }),
+        }),
+      })
+    );
+    expect(props.onClose).toHaveBeenCalled();
   });
 });
