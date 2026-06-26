@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
 import { Colors } from '../theme/colors';
@@ -10,22 +10,59 @@ export function AnalyticsWeightTrendsCard({
   rolling30,
   isWeightLoading,
 }) {
+  const [selectedPoint, setSelectedPoint] = useState(null);
+
+  const byLabel7 = useMemo(() => {
+    const m = {};
+    rolling7.forEach(p => { m[p.label] = p; });
+    return m;
+  }, [rolling7]);
+
+  const byLabel30 = useMemo(() => {
+    const m = {};
+    rolling30.forEach(p => { m[p.label] = p; });
+    return m;
+  }, [rolling30]);
+
+  function handleSelect(point) {
+    setSelectedPoint(point);
+  }
+
+  const display = useMemo(() => {
+    if (!selectedPoint) return weightSummary;
+    const label = selectedPoint.label;
+    const p7 = byLabel7[label] ?? null;
+    const p30 = byLabel30[label] ?? null;
+    return {
+      latestWeightValue: `${selectedPoint.value}`,
+      showUnit: true,
+      weightCount: weightSummary.weightCount,
+      avg7: p7 ? `${p7.value.toFixed(1)} lb` : '—',
+      avg30: p30 ? `${p30.value.toFixed(1)} lb` : '—',
+      paceFlag: null,
+      paceLevel: null,
+      selectedDate: label,
+    };
+  }, [selectedPoint, weightSummary, byLabel7, byLabel30]);
+
   return (
     <View onLayout={handleWeightLayout}>
       <SectionTitle>Weight Trends</SectionTitle>
       <Card style={styles.weightCard}>
         <View style={styles.weightHeader}>
           <View>
-            <Text style={styles.weightLabel}>Latest weigh-in</Text>
+            <Text style={styles.weightLabel}>
+              {display.selectedDate ? `Selected · ${display.selectedDate}` : 'Latest weigh-in'}
+            </Text>
             <Text style={styles.weightValueLarge}>
-              {weightSummary.latestWeightValue}
-              {weightSummary.showUnit && <Text style={styles.weightUnit}>lb</Text>}
+              {display.latestWeightValue}
+              {display.showUnit && <Text style={styles.weightUnit}>lb</Text>}
             </Text>
           </View>
-          {weightSummary.paceFlag && (
-            <View style={[styles.paceBadge, weightSummary.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
+          {display.paceFlag && (
+            <View style={[styles.paceBadge, display.paceLevel === 'spike' ? styles.paceSpike : styles.paceNotable]}>
               <Text style={styles.paceText}>
-                {weightSummary.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
+                {display.paceFlag === 'gain' ? '↑ Gaining fast' : '↓ Losing fast'}
               </Text>
             </View>
           )}
@@ -35,7 +72,7 @@ export function AnalyticsWeightTrendsCard({
           <Text style={styles.chartLabel}>7-day rolling average</Text>
           <View style={styles.chartArea}>
             {rolling7.length > 1 ? (
-              <LineChart data={rolling7} height={100} hideHeader />
+              <LineChart data={rolling7} height={100} hideHeader onSelect={handleSelect} />
             ) : (
               <View style={styles.chartPlaceholder}>
                 {isWeightLoading
@@ -50,7 +87,7 @@ export function AnalyticsWeightTrendsCard({
           <Text style={styles.chartLabel}>30-day rolling average</Text>
           <View style={styles.chartArea}>
             {rolling30.length > 1 ? (
-              <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} />
+              <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} onSelect={handleSelect} />
             ) : (
               <View style={styles.chartPlaceholder}>
                 {isWeightLoading
@@ -63,11 +100,11 @@ export function AnalyticsWeightTrendsCard({
 
         <View style={styles.weightFooter}>
           <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{weightSummary.avg7}</Text>
+            <Text style={styles.weightStatValue}>{display.avg7}</Text>
             <Text style={styles.weightStatLabel}>7-day avg</Text>
           </View>
           <View style={styles.weightStat}>
-            <Text style={styles.weightStatValue}>{weightSummary.avg30}</Text>
+            <Text style={styles.weightStatValue}>{display.avg30}</Text>
             <Text style={styles.weightStatLabel}>30-day avg</Text>
           </View>
         </View>

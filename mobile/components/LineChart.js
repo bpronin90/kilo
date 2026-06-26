@@ -3,14 +3,15 @@ import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
-export function LineChart({ 
-  data = [], 
-  height = 80, 
-  paddingVertical = 10, 
+export function LineChart({
+  data = [],
+  height = 80,
+  paddingVertical = 10,
   paddingHorizontal = 10,
   strokeWidth = 3,
   color = Colors.accent,
   hideHeader = false,
+  onSelect,
 }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [chartWidth, setChartWidth] = useState(0);
@@ -51,7 +52,9 @@ export function LineChart({
     const { locationX } = evt.nativeEvent;
     const index = Math.round((locationX - effPaddingHorizontal) / (chartWidth - 2 * effPaddingHorizontal) * (data.length - 1));
     if (index >= 0 && index < data.length) {
-      setSelectedIndex(index === selectedIndex ? null : index);
+      const next = index === selectedIndex ? null : index;
+      setSelectedIndex(next);
+      onSelect?.(next !== null ? data[next] : null);
     }
   };
 
