@@ -1096,7 +1096,7 @@ describe('computeRepDropOff', () => {
     expect(computeRepDropOff(sets)).toBe('hit_wall');
   });
 
-  test('drop_off exactly 3 → hit_wall (boundary)', () => {
+  test('drop_off exactly 3 → hit_wall', () => {
     const sets = [
       { weight_value: 225, rep_count: 8 },
       { weight_value: 225, rep_count: 5 },
@@ -1104,12 +1104,12 @@ describe('computeRepDropOff', () => {
     expect(computeRepDropOff(sets)).toBe('hit_wall');
   });
 
-  test('drop_off = 2 → null (no flag)', () => {
+  test('drop_off exactly 2 → hit_wall (boundary)', () => {
     const sets = [
       { weight_value: 225, rep_count: 8 },
       { weight_value: 225, rep_count: 6 },
     ];
-    expect(computeRepDropOff(sets)).toBeNull();
+    expect(computeRepDropOff(sets)).toBe('hit_wall');
   });
 
   test('drop_off ≤ 1 → null (in_reserve removed)', () => {
@@ -1219,11 +1219,11 @@ describe('deriveRepDropOffFlags', () => {
   test('multiple logged sessions stored per-session', () => {
     const sections = [dropOffSection('Squat', [
       [ws(225, 8), ws(225, 4)],  // idx 0 → hit_wall (drop=4)
-      [ws(225, 8), ws(225, 6)],  // idx 1 → null (drop=2)
-      [ws(225, 8), ws(225, 8)],  // idx 2 → null (drop=0, in_reserve removed)
+      [ws(225, 8), ws(225, 6)],  // idx 1 → hit_wall (drop=2, at threshold)
+      [ws(225, 8), ws(225, 8)],  // idx 2 → null (drop=0)
     ])];
     const result = deriveRepDropOffFlags(sections, ['Squat']);
-    expect(result['squat']).toEqual({ '0': 'hit_wall', '1': null, '2': null });
+    expect(result['squat']).toEqual({ '0': 'hit_wall', '1': 'hit_wall', '2': null });
   });
 
   test('all sessions skipped → empty object', () => {
@@ -1447,6 +1447,63 @@ describe('deriveSessionCheckIn', () => {
     expect(r.isRough).toBe(true);
     expect(r.detectors).toContain('day_skip');
     expect(r.sessionIndex).toBe(3);
+  });
+
+  // ── Regression: issue #380 ─────────────────────────────────────────────────
+  // A qualifying bad session must still trigger even when an earlier session
+  // already had an explanation logged (different sessionIndex → no suppression).
+
+  test('repro #380: collapse fires on a 2-rep intra-session drop', () => {
+    // A 3→5 first-to-last rep drop of exactly 2 was previously missed (threshold was ≥3).
+    const sections = [dropOffSection('Squat', [
+      [ws(135, 5), ws(135, 5), ws(135, 5)],
+      [ws(135, 5), ws(135, 5), ws(135, 3)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('collapse');
+    expect(r.sessionIndex).toBe(1);
+  });
+
+  test('repro #380: second consecutive bad session still detected at a new sessionIndex', () => {
+    // Session 0 is baseline; sessions 1 and 2 are both bad (2-rep intra-session drops).
+    // The detection must flag session 2 independently — suppression only applies if
+    // checkins[sessionIndex] is set, which is checked by _runCheckInDetection, not here.
+    const sections = [dropOffSection('Squat', [
+      [ws(135, 5), ws(135, 5), ws(135, 5)],
+      [ws(135, 5), ws(135, 5), ws(135, 3)],
+      [ws(135, 5), ws(135, 5), ws(135, 3)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Squat']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('collapse');
+    expect(r.sessionIndex).toBe(2);
+  });
+
+  test('repro #380: skip detector fires on third consecutive bad session (min-baseline fix)', () => {
+    // With an average-based baseline, the third bad session (2 skips at index 4)
+    // was no longer > avg(0,0,2,2)/4 + 1 = 2.0 (strict >), so it never fired.
+    // With the minimum-based baseline, min(0,0,2,2)=0 and 2 > 0+1=1 always fires.
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [
+        [ws(80, 8), ws(80, 8)],  // session 0: logged
+        [ws(80, 8), ws(80, 8)],  // session 1: logged
+        'skip',                   // session 2: bad
+        'skip',                   // session 3: bad
+        'skip',                   // session 4: bad (would fail with average baseline)
+      ]},
+      { name: 'Row', entries: [
+        [ws(100, 8), ws(100, 8)],
+        [ws(100, 8), ws(100, 8)],
+        'skip',
+        'skip',
+        'skip',
+      ]},
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toContain('skipped');
+    expect(r.sessionIndex).toBe(4);
   });
 
 });

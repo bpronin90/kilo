@@ -68,7 +68,7 @@ export function useLogCurrentRoutineEditor({
   }, [saveSuccess]);
 
   useEffect(() => {
-    if (roughSessionIndex == null || roughFlaggedNames.size === 0) return;
+    if (roughSessionIndex == null) return;
     if (roughNoteId !== currentId) {
       setRoughFlaggedNames(new Set());
       setRoughSessionIndex(null);
