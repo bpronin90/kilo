@@ -342,8 +342,8 @@ retains non-test commands such as `npm run audit`.
 - exercises the saved-goal display path with `start_weight` fallback coverage
   rather than only pure helper-level calculation tests
 - covers the met-goal lifecycle UI, including the `Goal Met!` badge, archive
-  action visibility only after the target is reached, and preservation of the
-  normal in-progress goal actions
+  action visibility after the target is reached or an unmet goal is overdue,
+  and preservation of the normal in-progress goal actions
 - covers archived-goal history visibility, hidden empty state, newest-first
   ordering, required row fields, and the subscriber refresh path after
   archiving a completed goal

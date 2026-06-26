@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.81.3 - 2026-06-26
+
+- Issue #376: Exposed the Weight goal archive action for overdue ended goals
+  whose target date has passed before the target weight is reached. These goals
+  now use the existing archive path to preserve goal history, clear the active
+  goal, and reopen the new-goal form, while still hiding Archive for active
+  in-progress goals.
+
 ## 0.81.2 - 2026-06-26
 
 - Issue #375: Bumped the preview-channel OTA `runtimeVersion`
