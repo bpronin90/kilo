@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.81.5 - 2026-06-26
+
+- Issue #378: Updated the Analytics weight-trends selection behavior so tapping
+  a prior 7-day or 30-day rolling-average chart point updates the top summary
+  and footer averages for that selected date, while tapping again clears the
+  selection and restores the latest/current summary.
+
 ## 0.81.4 - 2026-06-26
 
 - Issue #377: Fixed the Analytics fatigue/routine-health session total so

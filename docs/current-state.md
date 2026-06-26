@@ -392,7 +392,9 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/AnalyticsScreen.js` now renders a native analytics surface with
   a compact weight-trends card that highlights the latest weigh-in, corrected
   pace warning, separate labeled `7-day rolling average` and `30-day rolling
-  average` charts, and 7-day/30-day summary averages, alongside a merged
+  average` charts, and 7-day/30-day summary averages. Selecting a prior chart
+  point updates the card's top summary and footer averages to that selected
+  date until the selection is cleared. The screen also includes a merged
   `Fatigue` parent section. That section contains a
   `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
   `Approaching` / `Deload`) driven entirely by session-ordinal data. Newly
