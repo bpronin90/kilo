@@ -32,22 +32,22 @@ function findPressables(root) {
   return root.findAll(node => typeof node.props?.onPress === 'function', { deep: true });
 }
 
-// The backdrop Pressable is the first in tree order (absoluteFill, before sheet content).
+// The backdrop Pressable wraps the overlay and is the outermost onPress handler in the tree.
 function findBackdrop(root) {
   return findPressables(root)[0];
 }
 
-// The X close button is the Pressable whose text children include '✕'.
+// The X close button: Pressable whose great-grandchild has props.children === '✕'.
+// Pressable renders View → View → [Text("✕"), …] so the content is 3 levels deep.
+// In TestInstance trees, .type is a component reference (not a string), so match by props.children only.
 function findCloseButton(root) {
-  return findPressables(root).find(node => {
-    try {
-      return node
-        .findAll(c => typeof c.type === 'string' && c.type === 'Text', { deep: true })
-        .some(t => t.props.children === '✕');
-    } catch {
-      return false;
-    }
-  });
+  return findPressables(root).find(node =>
+    (node.children || []).some(c1 =>
+      (c1.children || []).some(c2 =>
+        (c2.children || []).some(c3 => c3?.props?.children === '✕')
+      )
+    )
+  );
 }
 
 describe('SessionCheckInModal — backdrop defers (no storage write)', () => {
