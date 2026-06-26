@@ -2,6 +2,7 @@ import React from 'react';
 import render from 'react-test-renderer';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
+import * as weightHooks from '../hooks/entries/weightHooks';
 import { Colors } from '../theme/colors';
 
 // Mock dependencies
@@ -19,6 +20,7 @@ jest.mock('@react-native-community/datetimepicker', () => {
 });
 
 jest.mock('../hooks/useEntries');
+jest.mock('../hooks/entries/weightHooks');
 
 // Mock current date for consistent testing
 // May 24, 2026 is a Sunday.
@@ -63,9 +65,10 @@ describe('WeightScreen', () => {
     saving: false,
   };
 
-  const setup = (goal, entries = []) => {
+  const setup = (goal, entries = [], archivedGoals = []) => {
     useEntries.useWeightEntries.mockReturnValue({ entries, remove: jest.fn(), update: jest.fn() });
     useEntries.useWeightGoal.mockReturnValue({ goal, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    weightHooks.useArchivedWeightGoals.mockReturnValue({ archivedGoals, loading: false, refresh: jest.fn() });
     let component;
     render.act(() => {
       component = render.create(<WeightScreen {...defaultProps} />);
@@ -333,6 +336,134 @@ describe('WeightScreen', () => {
       const root = component.root;
       const inputs = root.findAll(n => n.type === 'TextInput');
       expect(inputs.some(i => i.props.placeholder === '175.0')).toBe(true);
+    });
+  });
+
+  describe('archived goals history list', () => {
+    const hasTextSafe = (root, text) =>
+      root.findAllByType('Text').some(t => {
+        const children = t.props.children;
+        const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+        return flat.includes(text);
+      });
+
+    test('hides archived goals section when there are no archived goals', () => {
+      const component = setup(null, [], []);
+      expect(hasTextSafe(component.root, 'Goal History')).toBe(false);
+    });
+
+    test('renders Goal History section and list with target weight, completed weight, target date, and archived date', () => {
+      const archived = [
+        {
+          id: 'ag_1',
+          target_weight: 175,
+          target_date: '2026-09-01',
+          completed_weight: 174.5,
+          archived_at: '2026-09-02T08:00:00.000Z',
+        },
+      ];
+      const component = setup(null, [], archived);
+      const root = component.root;
+
+      expect(hasTextSafe(root, 'Goal History')).toBe(true);
+      expect(hasTextSafe(root, '175 lb')).toBe(true);
+      expect(hasTextSafe(root, 'Completed: 174.5 lb')).toBe(true);
+      expect(hasTextSafe(root, 'By 09-01-2026')).toBe(true);
+      expect(hasTextSafe(root, 'Archived: 09-02-2026')).toBe(true);
+    });
+
+    test('renders archived goals in newest-first order', () => {
+      const archived = [
+        {
+          id: 'ag_old',
+          target_weight: 180,
+          target_date: '2026-06-01',
+          completed_weight: 179.8,
+          archived_at: '2026-06-02T08:00:00.000Z',
+        },
+        {
+          id: 'ag_new',
+          target_weight: 170,
+          target_date: '2026-08-01',
+          completed_weight: 169.5,
+          archived_at: '2026-08-02T08:00:00.000Z',
+        },
+      ];
+      const component = setup(null, [], archived);
+      const root = component.root;
+
+      const texts = root.findAllByType('Text').map(t => {
+        const children = t.props.children;
+        return Array.isArray(children) ? children.join('') : String(children ?? '');
+      });
+
+      const target170Idx = texts.indexOf('170 lb');
+      const target180Idx = texts.indexOf('180 lb');
+
+      expect(target170Idx).toBeGreaterThan(-1);
+      expect(target180Idx).toBeGreaterThan(-1);
+      expect(target170Idx).toBeLessThan(target180Idx);
+    });
+
+    test('archiving a met goal immediately updates the visible archived goals', async () => {
+      const { useWeightGoal, useArchivedWeightGoals } = jest.requireActual('../hooks/entries/weightHooks');
+      const { View, Text, Pressable } = require('react-native');
+
+      const initialGoal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      let archivedStore = [];
+      let currentGoalStore = initialGoal;
+
+      const AsyncStorage = require('@react-native-async-storage/async-storage');
+      AsyncStorage.getItem.mockImplementation(async (key) => {
+        if (key === 'kilo_weight_goal') return currentGoalStore ? JSON.stringify(currentGoalStore) : null;
+        if (key === 'kilo_archived_weight_goals') return JSON.stringify(archivedStore);
+        return null;
+      });
+      AsyncStorage.setItem.mockImplementation(async (key, value) => {
+        if (key === 'kilo_archived_weight_goals') {
+          archivedStore = JSON.parse(value);
+        }
+        if (key === 'kilo_weight_goal') {
+          currentGoalStore = JSON.parse(value);
+        }
+      });
+      AsyncStorage.removeItem.mockImplementation(async (key) => {
+        if (key === 'kilo_weight_goal') {
+          currentGoalStore = null;
+        }
+      });
+
+      function HookWrapper() {
+        const { goal, archiveGoal } = useWeightGoal();
+        const { archivedGoals } = useArchivedWeightGoals();
+
+        return (
+          <View>
+            <Text testID="goal">{goal ? `${goal.target_weight}` : 'no-goal'}</Text>
+            <Text testID="archived-count">{archivedGoals.length}</Text>
+            <Pressable testID="archive-btn" onPress={() => archiveGoal(175)} />
+          </View>
+        );
+      }
+
+      let component;
+      await render.act(async () => {
+        component = render.create(<HookWrapper />);
+      });
+
+      const goalText = component.root.findByProps({ testID: 'goal' });
+      const archivedCountText = component.root.findByProps({ testID: 'archived-count' });
+
+      expect(goalText.props.children).toBe('175');
+      expect(archivedCountText.props.children).toBe(0);
+
+      const archiveBtn = component.root.findByProps({ testID: 'archive-btn' });
+      await render.act(async () => {
+        await archiveBtn.props.onPress();
+      });
+
+      expect(goalText.props.children).toBe('no-goal');
+      expect(archivedCountText.props.children).toBe(1);
     });
   });
 });

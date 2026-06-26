@@ -65,6 +65,7 @@ export function useWeightGoal() {
     await Storage.clearWeightGoal();
     setGoal(null);
     notifyGoal();
+    notifyArchivedGoals();
   }, [goal]);
 
   return { goal, loading, save, clear, archiveGoal };

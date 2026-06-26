@@ -1,13 +1,21 @@
 # Changelog
 
+## 0.81.0 - 2026-06-26
+
+- Issue #373: Added a compact Weight-screen `Goal History` section for archived
+  completed weight goals. Archived goals now appear below the active/new goal
+  flow, hide when empty, sort newest first, show target/completed/date context,
+  and refresh immediately after archiving without changing active-goal analytics
+  or archived-goal persistence.
+
 ## 0.80.0 - 2026-06-25
 
 - Issue #372: Added the completed weight-goal lifecycle. Active goals now show a
   completed state when the latest weight reaches the target, can be archived
   explicitly, clear active-goal analytics after archive, and persist archived
   goal history locally and through Supabase sync/export/delete paths. Added
-  focused UI, storage, sync, RLS, and account lifecycle coverage. Follow-up
-  issue #373 tracks adding a visible archived-goal history section.
+  focused UI, storage, sync, RLS, and account lifecycle coverage. Visible
+  archived-goal history shipped separately in issue #373.
 
 ## 0.79.6 - 2026-06-25
 

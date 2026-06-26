@@ -9,6 +9,7 @@ import { formatDate, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 import { isGoalMet as computeIsGoalMet } from '../lib/data/weightGoal';
+import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
 
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 
@@ -59,6 +60,7 @@ export function WeightScreen({
 }) {
   const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
+  const { archivedGoals } = useArchivedWeightGoals();
   const profile = useUserProfile()?.profile ?? null;
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
@@ -127,6 +129,14 @@ export function WeightScreen({
     () => computeIsGoalMet(goal, trends.currentWeight),
     [goal, trends.currentWeight]
   );
+
+  const sortedArchivedGoals = useMemo(() => {
+    return [...archivedGoals].sort((a, b) => {
+      const dateA = a.archived_at || a.saved_at || '';
+      const dateB = b.archived_at || b.saved_at || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [archivedGoals]);
 
   const newEntryDateObj = useMemo(() => {
     if (newEntryDate) {
@@ -351,6 +361,45 @@ export function WeightScreen({
         </Card>
       )}
 
+      {sortedArchivedGoals.length > 0 && (
+        <View style={styles.archivedContainer}>
+          <SectionTitle>Goal History</SectionTitle>
+          <Card style={styles.archivedCard}>
+            {sortedArchivedGoals.map((g, index) => {
+              const isLast = index === sortedArchivedGoals.length - 1;
+              return (
+                <View key={g.id}>
+                  <View style={styles.archivedRow}>
+                    <View style={styles.archivedCol}>
+                      <Text style={styles.archivedLabel}>Target</Text>
+                      <Text style={styles.archivedValue}>{g.target_weight} lb</Text>
+                      {g.completed_weight !== null && g.completed_weight !== undefined && (
+                        <Text style={styles.archivedSubtext}>
+                          Completed: {g.completed_weight} lb
+                        </Text>
+                      )}
+                    </View>
+                    <View style={[styles.archivedCol, { alignItems: 'flex-end' }]}>
+                      {g.target_date && (
+                        <Text style={styles.archivedDateText}>
+                          By {formatDate(g.target_date)}
+                        </Text>
+                      )}
+                      {(g.archived_at || g.saved_at) && (
+                        <Text style={styles.archivedSubtext}>
+                          Archived: {formatDate(g.archived_at || g.saved_at)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  {!isLast && <View style={styles.archivedDivider} />}
+                </View>
+              );
+            })}
+          </Card>
+        </View>
+      )}
+
       <SectionTitle>Trends</SectionTitle>
       <Card style={styles.trendsCardMerged}>
         {trendSections.map((section) => (
@@ -447,5 +496,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.error,
     fontWeight: '600',
+  },
+  archivedContainer: {
+    marginTop: 0,
+  },
+  archivedCard: {
+    paddingVertical: 8,
+    gap: 0,
+  },
+  archivedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  archivedCol: {
+    flexDirection: 'column',
+    gap: 2,
+  },
+  archivedLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  archivedValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.accent,
+  },
+  archivedSubtext: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+  },
+  archivedDateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  archivedDivider: {
+    height: 1,
+    backgroundColor: Colors.cardBorder,
+    opacity: 0.3,
   },
 });
