@@ -15,13 +15,13 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
 
   if (workoutNote?.raw_text) {
     sections = getNoteSections(workoutNote);
-
-    const oneKSelections = {
-      ...DEFAULT_1K_EXERCISES,
-      ...(workoutNote?.one_k_exercises || {}),
-    };
-    oneK = derive1kTotal(sections, oneKSelections);
   }
+
+  const oneKSelections = {
+    ...DEFAULT_1K_EXERCISES,
+    ...(workoutNote?.one_k_exercises || {}),
+  };
+  oneK = derive1kTotal(allSections, oneKSelections);
 
   const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
   const latestWeight = weightTrends.currentWeight;
