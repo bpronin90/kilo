@@ -5,3 +5,9 @@ www/
 .claude/
 .antigravitycli/
 .antigravitiycli/
+
+# Local-only agent instruction files
+AGENTS.md
+CODEX.md
+CLAUDE.md
+GEMINI.md
