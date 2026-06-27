@@ -348,7 +348,8 @@ The real native app path now has a modular React Native shell:
   pace/calorie guidance are easier to scan, and archived completed goals now
   appear in a compact conditional `Goal History` list beneath the active/new
   goal flow, ordered newest first with target weight, completed weight when
-  available, target date, and archived date. The Trends card now colors both
+  available, target date, and archived date, with compact column headers and a
+  collapse/expand control for scanning longer history. The Trends card now colors both
   pace-severity states and directional gain/loss cues instead of leaving the
   trend column uniformly neutral, and tapping a history row now scrolls back
   to the top editor as it loads the selected entry. The Weight tab now reads
@@ -360,7 +361,10 @@ The real native app path now has a modular React Native shell:
   surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
-  recorded `logged_at` timestamp. A failed weight-entry load now surfaces a
+  recorded `logged_at` timestamp. The History panel now includes column
+  headers, collapse/expand, and local All/30d/90d/6m date-range chips over the
+  already loaded entries, without changing saved weight calculations or
+  persistence. A failed weight-entry load now surfaces a
   retryable `ErrorBanner` at the top of the screen instead of a silent empty
   screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
@@ -422,7 +426,9 @@ The real native app path now has a modular React Native shell:
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation across all synced workout
   notes, so newly synced historical/current note sessions are included when
-  they form complete aligned Big-3 cycles. The screen now also includes
+  they form complete aligned Big-3 cycles. The Big 3 Mapping panel is now
+  collapsible so the selection rows can be hidden while keeping the mapping
+  context available. The screen now also includes
   a fatigue-tracking panel that stays collapsed by default into a signal-first
   summary row highlighting the most common rough reason when available and an
   unanswered-count alert when pending check-ins exist. Expanding the panel

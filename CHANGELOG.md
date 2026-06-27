@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.82.0 - 2026-06-27
+
+- Issue #383: Polished Weight and Analytics tab spacing and history panels.
+  Weight history now has compact columns, date-range chips, and collapse/expand;
+  Weight goal history has aligned column headers and collapse/expand; and the
+  Analytics Big 3 Mapping panel can collapse without changing calculations or
+  persistence.
+
 ## 0.81.9 - 2026-06-27
 
 - Issue #382: Fixed remaining fatigue check-in prompt lifecycle gaps. The
