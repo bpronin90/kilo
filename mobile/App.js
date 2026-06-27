@@ -267,6 +267,7 @@ export default function App() {
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
             deloadDateEditEnabled={deloadDateEditEnabled}
+            isActive={activeTab === 'Log'}
           />
         </View>
         <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
