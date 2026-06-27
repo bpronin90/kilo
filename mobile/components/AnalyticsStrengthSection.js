@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
 import { Colors } from '../theme/colors';
@@ -16,6 +16,8 @@ export function AnalyticsStrengthSection({
   noteExerciseNames,
   handleSelectExercise,
 }) {
+  const [big3Collapsed, setBig3Collapsed] = useState(false);
+
   return (
     <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
       <SectionTitle>Strength</SectionTitle>
@@ -67,8 +69,16 @@ export function AnalyticsStrengthSection({
       )}
 
       <Card style={styles.slotCard}>
-        <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
-        {(['bench', 'squat', 'deadlift']).map(slot => (
+        <Pressable
+          style={styles.slotCardHeader}
+          onPress={() => setBig3Collapsed(c => !c)}
+          accessibilityRole="button"
+          accessibilityLabel={big3Collapsed ? 'Expand Big 3 mapping' : 'Collapse Big 3 mapping'}
+        >
+          <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
+          <Text style={styles.slotCardChevron} accessible={false}>{big3Collapsed ? '▼' : '▲'}</Text>
+        </Pressable>
+        {!big3Collapsed && (['bench', 'squat', 'deadlift']).map(slot => (
           <View key={slot}>
             <Pressable
               style={styles.slotRow}
@@ -198,12 +208,23 @@ const styles = StyleSheet.create({
     gap: 4,
     padding: 16,
   },
+  slotCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  slotCardChevron: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '700',
+  },
   slotCardTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 0,
   },
   slotRow: {
     flexDirection: 'row',

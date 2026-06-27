@@ -378,8 +378,10 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(root, 'Goal History')).toBe(true);
       expect(hasTextSafe(root, '175 lb')).toBe(true);
       expect(hasTextSafe(root, 'Completed: 174.5 lb')).toBe(true);
-      expect(hasTextSafe(root, 'By 09-01-2026')).toBe(true);
-      expect(hasTextSafe(root, 'Archived: 09-02-2026')).toBe(true);
+      // Column header now says "By Date"; cell shows date without "By" prefix
+      expect(hasTextSafe(root, '09-01-2026')).toBe(true);
+      // Column header now says "Archived"; cell shows date without "Archived: " prefix
+      expect(hasTextSafe(root, '09-02-2026')).toBe(true);
     });
 
     test('renders archived goals in newest-first order', () => {

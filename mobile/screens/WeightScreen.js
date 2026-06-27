@@ -68,6 +68,7 @@ export function WeightScreen({
   const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+  const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(false);
   const scrollRef = useRef(null);
 
   const goalForm = useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal);
@@ -363,15 +364,30 @@ export function WeightScreen({
 
       {sortedArchivedGoals.length > 0 && (
         <View style={styles.archivedContainer}>
-          <SectionTitle>Goal History</SectionTitle>
+          <Pressable
+            onPress={() => setGoalHistoryCollapsed(c => !c)}
+            style={styles.archivedSectionHeader}
+            accessibilityRole="button"
+            accessibilityLabel={goalHistoryCollapsed ? 'Expand goal history' : 'Collapse goal history'}
+          >
+            <SectionTitle>Goal History</SectionTitle>
+            <Text style={styles.archivedCollapseChevron}>
+              {goalHistoryCollapsed ? '▼' : '▲'}
+            </Text>
+          </Pressable>
           <Card style={styles.archivedCard}>
-            {sortedArchivedGoals.map((g, index) => {
+            {/* Column headers */}
+            <View style={styles.archivedColumnHeader}>
+              <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
+              <Text style={[styles.archivedColLabel, { flex: 1.2 }]}>By Date</Text>
+              <Text style={[styles.archivedColLabel, { flex: 1.5, textAlign: 'right' }]}>Archived</Text>
+            </View>
+            {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
               return (
                 <View key={g.id}>
                   <View style={styles.archivedRow}>
-                    <View style={styles.archivedCol}>
-                      <Text style={styles.archivedLabel}>Target</Text>
+                    <View style={{ flex: 1 }}>
                       <Text style={styles.archivedValue}>{g.target_weight} lb</Text>
                       {g.completed_weight !== null && g.completed_weight !== undefined && (
                         <Text style={styles.archivedSubtext}>
@@ -379,23 +395,26 @@ export function WeightScreen({
                         </Text>
                       )}
                     </View>
-                    <View style={[styles.archivedCol, { alignItems: 'flex-end' }]}>
-                      {g.target_date && (
-                        <Text style={styles.archivedDateText}>
-                          By {formatDate(g.target_date)}
-                        </Text>
-                      )}
-                      {(g.archived_at || g.saved_at) && (
-                        <Text style={styles.archivedSubtext}>
-                          Archived: {formatDate(g.archived_at || g.saved_at)}
-                        </Text>
-                      )}
+                    <View style={{ flex: 1.2 }}>
+                      <Text style={styles.archivedDateText}>
+                        {g.target_date ? formatDate(g.target_date) : '—'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                      <Text style={styles.archivedSubtext}>
+                        {formatDate(g.archived_at || g.saved_at)}
+                      </Text>
                     </View>
                   </View>
                   {!isLast && <View style={styles.archivedDivider} />}
                 </View>
               );
             })}
+            {goalHistoryCollapsed && (
+              <View style={styles.archivedCollapsedRow}>
+                <Text style={styles.archivedCollapsedText}>{sortedArchivedGoals.length} past goals</Text>
+              </View>
+            )}
           </Card>
         </View>
       )}
@@ -500,46 +519,72 @@ const styles = StyleSheet.create({
   archivedContainer: {
     marginTop: 0,
   },
-  archivedCard: {
-    paddingVertical: 8,
-    gap: 0,
-  },
-  archivedRow: {
+  archivedSectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    justifyContent: 'space-between',
   },
-  archivedCol: {
-    flexDirection: 'column',
-    gap: 2,
-  },
-  archivedLabel: {
-    fontSize: 11,
+  archivedCollapseChevron: {
+    fontSize: 12,
     color: Colors.textMuted,
     fontWeight: '700',
+    paddingBottom: 4,
+  },
+  archivedCard: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    gap: 0,
+    overflow: 'hidden',
+  },
+  archivedColumnHeader: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: Colors.subtleBg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  archivedColLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  archivedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
   archivedValue: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '700',
     color: Colors.accent,
   },
   archivedSubtext: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textMuted,
     fontWeight: '500',
   },
   archivedDateText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.text,
   },
   archivedDivider: {
     height: 1,
     backgroundColor: Colors.cardBorder,
     opacity: 0.3,
+    marginHorizontal: 16,
+  },
+  archivedCollapsedRow: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  archivedCollapsedText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
 });
