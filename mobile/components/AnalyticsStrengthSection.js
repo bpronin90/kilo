@@ -17,6 +17,11 @@ export function AnalyticsStrengthSection({
   handleSelectExercise,
 }) {
   const [big3Collapsed, setBig3Collapsed] = useState(false);
+  const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
+
+  const displayOneK = selectedSeriesPoint
+    ? { total: selectedSeriesPoint.value, bench: selectedSeriesPoint.bench, squat: selectedSeriesPoint.squat, deadlift: selectedSeriesPoint.deadlift }
+    : oneK;
 
   return (
     <View onLayout={handleStrengthLayout} style={styles.strengthSection}>
@@ -28,25 +33,25 @@ export function AnalyticsStrengthSection({
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (oneK.total || 0) / 1000)) }]}>
-                {oneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
+              <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (displayOneK.total || 0) / 1000)) }]}>
+                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
               </Text>
-              
+
               <View style={styles.oneKProgressBarContainer}>
-                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (oneK.total / 1000) * 100)}%` }]} />
+                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (displayOneK.total / 1000) * 100)}%` }]} />
               </View>
 
               <View style={styles.oneKBreakdown}>
                 <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{oneK.squat?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemValue}>{displayOneK.squat?.toFixed(0) || '—'}</Text>
                   <Text style={styles.oneKItemLabel}>Squats</Text>
                 </View>
                 <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{oneK.bench?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemValue}>{displayOneK.bench?.toFixed(0) || '—'}</Text>
                   <Text style={styles.oneKItemLabel}>Bench</Text>
                 </View>
                 <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{oneK.deadlift?.toFixed(0) || '—'}</Text>
+                  <Text style={styles.oneKItemValue}>{displayOneK.deadlift?.toFixed(0) || '—'}</Text>
                   <Text style={styles.oneKItemLabel}>Deadlifts</Text>
                 </View>
               </View>
@@ -54,7 +59,7 @@ export function AnalyticsStrengthSection({
               {oneKChartData.length > 1 && (
                 <View style={styles.oneKChartBlock}>
                   <Text style={styles.oneKChartLabel}>1K total over sessions</Text>
-                  <LineChart data={oneKChartData} height={120} hideHeader />
+                  <LineChart data={oneKChartData} height={120} hideHeader onSelect={p => setSelectedSeriesPoint(p)} />
                 </View>
               )}
             </>

@@ -1,7 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
-import { deriveAnalytics } from '../screens/analytics/analyticsDerivations';
+import { deriveAnalytics, deriveOneKChartData } from '../screens/analytics/analyticsDerivations';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 import {
@@ -534,6 +534,37 @@ describe('AnalyticsScreen Routine Status gauge', () => {
     const root = component.root;
     expect(hasText(root, 'Fatigue setting in')).toBe(true);
     expect(findAllText(root).some(s => s === '7')).toBe(true);
+  });
+});
+
+// ── deriveOneKChartData — per-point breakdown fields (issue #384) ─────────────
+
+describe('deriveOneKChartData — selected-day wiring', () => {
+  test('each chart point carries bench/squat/deadlift breakdown values', () => {
+    const series = [
+      { session: 1, total: 900, bench: 280, squat: 360, deadlift: 260 },
+      { session: 2, total: 1000, bench: 300, squat: 400, deadlift: 300 },
+    ];
+    const chartData = deriveOneKChartData(series);
+    expect(chartData[0].bench).toBe(280);
+    expect(chartData[0].squat).toBe(360);
+    expect(chartData[0].deadlift).toBe(260);
+    expect(chartData[1].bench).toBe(300);
+    expect(chartData[1].squat).toBe(400);
+    expect(chartData[1].deadlift).toBe(300);
+  });
+
+  test('chart point value and label are derived correctly', () => {
+    const series = [{ session: 3, total: 987.6, bench: 310, squat: 380, deadlift: 298 }];
+    const chartData = deriveOneKChartData(series);
+    expect(chartData[0].value).toBe(988); // Math.round
+    expect(chartData[0].label).toBe('#3');
+    expect(chartData[0].unit).toBe('lb');
+  });
+
+  test('empty series produces empty array', () => {
+    expect(deriveOneKChartData([])).toEqual([]);
+    expect(deriveOneKChartData(null)).toEqual([]);
   });
 });
 
