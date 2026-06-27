@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.81.8",
+  "version": "0.81.9",
   "main": "index.js",
   "scripts": {
     "start": "expo start",

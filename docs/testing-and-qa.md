@@ -296,6 +296,9 @@ retains non-test commands such as `npm run audit`.
   and Android `onRequestClose` call the defer path without writing
   `session_checkins`, while the explicit close control writes a session check-in
   entry before closing
+- verifies the Log-tab active-state regression boundary so switching away from
+  Log while the current routine is in edit mode fires check-in detection, while
+  switching away in read mode does not open the prompt
 - verifies exercises are grouped by routine day with correct group headers
 - verifies multi-day exercises render per-day row metrics from
   `perDaySignals`, including null-trend fallback to the global signal and
