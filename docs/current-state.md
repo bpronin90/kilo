@@ -426,7 +426,10 @@ The real native app path now has a modular React Native shell:
   labels (Squats/Bench/Deadlifts), and adds a `1K total over sessions` chart
   driven by a shared per-session Big-3 derivation across all synced workout
   notes, so newly synced historical/current note sessions are included when
-  they form complete aligned Big-3 cycles. The Big 3 Mapping panel is now
+  they form complete aligned Big-3 cycles. Selecting a prior 1K chart point
+  updates the 1K Progress hero total, progress bar, and squat/bench/deadlift
+  breakdown to that selected session while the unselected card falls back to
+  the latest complete session. The Big 3 Mapping panel is now
   collapsible so the selection rows can be hidden while keeping the mapping
   context available. The screen now also includes
   a fatigue-tracking panel that stays collapsed by default into a signal-first

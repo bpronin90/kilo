@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.82.1 - 2026-06-27
+
+- Issue #384: Fixed the Analytics `1K total over sessions` selection wiring so
+  tapping a prior chart point updates the 1K Progress hero total, progress bar,
+  and squat/bench/deadlift breakdown to the selected session while preserving
+  the latest-session fallback before selection.
+
 ## 0.82.0 - 2026-06-27
 
 - Issue #383: Polished Weight and Analytics tab spacing and history panels.

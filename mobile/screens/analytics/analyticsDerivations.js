@@ -92,6 +92,9 @@ export function deriveOneKChartData(oneKSeries) {
     value: Math.round(p.total),
     label: `#${p.session}`,
     unit: 'lb',
+    bench: p.bench,
+    squat: p.squat,
+    deadlift: p.deadlift,
   }));
 }
 
