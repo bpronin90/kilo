@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.81.9 - 2026-06-27
+
+- Issue #382: Fixed remaining fatigue check-in prompt lifecycle gaps. The
+  session check-in sheet keeps its bounded height after the backdrop-dismissal
+  change, backdrop and Android modal close still defer without writing
+  `session_checkins`, and switching away from the Log tab while editing the
+  current routine now reaches the same fatigue detection decision point as
+  `Done`.
+
 ## 0.81.8 - 2026-06-26
 
 - Issue #381: Fixed fatigue check-in backdrop dismissal so backdrop taps and

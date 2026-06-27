@@ -35,6 +35,7 @@ export function LogScreen({
   onSaveWorkout,
   deloadDateEditEnabled,
   onCheckInPrompt,
+  isActive,
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -61,6 +62,7 @@ export function LogScreen({
     selectCurrent,
     fatigueTrackingEnabled,
     onCheckInPrompt,
+    isActive,
     editorScrollRef,
     readScrollRef,
   });

@@ -159,14 +159,12 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <KeyboardAvoidingView
         style={[styles.overlay, tier === 'rough' && styles.overlayTop]}
-        onPress={onClose}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
       >
-        <KeyboardAvoidingView
-          style={tier === 'rough' ? styles.sheetExpanded : undefined}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
         <View
           style={[styles.sheet, tier === 'rough' ? styles.sheetExpanded : styles.sheetBounded]}
           onStartShouldSetResponder={() => true}
@@ -293,8 +291,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
             </ScrollView>
           )}
         </View>
-        </KeyboardAvoidingView>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

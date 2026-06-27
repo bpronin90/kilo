@@ -283,10 +283,11 @@ The real native app path now has a modular React Native shell:
   downstream analytics consumers read stored skip/attendance state instead of
   recomputing it during render. Native workout-note documents now also persist
   `session_checkins` keyed by session index so fatigue check-ins survive
-  reloads. When the user leaves the current-routine editor after a rough
-  detected session, the same Log flow now re-runs the session check-in
-  detector against the current note only, highlights exactly the flagged
-  exercises in red in the rendered routine view, opens a centered
+  reloads. When the user leaves the current-routine editor via `Done`, Android
+  back, or switching away from the Log tab after a rough detected session, the
+  same Log flow now re-runs the session check-in detector against the current
+  note only, highlights exactly the flagged exercises in red in the rendered
+  routine view, opens a centered
   `SessionCheckInModal` with a detector-aware title plus flagged exercise names
   where available, and persists either an `I'm okay`, `Not great`, or
   explicit dismissed/pending (`status: null`) state back onto that session

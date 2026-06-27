@@ -26,6 +26,7 @@ export function useLogCurrentRoutineEditor({
   selectCurrent,
   fatigueTrackingEnabled,
   onCheckInPrompt,
+  isActive,
   editorScrollRef,
   readScrollRef,
 }) {
@@ -51,10 +52,12 @@ export function useLogCurrentRoutineEditor({
   const workoutNoteTitleRef = useRef(workoutNoteTitle);
   const currentIdRef = useRef(currentId);
   const currentNoteRef = useRef(currentNote);
+  const modeRef = useRef(mode);
   workoutNoteTextRef.current = workoutNoteText;
   workoutNoteTitleRef.current = workoutNoteTitle;
   currentIdRef.current = currentId;
   currentNoteRef.current = currentNote;
+  modeRef.current = mode;
 
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -83,6 +86,14 @@ export function useLogCurrentRoutineEditor({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentNote?.session_checkins, roughSessionIndex, currentId]);
+
+  // Fire check-in detection when the Log tab loses focus (user switches away while editing).
+  useEffect(() => {
+    if (isActive === false && modeRef.current === 'edit') {
+      _runCheckInDetection();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
