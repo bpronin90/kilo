@@ -309,6 +309,8 @@ retains non-test commands such as `npm run audit`.
   and full breakdown labels (Squats, Bench, Deadlifts)
 - verifies the `1K total over sessions` chart label only appears when the
   derived series has multiple aligned points
+- verifies `deriveOneKChartData` preserves per-point squat/bench/deadlift
+  breakdown values so selected chart points can drive the 1K Progress stats
 
 ### `mobile/tests/storage.test.js`
 
