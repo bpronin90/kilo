@@ -64,24 +64,28 @@ export function deriveGroupedSignals(parsedSections, analytics, searchQuery) {
     }
 
     if (groupExercises.length > 0) {
-      groups.push({
-        name: section.heading,
-        exercises: groupExercises.map(sig => {
-          const norm = normCanon(sig.name);
-          const isMultiDay = exerciseGroupCount.get(norm) > 1;
-          const canonName = normalizeExerciseKey(sig.name);
+      const mappedExercises = groupExercises.map(sig => {
+        const norm = normCanon(sig.name);
+        const isMultiDay = exerciseGroupCount.get(norm) > 1;
+        const canonName = normalizeExerciseKey(sig.name);
 
-          return {
-            ...sig,
-            isMultiDay,
-            currentDayHeading: section.heading,
-            otherDays: sections
-              .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
-              .map(s => s.heading),
-            daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
-          };
-        }),
+        return {
+          ...sig,
+          isMultiDay,
+          currentDayHeading: section.heading,
+          otherDays: sections
+            .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
+            .map(s => s.heading),
+          daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
+        };
       });
+
+      const last = groups[groups.length - 1];
+      if (last && last.name === section.heading) {
+        last.exercises.push(...mappedExercises);
+      } else {
+        groups.push({ name: section.heading, exercises: mappedExercises });
+      }
     }
   });
   return groups;
