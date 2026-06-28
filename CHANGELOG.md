@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.82.3 - 2026-06-28
+
+- Issue #383: Completed the reopened Weight and Analytics polish pass. Analytics
+  Progressive Overload now merges non-consecutive current-note sections that
+  share the same leading weekday, preventing duplicate Monday groups for
+  gym/home routine blocks, and Weight/Analytics section-title spacing now uses
+  the same local 16px pattern for the affected Goal History, Weight Trends, and
+  Progressive Overload sticky-header surfaces.
+
 ## 0.82.2 - 2026-06-28
 
 - Issue #385: Fixed duplicate routine-day headers in the Analytics tracked

@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   archivedContainer: {
-    marginTop: 0,
+    gap: 16,
   },
   archivedSectionHeader: {
     flexDirection: 'row',

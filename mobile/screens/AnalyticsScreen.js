@@ -379,6 +379,7 @@ export function AnalyticsScreen({ multiplier, section }) {
 const styles = StyleSheet.create({
   signalStickyHeader: {
     backgroundColor: Colors.background,
+    paddingTop: 8,
     paddingBottom: 8,
   },
   searchContainer: {

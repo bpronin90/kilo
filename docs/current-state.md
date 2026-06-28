@@ -349,7 +349,9 @@ The real native app path now has a modular React Native shell:
   appear in a compact conditional `Goal History` list beneath the active/new
   goal flow, ordered newest first with target weight, completed weight when
   available, target date, and archived date, with compact column headers and a
-  collapse/expand control for scanning longer history. The Trends card now colors both
+  collapse/expand control for scanning longer history. The Goal History header
+  and card now use the same 16px title-to-panel gap as the rest of the Weight
+  tab. The Trends card now colors both
   pace-severity states and directional gain/loss cues instead of leaving the
   trend column uniformly neutral, and tapping a history row now scrolls back
   to the top editor as it loads the selected entry. The Weight tab now reads
@@ -451,7 +453,16 @@ The real native app path now has a modular React Native shell:
   filtering, and a tabular two-line row layout (exercise name + 4-column
   metric grid: `1RM`, `Kilo`, `Best`, `Trend`). Consecutive parsed sections
   with the same day heading, such as multiple `+` subheadings under one
-  weekday, render as one routine-day group.
+  weekday, render as one routine-day group, and non-consecutive current-note
+  sections that begin with the same weekday (for example separate gym/home
+  Monday blocks) now merge into one normalized weekday group instead of
+  duplicating the day under Progressive Overload. Same-day exercise duplicates
+  are deduplicated within that merged group, while true multi-day detection
+  counts unique weekday keys so same-day variants do not inflate cross-day
+  comparisons. The Progressive Overload sticky header now keeps matching top
+  and bottom breathing room when pinned, and the Analytics weight-trends section
+  uses the same 16px section-title-to-card spacing as the other Analytics
+  panels.
   Non-weighted exercises (reps-only or time-based) render with a minimal
   sub-layout showing `Avg` and `Best` metrics (average reps/hold per set
   and highest single-set value) with inline labels, plus a PO arrow

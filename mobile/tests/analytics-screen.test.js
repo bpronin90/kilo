@@ -191,8 +191,8 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
     const component = setup({ hookOverrides });
     const root = component.root;
 
-    expect(hasText(root, 'Monday')).toBe(true);
-    expect(hasText(root, 'Wednesday')).toBe(true);
+    expect(hasText(root, 'MONDAY')).toBe(true);
+    expect(hasText(root, 'WEDNESDAY')).toBe(true);
     expect(hasText(root, 'Bench Press')).toBe(true);
     expect(hasText(root, 'Squat')).toBe(true);
   });
@@ -301,7 +301,7 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
     const component = setup({ hookOverrides });
     const root = component.root;
 
-    expect(findAllText(root).some(s => s.includes('Also on Friday'))).toBe(true);
+    expect(findAllText(root).some(s => s.includes('Also on FRIDAY'))).toBe(true);
   });
 
   test('multi-day bodyweight exercise renders reps unit not lb in CrossDayComparison', () => {
@@ -385,8 +385,29 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
     };
     const groups = deriveGroupedSignals({ currentSections }, analytics, '');
     expect(groups.length).toBe(1);
-    expect(groups[0].name).toBe('Monday');
+    expect(groups[0].name).toBe('MONDAY');
     expect(groups[0].exercises.length).toBe(2);
+  });
+
+  test('non-consecutive same-day sections (gym+home week) merge into one group', () => {
+    const { parseWorkoutNote: pwn } = require('../lib/parser');
+    const { sections: currentSections } = pwn(
+      'MONDAY — Gym\n+Lifting\n1. Bench Press\n\nTUESDAY — Gym\n+Lifting\n1. Squat\n\n---\n\nMONDAY — Home\n+Lifting\n1. Lateral Raise'
+    );
+    const signals = [
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+      { name: 'Squat', latest_pr: 300, kilo_max: 280, latest_top_weight: 275, overload_trend: 'up' },
+      { name: 'Lateral Raise', latest_pr: null, kilo_max: null, latest_top_weight: 30, overload_trend: null },
+    ];
+    const analytics = { signals, nameDisplayMap: new Map(), perDaySignals: {}, nonWeightedMetrics: {} };
+    const groups = deriveGroupedSignals({ currentSections }, analytics, '');
+    expect(groups.length).toBe(2); // MONDAY and TUESDAY, not three
+    expect(groups[0].name).toBe('MONDAY');
+    expect(groups[1].name).toBe('TUESDAY');
+    // Both Bench Press (gym Mon) and Lateral Raise (home Mon) appear under MONDAY
+    const mondayNames = groups[0].exercises.map(e => e.name);
+    expect(mondayNames).toContain('Bench Press');
+    expect(mondayNames).toContain('Lateral Raise');
   });
 });
 
