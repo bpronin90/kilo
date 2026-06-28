@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.82.2 - 2026-06-28
+
+- Issue #385: Fixed duplicate routine-day headers in the Analytics tracked
+  exercises list. Consecutive parsed sections with the same day heading, such
+  as multiple `+` subheadings under Monday, now render as one day group while
+  preserving per-exercise metrics and search filtering.
+
 ## 0.82.1 - 2026-06-27
 
 - Issue #384: Fixed the Analytics `1K total over sessions` selection wiring so

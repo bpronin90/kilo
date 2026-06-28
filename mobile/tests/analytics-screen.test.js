@@ -1,7 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
-import { deriveAnalytics, deriveOneKChartData } from '../screens/analytics/analyticsDerivations';
+import { deriveAnalytics, deriveOneKChartData, deriveGroupedSignals } from '../screens/analytics/analyticsDerivations';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 import {
@@ -366,6 +366,27 @@ describe('AnalyticsScreen Progressive Overload — grouping and layout', () => {
     const root = component.root;
 
     expect(hasText(root, 'DB Bench Press')).toBe(true);
+  });
+
+  test('single day with multiple subheadings produces one group not two (issue #385)', () => {
+    const { parseWorkoutNote: pwn } = require('../lib/parser');
+    const { sections: currentSections } = pwn(
+      'Monday\n+Warmup\n1. Bike\n+Lifting\n1. Bench Press'
+    );
+    const signals = [
+      { name: 'Bike', latest_pr: null, kilo_max: null, latest_top_weight: null, overload_trend: null },
+      { name: 'Bench Press', latest_pr: 225, kilo_max: 200, latest_top_weight: 185, overload_trend: 'up' },
+    ];
+    const analytics = {
+      signals,
+      nameDisplayMap: new Map([['bike', 'Bike'], ['bench press', 'Bench Press']]),
+      perDaySignals: {},
+      nonWeightedMetrics: {},
+    };
+    const groups = deriveGroupedSignals({ currentSections }, analytics, '');
+    expect(groups.length).toBe(1);
+    expect(groups[0].name).toBe('Monday');
+    expect(groups[0].exercises.length).toBe(2);
   });
 });
 

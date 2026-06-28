@@ -449,7 +449,9 @@ The real native app path now has a modular React Native shell:
   container, strength-only 1k slot selection, and a `Progressive Overload`
   section with routine-day grouping, collapsible group headers, search
   filtering, and a tabular two-line row layout (exercise name + 4-column
-  metric grid: `1RM`, `Kilo`, `Best`, `Trend`).
+  metric grid: `1RM`, `Kilo`, `Best`, `Trend`). Consecutive parsed sections
+  with the same day heading, such as multiple `+` subheadings under one
+  weekday, render as one routine-day group.
   Non-weighted exercises (reps-only or time-based) render with a minimal
   sub-layout showing `Avg` and `Best` metrics (average reps/hold per set
   and highest single-set value) with inline labels, plus a PO arrow
