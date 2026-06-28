@@ -46,7 +46,7 @@ export function AnalyticsWeightTrendsCard({
   }, [selectedPoint, weightSummary, byLabel7, byLabel30]);
 
   return (
-    <View onLayout={handleWeightLayout}>
+    <View onLayout={handleWeightLayout} style={styles.sectionWrapper}>
       <SectionTitle>Weight Trends</SectionTitle>
       <Card style={styles.weightCard}>
         <View style={styles.weightHeader}>
@@ -114,6 +114,9 @@ export function AnalyticsWeightTrendsCard({
 }
 
 const styles = StyleSheet.create({
+  sectionWrapper: {
+    gap: 16,
+  },
   weightCard: {
     padding: 20,
     gap: 16,
