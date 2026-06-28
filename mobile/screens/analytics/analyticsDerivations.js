@@ -38,19 +38,34 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
   return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
 }
 
+const _LEADING_DAY_RE = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+
+function _dayGroupKey(heading) {
+  if (!heading) return heading;
+  const m = heading.match(_LEADING_DAY_RE);
+  return m ? m[1].toUpperCase() : heading;
+}
+
 export function deriveGroupedSignals(parsedSections, analytics, searchQuery) {
   const groups = [];
+  const groupByKey = new Map();
   const sections = parsedSections.currentSections;
   const signals = analytics.signals || [];
   const perDaySignals = analytics.perDaySignals || {};
   const normCanon = normalizeExerciseKey;
   const nameToSignal = new Map(signals.map(s => [normCanon(s.name), s]));
 
-  const exerciseGroupCount = new Map();
-  sections.forEach(s => s.exercises.forEach(e => {
-    const norm = normCanon(e.name);
-    exerciseGroupCount.set(norm, (exerciseGroupCount.get(norm) || 0) + 1);
-  }));
+  // Count unique day keys per exercise so same-day variants (e.g. gym Monday and
+  // home Monday) don't inflate the multi-day count.
+  const exerciseDayKeys = new Map();
+  sections.forEach(s => {
+    const key = _dayGroupKey(s.heading);
+    s.exercises.forEach(e => {
+      const norm = normCanon(e.name);
+      if (!exerciseDayKeys.has(norm)) exerciseDayKeys.set(norm, new Set());
+      exerciseDayKeys.get(norm).add(key);
+    });
+  });
 
   sections.forEach(section => {
     let groupExercises = section.exercises
@@ -64,27 +79,36 @@ export function deriveGroupedSignals(parsedSections, analytics, searchQuery) {
     }
 
     if (groupExercises.length > 0) {
+      const dayKey = _dayGroupKey(section.heading);
       const mappedExercises = groupExercises.map(sig => {
         const norm = normCanon(sig.name);
-        const isMultiDay = exerciseGroupCount.get(norm) > 1;
+        const dayKeys = exerciseDayKeys.get(norm);
+        const isMultiDay = dayKeys ? dayKeys.size > 1 : false;
         const canonName = normalizeExerciseKey(sig.name);
 
         return {
           ...sig,
           isMultiDay,
           currentDayHeading: section.heading,
-          otherDays: sections
-            .filter(s => s !== section && s.exercises.some(e => normCanon(e.name) === norm))
-            .map(s => s.heading),
+          otherDays: isMultiDay
+            ? [...new Set(
+                sections
+                  .filter(s => _dayGroupKey(s.heading) !== dayKey && s.exercises.some(e => normCanon(e.name) === norm))
+                  .map(s => _dayGroupKey(s.heading))
+              )]
+            : [],
           daySignals: isMultiDay ? (perDaySignals[canonName] || null) : null,
         };
       });
 
-      const last = groups[groups.length - 1];
-      if (last && last.name === section.heading) {
-        last.exercises.push(...mappedExercises);
+      if (groupByKey.has(dayKey)) {
+        const existing = groupByKey.get(dayKey);
+        const existingNorms = new Set(existing.exercises.map(e => normCanon(e.name)));
+        existing.exercises.push(...mappedExercises.filter(e => !existingNorms.has(normCanon(e.name))));
       } else {
-        groups.push({ name: section.heading, exercises: mappedExercises });
+        const group = { name: dayKey, exercises: mappedExercises };
+        groupByKey.set(dayKey, group);
+        groups.push(group);
       }
     }
   });
