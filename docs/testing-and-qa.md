@@ -380,6 +380,8 @@ retains non-test commands such as `npm run audit`.
 - verifies cancelling the delete prompt does not call `remove`
 - verifies tapping a history row also calls the forwarded `ScreenShell`
   `scrollTo` ref so the loaded editor is brought back into view
+- verifies the Weight History disclosure toggle keeps the expected accessible
+  expand/collapse state after adopting the shared open-chevron icon convention
 - verifies a saved goal renders the split target + guidance presentation rather
   than collapsing all goal information into one card
 - verifies the active weigh-in date picker exposes the native `onChange`

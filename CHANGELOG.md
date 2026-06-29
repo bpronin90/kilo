@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.84.3 - 2026-06-29
+
+- Issue #393: Fixed the Weight History disclosure toggle to use the shared
+  open-chevron expand/collapse icon convention while preserving the existing
+  accessible labels and focused Weight screen regression coverage.
+
 ## 0.84.2 - 2026-06-29
 
 - Issue #392: Aligned Goal History and Weight History panel typography with the
