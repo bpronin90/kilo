@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.83.0 - 2026-06-29
+
+- Issue #387: Cleaned up the Weight tab goal-history and history surfaces.
+  Goal History now sits below Trends, uses an `End Weight` column, and Weight
+  History replaces the preset chips with concrete From/To date-range controls
+  while restoring more readable row typography.
+
 ## 0.82.3 - 2026-06-28
 
 - Issue #383: Completed the reopened Weight and Analytics polish pass. Analytics

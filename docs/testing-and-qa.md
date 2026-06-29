@@ -359,8 +359,8 @@ retains non-test commands such as `npm run audit`.
   action visibility after the target is reached or an unmet goal is overdue,
   and preservation of the normal in-progress goal actions
 - covers archived-goal history visibility, hidden empty state, newest-first
-  ordering, required row fields, and the subscriber refresh path after
-  archiving a completed goal
+  ordering, required row fields including the separate `End Weight` column, and
+  the subscriber refresh path after archiving a completed goal
 
 ### `mobile/tests/weight-screen.test.js`
 
