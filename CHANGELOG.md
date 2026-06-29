@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.84.2 - 2026-06-29
+
+- Issue #392: Aligned Goal History and Weight History panel typography with the
+  Weight Trends hierarchy and added focused regression coverage for the affected
+  row and label styles.
+
 ## 0.84.1 - 2026-06-29
 
 - Issue #391: Updated Analytics Fatigue Tracking rows so saved check-in notes
