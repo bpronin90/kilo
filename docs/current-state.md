@@ -349,10 +349,12 @@ The real native app path now has a modular React Native shell:
   appear in a compact conditional `Goal History` list beneath the active/new
   goal flow, ordered newest first with target weight, completed weight when
   available, target date, and archived date, with compact column headers and a
-  collapse/expand control for scanning longer history. The Goal History header
-  and card now use the same 16px title-to-panel gap as the rest of the Weight
-  tab, sit below Trends, and include `End Weight` as its own column. The Trends
-  card now colors both pace-severity states and directional gain/loss cues
+  collapse/expand control for scanning longer history. The Goal History
+  collapse/expand control now uses the shared open-chevron icon convention used
+  by the rest of the app, and its header and card now use the same 16px
+  title-to-panel gap as the rest of the Weight tab, sit below Trends, and
+  include `End Weight` as its own column. The Trends card now colors both
+  pace-severity states and directional gain/loss cues
   instead of leaving the trend column uniformly neutral, and tapping a history
   row now scrolls back to the top editor as it loads the selected entry. The
   Weight tab now reads top-to-bottom as weight entry, `Goal`, `Trends`,
@@ -433,8 +435,9 @@ The real native app path now has a modular React Native shell:
   updates the 1K Progress hero total, progress bar, and squat/bench/deadlift
   breakdown to that selected session while the unselected card falls back to
   the latest complete session. The Big 3 Mapping panel is now
-  collapsible so the selection rows can be hidden while keeping the mapping
-  context available. The screen now also includes
+  collapsible with the shared open-chevron icon convention, so the selection
+  rows can be hidden while keeping the mapping context available. The screen now
+  also includes
   a fatigue-tracking panel that stays collapsed by default into a signal-first
   summary row highlighting the most common rough reason when available and an
   unanswered-count alert when pending check-ins exist. Expanding the panel

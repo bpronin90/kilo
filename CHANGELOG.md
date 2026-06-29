@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.83.2 - 2026-06-29
+
+- Issue #389: Standardized the Weight Goal History and Analytics Big 3 Mapping
+  collapse/expand controls on the shared open-chevron icon convention while
+  preserving existing expanded/collapsed behavior and accessibility labels.
+
 ## 0.83.1 - 2026-06-29
 
 - Issue #388: Aligned the Analytics Fatigue section panel treatments so Routine
