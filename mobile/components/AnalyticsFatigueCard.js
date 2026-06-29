@@ -7,7 +7,9 @@ import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';
 
 function FatigueRow({ ci, onEdit }) {
   const metrics = [];
-  if (ci.exercises_skipped > 0) {
+  if (ci.note) {
+    metrics.push(ci.note);
+  } else if (ci.exercises_skipped > 0) {
     metrics.push(`${ci.exercises_skipped} skipped`);
   }
   if (ci.volume_decline_pct != null) {
