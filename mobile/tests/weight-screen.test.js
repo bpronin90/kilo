@@ -841,27 +841,7 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
-  function findClearBtn(component) {
-    return component.root.findAll(n => n.props.accessibilityLabel === undefined && n.props.onPress !== undefined && n.props.hitSlop === 8 && n.type && n.type.displayName !== 'Pressable');
-  }
-
-  test('cancelling From date picker does not set a date (clear button stays hidden)', () => {
-    let component;
-    render.act(() => {
-      component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
-      );
-    });
-    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
-    render.act(() => { fromBtn.props.onPress(); });
-    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
-    render.act(() => { picker.props.onChange({ type: 'dismissed' }, undefined); });
-    // clear button only appears when a date is set; should remain absent
-    const clearBtns = component.root.findAll(n => Array.isArray(n.props.children) && n.props.children.some && typeof n.props.children === 'string' && n.props.children === '✕' && n.props.onPress !== undefined);
-    expect(clearBtns.length).toBe(0);
-  });
-
-  test('cancelling From date picker with sentinel value does not commit it', () => {
+  test('cancelling From date picker preserves placeholder, does not commit sentinel', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -873,10 +853,9 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
     // simulate Android firing onChange with the sentinel value on cancel
     render.act(() => { picker.props.onChange({ type: 'dismissed' }, new Date(2000, 0, 1)); });
-    const json = component.toJSON();
-    const text = JSON.stringify(json);
-    expect(text).not.toContain('Jan 1, 2000');
-    expect(text).not.toContain('2000-01-01');
+    const text = JSON.stringify(component.toJSON());
+    expect(text).not.toContain('01-01-2000');
+    expect(text).toContain('"From"');
   });
 
   test('cancelling To date picker does not set a date', () => {
