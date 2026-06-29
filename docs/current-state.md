@@ -187,6 +187,13 @@ The real native app path now has a modular React Native shell:
   cycle rather than a sticky per-occurrence PR or a mixed-cycle fallback. All
   dashboard data comes from existing shared derivation functions; no Home-only
   calculations exist. The success toast is removed from the render
+  - Known gap (#395 audit): the shared session-ordinal alignment is only valid
+    within one continuous routine cadence. Because both the Home headline and the
+    Analytics `1K Progress` graph are fed every note concatenated, unequal
+    per-lift session counts across routines (e.g. a one-session deload note)
+    misalign the ordinal zip at routine boundaries, so the tail point can mix a
+    deload/old-routine session of one lift with a current-routine session of
+    another and report a spuriously low total. Fix tracked in #396.
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks

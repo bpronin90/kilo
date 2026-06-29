@@ -3206,6 +3206,54 @@ describe('derive1kTotalSeries', () => {
     expect(oneK.squat).toBeCloseTo(epley(320, 3), 5);
     expect(oneK.deadlift).toBeNull();
   });
+
+  // Regression for issue #395.
+  // Root cause: homeDashboardData.js calls derive1kTotal(allSections, ...) where
+  // allSections is all notes concatenated. When per-lift session counts differ
+  // across notes, ordinal alignment breaks at routine boundaries — a lift's
+  // deload-session PR lands at the same index as another lift's current-routine PR,
+  // producing a spuriously low total and a bench reading from the deload weight.
+  // Fix requires changing the callsite in homeDashboardData.js (not in Allowed Files
+  // for issue #395). This test pins the defect so a future fix can assert the last
+  // point uses current-routine values for all three lifts.
+  test('cross-note ordinal misalignment: unequal session counts cause last series point to mix routine boundaries', () => {
+    // Old note: bench has one extra session (3) vs squat and deadlift (2 each).
+    const oldSections = lifts({
+      bench:    [w(100, 5), w(105, 5), w(110, 5)],
+      squat:    [w(200, 5), w(210, 5)],
+      deadlift: [w(300, 5), w(310, 5)],
+    });
+    // Deload note: one session each at low weights.
+    const deloadSections = lifts({
+      bench:    [w(60, 8)],
+      squat:    [w(155, 8)],
+      deadlift: [w(205, 4)],
+    });
+    // Current note: one fresh session each.
+    const currentSections = lifts({
+      bench:    [w(150, 5)],
+      squat:    [w(250, 5)],
+      deadlift: [w(350, 5)],
+    });
+
+    // Correct: per-note calc on current note gives current-routine values.
+    const correctSeries = derive1kTotalSeries(currentSections, SEL);
+    expect(correctSeries).toHaveLength(1);
+    expect(correctSeries[0].bench).toBeCloseTo(epley(150, 5), 5);
+
+    // Defective: allSections as concatenated by homeDashboardData.js.
+    // bench totals 5 sessions, squat/deadlift total 4 — n=4.
+    // Last ordinal (3): bench=deload(60), squat=current(250), deadlift=current(350).
+    const allSections = [...oldSections, ...deloadSections, ...currentSections];
+    const defectiveSeries = derive1kTotalSeries(allSections, SEL);
+    const last = defectiveSeries[defectiveSeries.length - 1];
+    // Bench at the last ordinal resolves to the deload session, not the current routine.
+    expect(last.bench).toBeCloseTo(epley(60, 8), 5);
+    expect(last.bench).toBeLessThan(epley(150, 5));
+    // Squat and deadlift happen to resolve to the current note (by ordinal coincidence).
+    expect(last.squat).toBeCloseTo(epley(250, 5), 5);
+    expect(last.deadlift).toBeCloseTo(epley(350, 5), 5);
+  });
 });
 
 // ── computeWeightRollingAverageSeries — 30-day window ─────────────────────────
