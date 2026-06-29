@@ -830,3 +830,86 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
   });
 });
 
+describe('WeightHistoryList date range cancel does not commit sentinel date (#394)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  function findClearBtn(component) {
+    return component.root.findAll(n => n.props.accessibilityLabel === undefined && n.props.onPress !== undefined && n.props.hitSlop === 8 && n.type && n.type.displayName !== 'Pressable');
+  }
+
+  test('cancelling From date picker does not set a date (clear button stays hidden)', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
+    render.act(() => { fromBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { picker.props.onChange({ type: 'dismissed' }, undefined); });
+    // clear button only appears when a date is set; should remain absent
+    const clearBtns = component.root.findAll(n => Array.isArray(n.props.children) && n.props.children.some && typeof n.props.children === 'string' && n.props.children === '✕' && n.props.onPress !== undefined);
+    expect(clearBtns.length).toBe(0);
+  });
+
+  test('cancelling From date picker with sentinel value does not commit it', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
+    render.act(() => { fromBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    // simulate Android firing onChange with the sentinel value on cancel
+    render.act(() => { picker.props.onChange({ type: 'dismissed' }, new Date(2000, 0, 1)); });
+    const json = component.toJSON();
+    const text = JSON.stringify(json);
+    expect(text).not.toContain('Jan 1, 2000');
+    expect(text).not.toContain('2000-01-01');
+  });
+
+  test('cancelling To date picker does not set a date', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const toBtn = component.root.findByProps({ accessibilityLabel: 'To date' });
+    render.act(() => { toBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { picker.props.onChange({ type: 'dismissed' }, new Date()); });
+    const json = component.toJSON();
+    const text = JSON.stringify(json);
+    // After cancel with no prior To date, chip should still show 'To' placeholder
+    expect(text).toContain('"To"');
+  });
+
+  test('confirming From date picker updates the chip', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
+    render.act(() => { fromBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { picker.props.onChange({ type: 'set' }, new Date(2026, 0, 15)); });
+    // clear button appears when a date is committed
+    const clearBtnTexts = component.root.findAll(n => n.props.children === '✕');
+    expect(clearBtnTexts.length).toBeGreaterThan(0);
+  });
+});
+

@@ -78,9 +78,9 @@ export function WeightHistoryList({
 
   const hasRange = !!(fromDate || toDate);
 
-  const onFromChange = (_event, selectedDate) => {
+  const onFromChange = (event, selectedDate) => {
     setShowFromPicker(false);
-    if (selectedDate) {
+    if (event.type === 'set' && selectedDate) {
       const y = selectedDate.getFullYear();
       const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const d = String(selectedDate.getDate()).padStart(2, '0');
@@ -88,9 +88,9 @@ export function WeightHistoryList({
     }
   };
 
-  const onToChange = (_event, selectedDate) => {
+  const onToChange = (event, selectedDate) => {
     setShowToPicker(false);
-    if (selectedDate) {
+    if (event.type === 'set' && selectedDate) {
       const y = selectedDate.getFullYear();
       const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const d = String(selectedDate.getDate()).padStart(2, '0');
