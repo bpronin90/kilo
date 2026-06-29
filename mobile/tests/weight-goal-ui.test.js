@@ -504,8 +504,9 @@ describe('WeightScreen', () => {
       test('row weight values use fontSize 20 fontWeight 900 matching Trends value hierarchy', () => {
         const component = setup(null, entries);
         const weightNode = component.root.findAllByType('Text').find(t => {
-          const flat = Array.isArray(t.props.style) ? t.props.style.flat() : [t.props.style];
-          return flat.some(s => s && s.fontSize === 20 && s.fontWeight === '900');
+          const children = t.props.children;
+          const text = Array.isArray(children) ? children.join('') : String(children ?? '');
+          return text === '190 lb';
         });
         expect(weightNode).toBeTruthy();
         expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
