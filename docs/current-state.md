@@ -351,20 +351,21 @@ The real native app path now has a modular React Native shell:
   available, target date, and archived date, with compact column headers and a
   collapse/expand control for scanning longer history. The Goal History header
   and card now use the same 16px title-to-panel gap as the rest of the Weight
-  tab. The Trends card now colors both
-  pace-severity states and directional gain/loss cues instead of leaving the
-  trend column uniformly neutral, and tapping a history row now scrolls back
-  to the top editor as it loads the selected entry. The Weight tab now reads
-  top-to-bottom as weight entry, `Goal`, optional `Goal History`, `Trends`, and `History`, with `Goal`
-  / `Trends` using the shared section-heading treatment and a merged Trends card that
-  now consumes the same canonical `deriveWeightGoalAnalytics()` output used by
+  tab, sit below Trends, and include `End Weight` as its own column. The Trends
+  card now colors both pace-severity states and directional gain/loss cues
+  instead of leaving the trend column uniformly neutral, and tapping a history
+  row now scrolls back to the top editor as it loads the selected entry. The
+  Weight tab now reads top-to-bottom as weight entry, `Goal`, `Trends`,
+  optional `Goal History`, and `Weight History`, with `Goal` / `Trends` using
+  the shared section-heading treatment and a merged Trends card that now
+  consumes the same canonical `deriveWeightGoalAnalytics()` output used by
   Home and Analytics for trend summary, pace severity, goal guidance, and
   calorie guidance, and
   surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
-  recorded `logged_at` timestamp. The History panel now includes column
-  headers, collapse/expand, and local All/30d/90d/6m date-range chips over the
+  recorded `logged_at` timestamp. The Weight History panel now includes column
+  headers, collapse/expand, and concrete From/To date-range controls over the
   already loaded entries, without changing saved weight calculations or
   persistence. A failed weight-entry load now surfaces a
   retryable `ErrorBanner` at the top of the screen instead of a silent empty

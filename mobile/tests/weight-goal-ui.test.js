@@ -377,7 +377,9 @@ describe('WeightScreen', () => {
 
       expect(hasTextSafe(root, 'Goal History')).toBe(true);
       expect(hasTextSafe(root, '175 lb')).toBe(true);
-      expect(hasTextSafe(root, 'Completed: 174.5 lb')).toBe(true);
+      // End Weight is now its own column; value appears as bare weight, no "Completed:" prefix
+      expect(hasTextSafe(root, '174.5 lb')).toBe(true);
+      expect(hasTextSafe(root, 'End Weight')).toBe(true);
       // Column header now says "By Date"; cell shows date without "By" prefix
       expect(hasTextSafe(root, '09-01-2026')).toBe(true);
       // Column header now says "Archived"; cell shows date without "Archived: " prefix
