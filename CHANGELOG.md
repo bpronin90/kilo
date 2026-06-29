@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.83.1 - 2026-06-29
+
+- Issue #388: Aligned the Analytics Fatigue section panel treatments so Routine
+  Health now uses the same white panel background as Fatigue Tracking while
+  preserving the existing fatigue gauge behavior and data.
+
 ## 0.83.0 - 2026-06-29
 
 - Issue #387: Cleaned up the Weight tab goal-history and history surfaces.
