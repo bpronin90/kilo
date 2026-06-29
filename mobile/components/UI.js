@@ -358,6 +358,7 @@ const styles = StyleSheet.create({
   sessionGauge: {
     flex: 1,
     gap: 10,
+    backgroundColor: Colors.panelBackground,
   },
   sessionGaugePanelTitle: {
     fontSize: 11,
