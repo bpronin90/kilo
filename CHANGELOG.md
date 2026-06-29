@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.84.1 - 2026-06-29
+
+- Issue #391: Updated Analytics Fatigue Tracking rows so saved check-in notes
+  display in the row summary where skipped-exercise counts previously appeared,
+  while rows without notes continue to show non-zero skipped counts.
+
 ## 0.84.0 - 2026-06-29
 
 - Issue #390: Added subtle routine-start markers to the Analytics `1K total over

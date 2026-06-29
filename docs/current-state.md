@@ -446,8 +446,10 @@ The real native app path now has a modular React Native shell:
   unanswered-count alert when pending check-ins exist. Expanding the panel
   reveals `Not great`, `All good`, and conditional `Unanswered` groups with
   stable calendar-day formatting from `responded_at`; rough entries render as
-  quieter callout rows with reasons plus non-zero skipped/volume-drop stats,
-  while ok/pending entries collapse into date chips to reduce scan noise.
+  quieter callout rows with reasons plus note-first summary context: saved
+  check-in notes replace skipped-exercise counts in the meta line when present,
+  otherwise non-zero skipped/volume-drop stats remain visible. Ok/pending
+  entries collapse into date chips to reduce scan noise.
   Every fatigue entry still exposes an Analytics-side edit path that reopens
   the check-in modal against the original session record. Editing an existing
   entry hydrates its saved status/reasons/note, preserves the original
