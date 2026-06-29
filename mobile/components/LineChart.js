@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
-import Svg, { Polyline, Circle, Rect, G } from 'react-native-svg';
+import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
 import { Colors } from '../theme/colors';
 
 export function LineChart({
@@ -98,6 +98,21 @@ export function LineChart({
                   strokeWidth={2}
                 />
               ))}
+              {data.map((d, i) =>
+                d.isRoutineStart ? (
+                  <Line
+                    key={`rs-${i}`}
+                    x1={getX(i)}
+                    y1={0}
+                    x2={getX(i)}
+                    y2={height}
+                    stroke={Colors.textMuted}
+                    strokeWidth={1}
+                    strokeDasharray="2,3"
+                    opacity={0.5}
+                  />
+                ) : null
+              )}
               {selectedIndex !== null && (
                 <G>
                    <Rect

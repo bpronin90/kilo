@@ -1,4 +1,5 @@
 import { getNoteSections } from '../../hooks/useEntries';
+import { DELOAD_NOTE_PREFIX } from '../../hooks/entries/workoutNoteHooks';
 import {
   isStrengthExerciseName,
   deriveWorkoutNoteAnalytics,
@@ -115,15 +116,87 @@ export function deriveGroupedSignals(parsedSections, analytics, searchQuery) {
   return groups;
 }
 
-export function deriveOneKChartData(oneKSeries) {
-  return (oneKSeries || []).map(p => ({
-    value: Math.round(p.total),
-    label: `#${p.session}`,
-    unit: 'lb',
-    bench: p.bench,
-    squat: p.squat,
-    deadlift: p.deadlift,
-  }));
+// Count sessions an exercise appears in within a single note.
+// Uses session_entries length if present (new format), else filtered rows.
+function _countExerciseSessionsInNote(note, exerciseName) {
+  const sections = getNoteSections(note);
+  const key = normalizeExerciseKey(exerciseName);
+  let count = 0;
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      if (normalizeExerciseKey(ex.name) !== key) continue;
+      if ((ex.session_entries || []).length > 0) {
+        count += ex.session_entries.length;
+      } else {
+        count += (ex.rows || []).filter(r => r.sets?.length > 0).length;
+      }
+    }
+  }
+  return count;
+}
+
+// Returns a Set of 1-based session ordinals that mark the first session of a
+// new (non-deload) routine in the 1K series. The first routine never produces
+// a marker. Deload notes (title starts with DELOAD_NOTE_PREFIX) are skipped.
+export function deriveRoutineStartBoundaries(notes, oneKSelections) {
+  const { bench, squat, deadlift } = oneKSelections || {};
+  if (!bench && !squat && !deadlift) return new Set();
+
+  let cumBench = 0, cumSquat = 0, cumDeadlift = 0;
+  const boundaries = new Set();
+  let seenFirstRoutine = false;
+
+  for (const note of notes || []) {
+    const isDeload = note.title?.startsWith(DELOAD_NOTE_PREFIX);
+    if (!isDeload) {
+      if (seenFirstRoutine) {
+        // First valid session index (0-based) where all three lifts are in the new note
+        const boundary0 = Math.min(
+          bench ? cumBench : Infinity,
+          squat ? cumSquat : Infinity,
+          deadlift ? cumDeadlift : Infinity,
+        );
+        if (Number.isFinite(boundary0)) {
+          boundaries.add(boundary0 + 1); // convert to 1-based session ordinal
+        }
+      }
+      seenFirstRoutine = true;
+    }
+    if (bench) cumBench += _countExerciseSessionsInNote(note, bench);
+    if (squat) cumSquat += _countExerciseSessionsInNote(note, squat);
+    if (deadlift) cumDeadlift += _countExerciseSessionsInNote(note, deadlift);
+  }
+
+  return boundaries;
+}
+
+export function deriveOneKChartData(oneKSeries, routineStartBoundaries = new Set()) {
+  // Sort boundaries ascending so we can step through them once.
+  const sorted = [...routineStartBoundaries].sort((a, b) => a - b);
+  let bIdx = 0;
+  let prevSession = 0;
+
+  return (oneKSeries || []).map(p => {
+    // Mark this point if any boundary falls in (prevSession, p.session].
+    // This correctly handles gaps in the series: a boundary at session 2 that
+    // was skipped (no 1K point emitted) still marks the next emitted point.
+    let isRoutineStart = false;
+    while (bIdx < sorted.length && sorted[bIdx] <= p.session) {
+      if (sorted[bIdx] > prevSession) isRoutineStart = true;
+      bIdx++;
+    }
+    prevSession = p.session;
+
+    return {
+      value: Math.round(p.total),
+      label: `#${p.session}`,
+      unit: 'lb',
+      bench: p.bench,
+      squat: p.squat,
+      deadlift: p.deadlift,
+      isRoutineStart,
+    };
+  });
 }
 
 export function shapeEditCheckInData(editPendingCheckIn) {
