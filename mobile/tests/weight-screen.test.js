@@ -830,3 +830,65 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
   });
 });
 
+describe('WeightHistoryList date range cancel does not commit sentinel date (#394)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  test('cancelling From date picker preserves placeholder, does not commit sentinel', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
+    render.act(() => { fromBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    // simulate Android firing onChange with the sentinel value on cancel
+    render.act(() => { picker.props.onChange({ type: 'dismissed' }, new Date(2000, 0, 1)); });
+    const text = JSON.stringify(component.toJSON());
+    expect(text).not.toContain('01-01-2000');
+    expect(text).toContain('"From"');
+  });
+
+  test('cancelling To date picker does not set a date', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const toBtn = component.root.findByProps({ accessibilityLabel: 'To date' });
+    render.act(() => { toBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { picker.props.onChange({ type: 'dismissed' }, new Date()); });
+    const json = component.toJSON();
+    const text = JSON.stringify(json);
+    // After cancel with no prior To date, chip should still show 'To' placeholder
+    expect(text).toContain('"To"');
+  });
+
+  test('confirming From date picker updates the chip', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
+    render.act(() => { fromBtn.props.onPress(); });
+    const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
+    render.act(() => { picker.props.onChange({ type: 'set' }, new Date(2026, 0, 15)); });
+    // clear button appears when a date is committed
+    const clearBtnTexts = component.root.findAll(n => n.props.children === '✕');
+    expect(clearBtnTexts.length).toBeGreaterThan(0);
+  });
+});
+

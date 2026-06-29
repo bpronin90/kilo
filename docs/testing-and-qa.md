@@ -389,6 +389,9 @@ retains non-test commands such as `npm run audit`.
 - verifies the goal target-date picker exposes the native `onChange`
   callback and updates the visible MM-DD-YYYY label when a new date is
   selected
+- verifies the Weight History date range From/To pickers ignore a cancelled
+  (`type: 'dismissed'`) change so the sentinel `01-01-2000` value is never
+  committed, while confirmed selections still update the chip
 
 ### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
 
