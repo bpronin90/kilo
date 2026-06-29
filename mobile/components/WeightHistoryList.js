@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from '../theme/colors';
 import { formatDate, formatDelta } from '../lib/format';
@@ -151,7 +152,11 @@ export function WeightHistoryList({
           accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
           style={styles.collapseToggle}
         >
-          <Text style={styles.collapseToggleText}>{collapsed ? '▼' : '▲'}</Text>
+          <MaterialIcons
+            name={collapsed ? 'expand-more' : 'expand-less'}
+            size={18}
+            color={Colors.textMuted}
+          />
         </Pressable>
       </View>
 
@@ -329,11 +334,6 @@ const styles = StyleSheet.create({
   },
   collapseToggle: {
     paddingLeft: 8,
-  },
-  collapseToggleText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '700',
   },
   columnHeader: {
     flexDirection: 'row',

@@ -794,3 +794,39 @@ describe('WeightScreen web date fallback (#314)', () => {
   });
 });
 
+describe('WeightHistoryList disclosure triangle convention (#393)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  test('toggle button shows expand-more when history is expanded (default)', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
+    expect(toggleBtn).toBeTruthy();
+  });
+
+  test('toggle button shows Expand history label after collapsing', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
+    render.act(() => { toggleBtn.props.onPress(); });
+    const expandBtn = component.root.findByProps({ accessibilityLabel: 'Expand history' });
+    expect(expandBtn).toBeTruthy();
+  });
+});
+
