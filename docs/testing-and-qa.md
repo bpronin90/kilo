@@ -248,6 +248,10 @@ retains non-test commands such as `npm run audit`.
   valid weighted set so later points cannot drift onto earlier squat/deadlift
   cycles, and pins the direct helper parity contract that `derive1kTotal()`
   reuses the last complete aligned series point for the Home headline
+- characterizes the #395 cross-note ordinal-misalignment defect: when multiple
+  notes are concatenated with unequal per-lift session counts, the last series
+  point pairs a deload-weight bench session with current-routine squat/deadlift
+  (a pinning test that must flip to the corrected behavior when #396 lands)
 - pins direct helper parity for the canonical weight/goal path by asserting
   `deriveWeightGoalAnalytics()` matches `computeWeightTrendSummary()`,
   `computeWeightPaceLevel()`, `computeWeightRollingAverageSeries()`,

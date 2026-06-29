@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.84.5 - 2026-06-29
+
+- Issue #395: Audited the 1K Progress total and graph against Supabase-backed
+  workout data and confirmed a cross-routine ordinal-misalignment defect — when
+  notes are concatenated with unequal per-lift session counts, the tail point
+  mixes a deload/old-routine session with current-routine sessions and reports a
+  spuriously low total. Added a characterization test pinning the defect and
+  documented the known gap; fix tracked in #396 and a related deload-signal audit
+  in #397. No user-visible behavior change in this issue.
+
 ## 0.84.4 - 2026-06-29
 
 - Issue #394: Fixed the Weight History date range picker so cancelling the From
