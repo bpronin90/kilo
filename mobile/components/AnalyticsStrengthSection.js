@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
 import { Colors } from '../theme/colors';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
+import { MaterialIcons } from '@expo/vector-icons';
 
 export function AnalyticsStrengthSection({
   handleStrengthLayout,
@@ -81,7 +82,12 @@ export function AnalyticsStrengthSection({
           accessibilityLabel={big3Collapsed ? 'Expand Big 3 mapping' : 'Collapse Big 3 mapping'}
         >
           <Text style={styles.slotCardTitle}>Big 3 Mapping</Text>
-          <Text style={styles.slotCardChevron} accessible={false}>{big3Collapsed ? '▼' : '▲'}</Text>
+          <MaterialIcons
+            name={big3Collapsed ? 'expand-more' : 'expand-less'}
+            size={16}
+            color={Colors.textMuted}
+            accessible={false}
+          />
         </Pressable>
         {!big3Collapsed && (['bench', 'squat', 'deadlift']).map(slot => (
           <View key={slot}>
@@ -94,7 +100,12 @@ export function AnalyticsStrengthSection({
               <Text style={styles.slotLabel}>{SLOT_LABELS[slot]}</Text>
               <View style={styles.slotValueRow}>
                 <Text style={styles.slotValue}>{oneKSelections[slot]}</Text>
-                <Text style={styles.slotChevron} accessible={false}>{activeSlot === slot ? '▲' : '▼'}</Text>
+                <MaterialIcons
+                  name={activeSlot === slot ? 'expand-less' : 'expand-more'}
+                  size={14}
+                  color={Colors.textMuted}
+                  accessible={false}
+                />
               </View>
             </Pressable>
             {activeSlot === slot && noteExerciseNames.length > 0 && (
@@ -219,11 +230,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  slotCardChevron: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '700',
-  },
   slotCardTitle: {
     fontSize: 12,
     fontWeight: '700',
@@ -257,10 +263,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.text,
     textAlign: 'right',
-  },
-  slotChevron: {
-    fontSize: 10,
-    color: Colors.textMuted,
   },
   slotPicker: {
     backgroundColor: Colors.inputBackground,

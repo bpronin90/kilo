@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
 import { Colors } from '../theme/colors';
@@ -386,9 +387,12 @@ export function WeightScreen({
             accessibilityLabel={goalHistoryCollapsed ? 'Expand goal history' : 'Collapse goal history'}
           >
             <SectionTitle>Goal History</SectionTitle>
-            <Text style={styles.archivedCollapseChevron}>
-              {goalHistoryCollapsed ? '▼' : '▲'}
-            </Text>
+            <MaterialIcons
+              name={goalHistoryCollapsed ? 'expand-more' : 'expand-less'}
+              size={18}
+              color={Colors.textMuted}
+              accessible={false}
+            />
           </Pressable>
           <Card style={styles.archivedCard}>
             <View style={styles.archivedColumnHeader}>
@@ -525,12 +529,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  archivedCollapseChevron: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '700',
-    paddingBottom: 4,
   },
   archivedCard: {
     paddingVertical: 0,
