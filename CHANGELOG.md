@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.84.4 - 2026-06-29
+
+- Issue #394: Fixed the Weight History date range picker so cancelling the From
+  (or To) date no longer commits the sentinel `01-01-2000` value; both handlers
+  now ignore dismissed picker events while confirmed selections still apply, with
+  focused regression coverage for the cancel path.
+
 ## 0.84.3 - 2026-06-29
 
 - Issue #393: Fixed the Weight History disclosure toggle to use the shared
