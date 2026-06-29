@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.cardBorder,
   },
   archivedColLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -558,8 +558,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '900',
     color: Colors.text,
   },
   archivedSubtext: {
@@ -568,8 +568,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   archivedDateText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: Colors.text,
   },
   archivedDivider: {

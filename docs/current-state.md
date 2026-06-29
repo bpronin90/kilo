@@ -368,10 +368,11 @@ The real native app path now has a modular React Native shell:
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp. The Weight History panel now includes column
   headers, collapse/expand, and concrete From/To date-range controls over the
-  already loaded entries, without changing saved weight calculations or
-  persistence. A failed weight-entry load now surfaces a
-  retryable `ErrorBanner` at the top of the screen instead of a silent empty
-  screen, and a successful Retry clears the banner.
+  already loaded entries, with Goal History and Weight History typography
+  aligned to the same label/value hierarchy used by the Trends panel, without
+  changing saved weight calculations or persistence. A failed weight-entry load
+  now surfaces a retryable `ErrorBanner` at the top of the screen instead of a
+  silent empty screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
   `User Profile`, `Account`, `Settings`, `Data & Backup`, `App Guide`, and
   `About Kilo` sub-screens extracted out of `HomeScreen.js`. When Supabase cloud

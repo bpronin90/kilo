@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.cardBorder,
   },
   columnLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
     textTransform: 'uppercase',
@@ -387,8 +387,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowWeight: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '900',
     color: Colors.text,
   },
   rowDelta: {

@@ -419,6 +419,101 @@ describe('WeightScreen', () => {
       expect(target170Idx).toBeLessThan(target180Idx);
     });
 
+    describe('Goal History panel typography', () => {
+      const getStyleProp = (node, propName) => {
+        const style = node.props.style;
+        if (!style) return undefined;
+        if (Array.isArray(style)) {
+          const flat = style.flat();
+          for (let i = flat.length - 1; i >= 0; i--) {
+            if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+          }
+          return undefined;
+        }
+        return style[propName];
+      };
+
+      const findByExactText = (root, text) =>
+        root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
+        });
+
+      const archivedFixture = [{
+        id: 'ag_1',
+        target_weight: 175,
+        target_date: '2026-09-01',
+        completed_weight: 174.5,
+        archived_at: '2026-09-02T08:00:00.000Z',
+      }];
+
+      test('column labels use fontSize 11 matching Trends label hierarchy', () => {
+        const component = setup(null, [], archivedFixture);
+        const colLabel = findByExactText(component.root, 'Target');
+        expect(colLabel).toBeTruthy();
+        expect(getStyleProp(colLabel, 'fontSize')).toBe(11);
+        expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
+      });
+
+      test('primary value cells use fontSize 16 fontWeight 900 matching Trends value hierarchy', () => {
+        const component = setup(null, [], archivedFixture);
+        const valueNode = findByExactText(component.root, '175 lb');
+        expect(valueNode).toBeTruthy();
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(valueNode, 'fontWeight')).toBe('900');
+      });
+
+      test('date cells use fontSize 16 fontWeight 700', () => {
+        const component = setup(null, [], archivedFixture);
+        const dateNode = findByExactText(component.root, '09-01-2026');
+        expect(dateNode).toBeTruthy();
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(dateNode, 'fontWeight')).toBe('700');
+      });
+    });
+
+    describe('Weight History panel typography', () => {
+      const getStyleProp = (node, propName) => {
+        const style = node.props.style;
+        if (!style) return undefined;
+        if (Array.isArray(style)) {
+          const flat = style.flat();
+          for (let i = flat.length - 1; i >= 0; i--) {
+            if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+          }
+          return undefined;
+        }
+        return style[propName];
+      };
+
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, note: '' },
+      ];
+
+      test('column labels use fontSize 11 matching Trends label hierarchy', () => {
+        const component = setup(null, entries);
+        const colLabel = component.root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          return (Array.isArray(children) ? children.join('') : String(children ?? '')) === 'Weight';
+        });
+        expect(colLabel).toBeTruthy();
+        expect(getStyleProp(colLabel, 'fontSize')).toBe(11);
+        expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
+      });
+
+      test('row weight values use fontSize 20 fontWeight 900 matching Trends value hierarchy', () => {
+        const component = setup(null, entries);
+        const weightNode = component.root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          const text = Array.isArray(children) ? children.join('') : String(children ?? '');
+          return text === '190 lb';
+        });
+        expect(weightNode).toBeTruthy();
+        expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
+        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+      });
+    });
+
     test('archiving a met goal immediately updates the visible archived goals', async () => {
       const { useWeightGoal, useArchivedWeightGoals } = jest.requireActual('../hooks/entries/weightHooks');
       const { View, Text, Pressable } = require('react-native');
