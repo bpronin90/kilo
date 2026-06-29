@@ -434,7 +434,10 @@ The real native app path now has a modular React Native shell:
   they form complete aligned Big-3 cycles. Selecting a prior 1K chart point
   updates the 1K Progress hero total, progress bar, and squat/bench/deadlift
   breakdown to that selected session while the unselected card falls back to
-  the latest complete session. The Big 3 Mapping panel is now
+  the latest complete session. The chart also marks new non-deload routine
+  starts with subtle dotted vertical lines, carrying a marker to the next
+  emitted 1K point when the exact routine-boundary session does not produce a
+  complete Big-3 total. The Big 3 Mapping panel is now
   collapsible with the shared open-chevron icon convention, so the selection
   rows can be hidden while keeping the mapping context available. The screen now
   also includes

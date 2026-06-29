@@ -12,6 +12,7 @@ import {
   deriveAnalytics,
   deriveGroupedSignals,
   deriveOneKChartData,
+  deriveRoutineStartBoundaries,
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
 import { formatDuration } from '../lib/format';
@@ -167,7 +168,10 @@ export function AnalyticsScreen({ multiplier, section }) {
     setEditPendingCheckIn({ ci, note });
   }
 
-  const oneKChartData = useMemo(() => deriveOneKChartData(analytics.oneKSeries), [analytics.oneKSeries]);
+  const oneKChartData = useMemo(() => {
+    const boundaries = deriveRoutineStartBoundaries(notes, oneKSelections);
+    return deriveOneKChartData(analytics.oneKSeries, boundaries);
+  }, [analytics.oneKSeries, notes, oneKSelections]);
 
   const screenContent = React.Children.toArray([
     <AnalyticsWeightTrendsCard

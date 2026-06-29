@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.84.0 - 2026-06-29
+
+- Issue #390: Added subtle routine-start markers to the Analytics `1K total over
+  sessions` chart. New non-deload routines now render as thin dotted vertical
+  lines on the first available 1K chart point for that routine, while deload
+  notes remain excluded and existing 1K totals stay unchanged.
+
 ## 0.83.2 - 2026-06-29
 
 - Issue #389: Standardized the Weight Goal History and Analytics Big 3 Mapping
