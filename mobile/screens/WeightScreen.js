@@ -362,6 +362,21 @@ export function WeightScreen({
         </Card>
       )}
 
+      <SectionTitle>Trends</SectionTitle>
+      <Card style={styles.trendsCardMerged}>
+        {trendSections.map((section) => (
+          <TrendSection
+            key={section.title}
+            title={section.title}
+            col1={section.col1}
+            col2={section.col2}
+            col3={section.col3}
+            isLast={section.isLast}
+            paceLevel={section.paceLevel}
+          />
+        ))}
+      </Card>
+
       {sortedArchivedGoals.length > 0 && (
         <View style={styles.archivedContainer}>
           <Pressable
@@ -376,11 +391,11 @@ export function WeightScreen({
             </Text>
           </Pressable>
           <Card style={styles.archivedCard}>
-            {/* Column headers */}
             <View style={styles.archivedColumnHeader}>
               <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
+              <Text style={[styles.archivedColLabel, { flex: 1 }]}>End Weight</Text>
               <Text style={[styles.archivedColLabel, { flex: 1.2 }]}>By Date</Text>
-              <Text style={[styles.archivedColLabel, { flex: 1.5, textAlign: 'right' }]}>Archived</Text>
+              <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Archived</Text>
             </View>
             {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
@@ -389,18 +404,20 @@ export function WeightScreen({
                   <View style={styles.archivedRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.archivedValue}>{g.target_weight} lb</Text>
-                      {g.completed_weight !== null && g.completed_weight !== undefined && (
-                        <Text style={styles.archivedSubtext}>
-                          Completed: {g.completed_weight} lb
-                        </Text>
-                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.archivedValue}>
+                        {g.completed_weight !== null && g.completed_weight !== undefined
+                          ? `${g.completed_weight} lb`
+                          : '—'}
+                      </Text>
                     </View>
                     <View style={{ flex: 1.2 }}>
                       <Text style={styles.archivedDateText}>
                         {g.target_date ? formatDate(g.target_date) : '—'}
                       </Text>
                     </View>
-                    <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                    <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
                       <Text style={styles.archivedSubtext}>
                         {formatDate(g.archived_at || g.saved_at)}
                       </Text>
@@ -419,22 +436,7 @@ export function WeightScreen({
         </View>
       )}
 
-      <SectionTitle>Trends</SectionTitle>
-      <Card style={styles.trendsCardMerged}>
-        {trendSections.map((section) => (
-          <TrendSection
-            key={section.title}
-            title={section.title}
-            col1={section.col1}
-            col2={section.col2}
-            col3={section.col3}
-            isLast={section.isLast}
-            paceLevel={section.paceLevel}
-          />
-        ))}
-      </Card>
-
-      <SectionTitle>History</SectionTitle>
+      <SectionTitle>Weight History</SectionTitle>
       <WeightHistoryList
         entries={entries}
         editingId={editingId}
@@ -558,9 +560,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    color: Colors.accent,
+    color: Colors.text,
   },
   archivedSubtext: {
     fontSize: 12,

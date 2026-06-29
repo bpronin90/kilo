@@ -1,23 +1,56 @@
 import React, { useState, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from '../theme/colors';
 import { formatDate, formatDelta } from '../lib/format';
 
-const DATE_FILTERS = [
-  { label: 'All', key: 'all', days: null },
-  { label: '30d', key: '30d', days: 30 },
-  { label: '90d', key: '90d', days: 90 },
-  { label: '6m', key: '6m', days: 180 },
-];
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
-function filterByRange(entries, rangeKey) {
-  if (rangeKey === 'all') return entries;
-  const filter = DATE_FILTERS.find(f => f.key === rangeKey);
-  if (!filter || !filter.days) return entries;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - filter.days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return entries.filter(e => (e.date || e.logged_at || '') >= cutoffStr);
+function WebDateTextInput({ value, onChange, placeholder }) {
+  return React.createElement('input', {
+    type: 'text',
+    value: value || '',
+    placeholder: placeholder || 'YYYY-MM-DD',
+    onChange: (e) => {
+      const next = e?.target?.value;
+      onChange(next || '');
+    },
+    style: {
+      backgroundColor: Colors.chipBackground,
+      border: 'none',
+      borderRadius: 8,
+      padding: '4px 8px',
+      fontSize: 12,
+      fontWeight: '700',
+      color: Colors.chipText,
+      fontFamily: 'inherit',
+      cursor: 'text',
+      outline: 'none',
+      width: 90,
+    },
+  });
+}
+
+function filterByDateRange(entries, fromDate, toDate) {
+  if (!fromDate && !toDate) return entries;
+  return entries.filter(e => {
+    const d = (e.date || e.logged_at || '').slice(0, 10);
+    if (fromDate && d < fromDate) return false;
+    if (toDate && d > toDate) return false;
+    return true;
+  });
+}
+
+function localDateToday() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function WeightHistoryList({
@@ -29,29 +62,87 @@ export function WeightHistoryList({
   goalInfo,
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [rangeKey, setRangeKey] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [showFromPicker, setShowFromPicker] = useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
+
+  const fromDateObj = useMemo(() => parseLocalDate(fromDate) || new Date(2000, 0, 1), [fromDate]);
+  const toDateObj = useMemo(() => parseLocalDate(toDate) || new Date(), [toDate]);
 
   const filteredEntries = useMemo(
-    () => filterByRange(entries, rangeKey),
-    [entries, rangeKey]
+    () => filterByDateRange(entries, fromDate, toDate),
+    [entries, fromDate, toDate]
   );
+
+  const hasRange = !!(fromDate || toDate);
+
+  const onFromChange = (_event, selectedDate) => {
+    setShowFromPicker(false);
+    if (selectedDate) {
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      setFromDate(`${y}-${m}-${d}`);
+    }
+  };
+
+  const onToChange = (_event, selectedDate) => {
+    setShowToPicker(false);
+    if (selectedDate) {
+      const y = selectedDate.getFullYear();
+      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(selectedDate.getDate()).padStart(2, '0');
+      setToDate(`${y}-${m}-${d}`);
+    }
+  };
+
+  const clearRange = () => {
+    setFromDate('');
+    setToDate('');
+  };
 
   return (
     <View style={styles.historyList}>
-      {/* Header: filter chips + collapse toggle */}
+      {/* Header: date range + collapse toggle */}
       <View style={styles.listHeader}>
-        <View style={styles.filterRow}>
-          {DATE_FILTERS.map(f => (
-            <Pressable
-              key={f.key}
-              onPress={() => setRangeKey(f.key)}
-              style={[styles.filterChip, rangeKey === f.key && styles.filterChipActive]}
-            >
-              <Text style={[styles.filterChipText, rangeKey === f.key && styles.filterChipTextActive]}>
-                {f.label}
-              </Text>
+        <View style={styles.dateRangeRow}>
+          {Platform.OS === 'web' ? (
+            <>
+              <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+              <Text style={styles.dateRangeSep}>—</Text>
+              <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+            </>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => setShowFromPicker(true)}
+                style={styles.dateChip}
+                accessibilityRole="button"
+                accessibilityLabel="From date"
+              >
+                <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
+                  {fromDate ? formatDate(fromDate) : 'From'}
+                </Text>
+              </Pressable>
+              <Text style={styles.dateRangeSep}>—</Text>
+              <Pressable
+                onPress={() => setShowToPicker(true)}
+                style={styles.dateChip}
+                accessibilityRole="button"
+                accessibilityLabel="To date"
+              >
+                <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
+                  {toDate ? formatDate(toDate) : 'To'}
+                </Text>
+              </Pressable>
+            </>
+          )}
+          {hasRange && (
+            <Pressable onPress={clearRange} style={styles.dateClearBtn} hitSlop={8}>
+              <Text style={styles.dateClearBtnText}>✕</Text>
             </Pressable>
-          ))}
+          )}
         </View>
         <Pressable
           onPress={() => setCollapsed(c => !c)}
@@ -63,6 +154,29 @@ export function WeightHistoryList({
           <Text style={styles.collapseToggleText}>{collapsed ? '▼' : '▲'}</Text>
         </Pressable>
       </View>
+
+      {/* Native date pickers (hidden until triggered) */}
+      {showFromPicker && Platform.OS !== 'web' && (
+        <DateTimePicker
+          value={fromDateObj}
+          mode="date"
+          display="default"
+          onChange={onFromChange}
+          onDismiss={() => setShowFromPicker(false)}
+          maximumDate={toDateObj}
+        />
+      )}
+      {showToPicker && Platform.OS !== 'web' && (
+        <DateTimePicker
+          value={toDateObj}
+          mode="date"
+          display="default"
+          onChange={onToChange}
+          onDismiss={() => setShowToPicker(false)}
+          minimumDate={fromDateObj}
+          maximumDate={new Date()}
+        />
+      )}
 
       {/* Column headers */}
       {!collapsed && (
@@ -179,26 +293,39 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
   },
-  filterRow: {
+  dateRangeRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
-  filterChip: {
+  dateChip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
     backgroundColor: Colors.chipBackground,
   },
-  filterChipActive: {
-    backgroundColor: Colors.text,
-  },
-  filterChipText: {
-    fontSize: 11,
+  dateChipText: {
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.chipText,
   },
-  filterChipTextActive: {
-    color: Colors.textLight,
+  dateChipPlaceholder: {
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  dateRangeSep: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  dateClearBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  dateClearBtnText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '700',
   },
   collapseToggle: {
     paddingLeft: 8,
@@ -252,7 +379,7 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 16,
   },
   rowCells: {
@@ -260,7 +387,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowWeight: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.text,
   },
@@ -287,14 +414,14 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   rowDate: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textMuted,
     textAlign: 'right',
   },
   rowNote: {
     fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 1,
+    marginTop: 2,
   },
   deleteAffordance: {
     paddingHorizontal: 14,
