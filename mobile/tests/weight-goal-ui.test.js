@@ -564,22 +564,106 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('primary value cells use fontSize 16 fontWeight 900 matching Trends value hierarchy', () => {
+      // #408: archived value cells were undersized vs other Weight tab panels.
+      // They are bumped to a modest 18 so the table no longer reads weaker than
+      // the active Goal display / Weight History rows while staying secondary.
+      test('primary value cells use fontSize 18 fontWeight 900 (#408)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(18);
         expect(getStyleProp(valueNode, 'fontWeight')).toBe('900');
       });
 
-      test('date cells use fontSize 16 fontWeight 700', () => {
+      test('date cells use fontSize 18 fontWeight 700 (#408)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(16);
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(18);
         expect(getStyleProp(dateNode, 'fontWeight')).toBe('700');
+      });
+    });
+
+    // #408: archived End Weight is colored by goal outcome via isGoalMet so users
+    // can scan whether each archived goal succeeded or failed.
+    describe('archived End Weight outcome coloring (#408)', () => {
+      const getStyleProp = (node, propName) => {
+        const style = node.props.style;
+        if (!style) return undefined;
+        if (Array.isArray(style)) {
+          const flat = style.flat();
+          for (let i = flat.length - 1; i >= 0; i--) {
+            if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+          }
+          return undefined;
+        }
+        return style[propName];
+      };
+
+      const findByExactText = (root, text) =>
+        root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
+        });
+
+      const expandGoalHistory = (root) => {
+        const toggle = root.findByProps({ accessibilityLabel: 'Expand goal history' });
+        render.act(() => { toggle.props.onPress(); });
+      };
+
+      test('met loss goal colors End Weight success (green)', () => {
+        // Loss goal 200 -> 175; ended at 174 (<= target) => met.
+        const archived = [{
+          id: 'ag_met',
+          target_weight: 175,
+          target_date: '2026-09-01',
+          start_weight: 200,
+          completed_weight: 174,
+          archived_at: '2026-09-02T08:00:00.000Z',
+        }];
+        const component = setup(null, [], archived);
+        expandGoalHistory(component.root);
+        const endNode = findByExactText(component.root, '174 lb');
+        expect(endNode).toBeTruthy();
+        expect(getStyleProp(endNode, 'color')).toBe(Colors.success);
+      });
+
+      test('missed loss goal colors End Weight error (red)', () => {
+        // Loss goal 200 -> 175; ended at 185 (> target) => not met.
+        const archived = [{
+          id: 'ag_missed',
+          target_weight: 175,
+          target_date: '2026-09-01',
+          start_weight: 200,
+          completed_weight: 185,
+          archived_at: '2026-09-02T08:00:00.000Z',
+        }];
+        const component = setup(null, [], archived);
+        expandGoalHistory(component.root);
+        const endNode = findByExactText(component.root, '185 lb');
+        expect(endNode).toBeTruthy();
+        expect(getStyleProp(endNode, 'color')).toBe(Colors.error);
+      });
+
+      test('missing completed weight stays neutral', () => {
+        const archived = [{
+          id: 'ag_none',
+          target_weight: 175,
+          target_date: '2026-09-01',
+          start_weight: 200,
+          completed_weight: null,
+          archived_at: '2026-09-02T08:00:00.000Z',
+        }];
+        const component = setup(null, [], archived);
+        expandGoalHistory(component.root);
+        const endNode = findByExactText(component.root, '—');
+        expect(endNode).toBeTruthy();
+        const color = getStyleProp(endNode, 'color');
+        expect(color).toBe(Colors.text);
+        expect(color).not.toBe(Colors.success);
+        expect(color).not.toBe(Colors.error);
       });
     });
 

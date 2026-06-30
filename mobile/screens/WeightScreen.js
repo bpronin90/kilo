@@ -392,6 +392,16 @@ export function WeightScreen({
             </View>
             {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
+              // Color End Weight by archived outcome: success when the completed
+              // weight met the saved target, error when it did not, neutral when
+              // no completed weight was recorded. Reuses the active-goal helper.
+              const hasCompletedWeight =
+                g.completed_weight !== null && g.completed_weight !== undefined;
+              const endWeightOutcomeStyle = hasCompletedWeight
+                ? (computeIsGoalMet(g, g.completed_weight)
+                    ? styles.archivedValueMet
+                    : styles.archivedValueMissed)
+                : null;
               return (
                 <View key={g.id}>
                   <View style={styles.archivedRow}>
@@ -399,8 +409,8 @@ export function WeightScreen({
                       <Text style={styles.archivedValue}>{g.target_weight} lb</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.archivedValue}>
-                        {g.completed_weight !== null && g.completed_weight !== undefined
+                      <Text style={[styles.archivedValue, endWeightOutcomeStyle]}>
+                        {hasCompletedWeight
                           ? `${g.completed_weight} lb`
                           : '—'}
                       </Text>
@@ -527,12 +537,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
     color: Colors.text,
   },
+  archivedValueMet: {
+    color: Colors.success,
+  },
+  archivedValueMissed: {
+    color: Colors.error,
+  },
   archivedDateValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.text,
     textAlign: 'right',

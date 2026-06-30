@@ -7,9 +7,11 @@ import { HeroMetric } from './UI';
 // Pace anomalies (spike/notable) are severity badges and keep their fixed
 // error/caution treatment. Otherwise the success/error meaning of a trend
 // direction depends on the user's goal: an upward trend is success for a gain
-// goal but error for a loss goal, and vice versa. When there is no goal
-// direction the semantics are ambiguous, so we fall back to neutral text and
-// reserve red/green for cases where it is actually meaningful.
+// goal but error for a loss goal, and vice versa.
+// When there is no active goal direction the goal-relative meaning is absent,
+// but a bare ↑/↓ still reads clearer with a visible directional cue than flat
+// neutral text, so we fall back to the directional coloring (gaining/losing).
+// Stable (→) and missing data (-) stay neutral in every case.
 function resolveCol3ColorStyle({ value, paceLevel, goalDirection }) {
   if (paceLevel === 'spike') return styles.paceSpike;
   if (paceLevel === 'notable') return styles.paceNotable;
@@ -21,9 +23,13 @@ function resolveCol3ColorStyle({ value, paceLevel, goalDirection }) {
     if (value?.startsWith('↓')) {
       return goalDirection === 'loss' ? styles.trendPositive : styles.trendNegative;
     }
+    // Stable (→) under an active goal: neutral.
+    return null;
   }
 
-  // Ambiguous (no goal) or stable (→): neutral, no success/error meaning.
+  // No active goal: restore a visible directional cue for ↑/↓; stable stays neutral.
+  if (value?.startsWith('↑')) return styles.trendGaining;
+  if (value?.startsWith('↓')) return styles.trendLosing;
   return null;
 }
 
@@ -107,5 +113,13 @@ const styles = StyleSheet.create({
   },
   trendNegative: {
     color: Colors.error,
+  },
+  // No-goal directional fallback: gaining reads as a rise (error tone),
+  // losing as a drop (success tone), matching the pre-goal-aware default.
+  trendGaining: {
+    color: Colors.error,
+  },
+  trendLosing: {
+    color: Colors.success,
   },
 });
