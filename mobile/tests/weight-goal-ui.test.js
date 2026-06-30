@@ -153,6 +153,79 @@ describe('WeightScreen', () => {
     expect(findText(root, 'Pace is unrealistic - consider a longer timeline.')).toBeTruthy();
   });
 
+  describe('goal card guidance and progress hierarchy (#405)', () => {
+    const getStyleProp = (node, propName) => {
+      const style = node.props.style;
+      if (!style) return undefined;
+      if (Array.isArray(style)) {
+        const flat = style.flat();
+        for (let i = flat.length - 1; i >= 0; i--) {
+          if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+        }
+        return undefined;
+      }
+      return style[propName];
+    };
+
+    const findByExactText = (root, text) =>
+      root.findAllByType('Text').find(t => {
+        const children = t.props.children;
+        return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
+      });
+
+    test('goal-derived guidance renders inline in the goal card display (no standalone Guidance card)', () => {
+      const goal = { target_weight: 190, target_date: '2026-08-02', start_weight: 200 };
+      const entries = [{ id: '1', date: '2026-05-24', weight_value: 195.0, note: '' }];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      // Guidance content is present...
+      expect(findText(root, 'Target pace')).toBeTruthy();
+      // ...but the old standalone "Guidance" card title is gone.
+      const allTexts = root.findAllByType('Text').map(t => {
+        const children = t.props.children;
+        return Array.isArray(children) ? children.join('') : String(children ?? '');
+      });
+      expect(allTexts.includes('Guidance')).toBe(false);
+    });
+
+    test('shows remaining distance to target when current weight is known', () => {
+      const goal = { target_weight: 190, target_date: '2026-08-02', start_weight: 200 };
+      const entries = [{ id: '1', date: '2026-05-24', weight_value: 195.0, note: '' }];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      // |195 - 190| = 5.0 lb to go
+      expect(findText(root, '5.0 lb')).toBeTruthy();
+      expect(findText(root, 'to go')).toBeTruthy();
+    });
+
+    test('hides remaining distance for an overdue goal', () => {
+      const goal = { target_weight: 180, target_date: '2026-05-20', start_weight: 200 };
+      const entries = [{ id: '1', date: '2026-05-24', weight_value: 195.0, note: '' }];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      const allTexts = root.findAllByType('Text').map(t => {
+        const children = t.props.children;
+        return Array.isArray(children) ? children.join('') : String(children ?? '');
+      });
+      expect(allTexts.some(txt => txt.includes('to go'))).toBe(false);
+    });
+
+    test('derived labels use compact 12px uppercase hierarchy so they do not compete with values', () => {
+      const goal = { target_weight: 190, target_date: '2026-08-02', start_weight: 200 };
+      const entries = [{ id: '1', date: '2026-05-24', weight_value: 195.0, note: '' }];
+      const component = setup(goal, entries);
+      const label = findByExactText(component.root, 'Target pace');
+      expect(label).toBeTruthy();
+      expect(getStyleProp(label, 'fontSize')).toBe(12);
+      expect(getStyleProp(label, 'fontWeight')).toBe('700');
+      expect(getStyleProp(label, 'textTransform')).toBe('uppercase');
+    });
+  });
+
   test('renders merged trends using entry.date windows', () => {
     const entries = [
       { id: '1', date: '2026-05-24', logged_at: '2026-05-24T22:15:00Z', weight_value: 185.0, note: '' },
