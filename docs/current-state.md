@@ -211,7 +211,10 @@ The real native app path now has a modular React Native shell:
     training sessions are close in weight), not the dramatic cross-routine drop
     fixed in #396. It self-corrects when the other lifts catch up to equal counts
     and fully resets when a new routine note begins. This behavior is surfaced to
-    users in-app via #399 rather than fixed in the model.
+    users in-app (#399): the Analytics `1K Progress` card has a collapsible
+    "How is this calculated?" note explaining the Big-3 cycle definition, the
+    one-session-behind reset, and that deload sessions show on the graph but not
+    in strength stats — rather than being fixed in the model.
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks
