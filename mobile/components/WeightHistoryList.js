@@ -278,7 +278,9 @@ export function WeightHistoryList({
             <Text style={styles.collapsedText}>
               {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
               {' · Last: '}
-              {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+              <Text style={styles.collapsedWeight}>
+                {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+              </Text>
               {' on '}
               {formatDate(filteredEntries[0].logged_at)}
             </Text>
@@ -460,8 +462,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   collapsedText: {
-    fontSize: 13,
+    fontSize: 15,
     color: Colors.textMuted,
     fontWeight: '600',
+  },
+  collapsedWeight: {
+    fontWeight: '900',
+    color: Colors.text,
   },
 });

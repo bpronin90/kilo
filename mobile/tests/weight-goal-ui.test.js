@@ -564,25 +564,45 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      // #408: archived value cells were undersized vs other Weight tab panels.
-      // They are bumped to a modest 18 so the table no longer reads weaker than
-      // the active Goal display / Weight History rows while staying secondary.
-      test('primary value cells use fontSize 18 fontWeight 900 (#408)', () => {
+      // #408 bumped these to 18; #409 brings them up to the Weight History row
+      // scale (20) so Goal History no longer reads undersized next to the other
+      // Weight tab panels, while staying below the 28px active-goal hero scale.
+      test('primary value cells use fontSize 20 fontWeight 900 (#409)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
-        expect(getStyleProp(valueNode, 'fontSize')).toBe(18);
+        expect(getStyleProp(valueNode, 'fontSize')).toBe(20);
         expect(getStyleProp(valueNode, 'fontWeight')).toBe('900');
       });
 
-      test('date cells use fontSize 18 fontWeight 700 (#408)', () => {
+      test('date cells use fontSize 20 fontWeight 700 (#409)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(18);
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(20);
         expect(getStyleProp(dateNode, 'fontWeight')).toBe('700');
+      });
+
+      // #409: collapsed Goal History summary surfaces the most recent archived
+      // goal's key weight (completed/end weight when available) in bold at a
+      // larger-than-13px size, instead of only showing the count.
+      test('collapsed summary surfaces most recent goal weight in bold above 13px (#409)', () => {
+        const component = setup(null, [], archivedFixture);
+        const root = component.root;
+        // Collapsed by default: most recent completed weight (174.5) is shown bold.
+        const weightNode = findByExactText(root, '174.5 lb');
+        expect(weightNode).toBeTruthy();
+        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+        // The surrounding summary line is larger than the prior 13px.
+        const summary = root.findAllByType('Text').find(t => {
+          const c = t.props.children;
+          const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+          return flat.includes('past goals');
+        });
+        expect(summary).toBeTruthy();
+        expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
       });
     });
 
@@ -706,6 +726,31 @@ describe('WeightScreen', () => {
         expect(weightNode).toBeTruthy();
         expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
         expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+      });
+
+      // #409: collapsed Weight History summary renders the latest weight in bold
+      // at a larger-than-13px size, consistent with the Goal History summary.
+      test('collapsed summary renders the latest weight in bold above 13px (#409)', () => {
+        const component = setup(null, entries);
+        const root = component.root;
+        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+        render.act(() => { toggle.props.onPress(); });
+
+        const weightNode = root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          const text = Array.isArray(children) ? children.join('') : String(children ?? '');
+          return text === '190 lb';
+        });
+        expect(weightNode).toBeTruthy();
+        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+
+        const summary = root.findAllByType('Text').find(t => {
+          const c = t.props.children;
+          const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+          return flat.includes('Last:');
+        });
+        expect(summary).toBeTruthy();
+        expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
       });
     });
 
