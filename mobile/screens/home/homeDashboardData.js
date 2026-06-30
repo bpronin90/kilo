@@ -3,13 +3,14 @@ import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../li
 import {
   deriveWeightGoalAnalytics,
   derive1kTotal,
+  derive1kTotalFromSectionsList,
   DEFAULT_1K_EXERCISES,
   deriveWorkoutNoteAnalytics,
   deriveOverloadCounts,
   computeWeeklySummary,
 } from '../../lib/data';
 
-export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, trackedLifts }) {
+export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts }) {
   let oneK = null;
   let sections = null;
 
@@ -21,7 +22,9 @@ export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal
     ...DEFAULT_1K_EXERCISES,
     ...(workoutNote?.one_k_exercises || {}),
   };
-  oneK = derive1kTotal(allSections, oneKSelections);
+  oneK = noteSectionsList
+    ? derive1kTotalFromSectionsList(noteSectionsList, oneKSelections)
+    : derive1kTotal(allSections, oneKSelections);
 
   const { rollingSeries: weightSeries, trendSummary: weightTrends, goalInfo } = deriveWeightGoalAnalytics(weightEntries, weightGoal);
   const latestWeight = weightTrends.currentWeight;

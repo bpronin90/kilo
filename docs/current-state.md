@@ -187,13 +187,20 @@ The real native app path now has a modular React Native shell:
   cycle rather than a sticky per-occurrence PR or a mixed-cycle fallback. All
   dashboard data comes from existing shared derivation functions; no Home-only
   calculations exist. The success toast is removed from the render
-  - Known gap (#395 audit): the shared session-ordinal alignment is only valid
-    within one continuous routine cadence. Because both the Home headline and the
-    Analytics `1K Progress` graph are fed every note concatenated, unequal
-    per-lift session counts across routines (e.g. a one-session deload note)
-    misalign the ordinal zip at routine boundaries, so the tail point can mix a
-    deload/old-routine session of one lift with a current-routine session of
-    another and report a spuriously low total. Fix tracked in #396.
+  - Cross-routine alignment fixed (#396): the 1K headline and `1K Progress` graph
+    now align lifts per note (`derive1kTotalSeriesFromSectionsList`) before
+    concatenating, so unequal per-lift session counts across routines (e.g. a
+    one-session deload note) no longer misalign at routine boundaries. The graph
+    keeps full cross-routine history with each point summing same-cycle PRs, and
+    the headline ends on the most recent complete cycle without ever mixing
+    cycles. When no note has a complete Big-3 cycle the total is null and each
+    lift reports its latest session PR individually.
+  - Residual known gap (#396): alignment within a single note is still purely by
+    session ordinal (the parsed model carries no per-session date). Skipped
+    sessions are absorbed by null placeholders, but logging one lift an *extra*
+    time mid-cadence inside the same note drifts that lift one ordinal behind for
+    all later points, so a 1K point can pair that lift's older session with the
+    others' newer ones. Resolving this needs per-session dates in the parsed model.
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks

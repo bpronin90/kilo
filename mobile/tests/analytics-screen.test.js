@@ -416,14 +416,14 @@ describe('AnalyticsScreen 1K Progress Card', () => {
 
   test('displays redesigned 1K progress with full labels', () => {
     const oneK = { total: 1000, squat: 400, bench: 300, deadlift: 300 };
-    
+
     // Setup analytics to return the mocked oneK
     jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
       signals: [],
       nameDisplayMap: new Map(),
       repDropOffFlags: {},
     });
-    jest.spyOn(data, 'derive1kTotal').mockReturnValue(oneK);
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue(oneK);
 
     const component = setup();
     const root = component.root;
@@ -619,8 +619,8 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
     jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
       signals: [], nameDisplayMap: new Map(), repDropOffFlags: {},
     });
-    jest.spyOn(data, 'derive1kTotal').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
-    jest.spyOn(data, 'derive1kTotalSeries').mockReturnValue([
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
+    jest.spyOn(data, 'derive1kTotalSeriesFromSectionsList').mockReturnValue([
       { session: 1, total: 900, bench: 280, squat: 360, deadlift: 260 },
       { session: 2, total: 1000, bench: 300, squat: 400, deadlift: 300 },
     ]);
@@ -634,8 +634,8 @@ describe('AnalyticsScreen 1K total over sessions chart', () => {
     jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
       signals: [], nameDisplayMap: new Map(), repDropOffFlags: {},
     });
-    jest.spyOn(data, 'derive1kTotal').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
-    jest.spyOn(data, 'derive1kTotalSeries').mockReturnValue([
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue({ total: 1000, squat: 400, bench: 300, deadlift: 300 });
+    jest.spyOn(data, 'derive1kTotalSeriesFromSectionsList').mockReturnValue([
       { session: 1, total: 1000, bench: 300, squat: 400, deadlift: 300 },
     ]);
 
@@ -673,19 +673,19 @@ describe('deriveAnalytics 1k series — uses allSections to include synced sessi
     const historicalSections = parseWorkoutNote(historicalText).sections;
     const currentSections = parseWorkoutNote(currentText).sections;
     const allSections = [...historicalSections, ...currentSections];
+    const noteSectionsList = [historicalSections, currentSections];
 
-    const analytics = deriveAnalytics({ allSections, currentSections }, {}, oneKSelections, 1.0);
+    const analytics = deriveAnalytics({ allSections, currentSections, noteSectionsList }, {}, oneKSelections, 1.0);
 
     expect(analytics.oneKSeries.length).toBe(3);
     expect(analytics.oneKSeries[2].session).toBe(3);
   });
 
-  test('series stops at 2 when only currentSections are used — confirms the pre-fix behavior', () => {
-    const historicalSections = parseWorkoutNote(historicalText).sections;
+  test('series stops at 2 when only currentSections are used', () => {
     const currentSections = parseWorkoutNote(currentText).sections;
+    const noteSectionsList = [currentSections];
 
-    // Simulate the old (broken) behavior: pass currentSections as allSections too.
-    const analytics = deriveAnalytics({ allSections: currentSections, currentSections }, {}, oneKSelections, 1.0);
+    const analytics = deriveAnalytics({ allSections: currentSections, currentSections, noteSectionsList }, {}, oneKSelections, 1.0);
 
     expect(analytics.oneKSeries.length).toBe(2);
   });

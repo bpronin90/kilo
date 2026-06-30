@@ -55,14 +55,19 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
   const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
 
-  const allSections = useMemo(
-    () => (notes || []).flatMap(n => getNoteSections(n)),
+  const noteSectionsList = useMemo(
+    () => (notes || []).map(n => getNoteSections(n)),
     [notes]
   );
 
+  const allSections = useMemo(
+    () => noteSectionsList.flat(),
+    [noteSectionsList]
+  );
+
   const dashboardData = useMemo(
-    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, trackedLifts }),
-    [weightEntries, workoutNote, weightGoal, allSections, trackedLifts]
+    () => deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts }),
+    [weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts]
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);

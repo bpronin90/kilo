@@ -25,13 +25,10 @@ function _latestNonNull(prs) {
 // lowers the 1K, a per-occurrence max can no longer pin an old higher value, and
 // the total is never a sum of PRs from different cycles.
 //
-// Deriving the headline straight from the series is intentional: it guarantees
-// the Home 1K and the historical chart are always consistent and share one
-// alignment rule (oldest-first ordinal zip, since the parsed model carries no
-// per-session date to key on). Any uneven-history shape — a lift skipped in the
-// latest cycle, or a lift with an extra newer cycle the others lack — resolves
-// to the same single complete cycle the series emits, with no mixed-cycle sum in
-// either direction.
+// IMPORTANT: sections must come from a single note (single routine cadence).
+// Passing multi-note concatenations breaks ordinal alignment when per-lift session
+// counts differ across notes — use derive1kTotalSeriesFromSectionsList for the
+// cross-note historical series and read the headline from the current note only.
 //
 // Fallback: when no complete aligned Big-3 cycle exists (a selected lift never
 // appears in the note), total is null but each present lift still reports its
@@ -39,7 +36,7 @@ function _latestNonNull(prs) {
 // _occurrenceEntries, so this stays robust to how sessions are separated (day
 // headings, `- entry` lines, bare rows, blank lines).
 //
-// sections: output of parseWorkoutNote(noteText).sections
+// sections: output of parseWorkoutNote(noteText).sections — single note only
 // selections: { bench: string, squat: string, deadlift: string } — exercise name for each slot
 // Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
 export function derive1kTotal(sections, { bench, squat, deadlift }) {
@@ -128,6 +125,63 @@ export function derive1kTotalSeries(sections, { bench, squat, deadlift }) {
     });
   }
   return series;
+}
+
+// derive1kTotalSeriesFromSectionsList: cross-note Big-3 1RM series that never
+// mixes ordinals across routine boundaries. Calls derive1kTotalSeries once per
+// note's sections (so ordinals are relative within each note), then concatenates
+// the per-note results with monotonically increasing global session numbers.
+//
+// sectionsList: Section[][] — one entry per note, in chronological order
+// selections: { bench: string, squat: string, deadlift: string }
+// Returns: { session, total, bench, squat, deadlift }[]
+export function derive1kTotalSeriesFromSectionsList(sectionsList, selections) {
+  const merged = [];
+  let offset = 0;
+  for (const sections of sectionsList || []) {
+    const noteSeries = derive1kTotalSeries(sections, selections);
+    for (const pt of noteSeries) {
+      merged.push({ ...pt, session: offset + pt.session });
+    }
+    if (noteSeries.length > 0) {
+      offset += noteSeries[noteSeries.length - 1].session;
+    }
+  }
+  return merged;
+}
+
+// derive1kTotalFromSectionsList: headline 1K derived from the per-note series.
+// Returns the last series point so the total always reflects the most recent
+// complete Big-3 cycle within a routine cadence, never mixing sessions across
+// note boundaries. Falls back to per-lift latest PRs when no complete cycle exists.
+//
+// sectionsList: Section[][] — one entry per note, in chronological order
+// selections: { bench: string, squat: string, deadlift: string }
+// Returns: { total: number|null, bench: number|null, squat: number|null, deadlift: number|null }
+export function derive1kTotalFromSectionsList(sectionsList, selections) {
+  const series = derive1kTotalSeriesFromSectionsList(sectionsList, selections);
+  if (series.length > 0) {
+    const last = series[series.length - 1];
+    return { total: last.total, bench: last.bench, squat: last.squat, deadlift: last.deadlift };
+  }
+  // No complete Big-3 cycle in any note. Surface each lift's most recent session PR
+  // from the latest note that contains it. total is always null — never sums across
+  // notes, which would reproduce the cross-note ordinal mixing this function exists to prevent.
+  const { bench, squat, deadlift } = selections;
+  let benchPR = null, squatPR = null, deadliftPR = null;
+  for (let i = (sectionsList || []).length - 1; i >= 0; i--) {
+    if (benchPR !== null && squatPR !== null && deadliftPR !== null) break;
+    const { exercises } = deriveWorkoutAnalytics(sectionsList[i]);
+    const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+    const prFor = (name) => {
+      const ex = byKey.get(normalizeExerciseKey(name));
+      return ex ? _latestNonNull(_exercisePerSessionPRs(ex)) : null;
+    };
+    if (benchPR === null) benchPR = prFor(bench);
+    if (squatPR === null) squatPR = prFor(squat);
+    if (deadliftPR === null) deadliftPR = prFor(deadlift);
+  }
+  return { total: null, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
 }
 
 // ── Routine switching: progress rollover ──────────────────────────────────────

@@ -3,16 +3,17 @@ import { DELOAD_NOTE_PREFIX } from '../../hooks/entries/workoutNoteHooks';
 import {
   isStrengthExerciseName,
   deriveWorkoutNoteAnalytics,
-  derive1kTotal,
-  derive1kTotalSeries,
+  derive1kTotalFromSectionsList,
+  derive1kTotalSeriesFromSectionsList,
   deriveNonWeightedTrackedExerciseMetrics,
 } from '../../lib/data';
 import { normalizeExerciseKey } from '../../lib/parser';
 
 export function deriveParsedSections(notes, currentNote) {
-  const allSections = notes.flatMap(n => getNoteSections(n));
+  const noteSectionsList = notes.map(n => getNoteSections(n));
+  const allSections = noteSectionsList.flat();
   const currentSections = getNoteSections(currentNote);
-  return { allSections, currentSections };
+  return { allSections, currentSections, noteSectionsList };
 }
 
 export function deriveNoteExerciseNames(currentSections) {
@@ -21,7 +22,7 @@ export function deriveNoteExerciseNames(currentSections) {
 }
 
 export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier) {
-  const { allSections, currentSections } = parsedSections;
+  const { allSections, currentSections, noteSectionsList } = parsedSections;
 
   const namesInCurrent = new Set(
     currentSections.flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
@@ -33,8 +34,8 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
 
   const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
   const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
-  const oneK = derive1kTotal(allSections, oneKSelections);
-  const oneKSeries = derive1kTotalSeries(allSections, oneKSelections);
+  const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
+  const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 
   return { signals, oneK, oneKSeries, nameDisplayMap, perDaySignals, nonWeightedMetrics };
 }

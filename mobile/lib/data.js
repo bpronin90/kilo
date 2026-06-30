@@ -72,6 +72,8 @@ export const deriveCheckInHistory = _workoutAnalytics.deriveCheckInHistory;
 export const DEFAULT_1K_EXERCISES = _oneK.DEFAULT_1K_EXERCISES;
 export const derive1kTotal = _oneK.derive1kTotal;
 export const derive1kTotalSeries = _oneK.derive1kTotalSeries;
+export const derive1kTotalSeriesFromSectionsList = _oneK.derive1kTotalSeriesFromSectionsList;
+export const derive1kTotalFromSectionsList = _oneK.derive1kTotalFromSectionsList;
 export const findMatchingExerciseNames = _oneK.findMatchingExerciseNames;
 export const rolloverOneKExercises = _oneK.rolloverOneKExercises;
 
