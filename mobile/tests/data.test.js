@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 
 
@@ -3207,16 +3207,12 @@ describe('derive1kTotalSeries', () => {
     expect(oneK.deadlift).toBeNull();
   });
 
-  // Regression for issue #395.
-  // Root cause: homeDashboardData.js calls derive1kTotal(allSections, ...) where
-  // allSections is all notes concatenated. When per-lift session counts differ
-  // across notes, ordinal alignment breaks at routine boundaries — a lift's
-  // deload-session PR lands at the same index as another lift's current-routine PR,
-  // producing a spuriously low total and a bench reading from the deload weight.
-  // Fix requires changing the callsite in homeDashboardData.js (not in Allowed Files
-  // for issue #395). This test pins the defect so a future fix can assert the last
-  // point uses current-routine values for all three lifts.
-  test('cross-note ordinal misalignment: unequal session counts cause last series point to mix routine boundaries', () => {
+  // Fix for issue #395.
+  // derive1kTotalSeriesFromSectionsList builds the series per-note so ordinals
+  // never cross a routine boundary. Unequal per-lift session counts across notes
+  // no longer cause the last point to mix a deload/old-routine session of one lift
+  // with a current-routine session of another.
+  test('cross-note ordinal misalignment fixed: last series point uses current-routine values for all three lifts', () => {
     // Old note: bench has one extra session (3) vs squat and deadlift (2 each).
     const oldSections = lifts({
       bench:    [w(100, 5), w(105, 5), w(110, 5)],
@@ -3236,23 +3232,57 @@ describe('derive1kTotalSeries', () => {
       deadlift: [w(350, 5)],
     });
 
-    // Correct: per-note calc on current note gives current-routine values.
-    const correctSeries = derive1kTotalSeries(currentSections, SEL);
-    expect(correctSeries).toHaveLength(1);
-    expect(correctSeries[0].bench).toBeCloseTo(epley(150, 5), 5);
+    const series = derive1kTotalSeriesFromSectionsList(
+      [oldSections, deloadSections, currentSections],
+      SEL
+    );
 
-    // Defective: allSections as concatenated by homeDashboardData.js.
-    // bench totals 5 sessions, squat/deadlift total 4 — n=4.
-    // Last ordinal (3): bench=deload(60), squat=current(250), deadlift=current(350).
-    const allSections = [...oldSections, ...deloadSections, ...currentSections];
-    const defectiveSeries = derive1kTotalSeries(allSections, SEL);
-    const last = defectiveSeries[defectiveSeries.length - 1];
-    // Bench at the last ordinal resolves to the deload session, not the current routine.
-    expect(last.bench).toBeCloseTo(epley(60, 8), 5);
-    expect(last.bench).toBeLessThan(epley(150, 5));
-    // Squat and deadlift happen to resolve to the current note (by ordinal coincidence).
+    // Historical progression is preserved: old note emits 2 points, deload 1, current 1.
+    expect(series.length).toBe(4);
+
+    const last = series[series.length - 1];
+    // Last point is from the current routine — all three lifts use current-routine values.
+    expect(last.bench).toBeCloseTo(epley(150, 5), 5);
     expect(last.squat).toBeCloseTo(epley(250, 5), 5);
     expect(last.deadlift).toBeCloseTo(epley(350, 5), 5);
+    // Total is correct: not corrupted by the deload bench weight.
+    expect(last.total).toBeCloseTo(epley(150, 5) + epley(250, 5) + epley(350, 5), 5);
+  });
+
+  test('derive1kTotalSeriesFromSectionsList: per-note series concatenate with monotonically increasing global ordinals', () => {
+    const noteA = lifts({ bench: [w(100, 5)], squat: [w(200, 5)], deadlift: [w(300, 5)] });
+    const noteB = lifts({ bench: [w(110, 5)], squat: [w(210, 5)], deadlift: [w(310, 5)] });
+    const series = derive1kTotalSeriesFromSectionsList([noteA, noteB], SEL);
+    expect(series).toHaveLength(2);
+    expect(series[0].session).toBe(1);
+    expect(series[1].session).toBe(2);
+    expect(series[0].bench).toBeCloseTo(epley(100, 5), 5);
+    expect(series[1].bench).toBeCloseTo(epley(110, 5), 5);
+  });
+
+  test('derive1kTotalSeriesFromSectionsList: skipped session within a note aligns via null placeholder', () => {
+    const noteSections = lifts({
+      bench:    [w(100, 5), 'skip', w(110, 5)],
+      squat:    [w(200, 5), w(210, 5), w(220, 5)],
+      deadlift: [w(300, 5), w(310, 5), w(320, 5)],
+    });
+    const series = derive1kTotalSeriesFromSectionsList([noteSections], SEL);
+    // Ordinal 2 (bench skipped) is dropped; ordinals 1 and 3 are emitted.
+    expect(series.map(p => p.session)).toEqual([1, 3]);
+    expect(series[1].bench).toBeCloseTo(epley(110, 5), 5);
+    expect(series[1].squat).toBeCloseTo(epley(220, 5), 5);
+    expect(series[1].deadlift).toBeCloseTo(epley(320, 5), 5);
+  });
+
+  test('derive1kTotalSeriesFromSectionsList: note with no complete Big-3 cycle emits nothing and takes no ordinal space', () => {
+    const noteA = lifts({ bench: [w(100, 5)], squat: [w(200, 5)], deadlift: [w(300, 5)] });
+    // Note with only bench and squat (no deadlift) — emits nothing.
+    const noteNoDead = [liftSection('DB Bench Press', [w(60, 8)]), liftSection('Squat', [w(155, 8)])];
+    const noteB = lifts({ bench: [w(110, 5)], squat: [w(210, 5)], deadlift: [w(310, 5)] });
+    const series = derive1kTotalSeriesFromSectionsList([noteA, noteNoDead, noteB], SEL);
+    expect(series).toHaveLength(2);
+    expect(series[0].session).toBe(1);
+    expect(series[1].session).toBe(2);
   });
 });
 
