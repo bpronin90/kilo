@@ -1084,9 +1084,26 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
     expect(col3Color(root, '↓ Losing')).toBe(Colors.error);
   });
 
-  test('with no goal direction the trend is neutral, not success/error', () => {
+  // #408: with no active goal the goal-relative meaning is absent, but ↑/↓ keep
+  // a visible directional cue (gaining = error tone, losing = success tone)
+  // rather than falling back to flat neutral text.
+  test('with no goal direction ↑ Gaining keeps a visible directional color (#408)', () => {
     const root = renderSection({ col3: { label: 'Trend', value: '↑ Gaining' } });
     const color = col3Color(root, '↑ Gaining');
+    expect(color).toBe(Colors.error);
+    expect(color).not.toBe(Colors.text);
+  });
+
+  test('with no goal direction ↓ Losing keeps a visible directional color (#408)', () => {
+    const root = renderSection({ col3: { label: 'Trend', value: '↓ Losing' } });
+    const color = col3Color(root, '↓ Losing');
+    expect(color).toBe(Colors.success);
+    expect(color).not.toBe(Colors.text);
+  });
+
+  test('with no goal direction → Stable stays neutral (#408)', () => {
+    const root = renderSection({ col3: { label: 'Trend', value: '→ Stable' } });
+    const color = col3Color(root, '→ Stable');
     expect(color).toBe(Colors.text);
     expect(color).not.toBe(Colors.success);
     expect(color).not.toBe(Colors.error);
