@@ -60,7 +60,10 @@ Current limitation:
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `log-screen.test.js` parser-and-render-logic suite covering
   skip-marker interleaving and bare-unparsed-row chronological positioning for
-  the workout-note clean view, plus source-contract coverage that pins the
+  the workout-note clean view, week-level `Skip week` dash insertion for only
+  exercises with existing session entries, idempotency for repeated use and
+  existing trailing skip markers, and the save-success gate before fatigue
+  check-in detection, plus source-contract coverage that pins the
   Log autosave regression boundary by asserting both debounce timers pass
   `{ autosave: true }` and both save handlers guard the visible `Saved!`
   notice behind `!autosave`, plus the past-deload save-path regression boundary
