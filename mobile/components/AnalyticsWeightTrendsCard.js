@@ -56,7 +56,7 @@ export function AnalyticsWeightTrendsCard({
             </Text>
             <Text style={styles.weightValueLarge}>
               {display.latestWeightValue}
-              {display.showUnit && <Text style={styles.weightUnit}>lb</Text>}
+              {display.showUnit && <Text style={styles.weightUnit}> lb</Text>}
             </Text>
           </View>
           {display.paceFlag && (
