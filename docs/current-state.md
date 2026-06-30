@@ -357,9 +357,11 @@ The real native app path now has a modular React Native shell:
   the target direction while maintain/no-goal states keep the symmetrical
   threshold treatment, MM-DD-YYYY display dates for visible weight-history
   rows while stored timestamps remain ISO, and a prominent top-level goal card
-  with a native target-date picker,
-  MM-DD-YYYY visible goal-date formatting, `Target` and `By Date` as the
-  primary anchors, and row-based derived guidance for `Target pace` plus
+  with a native target-date picker plus a web `<input type="date">` fallback so
+  the goal target date stays editable on web,
+  MM-DD-YYYY visible goal-date formatting, `Target` and `Target Date` as
+  equal-priority anchors, enlarged touch targets on the goal action and
+  history date-filter chips, and row-based derived guidance for `Target pace` plus
   advisory calorie guidance alongside warnings; when a complete stored user
   profile exists (`height_cm`, `date_of_birth`, `sex`, `activity_level`), the
   calorie row now shows an approximate TDEE-anchored daily target using the
@@ -375,19 +377,21 @@ The real native app path now has a modular React Native shell:
   future target date, and when no
   saved weight entries exist the goal form still requires a current-weight
   fallback so the pace and calorie guidance can render from the saved goal
-  state. Saved goals now render as a singular `Goal` section with a compact
-  target card plus a separate `Guidance` card so the target values and derived
-  pace/calorie guidance are easier to scan, and archived completed goals now
+  state. Saved goals now render as a singular `Goal` section that inlines the
+  derived pace/calorie guidance directly into the goal card instead of a
+  separate `Guidance` card, adds a remaining-distance `lb to go` progress line,
+  demotes the derived labels to a quieter uppercase hierarchy, and keeps target
+  weight and target date at equal visual priority. Archived completed goals
   appear in a compact conditional `Goal History` list beneath the active/new
-  goal flow, ordered newest first with target weight, completed weight when
-  available, target date, and archived date, with compact column headers and a
-  collapse/expand control for scanning longer history. The Goal History
-  collapse/expand control now uses the shared open-chevron icon convention used
-  by the rest of the app, and its header and card now use the same 16px
-  title-to-panel gap as the rest of the Weight tab, sit below Trends, and
-  include `End Weight` as its own column. The Trends card now colors both
-  pace-severity states and directional gain/loss cues
-  instead of leaving the trend column uniformly neutral, and tapping a history
+  goal flow, defaulting collapsed so it does not push Weight History down,
+  ordered newest first with target weight, `End Weight` when available, and
+  target date; the archived date is no longer shown as its own table column. The
+  Goal History collapse/expand control uses the shared open-chevron icon
+  convention used by the rest of the app, and its header and card use the same
+  16px title-to-panel gap as the rest of the Weight tab and sit below Trends.
+  The Trends card now colors trend direction in a goal-direction-aware way so
+  gain and loss goals do not invert success/error meaning, preferring neutral
+  treatment where the semantics are ambiguous, and tapping a history
   row now scrolls back to the top editor as it loads the selected entry. The
   Weight tab now reads top-to-bottom as weight entry, `Goal`, `Trends`,
   optional `Goal History`, and `Weight History`, with `Goal` / `Trends` using
@@ -395,12 +399,13 @@ The real native app path now has a modular React Native shell:
   consumes the same canonical `deriveWeightGoalAnalytics()` output used by
   Home and Analytics for trend summary, pace severity, goal guidance, and
   calorie guidance, and
-  surfaces `Pace`, `7-day rolling`, and `30-day rolling` rows with
+  surfaces `Today`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp. The Weight History panel now includes column
-  headers, collapse/expand, and concrete From/To date-range controls over the
-  already loaded entries, with Goal History and Weight History typography
+  headers, a collapse/expand control whose collapsed summary surfaces the latest
+  weight and date alongside the entry count, and concrete From/To date-range
+  controls over the already loaded entries, with Goal History and Weight History typography
   aligned to the same label/value hierarchy used by the Trends panel, without
   changing saved weight calculations or persistence. A failed weight-entry load
   now surfaces a retryable `ErrorBanner` at the top of the screen instead of a

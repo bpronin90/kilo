@@ -239,7 +239,7 @@ describe('WeightScreen', () => {
     const root = component.root;
 
     expect(findText(root, 'Trends')).toBeTruthy();
-    expect(findText(root, 'Pace')).toBeTruthy();
+    expect(findText(root, 'Today')).toBeTruthy();
     expect(findText(root, 'Current')).toBeTruthy();
     expect(findText(root, '185.0 lb')).toBeTruthy();
     expect(findText(root, '+1.0')).toBeTruthy();

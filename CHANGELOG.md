@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.85.0 - 2026-06-30
+
+- Issue #406: Made Weight Trends direction colors goal-direction aware so gain
+  and loss goals no longer invert success/error meaning (neutral where
+  ambiguous), renamed the misleading `Pace` row to `Today` to match the value it
+  shows, and tightened the trend grid alignment so columns stay scannable on
+  small screens.
+- Issue #405: Inlined the goal-derived pace/calorie guidance into the Goal card
+  instead of a separate `Guidance` card, added a remaining-distance `lb to go`
+  progress line, demoted the derived labels to a quieter uppercase hierarchy,
+  and kept target weight and target date at equal visual priority.
+- Issue #407: Defaulted Goal History to collapsed so archived goals no longer
+  push Weight History down, enriched the collapsed Weight History summary with
+  the latest weight and date, dropped the archived-date column from the Goal
+  History table, renamed the goal form `By Date` label to `Target Date`, and
+  applied lower-priority history polish within scope.
+- Issue #404: Added a web `<input type="date">` fallback for the goal target
+  date input while keeping the native picker path intact, and enlarged the touch
+  targets on the goal action and history date-filter chips.
+- Integration: resolved the #404/#407 overlap in `WeightGoalCard.js` by keeping
+  the web/native date split with the `Target Date` label, and updated a stale
+  `Pace` assertion in `weight-goal-ui.test.js` to the renamed `Today` row.
+
 ## 0.84.11 - 2026-06-30
 
 - Issue #402: Aligned the Goal History row spacing, typography, muted date
