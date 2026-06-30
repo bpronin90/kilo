@@ -374,6 +374,7 @@ export function WeightScreen({
             col3={section.col3}
             isLast={section.isLast}
             paceLevel={section.paceLevel}
+            goalDirection={goalInfo?.direction}
           />
         ))}
       </Card>

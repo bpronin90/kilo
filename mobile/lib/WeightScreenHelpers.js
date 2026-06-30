@@ -25,7 +25,7 @@ export function formatTrendCue(currentValue, priorValue) {
 export function buildTrendSections(trends, paceLevel) {
   return [
     {
-      title: 'Pace',
+      title: 'Today',
       col1: { label: 'Current', value: formatTrendValue(trends.currentWeight) },
       col2: { label: 'Vs Previous', value: formatTrendDeltaValue(trends.currentWeight, trends.priorDayWeight) },
       col3: { label: 'Trend', value: trends.paceFlag ? (trends.paceFlag === 'gain' ? '↑ Gaining' : '↓ Losing') : '-' },
