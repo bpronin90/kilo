@@ -427,7 +427,13 @@ export function WeightScreen({
             })}
             {goalHistoryCollapsed && (
               <View style={styles.archivedCollapsedRow}>
-                <Text style={styles.archivedCollapsedText}>{sortedArchivedGoals.length} past goals</Text>
+                <Text style={styles.archivedCollapsedText}>
+                  Last:{' '}
+                  <Text style={styles.archivedCollapsedWeight}>
+                    {sortedArchivedGoals[0].completed_weight ?? sortedArchivedGoals[0].target_weight} lb
+                  </Text>
+                  {`  ·  ${sortedArchivedGoals.length} past goals`}
+                </Text>
               </View>
             )}
           </Card>
@@ -537,7 +543,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '900',
     color: Colors.text,
   },
@@ -548,7 +554,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
   },
   archivedDateValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: Colors.text,
     textAlign: 'right',
@@ -563,8 +569,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   archivedCollapsedText: {
-    fontSize: 13,
+    fontSize: 15,
     color: Colors.textMuted,
     fontWeight: '600',
+  },
+  archivedCollapsedWeight: {
+    fontWeight: '900',
+    color: Colors.text,
   },
 });
