@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.85.2 - 2026-06-30
+
+- Issue #409: Improved Weight tab history readability after the #407/#408
+  follow-ups — raised the Goal History archived value typography to match the
+  Weight History row scale (20px) so the section no longer looks undersized
+  while keeping the #408 End Weight outcome coloring, and made both collapsed
+  history summaries digestible at a glance by enlarging the summary text and
+  rendering the key weight in bold (Goal History now surfaces the most recent
+  archived goal's completed-or-target weight instead of only a count). Collapse
+  defaults were left unchanged (Goal History collapsed, Weight History expanded).
+
 ## 0.85.1 - 2026-06-30
 
 - Issue #408: Fixed three Weight tab visual regressions from the #403 follow-ups
