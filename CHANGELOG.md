@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.84.8 - 2026-06-29
+
+- Issue #399: Added an in-app "How is this calculated?" explanation to the
+  Analytics 1K Progress card (collapsible, collapsed by default) covering what the
+  1K represents (most recent complete Big-3 cycle of summed estimated 1RMs), the
+  one-session-behind behavior when a lift is trained more often than the others
+  within a routine (and that it resets each new routine), and that deload sessions
+  show on the graph but do not affect strength stats like Kilo Max. UI copy only;
+  no calculation changes.
+
 ## 0.84.7 - 2026-06-29
 
 - Issue #397: Excluded deload sessions from the Analytics strength-signal
