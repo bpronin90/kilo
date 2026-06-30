@@ -69,7 +69,7 @@ export function WeightScreen({
   const [showNewEntryDatePicker, setShowNewEntryDatePicker] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
-  const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(false);
+  const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
   const goalForm = useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal);
@@ -388,8 +388,7 @@ export function WeightScreen({
             <View style={styles.archivedColumnHeader}>
               <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
               <Text style={[styles.archivedColLabel, { flex: 1 }]}>End Weight</Text>
-              <Text style={[styles.archivedColLabel, { flex: 1.2 }]}>By Date</Text>
-              <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Archived</Text>
+              <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Target Date</Text>
             </View>
             {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
@@ -406,14 +405,9 @@ export function WeightScreen({
                           : '—'}
                       </Text>
                     </View>
-                    <View style={{ flex: 1.2 }}>
-                      <Text style={styles.archivedDateText}>
-                        {g.target_date ? formatDate(g.target_date) : '—'}
-                      </Text>
-                    </View>
                     <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
-                      <Text style={styles.archivedSubtext}>
-                        {formatDate(g.archived_at || g.saved_at)}
+                      <Text style={styles.archivedDateValue}>
+                        {g.target_date ? formatDate(g.target_date) : '—'}
                       </Text>
                     </View>
                   </View>
@@ -533,17 +527,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '900',
     color: Colors.text,
   },
-  archivedSubtext: {
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  archivedDateText: {
-    fontSize: 13,
-    color: Colors.textMuted,
+  archivedDateValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'right',
   },
   archivedDivider: {
     height: 1,

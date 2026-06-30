@@ -149,7 +149,7 @@ export function WeightGoalCard({
             keyboardType="decimal-pad"
             style={styles.input}
           />
-          <Text style={styles.inputLabel}>By Date</Text>
+          <Text style={styles.inputLabel}>Target Date</Text>
           <Pressable
             onPress={() => setShowDatePicker(true)}
             style={styles.input}
@@ -185,7 +185,7 @@ export function WeightGoalCard({
               <Text style={styles.goalDisplayValue}>{goal.target_weight} lb</Text>
             </View>
             <View style={styles.goalDisplayItem}>
-              <Text style={styles.goalDisplayLabel}>By Date</Text>
+              <Text style={styles.goalDisplayLabel}>Target Date</Text>
               <Text style={styles.goalDisplayDateValue}>{formatDate(goal.target_date)}</Text>
             </View>
           </View>

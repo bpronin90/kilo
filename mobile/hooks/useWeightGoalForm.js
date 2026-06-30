@@ -72,7 +72,7 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal) {
   const handleArchiveGoal = (completedWeight) => {
     Alert.alert('Archive Goal', 'Save this completed goal to history and set a new target?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Archive', style: 'destructive', onPress: async () => {
+      { text: 'Archive', style: 'default', onPress: async () => {
         await archiveGoal(completedWeight);
         setGoalTargetWeight('');
         setGoalTargetDate('');
