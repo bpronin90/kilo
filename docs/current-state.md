@@ -225,7 +225,11 @@ The real native app path now has a modular React Native shell:
   routine rendered as a title-first card whose header row toggles a persisted
   collapsed/expanded state (`kilo_log_current_collapsed`, surviving tab
   navigation and app restarts) with a small muted `Double-tap to edit` helper
-  line at the top of the expanded current-note body, an explicit `Edit`
+  line at the top of the expanded current-note body and a matching low-emphasis
+  `Skip week` action that appends the normal bare `-` skip marker to each
+  active-week exercise that already has logged session entries, saves the note,
+  and then enters the existing fatigue-reason prompt path only after the save
+  succeeds, an explicit `Edit`
   button in the current routine card header row (using the same
   `inlineSwitchButton` style as the `Set Current` button on other routine
   cards), and a double-tap on the rendered note body as an alternative

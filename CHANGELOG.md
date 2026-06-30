@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.84.9 - 2026-06-30
+
+- Issue #400: Added a small Log-tab `Skip week` action across from the
+  `Double-tap to edit` hint. The action applies the existing bare `-` skip
+  notation to eligible exercises in the active week note, preserves logged
+  values, avoids duplicate trailing skip markers, and opens the normal fatigue
+  reason flow only after the updated note saves successfully.
+
 ## 0.84.8 - 2026-06-29
 
 - Issue #399: Added an in-app "How is this calculated?" explanation to the

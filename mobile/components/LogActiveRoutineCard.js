@@ -11,6 +11,7 @@ export function LogActiveRoutineCard({
   handleToggleWeek,
   enterCurrentEditor,
   handleNoteBodyPress,
+  handleSkipWeek,
   toggleCollapsed,
   isCollapsed,
   dayGroups,
@@ -60,7 +61,19 @@ export function LogActiveRoutineCard({
           onPress={handleNoteBodyPress}
           style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
-          <Text style={styles.editHint}>Double-tap to edit</Text>
+          <View style={styles.editHintRow}>
+            <Text style={styles.editHint}>Double-tap to edit</Text>
+            {handleSkipWeek && (
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Skip week"
+                accessibilityRole="button"
+              >
+                <Text style={styles.skipWeekText}>Skip week</Text>
+              </Pressable>
+            )}
+          </View>
           <WorkoutContentRenderer
             dayGroups={dayGroups}
             trackedLifts={trackedLifts}
@@ -127,9 +140,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.cardBorder,
   },
+  editHintRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   editHint: {
     fontSize: 11,
     color: Colors.textMuted,
-    marginBottom: 8,
+  },
+  skipWeekText: {
+    fontSize: 11,
+    color: Colors.textMuted,
   },
 });

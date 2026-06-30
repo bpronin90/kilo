@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert, Keyboard, Platform } from 'react-native';
-import { parseWorkoutNote, countWorkoutSessionsFromSections } from '../../lib/parser';
+import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
 import {
   normalizeLiftName,
   deriveWorkoutNoteAnalytics,
@@ -192,14 +192,15 @@ export function useLogCurrentRoutineEditor({
     await update(currentId, { activeWeek: next });
   };
 
-  const handleSave = async ({ autosave = false } = {}) => {
+  const handleSave = async ({ autosave = false, overrideText } = {}) => {
     if (isSaving) return;
-    if (!currentId && !workoutNoteText.trim()) {
+    const textToSave = overrideText ?? workoutNoteText;
+    if (!currentId && !textToSave.trim()) {
       setSaveError('Workout notes are required');
       return;
     }
     const savedForId = currentId;
-    const snapshotText = workoutNoteText;
+    const snapshotText = textToSave;
     const snapshotTitle = workoutNoteTitle;
     setIsSaving(true);
     setSaveError('');
@@ -207,7 +208,7 @@ export function useLogCurrentRoutineEditor({
     try {
       let result = null;
       const titleToSave = workoutNoteTitle || 'Untitled Routine';
-      const { sections: savedSections } = parseWorkoutNote(workoutNoteText);
+      const { sections: savedSections } = parseWorkoutNote(textToSave);
       const explicitTrackedNames = listTrackedLifts(trackedLifts);
       const defaultNames = getDefaultTrackedNames();
       const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
@@ -217,7 +218,7 @@ export function useLogCurrentRoutineEditor({
       ];
       const allSections = [
         ...notes.flatMap(n => {
-          const text = n.id === currentId ? workoutNoteText : n.raw_text;
+          const text = n.id === currentId ? textToSave : n.raw_text;
           return text ? parseWorkoutNote(text).sections : [];
         }),
         ...(currentId ? [] : savedSections),
@@ -230,7 +231,7 @@ export function useLogCurrentRoutineEditor({
       if (currentId) {
         result = await update(currentId, {
           title: titleToSave,
-          raw_text: workoutNoteText,
+          raw_text: textToSave,
           exercise_classifications,
           skip_markers,
           attendance_flags,
@@ -245,7 +246,7 @@ export function useLogCurrentRoutineEditor({
 
       if (result) {
         const contentUnchanged =
-          workoutNoteTextRef.current === snapshotText &&
+          (overrideText != null ? overrideText : workoutNoteTextRef.current) === snapshotText &&
           workoutNoteTitleRef.current === snapshotTitle;
         const identityUnchanged = !savedForId || currentIdRef.current === savedForId;
         if (contentUnchanged && identityUnchanged) {
@@ -379,6 +380,33 @@ export function useLogCurrentRoutineEditor({
     }
   };
 
+  const handleSkipWeek = async () => {
+    if (!currentId) return;
+    const newActiveText = applyWeekSkipToText(activeEditText, activeWeekParsed.sections);
+    if (newActiveText === activeEditText) return;
+
+    let newFullText;
+    if (!hasABWeeks) {
+      newFullText = newActiveText;
+    } else {
+      const lines = workoutNoteText.split('\n');
+      const sepIdx = lines.findIndex(l => l.trim() === '---');
+      if (sepIdx === -1) {
+        newFullText = newActiveText;
+      } else if (effectiveActiveWeek === 'A') {
+        newFullText = newActiveText + '\n---\n' + lines.slice(sepIdx + 1).join('\n');
+      } else {
+        newFullText = lines.slice(0, sepIdx).join('\n') + '\n---\n' + newActiveText;
+      }
+    }
+
+    setWorkoutNoteText(newFullText);
+    workoutNoteTextRef.current = newFullText;
+    const saved = await handleSave({ overrideText: newFullText });
+    if (!saved) return;
+    _runCheckInDetection();
+  };
+
   const handleNoteBodyPress = () => {
     const now = Date.now();
     const DOUBLE_TAP_DELAY = 300;
@@ -408,6 +436,7 @@ export function useLogCurrentRoutineEditor({
     hasUnsavedCurrent,
     autosaveCurrentTimerRef,
     handleReadScroll,
+    handleSkipWeek,
     handleNoteBodyPress,
     handleSave,
     enterCurrentEditor,

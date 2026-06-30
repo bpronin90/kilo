@@ -227,3 +227,72 @@ export function parseWorkoutNote(noteText) {
   flushSection();
   return { ok: true, sections, weekBStartIndex };
 }
+
+// Insert a standalone '-' skip marker after each exercise block that has at
+// least one recorded session entry. Preserves all existing logged values.
+// sections must come from parseWorkoutNote(rawText) so exercise order matches.
+export function applyWeekSkipToText(rawText, sections) {
+  // For each exercise in section order: whether it needs a new skip marker.
+  // An exercise needs one only when it has sessions AND the last session entry
+  // is not already a skip (idempotent: repeated calls don't pile up dashes).
+  const needsDash = [];
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      const entries = ex.session_entries;
+      needsDash.push(entries.length > 0 && !entries[entries.length - 1].skipped);
+    }
+  }
+
+  if (!needsDash.some(Boolean)) return rawText;
+
+  const lines = rawText.split('\n');
+  const result = [];
+  let occIdx = 0;
+  let inExercise = false;
+  let eligible = false;
+  const pending = [];
+
+  function flush() {
+    result.push(...pending);
+    if (inExercise && eligible) result.push('-');
+    pending.length = 0;
+    inExercise = false;
+    eligible = false;
+  }
+
+  for (const line of lines) {
+    const t = line.trim();
+
+    if (!t) {
+      (inExercise ? pending : result).push(line);
+      continue;
+    }
+
+    if (t === '---' ||
+        /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(t) ||
+        t.startsWith('+')) {
+      flush();
+      result.push(line);
+      continue;
+    }
+
+    const isHeader =
+      /^-([^-\s].*)/.test(t) ||
+      /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
+      /^Core:\s+.+/i.test(t);
+
+    if (isHeader) {
+      flush();
+      inExercise = true;
+      eligible = occIdx < needsDash.length ? needsDash[occIdx] : false;
+      occIdx++;
+      pending.push(line);
+      continue;
+    }
+
+    (inExercise ? pending : result).push(line);
+  }
+
+  flush();
+  return result.join('\n');
+}
