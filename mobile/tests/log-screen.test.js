@@ -1603,3 +1603,21 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
   });
 });
 
+// ── handleSkipWeek: save-gate contract ───────────────────────────────────────
+// Source-level assertion that handleSkipWeek captures the handleSave return
+// value and bails before _runCheckInDetection when the save fails, mirroring
+// the guard in handleDoneCurrent.
+
+describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
+  test('handleSkipWeek captures handleSave result and returns early on failure', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../screens/log/useLogCurrentRoutineEditor.js'),
+      'utf8'
+    );
+    // Must capture the return value (not fire-and-forget)
+    expect(src).toMatch(/const saved = await handleSave\(/);
+    // Must bail before check-in detection when save fails
+    expect(src).toMatch(/if\s*\(!saved\)\s*return/);
+  });
+});
+

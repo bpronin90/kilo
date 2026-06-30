@@ -402,7 +402,8 @@ export function useLogCurrentRoutineEditor({
 
     setWorkoutNoteText(newFullText);
     workoutNoteTextRef.current = newFullText;
-    await handleSave({ overrideText: newFullText });
+    const saved = await handleSave({ overrideText: newFullText });
+    if (!saved) return;
     _runCheckInDetection();
   };
 
