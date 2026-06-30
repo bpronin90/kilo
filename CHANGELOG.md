@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.84.6 - 2026-06-29
+
+- Issue #396: Fixed the 1K Progress total and graph cross-routine ordinal
+  misalignment confirmed in #395. The headline and chart now align the Big-3
+  lifts per note before concatenating, so unequal per-lift session counts across
+  routines (e.g. a one-session deload note) no longer pair a deload/old-routine
+  session of one lift with another lift's current-routine session. The graph
+  keeps full cross-routine history with each point summing same-cycle PRs, and
+  the no-complete-cycle fallback now reports a null total with per-lift latest
+  PRs instead of a cross-note sum. Known residual: intra-note alignment is still
+  by session ordinal (no per-session dates), so an extra mid-cadence session for
+  one lift within a single note can still drift that lift's alignment.
+
 ## 0.84.5 - 2026-06-29
 
 - Issue #395: Audited the 1K Progress total and graph against Supabase-backed
