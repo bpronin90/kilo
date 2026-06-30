@@ -1,9 +1,41 @@
 import React from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, InputStyle } from './UI';
 import { Colors } from '../theme/colors';
 import { formatDate } from '../lib/format';
+import { localDateToday } from '../lib/WeightScreenHelpers';
+
+// Web-safe goal target date input. The native @react-native-community/datetimepicker
+// has no usable rendering on web, so on web we render a real DOM <input type="date">
+// (react-native-web passes lowercase string element types through to the DOM),
+// mirroring the Weight tab entry-form fallback. Goal targets are future dates, so
+// this uses min={today} for parity with the native picker's minimumDate.
+function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
+  return React.createElement('input', {
+    type: 'date',
+    value: value || '',
+    min: localDateToday(),
+    'aria-label': accessibilityLabel,
+    onChange: (e) => {
+      const next = e?.target?.value;
+      if (next) onChangeDate(next);
+    },
+    style: {
+      backgroundColor: Colors.inputBackground,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderStyle: 'solid',
+      borderColor: Colors.inputBorder,
+      padding: 14,
+      fontSize: 16,
+      color: Colors.text,
+      fontFamily: 'inherit',
+      width: '100%',
+      boxSizing: 'border-box',
+    },
+  });
+}
 
 export function GoalDerived({ info, calorieEstimate }) {
   if (!info) return null;
@@ -92,10 +124,10 @@ export function WeightGoalCard({
             <View style={styles.goalHeaderMet}>
               <Text style={styles.goalMetBadge}>Goal Met!</Text>
               <View style={styles.goalHeaderActions}>
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={8} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={12} style={[styles.goalActionChip, styles.goalArchiveChip]}>
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
                 </Pressable>
-                <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+                <Pressable onPress={startEditGoal} hitSlop={12} style={styles.goalActionChip}>
                   <Text style={styles.goalActionChipText}>Edit</Text>
                 </Pressable>
               </View>
@@ -104,14 +136,14 @@ export function WeightGoalCard({
           {!goalEditing && !isGoalMet && (
             <View style={styles.goalHeaderActions}>
               {goalInfo?.isOverdue && (
-                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={8} style={[styles.goalActionChip, styles.goalArchiveChip]}>
+                <Pressable onPress={() => handleArchiveGoal(currentWeight)} hitSlop={12} style={[styles.goalActionChip, styles.goalArchiveChip]}>
                   <Text style={[styles.goalActionChipText, styles.goalArchiveText]}>Archive</Text>
                 </Pressable>
               )}
-              <Pressable onPress={startEditGoal} hitSlop={8} style={styles.goalActionChip}>
+              <Pressable onPress={startEditGoal} hitSlop={12} style={styles.goalActionChip}>
                 <Text style={styles.goalActionChipText}>Edit</Text>
               </Pressable>
-              <Pressable onPress={handleClearGoal} hitSlop={8} style={styles.goalActionChip}>
+              <Pressable onPress={handleClearGoal} hitSlop={12} style={styles.goalActionChip}>
                 <Text style={[styles.goalActionChipText, styles.goalClearText]}>Clear</Text>
               </Pressable>
             </View>
@@ -150,23 +182,38 @@ export function WeightGoalCard({
             style={styles.input}
           />
           <Text style={styles.inputLabel}>Target Date</Text>
-          <Pressable
-            onPress={() => setShowDatePicker(true)}
-            style={styles.input}
-          >
-            <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
-              {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
-            </Text>
-          </Pressable>
-          {showDatePicker && (
-            <DateTimePicker
-              value={pickerDate}
-              mode="date"
-              display="default"
-              onChange={onDateChange}
-              onDismiss={() => setShowDatePicker(false)}
-              minimumDate={new Date()}
+          {Platform.OS === 'web' ? (
+            <WebGoalDateInput
+              value={goalTargetDate}
+              onChangeDate={(dateStr) => {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                onDateChange({ type: 'set' }, new Date(y, m - 1, d));
+              }}
+              accessibilityLabel="Goal target date"
             />
+          ) : (
+            <>
+              <Pressable
+                onPress={() => setShowDatePicker(true)}
+                style={styles.input}
+                accessibilityLabel="Goal target date"
+                accessibilityRole="button"
+              >
+                <Text style={[styles.pickerText, !goalTargetDate && styles.pickerTextPlaceholder]}>
+                  {goalTargetDate ? formatDate(goalTargetDate) : 'Select date'}
+                </Text>
+              </Pressable>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={pickerDate}
+                  mode="date"
+                  display="default"
+                  onChange={onDateChange}
+                  onDismiss={() => setShowDatePicker(false)}
+                  minimumDate={new Date()}
+                />
+              )}
+            </>
           )}
           {goalInfo && (
             <View style={styles.formDerived}>

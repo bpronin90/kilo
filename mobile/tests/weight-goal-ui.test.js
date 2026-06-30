@@ -713,4 +713,51 @@ describe('WeightScreen', () => {
       expect(archivedCountText.props.children).toBe(1);
     });
   });
+
+  // Goal action chips are visually compact; they expose an enlarged hitSlop so
+  // the effective touch target meets the 44px minimum without changing their
+  // visual size (#404).
+  describe('goal action chip touch targets (#404)', () => {
+    const findPressableByText = (root, text) => {
+      const matches = root.findAll(n => {
+        if (n.type !== 'Text') return false;
+        const children = n.props.children;
+        const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+        return flat === text;
+      });
+      for (const match of matches) {
+        let node = match.parent;
+        while (node) {
+          if (node.props && typeof node.props.onPress === 'function') return node;
+          node = node.parent;
+        }
+      }
+      return null;
+    };
+
+    test('Edit and Clear chips expose an enlarged hitSlop when a goal is in progress', () => {
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
+      ];
+      const component = setup(goal, entries);
+      const editChip = findPressableByText(component.root, 'Edit');
+      const clearChip = findPressableByText(component.root, 'Clear');
+      expect(editChip).toBeTruthy();
+      expect(clearChip).toBeTruthy();
+      expect(editChip.props.hitSlop).toBe(12);
+      expect(clearChip.props.hitSlop).toBe(12);
+    });
+
+    test('Archive chip exposes an enlarged hitSlop when a goal is met', () => {
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 174, note: '' },
+      ];
+      const component = setup(goal, entries);
+      const archiveChip = findPressableByText(component.root, 'Archive');
+      expect(archiveChip).toBeTruthy();
+      expect(archiveChip.props.hitSlop).toBe(12);
+    });
+  });
 });
