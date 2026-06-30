@@ -119,6 +119,7 @@ export function WeightHistoryList({
               <Pressable
                 onPress={() => setShowFromPicker(true)}
                 style={styles.dateChip}
+                hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="From date"
               >
@@ -130,6 +131,7 @@ export function WeightHistoryList({
               <Pressable
                 onPress={() => setShowToPicker(true)}
                 style={styles.dateChip}
+                hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="To date"
               >

@@ -771,7 +771,11 @@ describe('WeightScreen web date fallback (#314)', () => {
       );
     });
     const root = component.root;
-    const dateInputs = root.findAll(n => n.type === 'input' && n.props.type === 'date');
+    // Match the new-entry input specifically by its aria-label; the goal form
+    // also renders a web date input ("Goal target date") when no goal is set.
+    const dateInputs = root.findAll(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
+    );
     expect(dateInputs.length).toBe(1);
     // The native picker must NOT be mounted on web.
     expect(root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker').length).toBe(0);
@@ -785,12 +789,107 @@ describe('WeightScreen web date fallback (#314)', () => {
       );
     });
     const root = component.root;
-    const dateInput = root.find(n => n.type === 'input' && n.props.type === 'date');
+    const dateInput = root.find(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
+    );
     render.act(() => {
       dateInput.props.onChange({ target: { value: '2026-05-20' } });
     });
-    const updated = root.find(n => n.type === 'input' && n.props.type === 'date');
+    const updated = root.find(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
+    );
     expect(updated.props.value).toBe('2026-05-20');
+  });
+});
+
+// ── Goal form web date fallback (#404) ────────────────────────────────────────
+// The goal "By Date" field previously had no web fallback; on web the native
+// DateTimePicker does not render. On web it must render a real DOM
+// <input type="date"> that writes the chosen YYYY-MM-DD back to the goal target
+// date. Native keeps the Pressable + picker path.
+describe('WeightGoalCard goal date web fallback (#404)', () => {
+  const { Platform } = require('react-native');
+  let originalOS;
+
+  beforeAll(() => {
+    originalOS = Platform.OS;
+    Platform.OS = 'web';
+  });
+
+  afterAll(() => {
+    Platform.OS = originalOS;
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    // No active goal → the goal form (with the "By Date" field) is shown.
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  test('renders a DOM date input for the goal target date instead of the native picker', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        // weightDateEditEnabled=false so the only date input on screen is the goal one.
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const root = component.root;
+    const dateInputs = root.findAll(n => n.type === 'input' && n.props.type === 'date');
+    expect(dateInputs.length).toBe(1);
+    // The native picker must NOT be mounted on web.
+    expect(root.findAll(n => n.props && n.props.testID === 'mock-datetimepicker').length).toBe(0);
+  });
+
+  test('changing the DOM goal date input updates the goal target date value', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const root = component.root;
+    const dateInput = root.find(n => n.type === 'input' && n.props.type === 'date');
+    render.act(() => {
+      dateInput.props.onChange({ target: { value: '2026-12-25' } });
+    });
+    const updated = root.find(n => n.type === 'input' && n.props.type === 'date');
+    expect(updated.props.value).toBe('2026-12-25');
+  });
+});
+
+// ── History date filter chip touch targets (#404) ─────────────────────────────
+// The From/To date filter chips are visually compact; they expose an enlarged
+// hitSlop so the effective touch target meets the 44px minimum without changing
+// their visual size.
+describe('WeightHistoryList date filter chip touch targets (#404)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  test('From and To date chips expose an enlarged hitSlop', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+      );
+    });
+    const root = component.root;
+    const fromBtn = root.findByProps({ accessibilityLabel: 'From date' });
+    const toBtn = root.findByProps({ accessibilityLabel: 'To date' });
+    expect(fromBtn.props.hitSlop).toBe(12);
+    expect(toBtn.props.hitSlop).toBe(12);
   });
 });
 
