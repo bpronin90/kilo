@@ -79,6 +79,11 @@ export function WeightGoalCard({
   currentWeight,
   isGoalMet,
 }) {
+  const remainingToGoal =
+    goal && currentWeight != null && goal.target_weight != null
+      ? Math.abs(currentWeight - goal.target_weight)
+      : null;
+
   return (
     <Card style={[styles.goalCard, isGoalMet && goal && !goalEditing ? styles.goalCardMet : null]}>
       {goal && (
@@ -184,6 +189,24 @@ export function WeightGoalCard({
               <Text style={styles.goalDisplayDateValue}>{formatDate(goal.target_date)}</Text>
             </View>
           </View>
+
+          {remainingToGoal !== null && !isGoalMet && !goalInfo?.isOverdue && (
+            <View style={styles.goalProgressRow}>
+              <Text style={styles.goalProgressValue}>{remainingToGoal.toFixed(1)} lb</Text>
+              <Text style={styles.goalProgressLabel}>to go</Text>
+            </View>
+          )}
+
+          {goalInfo && (
+            <>
+              <View style={styles.goalDivider} />
+              {goalInfo.isOverdue ? (
+                <Text style={styles.goalEndedText}>Goal ended.</Text>
+              ) : (
+                <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
+              )}
+            </>
+          )}
         </View>
       )}
     </Card>
@@ -295,6 +318,28 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  goalProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  goalProgressValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.accent,
+  },
+  goalProgressLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  goalEndedText: {
+    fontSize: 14,
+    color: Colors.error,
+    fontWeight: '600',
+  },
   goalDivider: {
     height: 1,
     backgroundColor: Colors.cardBorder,
@@ -310,9 +355,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   derivedLabel: {
-    fontSize: 15,
+    fontSize: 12,
     color: Colors.textMuted,
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   derivedValue: {
     fontSize: 16,

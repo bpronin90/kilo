@@ -45,7 +45,7 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
   });
 }
 import { TrendSection } from '../components/WeightTrendSection';
-import { WeightGoalCard, GoalDerived } from '../components/WeightGoalCard';
+import { WeightGoalCard } from '../components/WeightGoalCard';
 import { WeightHistoryList } from '../components/WeightHistoryList';
 import { useWeightGoalForm } from '../hooks/useWeightGoalForm';
 
@@ -352,17 +352,6 @@ export function WeightScreen({
         {...goalForm}
       />
 
-      {goal && !goalForm.goalEditing && goalInfo && (
-        <Card style={styles.guidanceCard}>
-          <Text style={styles.guidanceTitle}>Guidance</Text>
-          {goalInfo.isOverdue ? (
-            <Text style={styles.guidanceWarningText}>Goal ended.</Text>
-          ) : (
-            <GoalDerived info={goalInfo} calorieEstimate={calorieEstimate} />
-          )}
-        </Card>
-      )}
-
       <SectionTitle>Trends</SectionTitle>
       <Card style={styles.trendsCardMerged}>
         {trendSections.map((section) => (
@@ -507,21 +496,6 @@ const styles = StyleSheet.create({
     padding: 0,
     gap: 0,
     overflow: 'hidden',
-  },
-  guidanceCard: {
-    gap: 12,
-  },
-  guidanceTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  guidanceWarningText: {
-    fontSize: 14,
-    color: Colors.error,
-    fontWeight: '600',
   },
   archivedContainer: {
     gap: 16,

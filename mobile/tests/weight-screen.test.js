@@ -432,7 +432,7 @@ describe('WeightScreen Goals two-panel layout', () => {
     expect(hasText(root, '175 lb')).toBe(true);
   });
 
-  test('Guidance panel appears when goal is set and goalInfo is available', () => {
+  test('goal-derived guidance is inlined into the goal card (no separate Guidance card)', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -440,8 +440,22 @@ describe('WeightScreen Goals two-panel layout', () => {
       );
     });
     const root = component.root;
-    expect(hasText(root, 'Guidance')).toBe(true);
+    // Guidance content now lives inside the goal card, not a standalone "Guidance" card.
+    expect(hasText(root, 'Guidance')).toBe(false);
     expect(hasText(root, 'Target pace')).toBe(true);
+  });
+
+  test('goal card shows remaining distance to target', () => {
+    // entry 185 lb vs target 175 lb -> 10.0 lb to go
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+    expect(hasText(root, '10.0 lb')).toBe(true);
+    expect(hasText(root, 'to go')).toBe(true);
   });
 });
 
