@@ -227,3 +227,68 @@ export function parseWorkoutNote(noteText) {
   flushSection();
   return { ok: true, sections, weekBStartIndex };
 }
+
+// Insert a standalone '-' skip marker after each exercise block that has at
+// least one recorded session entry. Preserves all existing logged values.
+// sections must come from parseWorkoutNote(rawText) so exercise order matches.
+export function applyWeekSkipToText(rawText, sections) {
+  const hasSessions = [];
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      hasSessions.push(ex.session_entries.length > 0);
+    }
+  }
+
+  if (!hasSessions.some(Boolean)) return rawText;
+
+  const lines = rawText.split('\n');
+  const result = [];
+  let occIdx = 0;
+  let inExercise = false;
+  let eligible = false;
+  const pending = [];
+
+  function flush() {
+    result.push(...pending);
+    if (inExercise && eligible) result.push('-');
+    pending.length = 0;
+    inExercise = false;
+    eligible = false;
+  }
+
+  for (const line of lines) {
+    const t = line.trim();
+
+    if (!t) {
+      (inExercise ? pending : result).push(line);
+      continue;
+    }
+
+    if (t === '---' ||
+        /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(t) ||
+        t.startsWith('+')) {
+      flush();
+      result.push(line);
+      continue;
+    }
+
+    const isHeader =
+      /^-([^-\s].*)/.test(t) ||
+      /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
+      /^Core:\s+.+/i.test(t);
+
+    if (isHeader) {
+      flush();
+      inExercise = true;
+      eligible = occIdx < hasSessions.length ? hasSessions[occIdx] : false;
+      occIdx++;
+      pending.push(line);
+      continue;
+    }
+
+    (inExercise ? pending : result).push(line);
+  }
+
+  flush();
+  return result.join('\n');
+}

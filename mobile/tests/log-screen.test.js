@@ -11,7 +11,7 @@ jest.mock('expo-updates', () => ({
   fetchUpdateAsync: jest.fn(),
   reloadAsync: jest.fn(),
 }));
-import { parseWorkoutNote, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
+import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
 import { deriveRoutineStatus } from '../lib/data';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -1496,6 +1496,79 @@ describe('LogPreviousRoutines: double-tap viewed routine opens editor', () => {
 
     render.act(() => { body.props.onPress(); }); // second tap within 300ms
     expect(handleEditViewedNote).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── applyWeekSkipToText ───────────────────────────────────────────────────────
+
+describe('applyWeekSkipToText: skip week dash insertion', () => {
+  test('adds dash after each exercise that has session entries', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-Squat
+- 225 5,5,5`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const squat = after[0].exercises.find(e => /squat/i.test(e.name));
+    expect(bench.session_entries.at(-1).skipped).toBe(true);
+    expect(squat.session_entries.at(-1).skipped).toBe(true);
+  });
+
+  test('does not add dash to exercises without any recorded sessions', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+-Squat`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    expect(result).toBe(raw);
+  });
+
+  test('skips only exercises with sessions; leaves session-less exercises unchanged', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-OHP`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const ohp = after[0].exercises.find(e => /ohp/i.test(e.name));
+    expect(bench.session_entries.at(-1).skipped).toBe(true);
+    expect(ohp.session_entries).toHaveLength(0);
+  });
+
+  test('preserves existing logged values intact', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+- 140 3,3,3`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises[0];
+    const logged = bench.session_entries.filter(e => !e.skipped);
+    expect(logged).toHaveLength(2);
+    expect(bench.sets.length).toBeGreaterThan(0);
+  });
+
+  test('normal workout note with existing skips parses correctly before skip week', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-
+- 140 3,3,3`;
+    const { sections } = parseWorkoutNote(raw);
+    const bench = sections[0].exercises[0];
+    expect(bench.session_entries[1].skipped).toBe(true);
+    expect(bench.session_entries.filter(e => !e.skipped)).toHaveLength(2);
   });
 });
 

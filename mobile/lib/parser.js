@@ -2,7 +2,7 @@
 // Public compatibility barrel: re-exports from domain sub-modules under parser/
 export { parseWeightEntry } from './parser/weightEntry.js';
 export { parseWorkoutRow } from './parser/workoutRow.js';
-export { parseWorkoutNote } from './parser/workoutNote.js';
+export { parseWorkoutNote, applyWeekSkipToText } from './parser/workoutNote.js';
 export { buildSessionsFromNote, countWorkoutSessionsFromSections, countWorkoutSessions } from './parser/sessions.js';
 export { epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals } from './parser/analytics.js';
 export { normalizeExerciseKey } from './parser/exerciseNames.js';

@@ -234,6 +234,7 @@ export function LogScreen({
                 handleToggleWeek={currentEditor.handleToggleWeek}
                 enterCurrentEditor={currentEditor.enterCurrentEditor}
                 handleNoteBodyPress={currentEditor.handleNoteBodyPress}
+                handleSkipWeek={currentEditor.handleSkipWeek}
                 toggleCollapsed={toggleCollapsed}
                 isCollapsed={isCollapsed}
                 dayGroups={currentEditor.dayGroups}
