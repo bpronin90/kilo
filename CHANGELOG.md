@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.84.11 - 2026-06-30
+
+- Issue #402: Aligned the Goal History row spacing, typography, muted date
+  styling, and divider weight with the Weight History panel so the two Weight
+  tab history panels share the same visual rhythm without changing saved goal
+  data or interactions.
+
 ## 0.84.10 - 2026-06-30
 
 - Issue #401: Fixed the Analytics Weight Trends headline formatting so the
