@@ -1,4 +1,4 @@
-import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { computeWeightTrends, computeWeightPaceLevel, computeWeightTrendSummary, computeKiloMax, makeWorkoutNoteItem, normalizeLiftName, listTrackedLifts, getDefaultTrackedNames, computeWeeksIn, classifyExerciseSessions, deriveSkipData, computeRepDropOff, deriveRepDropOffFlags, rollingWindowStart, computeWeeklySummary, WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD, resolveGoalCurrentWeight, REPEATED_WEEKDAY_SKIP_SESSION_WINDOW, deriveWorkoutNoteAnalytics, deriveSignals, deriveWeightGoalAnalytics, computeBMR, computeTDEE, ageFromDateOfBirth, isProfileComplete, ACTIVITY_MULTIPLIERS, computeCalorieEstimate, computeWeightGoal, computeWeightRollingAverageSeries, deriveNonWeightedTrackedExerciseMetrics, derive1kTotal, derive1kTotalSeries, derive1kTotalSeriesFromSectionsList, derive1kTotalFromSectionsList, deriveSessionCheckIn, deriveCheckInHistory, findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
 import { parseWorkoutNote } from '../lib/parser';
 
 
@@ -3283,6 +3283,30 @@ describe('derive1kTotalSeries', () => {
     expect(series).toHaveLength(2);
     expect(series[0].session).toBe(1);
     expect(series[1].session).toBe(2);
+  });
+
+  // Regression for the fallback path in derive1kTotalFromSectionsList (#396).
+  // When no note has a complete Big-3 cycle, the fallback must NOT sum PRs across
+  // notes (which would reproduce the cross-note mixing defect). total must be null.
+  test('derive1kTotalFromSectionsList fallback: no note has a complete cycle → total null, no cross-note mixing', () => {
+    // noteA has bench + squat; noteB has deadlift only. Neither is a complete Big-3.
+    const noteA = [liftSection('DB Bench Press', [w(135, 5)]), liftSection('Squat', [w(225, 5)])];
+    const noteB = [liftSection('Deadlift', [w(315, 5)])];
+    const result = derive1kTotalFromSectionsList([noteA, noteB], SEL);
+    // total must be null — never a cross-note sum
+    expect(result.total).toBeNull();
+    // Per-lift PRs are still surfaced from the note that contains each lift
+    expect(result.bench).toBeCloseTo(epley(135, 5), 5);
+    expect(result.squat).toBeCloseTo(epley(225, 5), 5);
+    expect(result.deadlift).toBeCloseTo(epley(315, 5), 5);
+  });
+
+  test('derive1kTotalFromSectionsList: when at least one note has a complete cycle, returns last series point', () => {
+    const noteA = lifts({ bench: [w(100, 5)], squat: [w(200, 5)], deadlift: [w(300, 5)] });
+    const noteB = lifts({ bench: [w(110, 5)], squat: [w(210, 5)], deadlift: [w(310, 5)] });
+    const result = derive1kTotalFromSectionsList([noteA, noteB], SEL);
+    expect(result.total).toBeCloseTo(epley(110, 5) + epley(210, 5) + epley(310, 5), 5);
+    expect(result.bench).toBeCloseTo(epley(110, 5), 5);
   });
 });
 

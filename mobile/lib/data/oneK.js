@@ -164,9 +164,24 @@ export function derive1kTotalFromSectionsList(sectionsList, selections) {
     const last = series[series.length - 1];
     return { total: last.total, bench: last.bench, squat: last.squat, deadlift: last.deadlift };
   }
-  // No complete Big-3 cycle across any note: show per-lift latest PRs, null total.
-  const allSections = (sectionsList || []).flat();
-  return derive1kTotal(allSections, selections);
+  // No complete Big-3 cycle in any note. Surface each lift's most recent session PR
+  // from the latest note that contains it. total is always null — never sums across
+  // notes, which would reproduce the cross-note ordinal mixing this function exists to prevent.
+  const { bench, squat, deadlift } = selections;
+  let benchPR = null, squatPR = null, deadliftPR = null;
+  for (let i = (sectionsList || []).length - 1; i >= 0; i--) {
+    if (benchPR !== null && squatPR !== null && deadliftPR !== null) break;
+    const { exercises } = deriveWorkoutAnalytics(sectionsList[i]);
+    const byKey = new Map(exercises.map(e => [normalizeExerciseKey(e.name), e]));
+    const prFor = (name) => {
+      const ex = byKey.get(normalizeExerciseKey(name));
+      return ex ? _latestNonNull(_exercisePerSessionPRs(ex)) : null;
+    };
+    if (benchPR === null) benchPR = prFor(bench);
+    if (squatPR === null) squatPR = prFor(squat);
+    if (deadliftPR === null) deadliftPR = prFor(deadlift);
+  }
+  return { total: null, bench: benchPR, squat: squatPR, deadlift: deadliftPR };
 }
 
 // ── Routine switching: progress rollover ──────────────────────────────────────
