@@ -554,28 +554,25 @@ const styles = StyleSheet.create({
   archivedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 16,
   },
   archivedValue: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '900',
     color: Colors.text,
   },
   archivedSubtext: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textMuted,
-    fontWeight: '500',
   },
   archivedDateText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
+    fontSize: 13,
+    color: Colors.textMuted,
   },
   archivedDivider: {
     height: 1,
     backgroundColor: Colors.cardBorder,
-    opacity: 0.3,
     marginHorizontal: 16,
   },
   archivedCollapsedRow: {
