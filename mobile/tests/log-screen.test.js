@@ -1571,6 +1571,29 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
     expect(bench.session_entries.filter(e => !e.skipped)).toHaveLength(2);
   });
 
+  test('untracked-but-logged exercise receives a dash (eligibility is session_entries only, not tracked state)', () => {
+    // Cable Row and Face Pull are accessory exercises not in the default tracked set.
+    // They have logged session entries and must receive a skip marker alongside
+    // tracked primary lifts — applyWeekSkipToText must be independent of tracking.
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-Cable Row
+- 120 10,10,10
+-Face Pull
+- 50 15,15,15`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const cableRow = after[0].exercises.find(e => /cable row/i.test(e.name));
+    const facePull = after[0].exercises.find(e => /face pull/i.test(e.name));
+    expect(bench.session_entries.at(-1).skipped).toBe(true);
+    expect(cableRow.session_entries.at(-1).skipped).toBe(true);
+    expect(facePull.session_entries.at(-1).skipped).toBe(true);
+  });
+
   test('is idempotent: second call does not append another dash', () => {
     const raw = `Monday
 +Lifting
