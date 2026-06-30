@@ -362,12 +362,39 @@ describe('WeightScreen', () => {
         return flat.includes(text);
       });
 
+    // Goal History defaults to collapsed (#407 H-5). Expand it to assert on rows.
+    const expandGoalHistory = (root) => {
+      const toggle = root.findByProps({ accessibilityLabel: 'Expand goal history' });
+      render.act(() => { toggle.props.onPress(); });
+    };
+
+    test('defaults to collapsed, showing a count summary instead of rows', () => {
+      const archived = [{
+        id: 'ag_1',
+        target_weight: 175,
+        target_date: '2026-09-01',
+        completed_weight: 174.5,
+        archived_at: '2026-09-02T08:00:00.000Z',
+      }];
+      const component = setup(null, [], archived);
+      const root = component.root;
+
+      // Header is visible, collapsed summary present, rows hidden by default.
+      expect(hasTextSafe(root, 'Goal History')).toBe(true);
+      expect(hasTextSafe(root, 'past goals')).toBe(true);
+      expect(hasTextSafe(root, '175 lb')).toBe(false);
+
+      // Expanding reveals the archived goal rows.
+      expandGoalHistory(root);
+      expect(hasTextSafe(root, '175 lb')).toBe(true);
+    });
+
     test('hides archived goals section when there are no archived goals', () => {
       const component = setup(null, [], []);
       expect(hasTextSafe(component.root, 'Goal History')).toBe(false);
     });
 
-    test('renders Goal History section and list with target weight, completed weight, target date, and archived date', () => {
+    test('renders Goal History section and list with target weight, completed weight, and target date', () => {
       const archived = [
         {
           id: 'ag_1',
@@ -381,14 +408,17 @@ describe('WeightScreen', () => {
       const root = component.root;
 
       expect(hasTextSafe(root, 'Goal History')).toBe(true);
+      expandGoalHistory(root);
+
       expect(hasTextSafe(root, '175 lb')).toBe(true);
-      // End Weight is now its own column; value appears as bare weight, no "Completed:" prefix
+      // End Weight is its own column; value appears as bare weight, no "Completed:" prefix
       expect(hasTextSafe(root, '174.5 lb')).toBe(true);
       expect(hasTextSafe(root, 'End Weight')).toBe(true);
-      // Column header now says "By Date"; cell shows date without "By" prefix
+      // Column header now says "Target Date"; cell shows the target date (#407 M-1)
+      expect(hasTextSafe(root, 'Target Date')).toBe(true);
       expect(hasTextSafe(root, '09-01-2026')).toBe(true);
-      // Column header now says "Archived"; cell shows date without "Archived: " prefix
-      expect(hasTextSafe(root, '09-02-2026')).toBe(true);
+      // Archive date is no longer shown in the table (#407 M-1)
+      expect(hasTextSafe(root, '09-02-2026')).toBe(false);
     });
 
     test('renders archived goals in newest-first order', () => {
@@ -410,6 +440,7 @@ describe('WeightScreen', () => {
       ];
       const component = setup(null, [], archived);
       const root = component.root;
+      expandGoalHistory(root);
 
       const texts = root.findAllByType('Text').map(t => {
         const children = t.props.children;
@@ -462,6 +493,7 @@ describe('WeightScreen', () => {
 
       test('primary value cells use fontSize 16 fontWeight 900 matching Trends value hierarchy', () => {
         const component = setup(null, [], archivedFixture);
+        expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
         expect(getStyleProp(valueNode, 'fontSize')).toBe(16);
@@ -470,6 +502,7 @@ describe('WeightScreen', () => {
 
       test('date cells use fontSize 16 fontWeight 700', () => {
         const component = setup(null, [], archivedFixture);
+        expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
         expect(getStyleProp(dateNode, 'fontSize')).toBe(16);
@@ -516,6 +549,33 @@ describe('WeightScreen', () => {
         expect(weightNode).toBeTruthy();
         expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
         expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+      });
+    });
+
+    describe('Weight History collapsed summary (#407 M-7)', () => {
+      const hasTextSafe = (root, text) =>
+        root.findAllByType('Text').some(t => {
+          const children = t.props.children;
+          const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+          return flat.includes(text);
+        });
+
+      test('collapsed summary shows latest weight and date, not just a count', () => {
+        const entries = [
+          { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, weight_unit: 'lb', note: '' },
+          { id: '2', date: '2026-05-22', logged_at: '2026-05-22T08:00:00Z', weight_value: 191, weight_unit: 'lb', note: '' },
+        ];
+        const component = setup(null, entries);
+        const root = component.root;
+
+        // Collapse the Weight History list.
+        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+        render.act(() => { toggle.props.onPress(); });
+
+        // Summary includes the most recent entry's weight and date.
+        expect(hasTextSafe(root, '190')).toBe(true);
+        expect(hasTextSafe(root, 'Last:')).toBe(true);
+        expect(hasTextSafe(root, '05-24-2026')).toBe(true);
       });
     });
 

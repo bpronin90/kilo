@@ -270,7 +270,17 @@ export function WeightHistoryList({
 
       {collapsed && (
         <View style={styles.collapsedSummary}>
-          <Text style={styles.collapsedText}>{filteredEntries.length} entries</Text>
+          {filteredEntries.length === 0 ? (
+            <Text style={styles.collapsedText}>0 entries</Text>
+          ) : (
+            <Text style={styles.collapsedText}>
+              {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
+              {' · Last: '}
+              {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+              {' on '}
+              {formatDate(filteredEntries[0].logged_at)}
+            </Text>
+          )}
         </View>
       )}
     </View>
