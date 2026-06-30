@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.84.10 - 2026-06-30
+
+- Issue #401: Fixed the Analytics Weight Trends headline formatting so the
+  weight value and `lb` unit render with a space between them, matching the
+  existing rolling-average labels while leaving analytics calculations and data
+  sources unchanged.
+
 ## 0.84.9 - 2026-06-30
 
 - Issue #400: Added a small Log-tab `Skip week` action across from the
