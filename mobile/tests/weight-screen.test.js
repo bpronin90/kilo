@@ -1,7 +1,9 @@
 import React from 'react';
 import render from 'react-test-renderer';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
+import { TrendSection } from '../components/WeightTrendSection';
+import { Colors } from '../theme/colors';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
 import App from '../App';
@@ -889,6 +891,109 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     // clear button appears when a date is committed
     const clearBtnTexts = component.root.findAll(n => n.props.children === '✕');
     expect(clearBtnTexts.length).toBeGreaterThan(0);
+  });
+});
+
+// ── Trend section semantics, colors, alignment (#406) ─────────────────────────
+describe('Trends section label rename (#406, M-5)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  test('first trend section is titled "Today", not the misleading "Pace"', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const exactText = (label) =>
+      root.findAll(n => n.type === 'Text' && String(n.props.children ?? '').trim() === label);
+
+    expect(exactText('Today').length).toBeGreaterThan(0);
+    // The section header should no longer read "Pace".
+    expect(exactText('Pace').length).toBe(0);
+  });
+});
+
+describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
+  const renderSection = (props) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <TrendSection
+          title="7-day rolling"
+          col1={{ label: 'Average', value: '184.0 lb' }}
+          col2={{ label: 'Vs Prior 7d', value: '+1.0 lb' }}
+          col3={{ label: 'Trend', value: '↑ Gaining' }}
+          isLast
+          {...props}
+        />
+      );
+    });
+    return component.root;
+  };
+
+  // Flatten the col3 value style and return its resolved color.
+  const col3Color = (root, value) => {
+    const node = root.findAll(
+      n => n.type === 'Text' && String(n.props.children ?? '').trim() === value.trim()
+    )[0];
+    return StyleSheet.flatten(node.props.style).color;
+  };
+
+  test('upward trend is success (green) for a gain goal', () => {
+    const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↑ Gaining' } });
+    expect(col3Color(root, '↑ Gaining')).toBe(Colors.success);
+  });
+
+  test('upward trend is error (red) for a loss goal', () => {
+    const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↑ Gaining' } });
+    expect(col3Color(root, '↑ Gaining')).toBe(Colors.error);
+  });
+
+  test('downward trend is success (green) for a loss goal', () => {
+    const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↓ Losing' } });
+    expect(col3Color(root, '↓ Losing')).toBe(Colors.success);
+  });
+
+  test('downward trend is error (red) for a gain goal', () => {
+    const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↓ Losing' } });
+    expect(col3Color(root, '↓ Losing')).toBe(Colors.error);
+  });
+
+  test('with no goal direction the trend is neutral, not success/error', () => {
+    const root = renderSection({ col3: { label: 'Trend', value: '↑ Gaining' } });
+    const color = col3Color(root, '↑ Gaining');
+    expect(color).toBe(Colors.text);
+    expect(color).not.toBe(Colors.success);
+    expect(color).not.toBe(Colors.error);
+  });
+
+  test('pace anomaly keeps its severity color regardless of goal direction', () => {
+    const root = renderSection({
+      goalDirection: 'gain',
+      paceLevel: 'spike',
+      col3: { label: 'Trend', value: '↑ Gaining' },
+    });
+    expect(col3Color(root, '↑ Gaining')).toBe(Colors.error);
+  });
+
+  test('col3 value is right-aligned for stable scanning (M-8)', () => {
+    const root = renderSection({ col3: { label: 'Trend', value: '→ Stable' } });
+    const node = root.findAll(
+      n => n.type === 'Text' && String(n.props.children ?? '').trim() === '→ Stable'
+    )[0];
+    expect(StyleSheet.flatten(node.props.style).textAlign).toBe('right');
   });
 });
 
