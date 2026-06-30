@@ -434,6 +434,40 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     expect(hasText(root, 'Bench')).toBe(true);
     expect(hasText(root, 'Deadlifts')).toBe(true);
   });
+
+  test('exposes a discoverable explanation affordance that reveals the 1K calculation copy (#399)', () => {
+    const oneK = { total: 1000, squat: 400, bench: 300, deadlift: 300 };
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue(oneK);
+
+    const component = setup();
+    const root = component.root;
+
+    // The affordance is discoverable on the 1K Progress card.
+    const toggle = root.findByProps({ testID: 'onek-info-toggle' });
+    expect(toggle).toBeTruthy();
+    expect(hasText(root, 'How is this calculated?')).toBe(true);
+
+    // Explanation is collapsed until the user opens it.
+    expect(hasText(root, 'most recent complete cycle')).toBe(false);
+
+    render.act(() => {
+      toggle.props.onPress();
+    });
+
+    // Covers the three required points: what the 1K is, the one-session-behind
+    // residual that resets each routine, and deload graph-vs-stats behavior.
+    expect(hasText(root, 'most recent complete cycle')).toBe(true);
+    expect(hasText(root, 'one session behind')).toBe(true);
+    expect(hasText(root, 'resets when you start a new routine')).toBe(true);
+    expect(hasText(root, 'Deload sessions')).toBe(true);
+    expect(hasText(root, 'Kilo Max')).toBe(true);
+  });
 });
 
 describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () => {
