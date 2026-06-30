@@ -1,7 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
-import { deriveAnalytics, deriveOneKChartData, deriveGroupedSignals } from '../screens/analytics/analyticsDerivations';
+import { deriveAnalytics, deriveParsedSections, deriveOneKChartData, deriveGroupedSignals } from '../screens/analytics/analyticsDerivations';
 import * as useEntries from '../hooks/useEntries';
 import * as data from '../lib/data';
 import {
@@ -687,6 +687,61 @@ describe('deriveAnalytics 1k series — uses allSections to include synced sessi
 
     const analytics = deriveAnalytics({ allSections: currentSections, currentSections, noteSectionsList }, {}, oneKSelections, 1.0);
 
+    expect(analytics.oneKSeries.length).toBe(2);
+  });
+});
+
+// ── Deload exclusion from analytics signals (issue #397) ─────────────────────
+describe('deriveAnalytics — deload sessions excluded from signal/strength derivation', () => {
+  // Deload sessions are intentionally light. They must not contaminate the
+  // fatigue-adjusted Kilo Max (computeKiloMax flat-averages every set's Epley),
+  // tracked-lift trends, or per-day signals. They must still appear in the 1K
+  // series as their own point (#396).
+  const currentText = [
+    'Monday', '+ lifting', '1. DB Bench Press', '- 100 8', '- 100 8',
+  ].join('\n');
+  const deloadText = [
+    'Monday', '+ lifting', '1. DB Bench', '- 60 8', '- 60 8',
+  ].join('\n');
+  const currentNote = { id: 'cur', title: 'Summer 2026 Routine', raw_text: currentText };
+  const deloadNote = { id: 'dl', title: 'Deload · 2026-05-04', raw_text: deloadText };
+  const tracked = { 'DB Bench Press': true };
+
+  test('Kilo Max ignores the deload note (matches current-only) instead of being dragged down', () => {
+    const withDeload = deriveParsedSections([deloadNote, currentNote], currentNote);
+    const currentOnly = deriveParsedSections([currentNote], currentNote);
+
+    const a = deriveAnalytics(withDeload, tracked, {}, 1.07);
+    const b = deriveAnalytics(currentOnly, tracked, {}, 1.07);
+
+    const kmWith = a.signals.find(s => s.name.toLowerCase() === 'db bench press').kilo_max;
+    const kmCurrentOnly = b.signals.find(s => s.name.toLowerCase() === 'db bench press').kilo_max;
+
+    // Excluding deload, the value is identical to the current-routine-only value.
+    expect(kmWith).toBe(kmCurrentOnly);
+
+    // Sanity: the legacy contaminated path (signalSections absent → allSections
+    // fallback, which includes the deload) produces a strictly lower Kilo Max.
+    const contaminated = deriveAnalytics(
+      { allSections: withDeload.allSections, currentSections: withDeload.currentSections, noteSectionsList: withDeload.noteSectionsList },
+      tracked, {}, 1.07,
+    );
+    const kmContaminated = contaminated.signals.find(s => s.name.toLowerCase() === 'db bench press').kilo_max;
+    expect(kmContaminated).toBeLessThan(kmWith);
+  });
+
+  test('1K series still includes the deload note as its own point (#396 preserved)', () => {
+    const sel = { bench: 'DB Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
+    const big3 = (b) => [
+      'Monday', '+ lifting', '1. DB Bench Press', `- ${b} 5`,
+      '', 'Wednesday', '+ lifting', '1. Squat', '- 250 5',
+      '', 'Friday', '+ lifting', '1. Deadlift', '- 325 5',
+    ].join('\n');
+    const cur = { id: 'c', title: 'Summer 2026 Routine', raw_text: big3(100) };
+    const dl = { id: 'd', title: 'Deload · 2026-05-04', raw_text: big3(60) };
+    const parsed = deriveParsedSections([dl, cur], cur);
+    const analytics = deriveAnalytics(parsed, {}, sel, 1.0);
+    // Deload note + current note → two 1K points (deload kept in noteSectionsList).
     expect(analytics.oneKSeries.length).toBe(2);
   });
 });

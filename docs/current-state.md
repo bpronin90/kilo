@@ -195,12 +195,23 @@ The real native app path now has a modular React Native shell:
     the headline ends on the most recent complete cycle without ever mixing
     cycles. When no note has a complete Big-3 cycle the total is null and each
     lift reports its latest session PR individually.
-  - Residual known gap (#396): alignment within a single note is still purely by
-    session ordinal (the parsed model carries no per-session date). Skipped
-    sessions are absorbed by null placeholders, but logging one lift an *extra*
-    time mid-cadence inside the same note drifts that lift one ordinal behind for
-    all later points, so a 1K point can pair that lift's older session with the
-    others' newer ones. Resolving this needs per-session dates in the parsed model.
+  - Deload sessions excluded from strength signals (#397): deload notes (title
+    prefix `Deload · `) are filtered out of the analytics signal derivation
+    (`signalSections` in `analyticsDerivations.js`) that feeds the fatigue-adjusted
+    Kilo Max and tracked-lift signals, since `computeKiloMax` flat-averages every
+    set's Epley and the intentionally-light deload sets otherwise bias it downward.
+    Deload sessions are still kept in the 1K series as their own point (#396).
+    Overload counts and latest-PR/classification signals were already unaffected.
+  - Accepted residual (#398, won't-fix): alignment within a single note is purely
+    by session ordinal (the parsed model carries no per-session date, and the
+    maintainer declined adding one). Skipped sessions are absorbed by null
+    placeholders, but if you log one lift *more often* than the other two within
+    the same routine note, that lift's newest session is dropped from the 1K and
+    it reads one session behind — a mild, generally downward skew (consecutive
+    training sessions are close in weight), not the dramatic cross-routine drop
+    fixed in #396. It self-corrects when the other lifts catch up to equal counts
+    and fully resets when a new routine note begins. This behavior is surfaced to
+    users in-app via #399 rather than fixed in the model.
 - `mobile/screens/LogScreen.js` renders a native workout-note authoring flow
   centered on the selected current routine, with read/edit modes, a formatted
   mirror of the canonical note that always renders day/section/exercise blocks

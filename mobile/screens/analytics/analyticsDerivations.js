@@ -12,8 +12,18 @@ import { normalizeExerciseKey } from '../../lib/parser';
 export function deriveParsedSections(notes, currentNote) {
   const noteSectionsList = notes.map(n => getNoteSections(n));
   const allSections = noteSectionsList.flat();
+  // Deload sessions are intentionally light (see DELOAD_NOTE_PREFIX). They must
+  // not feed the progression/strength signal derivation — most visibly the
+  // fatigue-adjusted Kilo Max, which flat-averages every set's Epley across all
+  // occurrences (computeKiloMax), so a light deload session always biases it
+  // downward. signalSections is the deload-excluded section list used for those
+  // signals. The 1K series intentionally keeps deload as its own point (#396),
+  // so noteSectionsList/allSections are left untouched.
+  const signalSections = (notes || [])
+    .filter(n => !n.title?.startsWith(DELOAD_NOTE_PREFIX))
+    .flatMap(n => getNoteSections(n));
   const currentSections = getNoteSections(currentNote);
-  return { allSections, currentSections, noteSectionsList };
+  return { allSections, signalSections, currentSections, noteSectionsList };
 }
 
 export function deriveNoteExerciseNames(currentSections) {
@@ -23,6 +33,8 @@ export function deriveNoteExerciseNames(currentSections) {
 
 export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, multiplier) {
   const { allSections, currentSections, noteSectionsList } = parsedSections;
+  // Fall back to allSections for legacy callers that don't supply signalSections.
+  const signalSections = parsedSections.signalSections || allSections;
 
   const namesInCurrent = new Set(
     currentSections.flatMap(s => s.exercises.map(e => normalizeExerciseKey(e.name)))
@@ -32,8 +44,8 @@ export function deriveAnalytics(parsedSections, trackedLifts, oneKSelections, mu
     name => namesInCurrent.has(normalizeExerciseKey(name))
   );
 
-  const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(allSections, visibleTrackedNames, multiplier);
-  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(allSections, visibleTrackedNames);
+  const { signals, nameDisplayMap, perDaySignals } = deriveWorkoutNoteAnalytics(signalSections, visibleTrackedNames, multiplier);
+  const nonWeightedMetrics = deriveNonWeightedTrackedExerciseMetrics(signalSections, visibleTrackedNames);
   const oneK = derive1kTotalFromSectionsList(noteSectionsList || [], oneKSelections);
   const oneKSeries = derive1kTotalSeriesFromSectionsList(noteSectionsList || [], oneKSelections);
 

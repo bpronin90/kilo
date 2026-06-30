@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.84.7 - 2026-06-29
+
+- Issue #397: Excluded deload sessions from the Analytics strength-signal
+  derivation so the fatigue-adjusted Kilo Max is no longer biased downward by the
+  intentionally-light deload sets, while keeping deload as its own point on the 1K
+  Progress graph (#396 preserved). Overload counts and latest-PR/classification
+  signals were already unaffected. Added focused regression coverage.
+- Issue #398: Investigated the intra-note 1K alignment residual (one lift trained
+  more often than the others within a single routine note reads one session
+  behind). A robust fix would require per-session dates in the parsed model;
+  maintainer declined that change, so the behavior is accepted and documented. It
+  is a mild, self-correcting skew that resets each new routine note, distinct from
+  the dramatic cross-routine drop fixed in #396. In-app explanation tracked in
+  #399.
+
 ## 0.84.6 - 2026-06-29
 
 - Issue #396: Fixed the 1K Progress total and graph cross-routine ordinal

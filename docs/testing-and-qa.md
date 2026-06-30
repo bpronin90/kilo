@@ -256,6 +256,10 @@ retains non-test commands such as `npm run audit`.
   taking no ordinal space, and the `derive1kTotalFromSectionsList()` fallback
   returning a null total with per-lift latest PRs (never a cross-note sum) when no
   note has a complete Big-3 cycle
+- verifies the #397 deload exclusion: `deriveAnalytics()` filters deload notes out
+  of the strength-signal derivation so Kilo Max matches the current-routine-only
+  value instead of being dragged down (and asserts the legacy contaminated path is
+  strictly lower), while the 1K series still emits the deload note as its own point
 - pins direct helper parity for the canonical weight/goal path by asserting
   `deriveWeightGoalAnalytics()` matches `computeWeightTrendSummary()`,
   `computeWeightPaceLevel()`, `computeWeightRollingAverageSeries()`,
