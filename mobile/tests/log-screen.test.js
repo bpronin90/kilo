@@ -1570,5 +1570,36 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
     expect(bench.session_entries[1].skipped).toBe(true);
     expect(bench.session_entries.filter(e => !e.skipped)).toHaveLength(2);
   });
+
+  test('is idempotent: second call does not append another dash', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5`;
+    const { sections: s1 } = parseWorkoutNote(raw);
+    const once = applyWeekSkipToText(raw, s1);
+    const { sections: s2 } = parseWorkoutNote(once);
+    const twice = applyWeekSkipToText(once, s2);
+    expect(twice).toBe(once);
+    const { sections: after } = parseWorkoutNote(twice);
+    const bench = after[0].exercises[0];
+    const skipCount = bench.session_entries.filter(e => e.skipped).length;
+    expect(skipCount).toBe(1);
+  });
+
+  test('exercise already ending with a trailing skip does not get a second dash', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    expect(result).toBe(raw);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises[0];
+    const skipCount = bench.session_entries.filter(e => e.skipped).length;
+    expect(skipCount).toBe(1);
+  });
 });
 

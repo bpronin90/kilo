@@ -232,14 +232,18 @@ export function parseWorkoutNote(noteText) {
 // least one recorded session entry. Preserves all existing logged values.
 // sections must come from parseWorkoutNote(rawText) so exercise order matches.
 export function applyWeekSkipToText(rawText, sections) {
-  const hasSessions = [];
+  // For each exercise in section order: whether it needs a new skip marker.
+  // An exercise needs one only when it has sessions AND the last session entry
+  // is not already a skip (idempotent: repeated calls don't pile up dashes).
+  const needsDash = [];
   for (const section of sections) {
     for (const ex of section.exercises) {
-      hasSessions.push(ex.session_entries.length > 0);
+      const entries = ex.session_entries;
+      needsDash.push(entries.length > 0 && !entries[entries.length - 1].skipped);
     }
   }
 
-  if (!hasSessions.some(Boolean)) return rawText;
+  if (!needsDash.some(Boolean)) return rawText;
 
   const lines = rawText.split('\n');
   const result = [];
@@ -280,7 +284,7 @@ export function applyWeekSkipToText(rawText, sections) {
     if (isHeader) {
       flush();
       inExercise = true;
-      eligible = occIdx < hasSessions.length ? hasSessions[occIdx] : false;
+      eligible = occIdx < needsDash.length ? needsDash[occIdx] : false;
       occIdx++;
       pending.push(line);
       continue;

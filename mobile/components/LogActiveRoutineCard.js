@@ -65,7 +65,7 @@ export function LogActiveRoutineCard({
             <Text style={styles.editHint}>Double-tap to edit</Text>
             {handleSkipWeek && (
               <Pressable
-                onPress={handleSkipWeek}
+                onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityLabel="Skip week"
                 accessibilityRole="button"
