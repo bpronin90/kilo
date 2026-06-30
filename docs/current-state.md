@@ -385,13 +385,20 @@ The real native app path now has a modular React Native shell:
   appear in a compact conditional `Goal History` list beneath the active/new
   goal flow, defaulting collapsed so it does not push Weight History down,
   ordered newest first with target weight, `End Weight` when available, and
-  target date; the archived date is no longer shown as its own table column. The
+  target date; the archived date is no longer shown as its own table column.
+  Archived row values use a stronger value typography so the section reads as
+  intentionally secondary rather than undersized, and `End Weight` is colored by
+  outcome via `isGoalMet` (success when the completed weight met the saved
+  target, error when it missed, neutral when no completed weight is recorded).
+  The
   Goal History collapse/expand control uses the shared open-chevron icon
   convention used by the rest of the app, and its header and card use the same
   16px title-to-panel gap as the rest of the Weight tab and sit below Trends.
   The Trends card now colors trend direction in a goal-direction-aware way so
-  gain and loss goals do not invert success/error meaning, preferring neutral
-  treatment where the semantics are ambiguous, and tapping a history
+  gain and loss goals do not invert success/error meaning; when no active goal
+  is set it still applies visible directional color to `↑ Gaining` / `↓ Losing`
+  rather than going fully neutral, keeps fixed severity color for pace anomalies,
+  and reserves neutral treatment for `→ Stable` / no-data values, and tapping a history
   row now scrolls back to the top editor as it loads the selected entry. The
   Weight tab now reads top-to-bottom as weight entry, `Goal`, `Trends`,
   optional `Goal History`, and `Weight History`, with `Goal` / `Trends` using

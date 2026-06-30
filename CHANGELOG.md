@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.85.1 - 2026-06-30
+
+- Issue #408: Fixed three Weight tab visual regressions from the #403 follow-ups
+  — restored stronger Goal History archived value typography so the section no
+  longer looks undersized, colored archived `End Weight` by goal outcome via
+  `isGoalMet` (success met / error missed / neutral when no completed weight),
+  and restored visible `↑ Gaining` / `↓ Losing` trend-direction color in no-goal
+  states while preserving the #406 goal-aware inversion, pace-anomaly severity
+  color, and neutral `→ Stable`. Confirmed the active Goal panel and the weight
+  logging panel already share the same base `Card` background, so no shared
+  `UI.js` change was needed.
+
 ## 0.85.0 - 2026-06-30
 
 - Issue #406: Made Weight Trends direction colors goal-direction aware so gain
