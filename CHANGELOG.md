@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.86.5 - 2026-07-01
+
+- Issue #414: Refactored the largest weight-history production files by
+  extracting the shared weigh-in date field and Goal History panel inside the
+  existing allowed files, reducing duplication while preserving the native/web
+  date picker paths, history-panel behavior, saved calculations, and visible UI.
+  Updated the design-system map references for the moved Weight screen styles.
+
 ## 0.86.4 - 2026-07-01
 
 - Issue #386: Adopted the UI design rules document and reconciled the design
