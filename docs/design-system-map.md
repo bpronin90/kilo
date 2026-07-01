@@ -2,8 +2,18 @@
 
 Audit of every style token across all screens, organized by role. Use this to find exactly where to change any visual property.
 
-Last updated: 2026-05-27
-Source branch: `issue/196-refine-home-ux`
+Last updated: 2026-07-01
+Source branch: `issue/386-ui-design-rules`
+
+Reconciled after the #383→#413 UI cleanup (tab-spacing polish, unified
+Weight/Goal history panel system, standardized collapse convention, analytics
+hierarchy fixes). For the *rules* derived from these patterns see
+`docs/ui-design-rules.md`; this map records the *current values*.
+
+Line numbers below are accurate for the sections touched by that cleanup
+(tokens, ScreenShell, the history-panel system, Weight Screen, Analytics
+collapse/PO). Home and Log sections predate the cleanup and were not in scope;
+treat their line numbers as approximate.
 
 ---
 
@@ -26,12 +36,23 @@ Source: `mobile/theme/colors.js`
 | `inputBorder` | `#d9cdbf` | Text input stroke |
 | `chipBackground` | `#f0d8bb` | Chip/badge/highlight fill |
 | `divider` | `rgba(31, 26, 23, 0.05)` | Subtle separator overlay |
-| `subtleBg` | `rgba(31, 26, 23, 0.02)` | Very subtle tinted background |
+| `subtleBg` | `rgba(31, 26, 23, 0.02)` | Very subtle tinted background — history/column header rows |
 | `panelBackground` | `#ffffff` | Panel/section background (same value as `inputBackground`) |
 | `chipText` | `#96571c` | Chip/badge text |
-| `success` | `#4a7c44` | Green (progressing, bulking) |
-| `error` | `#b03a2e` | Red (regressing, delete, warnings) |
+| `success` | `#4a7c44` | Green (progressing, bulking, goal met) |
+| `error` | `#b03a2e` | Red (regressing, delete, warnings, goal missed) |
 | `caution` | `#d4a017` | Yellow (steady/stalled classifications) |
+| `cardAccentBg` | `#96571c` | Filled accent tone card/badge bg (WCAG AA with `textLight`) |
+| `cardSuccessBg` | `#3a6035` | Filled success tone card/badge bg (WCAG AA with `textLight`) |
+| `cardCautionBg` | `#7f6310` | Filled caution tone card/badge bg (WCAG AA with `textLight`) |
+| `roughBackground` | `#fff0e8` | ArtisanalPanel fill |
+| `roughBorder` | `#e8c4a0` | ArtisanalPanel stroke |
+
+The `cardAccentBg` / `cardSuccessBg` / `cardCautionBg` tokens are darkened tone
+backgrounds used only for *filled* tone surfaces (UI.js Card/StatCard tone
+variants, trend badges) so `textLight` meets WCAG AA 4.5:1. Direct users of the
+lighter `accent`/`success`/`caution` palette tones (e.g. SessionGauge segments)
+are intentionally unchanged.
 
 ### Hardcoded Color Leaks (not in colors.js)
 
@@ -126,6 +147,66 @@ Source: `mobile/components/ScreenShell.js`
 | Subtitle fontSize | `15` | `96` |
 | Subtitle lineHeight | `22` | `97` |
 | Subtitle color | `Colors.textMuted` | `98` |
+
+Current values live in `styles` at the bottom of `ScreenShell.js`
+(`container` gap/padding ~123-127, `header` ~131-135, `title` ~152-156). The
+sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12`
+with a 1px `cardBorder` bottom.
+
+---
+
+## Shared History-Panel System (#411)
+
+The single visual system used by **Weight History**
+(`mobile/components/WeightHistoryList.js`) and **Goal History**
+(`mobile/screens/WeightScreen.js`). Both render as one uniform panel: a header
+row that doubles as the column-header (expanded) or summary (collapsed) row, a
+3-column value·value·date grid, and a trailing control cell.
+
+The constants are **duplicated, not imported**, in both files so each panel stays
+inside its own `Allowed Files`. WeightHistoryList defines them as
+`HISTORY_*` constants + `historyPanel` StyleSheet (`WeightHistoryList.js`
+`17-171`); WeightScreen mirrors them in local StyleSheet `hp`
+(`WeightScreen.js` `583+`). **Known exception:** these two must be kept
+numerically identical by hand.
+
+| Element | Property | Value |
+|---|---|---|
+| Panel card | bg / radius / border | `Colors.card` / `24` / 1px `cardBorder`, `overflow: hidden` |
+| Header row | bg | `Colors.subtleBg`, `paddingVertical: 10`, left pad 16 / right pad 0 |
+| Header row (expanded) | border | 1px `cardBorder` bottom (`headerRowBordered`) |
+| Column label | fontSize / weight | `11` / `700`, uppercase, `letterSpacing: 0.5`, `textMuted` |
+| Column flex | col1 / col2 / col3 | `1.35` (left) / `1.25` (center) / `1.5` (right) |
+| Control cell | width | `56` (trailing chevron / filter / delete) |
+| Row | padding | `paddingVertical: 12`, left 16 / right 0 |
+| Row value | fontSize / weight | `20` / `700`, `Colors.text` |
+| Row date | fontSize / weight | `15` / `600`, `Colors.textMuted`, right-aligned |
+| Collapsed summary count | fontSize / weight | `12` / `600`, `textMuted` |
+| Collapsed summary "Latest:" | fontSize / weight | `15` / `600`; emphasized value `900` `text` |
+| Collapse chevron | icon / size | `MaterialIcons` `expand-less`/`expand-more`, `18`, `textMuted` |
+
+Panel-specific outcome colors (the only intended difference between panels):
+- Weight History col2 = **Change** (delta), colored by severity
+  (`textMuted` → `caution` → `error`).
+- Goal History col2 = **End Weight**, colored `success` (met) / `error` (missed)
+  via `computeIsGoalMet`; col3 = **Target Date**.
+
+### Collapse convention (standardized #389, #410)
+
+App-wide: collapse toggles are `MaterialIcons` `expand-more` (collapsed) /
+`expand-less` (expanded), size 16–18, `Colors.textMuted`, with the whole header
+row as the press target. This replaced the earlier text `▲`/`▼` glyphs. Used by
+both history panels, the Analytics Big 3 Mapping header, and the 1K "How is this
+calculated?" toggle.
+
+### Date-range filter (Weight History)
+
+Client-side filter over already-loaded entries (`filterByDateRange`,
+`WeightHistoryList.js` `204-212`) — no new data model. A `date-range`
+`MaterialIcons` icon in the Date header cell (turns `accent` when a range is
+active/open) reveals a From/To row (`dateFilterRow`, `subtleBg`) below the
+header. Web uses text inputs; native uses `DateTimePicker`. Tapping the icon
+while collapsed expands the panel and opens the filter row.
 
 ---
 
@@ -274,24 +355,33 @@ Source: `mobile/screens/AnalyticsScreen.js`
 | Breakdown label | fontSize | `12` | `447` |
 | | color | `Colors.textMuted` | `448` |
 
-### Progressive Overload Table
+### Strength Section (`AnalyticsStrengthSection.js`)
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Column header bg | `Colors.card` | `544` |
-| Column header borderRadius | `16` top corners | `545-546` |
-| Column label | fontSize | `10` | `554` |
-| | fontWeight | `700` | `555` |
-| | textTransform | `uppercase` | `556` |
-| | letterSpacing | `0.3` | `557` |
-| Signal list bg | `Colors.card` | `570` |
-| Signal list borderRadius | `24` bottom corners | `571-572` |
-| Exercise name | fontSize | `14` | `600` |
-| | fontWeight | `700` | `601` |
-| Classification badge | fontSize | `10` | `605` |
-| | textTransform | `uppercase` | `606` |
-| Signal value | fontSize | `13` | `616` |
-| | fontWeight | `700` | `617` |
+| Section wrapper | gap | `16` (`strengthSection`) | `171-173` |
+| 1K card | padding / bg | `24` / `panelBackground` (ArtisanalPanel) | `174-179` |
+| 1K label | fontSize / weight | `12` / `800`, uppercase, `letterSpacing: 1` | `180-186` |
+| 1K value | style | `HeroMetric.hero` (single hero metric) | `187-190` |
+| Big 3 Mapping card | header | collapsible `Pressable`, default expanded | `111-125` |
+| Big 3 title | fontSize / weight | `12` / `700`, uppercase, `textMuted` | `297-303` |
+| Big 3 / info collapse | icon | `MaterialIcons` `expand-more`/`expand-less`, `14-16`, `textMuted` | `119-124`, `79-84` |
+| "How is this calculated?" | toggle | collapsible, default collapsed | `68-99` |
+
+### Progressive Overload Table (`AnalyticsScreen.js`)
+
+| Element | Property | Value | Line |
+|---|---|---|---|
+| Sticky header | paddingTop / paddingBottom | `8` / `8` (`signalStickyHeader`) | `384-388` |
+| Sticky header | pinned via | `stickyHeaderIndices` on ScreenShell | `356`, `366` |
+| Column header row | paddingHorizontal / paddingBottom | `16` / `4` | `403-407` |
+| Column label | fontSize / weight | `11` / `800`, uppercase, `letterSpacing: 0.5`, center | `408-416` |
+| Group section | paddingBottom / border | `4` / 1px `divider` top (between groups) | `426+` |
+
+Grouping (`analyticsDerivations.js` `deriveGroupedSignals`): sections are merged
+by a **normalized leading-day key** (`MONDAY — Push` and `MONDAY — Push / Chest`
+→ one `MONDAY` group), with exercise dedup on merge, so a note with gym+home
+weeks no longer shows a day twice (#383/#385).
 
 ---
 
@@ -350,19 +440,18 @@ Source: `mobile/screens/WeightScreen.js`
 | Derived row value | fontSize | `16` | `779` |
 | | fontWeight | `700` | `780` |
 
-### History List
+### History List / Goal History
 
-| Element | Property | Value | Line |
-|---|---|---|---|
-| Container borderRadius | `24` | `568` |
-| Container bg | `Colors.card` | `566` |
-| Row weight | fontSize | `17` | `604` |
-| | fontWeight | `700` | `605` |
-| Row date | fontSize | `12` | `625` |
-| | color | `Colors.textMuted` | `626` |
-| Row note | fontSize | `13` | `629` |
-| | color | `Colors.textMuted` | `630` |
-| Row divider | borderBottomWidth `1` / `Colors.cardBorder` | | `574-575` |
+Both now use the **Shared History-Panel System** (see that section above) —
+`WeightHistoryList.js` for Weight History, `hp` StyleSheet in `WeightScreen.js`
+for Goal History. Values (radius 24, `subtleBg` header, 3-column grid, value 20,
+date 15, collapse chevron, summary count/latest) are documented there. The old
+stacked row layout (weight 17 / date 12 / stacked note) was replaced during
+#411/#412.
+
+Weight History extras: date-range filter, collapse, empty-range message ("No
+entries in this range."), and a delete `✕` affordance in the trailing control
+cell. Goal History extras: End Weight outcome coloring, Target Date column.
 
 ---
 
@@ -404,6 +493,19 @@ Style lock header at lines 1-14: do not change Log styling unless the repo owner
 ---
 
 ## Cross-Screen Inconsistencies
+
+**Reconciled after #383→#413.** These were resolved:
+- Weight History and Goal History are now one shared panel system (identical
+  header/grid/summary/collapse), replacing the two divergent stacked layouts.
+- Collapse toggles are unified on the `MaterialIcons` chevron convention across
+  history panels and analytics (was: mixed text arrows / SVGs).
+- Title-to-panel and panel-to-panel spacing is normalized to the 16px shell gap
+  (was: flush titles and per-screen drift — the reopened #383 defect).
+- The duplicate-day Progressive Overload group is fixed via normalized day-key
+  grouping.
+
+The items below are **remaining/known** cross-screen differences (Home and Log
+were out of the cleanup's scope) and still document real divergence.
 
 ### Hero Metric Sizes
 
@@ -480,8 +582,8 @@ Home has the highest orange density — 6 distinct elements. The wordmark is fix
 | Screen | Between-card SectionTitles |
 |---|---|
 | Home | none — Home does not import `SectionTitle` |
-| Analytics | "Weight Trends", "Strength", "Progressive Overload" |
-| Weight | "Goals", "Trends", "History" |
+| Analytics | "Weight Trends", "Fatigue", "Strength", "Progressive Overload" |
+| Weight | "Goal", "Trends", "Goal History", "History" |
 | Log | "More Routines" |
 
 On Analytics/Weight, SectionTitles separate genuinely different content areas with many items each. Home relies on card content alone to communicate section purpose.
