@@ -279,22 +279,20 @@ export function WeightHistoryList({
           </View>
         )}
         <View style={s.controlCell}>
-          {!collapsed && (
-            <Pressable
-              onPress={toggleDateFilter}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Filter by date range"
-              style={s.controlIconBtn}
-            >
-              <MaterialIcons
-                name="date-range"
-                size={18}
-                color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
-                accessible={false}
-              />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={toggleDateFilter}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Filter by date range"
+            style={s.controlIconBtn}
+          >
+            <MaterialIcons
+              name="date-range"
+              size={18}
+              color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+              accessible={false}
+            />
+          </Pressable>
           <MaterialIcons
             name={collapsed ? 'expand-more' : 'expand-less'}
             size={18}

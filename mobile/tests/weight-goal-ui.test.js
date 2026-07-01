@@ -708,10 +708,11 @@ describe('WeightScreen', () => {
       });
 
       // #411 option B: the From/To controls are hidden by default and revealed
-      // by the header filter icon. The icon itself is only present when expanded
-      // (collapsed shows the summary only), and the From/To row appears once the
-      // filter is toggled on and disappears (with the range cleared) when off.
-      test('Weight History reveals From/To only after tapping the filter icon; both are hidden when collapsed', () => {
+      // by the header filter icon. The filter icon is ALWAYS visible (collapsed
+      // or expanded). The From/To row only appears when the panel is expanded
+      // and the filter has been toggled on; it disappears (with range cleared)
+      // when toggled off or when the panel is collapsed.
+      test('Weight History reveals From/To only after tapping the filter icon; icon stays visible when collapsed', () => {
         const entries = [
           { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, note: '' },
         ];
@@ -733,11 +734,11 @@ describe('WeightScreen', () => {
         render.act(() => { filterBtn.props.onPress(); });
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
 
-        // Collapsed: neither the filter icon nor the From/To controls render; the
-        // summary line remains.
+        // Collapsed: filter icon REMAINS visible; From/To controls are hidden;
+        // the summary line is present.
         const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
         render.act(() => { toggle.props.onPress(); });
-        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBe(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
       });
