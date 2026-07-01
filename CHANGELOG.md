@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.86.0 - 2026-06-30
+
+- Issue #410: Standardized the two Weight tab history panels to the Analytics
+  in-panel collapse convention. Both Goal History and Weight History now keep a
+  static section title above the card with the collapse chevron inside the
+  card's own header row, and a collapsed panel shows only its compact summary
+  (Goal History no longer shows column headers and Weight History no longer
+  shows its date filter when collapsed). The Weight History From/To range moved
+  into the expanded Date column-header band instead of a separate row above,
+  with filtering behavior unchanged. Collapsed summaries are now count-first and
+  consistent across both panels: `{n} entries · Latest: <weight> on <date>` for
+  Weight History and `{n} goals · Latest: <outcome>` for Goal History, where the
+  latest archived goal's outcome reads as bold `Success` (green) when met or
+  `Missed` (red) when not, via the existing `isGoalMet` check. Collapse defaults
+  are unchanged (Goal History collapsed, Weight History expanded).
+
 ## 0.85.2 - 2026-06-30
 
 - Issue #409: Improved Weight tab history readability after the #407/#408

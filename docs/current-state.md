@@ -391,9 +391,16 @@ The real native app path now has a modular React Native shell:
   outcome via `isGoalMet` (success when the completed weight met the saved
   target, error when it missed, neutral when no completed weight is recorded).
   The
-  Goal History collapse/expand control uses the shared open-chevron icon
-  convention used by the rest of the app, and its header and card use the same
-  16px title-to-panel gap as the rest of the Weight tab and sit below Trends.
+  Goal History and Weight History panels both follow the Analytics in-panel
+  collapse convention: a static section title sits above the card while the
+  collapse chevron lives inside the card's own header row, and a collapsed panel
+  shows only its compact summary (Goal History hides its column headers and
+  Weight History hides its date-range filter when collapsed). Goal History sits
+  below Trends and stays collapsed by default; its collapsed summary reads
+  count-first as `{n} goals · Latest: {outcome}`, where the latest archived
+  goal's result renders as bold `Success` in success/green when met, bold
+  `Missed` in error/red when not, and neutral when there is no completed weight
+  to judge (via the same `isGoalMet` check used for End Weight coloring).
   The Trends card now colors trend direction in a goal-direction-aware way so
   gain and loss goals do not invert success/error meaning; when no active goal
   is set it still applies visible directional color to `↑ Gaining` / `↓ Losing`
@@ -409,10 +416,11 @@ The real native app path now has a modular React Native shell:
   surfaces `Today`, `7-day rolling`, and `30-day rolling` rows with
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
-  recorded `logged_at` timestamp. The Weight History panel now includes column
-  headers, a collapse/expand control whose collapsed summary surfaces the latest
-  weight and date alongside the entry count, and concrete From/To date-range
-  controls over the already loaded entries, with Goal History and Weight History typography
+  recorded `logged_at` timestamp. The Weight History panel keeps its column
+  headers and expanded rows, defaults expanded, and presents its From/To
+  date-range controls within the expanded Date column-header band rather than a
+  separate row above; when collapsed it shows a count-first summary reading
+  `{n} entries · Latest: {bold weight} on {date}`, with Goal History and Weight History typography
   aligned to the same label/value hierarchy used by the Trends panel, without
   changing saved weight calculations or persistence. A failed weight-entry load
   now surfaces a retryable `ErrorBanner` at the top of the screen instead of a
