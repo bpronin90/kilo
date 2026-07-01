@@ -418,15 +418,16 @@ The real native app path now has a modular React Native shell:
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp. The Weight History panel keeps its column
-  headers and expanded rows, defaults expanded, and exposes an always-visible
-  calendar/filter icon in the header's trailing control cell next to the
-  chevron. Its From/To date-range controls are hidden by default and reveal as a
-  separated row directly under the header when the icon is tapped; tapping the
-  icon while collapsed expands the panel and shows that filter row in one step,
-  and toggling the icon off or clearing the range closes and clears it. When
-  collapsed it uses the same two-line count/latest stack as Goal History,
-  carrying `{n} entries` plus `Latest: {bold weight} on {date}`, with Goal
-  History and Weight History sharing the same column flex ratios,
+  headers and expanded rows, defaults expanded, and groups its calendar/filter
+  icon inside the expanded Date header immediately before `DATE` while the
+  trailing control cell holds only the collapse chevron. Its From/To date-range
+  controls are hidden by default and reveal as a separated row directly under
+  the header when the icon is tapped; when collapsed, the panel keeps a calendar
+  icon in the trailing controls so tapping it expands the panel and shows that
+  filter row in one step, and toggling the icon off or clearing the range closes
+  and clears it. When collapsed it uses the same two-line count/latest stack as
+  Goal History, carrying `{n} entries` plus `Latest: {bold weight} on {date}`,
+  with Goal History and Weight History sharing the same column flex ratios,
   label/value/date typography, row padding, divider treatment, and trailing
   control-cell width, without changing saved weight calculations or persistence.
   A failed weight-entry load
