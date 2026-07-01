@@ -230,8 +230,14 @@ export function WeightHistoryList({
   // Option B: the From/To controls are hidden by default and revealed by the
   // header filter icon. Toggling the filter off — or clearing (✕) — closes and
   // clears the range so it can never overlap the first data row (#411).
+  // If the panel is collapsed, always expand it and show the filter so the
+  // controls are immediately visible (#411 feedback).
   const toggleDateFilter = () => {
-    setCollapsed(false);
+    if (collapsed) {
+      setCollapsed(false);
+      setShowDateFilter(true);
+      return;
+    }
     setShowDateFilter(prev => {
       if (prev) clearRange();
       return !prev;
