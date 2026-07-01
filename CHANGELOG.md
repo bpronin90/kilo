@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.86.4 - 2026-07-01
+
+- Issue #386: Adopted the UI design rules document and reconciled the design
+  system map after the #383 through #413 layout cleanup. The new guidance covers
+  top-of-tab alignment, title and panel spacing, panel density, history-list
+  headers, collapse behavior, date filtering, analytics hierarchy, mobile
+  overflow, UI anti-patterns, the active Gemini UI ownership pause, and the
+  ownership-label versus `Role` issue-writing rule.
+
 ## 0.86.3 - 2026-07-01
 
 - Issue #413: Adjusted the Weight History expanded header so the calendar
