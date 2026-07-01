@@ -397,24 +397,29 @@ export function WeightScreen({
             >
               {goalHistoryCollapsed ? (
                 <View style={hp.headerContent}>
-                  <Text style={hp.summaryText} numberOfLines={1}>
-                    {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'} · Latest: `}
-                    <Text
-                      style={[
-                        hp.summaryEmphasis,
-                        latestArchivedOutcome?.met === true && styles.archivedValueMet,
-                        latestArchivedOutcome?.met === false && styles.archivedValueMissed,
-                      ]}
-                    >
-                      {latestArchivedOutcome?.label}
+                  <View style={hp.summaryStack}>
+                    <Text style={hp.summaryCount}>
+                      {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'}`}
                     </Text>
-                  </Text>
+                    <Text style={hp.summaryLatest} numberOfLines={1}>
+                      {'Latest: '}
+                      <Text
+                        style={[
+                          hp.summaryEmphasis,
+                          latestArchivedOutcome?.met === true && styles.archivedValueMet,
+                          latestArchivedOutcome?.met === false && styles.archivedValueMissed,
+                        ]}
+                      >
+                        {latestArchivedOutcome?.label}
+                      </Text>
+                    </Text>
+                  </View>
                 </View>
               ) : (
                 <View style={hp.headerContent}>
                   <Text style={[hp.columnLabel, hp.col1]}>Target</Text>
-                  <Text style={[hp.columnLabel, hp.col2]}>End Weight</Text>
-                  <Text style={[hp.columnLabel, hp.col3]}>Target Date</Text>
+                  <Text style={[hp.columnLabel, hp.col2, hp.columnLabelCenter]}>End Weight</Text>
+                  <Text style={[hp.columnLabel, hp.col3, hp.columnLabelRight]}>Target Date</Text>
                 </View>
               )}
               <View style={hp.controlCell}>
@@ -572,6 +577,8 @@ const HISTORY_LABEL_WEIGHT = '700';
 const HISTORY_SUMMARY_SIZE = 15;
 const HISTORY_SUMMARY_WEIGHT = '600';
 const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
+const HISTORY_SUMMARY_COUNT_SIZE = 12;
+const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 const hp = StyleSheet.create({
   card: {
@@ -676,5 +683,27 @@ const hp = StyleSheet.create({
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
     color: Colors.text,
+  },
+  summaryStack: {
+    flex: 1,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  summaryCount: {
+    fontSize: HISTORY_SUMMARY_COUNT_SIZE,
+    fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
+    color: Colors.textMuted,
+  },
+  summaryLatest: {
+    fontSize: HISTORY_SUMMARY_SIZE,
+    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    color: Colors.textMuted,
+  },
+  columnLabelCenter: {
+    textAlign: 'center',
+  },
+  columnLabelRight: {
+    textAlign: 'right',
   },
 });
