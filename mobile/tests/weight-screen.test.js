@@ -902,6 +902,9 @@ describe('WeightHistoryList date filter chip touch targets (#404)', () => {
       );
     });
     const root = component.root;
+    // #411 option B: reveal the From/To controls via the header filter icon.
+    const filterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
+    render.act(() => { filterBtn.props.onPress(); });
     const fromBtn = root.findByProps({ accessibilityLabel: 'From date' });
     const toBtn = root.findByProps({ accessibilityLabel: 'To date' });
     expect(fromBtn.props.hitSlop).toBe(12);
@@ -963,6 +966,8 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
       );
     });
+    const filterBtn1 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });
+    render.act(() => { filterBtn1.props.onPress(); });
     const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
     render.act(() => { fromBtn.props.onPress(); });
     const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
@@ -980,6 +985,8 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
       );
     });
+    const filterBtn2 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });
+    render.act(() => { filterBtn2.props.onPress(); });
     const toBtn = component.root.findByProps({ accessibilityLabel: 'To date' });
     render.act(() => { toBtn.props.onPress(); });
     const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });
@@ -997,6 +1004,8 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
         <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
       );
     });
+    const filterBtn3 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });
+    render.act(() => { filterBtn3.props.onPress(); });
     const fromBtn = component.root.findByProps({ accessibilityLabel: 'From date' });
     render.act(() => { fromBtn.props.onPress(); });
     const picker = component.root.findByProps({ testID: 'mock-datetimepicker' });

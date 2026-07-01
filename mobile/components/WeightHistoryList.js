@@ -5,6 +5,137 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from '../theme/colors';
 import { formatDate, formatDelta } from '../lib/format';
 
+// ── Shared history-panel visual system (#411) ─────────────────────────────────
+// Goal History (WeightScreen.js) and Weight History (this file) render as ONE
+// uniform system. Every value below is kept numerically identical to the block
+// of the same name in WeightScreen.js so the two panels' equivalent elements
+// (header row, 3-column [value·value·date] grid, trailing control cell, values,
+// dates, labels, and collapsed summary) match exactly. The only intended
+// differences between panels are the literal label text and semantic outcome
+// colors (End Weight / Success-Missed). These constants are duplicated (not
+// imported) because both panels must stay inside their Allowed Files.
+const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
+const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
+const HISTORY_COL3_FLEX = 1.5; // date, right aligned
+const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
+const HISTORY_ROW_PAD_V = 12;
+const HISTORY_ROW_PAD_H = 16;
+const HISTORY_VALUE_SIZE = 20;
+const HISTORY_VALUE_WEIGHT = '700';
+const HISTORY_DATE_SIZE = 15;
+const HISTORY_DATE_WEIGHT = '600';
+const HISTORY_LABEL_SIZE = 11;
+const HISTORY_LABEL_WEIGHT = '700';
+const HISTORY_SUMMARY_SIZE = 15;
+const HISTORY_SUMMARY_WEIGHT = '600';
+const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
+
+const historyPanel = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: HISTORY_ROW_PAD_H,
+    paddingRight: 0,
+    paddingVertical: 10,
+    backgroundColor: Colors.subtleBg,
+  },
+  headerRowBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  headerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  controlCell: {
+    width: HISTORY_CONTROL_WIDTH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingRight: 12,
+    gap: 8,
+  },
+  controlIconBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  controlCellRow: {
+    width: HISTORY_CONTROL_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  columnLabel: {
+    fontSize: HISTORY_LABEL_SIZE,
+    fontWeight: HISTORY_LABEL_WEIGHT,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  col1: {
+    flex: HISTORY_COL1_FLEX,
+    alignItems: 'flex-start',
+  },
+  col2: {
+    flex: HISTORY_COL2_FLEX,
+    alignItems: 'center',
+  },
+  col3: {
+    flex: HISTORY_COL3_FLEX,
+    alignItems: 'flex-end',
+  },
+  rowContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  activeRow: {
+    backgroundColor: Colors.chipBackground,
+  },
+  lastRow: {
+    borderBottomWidth: 0,
+  },
+  rowMain: {
+    flex: 1,
+    paddingLeft: HISTORY_ROW_PAD_H,
+    paddingRight: 0,
+    paddingVertical: HISTORY_ROW_PAD_V,
+  },
+  rowCells: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  value: {
+    fontSize: HISTORY_VALUE_SIZE,
+    fontWeight: HISTORY_VALUE_WEIGHT,
+    color: Colors.text,
+  },
+  dateValue: {
+    fontSize: HISTORY_DATE_SIZE,
+    fontWeight: HISTORY_DATE_WEIGHT,
+    color: Colors.textMuted,
+    textAlign: 'right',
+  },
+  summaryText: {
+    flex: 1,
+    fontSize: HISTORY_SUMMARY_SIZE,
+    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    color: Colors.textMuted,
+  },
+  summaryEmphasis: {
+    fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
+    color: Colors.text,
+  },
+});
+
 function parseLocalDate(dateStr) {
   if (!dateStr) return null;
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -46,14 +177,6 @@ function filterByDateRange(entries, fromDate, toDate) {
   });
 }
 
-function localDateToday() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function WeightHistoryList({
   entries,
   editingId,
@@ -63,6 +186,7 @@ export function WeightHistoryList({
   goalInfo,
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [showFromPicker, setShowFromPicker] = useState(false);
@@ -103,24 +227,125 @@ export function WeightHistoryList({
     setToDate('');
   };
 
+  // Option B: the From/To controls are hidden by default and revealed by the
+  // header filter icon. Toggling the filter off — or clearing (✕) — closes and
+  // clears the range so it can never overlap the first data row (#411).
+  const toggleDateFilter = () => {
+    setShowDateFilter(prev => {
+      if (prev) clearRange();
+      return !prev;
+    });
+  };
+
+  const clearAndCloseFilter = () => {
+    clearRange();
+    setShowDateFilter(false);
+  };
+
+  const s = historyPanel;
+
   return (
-    <View style={styles.historyList}>
-      {/* Card header: collapse toggle only (Analytics convention). The date-range
-          filter now lives inside the expanded Date column-header area below. */}
+    <View style={s.card}>
+      {/* Header row IS the column-header / summary row: content on the left, the
+          trailing control cell (filter icon + collapse chevron) at the far
+          right. No separate empty chevron strip (#411). */}
       <Pressable
         onPress={() => setCollapsed(c => !c)}
-        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
-        style={styles.listHeader}
+        style={[s.headerRow, !collapsed && s.headerRowBordered]}
       >
-        <MaterialIcons
-          name={collapsed ? 'expand-more' : 'expand-less'}
-          size={18}
-          color={Colors.textMuted}
-          accessible={false}
-        />
+        {collapsed ? (
+          <View style={s.headerContent}>
+            {filteredEntries.length === 0 ? (
+              <Text style={s.summaryText}>0 entries</Text>
+            ) : (
+              <Text style={s.summaryText} numberOfLines={1}>
+                {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
+                {' · Latest: '}
+                <Text style={s.summaryEmphasis}>
+                  {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+                </Text>
+                {' on '}
+                {formatDate(filteredEntries[0].logged_at)}
+              </Text>
+            )}
+          </View>
+        ) : (
+          <View style={s.headerContent}>
+            <Text style={[s.columnLabel, s.col1]}>Weight</Text>
+            <Text style={[s.columnLabel, s.col2]}>Change</Text>
+            <Text style={[s.columnLabel, s.col3]}>Date</Text>
+          </View>
+        )}
+        <View style={s.controlCell}>
+          {!collapsed && (
+            <Pressable
+              onPress={toggleDateFilter}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Filter by date range"
+              style={s.controlIconBtn}
+            >
+              <MaterialIcons
+                name="date-range"
+                size={18}
+                color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+                accessible={false}
+              />
+            </Pressable>
+          )}
+          <MaterialIcons
+            name={collapsed ? 'expand-more' : 'expand-less'}
+            size={18}
+            color={Colors.textMuted}
+            accessible={false}
+          />
+        </View>
       </Pressable>
+
+      {/* Revealed date-range filter — its own row directly under the header,
+          clearly separated so it never overlaps row 1 (#411). */}
+      {!collapsed && showDateFilter && (
+        <View style={styles.dateFilterRow}>
+          {Platform.OS === 'web' ? (
+            <>
+              <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+              <Text style={styles.dateRangeSep}>—</Text>
+              <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+            </>
+          ) : (
+            <>
+              <Pressable
+                onPress={() => setShowFromPicker(true)}
+                style={styles.dateChip}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="From date"
+              >
+                <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
+                  {fromDate ? formatDate(fromDate) : 'From'}
+                </Text>
+              </Pressable>
+              <Text style={styles.dateRangeSep}>—</Text>
+              <Pressable
+                onPress={() => setShowToPicker(true)}
+                style={styles.dateChip}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="To date"
+              >
+                <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
+                  {toDate ? formatDate(toDate) : 'To'}
+                </Text>
+              </Pressable>
+            </>
+          )}
+          <Pressable onPress={clearAndCloseFilter} style={styles.dateClearBtn} hitSlop={8}>
+            <Text style={styles.dateClearBtnText}>✕</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Native date pickers (hidden until triggered) */}
       {showFromPicker && Platform.OS !== 'web' && (
@@ -145,59 +370,6 @@ export function WeightHistoryList({
         />
       )}
 
-      {/* Column headers + inline Date-range filter (expanded only). The From/To
-          range reads as part of the Date column-header area rather than a
-          separate row stacked above the headers. */}
-      {!collapsed && (
-        <View style={styles.columnHeader}>
-          <View style={styles.columnLabelRow}>
-            <Text style={[styles.columnLabel, styles.colWeight]}>Weight</Text>
-            <Text style={[styles.columnLabel, styles.colDelta]}>Change</Text>
-            <Text style={[styles.columnLabel, styles.colDate]}>Date</Text>
-          </View>
-          <View style={styles.dateRangeRow}>
-            {Platform.OS === 'web' ? (
-              <>
-                <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
-                <Text style={styles.dateRangeSep}>—</Text>
-                <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
-              </>
-            ) : (
-              <>
-                <Pressable
-                  onPress={() => setShowFromPicker(true)}
-                  style={styles.dateChip}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="From date"
-                >
-                  <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
-                    {fromDate ? formatDate(fromDate) : 'From'}
-                  </Text>
-                </Pressable>
-                <Text style={styles.dateRangeSep}>—</Text>
-                <Pressable
-                  onPress={() => setShowToPicker(true)}
-                  style={styles.dateChip}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="To date"
-                >
-                  <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
-                    {toDate ? formatDate(toDate) : 'To'}
-                  </Text>
-                </Pressable>
-              </>
-            )}
-            {hasRange && (
-              <Pressable onPress={clearRange} style={styles.dateClearBtn} hitSlop={8}>
-                <Text style={styles.dateClearBtnText}>✕</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      )}
-
       {!collapsed && filteredEntries.map((entry, index) => {
         const nextEntry = filteredEntries[index + 1];
         const delta = nextEntry ? entry.weight_value - nextEntry.weight_value : null;
@@ -213,26 +385,26 @@ export function WeightHistoryList({
           <View
             key={entry.id}
             style={[
-              styles.historyRowContainer,
-              isActive && styles.activeEntryRow,
-              isLast && styles.lastHistoryRow,
+              s.rowContainer,
+              isActive && s.activeRow,
+              isLast && s.lastRow,
             ]}
           >
             <Pressable
               onPress={() => handleEditEntry(entry)}
               style={({ pressed }) => [
-                styles.rowMain,
+                s.rowMain,
                 pressed && styles.historyRowPressed,
               ]}
             >
-              <View style={styles.rowCells}>
-                <View style={styles.colWeight}>
-                  <Text style={styles.rowWeight}>{entry.weight_value} {entry.weight_unit || 'lb'}</Text>
+              <View style={s.rowCells}>
+                <View style={s.col1}>
+                  <Text style={s.value}>{entry.weight_value} {entry.weight_unit || 'lb'}</Text>
                   {entry.note ? (
                     <Text style={styles.rowNote} numberOfLines={1}>{entry.note}</Text>
                   ) : null}
                 </View>
-                <View style={styles.colDelta}>
+                <View style={s.col2}>
                   {delta !== null ? (
                     <Text style={[
                       styles.rowDelta,
@@ -246,15 +418,15 @@ export function WeightHistoryList({
                     <Text style={styles.rowDeltaEmpty}>—</Text>
                   )}
                 </View>
-                <View style={styles.colDate}>
-                  <Text style={styles.rowDate}>{formatDate(entry.logged_at)}</Text>
+                <View style={s.col3}>
+                  <Text style={s.dateValue}>{formatDate(entry.logged_at)}</Text>
                 </View>
               </View>
             </Pressable>
             <Pressable
               onPress={() => handleDelete(entry.id)}
               style={({ pressed }) => [
-                styles.deleteAffordance,
+                s.controlCellRow,
                 pressed && styles.deleteAffordancePressed,
               ]}
               hitSlop={12}
@@ -273,55 +445,25 @@ export function WeightHistoryList({
       {!collapsed && filteredEntries.length === 0 && entries.length > 0 && (
         <Text style={styles.emptyText}>No entries in this range.</Text>
       )}
-
-      {collapsed && (
-        <View style={styles.collapsedSummary}>
-          {filteredEntries.length === 0 ? (
-            <Text style={styles.collapsedText}>0 entries</Text>
-          ) : (
-            <Text style={styles.collapsedText}>
-              {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
-              {' · Latest: '}
-              <Text style={styles.collapsedWeight}>
-                {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
-              </Text>
-              {' on '}
-              {formatDate(filteredEntries[0].logged_at)}
-            </Text>
-          )}
-        </View>
-      )}
     </View>
   );
 }
 
-const COL_WEIGHT_FLEX = 2;
-const COL_DELTA_FLEX = 1;
-const COL_DATE_FLEX = 1.5;
-
 const styles = StyleSheet.create({
-  historyList: {
-    backgroundColor: Colors.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    overflow: 'hidden',
+  historyRowPressed: {
+    backgroundColor: Colors.chipBackground,
+    opacity: 0.8,
   },
-  listHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  dateRangeRow: {
+  dateFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 6,
-    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.subtleBg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
   },
   dateChip: {
     paddingHorizontal: 10,
@@ -352,64 +494,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '700',
   },
-  columnHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: Colors.subtleBg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  columnLabelRow: {
-    flexDirection: 'row',
-  },
-  columnLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  colWeight: {
-    flex: COL_WEIGHT_FLEX,
-  },
-  colDelta: {
-    flex: COL_DELTA_FLEX,
-    alignItems: 'center',
-  },
-  colDate: {
-    flex: COL_DATE_FLEX,
-    alignItems: 'flex-end',
-  },
-  historyRowContainer: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  historyRowPressed: {
-    backgroundColor: Colors.chipBackground,
-    opacity: 0.8,
-  },
-  activeEntryRow: {
-    backgroundColor: Colors.chipBackground,
-  },
-  lastHistoryRow: {
-    borderBottomWidth: 0,
-  },
-  rowMain: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  rowCells: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rowWeight: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: Colors.text,
-  },
   rowDelta: {
     fontSize: 12,
     fontWeight: '700',
@@ -432,20 +516,10 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontWeight: '900',
   },
-  rowDate: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'right',
-  },
   rowNote: {
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
-  },
-  deleteAffordance: {
-    paddingHorizontal: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   deleteAffordancePressed: {
     backgroundColor: Colors.chipBackground,
@@ -461,18 +535,5 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     paddingVertical: 32,
     fontSize: 15,
-  },
-  collapsedSummary: {
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  collapsedText: {
-    fontSize: 15,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
-  collapsedWeight: {
-    fontWeight: '900',
-    color: Colors.text,
   },
 });

@@ -385,29 +385,47 @@ export function WeightScreen({
       {sortedArchivedGoals.length > 0 && (
         <View style={styles.archivedContainer}>
           <SectionTitle>Goal History</SectionTitle>
-          <Card style={styles.archivedCard}>
-            {/* Collapse chevron lives inside the card header (Analytics
-                convention), not on the static section title row above. */}
+          {/* Same one-panel visual system as Weight History (#411): the header
+              row IS the column-header / summary row, with the collapse chevron
+              in a trailing control cell. No separate empty chevron strip. */}
+          <View style={hp.card}>
             <Pressable
               onPress={() => setGoalHistoryCollapsed(c => !c)}
-              style={styles.archivedCardHeader}
+              style={[hp.headerRow, !goalHistoryCollapsed && hp.headerRowBordered]}
               accessibilityRole="button"
               accessibilityLabel={goalHistoryCollapsed ? 'Expand goal history' : 'Collapse goal history'}
             >
-              <MaterialIcons
-                name={goalHistoryCollapsed ? 'expand-more' : 'expand-less'}
-                size={18}
-                color={Colors.textMuted}
-                accessible={false}
-              />
-            </Pressable>
-            {!goalHistoryCollapsed && (
-              <View style={styles.archivedColumnHeader}>
-                <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
-                <Text style={[styles.archivedColLabel, { flex: 1 }]}>End Weight</Text>
-                <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Target Date</Text>
+              {goalHistoryCollapsed ? (
+                <View style={hp.headerContent}>
+                  <Text style={hp.summaryText} numberOfLines={1}>
+                    {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'} · Latest: `}
+                    <Text
+                      style={[
+                        hp.summaryEmphasis,
+                        latestArchivedOutcome?.met === true && styles.archivedValueMet,
+                        latestArchivedOutcome?.met === false && styles.archivedValueMissed,
+                      ]}
+                    >
+                      {latestArchivedOutcome?.label}
+                    </Text>
+                  </Text>
+                </View>
+              ) : (
+                <View style={hp.headerContent}>
+                  <Text style={[hp.columnLabel, hp.col1]}>Target</Text>
+                  <Text style={[hp.columnLabel, hp.col2]}>End Weight</Text>
+                  <Text style={[hp.columnLabel, hp.col3]}>Target Date</Text>
+                </View>
+              )}
+              <View style={hp.controlCell}>
+                <MaterialIcons
+                  name={goalHistoryCollapsed ? 'expand-more' : 'expand-less'}
+                  size={18}
+                  color={Colors.textMuted}
+                  accessible={false}
+                />
               </View>
-            )}
+            </Pressable>
             {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
               // Color End Weight by archived outcome: success when the completed
@@ -421,45 +439,31 @@ export function WeightScreen({
                     : styles.archivedValueMissed)
                 : null;
               return (
-                <View key={g.id}>
-                  <View style={styles.archivedRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.archivedValue}>{g.target_weight} lb</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.archivedValue, endWeightOutcomeStyle]}>
-                        {hasCompletedWeight
-                          ? `${g.completed_weight} lb`
-                          : '—'}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1.2, alignItems: 'flex-end' }}>
-                      <Text style={styles.archivedDateValue}>
-                        {g.target_date ? formatDate(g.target_date) : '—'}
-                      </Text>
+                <View key={g.id} style={[hp.rowContainer, isLast && hp.lastRow]}>
+                  <View style={hp.rowMain}>
+                    <View style={hp.rowCells}>
+                      <View style={hp.col1}>
+                        <Text style={hp.value}>{g.target_weight} lb</Text>
+                      </View>
+                      <View style={hp.col2}>
+                        <Text style={[hp.value, endWeightOutcomeStyle]}>
+                          {hasCompletedWeight ? `${g.completed_weight} lb` : '—'}
+                        </Text>
+                      </View>
+                      <View style={hp.col3}>
+                        <Text style={hp.dateValue}>
+                          {g.target_date ? formatDate(g.target_date) : '—'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                  {!isLast && <View style={styles.archivedDivider} />}
+                  {/* Reserved trailing control cell keeps the three content
+                      columns aligned with Weight History's rows (#411). */}
+                  <View style={hp.controlCellRow} />
                 </View>
               );
             })}
-            {goalHistoryCollapsed && (
-              <View style={styles.archivedCollapsedRow}>
-                <Text style={styles.archivedCollapsedText}>
-                  {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'} · Latest: `}
-                  <Text
-                    style={[
-                      styles.archivedCollapsedOutcome,
-                      latestArchivedOutcome?.met === true && styles.archivedValueMet,
-                      latestArchivedOutcome?.met === false && styles.archivedValueMissed,
-                    ]}
-                  >
-                    {latestArchivedOutcome?.label}
-                  </Text>
-                </Text>
-              </View>
-            )}
-          </Card>
+          </View>
         </View>
       )}
 
@@ -533,75 +537,144 @@ const styles = StyleSheet.create({
   archivedContainer: {
     gap: 16,
   },
-  archivedCard: {
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    gap: 0,
-    overflow: 'hidden',
-  },
-  archivedCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  archivedColumnHeader: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: Colors.subtleBg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-  },
-  archivedColLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  archivedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  archivedValue: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: Colors.text,
-  },
+  // Semantic End Weight / latest-outcome colors — the only intended visual
+  // difference from the Weight History panel (#411). Applied on top of the
+  // shared hp.value / hp.summaryEmphasis typography below.
   archivedValueMet: {
     color: Colors.success,
   },
   archivedValueMissed: {
     color: Colors.error,
   },
-  archivedDateValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: Colors.text,
-    textAlign: 'right',
+});
+
+// ── Shared history-panel visual system (#411) ─────────────────────────────────
+// Goal History (this screen) and Weight History (WeightHistoryList.js) render as
+// ONE uniform system. Every value below is kept numerically identical to the
+// block of the same name in WeightHistoryList.js so the two panels' equivalent
+// elements (header row, 3-column [value·value·date] grid, trailing control cell,
+// values, dates, labels, and collapsed summary) match exactly. The only intended
+// differences between panels are the literal label text and semantic outcome
+// colors (End Weight / Success-Missed). These constants are duplicated (not
+// imported) because both panels must stay inside their Allowed Files.
+const HISTORY_COL1_FLEX = 1.35; // primary value, left aligned
+const HISTORY_COL2_FLEX = 1.25; // secondary value, center aligned
+const HISTORY_COL3_FLEX = 1.5; // date, right aligned
+const HISTORY_CONTROL_WIDTH = 56; // trailing control cell (chevron / filter / delete)
+const HISTORY_ROW_PAD_V = 12;
+const HISTORY_ROW_PAD_H = 16;
+const HISTORY_VALUE_SIZE = 20;
+const HISTORY_VALUE_WEIGHT = '700';
+const HISTORY_DATE_SIZE = 15;
+const HISTORY_DATE_WEIGHT = '600';
+const HISTORY_LABEL_SIZE = 11;
+const HISTORY_LABEL_WEIGHT = '700';
+const HISTORY_SUMMARY_SIZE = 15;
+const HISTORY_SUMMARY_WEIGHT = '600';
+const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
+
+const hp = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
   },
-  archivedDivider: {
-    height: 1,
-    backgroundColor: Colors.cardBorder,
-    marginHorizontal: 16,
-  },
-  archivedCollapsedRow: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: HISTORY_ROW_PAD_H,
+    paddingRight: 0,
     paddingVertical: 10,
+    backgroundColor: Colors.subtleBg,
+  },
+  headerRowBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  headerContent: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  archivedCollapsedText: {
-    fontSize: 15,
-    color: Colors.textMuted,
-    fontWeight: '600',
+  controlCell: {
+    width: HISTORY_CONTROL_WIDTH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingRight: 12,
+    gap: 8,
   },
-  archivedCollapsedOutcome: {
-    fontWeight: '900',
+  controlIconBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  controlCellRow: {
+    width: HISTORY_CONTROL_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  columnLabel: {
+    fontSize: HISTORY_LABEL_SIZE,
+    fontWeight: HISTORY_LABEL_WEIGHT,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  col1: {
+    flex: HISTORY_COL1_FLEX,
+    alignItems: 'flex-start',
+  },
+  col2: {
+    flex: HISTORY_COL2_FLEX,
+    alignItems: 'center',
+  },
+  col3: {
+    flex: HISTORY_COL3_FLEX,
+    alignItems: 'flex-end',
+  },
+  rowContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+  },
+  activeRow: {
+    backgroundColor: Colors.chipBackground,
+  },
+  lastRow: {
+    borderBottomWidth: 0,
+  },
+  rowMain: {
+    flex: 1,
+    paddingLeft: HISTORY_ROW_PAD_H,
+    paddingRight: 0,
+    paddingVertical: HISTORY_ROW_PAD_V,
+  },
+  rowCells: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  value: {
+    fontSize: HISTORY_VALUE_SIZE,
+    fontWeight: HISTORY_VALUE_WEIGHT,
+    color: Colors.text,
+  },
+  dateValue: {
+    fontSize: HISTORY_DATE_SIZE,
+    fontWeight: HISTORY_DATE_WEIGHT,
+    color: Colors.textMuted,
+    textAlign: 'right',
+  },
+  summaryText: {
+    flex: 1,
+    fontSize: HISTORY_SUMMARY_SIZE,
+    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    color: Colors.textMuted,
+  },
+  summaryEmphasis: {
+    fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
     color: Colors.text,
   },
 });
