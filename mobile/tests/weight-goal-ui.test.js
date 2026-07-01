@@ -566,25 +566,27 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      // #408 bumped these to 18; #409 brings them up to the Weight History row
-      // scale (20) so Goal History no longer reads undersized next to the other
-      // Weight tab panels, while staying below the 28px active-goal hero scale.
-      test('primary value cells use fontSize 20 fontWeight 900 (#409)', () => {
+      // #408 bumped these to 18; #409 brought them to 20/900; #411 unifies the
+      // shared value typography to a clean 20/700 (off the over-heavy 900),
+      // identical across both history panels.
+      test('primary value cells use the shared value typography 20/700 (#411)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const valueNode = findByExactText(component.root, '175 lb');
         expect(valueNode).toBeTruthy();
         expect(getStyleProp(valueNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(valueNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(valueNode, 'fontWeight')).toBe('700');
       });
 
-      test('date cells use fontSize 20 fontWeight 700 (#409)', () => {
+      // #411 unifies the date typography with Weight History (15/600 muted) so
+      // dates read as one system and no longer compete with the 20px values.
+      test('date cells use the shared date typography 15/600 (#411)', () => {
         const component = setup(null, [], archivedFixture);
         expandGoalHistory(component.root);
         const dateNode = findByExactText(component.root, '09-01-2026');
         expect(dateNode).toBeTruthy();
-        expect(getStyleProp(dateNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(dateNode, 'fontWeight')).toBe('700');
+        expect(getStyleProp(dateNode, 'fontSize')).toBe(15);
+        expect(getStyleProp(dateNode, 'fontWeight')).toBe('600');
       });
 
       // #410: the collapsed Goal History summary is count-first and surfaces the
@@ -705,24 +707,45 @@ describe('WeightScreen', () => {
         expect(getStyleProp(missedNode, 'color')).toBe(Colors.error);
       });
 
-      test('Weight History hides the From/To date filter when collapsed, shows it when expanded', () => {
+      // #411 option B: the From/To controls are hidden by default and revealed
+      // by the header filter icon. The filter icon is ALWAYS visible (collapsed
+      // or expanded). Tapping it when expanded toggles From/To visibility. Tapping
+      // it when collapsed expands the panel and shows the From/To row (#411 C).
+      test('Weight History reveals From/To only after tapping the filter icon; icon stays visible when collapsed', () => {
         const entries = [
           { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, note: '' },
         ];
         const component = setup(null, entries);
         const root = component.root;
 
-        // Expanded by default: From/To filter chips present.
+        // Expanded by default: the filter icon is present but From/To are hidden.
+        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBe(0);
+
+        // Tapping the filter icon reveals the From/To controls.
+        const filterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
+        render.act(() => { filterBtn.props.onPress(); });
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
 
+        // Tapping it again hides them.
+        render.act(() => { filterBtn.props.onPress(); });
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
+
+        // Collapsed: filter icon REMAINS visible; From/To controls are hidden;
+        // the summary line is present.
         const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
         render.act(() => { toggle.props.onPress(); });
-
-        // Collapsed: date filter chrome is gone, only the summary remains.
+        expect(root.findAllByProps({ accessibilityLabel: 'Filter by date range' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
-        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBe(0);
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
+
+        // Tapping the filter icon while collapsed expands the panel and shows From/To.
+        render.act(() => { filterBtn.props.onPress(); });
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'Collapse history' }).length).toBeGreaterThan(0);
       });
     });
 
@@ -836,7 +859,7 @@ describe('WeightScreen', () => {
         expect(getStyleProp(colLabel, 'fontWeight')).toBe('700');
       });
 
-      test('row weight values use fontSize 20 fontWeight 900 matching Trends value hierarchy', () => {
+      test('row weight values use the shared value typography 20/700 (#411)', () => {
         const component = setup(null, entries);
         const weightNode = component.root.findAllByType('Text').find(t => {
           const children = t.props.children;
@@ -845,7 +868,7 @@ describe('WeightScreen', () => {
         });
         expect(weightNode).toBeTruthy();
         expect(getStyleProp(weightNode, 'fontSize')).toBe(20);
-        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(weightNode, 'fontWeight')).toBe('700');
       });
 
       // #409: collapsed Weight History summary renders the latest weight in bold
@@ -960,6 +983,150 @@ describe('WeightScreen', () => {
 
       expect(goalText.props.children).toBe('no-goal');
       expect(archivedCountText.props.children).toBe(1);
+    });
+  });
+
+  // #411: Goal History and Weight History must render as ONE uniform visual
+  // system. For every equivalent element the shared typography and 3-column grid
+  // must be numerically identical across the two panels; only the literal label
+  // text and semantic outcome colors may differ.
+  describe('history panels uniform visual system (#411)', () => {
+    const getStyleProp = (node, propName) => {
+      const style = node.props.style;
+      if (!style) return undefined;
+      if (Array.isArray(style)) {
+        const flat = style.flat();
+        for (let i = flat.length - 1; i >= 0; i--) {
+          if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+        }
+        return undefined;
+      }
+      return style[propName];
+    };
+
+    const findByExactText = (root, text) =>
+      root.findAllByType('Text').find(t => {
+        const children = t.props.children;
+        return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
+      });
+
+    const archived = [{
+      id: 'ag_1',
+      target_weight: 175,
+      target_date: '2026-09-01',
+      start_weight: 200,
+      completed_weight: 174.5,
+      archived_at: '2026-09-02T08:00:00.000Z',
+    }];
+    const entries = [
+      { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, weight_unit: 'lb', note: '' },
+    ];
+
+    // Render both panels expanded so their equivalent elements are visible.
+    const renderBoth = () => {
+      const component = setup(null, entries, archived);
+      const root = component.root;
+      const expand = root.findByProps({ accessibilityLabel: 'Expand goal history' });
+      render.act(() => { expand.props.onPress(); });
+      return root;
+    };
+
+    test('primary value cells share identical typography across both panels', () => {
+      const root = renderBoth();
+      const goalValue = findByExactText(root, '175 lb');
+      const weightValue = findByExactText(root, '190 lb');
+      expect(goalValue).toBeTruthy();
+      expect(weightValue).toBeTruthy();
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(getStyleProp(weightValue, 'fontSize'));
+      expect(getStyleProp(goalValue, 'fontWeight')).toBe(getStyleProp(weightValue, 'fontWeight'));
+      expect(getStyleProp(goalValue, 'fontSize')).toBe(20);
+      expect(getStyleProp(goalValue, 'fontWeight')).toBe('700');
+    });
+
+    test('date cells share identical typography across both panels', () => {
+      const root = renderBoth();
+      const goalDate = findByExactText(root, '09-01-2026');
+      const weightDate = findByExactText(root, '05-24-2026');
+      expect(goalDate).toBeTruthy();
+      expect(weightDate).toBeTruthy();
+      expect(getStyleProp(goalDate, 'fontSize')).toBe(getStyleProp(weightDate, 'fontSize'));
+      expect(getStyleProp(goalDate, 'fontWeight')).toBe(getStyleProp(weightDate, 'fontWeight'));
+      expect(getStyleProp(goalDate, 'color')).toBe(getStyleProp(weightDate, 'color'));
+    });
+
+    test('column header labels share identical typography and casing across both panels', () => {
+      const root = renderBoth();
+      const goalLabel = findByExactText(root, 'Target');
+      const weightLabel = findByExactText(root, 'Weight');
+      expect(goalLabel).toBeTruthy();
+      expect(weightLabel).toBeTruthy();
+      for (const prop of ['fontSize', 'fontWeight', 'color', 'textTransform', 'letterSpacing']) {
+        expect(getStyleProp(goalLabel, prop)).toBe(getStyleProp(weightLabel, prop));
+      }
+    });
+
+    test('the 3-column grid uses identical column flex across both panels', () => {
+      const root = renderBoth();
+      // Scope label lookup to each panel's header row (via its collapse toggle)
+      // so form labels like "Target Date" elsewhere in the tree cannot collide.
+      const inHeader = (label, texts) => {
+        const header = root.findByProps({ accessibilityLabel: label });
+        return texts.map(txt => header.findAllByType('Text').find(t => {
+          const c = t.props.children;
+          return (Array.isArray(c) ? c.join('') : String(c ?? '')) === txt;
+        }));
+      };
+      const goalCols = inHeader('Collapse goal history', ['Target', 'End Weight', 'Target Date']);
+      const weightCols = inHeader('Collapse history', ['Weight', 'Change', 'Date']);
+      for (let i = 0; i < 3; i++) {
+        expect(goalCols[i]).toBeTruthy();
+        expect(weightCols[i]).toBeTruthy();
+        expect(getStyleProp(goalCols[i], 'flex')).toBe(getStyleProp(weightCols[i], 'flex'));
+      }
+      // And the ratios are the intended shared grid.
+      expect(goalCols.map(n => getStyleProp(n, 'flex'))).toEqual([1.35, 1.25, 1.5]);
+    });
+
+    test('collapsed summary lines share identical base typography across both panels', () => {
+      // Goal History is collapsed by default; collapse Weight History too.
+      const component = setup(null, entries, archived);
+      const root = component.root;
+      const collapseWeight = root.findByProps({ accessibilityLabel: 'Collapse history' });
+      render.act(() => { collapseWeight.props.onPress(); });
+
+      const goalSummary = root.findAllByType('Text').find(t => {
+        const c = t.props.children;
+        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return flat.includes('goal') && flat.includes('Latest:');
+      });
+      const weightSummary = root.findAllByType('Text').find(t => {
+        const c = t.props.children;
+        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return flat.includes('entr') && flat.includes('Latest:');
+      });
+      expect(goalSummary).toBeTruthy();
+      expect(weightSummary).toBeTruthy();
+      expect(getStyleProp(goalSummary, 'fontSize')).toBe(getStyleProp(weightSummary, 'fontSize'));
+      expect(getStyleProp(goalSummary, 'fontWeight')).toBe(getStyleProp(weightSummary, 'fontWeight'));
+      expect(getStyleProp(goalSummary, 'color')).toBe(getStyleProp(weightSummary, 'color'));
+    });
+
+    test('Weight History hides its column headers when collapsed, shows them when expanded', () => {
+      const component = setup(null, entries);
+      const root = component.root;
+      const findLabel = (text) => root.findAllByType('Text').some(t => {
+        const c = t.props.children;
+        return (Array.isArray(c) ? c.join('') : String(c ?? '')) === text;
+      });
+
+      // Expanded by default: the Change/Date column labels are present.
+      expect(findLabel('Change')).toBe(true);
+
+      const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+      render.act(() => { toggle.props.onPress(); });
+
+      // Collapsed: column-header chrome is gone (only the summary line remains).
+      expect(findLabel('Change')).toBe(false);
     });
   });
 

@@ -391,11 +391,11 @@ The real native app path now has a modular React Native shell:
   outcome via `isGoalMet` (success when the completed weight met the saved
   target, error when it missed, neutral when no completed weight is recorded).
   The
-  Goal History and Weight History panels both follow the Analytics in-panel
-  collapse convention: a static section title sits above the card while the
-  collapse chevron lives inside the card's own header row, and a collapsed panel
-  shows only its compact summary (Goal History hides its column headers and
-  Weight History hides its date-range filter when collapsed). Goal History sits
+  Goal History and Weight History panels now share one history-panel visual
+  system: a static section title sits above each card, and the card's top row is
+  the live header row. When expanded, the column labels live in that row with
+  the collapse chevron at the trailing edge; when collapsed, the row swaps to
+  the compact summary with the same trailing control cell. Goal History sits
   below Trends and stays collapsed by default; its collapsed summary reads
   count-first as `{n} goals · Latest: {outcome}`, where the latest archived
   goal's result renders as bold `Success` in success/green when met, bold
@@ -417,12 +417,17 @@ The real native app path now has a modular React Native shell:
   current-or-average value, prior-window comparison, and trend cue summaries
   derived from the day-level `date` key while History continues to display the
   recorded `logged_at` timestamp. The Weight History panel keeps its column
-  headers and expanded rows, defaults expanded, and presents its From/To
-  date-range controls within the expanded Date column-header band rather than a
-  separate row above; when collapsed it shows a count-first summary reading
-  `{n} entries · Latest: {bold weight} on {date}`, with Goal History and Weight History typography
-  aligned to the same label/value hierarchy used by the Trends panel, without
-  changing saved weight calculations or persistence. A failed weight-entry load
+  headers and expanded rows, defaults expanded, and exposes an always-visible
+  calendar/filter icon in the header's trailing control cell next to the
+  chevron. Its From/To date-range controls are hidden by default and reveal as a
+  separated row directly under the header when the icon is tapped; tapping the
+  icon while collapsed expands the panel and shows that filter row in one step,
+  and toggling the icon off or clearing the range closes and clears it. When
+  collapsed it shows a count-first summary reading `{n} entries · Latest:
+  {bold weight} on {date}`, with Goal History and Weight History sharing the
+  same column flex ratios, label/value/date typography, row padding, divider
+  treatment, and trailing control-cell width, without changing saved weight
+  calculations or persistence. A failed weight-entry load
   now surfaces a retryable `ErrorBanner` at the top of the screen instead of a
   silent empty screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the
