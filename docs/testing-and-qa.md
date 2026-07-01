@@ -96,7 +96,9 @@ Current limitation:
   coverage for history-row scroll-to-editor behavior, edit/date threading
   through the existing update seam, delete confirmation/refresh behavior, the
   saved-goal target/guidance split, and the active weigh-in/goal
-  `DateTimePicker` `onChange` callback wiring, plus web fallback coverage for
+  `DateTimePicker` `onChange` callback wiring, plus the unified Goal
+  History/Weight History panel header, collapsed-summary, column-style, and
+  date-filter reveal contracts, plus web fallback coverage for
   Weight DOM date inputs, plus targeted account lifecycle UI coverage for
   server-owned export/delete calls, local session clearing after successful
   deletion, function error surfacing, and absence of service-role keys in
@@ -377,6 +379,11 @@ retains non-test commands such as `npm run audit`.
 - covers archived-goal history visibility, hidden empty state, newest-first
   ordering, required row fields including the separate `End Weight` column, and
   the subscriber refresh path after archiving a completed goal
+- covers the unified Goal History and Weight History visual system, including
+  matching value/date/label typography, matching column flex ratios, hidden
+  column headers in collapsed panels, the always-visible Weight History filter
+  icon, and the collapsed filter-icon tap path that expands the panel and shows
+  the From/To controls
 
 ### `mobile/tests/weight-screen.test.js`
 

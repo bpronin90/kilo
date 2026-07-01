@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.86.1 - 2026-07-01
+
+- Issue #411: Fixed the broken post-#410 Weight tab history panel presentation
+  by making the Goal History and Weight History cards share one visual system.
+  The card top row now holds either column labels plus trailing controls when
+  expanded or the compact summary plus trailing controls when collapsed, removing
+  the empty chevron-only bar. Both panels now use matching column ratios,
+  row/divider treatment, and label/value/date/summary typography. Weight History
+  now exposes an always-visible calendar/filter icon next to the chevron; its
+  From/To controls reveal in a separated row under the header, never overlap the
+  first data row, and tapping the icon while collapsed expands the panel and
+  shows the filter row in one step. Collapse defaults, summaries, delete
+  affordances, saved calculations, and persistence are unchanged.
+
 ## 0.86.0 - 2026-06-30
 
 - Issue #410: Standardized the two Weight tab history panels to the Analytics
