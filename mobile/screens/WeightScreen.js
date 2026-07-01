@@ -140,6 +140,20 @@ export function WeightScreen({
     });
   }, [archivedGoals]);
 
+  // Outcome of the most recent archived goal for the collapsed Goal History
+  // summary. The latest goal is already the first sorted element (O(1)), and the
+  // met/missed judgment reuses the same isGoalMet helper used for End Weight
+  // coloring. Neutral only when the latest goal has no completed weight to judge.
+  const latestArchivedOutcome = useMemo(() => {
+    const latest = sortedArchivedGoals[0];
+    if (!latest) return null;
+    const hasCompletedWeight =
+      latest.completed_weight !== null && latest.completed_weight !== undefined;
+    if (!hasCompletedWeight) return { label: '—', met: null };
+    const met = computeIsGoalMet(latest, latest.completed_weight);
+    return { label: met ? 'Success' : 'Missed', met };
+  }, [sortedArchivedGoals]);
+
   const newEntryDateObj = useMemo(() => {
     if (newEntryDate) {
       const [y, m, d] = newEntryDate.split('-').map(Number);
@@ -370,26 +384,30 @@ export function WeightScreen({
 
       {sortedArchivedGoals.length > 0 && (
         <View style={styles.archivedContainer}>
-          <Pressable
-            onPress={() => setGoalHistoryCollapsed(c => !c)}
-            style={styles.archivedSectionHeader}
-            accessibilityRole="button"
-            accessibilityLabel={goalHistoryCollapsed ? 'Expand goal history' : 'Collapse goal history'}
-          >
-            <SectionTitle>Goal History</SectionTitle>
-            <MaterialIcons
-              name={goalHistoryCollapsed ? 'expand-more' : 'expand-less'}
-              size={18}
-              color={Colors.textMuted}
-              accessible={false}
-            />
-          </Pressable>
+          <SectionTitle>Goal History</SectionTitle>
           <Card style={styles.archivedCard}>
-            <View style={styles.archivedColumnHeader}>
-              <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
-              <Text style={[styles.archivedColLabel, { flex: 1 }]}>End Weight</Text>
-              <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Target Date</Text>
-            </View>
+            {/* Collapse chevron lives inside the card header (Analytics
+                convention), not on the static section title row above. */}
+            <Pressable
+              onPress={() => setGoalHistoryCollapsed(c => !c)}
+              style={styles.archivedCardHeader}
+              accessibilityRole="button"
+              accessibilityLabel={goalHistoryCollapsed ? 'Expand goal history' : 'Collapse goal history'}
+            >
+              <MaterialIcons
+                name={goalHistoryCollapsed ? 'expand-more' : 'expand-less'}
+                size={18}
+                color={Colors.textMuted}
+                accessible={false}
+              />
+            </Pressable>
+            {!goalHistoryCollapsed && (
+              <View style={styles.archivedColumnHeader}>
+                <Text style={[styles.archivedColLabel, { flex: 1 }]}>Target</Text>
+                <Text style={[styles.archivedColLabel, { flex: 1 }]}>End Weight</Text>
+                <Text style={[styles.archivedColLabel, { flex: 1.2, textAlign: 'right' }]}>Target Date</Text>
+              </View>
+            )}
             {!goalHistoryCollapsed && sortedArchivedGoals.map((g, index) => {
               const isLast = index === sortedArchivedGoals.length - 1;
               // Color End Weight by archived outcome: success when the completed
@@ -428,11 +446,16 @@ export function WeightScreen({
             {goalHistoryCollapsed && (
               <View style={styles.archivedCollapsedRow}>
                 <Text style={styles.archivedCollapsedText}>
-                  Last:{' '}
-                  <Text style={styles.archivedCollapsedWeight}>
-                    {sortedArchivedGoals[0].completed_weight ?? sortedArchivedGoals[0].target_weight} lb
+                  {`${sortedArchivedGoals.length} ${sortedArchivedGoals.length === 1 ? 'goal' : 'goals'} · Latest: `}
+                  <Text
+                    style={[
+                      styles.archivedCollapsedOutcome,
+                      latestArchivedOutcome?.met === true && styles.archivedValueMet,
+                      latestArchivedOutcome?.met === false && styles.archivedValueMissed,
+                    ]}
+                  >
+                    {latestArchivedOutcome?.label}
                   </Text>
-                  {`  ·  ${sortedArchivedGoals.length} past goals`}
                 </Text>
               </View>
             )}
@@ -510,16 +533,20 @@ const styles = StyleSheet.create({
   archivedContainer: {
     gap: 16,
   },
-  archivedSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
   archivedCard: {
     paddingVertical: 0,
     paddingHorizontal: 0,
     gap: 0,
     overflow: 'hidden',
+  },
+  archivedCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
   },
   archivedColumnHeader: {
     flexDirection: 'row',
@@ -573,7 +600,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '600',
   },
-  archivedCollapsedWeight: {
+  archivedCollapsedOutcome: {
     fontWeight: '900',
     color: Colors.text,
   },
