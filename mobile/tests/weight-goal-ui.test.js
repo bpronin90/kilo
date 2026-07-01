@@ -452,9 +452,9 @@ describe('WeightScreen', () => {
       const component = setup(null, [], archived);
       const root = component.root;
 
-      // Header is visible, collapsed summary present, rows hidden by default.
+      // Header is visible, count-first collapsed summary present, rows hidden.
       expect(hasTextSafe(root, 'Goal History')).toBe(true);
-      expect(hasTextSafe(root, 'past goals')).toBe(true);
+      expect(hasTextSafe(root, 'Latest:')).toBe(true);
       expect(hasTextSafe(root, '175 lb')).toBe(false);
 
       // Expanding reveals the archived goal rows.
@@ -558,6 +558,8 @@ describe('WeightScreen', () => {
 
       test('column labels use fontSize 11 matching Trends label hierarchy', () => {
         const component = setup(null, [], archivedFixture);
+        // Column headers only render when expanded (#410).
+        expandGoalHistory(component.root);
         const colLabel = findByExactText(component.root, 'Target');
         expect(colLabel).toBeTruthy();
         expect(getStyleProp(colLabel, 'fontSize')).toBe(11);
@@ -585,24 +587,142 @@ describe('WeightScreen', () => {
         expect(getStyleProp(dateNode, 'fontWeight')).toBe('700');
       });
 
-      // #409: collapsed Goal History summary surfaces the most recent archived
-      // goal's key weight (completed/end weight when available) in bold at a
-      // larger-than-13px size, instead of only showing the count.
-      test('collapsed summary surfaces most recent goal weight in bold above 13px (#409)', () => {
+      // #410: the collapsed Goal History summary is count-first and surfaces the
+      // most recent archived goal's OUTCOME (Success/Missed) in bold — no weight —
+      // at a larger-than-13px size. archivedFixture has no start_weight and ends
+      // at 174.5 vs a 175 target, which isGoalMet judges as not met => Missed.
+      test('collapsed summary surfaces latest goal outcome in bold above 13px (#410)', () => {
         const component = setup(null, [], archivedFixture);
         const root = component.root;
-        // Collapsed by default: most recent completed weight (174.5) is shown bold.
-        const weightNode = findByExactText(root, '174.5 lb');
-        expect(weightNode).toBeTruthy();
-        expect(getStyleProp(weightNode, 'fontWeight')).toBe('900');
+        const outcomeNode = findByExactText(root, 'Missed');
+        expect(outcomeNode).toBeTruthy();
+        expect(getStyleProp(outcomeNode, 'fontWeight')).toBe('900');
         // The surrounding summary line is larger than the prior 13px.
         const summary = root.findAllByType('Text').find(t => {
           const c = t.props.children;
           const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-          return flat.includes('past goals');
+          return flat.includes('Latest:');
         });
         expect(summary).toBeTruthy();
         expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
+      });
+    });
+
+    // #410: both history panels follow the Analytics collapse convention — a
+    // static section title above the card, the collapse chevron INSIDE the card
+    // header, and only the count-first summary line when collapsed.
+    describe('Analytics collapse convention standardization (#410)', () => {
+      const getStyleProp = (node, propName) => {
+        const style = node.props.style;
+        if (!style) return undefined;
+        if (Array.isArray(style)) {
+          const flat = style.flat();
+          for (let i = flat.length - 1; i >= 0; i--) {
+            if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
+          }
+          return undefined;
+        }
+        return style[propName];
+      };
+
+      const findByExactText = (root, text) =>
+        root.findAllByType('Text').find(t => {
+          const children = t.props.children;
+          return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
+        });
+
+      const metFixture = [{
+        id: 'ag_met',
+        target_weight: 175,
+        target_date: '2026-09-01',
+        start_weight: 200,
+        completed_weight: 174,
+        archived_at: '2026-09-02T08:00:00.000Z',
+      }];
+
+      test('Goal History section title is static; collapse chevron lives inside the panel', () => {
+        const component = setup(null, [], metFixture);
+        const root = component.root;
+
+        // "Goal History" title has no pressable ancestor (chevron is off the title row).
+        const title = findByExactText(root, 'Goal History');
+        expect(title).toBeTruthy();
+        let node = title.parent;
+        let pressableAncestor = false;
+        while (node) {
+          if (node.props && typeof node.props.onPress === 'function') pressableAncestor = true;
+          node = node.parent;
+        }
+        expect(pressableAncestor).toBe(false);
+
+        // The collapse toggle exists (rendered inside the card header).
+        expect(root.findByProps({ accessibilityLabel: 'Expand goal history' })).toBeTruthy();
+      });
+
+      test('Goal History hides column headers when collapsed, shows them when expanded', () => {
+        const component = setup(null, [], metFixture);
+        const root = component.root;
+
+        // Collapsed by default: no column-header chrome. ("End Weight" is unique
+        // to the Goal History table; "Target Date" also appears in the goal form.)
+        expect(hasTextSafe(root, 'End Weight')).toBe(false);
+        expect(hasTextSafe(root, '175 lb')).toBe(false);
+
+        const toggle = root.findByProps({ accessibilityLabel: 'Expand goal history' });
+        render.act(() => { toggle.props.onPress(); });
+
+        expect(hasTextSafe(root, 'End Weight')).toBe(true);
+        expect(hasTextSafe(root, '175 lb')).toBe(true);
+      });
+
+      test('collapsed Goal History summary is count-first with a bold Success outcome (green)', () => {
+        // Loss goal 200 -> 175 ended at 174 (met) => Success in success color.
+        const component = setup(null, [], metFixture);
+        const root = component.root;
+
+        expect(hasTextSafe(root, '1 goal · Latest:')).toBe(true);
+        const successNode = findByExactText(root, 'Success');
+        expect(successNode).toBeTruthy();
+        expect(getStyleProp(successNode, 'fontWeight')).toBe('900');
+        expect(getStyleProp(successNode, 'color')).toBe(Colors.success);
+      });
+
+      test('collapsed Goal History summary shows a bold Missed outcome (red) for an unmet goal', () => {
+        // Loss goal 200 -> 175 ended at 185 (> target) => Missed in error color.
+        const missedFixture = [{
+          id: 'ag_missed',
+          target_weight: 175,
+          target_date: '2026-09-01',
+          start_weight: 200,
+          completed_weight: 185,
+          archived_at: '2026-09-02T08:00:00.000Z',
+        }];
+        const component = setup(null, [], missedFixture);
+        const root = component.root;
+
+        const missedNode = findByExactText(root, 'Missed');
+        expect(missedNode).toBeTruthy();
+        expect(getStyleProp(missedNode, 'color')).toBe(Colors.error);
+      });
+
+      test('Weight History hides the From/To date filter when collapsed, shows it when expanded', () => {
+        const entries = [
+          { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 190, note: '' },
+        ];
+        const component = setup(null, entries);
+        const root = component.root;
+
+        // Expanded by default: From/To filter chips present.
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
+
+        const toggle = root.findByProps({ accessibilityLabel: 'Collapse history' });
+        render.act(() => { toggle.props.onPress(); });
+
+        // Collapsed: date filter chrome is gone, only the summary remains.
+        expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
+        expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBe(0);
+        expect(hasTextSafe(root, 'Latest:')).toBe(true);
       });
     });
 
@@ -747,7 +867,7 @@ describe('WeightScreen', () => {
         const summary = root.findAllByType('Text').find(t => {
           const c = t.props.children;
           const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-          return flat.includes('Last:');
+          return flat.includes('Latest:');
         });
         expect(summary).toBeTruthy();
         expect(getStyleProp(summary, 'fontSize')).toBeGreaterThan(13);
@@ -776,7 +896,7 @@ describe('WeightScreen', () => {
 
         // Summary includes the most recent entry's weight and date.
         expect(hasTextSafe(root, '190')).toBe(true);
-        expect(hasTextSafe(root, 'Last:')).toBe(true);
+        expect(hasTextSafe(root, 'Latest:')).toBe(true);
         expect(hasTextSafe(root, '05-24-2026')).toBe(true);
       });
     });

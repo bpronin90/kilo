@@ -105,62 +105,22 @@ export function WeightHistoryList({
 
   return (
     <View style={styles.historyList}>
-      {/* Header: date range + collapse toggle */}
-      <View style={styles.listHeader}>
-        <View style={styles.dateRangeRow}>
-          {Platform.OS === 'web' ? (
-            <>
-              <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
-              <Text style={styles.dateRangeSep}>—</Text>
-              <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
-            </>
-          ) : (
-            <>
-              <Pressable
-                onPress={() => setShowFromPicker(true)}
-                style={styles.dateChip}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="From date"
-              >
-                <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
-                  {fromDate ? formatDate(fromDate) : 'From'}
-                </Text>
-              </Pressable>
-              <Text style={styles.dateRangeSep}>—</Text>
-              <Pressable
-                onPress={() => setShowToPicker(true)}
-                style={styles.dateChip}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="To date"
-              >
-                <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
-                  {toDate ? formatDate(toDate) : 'To'}
-                </Text>
-              </Pressable>
-            </>
-          )}
-          {hasRange && (
-            <Pressable onPress={clearRange} style={styles.dateClearBtn} hitSlop={8}>
-              <Text style={styles.dateClearBtnText}>✕</Text>
-            </Pressable>
-          )}
-        </View>
-        <Pressable
-          onPress={() => setCollapsed(c => !c)}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
-          style={styles.collapseToggle}
-        >
-          <MaterialIcons
-            name={collapsed ? 'expand-more' : 'expand-less'}
-            size={18}
-            color={Colors.textMuted}
-          />
-        </Pressable>
-      </View>
+      {/* Card header: collapse toggle only (Analytics convention). The date-range
+          filter now lives inside the expanded Date column-header area below. */}
+      <Pressable
+        onPress={() => setCollapsed(c => !c)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={collapsed ? 'Expand history' : 'Collapse history'}
+        style={styles.listHeader}
+      >
+        <MaterialIcons
+          name={collapsed ? 'expand-more' : 'expand-less'}
+          size={18}
+          color={Colors.textMuted}
+          accessible={false}
+        />
+      </Pressable>
 
       {/* Native date pickers (hidden until triggered) */}
       {showFromPicker && Platform.OS !== 'web' && (
@@ -185,12 +145,56 @@ export function WeightHistoryList({
         />
       )}
 
-      {/* Column headers */}
+      {/* Column headers + inline Date-range filter (expanded only). The From/To
+          range reads as part of the Date column-header area rather than a
+          separate row stacked above the headers. */}
       {!collapsed && (
         <View style={styles.columnHeader}>
-          <Text style={[styles.columnLabel, styles.colWeight]}>Weight</Text>
-          <Text style={[styles.columnLabel, styles.colDelta]}>Change</Text>
-          <Text style={[styles.columnLabel, styles.colDate]}>Date</Text>
+          <View style={styles.columnLabelRow}>
+            <Text style={[styles.columnLabel, styles.colWeight]}>Weight</Text>
+            <Text style={[styles.columnLabel, styles.colDelta]}>Change</Text>
+            <Text style={[styles.columnLabel, styles.colDate]}>Date</Text>
+          </View>
+          <View style={styles.dateRangeRow}>
+            {Platform.OS === 'web' ? (
+              <>
+                <WebDateTextInput value={fromDate} onChange={setFromDate} placeholder="From" />
+                <Text style={styles.dateRangeSep}>—</Text>
+                <WebDateTextInput value={toDate} onChange={setToDate} placeholder="To" />
+              </>
+            ) : (
+              <>
+                <Pressable
+                  onPress={() => setShowFromPicker(true)}
+                  style={styles.dateChip}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="From date"
+                >
+                  <Text style={[styles.dateChipText, !fromDate && styles.dateChipPlaceholder]}>
+                    {fromDate ? formatDate(fromDate) : 'From'}
+                  </Text>
+                </Pressable>
+                <Text style={styles.dateRangeSep}>—</Text>
+                <Pressable
+                  onPress={() => setShowToPicker(true)}
+                  style={styles.dateChip}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="To date"
+                >
+                  <Text style={[styles.dateChipText, !toDate && styles.dateChipPlaceholder]}>
+                    {toDate ? formatDate(toDate) : 'To'}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+            {hasRange && (
+              <Pressable onPress={clearRange} style={styles.dateClearBtn} hitSlop={8}>
+                <Text style={styles.dateClearBtnText}>✕</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       )}
 
@@ -277,7 +281,7 @@ export function WeightHistoryList({
           ) : (
             <Text style={styles.collapsedText}>
               {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
-              {' · Last: '}
+              {' · Latest: '}
               <Text style={styles.collapsedWeight}>
                 {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
               </Text>
@@ -306,7 +310,7 @@ const styles = StyleSheet.create({
   listHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
@@ -315,7 +319,9 @@ const styles = StyleSheet.create({
   dateRangeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 6,
+    marginTop: 8,
   },
   dateChip: {
     paddingHorizontal: 10,
@@ -346,16 +352,15 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '700',
   },
-  collapseToggle: {
-    paddingLeft: 8,
-  },
   columnHeader: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 6,
     backgroundColor: Colors.subtleBg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
+  },
+  columnLabelRow: {
+    flexDirection: 'row',
   },
   columnLabel: {
     fontSize: 11,
