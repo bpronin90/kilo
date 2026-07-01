@@ -231,6 +231,7 @@ export function WeightHistoryList({
   // header filter icon. Toggling the filter off — or clearing (✕) — closes and
   // clears the range so it can never overlap the first data row (#411).
   const toggleDateFilter = () => {
+    setCollapsed(false);
     setShowDateFilter(prev => {
       if (prev) clearRange();
       return !prev;
