@@ -1,5 +1,6 @@
 import React from 'react';
 import render from 'react-test-renderer';
+import { StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
@@ -743,8 +744,9 @@ describe('WeightScreen', () => {
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBe(0);
         expect(hasTextSafe(root, 'Latest:')).toBe(true);
 
-        // Tapping the filter icon while collapsed expands the panel and shows From/To.
-        render.act(() => { filterBtn.props.onPress(); });
+        // Tapping the collapsed-state filter icon expands the panel and shows From/To.
+        const collapsedFilterBtn = root.findByProps({ accessibilityLabel: 'Filter by date range' });
+        render.act(() => { collapsedFilterBtn.props.onPress(); });
         expect(root.findAllByProps({ accessibilityLabel: 'From date' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'To date' }).length).toBeGreaterThan(0);
         expect(root.findAllByProps({ accessibilityLabel: 'Collapse history' }).length).toBeGreaterThan(0);
@@ -996,14 +998,8 @@ describe('WeightScreen', () => {
     const getStyleProp = (node, propName) => {
       const style = node.props.style;
       if (!style) return undefined;
-      if (Array.isArray(style)) {
-        const flat = style.flat();
-        for (let i = flat.length - 1; i >= 0; i--) {
-          if (flat[i] && flat[i][propName] !== undefined) return flat[i][propName];
-        }
-        return undefined;
-      }
-      return style[propName];
+      const flat = StyleSheet.flatten(style);
+      return flat?.[propName];
     };
 
     const findByExactText = (root, text) =>
@@ -1011,6 +1007,15 @@ describe('WeightScreen', () => {
         const children = t.props.children;
         return (Array.isArray(children) ? children.join('') : String(children ?? '')) === text;
       });
+
+    const ancestorWithStyleProp = (node, propName) => {
+      let current = node;
+      while (current) {
+        if (getStyleProp(current, propName) !== undefined) return current;
+        current = current.parent;
+      }
+      return node;
+    };
 
     const archived = [{
       id: 'ag_1',
@@ -1083,10 +1088,29 @@ describe('WeightScreen', () => {
       for (let i = 0; i < 3; i++) {
         expect(goalCols[i]).toBeTruthy();
         expect(weightCols[i]).toBeTruthy();
-        expect(getStyleProp(goalCols[i], 'flex')).toBe(getStyleProp(weightCols[i], 'flex'));
+        expect(getStyleProp(goalCols[i], 'flex')).toBe(getStyleProp(ancestorWithStyleProp(weightCols[i], 'flex'), 'flex'));
       }
       // And the ratios are the intended shared grid.
       expect(goalCols.map(n => getStyleProp(n, 'flex'))).toEqual([1.35, 1.25, 1.5]);
+    });
+
+    test('expanded Weight History groups the filter icon with the Date header', () => {
+      const root = renderBoth();
+      const dateHeaderGroups = root.findAllByProps({ testID: 'weight-history-date-header' });
+      const headerFilterButtons = root.findAllByProps({ testID: 'weight-history-date-filter-header' });
+      expect(dateHeaderGroups.length).toBeGreaterThan(0);
+      expect(headerFilterButtons.length).toBeGreaterThan(0);
+
+      const dateHeaderGroup = dateHeaderGroups[0];
+      const dateLabel = dateHeaderGroup.findAllByType('Text').find(t => {
+        const c = t.props.children;
+        return (Array.isArray(c) ? c.join('') : String(c ?? '')) === 'Date';
+      });
+      expect(dateLabel).toBeTruthy();
+
+      expect(getStyleProp(dateHeaderGroup, 'flex')).toBe(1.5);
+      expect(getStyleProp(dateHeaderGroup, 'flexDirection')).toBe('row');
+      expect(getStyleProp(dateHeaderGroup, 'gap')).toBe(8);
     });
 
     test('collapsed summary lines share identical base typography across both panels', () => {
