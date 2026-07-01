@@ -682,7 +682,9 @@ describe('WeightScreen', () => {
         const component = setup(null, [], metFixture);
         const root = component.root;
 
-        expect(hasTextSafe(root, '1 goal · Latest:')).toBe(true);
+        // Two-line collapsed summary: count on first line, Latest: on second line.
+        expect(hasTextSafe(root, '1 goal')).toBe(true);
+        expect(hasTextSafe(root, 'Latest:')).toBe(true);
         const successNode = findByExactText(root, 'Success');
         expect(successNode).toBeTruthy();
         expect(getStyleProp(successNode, 'fontWeight')).toBe('900');
@@ -1094,21 +1096,35 @@ describe('WeightScreen', () => {
       const collapseWeight = root.findByProps({ accessibilityLabel: 'Collapse history' });
       render.act(() => { collapseWeight.props.onPress(); });
 
-      const goalSummary = root.findAllByType('Text').find(t => {
+      // Two-line collapsed summary: find the "Latest:" text node in each panel.
+      // Both panels render their "Latest:" line as a separate Text node (summaryLatest).
+      const latestNodes = root.findAllByType('Text').filter(t => {
         const c = t.props.children;
         const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return flat.includes('goal') && flat.includes('Latest:');
+        return flat.startsWith('Latest:');
       });
-      const weightSummary = root.findAllByType('Text').find(t => {
+      expect(latestNodes.length).toBe(2);
+      expect(getStyleProp(latestNodes[0], 'fontSize')).toBe(getStyleProp(latestNodes[1], 'fontSize'));
+      expect(getStyleProp(latestNodes[0], 'fontWeight')).toBe(getStyleProp(latestNodes[1], 'fontWeight'));
+      expect(getStyleProp(latestNodes[0], 'color')).toBe(getStyleProp(latestNodes[1], 'color'));
+
+      // Count lines share identical typography too.
+      // Match only the "N goal(s)" / "N entry|entries" summary-count nodes (not unrelated UI text).
+      const goalCount = root.findAllByType('Text').find(t => {
         const c = t.props.children;
         const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
-        return flat.includes('entr') && flat.includes('Latest:');
+        return /^\d+ goals?$/.test(flat.trim());
       });
-      expect(goalSummary).toBeTruthy();
-      expect(weightSummary).toBeTruthy();
-      expect(getStyleProp(goalSummary, 'fontSize')).toBe(getStyleProp(weightSummary, 'fontSize'));
-      expect(getStyleProp(goalSummary, 'fontWeight')).toBe(getStyleProp(weightSummary, 'fontWeight'));
-      expect(getStyleProp(goalSummary, 'color')).toBe(getStyleProp(weightSummary, 'color'));
+      const weightCount = root.findAllByType('Text').find(t => {
+        const c = t.props.children;
+        const flat = Array.isArray(c) ? c.join('') : String(c ?? '');
+        return /^\d+ entr(y|ies)$/.test(flat.trim());
+      });
+      expect(goalCount).toBeTruthy();
+      expect(weightCount).toBeTruthy();
+      expect(getStyleProp(goalCount, 'fontSize')).toBe(getStyleProp(weightCount, 'fontSize'));
+      expect(getStyleProp(goalCount, 'fontWeight')).toBe(getStyleProp(weightCount, 'fontWeight'));
+      expect(getStyleProp(goalCount, 'color')).toBe(getStyleProp(weightCount, 'color'));
     });
 
     test('Weight History hides its column headers when collapsed, shows them when expanded', () => {

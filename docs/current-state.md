@@ -396,11 +396,12 @@ The real native app path now has a modular React Native shell:
   the live header row. When expanded, the column labels live in that row with
   the collapse chevron at the trailing edge; when collapsed, the row swaps to
   the compact summary with the same trailing control cell. Goal History sits
-  below Trends and stays collapsed by default; its collapsed summary reads
-  count-first as `{n} goals · Latest: {outcome}`, where the latest archived
-  goal's result renders as bold `Success` in success/green when met, bold
-  `Missed` in error/red when not, and neutral when there is no completed weight
-  to judge (via the same `isGoalMet` check used for End Weight coloring).
+  below Trends and stays collapsed by default; its collapsed summary presents a
+  two-line count/latest stack carrying `{n} goals` plus `Latest: {outcome}`,
+  where the latest archived goal's result renders as bold `Success` in
+  success/green when met, bold `Missed` in error/red when not, and neutral when
+  there is no completed weight to judge (via the same `isGoalMet` check used for
+  End Weight coloring).
   The Trends card now colors trend direction in a goal-direction-aware way so
   gain and loss goals do not invert success/error meaning; when no active goal
   is set it still applies visible directional color to `↑ Gaining` / `↓ Losing`
@@ -423,11 +424,12 @@ The real native app path now has a modular React Native shell:
   separated row directly under the header when the icon is tapped; tapping the
   icon while collapsed expands the panel and shows that filter row in one step,
   and toggling the icon off or clearing the range closes and clears it. When
-  collapsed it shows a count-first summary reading `{n} entries · Latest:
-  {bold weight} on {date}`, with Goal History and Weight History sharing the
-  same column flex ratios, label/value/date typography, row padding, divider
-  treatment, and trailing control-cell width, without changing saved weight
-  calculations or persistence. A failed weight-entry load
+  collapsed it uses the same two-line count/latest stack as Goal History,
+  carrying `{n} entries` plus `Latest: {bold weight} on {date}`, with Goal
+  History and Weight History sharing the same column flex ratios,
+  label/value/date typography, row padding, divider treatment, and trailing
+  control-cell width, without changing saved weight calculations or persistence.
+  A failed weight-entry load
   now surfaces a retryable `ErrorBanner` at the top of the screen instead of a
   silent empty screen, and a successful Retry clears the banner.
 - `mobile/screens/MoreScreen.js` now owns the native More menu plus the

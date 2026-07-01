@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.86.2 - 2026-07-01
+
+- Issue #412: Polished the post-#411 Weight tab history panels so expanded
+  Goal History and Weight History headers align to the same visual grid, and
+  collapsed summaries no longer cram all content into one heavy inline sentence.
+  Both collapsed panels now use a calmer two-line count/latest treatment with
+  matched typography and reserved trailing controls, while preserving existing
+  summary meaning, outcome coloring, date filtering, collapse behavior, saved
+  calculations, and persistence.
+
 ## 0.86.1 - 2026-07-01
 
 - Issue #411: Fixed the broken post-#410 Weight tab history panel presentation

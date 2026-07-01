@@ -29,6 +29,8 @@ const HISTORY_LABEL_WEIGHT = '700';
 const HISTORY_SUMMARY_SIZE = 15;
 const HISTORY_SUMMARY_WEIGHT = '600';
 const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
+const HISTORY_SUMMARY_COUNT_SIZE = 12;
+const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
 const historyPanel = StyleSheet.create({
   card: {
@@ -133,6 +135,28 @@ const historyPanel = StyleSheet.create({
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
     color: Colors.text,
+  },
+  summaryStack: {
+    flex: 1,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  summaryCount: {
+    fontSize: HISTORY_SUMMARY_COUNT_SIZE,
+    fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
+    color: Colors.textMuted,
+  },
+  summaryLatest: {
+    fontSize: HISTORY_SUMMARY_SIZE,
+    fontWeight: HISTORY_SUMMARY_WEIGHT,
+    color: Colors.textMuted,
+  },
+  columnLabelCenter: {
+    textAlign: 'center',
+  },
+  columnLabelRight: {
+    textAlign: 'right',
   },
 });
 
@@ -265,24 +289,28 @@ export function WeightHistoryList({
         {collapsed ? (
           <View style={s.headerContent}>
             {filteredEntries.length === 0 ? (
-              <Text style={s.summaryText}>0 entries</Text>
+              <Text style={s.summaryCount}>0 entries</Text>
             ) : (
-              <Text style={s.summaryText} numberOfLines={1}>
-                {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
-                {' · Latest: '}
-                <Text style={s.summaryEmphasis}>
-                  {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+              <View style={s.summaryStack}>
+                <Text style={s.summaryCount}>
+                  {`${filteredEntries.length} ${filteredEntries.length === 1 ? 'entry' : 'entries'}`}
                 </Text>
-                {' on '}
-                {formatDate(filteredEntries[0].logged_at)}
-              </Text>
+                <Text style={s.summaryLatest} numberOfLines={1}>
+                  {'Latest: '}
+                  <Text style={s.summaryEmphasis}>
+                    {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+                  </Text>
+                  {' on '}
+                  {formatDate(filteredEntries[0].logged_at)}
+                </Text>
+              </View>
             )}
           </View>
         ) : (
           <View style={s.headerContent}>
             <Text style={[s.columnLabel, s.col1]}>Weight</Text>
-            <Text style={[s.columnLabel, s.col2]}>Change</Text>
-            <Text style={[s.columnLabel, s.col3]}>Date</Text>
+            <Text style={[s.columnLabel, s.col2, s.columnLabelCenter]}>Change</Text>
+            <Text style={[s.columnLabel, s.col3, s.columnLabelRight]}>Date</Text>
           </View>
         )}
         <View style={s.controlCell}>
