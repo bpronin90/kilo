@@ -158,6 +158,16 @@ const historyPanel = StyleSheet.create({
   columnLabelRight: {
     textAlign: 'right',
   },
+  dateHeaderGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  dateHeaderFilterBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 function parseLocalDate(dateStr) {
@@ -277,9 +287,9 @@ export function WeightHistoryList({
 
   return (
     <View style={s.card}>
-      {/* Header row IS the column-header / summary row: content on the left, the
-          trailing control cell (filter icon + collapse chevron) at the far
-          right. No separate empty chevron strip (#411). */}
+      {/* Header row IS the column-header / summary row. In expanded state the
+          filter icon groups with Date; in collapsed state it stays in the
+          trailing control cell because no Date header is visible. */}
       <Pressable
         onPress={() => setCollapsed(c => !c)}
         accessibilityRole="button"
@@ -310,24 +320,43 @@ export function WeightHistoryList({
           <View style={s.headerContent}>
             <Text style={[s.columnLabel, s.col1]}>Weight</Text>
             <Text style={[s.columnLabel, s.col2, s.columnLabelCenter]}>Change</Text>
-            <Text style={[s.columnLabel, s.col3, s.columnLabelRight]}>Date</Text>
+            <View style={[s.col3, s.dateHeaderGroup]} testID="weight-history-date-header">
+              <Pressable
+                onPress={toggleDateFilter}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Filter by date range"
+                testID="weight-history-date-filter-header"
+                style={s.dateHeaderFilterBtn}
+              >
+                <MaterialIcons
+                  name="date-range"
+                  size={18}
+                  color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+                  accessible={false}
+                />
+              </Pressable>
+              <Text style={[s.columnLabel, s.columnLabelRight]}>Date</Text>
+            </View>
           </View>
         )}
         <View style={s.controlCell}>
-          <Pressable
-            onPress={toggleDateFilter}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Filter by date range"
-            style={s.controlIconBtn}
-          >
-            <MaterialIcons
-              name="date-range"
-              size={18}
-              color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
-              accessible={false}
-            />
-          </Pressable>
+          {collapsed && (
+            <Pressable
+              onPress={toggleDateFilter}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Filter by date range"
+              style={s.controlIconBtn}
+            >
+              <MaterialIcons
+                name="date-range"
+                size={18}
+                color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+                accessible={false}
+              />
+            </Pressable>
+          )}
           <MaterialIcons
             name={collapsed ? 'expand-more' : 'expand-less'}
             size={18}

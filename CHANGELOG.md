@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.86.3 - 2026-07-01
+
+- Issue #413: Adjusted the Weight History expanded header so the calendar
+  filter icon now sits inside the Date column immediately before `DATE`, with
+  spacing, instead of occupying the trailing control cell. The expanded trailing
+  area now holds only the chevron, while the collapsed row still keeps the
+  calendar icon available and tapping it still expands the panel and reveals
+  the From/To filters.
+
 ## 0.86.2 - 2026-07-01
 
 - Issue #412: Polished the post-#411 Weight tab history panels so expanded
