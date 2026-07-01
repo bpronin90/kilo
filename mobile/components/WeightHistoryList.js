@@ -176,6 +176,13 @@ function parseLocalDate(dateStr) {
   return new Date(y, m - 1, d);
 }
 
+function toYMD(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function WebDateTextInput({ value, onChange, placeholder }) {
   return React.createElement('input', {
     type: 'text',
@@ -238,22 +245,12 @@ export function WeightHistoryList({
 
   const onFromChange = (event, selectedDate) => {
     setShowFromPicker(false);
-    if (event.type === 'set' && selectedDate) {
-      const y = selectedDate.getFullYear();
-      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
-      const d = String(selectedDate.getDate()).padStart(2, '0');
-      setFromDate(`${y}-${m}-${d}`);
-    }
+    if (event.type === 'set' && selectedDate) setFromDate(toYMD(selectedDate));
   };
 
   const onToChange = (event, selectedDate) => {
     setShowToPicker(false);
-    if (event.type === 'set' && selectedDate) {
-      const y = selectedDate.getFullYear();
-      const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
-      const d = String(selectedDate.getDate()).padStart(2, '0');
-      setToDate(`${y}-${m}-${d}`);
-    }
+    if (event.type === 'set' && selectedDate) setToDate(toYMD(selectedDate));
   };
 
   const clearRange = () => {

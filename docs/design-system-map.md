@@ -167,7 +167,7 @@ The constants are **duplicated, not imported**, in both files so each panel stay
 inside its own `Allowed Files`. WeightHistoryList defines them as
 `HISTORY_*` constants + `historyPanel` StyleSheet (`WeightHistoryList.js`
 `17-171`); WeightScreen mirrors them in local StyleSheet `hp`
-(`WeightScreen.js` `583+`). **Known exception:** these two must be kept
+(`WeightScreen.js` `567+`). **Known exception:** these two must be kept
 numerically identical by hand.
 
 | Element | Property | Value |
@@ -387,58 +387,60 @@ weeks no longer shows a day twice (#383/#385).
 
 ## Weight Screen
 
-Source: `mobile/screens/WeightScreen.js`
+Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
+`mobile/components/WeightTrendSection.js`, and
+`mobile/components/WeightGoalCard.js`.
 
 ### Input Card
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Input label | fontSize | `13` | `528` |
-| | fontWeight | `700` | `529` |
-| | color | `Colors.textMuted` | `530` |
-| Input field | fontSize | `16` | `539` |
-| | borderRadius | `16` | `533` |
-| | bg | `Colors.inputBackground` | `532` |
-| | border | `Colors.inputBorder` | `535` |
-| Save button | bg | `Colors.accent` | `809` |
-| | paddingVertical | `12` | `810` |
+| Input label | fontSize | `13` | `WeightScreen.js:480` |
+| | fontWeight | `700` | `WeightScreen.js:481` |
+| | color | `Colors.textMuted` | `WeightScreen.js:482` |
+| Input field | fontSize | `16` | `WeightScreen.js:491` |
+| | borderRadius | `16` | `WeightScreen.js:486` |
+| | bg | `Colors.inputBackground` | `WeightScreen.js:485` |
+| | border | `Colors.inputBorder` | `WeightScreen.js:488` |
+| Save button | bg | `Colors.text` | `UI.js:339` |
+| | paddingVertical | `16` | `UI.js:341` |
 
 ### Trends Card
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card padding | `0` (merged sections) | `653-655` |
-| Section title | fontSize | `12` | `667` |
-| | fontWeight | `700` | `668` |
-| | textTransform | `uppercase` | `669` |
-| | letterSpacing | `0.5` | `670` |
-| Trend value | fontSize | `20` | `682` |
-| | fontWeight | `900` | `683` |
-| | color | `Colors.text` | `684` |
-| Trend label | fontSize | `10` | `688` |
-| | fontWeight | `700` | `689` |
-| | textTransform | `uppercase` | `690` |
-| | letterSpacing | `0.5` | `691` |
-| Section divider | borderBottomWidth `1` / `Colors.cardBorder` | | `662-663` |
+| Card padding | `0` (merged sections) | `WeightScreen.js:521-525` |
+| Section title | fontSize | `12` | `WeightTrendSection.js:72` |
+| | fontWeight | `700` | `WeightTrendSection.js:73` |
+| | textTransform | `uppercase` | `WeightTrendSection.js:75` |
+| | letterSpacing | `0.5` | `WeightTrendSection.js:76` |
+| Trend value | fontSize | `20` | `UI.js:11` |
+| | fontWeight | `900` | `UI.js:11` |
+| | color | `Colors.text` | `WeightTrendSection.js:96` |
+| Trend label | fontSize | `11` | `WeightTrendSection.js:99` |
+| | fontWeight | `700` | `WeightTrendSection.js:101` |
+| | textTransform | `uppercase` | `WeightTrendSection.js:102` |
+| | letterSpacing | `0.5` | `WeightTrendSection.js:103` |
+| Section divider | borderBottomWidth `1` / `Colors.cardBorder` | | `WeightTrendSection.js:67-69` |
 
 ### Goal Display
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Goal title | fontSize | `12` | `709` |
-| | fontWeight | `700` | `710` |
-| | textTransform | `uppercase` | `711` |
-| Goal value (target weight, date) | fontSize | `24` | `748` |
-| | fontWeight | `900` | `749` |
-| | color | `Colors.accent` | `750` |
-| Goal label | fontSize | `12` | `753` |
-| | fontWeight | `700` | `754` |
-| | textTransform | `uppercase` | `755` |
-| | letterSpacing | `0.5` | `756` |
-| Derived row label | fontSize | `15` | `775` |
-| | fontWeight | `600` | `776` |
-| Derived row value | fontSize | `16` | `779` |
-| | fontWeight | `700` | `780` |
+| Goal value (target weight) | fontSize | `28` | `WeightGoalCard.js:352` |
+| | fontWeight | `900` | `WeightGoalCard.js:353` |
+| | color | `Colors.accent` | `WeightGoalCard.js:354` |
+| Goal value (target date) | fontSize | `28` | `WeightGoalCard.js:357` |
+| | fontWeight | `900` | `WeightGoalCard.js:358` |
+| | color | `Colors.text` | `WeightGoalCard.js:359` |
+| Goal label | fontSize | `12` | `WeightGoalCard.js:362` |
+| | fontWeight | `700` | `WeightGoalCard.js:364` |
+| | textTransform | `uppercase` | `WeightGoalCard.js:365` |
+| | letterSpacing | `0.5` | `WeightGoalCard.js:366` |
+| Derived row label | fontSize | `12` | `WeightGoalCard.js:405` |
+| | fontWeight | `700` | `WeightGoalCard.js:407` |
+| Derived row value | fontSize | `16` | `WeightGoalCard.js:412` |
+| | fontWeight | `700` | `WeightGoalCard.js:413` |
 
 ### History List / Goal History
 
