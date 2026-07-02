@@ -57,7 +57,6 @@ docs/
     mvp-v4.5-roadmap.md ← archived MVP4.5 roadmap
     mvp-refine-roadmap.md ← archived MVP-Refine roadmap
     mvp-fatigue-roadmap.md ← archived Session Check-In / Fatigue roadmap
-    closeout-script-spec.md ← archived design spec for scripts/close-issue.sh (now built)
     samples/           ← raw workout log files used during parser development
     browser-prototype/ ← archived frozen browser prototype (Kilo.html, src/, tests/)
 
@@ -121,7 +120,6 @@ supabase/
     account-lifecycle.test.sql ← pgTAP requester-isolation checks
 
 scripts/
-  close-issue.sh       ← automated issue-closeout script per docs/archive/closeout-script-spec.md
   sync-version.mjs     ← syncs mobile version fields from root package.json
   deploy-kilo-functions.sh ← deploys kilo Edge Functions to the tracked remote project ref
 ```
@@ -210,5 +208,4 @@ npm --prefix mobile test
 | `docs/archive/mvp-v4.5-roadmap.md` | Archived MVP4.5 roadmap. Complete; retained as the cumulative reference for the app state through MVP4.5. |
 | `docs/archive/mvp-refine-roadmap.md` | Archived roadmap for the MVP-Refine pass, which ran after MVP4.5. Complete and retained as a historical reference. |
 | `docs/archive/mvp-fatigue-roadmap.md` | Archived roadmap for the Session Check-In / Fatigue feature pass. Complete and retained as a historical reference. |
-| `docs/archive/closeout-script-spec.md` | Archived design spec for `scripts/close-issue.sh`. The script is built; the spec is retained as historical reference. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.86.7 - 2026-07-01
+
+- Issue #416: Moved the issue-closeout script and its archived spec out of
+  version control to join the local-only agent workflow layer (gitignored,
+  like the agent instruction files), and removed their references from
+  tracked docs. The script's gh 2.45.0 compatibility fix (unsupported
+  `repository` JSON field) is applied in the local copy.
+
 ## 0.86.6 - 2026-07-01
 
 - Issue #415: Docs cleanup pass. README now describes the real local-first +

@@ -66,7 +66,7 @@ npm --prefix mobile test
 | `mobile/screens/` | Native screens: Home, Log, Weight, Analytics, More |
 | `mobile/tests/` | Jest test suites for parser, data, storage, and screen coverage |
 | `supabase/` | Tracked Supabase config, Edge Functions (`account-export`, `account-delete`), and pgTAP DB tests |
-| `scripts/` | Repo maintenance/deploy scripts: `sync-version.mjs`, `close-issue.sh`, `deploy-kilo-functions.sh` |
+| `scripts/` | Repo maintenance/deploy scripts: `sync-version.mjs`, `deploy-kilo-functions.sh` |
 | `docs/` | Current-state, architecture, testing/QA, roadmap, and repo-structure docs |
 | `docs/archive/browser-prototype/` | Archived legacy browser prototype (reference only) |
 

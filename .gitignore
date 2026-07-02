@@ -11,3 +11,7 @@ AGENTS.md
 CODEX.md
 CLAUDE.md
 GEMINI.md
+
+# Local-only agent workflow tooling
+scripts/close-issue.sh
+docs/archive/closeout-script-spec.md
