@@ -37,10 +37,10 @@ Roadmap status:
 
 - MVP4.0 through MVP4.5 are complete roadmap passes. Their roadmap documents
   are archived under `docs/archive/`.
-- The MVP-Refine pass (`docs/mvp-refine-roadmap.md`) ran after MVP4.5 and is
-  also complete.
-- `docs/mvp-v4.5-roadmap.md` tracks the cumulative state of the app through
-  the end of the MVP4.5 pass and remains as a reference document.
+- The MVP-Refine pass (`docs/archive/mvp-refine-roadmap.md`) ran after MVP4.5
+  and is also complete.
+- `docs/archive/mvp-v4.5-roadmap.md` tracks the cumulative state of the app
+  through the end of the MVP4.5 pass and remains as a reference document.
 - `docs/backend-roadmap.md` is the active public self-serve planning roadmap.
   It sequences the `backend-v1` issue series (#310-#324) for moving from
   local-only personal use to a web-first Supabase product while preserving the

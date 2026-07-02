@@ -62,22 +62,24 @@ Two types of attendance flag are derived alongside skip markers:
 
 Attendance flags are derived on save and stored as `attendance_flags` on the note object.
 
-### Rep Drop-Off
+### Session Check-In
 
-> Where you see it: Log screen — dismissible nudge chip under each tracked exercise
+> Where you see it: Log screen — check-in prompt after saving a rough session (flagged exercises highlighted); Analytics screen — Fatigue section
 
-For each tracked exercise, looks at every logged session's working sets (weight > 0, reps > 0). Takes only sets at the heaviest weight used in that session. Compares reps on the first set vs the last set at that weight.
+The old per-exercise "hit a wall" nudge chip has been removed. In its place, saving the current routine runs `deriveSessionCheckIn` over the latest session column for tracked exercises that have prior history. Four detectors can flag the session as rough:
 
-| Condition | Flag | Nudge copy |
-|-----------|------|------------|
-| Reps dropped by 3 or more | hit_wall | "Last time you hit a wall — stay at this weight." |
-| Drop less than 3, or fewer than 2 sets at heaviest weight | null | (no nudge) |
+| Detector | Condition |
+|----------|-----------|
+| skipped | 2 or more exercises skipped in the latest session, and more than 1 above the historical per-session minimum |
+| volume_drop | 2 or more sets lost more than 2 reps vs the most recent prior session at the same weight; reports the tonnage decline percentage |
+| collapse | Intra-session rep drop-off: among working sets at the session's heaviest weight, last-set reps fell 2 or more below first-set reps (needs at least 2 sets at that weight) |
+| day_skip | The whole latest session day was skipped |
 
-Rep drop-off flags are derived on save from all notes aggregated, stored as `rep_drop_off_flags` on the note object.
+Brand-new exercises with no logged history are never flagged. If any detector fires, the flagged exercises are highlighted and a check-in prompt asks how the session went: **"I'm okay"** (with quick reasons like No time / Short session) records `status: 'ok'`; **"Not great"** opens reason chips plus optional free text and records `status: 'rough'`; dismissing records `status: null`. The response is persisted on the note as `session_checkins[sessionIndex]` with `reasons`, optional `note`, and `responded_at`.
 
-**Nudge dismissals** are in-memory only — dismissing a nudge hides it for the current session, but it reappears the next time the Log screen mounts.
+The Analytics screen's Fatigue section renders the check-in history via `deriveCheckInHistory`: date, issues logged, exercises skipped, and volume decline per rough session.
 
-**Example:** Bench at 185 lb: sets of 8, 7, 5 reps. First set 8, last set 5, drop = 3 → hit_wall.
+**Example (collapse):** Bench at 185 lb: sets of 8, 7, 5 reps. First set at heaviest weight 8 reps, last set 5, drop = 3 ≥ 2 → collapse detector fires.
 
 ### Estimated 1RM / 1k Total
 
@@ -260,7 +262,7 @@ Determines what "current weight" means for goal guidance, in priority order:
 
 > Where you see it: Log screen — Track toggle per exercise
 
-A toggle map stored in AsyncStorage under `kilo_tracked_lifts`. Controls which exercises the app monitors for classifications, rep drop-off, and analytics.
+A toggle map stored in AsyncStorage under `kilo_tracked_lifts`. Controls which exercises the app monitors for classifications, session check-ins, and analytics.
 
 The save path unions default tracked names (exercises in the catalog marked with `po: true`) with any user-toggled names to produce the full tracked names list.
 
@@ -278,7 +280,7 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 |----------|--------|
 | What does "Weeks In" mean? | The depth of your deepest exercise history, including skipped sessions and legacy plain-row history. It measures how far into the current routine you are. |
 | Why does my classification say Steady when I feel like I'm progressing? | Classifications compare total reps at your top weight between your two most recent logged sessions. If you increased reps on some sets but decreased on others such that the total stayed the same, it reads as Steady. |
-| What triggers a "hit wall" nudge? | When the last set at your heaviest weight in a session has 3+ fewer reps than the first set at that weight. It means fatigue cost you significant reps within the same session. |
+| What triggers a session check-in? | Saving a session where tracked exercises show a rough pattern: unusually many skips, a whole skipped day, sets losing 3+ reps vs your last session at the same weight, or an intra-session rep collapse at your heaviest weight. The app highlights the affected exercises and asks how the session went. |
 | How is my 1k total calculated? | It sums the estimated 1-rep max (Epley formula) of your three selected compound lifts. If any of the three has no logged data, the total shows as "—". |
 | How is estimated 1RM derived? | Using the Epley formula: weight × (1 + reps / 30). It estimates the maximum weight you could lift for a single rep based on a multi-rep set. |
 | What does Kilo Max measure? | It averages all your working-set Epley 1RM estimates for an exercise, then multiplies by a fatigue multiplier (default 1.07). It's a fatigue-adjusted strength estimate, not a true max. |
@@ -292,11 +294,10 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 
 | Lifecycle | Items |
 |-----------|-------|
-| **Derived on save** (stored on note) | exercise_classifications, skip_markers, attendance_flags, rep_drop_off_flags |
-| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations |
+| **Derived on save** (stored on note) | exercise_classifications, skip_markers, attendance_flags |
+| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations, session check-in detection |
 | **Global persisted** (own AsyncStorage key) | tracked lifts map |
-| **Persisted on note** (user-set) | one_k_exercises, raw_text |
-| **In-memory only** (resets on remount) | rep drop-off nudge dismissals |
+| **Persisted on note** (user-set) | one_k_exercises, raw_text, session_checkins (check-in responses) |
 
 ---
 

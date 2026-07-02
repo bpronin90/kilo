@@ -77,7 +77,7 @@ flagged[], detectors[], exercises_skipped, volume_decline_pct, responded_at } } 
 
 # MVP Fatigue Roadmap
 
-Status: active. This roadmap defines the Session Check-In / Fatigue feature pass.
+Status: complete and historical. This roadmap defined the Session Check-In / Fatigue feature pass.
 
 Rules for this pass:
 
