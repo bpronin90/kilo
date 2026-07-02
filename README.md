@@ -1,13 +1,17 @@
 # Kilo
 
-Kilo is a local-only fitness tracking app built with Expo/React Native.
+Kilo is a local-first fitness tracking app with optional cloud sync, built with Expo/React Native.
 
 - `mobile/` is the active app path. It persists user-created entries locally
   via AsyncStorage-backed modules under `mobile/storage/`.
 - The legacy browser prototype is archived under
   `docs/archive/browser-prototype/` for reference.
 
-There is no backend or Supabase wiring. All persistence is local.
+Since v0.70.0 a Supabase backend exists: a `kilo` schema with RLS, an
+auth/session client, and a storage-seam cloud adapter. The app stays
+local-first — with no env config it runs entirely on AsyncStorage. Cloud mode
+activates only when `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+are provided, and signed-out users stay local-only either way.
 
 ## Tech Stack
 
@@ -18,7 +22,7 @@ There is no backend or Supabase wiring. All persistence is local.
 | Persistence | Local AsyncStorage-backed storage modules under `mobile/storage/` |
 | Testing | Jest suites under `mobile/tests/`, run with `npm --prefix mobile test` |
 | Native packaging | EAS Build for physical-device Android preview builds |
-| Backend/services | None; the app is local-only and has no Supabase wiring |
+| Backend/services | Optional Supabase backend (`kilo` schema with RLS, auth/session client, cloud storage adapter); local-only when no env config is set |
 
 ## Run The Native App
 
@@ -61,6 +65,8 @@ npm --prefix mobile test
 | `mobile/lib/data.js` | Exercise catalog, entry factories, and shared analytics helpers |
 | `mobile/screens/` | Native screens: Home, Log, Weight, Analytics, More |
 | `mobile/tests/` | Jest test suites for parser, data, storage, and screen coverage |
+| `supabase/` | Tracked Supabase config, Edge Functions (`account-export`, `account-delete`), and pgTAP DB tests |
+| `scripts/` | Repo maintenance/deploy scripts: `sync-version.mjs`, `close-issue.sh`, `deploy-kilo-functions.sh` |
 | `docs/` | Current-state, architecture, testing/QA, roadmap, and repo-structure docs |
 | `docs/archive/browser-prototype/` | Archived legacy browser prototype (reference only) |
 
@@ -72,7 +78,8 @@ npm --prefix mobile test
 | [`docs/architecture.md`](docs/architecture.md) | Script load order, parser paths, persistence model, and global state |
 | [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Automated coverage inventory and manual smoke checklist |
 | [`docs/repo-structure.md`](docs/repo-structure.md) | File map, structural verdict, and repo-orientation notes |
-| [`docs/roadmap-mvp-refine.md`](docs/roadmap-mvp-refine.md) | Active stability and structural cleanup roadmap |
+| [`docs/backend-roadmap.md`](docs/backend-roadmap.md) | Active roadmap for the web-first Supabase transition |
+| [`docs/tester-guide.md`](docs/tester-guide.md) | Tester-facing guide for installing and exercising preview builds |
 
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
 what is implemented and what still gates launch validation.

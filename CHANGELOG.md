@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.86.6 - 2026-07-01
+
+- Issue #415: Docs cleanup pass. README now describes the real local-first +
+  optional Supabase cloud posture instead of the stale "no backend" claims and
+  links the active backend roadmap and new tester guide. Completed roadmaps
+  (MVP4.5, MVP-Refine, Fatigue) and the closeout-script spec moved to
+  `docs/archive/` with inbound references fixed. `docs/repo-structure.md`
+  synced with the actual doc/script/mobile file set.
+  `docs/calculations-reference.md` updated to describe the shipped Session
+  Check-In detectors in place of the removed "hit a wall" nudge. Added
+  `docs/tester-guide.md` for external preview-build testers.
+
 ## 0.86.5 - 2026-07-01
 
 - Issue #414: Refactored the largest weight-history production files by

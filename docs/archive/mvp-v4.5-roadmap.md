@@ -1,7 +1,7 @@
 # MVP4.5 Roadmap
 
-Status: active stabilization roadmap. Phase 3 / Task 9 is complete; Phase 4
-contract hardening remains in progress.
+Status: complete and historical. This pass finished before the MVP-Refine
+pass; retained as a cumulative reference for the app state through MVP4.5.
 
 This roadmap starts after MVP4.0 and is intentionally narrower in one sense
 and deeper in another:

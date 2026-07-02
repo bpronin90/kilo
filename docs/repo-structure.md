@@ -39,12 +39,13 @@ docs/
   architecture.md
   testing-and-qa.md
   backend-roadmap.md
-  mvp-v4.5-roadmap.md
-  mvp-refine-roadmap.md
+  backend-activation.md ← backend activation runbook
+  backend-schema.md    ← cloud schema and source-of-truth policy
+  ui-design-rules.md   ← adopted UI design rules; companion to design-system-map.md
   design-system-map.md ← cross-screen style audit: every color, font, spacing token with file and line
   calculations-reference.md
-  closeout-script-spec.md
   phone-runbook.md
+  tester-guide.md      ← tester-facing preview install guide
   repo-structure.md    ← this file
   archive/
     original-spec.md   ← original product spec; superseded by docs/ above
@@ -53,6 +54,10 @@ docs/
     mvp-v3-roadmap.md  ← archived MVP3 roadmap
     mvp-v3.5-roadmap.md ← archived MVP3.5 roadmap
     mvp-v4-roadmap.md  ← archived MVP4 roadmap
+    mvp-v4.5-roadmap.md ← archived MVP4.5 roadmap
+    mvp-refine-roadmap.md ← archived MVP-Refine roadmap
+    mvp-fatigue-roadmap.md ← archived Session Check-In / Fatigue roadmap
+    closeout-script-spec.md ← archived design spec for scripts/close-issue.sh (now built)
     samples/           ← raw workout log files used during parser development
     browser-prototype/ ← archived frozen browser prototype (Kilo.html, src/, tests/)
 
@@ -69,6 +74,7 @@ mobile/
     ScreenShell.js     ← native screen wrapper
     TabBar.js          ← native tab bar
     UI.js              ← shared native UI primitives
+    LogEmptyState.js   ← Log-tab empty state (intro copy, New Routine action)
     SessionCheckInModal.js ← fatigue session check-in prompt modal (Log + Analytics)
   lib/
     data.js            ← compatibility barrel for shared data exports
@@ -103,6 +109,7 @@ mobile/
     analytics-screen.test.js ← native Analytics screen consumer checks
     storage.test.js    ← native AsyncStorage tests
     weight-goal-ui.test.js ← native Weight goal rendering checks
+    account-lifecycle-ui.test.js ← account export/delete hook and UI tests
 
 supabase/
   config.toml           ← project-local config, exposed schemas, and Edge Function JWT settings
@@ -114,6 +121,8 @@ supabase/
     account-lifecycle.test.sql ← pgTAP requester-isolation checks
 
 scripts/
+  close-issue.sh       ← automated issue-closeout script per docs/archive/closeout-script-spec.md
+  sync-version.mjs     ← syncs mobile version fields from root package.json
   deploy-kilo-functions.sh ← deploys kilo Edge Functions to the tracked remote project ref
 ```
 
@@ -184,12 +193,13 @@ npm --prefix mobile test
 | `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
 | `docs/backend-roadmap.md` | Active public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
-| `docs/mvp-v4.5-roadmap.md` | Roadmap for the MVP4.5 pass, covering data stability, shared derivation ownership, test hardening, and app-shell consistency. |
-| `docs/mvp-refine-roadmap.md` | Roadmap for the MVP-Refine pass, which ran after MVP4.5. Now complete and retained as a historical reference. |
+| `docs/backend-activation.md` | Backend activation runbook: env config, schema application, and cloud-mode verification steps. |
+| `docs/backend-schema.md` | Cloud `kilo` schema documentation and source-of-truth policy. |
+| `docs/ui-design-rules.md` | Adopted UI design rules (spacing, alignment, panels, history lists, collapse/filter, analytics hierarchy, anti-patterns). Companion to `docs/design-system-map.md`. |
 | `docs/design-system-map.md` | Cross-screen style audit: every color token, font size, spacing value, and card treatment with file paths and line numbers. Reference for manual visual refinement. |
 | `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |
-| `docs/closeout-script-spec.md` | Spec for the automated closing-procedure script used by Codex during issue closeout. |
 | `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
+| `docs/tester-guide.md` | Tester-facing guide for installing and exercising preview builds. |
 | `docs/repo-structure.md` | This file. |
 | `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by current docs. |
 | `docs/archive/mvp-roadmap.md` | Archived MVP1 roadmap. Superseded by subsequent passes. |
@@ -197,4 +207,8 @@ npm --prefix mobile test
 | `docs/archive/mvp-v3-roadmap.md` | Archived MVP3 roadmap. Superseded by subsequent passes. |
 | `docs/archive/mvp-v3.5-roadmap.md` | Archived MVP3.5 roadmap. Superseded by subsequent passes. |
 | `docs/archive/mvp-v4-roadmap.md` | Archived MVP4 roadmap. Superseded by subsequent passes. |
+| `docs/archive/mvp-v4.5-roadmap.md` | Archived MVP4.5 roadmap. Complete; retained as the cumulative reference for the app state through MVP4.5. |
+| `docs/archive/mvp-refine-roadmap.md` | Archived roadmap for the MVP-Refine pass, which ran after MVP4.5. Complete and retained as a historical reference. |
+| `docs/archive/mvp-fatigue-roadmap.md` | Archived roadmap for the Session Check-In / Fatigue feature pass. Complete and retained as a historical reference. |
+| `docs/archive/closeout-script-spec.md` | Archived design spec for `scripts/close-issue.sh`. The script is built; the spec is retained as historical reference. |
 | `docs/archive/samples/` | Raw workout log files used as reference input during parser development. No active role in code or tests. |
