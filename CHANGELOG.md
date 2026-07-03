@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.86.8 - 2026-07-02
+
+- Issue #418: Supabase advisor cleanup: kilo RLS auth_rls_initplan warnings + rate_limit_hits primary key
+
+
 ## 0.86.7 - 2026-07-01
 
 - Issue #416: Moved the issue-closeout script and its archived spec out of
