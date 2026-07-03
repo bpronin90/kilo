@@ -46,13 +46,13 @@ alter table kilo.archived_weight_goals enable row level security;
 -- Owner-scoped policies
 -- ---------------------------------------------------------------------------
 create policy "archived_weight_goals_select_own" on kilo.archived_weight_goals
-  for select to authenticated using (user_id = auth.uid());
+  for select to authenticated using (user_id = (select auth.uid()));
 create policy "archived_weight_goals_insert_own" on kilo.archived_weight_goals
-  for insert to authenticated with check (user_id = auth.uid());
+  for insert to authenticated with check (user_id = (select auth.uid()));
 create policy "archived_weight_goals_update_own" on kilo.archived_weight_goals
-  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 create policy "archived_weight_goals_delete_own" on kilo.archived_weight_goals
-  for delete to authenticated using (user_id = auth.uid());
+  for delete to authenticated using (user_id = (select auth.uid()));
 
 -- ---------------------------------------------------------------------------
 -- Grants
