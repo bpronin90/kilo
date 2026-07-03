@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.86.10 - 2026-07-02
+
+- Issue #421: Attach set_updated_at trigger to kilo.archived_weight_goals (invariant gap found in #419)
+
+
 ## 0.86.9 - 2026-07-02
 
 - Issue #417: web:smoke orphans its expo serve child; port 8099 stays occupied and breaks subsequent runs
