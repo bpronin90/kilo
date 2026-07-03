@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.86.9 - 2026-07-02
+
+- Issue #417: web:smoke orphans its expo serve child; port 8099 stays occupied and breaks subsequent runs
+
+
 ## 0.86.8 - 2026-07-02
 
 - Issue #418: Supabase advisor cleanup: kilo RLS auth_rls_initplan warnings + rate_limit_hits primary key

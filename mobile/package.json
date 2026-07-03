@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.86.8",
+  "version": "0.86.9",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
@@ -11,7 +11,7 @@
     "web": "expo start --web",
     "export:web": "expo export --platform web",
     "serve:web": "expo serve --port 8081",
-    "smoke:web": "npm run export:web && node -e \"const{spawn}=require('child_process');const fs=require('fs');const path=require('path');const dist=path.join(process.cwd(),'dist');if(!fs.existsSync(path.join(dist,'index.html'))){console.error('SMOKE FAIL: dist/index.html missing; web export did not emit a single-output build (likely the Task 4 / #313 app.json web.bundler=metro + web.output=single config is not present).');process.exit(1);}const srv=spawn('npx',['expo','serve','--port','8099'],{stdio:'ignore'});const stop=c=>{try{srv.kill();}catch(e){}process.exit(c);};const start=Date.now();(function poll(){if(Date.now()-start>30000){console.error('SMOKE FAIL: served export did not respond within 30s');return stop(1);}fetch('http://127.0.0.1:8099/').then(r=>r.text().then(b=>({s:r.status,b}))).then(({s,b})=>{const ok=s===200&&/id=.root./.test(b)&&/_expo\\/static\\/js/.test(b);if(ok){console.log('SMOKE PASS: web export served (HTTP 200, root mount node + _expo JS bundle present). Pre-flight only; does not prove the app boots or reads local data.');return stop(0);}console.error('SMOKE FAIL: served page missing entrypoint markers (HTTP '+s+').');return stop(1);}).catch(()=>setTimeout(poll,500));})();\"",
+    "smoke:web": "npm run export:web && node -e \"const{spawn}=require('child_process');const fs=require('fs');const path=require('path');const net=require('net');const dist=path.join(process.cwd(),'dist');if(!fs.existsSync(path.join(dist,'index.html'))){console.error('SMOKE FAIL: dist/index.html missing; web export did not emit a single-output build (likely the Task 4 / #313 app.json web.bundler=metro + web.output=single config is not present).');process.exit(1);}const probe=net.createServer();probe.once('error',()=>{console.error('SMOKE FAIL: port 8099 is already in use (stale expo serve from a previous run?); free the port and rerun.');process.exit(1);});probe.once('listening',()=>probe.close(run));probe.listen(8099,'127.0.0.1');function run(){const srv=spawn('npx',['expo','serve','--port','8099'],{stdio:'ignore',detached:true});const stop=c=>{try{process.kill(-srv.pid);}catch(e){try{srv.kill();}catch(e2){}}process.exit(c);};const start=Date.now();(function poll(){if(Date.now()-start>30000){console.error('SMOKE FAIL: served export did not respond within 30s');return stop(1);}fetch('http://127.0.0.1:8099/').then(r=>r.text().then(b=>({s:r.status,b}))).then(({s,b})=>{const ok=s===200&&/id=.root./.test(b)&&/_expo\\/static\\/js/.test(b);if(ok){console.log('SMOKE PASS: web export served (HTTP 200, root mount node + _expo JS bundle present). Pre-flight only; does not prove the app boots or reads local data.');return stop(0);}console.error('SMOKE FAIL: served page missing entrypoint markers (HTTP '+s+').');return stop(1);}).catch(()=>setTimeout(poll,500));})();}\"",
     "test": "jest",
     "build:android:preview": "eas build --platform android --profile preview",
     "build:ios:simulator": "eas build --platform ios --profile ios-simulator",
