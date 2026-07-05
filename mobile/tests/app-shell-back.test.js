@@ -5,6 +5,11 @@ import App from '../App';
 
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 
+jest.mock('expo-updates', () => ({
+  useUpdates: jest.fn(() => ({ isUpdatePending: false })),
+  reloadAsync: jest.fn(),
+}));
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn().mockResolvedValue(null),
   setItem: jest.fn().mockResolvedValue(null),
