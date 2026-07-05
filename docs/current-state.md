@@ -971,7 +971,11 @@ and iOS output, plus the required platform identifiers (`android.package` and
 installable paths that do not depend on the developer machine staying on or
 serving a local Expo session.
 
-Android: the `preview` profile produces a plain `.apk` for sideloading.
+Android: the `preview` profile produces a plain `.apk` for sideloading. The
+`production` profile produces a Play Store `.aab` bound to the EAS
+`production` environment, which carries the `EXPO_PUBLIC_SUPABASE_*` variables
+so store builds are cloud-enabled (sign-in, sync, account lifecycle), and it
+auto-increments `versionCode` for repeat Play uploads (#425).
 
 iOS: two profiles are available:
 - `ios-simulator` — builds a Simulator `.app` bundle; no Apple Developer account
