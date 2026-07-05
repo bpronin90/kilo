@@ -17,7 +17,9 @@
       "android": {
         "buildType": "app-bundle"
       },
-      "channel": "production"
+      "channel": "production",
+      "environment": "production",
+      "autoIncrement": true
     },
     "ios-simulator": {
       "channel": "preview",
