@@ -448,6 +448,14 @@ retains non-test commands such as `npm run audit`.
 - verifies the mobile/web client never includes a service-role or secret key in
   fetch headers
 
+### `mobile/tests/app-update-banner.test.js`
+
+- rendered app-shell coverage for the global OTA update-pending banner in
+  `mobile/App.js` (`expo-updates` mocked)
+- verifies the banner is absent when no update is pending, present with the
+  "Update ready" / "Restart to apply" copy when `isUpdatePending` is true, and
+  that pressing the restart action calls `Updates.reloadAsync()`
+
 ### `mobile/tests/backup-screen.test.js`
 
 - rendered UI coverage for the `BackupScreen` import-confirm flow

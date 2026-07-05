@@ -758,7 +758,11 @@ continues to surface attribution, displayed version, copyright notice, and an
 OTA Diagnostics panel covering the EAS channel, runtime version, current
 bundle (embedded vs. applied update), update-available/pending state, and a
 manual update check that fetches available OTA updates and offers a restart
-action only after a new update is downloaded.
+action only after a new update is downloaded. In addition to that manual
+panel, the app shell now shows a global non-blocking "Update ready — Restart
+to apply" banner above the content area whenever a background-downloaded OTA
+update is pending, so a single launch plus one restart reaches the latest
+published update without visiting About (#426).
 
 ### Parser (`mobile/lib/parser.js`)
 

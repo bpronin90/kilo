@@ -1,6 +1,8 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useState, useRef } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, Alert, StatusBar } from 'react-native';
+import * as Updates from 'expo-updates';
+import { useUpdates } from 'expo-updates';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
@@ -64,6 +66,8 @@ export default function App() {
       if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
     };
   }, []);
+
+  const { isUpdatePending } = useUpdates();
 
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
@@ -337,6 +341,20 @@ export default function App() {
               </Pressable>
             </View>
           )}
+          {isUpdatePending && (
+            <View style={styles.updateBanner} testID="update-pending-banner">
+              <Text style={styles.updateBannerText}>Update ready</Text>
+              <Pressable
+                onPress={() => Updates.reloadAsync()}
+                style={styles.updateBannerButton}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Restart to apply update"
+              >
+                <Text style={styles.updateBannerButtonText}>Restart to apply</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
         <SafeAreaView style={styles.tabBarSafeArea} pointerEvents="box-none">
@@ -386,6 +404,33 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 4,
     backgroundColor: Colors.background,
+  },
+  updateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.chipBackground,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  updateBannerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.chipText,
+  },
+  updateBannerButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.chipText,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  updateBannerButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.chipText,
   },
   webBackButton: {
     alignSelf: 'flex-start',

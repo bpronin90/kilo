@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.87.0 - 2026-07-05
+
+- Issue #426: OTA updates should land on the latest version in one step, not one launch behind
+
+
 ## 0.86.12 - 2026-07-05
 
 - Issue #425: Configure EAS production environment for cloud-enabled store builds
