@@ -12,10 +12,31 @@ Some preview builds are configured with cloud (Supabase) sign-in, which adds
 optional account sync on top of the same local-first behavior; if you never
 sign in, everything still stays local-only.
 
-## Installing the Android preview build
+## Installing Kilo on Android
 
-Testers receive an APK via an EAS build link (not the Play Store). To
-install it:
+There are two install paths depending on which testing phase you are in.
+
+### Play Store closed-testing track (current path for production readiness)
+
+If you received a Play Store opt-in link, you are participating in the
+Google Play closed testing track. This is the production-track testing
+path required before the app can be publicly released.
+
+1. Open the opt-in link on your Android phone. It will take you to a
+   Play Store page where you can join the testing program.
+2. Tap **Become a tester**, then tap the app download link that appears
+   to install from the Play Store normally.
+3. Once installed, updates will arrive through the Play Store like any
+   production app.
+
+You do not need to allow "unknown sources" for this path — the app
+installs through the standard Play Store flow.
+
+### EAS APK direct install (pre-Play-track method)
+
+Testers in earlier preview phases received an APK via an EAS build link
+(not the Play Store). If you were given an APK link rather than a Play
+Store opt-in link, use this path:
 
 1. Open the link on your Android phone and download the APK.
 2. If prompted, allow installs from your browser or "unknown sources" —
@@ -27,13 +48,16 @@ iOS preview delivery is not yet verified end to end and is deferred (issue
 
 ## Updates
 
-Preview builds receive over-the-air (OTA) JavaScript and asset updates
-automatically when you launch the app, over the `preview` update channel.
-Most updates apply this way — you do not need to reinstall anything, and the
-app will just reflect the latest changes the next time you open it.
-
+**EAS APK path:** Builds receive over-the-air (OTA) JavaScript and asset
+updates automatically when you launch the app, over the `preview` update
+channel. Most updates apply this way — you do not need to reinstall anything,
+and the app will just reflect the latest changes the next time you open it.
 You'll only need to install a new APK when you're told a build includes
 native-level changes that OTA updates can't carry.
+
+**Play Store closed-testing path:** Updates are delivered through the Play
+Store. You will receive update notifications the same way you would for any
+production app.
 
 ## Accounts and data
 

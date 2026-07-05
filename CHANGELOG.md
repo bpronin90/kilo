@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.86.11 - 2026-07-05
+
+- Issue #422: Added `docs/play-store-readiness.md` for Google Play production
+  readiness, including closed-testing requirements, App content declarations,
+  store listing assets, build requirements, and verified target API 35 status.
+  Updated `docs/tester-guide.md` to distinguish the Play closed-testing opt-in
+  path from the pre-Play EAS APK install path.
+
+
 ## 0.86.10 - 2026-07-02
 
 - Issue #421: Attach set_updated_at trigger to kilo.archived_weight_goals (invariant gap found in #419)
