@@ -45,6 +45,7 @@ docs/
   design-system-map.md ← cross-screen style audit: every color, font, spacing token with file and line
   calculations-reference.md
   phone-runbook.md
+  play-store-readiness.md ← Google Play production-readiness checklist
   tester-guide.md      ← tester-facing preview install guide
   repo-structure.md    ← this file
   archive/
@@ -197,6 +198,7 @@ npm --prefix mobile test
 | `docs/design-system-map.md` | Cross-screen style audit: every color token, font size, spacing value, and card treatment with file paths and line numbers. Reference for manual visual refinement. |
 | `docs/calculations-reference.md` | Human-readable calculations reference covering workout analytics, weight trends, goal guidance, and user configuration. Describes current app behavior in plain language, designed to map onto future in-app help surfaces. |
 | `docs/phone-runbook.md` | Operational runbook for running the Expo app from WSL and loading it on a physical device via Expo Go. |
+| `docs/play-store-readiness.md` | Google Play production-readiness checklist covering closed testing, App content declarations, store listing assets, build requirements, and target API verification. |
 | `docs/tester-guide.md` | Tester-facing guide for installing and exercising preview builds. |
 | `docs/repo-structure.md` | This file. |
 | `docs/archive/original-spec.md` | Original product spec from early planning. Superseded by current docs. |

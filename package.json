@@ -1,7 +1,7 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.86.10",
+  "version": "0.86.11",
   "scripts": {
     "mobile:start": "npm --prefix mobile start",
     "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
