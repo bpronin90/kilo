@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.86.12 - 2026-07-05
+
+- Issue #425: Configure EAS production environment for cloud-enabled store builds
+
+
 ## 0.86.11 - 2026-07-05
 
 - Issue #422: Added `docs/play-store-readiness.md` for Google Play production
