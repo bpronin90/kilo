@@ -917,8 +917,9 @@ synchronized cloud copy, most-recent-edit-wins conflict handling, and that
 account deletion preserves local history. The signed-in Account cloud-sync
 surface now shows whether this device is synced, has pending local changes,
 is actively syncing, or saw the last sync fail, and it surfaces the last
-successful sync time when known. Automatic first-sign-in upload remains a
-deferred backend follow-up. The surface also provides a v3-compatible cloud export (the existing backup shape
+successful sync time when known. Automatic first-sign-in upload now runs on the
+first sign-in path via `useAutoSync`, while manual Sync Now remains available.
+The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
 failed run leaves local AsyncStorage intact. The Phase 5 account lifecycle path
