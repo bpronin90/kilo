@@ -104,6 +104,26 @@ function monotonicNowIso() {
   return new Date(ms).toISOString();
 }
 
+let dirtyListeners = [];
+
+function notifyDirtyListeners() {
+  for (const listener of dirtyListeners) {
+    try {
+      listener();
+    } catch (e) {
+      console.warn('[syncQueue] dirty listener error', e);
+    }
+  }
+}
+
+export function subscribeDirtyQueue(listener) {
+  if (typeof listener !== 'function') return () => {};
+  dirtyListeners.push(listener);
+  return () => {
+    dirtyListeners = dirtyListeners.filter((l) => l !== listener);
+  };
+}
+
 // Test hook: reset the monotonic clock so suites start from a clean slate.
 export function resetStampClockForTests() {
   lastStampMs = 0;
@@ -231,6 +251,7 @@ export async function enqueueDirty(table, record) {
   const map = await readDirty(table);
   map[record.id] = record;
   await writeDirty(table, map);
+  notifyDirtyListeners();
 }
 
 export async function getDirtyRecords(table) {
@@ -250,7 +271,10 @@ export async function clearDirty(table, ids) {
       changed = true;
     }
   }
-  if (changed) await writeDirty(table, map);
+  if (changed) {
+    await writeDirty(table, map);
+    notifyDirtyListeners();
+  }
 }
 
 // ── per-table pull cursor ──────────────────────────────────────────────────────

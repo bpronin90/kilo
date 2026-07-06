@@ -21,6 +21,7 @@ import {
   getSyncState,
   isBootstrapped,
   setBootstrapped,
+  markComplete,
   __resetSyncQueue,
 } from '../storage/syncRecovery';
 import { cloudAdapter } from '../storage/cloudAdapter';
@@ -28,11 +29,14 @@ import * as Storage from '../storage/entries';
 import { useAutoSync, useSyncRecovery, useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
 import {
   SYNC_TABLES,
+  clearDirty,
   getDirtyRecords,
+  enqueueDirty,
   resetClientIdCacheForTests,
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { setCloudTransport } from '../storage/cloudAdapter';
+import { useCloudSyncStatus } from '../hooks/useEntries';
 
 const USER = { id: 'u-auto-1', email: 'auto@test.co' };
 
@@ -440,6 +444,51 @@ describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () 
     expect(noteRef.current.notes.map((n) => n.id)).toContain('wn-remote-ui-1');
     expect(noteRef.current.currentId).toBe('wn-remote-ui-1');
     expect(syncFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useCloudSyncStatus: dirty queue and last sync summary', () => {
+  test('tracks dirty records and the last successful sync timestamp', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    expect(ref.current.statusLabel).toBe('Ready to sync');
+    expect(ref.current.lastSuccessfulLabel).toBeNull();
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-status-1' });
+    });
+    await flush();
+    expect(ref.current.statusLabel).toBe('1 pending local change');
+
+    await act(async () => {
+      await clearDirty(SYNC_TABLES.WEIGHT_ENTRIES, ['w-status-1']);
+    });
+    await flush();
+    expect(ref.current.statusLabel).toBe('Ready to sync');
+
+    await act(async () => {
+      markComplete(SYNC_PHASE.SYNC);
+    });
+    await flush();
+
+    expect(ref.current.statusLabel).toBe('Fully synced');
+    expect(ref.current.lastSuccessfulAt).toEqual(expect.any(String));
+    expect(ref.current.lastSuccessfulLabel).toEqual(expect.any(String));
+  });
+
+  test('bootstrap completion does not stamp the last successful sync time', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    await act(async () => {
+      markComplete(SYNC_PHASE.BOOTSTRAP);
+    });
+    await flush();
+
+    expect(ref.current.statusLabel).toBe('Ready to sync');
+    expect(ref.current.lastSuccessfulAt).toBeNull();
+    expect(ref.current.lastSuccessfulLabel).toBeNull();
   });
 });
 

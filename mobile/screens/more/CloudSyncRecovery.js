@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
-import { useSyncRecovery, useCloudExport } from '../../hooks/useEntries';
+import { useSyncRecovery, useCloudExport, useCloudSyncStatus } from '../../hooks/useEntries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
@@ -14,6 +14,7 @@ export function CloudSyncRecovery({ user }) {
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
+  const cloudSyncStatus = useCloudSyncStatus();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -88,6 +89,23 @@ export function CloudSyncRecovery({ user }) {
         continue on another device or after reinstalling. Syncing reconciles the
         two — for any item changed in both places, the most recent change wins.
       </Text>
+
+      <View style={styles.summaryBlock}>
+        <View style={styles.syncRow}>
+          <Text style={styles.syncLabel}>Cloud status</Text>
+          <Text style={styles.syncValue} accessibilityLabel="Cloud sync summary">
+            {cloudSyncStatus.statusLabel}
+          </Text>
+        </View>
+        <Text style={styles.phaseDesc}>
+          Local data stays saved on this device while cloud sync is pending or failed.
+        </Text>
+        {cloudSyncStatus.lastSuccessfulLabel ? (
+          <Text style={styles.phaseDesc}>
+            Last synced {cloudSyncStatus.lastSuccessfulLabel}.
+          </Text>
+        ) : null}
+      </View>
 
       <View style={styles.syncRow}>
         <Text style={styles.syncLabel}>Upload your local history</Text>
@@ -174,6 +192,9 @@ export function CloudSyncRecovery({ user }) {
 const styles = StyleSheet.create({
   accountBlock: {
     gap: 12,
+  },
+  summaryBlock: {
+    gap: 8,
   },
   accountNote: {
     fontSize: 15,

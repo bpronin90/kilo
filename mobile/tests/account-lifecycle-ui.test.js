@@ -38,6 +38,7 @@ jest.mock('../components/UI', () => {
 jest.mock('../hooks/useEntries', () => ({
   useSyncRecovery: () => ({ bootstrap: { status: 'idle', retryable: false }, sync: { status: 'idle', retryable: false }, runBootstrap: jest.fn(), runSync: jest.fn(), retryBootstrap: jest.fn(), retrySync: jest.fn() }),
   useCloudExport: () => ({ exportCloud: jest.fn() }),
+  useCloudSyncStatus: () => mockCloudSyncStatus,
 }));
 
 // --- fetch mock -----------------------------------------------------------
@@ -47,6 +48,7 @@ global.fetch = (...args) => mockFetch(...args);
 // --- Supabase client mock -------------------------------------------------
 let mockSession;
 let mockAuth;
+let mockCloudSyncStatus;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: mockAuth }),
@@ -149,6 +151,20 @@ function makeResolvedAuthProp(session = null, overrides = {}) {
   };
 }
 
+function makeCloudSyncStatus(overrides = {}) {
+  return {
+    statusLabel: 'Fully synced',
+    dirtyCount: 0,
+    lastSuccessfulAt: '2026-07-06T15:20:00.000Z',
+    lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
+    isRunning: false,
+    hasFailed: false,
+    hasDirty: false,
+    hasLastSuccess: true,
+    ...overrides,
+  };
+}
+
 function renderHook() {
   const ref = { current: null };
   function Probe() {
@@ -173,6 +189,7 @@ beforeEach(() => {
 
   mockSession = { ...FAKE_SESSION };
   mockAuth = makeMockAuth(mockSession);
+  mockCloudSyncStatus = makeCloudSyncStatus();
 
   const testRenderer = require('react-test-renderer');
   renderer = testRenderer.default || testRenderer;
@@ -736,5 +753,81 @@ describe('AccountScreen OAuth Flow', () => {
 
     const statusText = tree.root.findByProps({ accessibilityLabel: 'Account status' });
     expect(statusText.props.children).toBe('invalid code');
+  });
+});
+
+describe('CloudSyncRecovery status summary', () => {
+  let originalPlatformOS;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockCloudSyncStatus = makeCloudSyncStatus();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  test('shows fully synced and the last successful sync time when clean', () => {
+    mockCloudSyncStatus = makeCloudSyncStatus({
+      statusLabel: 'Fully synced',
+      dirtyCount: 0,
+      lastSuccessfulAt: '2026-07-06T15:20:00.000Z',
+      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
+    });
+
+    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
+    expect(summary.props.children).toBe('Fully synced');
+    expect(JSON.stringify(tree.toJSON())).toMatch(/Last synced[^]*Jul 6, 2026, 3:20 PM/);
+  });
+
+  test('shows pending local changes when the dirty queue is not empty', () => {
+    mockCloudSyncStatus = makeCloudSyncStatus({
+      statusLabel: '2 pending local changes',
+      dirtyCount: 2,
+      hasDirty: true,
+      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
+    });
+
+    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
+    expect(summary.props.children).toBe('2 pending local changes');
+    expect(JSON.stringify(tree.toJSON())).toMatch(/Local data stays saved on this device while cloud sync is pending or failed\./);
+  });
+
+  test('shows last sync failed when the sync phase failed', () => {
+    mockCloudSyncStatus = makeCloudSyncStatus({
+      statusLabel: 'Last sync failed',
+      hasFailed: true,
+      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
+    });
+
+    const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
+    expect(summary.props.children).toBe('Last sync failed');
+  });
+
+  test('does not show cloud sync status for signed-out local-only users', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
+    });
+
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Cloud sync summary' }).length).toBe(0);
+    expect(JSON.stringify(tree.toJSON())).not.toMatch(/Cloud Sync/);
   });
 });

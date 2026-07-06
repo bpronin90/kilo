@@ -22,6 +22,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BOOTSTRAP_MARKER_PREFIX = 'kilo_sync_bootstrapped_';
+const LAST_SUCCESS_KEY = 'kilo_sync_last_success_at';
+
+let cachedLastSuccessfulSyncAt = null;
+let lastSuccessfulSyncLoaded = false;
 
 // Returns true if this device has already successfully bootstrapped for userId.
 export async function isBootstrapped(userId) {
@@ -124,12 +128,18 @@ export function markRunning(phase) {
 
 export function markComplete(phase) {
   if (!isPhase(phase)) return getSyncState();
+  const now = new Date().toISOString();
   state[phase] = {
     status: SYNC_STATUS.COMPLETE,
     error: null,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
     retryable: false,
   };
+  if (phase === SYNC_PHASE.SYNC) {
+    cachedLastSuccessfulSyncAt = now;
+    lastSuccessfulSyncLoaded = true;
+    AsyncStorage.setItem(LAST_SUCCESS_KEY, now).catch(() => {});
+  }
   notify();
   return getSyncState();
 }
@@ -157,8 +167,27 @@ export function markFailed(phase, error) {
 export function resetPhase(phase) {
   if (!isPhase(phase)) return getSyncState();
   state[phase] = makePhaseState();
+  if (phase === SYNC_PHASE.SYNC) {
+    cachedLastSuccessfulSyncAt = null;
+    lastSuccessfulSyncLoaded = true;
+    AsyncStorage.removeItem(LAST_SUCCESS_KEY).catch(() => {});
+  }
   notify();
   return getSyncState();
+}
+
+export async function loadLastSuccessfulSyncAt() {
+  if (lastSuccessfulSyncLoaded) {
+    return cachedLastSuccessfulSyncAt;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(LAST_SUCCESS_KEY);
+    cachedLastSuccessfulSyncAt = raw || null;
+  } catch {
+    cachedLastSuccessfulSyncAt = null;
+  }
+  lastSuccessfulSyncLoaded = true;
+  return cachedLastSuccessfulSyncAt;
 }
 
 // Run (or retry) a phase runner with non-destructive failure handling.
@@ -202,5 +231,7 @@ export function retryPhase(phase, runner) {
 export function __resetSyncQueue() {
   state[SYNC_PHASE.BOOTSTRAP] = makePhaseState();
   state[SYNC_PHASE.SYNC] = makePhaseState();
+  cachedLastSuccessfulSyncAt = null;
+  lastSuccessfulSyncLoaded = false;
   listeners = [];
 }

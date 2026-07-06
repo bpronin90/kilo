@@ -914,9 +914,11 @@ upload and Sync Now for bidirectional reconciliation, with descriptions and
 visible idle/running/failed/complete status per phase. The App Guide and Account
 surface explain the device as the offline working copy, the account as the
 synchronized cloud copy, most-recent-edit-wins conflict handling, and that
-account deletion preserves local history. Live last-synced/dirty-state status
-and automatic first-sign-in upload remain deferred backend follow-ups. The
-surface also provides a v3-compatible cloud export (the existing backup shape
+account deletion preserves local history. The signed-in Account cloud-sync
+surface now shows whether this device is synced, has pending local changes,
+is actively syncing, or saw the last sync fail, and it surfaces the last
+successful sync time when known. Automatic first-sign-in upload remains a
+deferred backend follow-up. The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
 failed run leaves local AsyncStorage intact. The Phase 5 account lifecycle path
