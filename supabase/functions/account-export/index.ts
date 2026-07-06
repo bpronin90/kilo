@@ -24,7 +24,7 @@
 // 20260622120001_edge_rate_limit.sql.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed, rateLimitRefund } from '../_shared/rate-limit.ts'
@@ -137,7 +137,8 @@ serve(async (req) => {
   if (firstError) {
     // Refund the user bucket: a failed export should not spend the quota.
     await rateLimitRefund(rlAdmin, userKey)
-    return new Response(JSON.stringify({ error: firstError.message }), {
+    console.error(`account-export query failed: ${firstError.message}`)
+    return new Response(JSON.stringify({ error: 'Export failed.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

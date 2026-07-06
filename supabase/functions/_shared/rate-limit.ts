@@ -17,7 +17,9 @@
 // a service-role-keyed Supabase client. End users never touch the throttle
 // table directly.
 
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
+
+type RateLimitClient = SupabaseClient<any, any, any, any, any>
 
 // Fail-open policy: if the durable check itself errors (e.g. the throttle table
 // is briefly unreachable), admit the request rather than lock legitimate users
@@ -25,7 +27,7 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // which is acceptable for LOW-severity abuse throttling. The error is logged so
 // a sustained outage is visible.
 export async function rateLimitAllowed(
-  admin: SupabaseClient,
+  admin: RateLimitClient,
   bucket: string,
   max: number,
   windowMs: number,
@@ -46,7 +48,7 @@ export async function rateLimitAllowed(
 // and should not spend the caller's quota. Best-effort: a failed refund only
 // means the caller keeps a spent slot until the window rolls, which is harmless.
 export async function rateLimitRefund(
-  admin: SupabaseClient,
+  admin: RateLimitClient,
   bucket: string,
 ): Promise<void> {
   const { error } = await admin.rpc('rate_limit_refund', { p_bucket: bucket })

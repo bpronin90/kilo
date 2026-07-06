@@ -26,12 +26,12 @@ local gitignored `mobile/.env`); with no env config it runs entirely on
 AsyncStorage, and signed-out users stay local-only either way.
 
 As of issue #367, the active mobile runtime is Expo SDK 56 with React Native
-0.85.x and React 19.2.x. The SDK upgrade cleared the `postcss` and `js-yaml`
-moderate dependency advisories that were tied to the previous Expo/Jest
-dependency graph; the remaining moderate `uuid` advisory is intentionally
-tracked as separate dev-tooling work. Because SDK 56 changes the native runtime,
-shipping this upgrade requires fresh Android/iOS native builds; OTA/EAS Update
-cannot move installed SDK-54 builds onto SDK 56.
+0.85.x and React 19.2.x. Issue #429 then cleared the remaining mobile
+dependency-audit findings in the Expo tooling tree with targeted `postcss` and
+`uuid` overrides, so root and mobile `npm audit --audit-level=high` both pass.
+Because SDK 56 changes the native runtime, shipping this upgrade requires fresh
+Android/iOS native builds; OTA/EAS Update cannot move installed SDK-54 builds
+onto SDK 56.
 
 Roadmap status:
 
@@ -925,10 +925,12 @@ signed in and cloud mode is configured. The Phase 5 launch posture for issue
 #323 is now defined, and issue #330 adds placeholder Privacy Policy and Terms
 of Service links beside public signup, on the signed-in Account lifecycle
 surface near export/delete actions, and in More > About Kilo. Issue #328 adds
-conservative in-memory Edge Function abuse controls: `account-export` allows one
+conservative durable Edge Function abuse controls: `account-export` allows one
 successful export per signed-in user per 10 minutes plus an IP bucket, and
 `account-delete` allows three delete attempts per signed-in user per hour plus
-an IP bucket. The Account screen now gates the configured signed-out form during
+an IP bucket. Issue #429 masks internal account export/delete 500 details from
+client responses while preserving server-side console diagnostics. The Account
+screen now gates the configured signed-out form during
 the initial persisted-session restore probe, preventing a transient sign-in form
 flash before a restored session resolves (#365), and it uses the app-shell auth
 session rather than creating a second session probe when the Account subview
