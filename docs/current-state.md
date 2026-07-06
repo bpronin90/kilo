@@ -762,7 +762,11 @@ action only after a new update is downloaded. In addition to that manual
 panel, the app shell now shows a global non-blocking "Update ready — Restart
 to apply" banner above the content area whenever a background-downloaded OTA
 update is pending, so a single launch plus one restart reaches the latest
-published update without visiting About (#426).
+published update without visiting About (#426). While an update is pending,
+the About panel suppresses its own pending alert and restart button and
+defers to the global banner as the single restart affordance; the panel's
+local restart button appears only in the fallback window where a manual
+fetch has completed but the pending signal has not yet flipped (#427).
 
 ### Parser (`mobile/lib/parser.js`)
 
