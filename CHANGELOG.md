@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.87.4 - 2026-07-06
+
+- Issue #424: Tightened the Play Store closed-testing tester guide so testers
+  know to remain opted in for 14 continuous days, exercise the checklist during
+  the window, and send concise feedback even when no issues are found.
+
 ## 0.87.3 - 2026-07-06
 
 - Issue #429: Completed a security audit and hardening pass. Mobile dependency
