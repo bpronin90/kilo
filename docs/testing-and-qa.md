@@ -112,7 +112,9 @@ Current limitation:
   Weight DOM date inputs, plus targeted account lifecycle UI coverage for
   server-owned export/delete calls, local session clearing after successful
   deletion, function error surfacing, and absence of service-role keys in
-  client fetch headers. The same `log-screen.test.js` suite now also
+  client fetch headers, plus Account/cloud-sync status coverage for clean,
+  dirty, failed, and signed-out local-only states with the last-successful-sync
+  timestamp and dirty-queue indicator. The same `log-screen.test.js` suite now also
   includes `react-test-renderer` coverage for the rendered App Guide workout
   example, the aligned Log editor placeholder, current-note Undo, saved-note
   Undo, and failure-path handling around note-scoped Undo for editable deload

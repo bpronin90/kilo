@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.88.0 - 2026-07-06
+
+- Issue #433: Added a signed-in Account cloud-sync status summary showing
+  fully synced, pending local changes, syncing, and last-failed states with the
+  last successful sync time when known, while preserving local-first copy around
+  pending or failed cloud sync.
+
 ## 0.87.5 - 2026-07-06
 
 - Issue #431: Added repeatable Android production build/update scripts and
