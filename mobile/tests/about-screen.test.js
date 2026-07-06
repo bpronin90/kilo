@@ -102,6 +102,11 @@ describe('AboutScreen OTA update flows', () => {
     expect(Updates.fetchUpdateAsync).toHaveBeenCalledTimes(1);
     expect(hasText(tree, 'Update downloaded — restart to apply.')).toBe(true);
 
+    // Lag-fallback: the hook's isUpdatePending is still false here, so the
+    // panel must offer its own restart button — the user should never be
+    // left with a downloaded update and no restart affordance. Once the
+    // hook flips isUpdatePending true, the global banner takes over and
+    // this panel button disappears (covered by the pending-state test).
     const restartBtn = findButton(tree, 'Restart to Apply');
     expect(restartBtn).toBeDefined();
 
@@ -154,7 +159,7 @@ describe('AboutScreen OTA update flows', () => {
     expect(restartBtn).toBeUndefined();
   });
 
-  test('renders Restart to Apply button immediately if update is already pending', () => {
+  test('suppresses its own restart prompt when an update is already pending (global banner owns it)', () => {
     Updates.useUpdates.mockReturnValue({
       currentlyRunning: {
         isEmbeddedLaunch: false,
@@ -172,17 +177,45 @@ describe('AboutScreen OTA update flows', () => {
       tree = renderer.create(<AboutScreen onBack={jest.fn()} />);
     });
 
-    expect(hasText(tree, 'Update downloaded — restart to apply.')).toBe(true);
+    // Diagnostics rows stay intact.
+    expect(hasText(tree, 'production')).toBe(true);
+    expect(hasText(tree, '1.0.0')).toBe(true);
+
+    // Duplicate pending alert row and restart button are suppressed; the
+    // global app-shell banner is the only restart affordance now.
+    expect(hasText(tree, 'Update downloaded — restart to apply.')).toBe(false);
 
     const checkBtn = findButton(tree, 'Check for Update');
     const restartBtn = findButton(tree, 'Restart to Apply');
 
     expect(checkBtn).toBeUndefined();
-    expect(restartBtn).toBeDefined();
+    expect(restartBtn).toBeUndefined();
+  });
 
-    act(() => {
-      restartBtn.props.onPress();
+  test('keeps the isUpdateAvailable alert text when an update is available but not yet pending', () => {
+    Updates.useUpdates.mockReturnValue({
+      currentlyRunning: {
+        isEmbeddedLaunch: true,
+        channel: 'production',
+        runtimeVersion: '1.0.0',
+        updateId: '123456789',
+      },
+      isUpdateAvailable: true,
+      isUpdatePending: false,
+      isChecking: false,
     });
-    expect(Updates.reloadAsync).toHaveBeenCalledTimes(1);
+
+    let tree;
+    act(() => {
+      tree = renderer.create(<AboutScreen onBack={jest.fn()} />);
+    });
+
+    expect(hasText(tree, 'Update available.')).toBe(true);
+
+    const checkBtn = findButton(tree, 'Check for Update');
+    const restartBtn = findButton(tree, 'Restart to Apply');
+
+    expect(checkBtn).toBeDefined();
+    expect(restartBtn).toBeUndefined();
   });
 });

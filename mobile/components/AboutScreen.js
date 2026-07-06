@@ -79,20 +79,18 @@ export function AboutScreen({ onBack }) {
           <Text style={styles.diagLabel}>Bundle</Text>
           <Text style={styles.diagValue}>{updateIdLabel}</Text>
         </View>
-        {isUpdateAvailable || isUpdatePending ? (
+        {isUpdateAvailable && !isUpdatePending ? (
           <View style={[styles.diagRow, styles.diagAlert]}>
-            <Text style={styles.diagAlertText}>
-              {isUpdatePending ? 'Update downloaded — restart to apply.' : 'Update available.'}
-            </Text>
+            <Text style={styles.diagAlertText}>Update available.</Text>
           </View>
         ) : null}
-        {isUpdatePending || downloaded ? (
+        {downloaded && !isUpdatePending ? (
           <Button
             title="Restart to Apply"
             onPress={() => Updates.reloadAsync()}
             style={styles.diagButton}
           />
-        ) : (
+        ) : !isUpdatePending ? (
           <Button
             title="Check for Update"
             loadingTitle="Checking…"
@@ -100,7 +98,7 @@ export function AboutScreen({ onBack }) {
             disabled={checking}
             style={styles.diagButton}
           />
-        )}
+        ) : null}
         {checkResult ? (
           <Text style={styles.diagCheckResult}>{checkResult}</Text>
         ) : null}
