@@ -103,14 +103,21 @@ export function useWeightEntries() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refresh = useCallback(() => {
+  const reload = useCallback(() => {
     setError(null);
-    maybeSyncCloud()
-      .then(() => readVia('loadWeightEntries', Storage.loadWeightEntries))
+    readVia('loadWeightEntries', Storage.loadWeightEntries)
       .then(setEntries)
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
+
+  const refresh = useCallback(() => {
+    setError(null);
+    maybeSyncCloud()
+      .then(reload)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, [reload]);
 
   useEffect(() => {
     refresh();
@@ -138,5 +145,5 @@ export function useWeightEntries() {
     return ok;
   }, []);
 
-  return { entries, loading, error, add, remove, update, refresh };
+  return { entries, loading, error, add, remove, update, refresh, reload };
 }

@@ -25,7 +25,7 @@ import {
 } from '../storage/syncRecovery';
 import { cloudAdapter } from '../storage/cloudAdapter';
 import * as Storage from '../storage/entries';
-import { useAutoSync, useSyncRecovery, useWeightEntries } from '../hooks/useEntries';
+import { useAutoSync, useSyncRecovery, useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
 import {
   SYNC_TABLES,
   getDirtyRecords,
@@ -356,15 +356,15 @@ describe('useAutoSync: sign-out resets storage mode and phases', () => {
   });
 });
 
-// ── Stale UI fix: onSyncComplete refreshes mounted entry hooks ────────────────
+// ── Stale UI fix: onSyncComplete reloads mounted entry hooks ─────────────────
 //
 // Verifies that after auto-sync writes remote data into local storage, the
 // already-mounted weight entry hook reflects the new data without any manual
 // user action. This is the integration proof for the onSyncComplete callback
-// added in review round 3 (#432).
+// added in review round 3 (#432) and the read-only reload path used in #437.
 
 describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () => {
-  test('mounted weight entry hook reflects remote data after auto-sync without manual action', async () => {
+  test('mounted weight and workout entry hooks reflect remote data after auto-sync without manual action', async () => {
     await setBootstrapped(USER.id);
 
     const remoteEntry = {
@@ -374,30 +374,52 @@ describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () 
       logged_at: '2026-07-06T08:00:00.000Z',
       weight_value: 185,
     };
+    const remoteNote = {
+      id: 'wn-remote-ui-1',
+      title: 'Remote note',
+      raw_text: 'Updated from sync',
+      isCurrent: true,
+    };
 
     // Stub the storage adapter: sync writes the remote entry into local
     // AsyncStorage directly (no real transport), loadWeightEntries reads back.
     // This keeps the async chain shallow enough for flush to drain it.
-    const { replaceWeightEntriesRaw, loadWeightEntriesRaw } = require('../storage/entries');
+    const {
+      replaceWeightEntriesRaw,
+      loadWeightEntriesRaw,
+      replaceWorkoutNotesRaw,
+      loadWorkoutNotesRaw,
+    } = require('../storage/entries');
+    const syncFn = jest.fn(async () => {
+      await replaceWeightEntriesRaw([remoteEntry]);
+      await replaceWorkoutNotesRaw([remoteNote]);
+      await Storage.setCurrentWorkoutNote(remoteNote.id);
+    });
     jest.spyOn(Storage, 'getStorageAdapter').mockReturnValue({
       mode: 'cloud',
-      sync: jest.fn(async () => {
-        await replaceWeightEntriesRaw([remoteEntry]);
-      }),
+      sync: syncFn,
       loadWeightEntries: async () => {
         const list = await loadWeightEntriesRaw();
+        return list.filter((e) => !e.deleted_at);
+      },
+      loadWorkoutNotes: async () => {
+        const list = await loadWorkoutNotesRaw();
         return list.filter((e) => !e.deleted_at);
       },
     });
 
     // Mirrors how App.js mounts both hooks and forwards onSyncComplete to refresh.
     const weightRef = { current: null };
+    const noteRef = { current: null };
     function Probe() {
       const weightHook = useWeightEntries();
+      const noteHook = useWorkoutNotes();
       weightRef.current = weightHook;
+      noteRef.current = noteHook;
       useAutoSync(makeAuth(), {
         onSyncComplete() {
-          weightRef.current?.refresh();
+          weightRef.current?.reload();
+          noteRef.current?.reload();
         },
       });
       return null;
@@ -407,14 +429,17 @@ describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () 
       renderer.create(React.createElement(Probe));
     });
 
-    // Flush deeply: isBootstrapped → sync → onSyncComplete → refresh →
-    // maybeSyncCloud → loadWeightEntries → setState.
+    // Flush deeply: isBootstrapped → sync → onSyncComplete → reload →
+    // loadWeightEntries → setState.
     for (let i = 0; i < 8; i++) {
       // eslint-disable-next-line no-await-in-loop
       await act(async () => { await Promise.resolve(); });
     }
 
     expect(weightRef.current.entries.map((e) => e.id)).toContain('w-remote-ui-1');
+    expect(noteRef.current.notes.map((n) => n.id)).toContain('wn-remote-ui-1');
+    expect(noteRef.current.currentId).toBe('wn-remote-ui-1');
+    expect(syncFn).toHaveBeenCalledTimes(1);
   });
 });
 

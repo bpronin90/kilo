@@ -74,8 +74,8 @@ export default function App() {
   const auth = useAuthSession();
   useAutoSync(auth, {
     onSyncComplete() {
-      weightHook.refresh();
-      noteHook.refresh();
+      weightHook.reload();
+      noteHook.reload();
     },
   });
 
