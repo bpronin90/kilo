@@ -22,7 +22,7 @@ export function CloudSyncRecovery({ user }) {
       case SYNC_STATUS.RUNNING:
         return 'Running…';
       case SYNC_STATUS.FAILED:
-        return `Failed${s.error ? `: ${s.error}` : ''}`;
+        return 'Failed';
       case SYNC_STATUS.COMPLETE:
         return 'Complete';
       default:
@@ -44,7 +44,7 @@ export function CloudSyncRecovery({ user }) {
       setStatus(
         result?.ok
           ? `${kind === 'bootstrap' ? 'Local history uploaded' : 'Sync'} complete.`
-          : result?.error || 'Could not start.'
+          : 'Could not complete — try again.'
       );
     } finally {
       setBusy(false);

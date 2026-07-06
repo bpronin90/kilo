@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import { cloudAdapter } from '../../storage/cloudAdapter';
 import {
   SYNC_PHASE,
+  SYNC_STATUS,
   getSyncState,
   subscribeSyncState,
   runPhase,
+  markComplete,
+  resetPhase,
+  isBootstrapped,
+  setBootstrapped,
 } from '../../storage/syncRecovery';
 
 function makeBootstrapRunner(user) {
@@ -30,15 +35,16 @@ export function useSyncRecovery(user = null) {
 
   const userId = user?.id ?? null;
 
-  const runBootstrap = useCallback(() => {
+  const runBootstrap = useCallback(async () => {
     const runner = makeBootstrapRunner(user);
     if (!runner) {
-      return Promise.resolve({
-        ok: false,
-        error: 'Sign in to bootstrap your cloud data.',
-      });
+      return { ok: false, error: 'Sign in to bootstrap your cloud data.' };
     }
-    return runPhase(SYNC_PHASE.BOOTSTRAP, runner);
+    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, runner);
+    if (result.ok && userId) {
+      await setBootstrapped(userId);
+    }
+    return result;
   }, [userId]);
 
   const runSync = useCallback(() => {
@@ -60,6 +66,94 @@ export function useSyncRecovery(user = null) {
     runSync,
     retrySync: runSync,
   };
+}
+
+// Automatic cloud sync on sign-in (#432).
+//
+// Sets the storage mode to cloud when the user is signed in and cloud is
+// configured, and reverts to local on sign-out. Runs the first-sign-in bootstrap
+// once (guarded by the persistent AsyncStorage marker), then runs an initial
+// bidirectional sync. Ongoing sync after writes is handled by maybeSyncCloud()
+// in the entry-hook refresh paths once cloud mode is active.
+//
+// `onSyncComplete` is called after the auto-sync pass writes new remote data into
+// local storage so callers can refresh their UI state without requiring a manual
+// user action. Passed as an option so App.js can forward the entry-hook refresh
+// callbacks without adding them to the effect dependency array (the ref always
+// holds the latest value).
+//
+// Failures are non-destructive: a failed bootstrap leaves the phase in
+// failed/retryable so the manual Retry button in CloudSyncRecovery can recover.
+export function useAutoSync(auth, { onSyncComplete } = {}) {
+  // Keep the callback ref current on every render so the async effect always
+  // calls the latest version without it becoming an effect dependency.
+  const onSyncCompleteRef = useRef(onSyncComplete);
+  onSyncCompleteRef.current = onSyncComplete;
+
+  const userId = auth?.user?.id ?? null;
+  const configured = auth?.configured ?? false;
+  const authLoading = auth?.loading ?? true;
+  const signedIn = auth?.signedIn ?? false;
+
+  useEffect(() => {
+    if (!configured || authLoading) return;
+
+    if (!signedIn || !userId) {
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+      // Reset phases so the next sign-in (possibly a different user) starts clean.
+      resetPhase(SYNC_PHASE.BOOTSTRAP);
+      resetPhase(SYNC_PHASE.SYNC);
+      return;
+    }
+
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+
+    let cancelled = false;
+
+    (async () => {
+      const state = getSyncState();
+      // Skip if bootstrap was already driven this session for THIS user (running
+      // or complete). A phase left over from a prior user is cleared on sign-out
+      // (see resetPhase above), so a stale non-IDLE status here always belongs to
+      // the current user.
+      if (state[SYNC_PHASE.BOOTSTRAP].status !== SYNC_STATUS.IDLE) {
+        if (state[SYNC_PHASE.BOOTSTRAP].status === SYNC_STATUS.COMPLETE &&
+            getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
+          const runner = makeSyncRunner();
+          if (runner && !cancelled) await runPhase(SYNC_PHASE.SYNC, runner);
+          if (!cancelled) onSyncCompleteRef.current?.();
+        }
+        return;
+      }
+
+      const alreadyBootstrapped = await isBootstrapped(userId);
+      if (cancelled) return;
+
+      if (alreadyBootstrapped) {
+        // Bootstrap completed in a prior session. Reflect that in the UI so the
+        // manual "Upload Local History" button doesn't appear unnecessarily.
+        markComplete(SYNC_PHASE.BOOTSTRAP);
+      } else {
+        const runner = makeBootstrapRunner({ id: userId });
+        if (!runner) return;
+        const result = await runPhase(SYNC_PHASE.BOOTSTRAP, runner);
+        if (cancelled) return;
+        if (!result.ok) return;
+        await setBootstrapped(userId);
+      }
+
+      const syncIsIdle = getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE;
+      const syncRunner = makeSyncRunner();
+      if (syncIsIdle && syncRunner && !cancelled) {
+        await runPhase(SYNC_PHASE.SYNC, syncRunner);
+      }
+      // Notify the UI to reload entry state after bootstrap/sync writes remote
+      // data into local storage.
+      if (!cancelled) onSyncCompleteRef.current?.();
+    })().catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [configured, authLoading, signedIn, userId]);
 }
 
 export function useCloudExport() {

@@ -5,4 +5,4 @@ export { useTrackedLifts } from './entries/trackedLiftHooks';
 export { useDeloadNote, useDeloadHistory } from './entries/deloadHooks';
 export { useFeatureToggles } from './entries/featureToggleHooks';
 export { useUserProfile } from './entries/profileHooks';
-export { useSyncRecovery, useCloudExport } from './entries/syncRecoveryHooks';
+export { useSyncRecovery, useCloudExport, useAutoSync } from './entries/syncRecoveryHooks';

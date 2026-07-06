@@ -13,6 +13,38 @@
 // captured error, and local AsyncStorage is untouched — recovery is
 // non-destructive and repeatable. This preserves the roadmap rule that a failed
 // bootstrap leaves local state intact.
+//
+// Bootstrap marker: `isBootstrapped(userId)` / `setBootstrapped(userId)` persist
+// a per-user AsyncStorage flag so repeated app launches don't re-upload already-
+// bootstrapped local history (#432). The marker is set only after a successful
+// bootstrap; a failed bootstrap leaves it unset so the next launch retries.
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BOOTSTRAP_MARKER_PREFIX = 'kilo_sync_bootstrapped_';
+
+// Returns true if this device has already successfully bootstrapped for userId.
+export async function isBootstrapped(userId) {
+  if (!userId) return false;
+  try {
+    const val = await AsyncStorage.getItem(`${BOOTSTRAP_MARKER_PREFIX}${userId}`);
+    return val === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// Persist the bootstrap-completed marker for userId. Non-critical: if the write
+// fails, the worst case is an extra bootstrap attempt on the next launch, which
+// is safe because bootstrap upserts are idempotent.
+export async function setBootstrapped(userId) {
+  if (!userId) return;
+  try {
+    await AsyncStorage.setItem(`${BOOTSTRAP_MARKER_PREFIX}${userId}`, 'true');
+  } catch {
+    // Intentionally swallowed — see comment above.
+  }
+}
 
 // Status vocabulary surfaced to the user.
 export const SYNC_STATUS = Object.freeze({

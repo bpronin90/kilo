@@ -15,15 +15,12 @@ export function useWorkoutNotes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const refresh = useCallback(() => {
+  const reload = useCallback(() => {
     setError(null);
-    maybeSyncCloud()
-      .then(() =>
-        Promise.all([
-          readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
-          Storage.loadCurrentWorkoutId(),
-        ])
-      )
+    Promise.all([
+      readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
+      Storage.loadCurrentWorkoutId(),
+    ])
       .then(([ns, id]) => {
         setNotes(ns);
         setCurrentId(id);
@@ -31,6 +28,14 @@ export function useWorkoutNotes() {
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
+
+  const refresh = useCallback(() => {
+    setError(null);
+    maybeSyncCloud()
+      .then(reload)
+      .catch(e => setError(e))
+      .finally(() => setLoading(false));
+  }, [reload]);
 
   useEffect(() => {
     refresh();
@@ -73,5 +78,5 @@ export function useWorkoutNotes() {
     notifyWorkoutNotes();
   }, []);
 
-  return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh };
+  return { notes, currentId, currentNote, deloadNotes, loading, error, add, update, remove, selectCurrent, refresh, reload };
 }

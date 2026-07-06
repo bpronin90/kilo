@@ -48,6 +48,7 @@ jest.mock('../hooks/useEntries', () => ({
     selectCurrent: jest.fn(),
     refresh: jest.fn(),
   }),
+  useAutoSync: () => {},
 }));
 jest.mock('../storage/entries', () => ({
   exportBackup: jest.fn(),
