@@ -72,7 +72,12 @@ export default function App() {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession();
-  useAutoSync(auth);
+  useAutoSync(auth, {
+    onSyncComplete() {
+      weightHook.refresh();
+      noteHook.refresh();
+    },
+  });
 
   // Web OAuth / password-reset callback handling. After a provider redirect or
   // a reset link, the app reloads at its web URL carrying the auth payload; this

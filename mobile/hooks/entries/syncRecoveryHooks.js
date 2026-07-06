@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import { cloudAdapter } from '../../storage/cloudAdapter';
 import {
@@ -76,9 +76,20 @@ export function useSyncRecovery(user = null) {
 // bidirectional sync. Ongoing sync after writes is handled by maybeSyncCloud()
 // in the entry-hook refresh paths once cloud mode is active.
 //
+// `onSyncComplete` is called after the auto-sync pass writes new remote data into
+// local storage so callers can refresh their UI state without requiring a manual
+// user action. Passed as an option so App.js can forward the entry-hook refresh
+// callbacks without adding them to the effect dependency array (the ref always
+// holds the latest value).
+//
 // Failures are non-destructive: a failed bootstrap leaves the phase in
 // failed/retryable so the manual Retry button in CloudSyncRecovery can recover.
-export function useAutoSync(auth) {
+export function useAutoSync(auth, { onSyncComplete } = {}) {
+  // Keep the callback ref current on every render so the async effect always
+  // calls the latest version without it becoming an effect dependency.
+  const onSyncCompleteRef = useRef(onSyncComplete);
+  onSyncCompleteRef.current = onSyncComplete;
+
   const userId = auth?.user?.id ?? null;
   const configured = auth?.configured ?? false;
   const authLoading = auth?.loading ?? true;
@@ -110,6 +121,7 @@ export function useAutoSync(auth) {
             getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
           const runner = makeSyncRunner();
           if (runner && !cancelled) await runPhase(SYNC_PHASE.SYNC, runner);
+          if (!cancelled) onSyncCompleteRef.current?.();
         }
         return;
       }
@@ -130,9 +142,14 @@ export function useAutoSync(auth) {
         await setBootstrapped(userId);
       }
 
-      if (getSyncState()[SYNC_PHASE.SYNC].status !== SYNC_STATUS.IDLE) return;
+      const syncIsIdle = getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE;
       const syncRunner = makeSyncRunner();
-      if (syncRunner && !cancelled) await runPhase(SYNC_PHASE.SYNC, syncRunner);
+      if (syncIsIdle && syncRunner && !cancelled) {
+        await runPhase(SYNC_PHASE.SYNC, syncRunner);
+      }
+      // Notify the UI to reload entry state after bootstrap/sync writes remote
+      // data into local storage.
+      if (!cancelled) onSyncCompleteRef.current?.();
     })().catch(() => {});
 
     return () => { cancelled = true; };

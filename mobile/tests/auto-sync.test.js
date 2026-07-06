@@ -25,7 +25,7 @@ import {
 } from '../storage/syncRecovery';
 import { cloudAdapter } from '../storage/cloudAdapter';
 import * as Storage from '../storage/entries';
-import { useAutoSync, useSyncRecovery } from '../hooks/useEntries';
+import { useAutoSync, useSyncRecovery, useWeightEntries } from '../hooks/useEntries';
 import {
   SYNC_TABLES,
   getDirtyRecords,
@@ -353,6 +353,68 @@ describe('useAutoSync: sign-out resets storage mode and phases', () => {
     expect(bootstrapSpy).toHaveBeenCalledWith(USER_B.id);
     expect(await isBootstrapped(USER_B.id)).toBe(true);
     expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+  });
+});
+
+// ── Stale UI fix: onSyncComplete refreshes mounted entry hooks ────────────────
+//
+// Verifies that after auto-sync writes remote data into local storage, the
+// already-mounted weight entry hook reflects the new data without any manual
+// user action. This is the integration proof for the onSyncComplete callback
+// added in review round 3 (#432).
+
+describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () => {
+  test('mounted weight entry hook reflects remote data after auto-sync without manual action', async () => {
+    await setBootstrapped(USER.id);
+
+    const remoteEntry = {
+      id: 'w-remote-ui-1',
+      entry_type: 'weight',
+      date: '2026-07-06',
+      logged_at: '2026-07-06T08:00:00.000Z',
+      weight_value: 185,
+    };
+
+    // Stub the storage adapter: sync writes the remote entry into local
+    // AsyncStorage directly (no real transport), loadWeightEntries reads back.
+    // This keeps the async chain shallow enough for flush to drain it.
+    const { replaceWeightEntriesRaw, loadWeightEntriesRaw } = require('../storage/entries');
+    jest.spyOn(Storage, 'getStorageAdapter').mockReturnValue({
+      mode: 'cloud',
+      sync: jest.fn(async () => {
+        await replaceWeightEntriesRaw([remoteEntry]);
+      }),
+      loadWeightEntries: async () => {
+        const list = await loadWeightEntriesRaw();
+        return list.filter((e) => !e.deleted_at);
+      },
+    });
+
+    // Mirrors how App.js mounts both hooks and forwards onSyncComplete to refresh.
+    const weightRef = { current: null };
+    function Probe() {
+      const weightHook = useWeightEntries();
+      weightRef.current = weightHook;
+      useAutoSync(makeAuth(), {
+        onSyncComplete() {
+          weightRef.current?.refresh();
+        },
+      });
+      return null;
+    }
+
+    act(() => {
+      renderer.create(React.createElement(Probe));
+    });
+
+    // Flush deeply: isBootstrapped → sync → onSyncComplete → refresh →
+    // maybeSyncCloud → loadWeightEntries → setState.
+    for (let i = 0; i < 8; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { await Promise.resolve(); });
+    }
+
+    expect(weightRef.current.entries.map((e) => e.id)).toContain('w-remote-ui-1');
   });
 });
 
