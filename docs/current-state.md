@@ -71,14 +71,19 @@ The native Expo app exposes five tabs: Home, Log, Weight, Analytics, and More.
 For physical-device packaging:
    - `cd mobile`
    - `eas build --platform android --profile preview`
+   - For a Play Store production AAB, run
+     `npm --prefix mobile run build:android:production` from the repo root
    - Install the resulting APK on the phone
    - After a compatible Android build is installed, publish OTA-safe JS and
      asset updates with `npm --prefix mobile run update:android:preview`
+   - Production Android OTA-safe JS and asset updates publish with
+     `npm --prefix mobile run update:android:production`, but only after a
+     compatible production AAB exists and is verified.
    - iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
      `preview` channel; publish iOS OTA updates with
      `npm --prefix mobile run update:ios:preview`. Live on-device iOS delivery
      is not yet verified end to end (deferred pending an iOS build, issue #63).
-   - The preview runtime boundary is a stable manual string (`preview-1`)
+   - The preview runtime boundary is a stable manual string (`preview-3`)
      set in `mobile/app.config.js` when `APP_ENV=preview`. OTA updates apply
      to any installed preview build sharing that runtime string. App version
      bumps do not create a new OTA boundary. A new native build is required
@@ -960,7 +965,7 @@ app under `mobile/` is the only device-packaging path.
 The native Expo app uses plain `expo-updates` for Android preview OTA delivery.
 Preview builds check the `preview` EAS Update channel on launch and can accept
 JavaScript and bundled-asset updates without reinstalling the APK. The preview
-runtime is a stable manual string (`preview-1`) defined in `mobile/app.config.js`
+runtime is a stable manual string (`preview-3`) defined in `mobile/app.config.js`
 and is not tied to `expo.version`; app version bumps do not force a rebuild or
 break OTA delivery. A rebuild is only required when a native module changes, a
 native `app.json` field changes, or `PREVIEW_RUNTIME` in `mobile/app.config.js`
@@ -982,10 +987,13 @@ installable paths that do not depend on the developer machine staying on or
 serving a local Expo session.
 
 Android: the `preview` profile produces a plain `.apk` for sideloading. The
-`production` profile produces a Play Store `.aab` bound to the EAS
-`production` environment, which carries the `EXPO_PUBLIC_SUPABASE_*` variables
-so store builds are cloud-enabled (sign-in, sync, account lifecycle), and it
-auto-increments `versionCode` for repeat Play uploads (#425).
+`production` profile is configured to produce a Play Store `.aab` bound to the
+EAS `production` environment, which carries the same `EXPO_PUBLIC_SUPABASE_*`
+variables as preview so store builds are cloud-enabled (sign-in, sync, account
+lifecycle), and it auto-increments `versionCode` for repeat Play uploads (#425).
+As of the issue #431 release-path check on 2026-07-06, EAS still has no Android
+production build recorded, so creating and verifying that AAB remains a
+pre-Play-upload user action.
 
 iOS: two profiles are available:
 - `ios-simulator` — builds a Simulator `.app` bundle; no Apple Developer account

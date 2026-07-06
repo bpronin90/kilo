@@ -26,6 +26,8 @@ publish to the configured EAS Update channels from `mobile/`:
 ```sh
 npm --prefix mobile run update:android:preview
 npm --prefix mobile run update:ios:preview
+npm --prefix mobile run build:android:production
+npm --prefix mobile run update:android:production
 ```
 
 iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
@@ -34,9 +36,14 @@ iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
 
 Use OTA publish only for JavaScript and asset changes. Any native-affecting
 change still requires a fresh Android build. Preview builds use a stable manual
-runtime string (`preview-1`) in `mobile/app.config.js`; app version bumps alone
+runtime string (`preview-3`) in `mobile/app.config.js`; app version bumps alone
 do not force a rebuild. Only bump `PREVIEW_RUNTIME` in `mobile/app.config.js`
 when a native-incompatible change actually requires it.
+
+Production Android builds use the EAS `production` profile and create a Play
+Store AAB. Before Play upload, verify that an actual production build exists in
+EAS; as of issue #431 checks on 2026-07-06, no Android production build exists
+yet even though the profile resolves.
 
 Current limitation:
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.87.5 - 2026-07-06
+
+- Issue #431: Added repeatable Android production build/update scripts and
+  corrected release-path docs so Play readiness no longer claims a production
+  AAB exists before EAS has produced one. Updated preview/runtime documentation
+  to match the current `preview-3` channel state and recorded the remaining
+  production AAB user action for #424.
+
 ## 0.87.4 - 2026-07-06
 
 - Issue #424: Tightened the Play Store closed-testing tester guide so testers
