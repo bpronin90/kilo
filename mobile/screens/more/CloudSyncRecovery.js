@@ -22,7 +22,7 @@ export function CloudSyncRecovery({ user }) {
       case SYNC_STATUS.RUNNING:
         return 'Running…';
       case SYNC_STATUS.FAILED:
-        return `Failed${s.error ? `: ${s.error}` : ''}`;
+        return 'Failed';
       case SYNC_STATUS.COMPLETE:
         return 'Complete';
       default:

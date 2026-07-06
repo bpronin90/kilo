@@ -14,7 +14,7 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
-import { useWeightEntries, useWorkoutNotes } from './hooks/useEntries';
+import { useWeightEntries, useWorkoutNotes, useAutoSync } from './hooks/useEntries';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
@@ -72,6 +72,7 @@ export default function App() {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession();
+  useAutoSync(auth);
 
   // Web OAuth / password-reset callback handling. After a provider redirect or
   // a reset link, the app reloads at its web URL carrying the auth payload; this
