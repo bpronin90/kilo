@@ -89,6 +89,7 @@ Declare under **Health & Fitness → Health info** for weight/body data, plus **
 | Item | Status | Notes |
 |---|---|---|
 | Production AAB via EAS | user-action-pending | `eas.json` production profile resolves to `buildType: "app-bundle"`, but EAS has no Android production build yet. Run `npm --prefix mobile run build:android:production` before Play upload. |
+| Crash/error reporting env configured before AAB build | user-action-pending | Issue #434 adds Sentry. Set `EXPO_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, and sensitive `SENTRY_AUTH_TOKEN` in the build environment before the Play closed-testing AAB is created. |
 | Play App Signing enrollment | user-action-pending | Must be enabled in Play Console before first release upload |
 | Target API level ≥35 | **PASS — API 35** | See verification below |
 

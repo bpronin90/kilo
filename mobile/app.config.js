@@ -7,10 +7,35 @@
 //   must NOT receive SDK 54 OTA bundles and instead require a fresh build.
 const PREVIEW_RUNTIME = 'preview-3';
 
+function appendPlugin(existingPlugins, nextPlugin) {
+  const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];
+  const pluginName = Array.isArray(nextPlugin) ? nextPlugin[0] : nextPlugin;
+  if (plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === pluginName)) {
+    return plugins;
+  }
+  return [...plugins, nextPlugin];
+}
+
 module.exports = ({ config }) => {
   const isPreview = process.env.APP_ENV === 'preview';
+  const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+  const sentryOrg = process.env.SENTRY_ORG;
+  const sentryProject = process.env.SENTRY_PROJECT;
+  const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+  const sentryPlugin =
+    sentryDsn && sentryOrg && sentryProject && sentryAuthToken
+      ? [
+          '@sentry/react-native/expo',
+          {
+            organization: sentryOrg,
+            project: sentryProject,
+            url: process.env.SENTRY_URL || 'https://sentry.io/',
+          },
+        ]
+      : null;
   return {
     ...config,
+    plugins: sentryPlugin ? appendPlugin(config.plugins, sentryPlugin) : config.plugins,
     runtimeVersion: isPreview ? PREVIEW_RUNTIME : { policy: 'appVersion' },
   };
 };

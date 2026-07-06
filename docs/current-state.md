@@ -32,6 +32,12 @@ dependency-audit findings in the Expo tooling tree with targeted `postcss` and
 Because SDK 56 changes the native runtime, shipping this upgrade requires fresh
 Android/iOS native builds; OTA/EAS Update cannot move installed SDK-54 builds
 onto SDK 56.
+Issue #434 adds minimal Sentry crash/error reporting for native production
+builds via `@sentry/react-native`, initialized from the public
+`EXPO_PUBLIC_SENTRY_DSN` and tagged with Expo update/runtime context without
+opting into default PII capture. Because the Expo Sentry plugin changes native
+build behavior for source-map upload, this must land before the production AAB
+intended for Play closed testing is built.
 
 Roadmap status:
 
