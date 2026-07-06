@@ -88,9 +88,35 @@ Declare under **Health & Fitness → Health info** for weight/body data, plus **
 
 | Item | Status | Notes |
 |---|---|---|
-| Production AAB via EAS | done | `eas.json` production profile: `buildType: "app-bundle"` |
+| Production AAB via EAS | user-action-pending | `eas.json` production profile resolves to `buildType: "app-bundle"`, but EAS has no Android production build yet. Run `npm --prefix mobile run build:android:production` before Play upload. |
 | Play App Signing enrollment | user-action-pending | Must be enabled in Play Console before first release upload |
 | Target API level ≥35 | **PASS — API 35** | See verification below |
+
+### Production Build-Path Verification
+
+Checked on 2026-07-06 for issue #431:
+
+- `eas env:list --environment preview` and `eas env:list --environment production`
+  both show the same `EXPO_PUBLIC_SUPABASE_URL` and
+  `EXPO_PUBLIC_SUPABASE_ANON_KEY`, so preview and production resolve to the
+  same Supabase project.
+- `eas build:list --platform android --build-profile production --limit 5 --json`
+  returned `[]`.
+- `eas build:list --platform android --channel production --limit 5 --json`
+  returned `[]`.
+- `eas build:inspect --platform android --profile production --stage archive
+  --output /tmp/kilo-issue-431-production-archive --force` completed and saved
+  the project archive, verifying the production profile can resolve before a
+  remote EAS build is started.
+- `eas update:list --branch preview --limit 5 --json` shows current Android
+  `preview-3` updates, latest `Merge issue 424 tester guidance` on 2026-07-06.
+- `eas update:list --branch production --limit 5 --json` shows only one Android
+  production update, `update with latest changes` from 2026-05-18, with
+  `runtimeVersion` reported as `file:fingerprint`.
+
+The remaining release blocker is user action: create and verify the production
+Android AAB through EAS, then upload it to Play Console after Play App Signing
+is ready.
 
 ### Target API Level Verification
 
