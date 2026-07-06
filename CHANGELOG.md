@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.87.1 - 2026-07-05
+
+- Issue #428: Move @expo/ngrok from dependencies to devDependencies
+
+
 ## 0.87.0 - 2026-07-05
 
 - Issue #426: OTA updates should land on the latest version in one step, not one launch behind
