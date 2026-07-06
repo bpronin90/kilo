@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.87.2 - 2026-07-05
+
+- Issue #427: Suppress About panel's duplicate restart prompt while the global update banner is shown
+
+
 ## 0.87.1 - 2026-07-05
 
 - Issue #428: Move @expo/ngrok from dependencies to devDependencies
