@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.88.1 - 2026-07-06
+
+- Issue #434: Added minimal Sentry-based mobile crash/error reporting for
+  production native builds, gated bootstrap/config activation on the full
+  documented Sentry environment set, tagged reports with Expo update/runtime
+  context without default PII capture, and documented the pre-AAB setup plus
+  focused verification path for Play closed testing.
+
 ## 0.88.0 - 2026-07-06
 
 - Issue #433: Added a signed-in Account cloud-sync status summary showing

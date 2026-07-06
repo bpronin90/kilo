@@ -45,6 +45,23 @@ Store AAB. Before Play upload, verify that an actual production build exists in
 EAS; as of issue #431 checks on 2026-07-06, no Android production build exists
 yet even though the profile resolves.
 
+Issue #434 adds native-runtime-affecting Sentry crash/error reporting for
+production builds. Before the production AAB intended for Play closed testing
+is built, set these env vars in the build environment:
+
+- `EXPO_PUBLIC_SENTRY_DSN`: public client DSN used at runtime to send crash and serious JS error events.
+- `SENTRY_ORG`: Sentry organization slug for the Expo build plugin.
+- `SENTRY_PROJECT`: Sentry project slug for the Expo build plugin.
+- `SENTRY_AUTH_TOKEN`: sensitive build-time token for source-map upload.
+
+The Expo Sentry config plugin is enabled only when all four values are present.
+This avoids partial native-build changes when the source-map upload credential is
+missing.
+
+The integration is intentionally narrow: no replay, tracing, logs, or default
+PII capture are enabled, and app code should not attach workout note contents,
+weight entries, auth tokens, or other sensitive payloads to events.
+
 Current limitation:
 
 - Native parser and storage modules now have Jest coverage under `mobile/tests/`,
@@ -157,6 +174,19 @@ Run the active native test suite:
 ```sh
 npm --prefix mobile test
 ```
+
+For the crash reporter specifically, the narrow bootstrap verification is:
+
+```sh
+npm --prefix mobile test -- --runInBand tests/error-reporting.test.js
+```
+
+Production-like verification for issue #434:
+
+1. Build a preview or production native binary after the Sentry env vars are set.
+2. Install the binary, launch it once, and trigger a test error with a temporary `Sentry.captureException(new Error(...))` or equivalent release-only smoke hook.
+3. Confirm the event appears in Sentry with app/update tags and the expected release build context.
+4. Remove the temporary smoke trigger before shipping.
 
 The repo root no longer hosts an active browser/Vitest suite. After the
 browser prototype archival in issue `#213`, the root `package.json` only
