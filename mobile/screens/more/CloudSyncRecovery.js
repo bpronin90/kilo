@@ -44,7 +44,7 @@ export function CloudSyncRecovery({ user }) {
       setStatus(
         result?.ok
           ? `${kind === 'bootstrap' ? 'Local history uploaded' : 'Sync'} complete.`
-          : result?.error || 'Could not start.'
+          : 'Could not complete — try again.'
       );
     } finally {
       setBusy(false);

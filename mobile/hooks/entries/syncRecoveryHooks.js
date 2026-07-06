@@ -8,6 +8,7 @@ import {
   subscribeSyncState,
   runPhase,
   markComplete,
+  resetPhase,
   isBootstrapped,
   setBootstrapped,
 } from '../../storage/syncRecovery';
@@ -88,6 +89,9 @@ export function useAutoSync(auth) {
 
     if (!signedIn || !userId) {
       Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+      // Reset phases so the next sign-in (possibly a different user) starts clean.
+      resetPhase(SYNC_PHASE.BOOTSTRAP);
+      resetPhase(SYNC_PHASE.SYNC);
       return;
     }
 
@@ -97,7 +101,10 @@ export function useAutoSync(auth) {
 
     (async () => {
       const state = getSyncState();
-      // Skip if bootstrap was already driven this session (running or complete).
+      // Skip if bootstrap was already driven this session for THIS user (running
+      // or complete). A phase left over from a prior user is cleared on sign-out
+      // (see resetPhase above), so a stale non-IDLE status here always belongs to
+      // the current user.
       if (state[SYNC_PHASE.BOOTSTRAP].status !== SYNC_STATUS.IDLE) {
         if (state[SYNC_PHASE.BOOTSTRAP].status === SYNC_STATUS.COMPLETE &&
             getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
