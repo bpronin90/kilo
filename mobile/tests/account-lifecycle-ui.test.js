@@ -303,7 +303,7 @@ describe('deleteAccount', () => {
   test('returns error and does not sign out when function fails', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
-      json: async () => ({ error: 'Failed to delete auth user: internal error' }),
+      json: async () => ({ error: 'Account deletion failed.' }),
     });
 
     const { ref } = renderHook();
@@ -313,7 +313,7 @@ describe('deleteAccount', () => {
     await act(async () => { result = await ref.current.deleteAccount(); });
 
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/Failed to delete auth user/);
+    expect(result.error).toBe('Account deletion failed.');
     expect(mockAuth.signOut).not.toHaveBeenCalled();
   });
 

@@ -499,6 +499,10 @@ retains non-test commands such as `npm run audit`.
 - verify `account-export` and `account-delete` reject unauthenticated requests,
   include no service-role or secret key in client requests, and enforce both
   per-user and per-IP throttles before open signup
+- type-check the account lifecycle Edge Functions after changing shared
+  function helpers or CDN imports:
+  `deno check --no-lock supabase/functions/account-export/index.ts` and
+  `deno check --no-lock supabase/functions/account-delete/index.ts`
 - manual throttle verification (issue #328): call `account-export` twice within
   10 minutes as the same user — second call must return HTTP 429; call
   `account-delete` four times within one hour as the same user — fourth call must
@@ -524,10 +528,9 @@ The following MVP behaviors have no automated test coverage:
 A CI workflow (`.github/workflows/audit.yml`) runs `npm audit --audit-level=high` against both the root and `mobile/` package trees on every push to `main`, on every pull request, and on a weekly schedule (Mondays 06:00 UTC). The job fails if any high-severity or critical vulnerability is found. The weekly run catches new advisories that land against an otherwise-unchanged lockfile before unrelated work merges.
 
 The Expo SDK 56 upgrade in issue #367 cleared the prior mobile `postcss` and
-`js-yaml` moderate advisories while preserving the high-severity gate. A
-moderate `uuid` advisory remains on the mobile dependency tree through
-dev-tooling paths and is tracked separately; it is not part of the blocking
-high-severity gate.
+`js-yaml` moderate advisories while preserving the high-severity gate. Issue
+#429 then added targeted mobile overrides for `postcss` and `uuid`, so both
+root and mobile audit runs report zero known vulnerabilities at closeout.
 
 Run the same check locally:
 

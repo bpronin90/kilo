@@ -21,7 +21,7 @@
 // 20260622120001_edge_rate_limit.sql.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { extractToken } from '../_shared/auth.ts'
 import { clientIp, rateLimitAllowed } from '../_shared/rate-limit.ts'
@@ -112,7 +112,8 @@ serve(async (req) => {
 
   const dataError = deleteResults.find(r => r.error)?.error
   if (dataError) {
-    return new Response(JSON.stringify({ error: `Failed to delete app data: ${dataError.message}` }), {
+    console.error(`account-delete app data deletion failed: ${dataError.message}`)
+    return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
@@ -123,7 +124,8 @@ serve(async (req) => {
   // clients.
   const { error: deleteAuthError } = await rlAdmin.auth.admin.deleteUser(user.id)
   if (deleteAuthError) {
-    return new Response(JSON.stringify({ error: `Failed to delete auth user: ${deleteAuthError.message}` }), {
+    console.error(`account-delete auth deletion failed: ${deleteAuthError.message}`)
+    return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

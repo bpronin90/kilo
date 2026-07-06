@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.87.3 - 2026-07-06
+
+- Issue #429: Completed a security audit and hardening pass. Mobile dependency
+  overrides now clear the `postcss` and `uuid` audit findings in the Expo
+  tooling tree, account export/delete Edge Functions return generic 500 errors
+  instead of internal failure details, Supabase Edge Function CDN imports are
+  pinned to `@supabase/supabase-js@2.108.2`, and Deno type-check validation now
+  covers the pinned account lifecycle functions.
+
 ## 0.87.2 - 2026-07-05
 
 - Issue #427: Suppress About panel's duplicate restart prompt while the global update banner is shown
