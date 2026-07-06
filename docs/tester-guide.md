@@ -32,6 +32,18 @@ path required before the app can be publicly released.
 You do not need to allow "unknown sources" for this path — the app
 installs through the standard Play Store flow.
 
+Important: stay opted in to the Play Store testing program for at least
+14 continuous days. If you leave and rejoin, Google may reset your testing
+window. During that period, open Kilo a few times, work through the checklist
+below, and send feedback even if everything works.
+
+Feedback can be brief:
+
+- What device you used.
+- Whether install, launch, logging, analytics, and relaunch worked.
+- Anything confusing, broken, slow, or visually off.
+- "No issues found" if the pass was clean.
+
 ### EAS APK direct install (pre-Play-track method)
 
 Testers in earlier preview phases received an APK via an EAS build link
