@@ -25,6 +25,7 @@ const WEEKDAY_NAMES = { 1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fr
 const PERMISSION_MESSAGE = 'Notifications are blocked. Allow notifications for Kilo in system settings, then try again.';
 const UNSUPPORTED_MESSAGE = 'Reminders need the mobile app; they are not available on web.';
 const SCHEDULE_ERROR_MESSAGE = 'Could not schedule the reminder. Please try again.';
+const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enabling the nudge.';
 
 // Reminders settings card (issue #440): two independent opt-in local
 // reminders, both default OFF, persisted locally like the other feature
@@ -112,6 +113,10 @@ export function ReminderSettingsCard() {
 
   const handleWorkoutToggle = useCallback(async (enabled) => {
     setWorkoutError(null);
+    if (enabled && resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays).length === 0) {
+      setWorkoutError(WORKOUT_DAYS_REQUIRED_MESSAGE);
+      return;
+    }
     if (enabled && !(await ensurePermission(setWorkoutError))) return;
     const ok = await persistWorkout({ ...workout, enabled }, inferredWeekdays);
     if (!ok && enabled) {
@@ -200,49 +205,47 @@ export function ReminderSettingsCard() {
         />
       </View>
       {workoutError ? <Text style={styles.errorText}>{workoutError}</Text> : null}
+      {!usesInference && (
+        <View style={styles.weekdayRow}>
+          {WEEKDAYS.map((day) => {
+            const selected = workout.fallbackWeekdays.includes(day.value);
+            return (
+              <Pressable
+                key={day.value}
+                style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}
+                onPress={() => handleToggleWeekday(day.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Nudge on ${day.label}`}
+              >
+                <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
+                  {day.short}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
       {workout.enabled ? (
-        <>
-          <View style={styles.subRow}>
-            <Text style={styles.subRowLabel}>Nudge time</Text>
-            <Pressable
-              style={styles.timeButton}
-              onPress={() => setShowWorkoutPicker(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Workout nudge time"
-            >
-              <Text style={styles.timeButtonText}>{formatReminderTime(workout.hour, workout.minute)}</Text>
-            </Pressable>
-            {showWorkoutPicker && Platform.OS !== 'web' && (
-              <DateTimePicker
-                value={pickerValue(workout.hour, workout.minute)}
-                mode="time"
-                display="default"
-                onChange={handleWorkoutTime}
-              />
-            )}
-          </View>
-          {!usesInference && (
-            <View style={styles.weekdayRow}>
-              {WEEKDAYS.map((day) => {
-                const selected = workout.fallbackWeekdays.includes(day.value);
-                return (
-                  <Pressable
-                    key={day.value}
-                    style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}
-                    onPress={() => handleToggleWeekday(day.value)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`Nudge on ${day.label}`}
-                  >
-                    <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]} accessible={false}>
-                      {day.short}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+        <View style={styles.subRow}>
+          <Text style={styles.subRowLabel}>Nudge time</Text>
+          <Pressable
+            style={styles.timeButton}
+            onPress={() => setShowWorkoutPicker(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Workout nudge time"
+          >
+            <Text style={styles.timeButtonText}>{formatReminderTime(workout.hour, workout.minute)}</Text>
+          </Pressable>
+          {showWorkoutPicker && Platform.OS !== 'web' && (
+            <DateTimePicker
+              value={pickerValue(workout.hour, workout.minute)}
+              mode="time"
+              display="default"
+              onChange={handleWorkoutTime}
+            />
           )}
-        </>
+        </View>
       ) : null}
     </Card>
   );

@@ -139,9 +139,15 @@ Current limitation:
   path and Log deload-date web fallback. `mobile/App.js` app-shell coverage now
   covers initial tab visibility, tab switching through the shared `TabBar`
   contract, Android hardware-back behavior from Home and non-Home tabs, and the
-  web-only Home back affordance. Full transactional undo guarantees across
+  web-only Home back affordance. Reminder coverage now pins local scheduling
+  decisions, weekday inference/fallback behavior, permission-denial handling,
+  cancel-on-disable reconciliation, settings persistence, and the ambiguous
+  routine fallback UI path for selecting weekdays before enabling a workout-day
+  nudge. Full transactional undo guarantees across
   linked records are still deferred until a DB-backed persistence layer exists.
-- No automated native test covers an Expo device/emulator pass yet.
+- No automated native test covers an Expo device/emulator pass yet, so local
+  notification receipt and cancellation still need a physical-device or
+  emulator check for release validation.
 - Android GitHub OAuth has rendered regression coverage for button visibility,
   browser success/cancellation/provider errors, PKCE code exchange, missing
   callback data, and session-exchange failures. The custom
