@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
 
 export const SET_ROW_FONT_SIZE = 14;
 
@@ -218,8 +220,9 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 }
 
 export function SetLine({ sets, selectable }) {
+  const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
-  
+
   const groups = [];
   let currentGroup = null;
 
@@ -235,7 +238,7 @@ export function SetLine({ sets, selectable }) {
     <View style={styles.setLine}>
       {groups.map((group, i) => (
         <View key={i} style={styles.setGroup}>
-          <Text selectable={selectable} style={styles.setWeight}>{group.weight ? `${group.weight} lb` : 'BW'}</Text>
+          <Text selectable={selectable} style={styles.setWeight}>{group.weight ? `${formatLiftWeightValue(group.weight, unit)} ${unit}` : 'BW'}</Text>
           <Text selectable={selectable} style={styles.setReps}>{group.reps.join(', ')}</Text>
         </View>
       ))}

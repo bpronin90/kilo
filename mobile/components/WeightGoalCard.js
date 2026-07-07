@@ -5,6 +5,8 @@ import { Card, Button, InputStyle } from './UI';
 import { Colors } from '../theme/colors';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
+import { useWeightUnit } from '../lib/unitPreference';
+import { displayWeight, formatBodyweightValue } from '../lib/units';
 
 // Web-safe goal target date input. The native @react-native-community/datetimepicker
 // has no usable rendering on web, so on web we render a real DOM <input type="date">
@@ -38,10 +40,11 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
 }
 
 export function GoalDerived({ info, calorieEstimate }) {
+  const unit = useWeightUnit();
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
 
-  const paceAbs = required_weekly_pace !== null ? Math.abs(required_weekly_pace).toFixed(2) : null;
+  const paceAbs = required_weekly_pace !== null ? Math.abs(displayWeight(required_weekly_pace, unit)).toFixed(2) : null;
   const calories_per_day = calorieEstimate?.calories_per_day ?? null;
   const calLabel = calorieEstimate?.label ?? null;
   const tdeeBased = calorieEstimate?.tdee_based ?? false;
@@ -57,7 +60,7 @@ export function GoalDerived({ info, calorieEstimate }) {
         <Text style={styles.derivedLabel}>Target pace</Text>
         {!hasPace && <Text style={styles.derivedValueNeutral}>-</Text>}
         {hasPace && isMaintain && <Text style={styles.derivedValue}>Maintain</Text>}
-        {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} lb / week</Text>}
+        {hasPace && !isMaintain && <Text style={styles.derivedValue}>{paceAbs} {unit} / week</Text>}
       </View>
 
       {hasPace && (tdeeBased || !isMaintain) && calLabel !== null && !(calLabel === 'maintain' && !tdeeBased) && (
@@ -111,10 +114,20 @@ export function WeightGoalCard({
   currentWeight,
   isGoalMet,
 }) {
+  const unit = useWeightUnit();
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
       ? Math.abs(currentWeight - goal.target_weight)
       : null;
+
+  // The goal form's text fields are in the selected display unit, so the
+  // current weight seeded into a form save must be display-space too (the
+  // screen's save wrapper converts everything back to canonical lb).
+  // handleArchiveGoal stores completed_weight directly and stays lb.
+  const formCurrentWeight =
+    currentWeight != null && unit === 'kg'
+      ? Number(formatBodyweightValue(currentWeight, 'kg'))
+      : currentWeight;
 
   return (
     <Card style={[styles.goalCard, isGoalMet && goal && !goalEditing ? styles.goalCardMet : null]}>
@@ -161,22 +174,22 @@ export function WeightGoalCard({
           {goalError ? <Text style={styles.goalErrorText}>{goalError}</Text> : null}
           {!currentWeight && (
             <>
-              <Text style={styles.inputLabel}>Current weight (lb)</Text>
+              <Text style={styles.inputLabel}>Current weight ({unit})</Text>
               <TextInput
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
-                placeholder="200.0"
+                placeholder={unit === 'kg' ? '90.0' : '200.0'}
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.input}
               />
             </>
           )}
-          <Text style={styles.inputLabel}>Target (lb)</Text>
+          <Text style={styles.inputLabel}>Target ({unit})</Text>
           <TextInput
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
-            placeholder="175.0"
+            placeholder={unit === 'kg' ? '80.0' : '175.0'}
             placeholderTextColor={Colors.textMuted}
             keyboardType="decimal-pad"
             style={styles.input}
@@ -222,14 +235,14 @@ export function WeightGoalCard({
               <View style={[styles.goalDivider, { marginBottom: 8 }]} />
             </View>
           )}
-          <Button onPress={() => handleSaveGoal(currentWeight)} title="Save goal" />
+          <Button onPress={() => handleSaveGoal(formCurrentWeight)} title="Save goal" />
         </>
       ) : (
         <View style={styles.goalDisplay}>
           <View style={styles.goalDisplayRow}>
             <View style={styles.goalDisplayItem}>
               <Text style={styles.goalDisplayLabel}>Target</Text>
-              <Text style={styles.goalDisplayValue}>{goal.target_weight} lb</Text>
+              <Text style={styles.goalDisplayValue}>{formatBodyweightValue(goal.target_weight, unit)} {unit}</Text>
             </View>
             <View style={styles.goalDisplayItem}>
               <Text style={styles.goalDisplayLabel}>Target Date</Text>
@@ -239,7 +252,7 @@ export function WeightGoalCard({
 
           {remainingToGoal !== null && !isGoalMet && !goalInfo?.isOverdue && (
             <View style={styles.goalProgressRow}>
-              <Text style={styles.goalProgressValue}>{remainingToGoal.toFixed(1)} lb</Text>
+              <Text style={styles.goalProgressValue}>{displayWeight(remainingToGoal, unit).toFixed(1)} {unit}</Text>
               <Text style={styles.goalProgressLabel}>to go</Text>
             </View>
           )}

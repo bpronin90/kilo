@@ -11,6 +11,8 @@ import { parseWeightEntry } from '../lib/parser';
 import { deriveWeightGoalAnalytics } from '../lib/data';
 import { isGoalMet as computeIsGoalMet } from '../lib/data/weightGoal';
 import { useArchivedWeightGoals } from '../hooks/entries/weightHooks';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatBodyweightValue, inputWeightToLb } from '../lib/units';
 
 import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 
@@ -126,6 +128,7 @@ export function WeightScreen({
   const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
   const profile = useUserProfile()?.profile ?? null;
+  const unit = useWeightUnit();
   const [editingId, setEditingId] = useState(null);
   const [localError, setLocalError] = useState('');
   const [newEntryDate, setNewEntryDate] = useState(localDateToday);
@@ -133,7 +136,36 @@ export function WeightScreen({
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
-  const goalForm = useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal);
+  // Display-unit bridge for the goal form (#441): the form's text fields hold
+  // values in the SELECTED unit, but canonical storage is lb. The form seeds
+  // from a display-space goal and saves through a wrapper that converts back
+  // to lb. Both are identity passthroughs in lb mode.
+  const displayGoal = useMemo(() => {
+    if (!goal || unit !== 'kg') return goal;
+    return {
+      ...goal,
+      target_weight: goal.target_weight != null ? Number(formatBodyweightValue(goal.target_weight, 'kg')) : goal.target_weight,
+      start_weight: goal.start_weight != null ? Number(formatBodyweightValue(goal.start_weight, 'kg')) : goal.start_weight,
+    };
+  }, [goal, unit]);
+
+  const saveGoalCanonical = useMemo(() => (
+    (g) => saveGoal({
+      ...g,
+      target_weight: g.target_weight != null ? inputWeightToLb(g.target_weight, unit) : g.target_weight,
+      start_weight: g.start_weight != null ? inputWeightToLb(g.start_weight, unit) : g.start_weight,
+    })
+  ), [saveGoal, unit]);
+
+  const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal);
+
+  // Draft goal fields are typed in the selected unit; convert them to lb-space
+  // strings before the lb-domain analytics derivation (identity in lb mode).
+  const draftToLbString = (text) => {
+    if (unit !== 'kg' || !text) return text;
+    const n = parseFloat(text);
+    return Number.isNaN(n) ? text : String(inputWeightToLb(n, 'kg'));
+  };
 
   const {
     trendSummary: trends,
@@ -147,9 +179,9 @@ export function WeightScreen({
         goal,
         {
           goalEditing: goalForm.goalEditing,
-          goalTargetWeight: goalForm.goalTargetWeight,
+          goalTargetWeight: draftToLbString(goalForm.goalTargetWeight),
           goalTargetDate: goalForm.goalTargetDate,
-          goalStartWeight: goalForm.goalStartWeight,
+          goalStartWeight: draftToLbString(goalForm.goalStartWeight),
         },
         new Date(),
         profile
@@ -162,6 +194,7 @@ export function WeightScreen({
       goalForm.goalTargetDate,
       goalForm.goalStartWeight,
       profile,
+      unit,
     ]
   );
 
@@ -186,7 +219,7 @@ export function WeightScreen({
     };
   }, [rawGoalInfo, goalForm.goalEditing, goalForm.goalTargetDate, goal?.target_date]);
 
-  const trendSections = useMemo(() => buildTrendSections(trends, paceLevel), [trends, paceLevel]);
+  const trendSections = useMemo(() => buildTrendSections(trends, paceLevel, unit), [trends, paceLevel, unit]);
 
   const isGoalMet = useMemo(
     () => computeIsGoalMet(goal, trends.currentWeight),
@@ -218,7 +251,7 @@ export function WeightScreen({
   const handleEditEntry = (entry) => {
     setLocalError('');
     setEditingId(entry.id);
-    setWeightValue(String(entry.weight_value));
+    setWeightValue(formatBodyweightValue(entry.weight_value, unit));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
@@ -291,11 +324,11 @@ export function WeightScreen({
         {displayError ? (
           <Text style={styles.errorText}>{displayError}</Text>
         ) : null}
-        <Text style={styles.inputLabel}>Weight (lb)</Text>
+        <Text style={styles.inputLabel}>Weight ({unit})</Text>
         <TextInput
           value={weightValue}
           onChangeText={setWeightValue}
-          placeholder="185.0"
+          placeholder={unit === 'kg' ? '84.0' : '185.0'}
           placeholderTextColor={Colors.textMuted}
           keyboardType="decimal-pad"
           style={styles.input}
@@ -361,6 +394,7 @@ export function WeightScreen({
           collapsed={goalHistoryCollapsed}
           setCollapsed={setGoalHistoryCollapsed}
           latestArchivedOutcome={latestArchivedOutcome}
+          unit={unit}
         />
       )}
 
@@ -380,7 +414,7 @@ export function WeightScreen({
 // Archived-goal history panel. Shares the one-panel visual system with Weight
 // History (#411): the header row IS the column-header / summary row, with the
 // collapse chevron in a trailing control cell and no separate empty chevron strip.
-function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome }) {
+function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome, unit = 'lb' }) {
   return (
     <View style={styles.archivedContainer}>
       <SectionTitle>Goal History</SectionTitle>
@@ -444,11 +478,11 @@ function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latest
               <View style={hp.rowMain}>
                 <View style={hp.rowCells}>
                   <View style={hp.col1}>
-                    <Text style={hp.value}>{g.target_weight} lb</Text>
+                    <Text style={hp.value}>{formatBodyweightValue(g.target_weight, unit)} {unit}</Text>
                   </View>
                   <View style={hp.col2}>
                     <Text style={[hp.value, endWeightOutcomeStyle]}>
-                      {hasCompletedWeight ? `${g.completed_weight} lb` : '—'}
+                      {hasCompletedWeight ? `${formatBodyweightValue(g.completed_weight, unit)} ${unit}` : '—'}
                     </Text>
                   </View>
                   <View style={hp.col3}>

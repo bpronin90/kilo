@@ -4,6 +4,8 @@ import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI'
 import { Colors } from '../theme/colors';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useWeightUnit } from '../lib/unitPreference';
+import { displayWeight } from '../lib/units';
 
 export function AnalyticsStrengthSection({
   handleStrengthLayout,
@@ -21,6 +23,12 @@ export function AnalyticsStrengthSection({
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
 
+  // oneK and oneKChartData arrive already converted into display space by
+  // AnalyticsScreen. The 1,000 lb club threshold stays lb-defined; only its
+  // display-space equivalent is used for the progress ratio here.
+  const unit = useWeightUnit();
+  const oneKTarget = displayWeight(1000, unit);
+
   const displayOneK = selectedSeriesPoint
     ? { total: selectedSeriesPoint.value, bench: selectedSeriesPoint.bench, squat: selectedSeriesPoint.squat, deadlift: selectedSeriesPoint.deadlift }
     : oneK;
@@ -35,12 +43,12 @@ export function AnalyticsStrengthSection({
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (displayOneK.total || 0) / 1000)) }]}>
-                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}>lb</Text>
+              <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
+                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}>{unit}</Text>
               </Text>
 
               <View style={styles.oneKProgressBarContainer}>
-                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (displayOneK.total / 1000) * 100)}%` }]} />
+                <View style={[styles.oneKProgressBar, { width: `${Math.min(100, (displayOneK.total / oneKTarget) * 100)}%` }]} />
               </View>
 
               <View style={styles.oneKBreakdown}>
