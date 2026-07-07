@@ -13,6 +13,10 @@ export {
   saveFatigueTrackingEnabled,
   loadDeloadModeEnabled,
   saveDeloadModeEnabled,
+  loadWeighInReminder,
+  saveWeighInReminder,
+  loadWorkoutReminder,
+  saveWorkoutReminder,
 } from './entries/settings';
 
 export {

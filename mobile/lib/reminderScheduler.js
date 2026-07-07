@@ -1,0 +1,102 @@
+// Side-effect layer for the optional local reminders (issue #440). This is the
+// only module that talks to expo-notifications. It is imported lazily via
+// require() inside each function so that merely shipping the dependency dark
+// (both toggles off, nothing calling these functions at startup) never touches
+// the native module or changes app behavior.
+//
+// Local scheduling only: no push tokens, no server, no Supabase.
+
+import { Platform } from 'react-native';
+import {
+  REMINDER_KIND,
+  buildWeighInNotificationRequests,
+  buildWorkoutNotificationRequests,
+  selectReminderIdsToCancel,
+} from './reminders';
+
+const ANDROID_CHANNEL_ID = 'kilo-reminders';
+
+function getNotificationsModule() {
+  // Lazy require keeps expo-notifications out of the app's startup import
+  // graph; it is only loaded when a reminder toggle is actually used.
+  // eslint-disable-next-line global-require
+  return require('expo-notifications');
+}
+
+// Local notification scheduling is not supported on the web build; callers
+// use this to degrade gracefully (toggle reverts with a message, no crash).
+export function remindersSupported() {
+  return Platform.OS !== 'web';
+}
+
+let prepared = false;
+async function prepareNotifications(Notifications) {
+  if (prepared) return;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: 'Reminders',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+  prepared = true;
+}
+
+// Ask for the OS notification permission. Called only when a reminder toggle
+// is first enabled — never at startup. Returns true when granted.
+export async function requestReminderPermission() {
+  if (!remindersSupported()) return false;
+  const Notifications = getNotificationsModule();
+  const existing = await Notifications.getPermissionsAsync();
+  if (existing?.granted) return true;
+  if (existing?.canAskAgain === false) return false;
+  const asked = await Notifications.requestPermissionsAsync();
+  return !!asked?.granted;
+}
+
+// Cancel every scheduled notification belonging to one reminder kind.
+export async function cancelReminders(kind) {
+  if (!remindersSupported()) return;
+  const Notifications = getNotificationsModule();
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const ids = selectReminderIdsToCancel(scheduled, kind);
+  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
+}
+
+async function scheduleRequests(requests) {
+  if (requests.length === 0) return;
+  const Notifications = getNotificationsModule();
+  await prepareNotifications(Notifications);
+  for (const request of requests) {
+    const trigger = Platform.OS === 'android'
+      ? { ...request.trigger, channelId: ANDROID_CHANNEL_ID }
+      : request.trigger;
+    // Sequential on purpose: at most 8 requests (7 weekdays + 1 daily), and
+    // some platforms misbehave with concurrent schedule calls.
+    // eslint-disable-next-line no-await-in-loop
+    await Notifications.scheduleNotificationAsync({ content: request.content, trigger });
+  }
+}
+
+// Reconcile the daily weigh-in reminder with its persisted settings:
+// always cancel the existing schedule, then reschedule only when enabled.
+export async function applyWeighInReminder(settings) {
+  if (!remindersSupported()) return;
+  await cancelReminders(REMINDER_KIND.WEIGH_IN);
+  await scheduleRequests(buildWeighInNotificationRequests(settings));
+}
+
+// Reconcile the workout-day nudge. `weekdays` is the already-resolved weekday
+// list (inferred from the active routine note, or the user-selected fallback).
+export async function applyWorkoutReminder(settings, weekdays) {
+  if (!remindersSupported()) return;
+  await cancelReminders(REMINDER_KIND.WORKOUT);
+  await scheduleRequests(buildWorkoutNotificationRequests(settings, weekdays));
+}
