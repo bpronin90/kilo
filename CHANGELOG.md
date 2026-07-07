@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.89.0 - 2026-07-07
+
+- Issue #439: Added an always-available lb-only plate calculator. Tapping
+  parsed workout set weights or the Analytics 1K squat/bench/deadlift
+  breakdown opens a lightweight sheet showing per-side standard 45 lb barbell
+  loading with 45/25/10/5/2.5 lb plates plus any unloadable remainder, with
+  focused domain coverage for exact loads, remainders, sub-bar, decimal, and
+  invalid inputs.
+
 ## 0.88.2 - 2026-07-06
 
 - Issue #435: Recorded the launch decision to ship Kilo as lb-only for the
