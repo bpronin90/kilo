@@ -11,6 +11,10 @@ import { SettingsScreen } from '../components/SettingsScreen';
 import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
 
 const mockSaveProfile = jest.fn().mockResolvedValue({});
+const mockUserProfileState = {
+  profile: { display_name: 'Ben' },
+  loading: false,
+};
 jest.mock('../hooks/useEntries', () => ({
   useFeatureToggles: () => ({
     fatigueTrackingEnabled: true,
@@ -19,9 +23,9 @@ jest.mock('../hooks/useEntries', () => ({
     setDeloadModeEnabled: jest.fn(),
   }),
   useUserProfile: () => ({
-    profile: { display_name: 'Ben' },
+    profile: mockUserProfileState.profile,
     save: mockSaveProfile,
-    loading: false,
+    loading: mockUserProfileState.loading,
     clear: jest.fn(),
   }),
 }));
@@ -36,6 +40,8 @@ function allTexts(root) {
 afterEach(() => {
   __resetWeightUnitForTests();
   mockSaveProfile.mockClear();
+  mockUserProfileState.profile = { display_name: 'Ben' };
+  mockUserProfileState.loading = false;
 });
 
 describe('SetLine unit display', () => {
@@ -155,5 +161,31 @@ describe('Settings unit selector', () => {
     expect(mockSaveProfile).toHaveBeenCalledWith(
       expect.objectContaining({ unit_system: 'imperial' })
     );
+  });
+
+  test('does not persist while the profile is still loading', async () => {
+    mockUserProfileState.profile = null;
+    mockUserProfileState.loading = true;
+    let component;
+    await act(async () => {
+      component = renderer.create(
+        <SettingsScreen
+          onBack={() => {}}
+          multiplier={1.07}
+          onUpdate={() => {}}
+          weightDateEditEnabled={false}
+          onUpdateWeightDateEditEnabled={() => {}}
+          deloadDateEditEnabled={false}
+          onUpdateDeloadDateEditEnabled={() => {}}
+        />
+      );
+    });
+    const kgTab = component.root.findAllByProps({ accessibilityLabel: 'Show weights in kilograms' })
+      .filter((n) => n.props.onPress)[0];
+    expect(kgTab.props.accessibilityState.disabled).toBe(true);
+    await act(async () => {
+      await kgTab.props.onPress();
+    });
+    expect(mockSaveProfile).not.toHaveBeenCalled();
   });
 });

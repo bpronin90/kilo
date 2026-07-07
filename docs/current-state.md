@@ -194,7 +194,10 @@ The real native app path now has a modular React Native shell:
   `1K Progress` label and total, keeps the shared progress bar plus three-column
   breakdown with full exercise names (Squats/Bench/Deadlifts) matching the
   canonical structure on Analytics, and adds progress-based hero-number color
-  emphasis as the total approaches 1,000 lb. Its headline value now comes
+  emphasis as the total approaches 1,000 lb. The Home weight hero, goal stats,
+  pace suffix, sparkline, and 1K values render in the selected lb/kg display
+  unit while the 1,000 lb club threshold remains lb-defined internally. Its
+  headline value now comes
   directly from the same shared session-ordinal Big-3 series contract used by
   Analytics, so the Home total reflects the latest complete aligned workout
   cycle rather than a sticky per-occurrence PR or a mixed-cycle fallback. All
@@ -460,10 +463,12 @@ The real native app path now has a modular React Native shell:
   `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
   (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions
   are no longer shown there. The Settings screen groups its
-  controls into `Features`, `Date Editing`, and `Advanced`: persisted
+  controls into `Features`, `Units`, `Date Editing`, and `Advanced`: persisted
   `Fatigue tracking` and `Deload mode` switches let users disable those
   optional workout-side flows without deleting their saved check-ins, deload
-  note, or deload history; `Edit weigh-in dates` governs whether the Weight
+  note, or deload history; the `Weight unit` selector defaults to lb and lets
+  users opt into kg display and entry while leaving stored values and workout
+  note text lb-canonical; `Edit weigh-in dates` governs whether the Weight
   tab exposes date controls for new and existing weigh-ins; `Edit deload
   dates` governs whether past deload records expose the opt-in date picker on
   the Log tab, with those date edits now applying correctly on physical
@@ -481,7 +486,10 @@ The real native app path now has a modular React Native shell:
   pace warning, separate labeled `7-day rolling average` and `30-day rolling
   average` charts, and 7-day/30-day summary averages. Selecting a prior chart
   point updates the card's top summary and footer averages to that selected
-  date until the selection is cleared. The screen also includes a merged
+  date until the selection is cleared. Weight trends, strength suffixes, 1K
+  totals, and per-lift breakdowns render through the selected lb/kg display
+  unit while the underlying analytics math remains lb-canonical. The screen
+  also includes a merged
   `Fatigue` parent section. That section contains a
   `Routine Health` sessions-status panel — a three-zone gauge (`Building` /
   `Approaching` / `Deload`) driven entirely by session-ordinal data. Newly
@@ -861,47 +869,30 @@ Required readiness artifacts and their current status:
 | `docs/testing-and-qa.md` | Complete |
 | `docs/repo-structure.md` | Complete |
 
+### Units: lb-canonical storage with lb/kg display preference
+
+Kilo now ships a simple lb/kg display preference. The default remains lb for the
+US-centric launch path, and kg is an explicit opt-in from Settings. The
+preference lives on the local profile as `unit_system` (`imperial` / `metric`)
+and uses the existing cloud bootstrap promotion for the reserved
+`kilo.user_profile.unit_system` field; no schema migration was required.
+
+Stored data remains lb-canonical. Bodyweight entries, weight goals, workout
+sets, parser output, weight-pace thresholds, the 3500 cal/lb deficit display,
+and the 1,000 lb club domain threshold continue to use lb internally. The kg
+path converts only at render and at the bodyweight/goal entry boundary before
+storage. Workout note text remains user-authored lb text, and the workout-note
+grammar still does not parse kg input.
+
+Converted display surfaces include Home weight/goal/1K values, Weight entry and
+goal forms, Weight and Goal History rows, Analytics weight trends and strength
+suffixes, shared set rows, and Help copy where it describes the 1K total. Body
+weight display uses one decimal in kg; lift displays use compact kg rounding
+for dense set rows.
+
 ---
 
 ## Known Gaps That Affect Launch Confidence
-
-### Units: lb-only launch (decision record, issue #435)
-
-Kilo launches lb-only. There is no kg display or entry preference in the
-initial public release, and no follow-up kg implementation issue is opened at
-this time.
-
-Why this is acceptable at launch: the initial release path is a closed Play
-test (`docs/play-store-readiness.md`, Closed Testing Requirement), no kg
-parsing, display, or preference plumbing exists in the app today, adding kg
-would be new implementation scope explicitly outside this planning issue's
-non-goals, and every shipped weight surface is lb-denominated by construction:
-
-- Parsing: workout and bodyweight input is unit-less numeric; the parsers
-  hardcode `weight_unit: 'lb'` on every stored set and weight entry
-  (`mobile/lib/parser/workoutRow.js`, `mobile/lib/parser/weightEntry.js`), and
-  deload note lines are matched/generated with a literal `lbs` token
-  (`mobile/lib/parser/workoutNote.js`, `mobile/lib/parser/deloadGenerator.js`,
-  `mobile/screens/log/useLogDeloadEditor.js`).
-- Display: `lb` labels are hardcoded across Home (hero weight, goal stats,
-  1K total), Weight (entry label, goal card, history rows), Analytics (trend
-  averages, PR/Kilo/top-weight suffixes), shared set rows, and Help copy.
-- Domain logic is lb-denominated: weight-pace notable/spike thresholds
-  (1.5 / 2.3 lb in `mobile/lib/data/weightGoal.js`), the 3500 cal/lb
-  deficit display, and the 1,000 lb club strength total are all defined in lb.
-- Storage/cloud: `kilo.user_profile.unit_system` exists in the schema
-  (`supabase/migrations/20260615120000_note_first_schema.sql`) and is carried
-  through cloud bootstrap promotion (`mobile/storage/cloud/bootstrapPlan.js`),
-  but nothing in the app reads or writes it for entry or display. It remains a
-  reserved field for a future unit preference and must not be repurposed.
-
-If kg support becomes required later, the smallest safe scope is a
-display-preference layer keyed off `user_profile.unit_system` (store lb
-canonically, convert at render and at entry), an explicit unit suffix on
-parser output rather than new kg parsing grammar, and migration-free
-backward compatibility because stored `weight_unit` values are already
-uniformly `'lb'`. That work needs its own implementation issue before any
-code changes.
 
 The `mobile/` Expo app now covers the native MVP create/store/retrieve loop for
 weight and workout entries, but it still exposes a narrower UI than the

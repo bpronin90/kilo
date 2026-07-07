@@ -9,10 +9,12 @@ import { unitSystemFromUnit } from '../lib/units';
 
 export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
-  const { profile, save: saveProfile } = useUserProfile();
+  const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
+  const unitControlsDisabled = !!profileLoading;
 
   const handleSelectUnit = async (nextUnit) => {
+    if (unitControlsDisabled) return;
     if (nextUnit === weightUnit) return;
     // Update the in-memory preference first so every surface re-renders
     // immediately, then persist unit_system on the local profile (the cloud
@@ -70,18 +72,20 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
           <View style={styles.unitToggle}>
             <Pressable
               onPress={() => handleSelectUnit('lb')}
-              style={[styles.unitTab, weightUnit === 'lb' && styles.unitTabActive]}
+              disabled={unitControlsDisabled}
+              style={[styles.unitTab, weightUnit === 'lb' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
               accessibilityRole="button"
-              accessibilityState={{ selected: weightUnit === 'lb' }}
+              accessibilityState={{ selected: weightUnit === 'lb', disabled: unitControlsDisabled }}
               accessibilityLabel="Show weights in pounds"
             >
               <Text style={[styles.unitTabText, weightUnit === 'lb' && styles.unitTabTextActive]}>lb</Text>
             </Pressable>
             <Pressable
               onPress={() => handleSelectUnit('kg')}
-              style={[styles.unitTab, weightUnit === 'kg' && styles.unitTabActive]}
+              disabled={unitControlsDisabled}
+              style={[styles.unitTab, weightUnit === 'kg' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
               accessibilityRole="button"
-              accessibilityState={{ selected: weightUnit === 'kg' }}
+              accessibilityState={{ selected: weightUnit === 'kg', disabled: unitControlsDisabled }}
               accessibilityLabel="Show weights in kilograms"
             >
               <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
@@ -214,6 +218,9 @@ const styles = StyleSheet.create({
   },
   unitTabActive: {
     backgroundColor: Colors.accent,
+  },
+  unitTabDisabled: {
+    opacity: 0.5,
   },
   unitTabText: {
     fontSize: 12,

@@ -1,6 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
+import { setWeightUnitPreference, __resetWeightUnitForTests } from '../lib/unitPreference';
 
 // Capture onSelect callbacks from each LineChart instance by chart label (by order of rendering).
 const capturedSelectors = [];
@@ -80,6 +81,10 @@ function hasText(root, needle) {
   return findAllText(root).some(s => s.includes(needle));
 }
 
+afterEach(() => {
+  __resetWeightUnitForTests();
+});
+
 describe('AnalyticsWeightTrendsCard — default state', () => {
   test('shows Latest weigh-in label and current summary values', () => {
     const component = setup();
@@ -150,5 +155,39 @@ describe('AnalyticsWeightTrendsCard — selected date state', () => {
     expect(findAllText(root).some(s => s === '—')).toBe(true);
     // 30-day avg shows the matching value
     expect(hasText(root, '182.0 lb')).toBe(true);
+  });
+
+  test('selected kg chart point keeps one decimal in the header', () => {
+    setWeightUnitPreference('kg');
+    const kgRolling7 = [
+      { value: 83.9, label: '05/20', unit: 'kg' },
+      { value: 84, label: '05/21', unit: 'kg' },
+    ];
+    const kgRolling30 = [
+      ...kgRolling7,
+      { value: 83.5, label: '05/19', unit: 'kg' },
+    ];
+    const component = setup({
+      weightSummary: {
+        latestWeightValue: '84.0',
+        showUnit: true,
+        weightCount: '10',
+        avg7: '84.0 kg',
+        avg30: '83.8 kg',
+        paceFlag: null,
+        paceLevel: null,
+      },
+      rolling7: kgRolling7,
+      rolling30: kgRolling30,
+    });
+    const root = component.root;
+
+    render.act(() => {
+      capturedSelectors[0]({ value: 84, label: '05/21', unit: 'kg' });
+    });
+
+    expect(hasText(root, 'Selected · 05/21')).toBe(true);
+    expect(hasText(root, '84.0')).toBe(true);
+    expect(hasText(root, '84 kg')).toBe(false);
   });
 });

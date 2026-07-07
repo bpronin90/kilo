@@ -83,7 +83,9 @@ Current limitation:
   classification counts), plain-row progression comparables for note-based
   sessions, lowercase canonical `perDaySignals` key coverage, and malformed
   backup rejection coverage for the optional `weight_goal` v2
-  import field.
+  import field, plus unit-display helper coverage for lb/kg round trips,
+  display rounding boundaries, bodyweight entry conversion back to canonical lb,
+  and profile-backed unit-preference hydration.
 - Native rendered-screen coverage is still narrow, but `mobile/tests/` now
   includes a `log-screen.test.js` parser-and-render-logic suite covering
   skip-marker interleaving and bare-unparsed-row chronological positioning for
@@ -141,6 +143,9 @@ Current limitation:
   contract, Android hardware-back behavior from Home and non-Home tabs, and the
   web-only Home back affordance. Full transactional undo guarantees across
   linked records are still deferred until a DB-backed persistence layer exists.
+- Unit-display rendered coverage now verifies kg rendering for shared set rows,
+  Weight History values/deltas, Settings selector persistence/disabled loading
+  behavior, and Analytics selected kg chart-point one-decimal formatting.
 - No automated native test covers an Expo device/emulator pass yet.
 - Android GitHub OAuth has rendered regression coverage for button visibility,
   browser success/cancellation/provider errors, PKCE code exchange, missing

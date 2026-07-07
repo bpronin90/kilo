@@ -38,7 +38,7 @@ export function AnalyticsWeightTrendsCard({
     const p7 = byLabel7[label] ?? null;
     const p30 = byLabel30[label] ?? null;
     return {
-      latestWeightValue: `${selectedPoint.value}`,
+      latestWeightValue: unit === 'kg' ? selectedPoint.value.toFixed(1) : `${selectedPoint.value}`,
       showUnit: true,
       weightCount: weightSummary.weightCount,
       avg7: p7 ? `${p7.value.toFixed(1)} ${unit}` : '—',
