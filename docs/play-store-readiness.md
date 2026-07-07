@@ -82,6 +82,10 @@ Declare under **Health & Fitness → Health info** for weight/body data, plus **
 | Category | Health & Fitness | user-action-pending |
 | Contact email | Developer contact email | user-action-pending |
 
+Listing copy note: Kilo launches lb-only (decision record in
+`docs/current-state.md`, issue #435). Store descriptions should state weights
+are tracked in pounds and must not promise kg/metric support.
+
 ---
 
 ## Build Requirements
