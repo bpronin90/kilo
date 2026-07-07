@@ -6,6 +6,8 @@ import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../componen
 import { Colors } from '../theme/colors';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { deriveHomeDashboardData } from './home/homeDashboardData';
+import { useWeightUnit } from '../lib/unitPreference';
+import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
@@ -54,6 +56,7 @@ function ScaleIcon({ color = Colors.accent, size = 22 }) {
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading }) {
   const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
   const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
+  const unit = useWeightUnit();
 
   const noteSectionsList = useMemo(
     () => (notes || []).map(n => getNoteSections(n)),
@@ -153,14 +156,14 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             </Text>
 
             <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-              {dashboardData.latestWeight ? dashboardData.latestWeight : '—'}
-              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> lb</Text> : null}
+              {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
+              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
             </Text>
 
             {/* #4 sparkline strip below weight */}
             <View style={styles.heroSparklineStrip}>
               <LineChart
-                data={dashboardData.weightSeries}
+                data={displayChartSeries(dashboardData.weightSeries, unit)}
                 color={Colors.textMuted}
                 height={44}
                 paddingHorizontal={0}
@@ -220,8 +223,8 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                   <View style={styles.goalStatCol}>
                     <Text style={styles.goalStatLabel}>Target</Text>
                     <View style={styles.goalStatValueRow}>
-                      <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight}</Text>
-                      <Text style={styles.goalStatUnitLabel}>lb</Text>
+                      <Text style={styles.goalStatValueLarge}>{weightGoal?.target_weight != null ? formatBodyweightValue(weightGoal.target_weight, unit) : weightGoal?.target_weight}</Text>
+                      <Text style={styles.goalStatUnitLabel}>{unit}</Text>
                     </View>
                   </View>
                   <View style={styles.goalStatCol}>
@@ -229,12 +232,12 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                     <View style={styles.goalStatValueRow}>
                       <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
                         {gi.required_weekly_pace !== null ? (
-                          `${gi.required_weekly_pace > 0 ? '+' : ''}${gi.required_weekly_pace.toFixed(1)}`
+                          `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)}`
                         ) : (
                           '—'
                         )}
                       </Text>
-                      <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>lb/wk</Text>
+                      <Text style={[styles.goalStatUnitLabel, { color: paceColor }]}>{unit}/wk</Text>
                     </View>
                   </View>
                 </View>
@@ -246,8 +249,8 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           <Card style={styles.oneKCard}>
             <Text style={styles.oneKLabel}>1K Progress</Text>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(Colors.accent, Colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
-              {dashboardData.oneK?.total ? `${dashboardData.oneK.total.toFixed(0)}` : '—'}
-              <Text style={styles.oneKHeroUnit}> lb</Text>
+              {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
+              <Text style={styles.oneKHeroUnit}> {unit}</Text>
             </Text>
             <View style={styles.progressBarLarge}>
               <View
@@ -259,15 +262,15 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             </View>
             <View style={styles.oneKGrid}>
               <View style={styles.oneKGridItem}>
-                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.squat != null ? displayWeight(dashboardData.oneK.squat, unit).toFixed(0) : '—'}</Text>
                 <Text style={styles.oneKGridLabel}>Squats</Text>
               </View>
               <View style={[styles.oneKGridItem, styles.oneKGridItemBorder]}>
-                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.bench != null ? displayWeight(dashboardData.oneK.bench, unit).toFixed(0) : '—'}</Text>
                 <Text style={styles.oneKGridLabel}>Bench</Text>
               </View>
               <View style={styles.oneKGridItem}>
-                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift?.toFixed(0) || '—'}</Text>
+                <Text style={styles.oneKGridValue}>{dashboardData.oneK?.deadlift != null ? displayWeight(dashboardData.oneK.deadlift, unit).toFixed(0) : '—'}</Text>
                 <Text style={styles.oneKGridLabel}>Deadlifts</Text>
               </View>
             </View>

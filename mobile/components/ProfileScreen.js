@@ -5,6 +5,7 @@ import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button, InputStyle } from './UI';
 import { Colors } from '../theme/colors';
 import { useUserProfile } from '../hooks/useEntries';
+import { setWeightUnitPreference } from '../lib/unitPreference';
 
 export function ProfileScreen({ onBack }) {
   const { profile, save, loading, clear: clearAll } = useUserProfile();
@@ -58,6 +59,9 @@ export function ProfileScreen({ onBack }) {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear All', style: 'destructive', onPress: async () => {
         await clearAll();
+        // Clearing the profile removes unit_system, so the display preference
+        // falls back to the lb default (#441).
+        setWeightUnitPreference('lb');
         setLocalProfile({});
         setSaveSuccess(false);
       }}

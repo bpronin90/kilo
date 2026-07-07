@@ -19,6 +19,8 @@ import { formatDuration } from '../lib/format';
 import { Colors } from '../theme/colors';
 
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
+import { useWeightUnit } from '../lib/unitPreference';
+import { displayWeight, formatBodyweightValue, formatLiftWeightValue, displayChartSeries, lbToKg } from '../lib/units';
 import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCard';
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
@@ -32,6 +34,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
+  const unit = useWeightUnit();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,23 +95,25 @@ export function AnalyticsScreen({ multiplier, section }) {
     () => deriveWeightGoalAnalytics(weightEntries, null),
     [weightEntries]
   );
-  const rolling7 = rollingSeries || [];
-  const rolling30 = rollingSeries30 || [];
+  // Chart series are converted into display space here (identity in lb mode)
+  // so LineChart selection labels and the trends card read in the selected unit.
+  const rolling7 = useMemo(() => displayChartSeries(rollingSeries || [], unit), [rollingSeries, unit]);
+  const rolling30 = useMemo(() => displayChartSeries(rollingSeries30 || [], unit), [rollingSeries30, unit]);
 
   const weightSummary = useMemo(() => {
     if (weightEntries.length === 0) {
       return { latestWeightValue: '—', showUnit: false, weightCount: '0', avg7: '—', avg30: '—', paceFlag: null, paceLevel: null };
     }
     return {
-      latestWeightValue: weightTrends.currentWeight !== null ? `${weightTrends.currentWeight}` : '—',
+      latestWeightValue: weightTrends.currentWeight !== null ? formatBodyweightValue(weightTrends.currentWeight, unit) : '—',
       showUnit: weightTrends.currentWeight !== null,
       weightCount: String(weightEntries.length),
-      avg7:  weightTrends.avg7  !== null ? `${weightTrends.avg7.toFixed(1)} lb`  : '—',
-      avg30: weightTrends.avg30 !== null ? `${weightTrends.avg30.toFixed(1)} lb` : '—',
+      avg7:  weightTrends.avg7  !== null ? `${displayWeight(weightTrends.avg7, unit).toFixed(1)} ${unit}`  : '—',
+      avg30: weightTrends.avg30 !== null ? `${displayWeight(weightTrends.avg30, unit).toFixed(1)} ${unit}` : '—',
       paceFlag: weightTrends.paceFlag,
       paceLevel: weightPaceLevel,
     };
-  }, [weightEntries.length, weightTrends, weightPaceLevel]);
+  }, [weightEntries.length, weightTrends, weightPaceLevel, unit]);
 
   const oneKSelections = useMemo(() => ({
     ...DEFAULT_1K_EXERCISES,
@@ -170,8 +175,34 @@ export function AnalyticsScreen({ multiplier, section }) {
 
   const oneKChartData = useMemo(() => {
     const boundaries = deriveRoutineStartBoundaries(notes, oneKSelections);
-    return deriveOneKChartData(analytics.oneKSeries, boundaries);
-  }, [analytics.oneKSeries, notes, oneKSelections]);
+    const series = deriveOneKChartData(analytics.oneKSeries, boundaries);
+    if (unit !== 'kg') return series;
+    // Display-space conversion for kg (#441): per-lift breakdown values ride
+    // along with each point, so convert them alongside the plotted total.
+    return series.map((p) => ({
+      ...p,
+      value: Math.round(lbToKg(p.value)),
+      unit: 'kg',
+      bench: p.bench != null ? lbToKg(p.bench) : p.bench,
+      squat: p.squat != null ? lbToKg(p.squat) : p.squat,
+      deadlift: p.deadlift != null ? lbToKg(p.deadlift) : p.deadlift,
+    }));
+  }, [analytics.oneKSeries, notes, oneKSelections, unit]);
+
+  // 1K card values in display space (identity in lb mode). The 1,000 lb club
+  // itself stays lb-defined; AnalyticsStrengthSection converts its progress
+  // target the same way.
+  const displayOneK = useMemo(() => {
+    const oneK = analytics.oneK;
+    if (unit !== 'kg' || !oneK) return oneK;
+    return {
+      ...oneK,
+      total: oneK.total != null ? lbToKg(oneK.total) : oneK.total,
+      squat: oneK.squat != null ? lbToKg(oneK.squat) : oneK.squat,
+      bench: oneK.bench != null ? lbToKg(oneK.bench) : oneK.bench,
+      deadlift: oneK.deadlift != null ? lbToKg(oneK.deadlift) : oneK.deadlift,
+    };
+  }, [analytics.oneK, unit]);
 
   const screenContent = React.Children.toArray([
     <AnalyticsWeightTrendsCard
@@ -202,7 +233,7 @@ export function AnalyticsScreen({ multiplier, section }) {
       key="strength-section"
       handleStrengthLayout={handleStrengthLayout}
       isNotesLoading={isNotesLoading}
-      oneK={analytics.oneK}
+      oneK={displayOneK}
       oneKChartData={oneKChartData}
       activeSlot={activeSlot}
       handleSlotTap={handleSlotTap}
@@ -304,20 +335,20 @@ export function AnalyticsScreen({ multiplier, section }) {
                           <View style={styles.signalMetricsGrid}>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {rowPr ? Math.round(rowPr) : '—'}
-                                {rowPr ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                                {rowPr ? formatLiftWeightValue(Math.round(rowPr), unit) : '—'}
+                                {rowPr ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {sig.kilo_max != null ? sig.kilo_max : '—'}
-                                {sig.kilo_max != null ? <Text style={styles.unitSuffix}>lb</Text> : null}
+                                {sig.kilo_max != null ? formatLiftWeightValue(sig.kilo_max, unit) : '—'}
+                                {sig.kilo_max != null ? <Text style={styles.unitSuffix}>{unit}</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
                               <Text style={styles.signalValue}>
-                                {rowTopWeight ? rowTopWeight : '—'}
-                                {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : 'lb'}</Text> : null}
+                                {rowTopWeight ? (rowIsBodyweight ? rowTopWeight : formatLiftWeightValue(rowTopWeight, unit)) : '—'}
+                                {rowTopWeight ? <Text style={styles.unitSuffix}>{rowIsBodyweight ? 'reps' : unit}</Text> : null}
                               </Text>
                             </View>
                             <View style={styles.metricCol}>

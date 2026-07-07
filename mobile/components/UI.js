@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
 
 export const SET_ROW_FONT_SIZE = 14;
 
@@ -220,7 +222,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 
 export function SetLine({ sets, selectable }) {
   const [plateWeight, setPlateWeight] = useState(null);
-
+  const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
 
   const groups = [];
@@ -245,7 +247,7 @@ export function SetLine({ sets, selectable }) {
               accessibilityRole="button"
               accessibilityLabel={`Show plate loading for ${group.weight} pounds`}
             >
-              <Text selectable={selectable} style={styles.setWeight}>{`${group.weight} lb`}</Text>
+              <Text selectable={selectable} style={styles.setWeight}>{`${formatLiftWeightValue(group.weight, unit)} ${unit}`}</Text>
             </Pressable>
           ) : (
             <Text selectable={selectable} style={styles.setWeight}>BW</Text>

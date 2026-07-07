@@ -2,6 +2,8 @@ import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
 
 export function formatOverload(trend) {
   switch (trend) {
@@ -16,6 +18,7 @@ export function formatOverload(trend) {
 }
 
 export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
+  const unit = useWeightUnit();
   const allDays = currentDay ? [currentDay, ...otherDays] : otherDays;
   return (
     <View style={styles.crossDayRow}>
@@ -35,8 +38,8 @@ export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
                 {day ? day.slice(0, 3).toUpperCase() : '—'}
               </Text>
               <Text style={styles.crossDayChipValue}>
-                {d?.latest_top_weight != null ? `${d.latest_top_weight}` : '—'}
-                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>{d.is_bodyweight ? 'reps' : 'lb'}</Text>}
+                {d?.latest_top_weight != null ? (d.is_bodyweight ? `${d.latest_top_weight}` : formatLiftWeightValue(d.latest_top_weight, unit)) : '—'}
+                {d?.latest_top_weight != null && <Text style={styles.crossDayUnit}>{d.is_bodyweight ? 'reps' : unit}</Text>}
               </Text>
               {trendChar && <Text style={[styles.crossDayTrend, { color: trendColor }]}>{trendChar}</Text>}
             </View>

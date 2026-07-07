@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
 import { Colors } from '../theme/colors';
+import { useWeightUnit } from '../lib/unitPreference';
 
 export function AnalyticsWeightTrendsCard({
   handleWeightLayout,
@@ -10,6 +11,9 @@ export function AnalyticsWeightTrendsCard({
   rolling30,
   isWeightLoading,
 }) {
+  // rolling7/rolling30 and weightSummary arrive already converted into display
+  // space by AnalyticsScreen, so only the unit label is needed here.
+  const unit = useWeightUnit();
   const [selectedPoint, setSelectedPoint] = useState(null);
 
   const byLabel7 = useMemo(() => {
@@ -34,16 +38,16 @@ export function AnalyticsWeightTrendsCard({
     const p7 = byLabel7[label] ?? null;
     const p30 = byLabel30[label] ?? null;
     return {
-      latestWeightValue: `${selectedPoint.value}`,
+      latestWeightValue: unit === 'kg' ? selectedPoint.value.toFixed(1) : `${selectedPoint.value}`,
       showUnit: true,
       weightCount: weightSummary.weightCount,
-      avg7: p7 ? `${p7.value.toFixed(1)} lb` : '—',
-      avg30: p30 ? `${p30.value.toFixed(1)} lb` : '—',
+      avg7: p7 ? `${p7.value.toFixed(1)} ${unit}` : '—',
+      avg30: p30 ? `${p30.value.toFixed(1)} ${unit}` : '—',
       paceFlag: null,
       paceLevel: null,
       selectedDate: label,
     };
-  }, [selectedPoint, weightSummary, byLabel7, byLabel30]);
+  }, [selectedPoint, weightSummary, byLabel7, byLabel30, unit]);
 
   return (
     <View onLayout={handleWeightLayout} style={styles.sectionWrapper}>
@@ -56,7 +60,7 @@ export function AnalyticsWeightTrendsCard({
             </Text>
             <Text style={styles.weightValueLarge}>
               {display.latestWeightValue}
-              {display.showUnit && <Text style={styles.weightUnit}> lb</Text>}
+              {display.showUnit && <Text style={styles.weightUnit}> {unit}</Text>}
             </Text>
           </View>
           {display.paceFlag && (

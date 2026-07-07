@@ -1,3 +1,5 @@
+import { formatLiftWeightValue } from './units';
+
 export function formatDate(isoString) {
   if (!isoString) return '';
   const datePart = String(isoString).slice(0, 10);
@@ -15,9 +17,9 @@ export function formatTimestamp(value) {
   });
 }
 
-export function formatWorkoutSets(sets) {
+export function formatWorkoutSets(sets, unit = 'lb') {
   if (!sets || sets.length === 0) return '';
-  
+
   const groups = [];
   let currentGroup = null;
 
@@ -30,7 +32,7 @@ export function formatWorkoutSets(sets) {
   }
 
   return groups.map(group => {
-    const weightStr = group.weight ? `${group.weight} lb` : 'BW';
+    const weightStr = group.weight ? `${formatLiftWeightValue(group.weight, unit)} ${unit}` : 'BW';
     return `${weightStr} ${group.reps.join(', ')}`;
   }).join('; ');
 }

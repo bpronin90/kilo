@@ -3,11 +3,31 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { Colors } from '../theme/colors';
-import { useFeatureToggles } from '../hooks/useEntries';
+import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
+import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
+import { unitSystemFromUnit } from '../lib/units';
 
 export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
+  const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
+  const weightUnit = useWeightUnit();
+  const unitControlsDisabled = !!profileLoading;
+
+  const handleSelectUnit = async (nextUnit) => {
+    if (unitControlsDisabled) return;
+    if (nextUnit === weightUnit) return;
+    // Update the in-memory preference first so every surface re-renders
+    // immediately, then persist unit_system on the local profile (the cloud
+    // bootstrap promotion round-trips it for signed-in users).
+    setWeightUnitPreference(nextUnit);
+    try {
+      await saveProfile({ ...(profile || {}), unit_system: unitSystemFromUnit(nextUnit) });
+    } catch {
+      // Preference still applies for this session; profile save failures are
+      // non-fatal and will be retried the next time the selector is used.
+    }
+  };
   const handleIncrement = () => onUpdate(Math.min(2.0, Math.round((multiplier + 0.01) * 100) / 100));
   const handleDecrement = () => onUpdate(Math.max(1, Math.round((multiplier - 0.01) * 100) / 100));
   const handleReset = () => onUpdate(1.07);
@@ -45,6 +65,38 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
 
       <SectionTitle>Reminders</SectionTitle>
       <ReminderSettingsCard />
+
+      <SectionTitle>Units</SectionTitle>
+      <Card>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Weight unit</Text>
+            <Text style={styles.settingHelp}>Display and entry unit for body weight and lifts. Workout notes and stored data stay in lb.</Text>
+          </View>
+          <View style={styles.unitToggle}>
+            <Pressable
+              onPress={() => handleSelectUnit('lb')}
+              disabled={unitControlsDisabled}
+              style={[styles.unitTab, weightUnit === 'lb' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: weightUnit === 'lb', disabled: unitControlsDisabled }}
+              accessibilityLabel="Show weights in pounds"
+            >
+              <Text style={[styles.unitTabText, weightUnit === 'lb' && styles.unitTabTextActive]}>lb</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleSelectUnit('kg')}
+              disabled={unitControlsDisabled}
+              style={[styles.unitTab, weightUnit === 'kg' && styles.unitTabActive, unitControlsDisabled && styles.unitTabDisabled]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: weightUnit === 'kg', disabled: unitControlsDisabled }}
+              accessibilityLabel="Show weights in kilograms"
+            >
+              <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Card>
 
       <SectionTitle>Date Editing</SectionTitle>
       <Card>
@@ -153,6 +205,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: Colors.text,
+  },
+  // Segmented lb/kg control — mirrors the ft/cm unitToggle pattern on the
+  // Profile screen so unit selectors read identically across the app.
+  unitToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.inputBackground,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    overflow: 'hidden',
+  },
+  unitTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  unitTabActive: {
+    backgroundColor: Colors.accent,
+  },
+  unitTabDisabled: {
+    opacity: 0.5,
+  },
+  unitTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  unitTabTextActive: {
+    color: Colors.textLight,
   },
   resetButton: {
     backgroundColor: 'transparent',

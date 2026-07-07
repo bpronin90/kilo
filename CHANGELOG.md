@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.91.0 - 2026-07-07
+
+- Issue #441: Added a lb/kg display preference with lb as the default and kg as
+  an opt-in display and entry layer. Stored bodyweight entries, workout sets,
+  weight goals, thresholds, analytics math, and parser output remain lb-canonical,
+  while Home, Weight, Analytics, shared set rows, and Help display the selected
+  unit. The preference persists through the local profile `unit_system` field
+  and the existing cloud bootstrap promotion.
+
 ## 0.90.0 - 2026-07-07
 
 - Issue #440: Added opt-in local reminders for daily weigh-ins and

@@ -3,10 +3,16 @@ import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle } from './UI';
 import { Colors } from '../theme/colors';
+import { useWeightUnit } from '../lib/unitPreference';
+import { formatLiftWeightValue } from '../lib/units';
 
 const LOGO = require('../assets/brand/logo.png');
 
 export function HelpScreen({ onBack }) {
+  const unit = useWeightUnit();
+  // The 1,000 lb club is lb-defined; show its display-space equivalent when kg
+  // is selected (#441). The lb copy keeps its original "1,000 lb" formatting.
+  const oneKTotalLabel = unit === 'kg' ? `${formatLiftWeightValue(1000, 'kg')} kg` : '1,000 lb';
   return (
     <ScreenShell title="App Guide" subtitle="What Kilo is and how to use it." onBack={onBack}>
 
@@ -141,7 +147,7 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>1K Progress</Text>
-          <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a 1,000 lb total. Shown on the Home screen.</Text>
+          <Text style={styles.termDesc}>Your combined estimated 1RM across Squat, Bench, and Deadlift. The goal is to reach a {oneKTotalLabel} total. Shown on the Home screen.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Tracked</Text>

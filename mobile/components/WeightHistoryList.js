@@ -4,6 +4,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from '../theme/colors';
 import { formatDate, formatDelta } from '../lib/format';
+import { useWeightUnit } from '../lib/unitPreference';
+import { displayWeight, formatBodyweightValue } from '../lib/units';
 
 // ── Shared history-panel visual system (#411) ─────────────────────────────────
 // Goal History (WeightScreen.js) and Weight History (this file) render as ONE
@@ -226,6 +228,7 @@ export function WeightHistoryList({
   getWeightDeltaSeverity,
   goalInfo,
 }) {
+  const unit = useWeightUnit();
   const [collapsed, setCollapsed] = useState(false);
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [fromDate, setFromDate] = useState('');
@@ -305,7 +308,7 @@ export function WeightHistoryList({
                 <Text style={s.summaryLatest} numberOfLines={1}>
                   {'Latest: '}
                   <Text style={s.summaryEmphasis}>
-                    {filteredEntries[0].weight_value} {filteredEntries[0].weight_unit || 'lb'}
+                    {formatBodyweightValue(filteredEntries[0].weight_value, unit)} {unit}
                   </Text>
                   {' on '}
                   {formatDate(filteredEntries[0].logged_at)}
@@ -458,7 +461,7 @@ export function WeightHistoryList({
             >
               <View style={s.rowCells}>
                 <View style={s.col1}>
-                  <Text style={s.value}>{entry.weight_value} {entry.weight_unit || 'lb'}</Text>
+                  <Text style={s.value}>{formatBodyweightValue(entry.weight_value, unit)} {unit}</Text>
                   {entry.note ? (
                     <Text style={styles.rowNote} numberOfLines={1}>{entry.note}</Text>
                   ) : null}
@@ -471,7 +474,7 @@ export function WeightHistoryList({
                       severity === 'spike' && styles.deltaSpike,
                       severity === 'outlier' && styles.deltaOutlier,
                     ]}>
-                      {formatDelta(delta)}
+                      {formatDelta(displayWeight(delta, unit))}
                     </Text>
                   ) : (
                     <Text style={styles.rowDeltaEmpty}>—</Text>
