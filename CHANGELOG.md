@@ -1,12 +1,21 @@
 # Changelog
 
-## 0.89.0 - 2026-07-07
+## 0.90.0 - 2026-07-07
 
 - Issue #440: Added opt-in local reminders for daily weigh-ins and
   workout-day nudges, with separate Settings toggles, local persistence,
   `expo-notifications` native configuration, weekday inference from the active
   routine note with fallback weekday selection, permission-denial handling, and
   cancel-on-disable scheduling coverage.
+
+## 0.89.0 - 2026-07-07
+
+- Issue #439: Added an always-available lb-only plate calculator. Tapping
+  parsed workout set weights or the Analytics 1K squat/bench/deadlift
+  breakdown opens a lightweight sheet showing per-side standard 45 lb barbell
+  loading with 45/25/10/5/2.5 lb plates plus any unloadable remainder, with
+  focused domain coverage for exact loads, remainders, sub-bar, decimal, and
+  invalid inputs.
 
 ## 0.88.2 - 2026-07-06
 

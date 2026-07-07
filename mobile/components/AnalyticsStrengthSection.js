@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
+import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { Colors } from '../theme/colors';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ export function AnalyticsStrengthSection({
   const [big3Collapsed, setBig3Collapsed] = useState(false);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
+  const [plateWeight, setPlateWeight] = useState(null);
 
   const displayOneK = selectedSeriesPoint
     ? { total: selectedSeriesPoint.value, bench: selectedSeriesPoint.bench, squat: selectedSeriesPoint.squat, deadlift: selectedSeriesPoint.deadlift }
@@ -44,18 +46,22 @@ export function AnalyticsStrengthSection({
               </View>
 
               <View style={styles.oneKBreakdown}>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{displayOneK.squat?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Squats</Text>
-                </View>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{displayOneK.bench?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Bench</Text>
-                </View>
-                <View style={styles.oneKItem}>
-                  <Text style={styles.oneKItemValue}>{displayOneK.deadlift?.toFixed(0) || '—'}</Text>
-                  <Text style={styles.oneKItemLabel}>Deadlifts</Text>
-                </View>
+                {[
+                  { key: 'squat', label: 'Squats', value: displayOneK.squat },
+                  { key: 'bench', label: 'Bench', value: displayOneK.bench },
+                  { key: 'deadlift', label: 'Deadlifts', value: displayOneK.deadlift },
+                ].map(item => (
+                  <Pressable
+                    key={item.key}
+                    style={styles.oneKItem}
+                    onPress={item.value ? () => setPlateWeight(Math.round(item.value)) : null}
+                    accessibilityRole={item.value ? 'button' : undefined}
+                    accessibilityLabel={item.value ? `Show plate loading for ${item.label} at ${item.value.toFixed(0)} pounds` : undefined}
+                  >
+                    <Text style={styles.oneKItemValue}>{item.value?.toFixed(0) || '—'}</Text>
+                    <Text style={styles.oneKItemLabel}>{item.label}</Text>
+                  </Pressable>
+                ))}
               </View>
 
               {oneKChartData.length > 1 && (
@@ -163,6 +169,12 @@ export function AnalyticsStrengthSection({
           </View>
         ))}
       </Card>
+
+      <PlateCalculatorModal
+        visible={plateWeight != null}
+        weight={plateWeight}
+        onClose={() => setPlateWeight(null)}
+      />
     </View>
   );
 }
