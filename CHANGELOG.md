@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.90.0 - 2026-07-07
+
+- Issue #440: Added opt-in local reminders for daily weigh-ins and
+  workout-day nudges, with separate Settings toggles, local persistence,
+  `expo-notifications` native configuration, weekday inference from the active
+  routine note with fallback weekday selection, permission-denial handling, and
+  cancel-on-disable scheduling coverage.
+
 ## 0.89.0 - 2026-07-07
 
 - Issue #439: Added an always-available lb-only plate calculator. Tapping

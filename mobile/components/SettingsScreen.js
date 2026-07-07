@@ -4,6 +4,7 @@ import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { Colors } from '../theme/colors';
 import { useFeatureToggles } from '../hooks/useEntries';
+import { ReminderSettingsCard } from './ReminderSettingsCard';
 
 export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
@@ -41,6 +42,9 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
           />
         </View>
       </Card>
+
+      <SectionTitle>Reminders</SectionTitle>
+      <ReminderSettingsCard />
 
       <SectionTitle>Date Editing</SectionTitle>
       <Card>

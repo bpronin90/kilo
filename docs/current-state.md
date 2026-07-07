@@ -465,15 +465,20 @@ The real native app path now has a modular React Native shell:
   `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
   (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions
   are no longer shown there. The Settings screen groups its
-  controls into `Features`, `Date Editing`, and `Advanced`: persisted
-  `Fatigue tracking` and `Deload mode` switches let users disable those
-  optional workout-side flows without deleting their saved check-ins, deload
-  note, or deload history; `Edit weigh-in dates` governs whether the Weight
-  tab exposes date controls for new and existing weigh-ins; `Edit deload
-  dates` governs whether past deload records expose the opt-in date picker on
-  the Log tab, with those date edits now applying correctly on physical
-  devices; and the same screen keeps a persisted fatigue-multiplier
-  stepper plus reset control. The
+  controls into `Features`, `Reminders`, `Date Editing`, and `Advanced`:
+  persisted `Fatigue tracking` and `Deload mode` switches let users disable
+  those optional workout-side flows without deleting their saved check-ins,
+  deload note, or deload history; `Daily weigh-in reminder` and `Workout day
+  nudge` are independent local-notification toggles that default off, request
+  OS notification permission only when enabled, cancel their own scheduled
+  notifications when disabled, and keep workout nudges on weekday sections
+  inferred from the active routine note or user-selected fallback weekdays when
+  inference is ambiguous; `Edit weigh-in dates` governs whether the Weight tab
+  exposes date controls for new and existing weigh-ins; `Edit deload dates`
+  governs whether past deload records expose the opt-in date picker on the Log
+  tab, with those date edits now applying correctly on physical devices; and
+  the same screen keeps a persisted fatigue-multiplier stepper plus reset
+  control. The
   `User Profile` sub-screen lets users optionally save or later clear the
   four TDEE-profile inputs stored by the shared user-profile contract:
   height with ft/in or cm entry mapped to persisted `height_cm`, date of
@@ -640,9 +645,11 @@ The real native app path now has a modular React Native shell:
   also persists a Kilo fatigue multiplier under `kilo_fatigue_multiplier`, a separate
   weight-date-edit setting under `kilo_weight_date_edit_enabled`, separate
   fatigue-tracking and deload-mode feature toggles under
-  `kilo_fatigue_tracking_enabled` and `kilo_deload_mode_enabled`, a separate
-  deload-date-edit setting under `kilo_deload_date_edit_enabled`, a separate
-  deload-note record under `kilo_workout_deload_note`, a completed
+  `kilo_fatigue_tracking_enabled` and `kilo_deload_mode_enabled`, independent
+  local reminder settings under `kilo_weigh_in_reminder` and
+  `kilo_workout_reminder`, a separate deload-date-edit setting under
+  `kilo_deload_date_edit_enabled`, a separate deload-note record under
+  `kilo_workout_deload_note`, a completed
   deload history under `kilo_workout_deload_history`, note-backed completed
   deload records in `kilo_workout_notes` linked from history via `note_id`, a global
   tracked-lift map under `kilo_tracked_lifts`, and the Log-tab

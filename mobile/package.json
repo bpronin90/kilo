@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "0.89.0",
+  "version": "0.90.0",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
@@ -28,6 +28,7 @@
     "@sentry/react-native": "^8.17.2",
     "@supabase/supabase-js": "^2.108.2",
     "expo": "~54.0.33",
+    "expo-notifications": "~0.32.17",
     "expo-secure-store": "~15.0.8",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.17",

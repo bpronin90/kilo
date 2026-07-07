@@ -7,7 +7,13 @@ import {
   DELOAD_MODE_KEY,
   TRACKED_LIFTS_KEY,
   COLLAPSED_STATE_KEY,
+  WEIGH_IN_REMINDER_KEY,
+  WORKOUT_REMINDER_KEY,
 } from './keys';
+import {
+  normalizeWeighInReminder,
+  normalizeWorkoutReminder,
+} from '../../lib/reminders';
 
 export async function loadTrackedLifts() {
   try {
@@ -85,6 +91,35 @@ export async function loadFatigueTrackingEnabled() {
 
 export async function saveFatigueTrackingEnabled(enabled) {
   await AsyncStorage.setItem(FATIGUE_TRACKING_KEY, JSON.stringify(enabled));
+}
+
+// Local reminder settings (issue #440). Persisted locally like the other
+// feature toggles; both reminders default OFF via the normalizers.
+
+export async function loadWeighInReminder() {
+  try {
+    const raw = await AsyncStorage.getItem(WEIGH_IN_REMINDER_KEY);
+    return normalizeWeighInReminder(raw ? JSON.parse(raw) : null);
+  } catch {
+    return normalizeWeighInReminder(null);
+  }
+}
+
+export async function saveWeighInReminder(settings) {
+  await AsyncStorage.setItem(WEIGH_IN_REMINDER_KEY, JSON.stringify(normalizeWeighInReminder(settings)));
+}
+
+export async function loadWorkoutReminder() {
+  try {
+    const raw = await AsyncStorage.getItem(WORKOUT_REMINDER_KEY);
+    return normalizeWorkoutReminder(raw ? JSON.parse(raw) : null);
+  } catch {
+    return normalizeWorkoutReminder(null);
+  }
+}
+
+export async function saveWorkoutReminder(settings) {
+  await AsyncStorage.setItem(WORKOUT_REMINDER_KEY, JSON.stringify(normalizeWorkoutReminder(settings)));
 }
 
 export async function loadDeloadModeEnabled() {

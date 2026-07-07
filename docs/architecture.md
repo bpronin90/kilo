@@ -19,7 +19,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js/data/ · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_weigh_in_reminder\nkilo_workout_reminder\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
     subgraph supabase["Supabase Project"]
         EdgeExport["account-export Edge Function"]
@@ -313,6 +313,8 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_weight_goal` | Optional native weight-goal object |
 | `kilo_archived_weight_goals` | JSON array of archived completed weight-goal records, including target/start/completed weights plus archive/sync metadata |
 | `kilo_fatigue_multiplier` | Persisted native fatigue-multiplier number |
+| `kilo_weigh_in_reminder` | Optional local daily weigh-in reminder settings (`enabled`, `hour`, `minute`) |
+| `kilo_workout_reminder` | Optional local workout-day nudge settings (`enabled`, `hour`, `minute`, `fallbackWeekdays`) |
 | `kilo_tracked_lifts` | JSON object keyed by normalized lift name for global Track toggles |
 | `kilo_user_profile` | Optional native calorie-profile object with `height_cm`, `date_of_birth`, `sex`, `activity_level`, and `saved_at` |
 | `kilo_workout_sessions` | Legacy JSON array of native structured workout sessions, retained only as a migration source |
