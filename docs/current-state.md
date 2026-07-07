@@ -67,10 +67,12 @@ Roadmap status:
   redirect is allow-listed in Supabase; the first installed-build callback and
   restart-persistence pass remains deferred by owner direction.
 
-The prototype is a seeded fitness-logging app with approximately 221 synthetic
-workout sessions and bodyweight entries used as history scaffolding. User-created
-entries are layered on top of this seed through the app's local persistence
-path.
+The archived browser prototype was a seeded fitness-logging app with
+approximately 221 synthetic workout sessions and bodyweight entries used as
+history scaffolding; that seed exists only in the archived prototype. The
+shipping mobile app starts empty on a new install — Play beta testers see no
+preloaded workout or weight history — and all data comes from what the user
+creates or imports through the app's local persistence path.
 
 The native Expo app exposes five tabs: Home, Log, Weight, Analytics, and More.
 
