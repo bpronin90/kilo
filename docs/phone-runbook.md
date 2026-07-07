@@ -338,6 +338,67 @@ eas build:list --platform android --limit 5
 
 ---
 
+# Production Android Release & Updates (Play Store)
+
+Use this for the app that ships through Google Play (production channel). This
+path is separate from the preview APK flow above: production builds are `.aab`
+app bundles distributed only through Play Console, and they use
+`runtimeVersion.policy: "appVersion"` instead of the stable preview runtime
+string.
+
+## Build & upload the production AAB
+
+```bash
+# from the repo root
+npm --prefix mobile run build:android:production
+```
+
+- Uses the `production` profile in `mobile/eas.json`: app-bundle output,
+  `production` update channel, `autoIncrement` for the Android version code.
+- Download the `.aab` from the EAS build page, then upload it in Play Console
+  (Test and release → the target track → Create release). New AABs go through
+  Google review before rollout.
+
+## Push an update to the production app
+
+Decision rule — pick the path by what changed:
+
+| Change | Path |
+|---|---|
+| JS/styling/asset change only, **no version bump** | Production OTA update (below) |
+| App version bump (`package.json` → synced via `scripts/sync-version.mjs`) | New AAB + Play Console release |
+| Native change (module, native config, permissions, icons, Expo SDK) | New AAB + Play Console release |
+
+### Production OTA update (JS/assets only, same app version)
+
+```bash
+# from the repo root
+npm --prefix mobile run update:android:production
+```
+
+- Publishes to the `production` EAS Update channel.
+- Installed apps fetch the update on next cold launch (fully close and reopen).
+- **Only reaches installs whose app version matches the version the update is
+  published against.** Production uses `runtimeVersion.policy: "appVersion"`,
+  so every app version bump is a new OTA boundary — an update published at
+  `0.88.0` never reaches phones still running the `0.87.x` AAB.
+- Requires a compatible production AAB to already be live; do not publish
+  production OTA updates before the first production AAB is uploaded and
+  verified.
+
+### New AAB release (version bump or native change)
+
+1. Bump the canonical version in root `package.json` (if applicable) and run
+   `node scripts/sync-version.mjs` so `mobile/package.json` and
+   `mobile/app.json` match.
+2. `npm --prefix mobile run build:android:production`
+3. Upload the new `.aab` in Play Console on the same track → roll out (goes
+   through Google review).
+4. After rollout, JS-only OTA updates flow again for that version via
+   `update:android:production`.
+
+---
+
 # Standalone iOS Build via EAS
 
 Use this when you need an iOS build from the `mobile/` Expo app.
