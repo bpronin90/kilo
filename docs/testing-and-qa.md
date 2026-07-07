@@ -75,7 +75,10 @@ Current limitation:
   shared weight trend-summary helper coverage, direct
   `deriveWeightGoalAnalytics()` canonical contract coverage for empty/null
   entries, saved-goal/edit-state paths, rolling-series limits, and maintain
-  handling, per-session rep-drop-off flag derivation coverage,
+  handling, per-session rep-drop-off flag derivation coverage, standard 45 lb
+  barbell plate-loading coverage for exact loads, unloadable remainders,
+  sub-bar weights, decimals, custom bar values, invalid inputs, and display
+  formatting,
   fatigue session check-in detection coverage (`deriveSessionCheckIn` detectors
   plus `deriveCheckInHistory` list/summary shaping), within-row skipped-set
   parser coverage, `session_checkins` storage round-trip coverage,
@@ -195,6 +198,14 @@ retains non-test commands such as `npm run audit`.
 ---
 
 ## Automated Coverage Inventory
+
+### `mobile/tests/plate-math.test.js`
+
+- covers `computePlateLoad` for exact standard-bar loads, unloadable per-side
+  remainders, sub-bar weights, decimal weights, custom bar weights, invalid
+  inputs, and exported standard lb constants
+- covers `formatPlateWeight` display formatting for whole-number, fractional,
+  and invalid values
 
 ### `mobile/tests/parser.test.js`
 

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../theme/colors';
+import { PlateCalculatorModal } from './PlateCalculatorModal';
 
 export const SET_ROW_FONT_SIZE = 14;
 
@@ -218,8 +219,10 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 }
 
 export function SetLine({ sets, selectable }) {
+  const [plateWeight, setPlateWeight] = useState(null);
+
   if (!sets || sets.length === 0) return null;
-  
+
   const groups = [];
   let currentGroup = null;
 
@@ -230,15 +233,31 @@ export function SetLine({ sets, selectable }) {
     }
     currentGroup.reps.push(set.skipped ? '-' : set.rep_count);
   }
-  
+
   return (
     <View style={styles.setLine}>
       {groups.map((group, i) => (
         <View key={i} style={styles.setGroup}>
-          <Text selectable={selectable} style={styles.setWeight}>{group.weight ? `${group.weight} lb` : 'BW'}</Text>
+          {group.weight ? (
+            <Pressable
+              onPress={() => setPlateWeight(group.weight)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Show plate loading for ${group.weight} pounds`}
+            >
+              <Text selectable={selectable} style={styles.setWeight}>{`${group.weight} lb`}</Text>
+            </Pressable>
+          ) : (
+            <Text selectable={selectable} style={styles.setWeight}>BW</Text>
+          )}
           <Text selectable={selectable} style={styles.setReps}>{group.reps.join(', ')}</Text>
         </View>
       ))}
+      <PlateCalculatorModal
+        visible={plateWeight != null}
+        weight={plateWeight}
+        onClose={() => setPlateWeight(null)}
+      />
     </View>
   );
 }

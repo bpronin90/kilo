@@ -326,7 +326,12 @@ The real native app path now has a modular React Native shell:
   save path now also persists workout-note `skip_markers`
   (`exercise_skips` plus `day_skips`) and derived `attendance_flags`, so
   downstream analytics consumers read stored skip/attendance state instead of
-  recomputing it during render. Native workout-note documents now also persist
+  recomputing it during render. Parsed set-row weight values in the rendered
+  Log read view are also unobtrusive tap targets that open a lb-only plate
+  calculator sheet for a standard 45 lb barbell, showing the per-side
+  45/25/10/5/2.5 lb plate loading plus any unloadable remainder without
+  changing parsing, storage, or workout analytics. Native workout-note
+  documents now also persist
   `session_checkins` keyed by session index so fatigue check-ins survive
   reloads. When the user leaves the current-routine editor via `Done`, Android
   back, or switching away from the Log tab after a rough detected session, the
@@ -513,7 +518,10 @@ The real native app path now has a modular React Native shell:
   emitted 1K point when the exact routine-boundary session does not produce a
   complete Big-3 total. The Big 3 Mapping panel is now
   collapsible with the shared open-chevron icon convention, so the selection
-  rows can be hidden while keeping the mapping context available. The screen now
+  rows can be hidden while keeping the mapping context available. The
+  squat/bench/deadlift breakdown values in the 1K Progress card now also open
+  the same lb-only per-side plate calculator sheet for the rounded displayed
+  estimate. The screen now
   also includes
   a fatigue-tracking panel that stays collapsed by default into a signal-first
   summary row highlighting the most common rough reason when available and an
@@ -888,7 +896,8 @@ non-goals, and every shipped weight surface is lb-denominated by construction:
   averages, PR/Kilo/top-weight suffixes), shared set rows, and Help copy.
 - Domain logic is lb-denominated: weight-pace notable/spike thresholds
   (1.5 / 2.3 lb in `mobile/lib/data/weightGoal.js`), the 3500 cal/lb
-  deficit display, and the 1,000 lb club strength total are all defined in lb.
+  deficit display, the 1,000 lb club strength total, and the standard 45 lb
+  barbell plate calculator (`mobile/lib/plateMath.js`) are all defined in lb.
 - Storage/cloud: `kilo.user_profile.unit_system` exists in the schema
   (`supabase/migrations/20260615120000_note_first_schema.sql`) and is carried
   through cloud bootstrap promotion (`mobile/storage/cloud/bootstrapPlan.js`),
