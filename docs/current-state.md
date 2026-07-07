@@ -869,9 +869,11 @@ Kilo launches lb-only. There is no kg display or entry preference in the
 initial public release, and no follow-up kg implementation issue is opened at
 this time.
 
-Why this is acceptable for the target audience: the initial release path is a
-closed Play test with a small, known lb-using tester group, and every shipped
-weight surface is lb-denominated by construction:
+Why this is acceptable at launch: the initial release path is a closed Play
+test (`docs/play-store-readiness.md`, Closed Testing Requirement), no kg
+parsing, display, or preference plumbing exists in the app today, adding kg
+would be new implementation scope explicitly outside this planning issue's
+non-goals, and every shipped weight surface is lb-denominated by construction:
 
 - Parsing: workout and bodyweight input is unit-less numeric; the parsers
   hardcode `weight_unit: 'lb'` on every stored set and weight entry
