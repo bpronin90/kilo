@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.88.2 - 2026-07-06
+
+- Issue #435: Recorded the launch decision to ship Kilo as lb-only for the
+  initial public release, documented the lb-denominated parser/display/domain
+  surfaces and the reserved `kilo.user_profile.unit_system` field, and added a
+  Play Store listing-copy note to avoid promising kg support before a dedicated
+  implementation issue exists.
+- Issue #436: Clarified `docs/current-state.md` so the archived browser
+  prototype's ~221 synthetic workout and bodyweight entries are not mistaken
+  for shipped mobile seed data; new mobile installs start empty unless the user
+  creates or imports data.
+
 ## 0.88.1 - 2026-07-06
 
 - Issue #434: Added minimal Sentry-based mobile crash/error reporting for

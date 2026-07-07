@@ -67,10 +67,12 @@ Roadmap status:
   redirect is allow-listed in Supabase; the first installed-build callback and
   restart-persistence pass remains deferred by owner direction.
 
-The prototype is a seeded fitness-logging app with approximately 221 synthetic
-workout sessions and bodyweight entries used as history scaffolding. User-created
-entries are layered on top of this seed through the app's local persistence
-path.
+The archived browser prototype was a seeded fitness-logging app with
+approximately 221 synthetic workout sessions and bodyweight entries used as
+history scaffolding; that seed exists only in the archived prototype. The
+shipping mobile app starts empty on a new install — Play beta testers see no
+preloaded workout or weight history — and all data comes from what the user
+creates or imports through the app's local persistence path.
 
 The native Expo app exposes five tabs: Home, Log, Weight, Analytics, and More.
 
@@ -863,7 +865,43 @@ Required readiness artifacts and their current status:
 
 ## Known Gaps That Affect Launch Confidence
 
-### Native app path still has partial UI parity only
+### Units: lb-only launch (decision record, issue #435)
+
+Kilo launches lb-only. There is no kg display or entry preference in the
+initial public release, and no follow-up kg implementation issue is opened at
+this time.
+
+Why this is acceptable at launch: the initial release path is a closed Play
+test (`docs/play-store-readiness.md`, Closed Testing Requirement), no kg
+parsing, display, or preference plumbing exists in the app today, adding kg
+would be new implementation scope explicitly outside this planning issue's
+non-goals, and every shipped weight surface is lb-denominated by construction:
+
+- Parsing: workout and bodyweight input is unit-less numeric; the parsers
+  hardcode `weight_unit: 'lb'` on every stored set and weight entry
+  (`mobile/lib/parser/workoutRow.js`, `mobile/lib/parser/weightEntry.js`), and
+  deload note lines are matched/generated with a literal `lbs` token
+  (`mobile/lib/parser/workoutNote.js`, `mobile/lib/parser/deloadGenerator.js`,
+  `mobile/screens/log/useLogDeloadEditor.js`).
+- Display: `lb` labels are hardcoded across Home (hero weight, goal stats,
+  1K total), Weight (entry label, goal card, history rows), Analytics (trend
+  averages, PR/Kilo/top-weight suffixes), shared set rows, and Help copy.
+- Domain logic is lb-denominated: weight-pace notable/spike thresholds
+  (1.5 / 2.3 lb in `mobile/lib/data/weightGoal.js`), the 3500 cal/lb
+  deficit display, and the 1,000 lb club strength total are all defined in lb.
+- Storage/cloud: `kilo.user_profile.unit_system` exists in the schema
+  (`supabase/migrations/20260615120000_note_first_schema.sql`) and is carried
+  through cloud bootstrap promotion (`mobile/storage/cloud/bootstrapPlan.js`),
+  but nothing in the app reads or writes it for entry or display. It remains a
+  reserved field for a future unit preference and must not be repurposed.
+
+If kg support becomes required later, the smallest safe scope is a
+display-preference layer keyed off `user_profile.unit_system` (store lb
+canonically, convert at render and at entry), an explicit unit suffix on
+parser output rather than new kg parsing grammar, and migration-free
+backward compatibility because stored `weight_unit` values are already
+uniformly `'lb'`. That work needs its own implementation issue before any
+code changes.
 
 The `mobile/` Expo app now covers the native MVP create/store/retrieve loop for
 weight and workout entries, but it still exposes a narrower UI than the
