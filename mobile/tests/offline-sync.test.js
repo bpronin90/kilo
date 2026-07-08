@@ -25,6 +25,8 @@ import {
   resetStampClockForTests,
   getCursor,
   getDirtyRecords,
+  enqueueDirty,
+  getClientId,
   SYNC_TABLES,
 } from '../storage/syncQueue';
 
@@ -533,6 +535,54 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
       expect(row.user_id).toBe('user-123');
     }
     expect(upserts.find((r) => r.id === 'w1')).toBeTruthy();
+  });
+
+  it('pushes archived_weight_goals rows with whitelisted columns only', async () => {
+    const upserts = [];
+    const query = { gte: () => query, order: async () => ({ data: [], error: null }) };
+    const fakeClient = {
+      auth: {
+        getUser: async () => ({ data: { user: { id: 'user-abc' } }, error: null }),
+      },
+      schema: () => ({
+        from: () => ({
+          select: () => query,
+          upsert: async (rows) => {
+            upserts.push(...rows);
+            return { error: null };
+          },
+        }),
+      }),
+    };
+    getSupabaseClient.mockReturnValue(fakeClient);
+
+    // Enqueue a dirty archived goal directly (mirrors weightHooks archiveGoal).
+    const clientId = await getClientId();
+    const goal = stampWrite(
+      {
+        id: 'ag1',
+        target_weight: 180,
+        target_date: '2026-12-31',
+        start_weight: 200,
+        start_date: '2026-01-01',
+        completed_weight: 179,
+        archived_at: '2026-06-15T12:00:00.000Z',
+        goal_json: null,
+        saved_at: '2026-06-15T12:00:00.000Z',
+      },
+      clientId
+    );
+    await enqueueDirty(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, goal);
+
+    setCloudTransport(null);
+    await cloudAdapter.sync();
+
+    const pushed = upserts.find((r) => r.id === 'ag1');
+    expect(pushed).toBeTruthy();
+    expect(pushed.user_id).toBe('user-abc');
+    // server-authoritative fields must not be on the wire
+    expect(pushed.updated_at).toBeUndefined();
+    expect(pushed.client_id).toBeUndefined();
   });
 });
 
