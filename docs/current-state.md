@@ -170,8 +170,9 @@ The real native app path now has a modular React Native shell:
   independent Kilo wordmark header drawn as an inline `react-native-svg`
   component (`KiloWordmark`, sourced from `src/assets/brand/home-title.svg`)
   and sentence-case `Current routine progress.` subtitle. The screen uses a
-  first-run/steady-state split: when the user has no weight history, no saved
-  workout notes, and no active draft workout note, Home now renders a welcome
+  first-run/steady-state split: after Home hydration resolves, when the user has
+  no weight history, no saved workout notes, no active draft workout note, no
+  saved weight goal, and no active tracked lifts, Home renders a welcome
   onboarding card with `Log Workout` and `Log Weight` CTA buttons plus short
   guidance for the two starter flows; otherwise it renders the established
   three-panel hierarchy of a Weekly Summary hero card, a conditional Weight
