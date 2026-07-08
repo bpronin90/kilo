@@ -557,6 +557,7 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
     getSupabaseClient.mockReturnValue(fakeClient);
 
     // Enqueue a dirty archived goal directly (mirrors weightHooks archiveGoal).
+    // Include a local-only field that must be stripped by the whitelist.
     const clientId = await getClientId();
     const goal = stampWrite(
       {
@@ -567,8 +568,9 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
         start_date: '2026-01-01',
         completed_weight: 179,
         archived_at: '2026-06-15T12:00:00.000Z',
-        goal_json: null,
+        goal_json: { extra: true },
         saved_at: '2026-06-15T12:00:00.000Z',
+        local_only_field: 'should-not-appear',
       },
       clientId
     );
@@ -579,10 +581,24 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
 
     const pushed = upserts.find((r) => r.id === 'ag1');
     expect(pushed).toBeTruthy();
+
+    // server-bound identity
     expect(pushed.user_id).toBe('user-abc');
-    // server-authoritative fields must not be on the wire
+
+    // all whitelisted archived-goal fields must be present with correct values
+    expect(pushed.target_weight).toBe(180);
+    expect(pushed.target_date).toBe('2026-12-31');
+    expect(pushed.start_weight).toBe(200);
+    expect(pushed.start_date).toBe('2026-01-01');
+    expect(pushed.completed_weight).toBe(179);
+    expect(pushed.archived_at).toBe('2026-06-15T12:00:00.000Z');
+    expect(pushed.goal_json).toEqual({ extra: true });
+    expect(pushed.saved_at).toBe('2026-06-15T12:00:00.000Z');
+
+    // server-authoritative and local-only fields must be absent
     expect(pushed.updated_at).toBeUndefined();
     expect(pushed.client_id).toBeUndefined();
+    expect(pushed.local_only_field).toBeUndefined();
   });
 });
 
