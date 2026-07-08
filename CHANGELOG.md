@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.91.1 - 2026-07-08
+
+- Issue #442: Fixed the fresh-launch Home empty-state flash for returning
+  users by keeping the dashboard gated until weight entries, workout notes,
+  weight goal, and tracked-lift hydration have resolved, and by treating saved
+  weight goals or active tracked lifts as non-empty Home data.
+
 ## 0.91.0 - 2026-07-07
 
 - Issue #441: Added a lb/kg display preference with lb as the default and kg as
