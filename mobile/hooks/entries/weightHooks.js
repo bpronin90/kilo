@@ -105,7 +105,7 @@ export function useWeightEntries() {
 
   const reload = useCallback(() => {
     setError(null);
-    readVia('loadWeightEntries', Storage.loadWeightEntries)
+    return readVia('loadWeightEntries', Storage.loadWeightEntries)
       .then(setEntries)
       .catch(e => setError(e))
       .finally(() => setLoading(false));

@@ -87,10 +87,13 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
   const isEmptyState = useMemo(() => {
     if (isLoading) return false;
+    const hasTrackedLifts = trackedLifts && Object.values(trackedLifts).some(Boolean);
     return (!weightEntries || weightEntries.length === 0) &&
            (!notes || notes.length === 0) &&
-           (!workoutNote?.raw_text || !workoutNote.raw_text.trim());
-  }, [isLoading, weightEntries, notes, workoutNote]);
+           (!workoutNote?.raw_text || !workoutNote.raw_text.trim()) &&
+           !weightGoal &&
+           !hasTrackedLifts;
+  }, [isLoading, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
 
   return (
     <ScreenShell

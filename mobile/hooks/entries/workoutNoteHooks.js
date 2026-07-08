@@ -17,7 +17,7 @@ export function useWorkoutNotes() {
 
   const reload = useCallback(() => {
     setError(null);
-    Promise.all([
+    return Promise.all([
       readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
       Storage.loadCurrentWorkoutId(),
     ])
