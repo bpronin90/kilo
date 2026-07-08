@@ -284,7 +284,8 @@ describe('buildBootstrapPlan mapping', () => {
     await bootstrapFromLocal(USER_ID, client);
 
     const notes = client.upsertsByTable.workout_notes;
-    // notebook item + legacy single note + synthesized sessions note.
+    // notebook item + synthesized sessions note (legacy kilo_workout_note is
+    // skipped because kilo_workout_notes is non-empty — notebook-first guard).
     const sessionsNote = notes.find(
       (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_sessions'
     );
@@ -293,12 +294,11 @@ describe('buildBootstrapPlan mapping', () => {
     // Original session array is retained in source_snapshot, not normalized.
     expect(sessionsNote.source_snapshot.sessions).toHaveLength(1);
 
-    // The legacy single note is preserved with its origin marker.
+    // The legacy single note is NOT imported when workoutNotes is non-empty.
     const legacyNote = notes.find(
       (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
     );
-    expect(legacyNote).toBeTruthy();
-    expect(legacyNote.raw_text).toContain('-Squat');
+    expect(legacyNote).toBeUndefined();
 
     // The notebook item carries through with derived JSON and current pointer.
     const notebookNote = notes.find((n) => n.id === 'wn1');
@@ -310,6 +310,154 @@ describe('buildBootstrapPlan mapping', () => {
     const writtenTables = new Set(client.calls.map((c) => c.table));
     expect(writtenTables.has('workout_sessions')).toBe(false);
     expect(writtenTables.has('workout_sets')).toBe(false);
+  });
+});
+
+describe('phantom Routine 1 prevention (issue #443)', () => {
+  it('does not create a phantom Routine 1 when workoutNotes is non-empty and workoutNote has different content', async () => {
+    // User already has a notebook with their current routine.
+    await AsyncStorage.setItem(
+      'kilo_workout_notes',
+      JSON.stringify([
+        {
+          id: 'wn_current',
+          title: 'Stretch Transition',
+          raw_text: '-Squat\n- 225 5,5,5\n-RDL\n- 185 8,8',
+          saved_at: '2026-06-01T00:00:00.000Z',
+          updated_at: '2026-06-10T00:00:00.000Z',
+          tracked_exercises: ['Squat'],
+          one_k_exercises: null,
+          isCurrent: true,
+        },
+      ])
+    );
+    await AsyncStorage.setItem('kilo_current_workout_id', JSON.stringify('wn_current'));
+    // Legacy kilo_workout_note still exists with DIFFERENT (older) content.
+    await AsyncStorage.setItem(
+      'kilo_workout_note',
+      JSON.stringify({
+        raw_text: '-Bench\n- 135 5,5,5',
+        saved_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-02T00:00:00.000Z',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const notes = client.upsertsByTable.workout_notes;
+    const phantom = notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(phantom).toBeUndefined();
+
+    // Only the notebook entry should be present.
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe('wn_current');
+  });
+
+  it('does not create a phantom Routine 1 when workoutNotes is non-empty and workoutNote has identical content', async () => {
+    // After local migration: workoutNotes has the migrated entry, kilo_workout_note still present.
+    const noteText = '-Squat\n- 225 5,5,5';
+    await AsyncStorage.setItem(
+      'kilo_workout_notes',
+      JSON.stringify([
+        {
+          id: 'wn_migrated',
+          title: 'Routine 1',
+          raw_text: noteText,
+          saved_at: '2026-05-01T00:00:00.000Z',
+          updated_at: '2026-05-02T00:00:00.000Z',
+          tracked_exercises: [],
+          one_k_exercises: null,
+          isCurrent: true,
+        },
+      ])
+    );
+    await AsyncStorage.setItem('kilo_current_workout_id', JSON.stringify('wn_migrated'));
+    await AsyncStorage.setItem(
+      'kilo_workout_note',
+      JSON.stringify({
+        raw_text: noteText,
+        saved_at: '2026-05-01T00:00:00.000Z',
+        updated_at: '2026-05-02T00:00:00.000Z',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const notes = client.upsertsByTable.workout_notes;
+    expect(notes).toHaveLength(1);
+    expect(notes[0].id).toBe('wn_migrated');
+    // No phantom legacy entry.
+    const legacy = notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(legacy).toBeUndefined();
+  });
+
+  it('imports the legacy note when workoutNotes is empty (no notebook yet)', async () => {
+    // No notebook entries — legacy-only install.
+    await AsyncStorage.setItem(
+      'kilo_workout_note',
+      JSON.stringify({
+        raw_text: '-Deadlift\n- 315 3,3,3',
+        saved_at: '2026-04-01T00:00:00.000Z',
+        updated_at: '2026-04-02T00:00:00.000Z',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const notes = client.upsertsByTable.workout_notes;
+    const legacyRow = notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(legacyRow).toBeTruthy();
+    expect(legacyRow.title).toBe('Routine 1');
+    expect(legacyRow.raw_text).toBe('-Deadlift\n- 315 3,3,3');
+  });
+
+  it('preserves legacy saved_at as the date provenance for the imported row', async () => {
+    await AsyncStorage.setItem(
+      'kilo_workout_note',
+      JSON.stringify({
+        raw_text: '-Press\n- 95 5,5,5',
+        saved_at: '2026-03-15T10:00:00.000Z',
+        updated_at: '2026-03-20T12:00:00.000Z',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const legacyRow = client.upsertsByTable.workout_notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(legacyRow).toBeTruthy();
+    // Date provenance: saved_at from legacy note is preserved.
+    expect(legacyRow.saved_at).toBe('2026-03-15T10:00:00.000Z');
+    expect(legacyRow.updated_at).toBe('2026-03-20T12:00:00.000Z');
+  });
+
+  it('sets saved_at to null when legacy note has no saved_at', async () => {
+    await AsyncStorage.setItem(
+      'kilo_workout_note',
+      JSON.stringify({ raw_text: '-OHP\n- 75 8,8,8' })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const legacyRow = client.upsertsByTable.workout_notes.find(
+      (n) => n.source_snapshot?.async_storage_key === 'kilo_workout_note'
+    );
+    expect(legacyRow).toBeTruthy();
+    expect(legacyRow.saved_at).toBeNull();
+    // updated_at falls back to bootstrap time when absent.
+    expect(legacyRow.updated_at).toBeTruthy();
   });
 });
 

@@ -211,8 +211,15 @@ function buildWorkoutNoteRows(snapshot, userId) {
     });
   }
 
+  // Only import the legacy single note when the notebook has no entries.
+  // Mirrors migrateToNotebook's no-op guard: if the user is already in
+  // multi-note mode, the legacy kilo_workout_note has already been consumed
+  // by the local migration (or is intentionally absent from the notebook).
+  // Importing it here when workoutNotes is non-empty creates a phantom
+  // "Routine 1" copy even when the user never created one.
   const legacy = snapshot.workoutNote;
-  if (legacy && legacy.raw_text != null) {
+  const notebookHasEntries = (snapshot.workoutNotes || []).length > 0;
+  if (legacy && legacy.raw_text != null && !notebookHasEntries) {
     const alreadyImported = [...byId.values()].some(
       (r) => r.raw_text === legacy.raw_text
     );

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.91.2 - 2026-07-08
+
+- Issue #443: Fixed cloud bootstrap so an existing multi-note workout notebook
+  no longer causes the legacy `kilo_workout_note` key to be imported as a
+  phantom user-visible `Routine 1` copy, while preserving the legacy-only
+  bootstrap path and date provenance coverage.
+
 ## 0.91.1 - 2026-07-08
 
 - Issue #442: Fixed the fresh-launch Home empty-state flash for returning
