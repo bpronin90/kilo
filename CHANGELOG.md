@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.91.3 - 2026-07-08
+
+- Issue #444: Fixed preview app cloud sync after archiving a weight goal by
+  adding the missing `archived_weight_goals` real-transport upsert whitelist
+  and regression coverage for the archived-goal payload fields plus stripped
+  client-only fields.
+
 ## 0.91.2 - 2026-07-08
 
 - Issue #443: Fixed cloud bootstrap so an existing multi-note workout notebook
