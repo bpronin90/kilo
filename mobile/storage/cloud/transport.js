@@ -42,6 +42,18 @@ const UPSERT_COLUMNS = Object.freeze({
     'source_snapshot',
     'deleted_at',
   ]),
+  archived_weight_goals: Object.freeze([
+    'id',
+    'target_weight',
+    'target_date',
+    'start_weight',
+    'start_date',
+    'completed_weight',
+    'archived_at',
+    'goal_json',
+    'saved_at',
+    'deleted_at',
+  ]),
 });
 
 // Build the server-bound upsert row for one record: only whitelisted columns
