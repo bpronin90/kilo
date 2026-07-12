@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.92.9 - 2026-07-12
+
+- Issue #458: Prevented legacy-provenance `Routine 1` workout notes from
+  resurfacing through cloud sync, including cloud-only, stale-selection, and
+  overlapping-sync states, while preserving legitimate legacy and user-authored
+  notes.
+
 ## 0.92.8 - 2026-07-12
 
 - Issue #462: Simplified local issue-routing labels so ownership, area, and type

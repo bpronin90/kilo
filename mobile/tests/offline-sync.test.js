@@ -602,6 +602,195 @@ describe('real Supabase transport stamps user_id (Finding 2)', () => {
   });
 });
 
+// ── Regression #458: phantom "Routine 1" reappears via sync pull ─────────────────
+//
+// Root cause: the #443 fix guards the bootstrap upload path but an already-uploaded
+// cloud row (wn_legacy_<userId>, source_snapshot.async_storage_key = 'kilo_workout_note')
+// is pulled on every sync pass and merged into local storage via LWW. The sync path
+// had no awareness of the phantom-prevention guard, so it re-wrote the phantom
+// locally on every sync even though bootstrap would no longer create it.
+//
+// The fix: before the sync loop, tombstone any live phantom legacy notes in local
+// storage when non-phantom notes already exist, and enqueue them dirty so the
+// tombstone is pushed to cloud in the same sync pass.
+describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
+  const USER_ID = 'u-phantom-458';
+  const PHANTOM_ID = `wn_legacy_${USER_ID}`;
+
+  function phantomRow(overrides = {}) {
+    return {
+      id: PHANTOM_ID,
+      title: 'Routine 1',
+      raw_text: '-Squat\n- 225 5,5,5',
+      saved_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-02T00:00:00.000Z',
+      source_snapshot: { async_storage_key: 'kilo_workout_note' },
+      ...overrides,
+    };
+  }
+
+  function realNote(id = 'wn_real_1') {
+    return {
+      id,
+      title: 'Current Program',
+      raw_text: '-Bench\n- 185 5,5,5',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-15T00:00:00.000Z',
+    };
+  }
+
+  it('phantom pulled from cloud is NOT written to local when non-phantom notes exist', async () => {
+    // Local has a real non-phantom note; user never sees phantom.
+    const preserved = realNote();
+    await Storage.replaceWorkoutNotesRaw([preserved]);
+    await Storage.setCurrentWorkoutNote(preserved.id);
+
+    // Cloud has the old phantom row from a pre-#443 or edge-case bootstrap.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
+
+    await cloudAdapter.sync();
+
+    // Phantom must not appear as a live note after sync.
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(notes.find((n) => n.id === preserved.id)).toMatchObject({
+      id: preserved.id,
+      raw_text: preserved.raw_text,
+      isCurrent: true,
+    });
+    expect(await Storage.loadCurrentWorkoutId()).toBe(preserved.id);
+
+    const localPhantom = (await Storage.loadWorkoutNotesRaw()).find((n) => n.id === PHANTOM_ID);
+    expect(localPhantom.source_snapshot).toEqual({ async_storage_key: 'kilo_workout_note' });
+    expect(isTombstone(localPhantom)).toBe(true);
+    expect(localPhantom.updated_at > phantomRow().updated_at).toBe(true);
+    expect(localPhantom.deleted_at).toBe(localPhantom.updated_at);
+
+    // Scenario B completes cloud cleanup during the same public sync operation.
+    const remotePhantom = cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID);
+    expect(remotePhantom).toMatchObject({
+      id: PHANTOM_ID,
+      source_snapshot: { async_storage_key: 'kilo_workout_note' },
+      deleted_at: localPhantom.deleted_at,
+      updated_at: localPhantom.updated_at,
+    });
+    expect(isTombstone(remotePhantom)).toBe(true);
+
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(await Storage.loadCurrentWorkoutId()).toBe(preserved.id);
+  });
+
+  it('clears a current selection that points at a tombstoned phantom', async () => {
+    await Storage.replaceWorkoutNotesRaw([realNote(), phantomRow({ isCurrent: true })]);
+    await Storage.saveCurrentWorkoutId(PHANTOM_ID);
+
+    await cloudAdapter.sync();
+
+    expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+    const localPhantom = (await Storage.loadWorkoutNotesRaw()).find((n) => n.id === PHANTOM_ID);
+    expect(isTombstone(localPhantom)).toBe(true);
+    expect(localPhantom.source_snapshot.async_storage_key).toBe('kilo_workout_note');
+  });
+
+  it('phantom already in local storage is tombstoned and pushed to cloud in the same sync pass', async () => {
+    // Simulate state after a prior sync that wrote the phantom locally.
+    await Storage.replaceWorkoutNotesRaw([realNote(), phantomRow()]);
+
+    // Cloud also has the live phantom.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
+
+    await cloudAdapter.sync();
+
+    // Phantom not visible to the user.
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+
+    // Tombstone was pushed to cloud in the same sync pass.
+    const remotePhantom = cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID);
+    expect(isTombstone(remotePhantom)).toBe(true);
+  });
+
+  it('repeated sync passes are idempotent: phantom does not reappear', async () => {
+    await Storage.replaceWorkoutNotesRaw([realNote(), phantomRow()]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
+
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+  });
+
+  it('overlapping sync calls cannot lose a deferred cloud-only phantom tombstone', async () => {
+    await Storage.replaceWorkoutNotesRaw([realNote()]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
+
+    const baseTransport = cloud.transport;
+    let workoutPulls = 0;
+    let releasePulls;
+    let bothPullsStarted;
+    const pullGate = new Promise((resolve) => { releasePulls = resolve; });
+    const bothStarted = new Promise((resolve) => { bothPullsStarted = resolve; });
+    setCloudTransport({
+      ...baseTransport,
+      async pull(table, cursor) {
+        if (table === SYNC_TABLES.WORKOUT_NOTES && workoutPulls < 2) {
+          workoutPulls += 1;
+          if (workoutPulls === 2) bothPullsStarted();
+          await pullGate;
+        }
+        return baseTransport.pull(table, cursor);
+      },
+    });
+
+    const first = cloudAdapter.sync();
+    const second = cloudAdapter.sync();
+    await bothStarted;
+    releasePulls();
+    await Promise.all([first, second]);
+
+    const localPhantom = (await Storage.loadWorkoutNotesRaw()).find((n) => n.id === PHANTOM_ID);
+    const remotePhantom = cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID);
+    expect(isTombstone(localPhantom)).toBe(true);
+    expect(isTombstone(remotePhantom)).toBe(true);
+    expect(remotePhantom.source_snapshot.async_storage_key).toBe('kilo_workout_note');
+  });
+
+  it('preserves the phantom for a legacy-only user who has no non-phantom notes', async () => {
+    // Legacy user: ONLY the phantom note exists (bootstrapped from kilo_workout_note).
+    await Storage.replaceWorkoutNotesRaw([phantomRow()]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
+
+    await cloudAdapter.sync();
+
+    // Legacy user's only note must not be deleted.
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toMatchObject(phantomRow());
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(false);
+  });
+
+  it('a legitimate user-created note titled "Routine 1" (no source_snapshot) is never treated as a phantom', async () => {
+    const userNote = {
+      id: 'wn_user_routine_1',
+      title: 'Routine 1',
+      raw_text: '-Press\n- 95 5,5,5',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-15T00:00:00.000Z',
+      // No source_snapshot — user created this themselves.
+    };
+    await Storage.replaceWorkoutNotesRaw([userNote, realNote('wn_other')]);
+
+    await cloudAdapter.sync();
+
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === 'wn_user_routine_1')).toMatchObject(userNote);
+  });
+});
+
 // ── Latest review finding: deload-derived workout notes must sync too ────────────
 //
 // completeDeload() creates a workout-note row and deleteDeloadNote() removes one.
