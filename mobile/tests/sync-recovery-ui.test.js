@@ -30,6 +30,11 @@ import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
 import * as entries from '../storage/entries';
 import { saveWeightEntry } from '../storage/entries';
 import { cloudAdapter } from '../storage/cloudAdapter';
+import {
+  getLocalDataOwner,
+  setLocalDataOwner,
+} from '../storage/entries/localDataOwner';
+import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 
 beforeEach(() => {
   AsyncStorage.clear();
@@ -201,6 +206,8 @@ describe('useSyncRecovery hook', () => {
     expect(spy).toHaveBeenCalledWith('u_1');
     expect(result.ok).toBe(true);
     expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.COMPLETE);
+    // A successful manual upload claims local-data ownership (#450).
+    expect(await getLocalDataOwner()).toBe('u_1');
   });
 
   test('initial bootstrap action drives idle -> running -> complete on success (no prior failure)', async () => {
@@ -337,6 +344,78 @@ describe('useSyncRecovery hook', () => {
     expect(result.error).toMatch(/not available/i);
     // Status must not flip to complete on a missing runner.
     expect(ref.current.sync.status).not.toBe(SYNC_STATUS.COMPLETE);
+  });
+});
+
+describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)', () => {
+  const USER = { id: 'u_1', email: 'me@x.co' };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    entries.setStorageMode('local');
+  });
+
+  function renderPanel(user = USER) {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(CloudSyncRecovery, { user }));
+    });
+    return tree;
+  }
+
+  async function press(tree, title) {
+    await act(async () => {
+      await tree.root.findByProps({ title }).props.onPress();
+    });
+  }
+
+  test('foreign owner: Upload Local History asks for confirmation instead of uploading', async () => {
+    await setLocalDataOwner('someone-else');
+    const spy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Upload Local History');
+
+    // No silent upload of another account's data.
+    expect(spy).not.toHaveBeenCalled();
+    expect(tree.root.findAllByProps({ title: 'Upload Anyway' }).length).toBeGreaterThan(0);
+
+    // Confirming performs the upload and claims ownership.
+    await press(tree, 'Upload Anyway');
+    await flush();
+    expect(spy).toHaveBeenCalledWith(USER.id);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+  });
+
+  test('foreign owner: Cancel dismisses the confirmation without uploading', async () => {
+    await setLocalDataOwner('someone-else');
+    const spy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Upload Local History');
+    await press(tree, 'Cancel');
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(tree.root.findAllByProps({ title: 'Upload Anyway' })).toHaveLength(0);
+    expect(await getLocalDataOwner()).toBe('someone-else');
+  });
+
+  test('own or unclaimed data: Upload Local History runs directly (the press is the consent)', async () => {
+    const spy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Upload Local History');
+    await flush();
+
+    expect(spy).toHaveBeenCalledWith(USER.id);
+    expect(await getLocalDataOwner()).toBe(USER.id);
   });
 });
 

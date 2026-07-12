@@ -81,6 +81,14 @@ export {
   migrateWorkoutNote,
 } from './entries/migrations';
 
+export {
+  OWNER_UNCLAIMED,
+  OWNER_UNKNOWN,
+  getLocalDataOwner,
+  setLocalDataOwner,
+  purgeLocalData,
+} from './entries/localDataOwner';
+
 import {
   STORAGE_MODES as _STORAGE_MODES,
   getStorageMode as _getStorageMode,

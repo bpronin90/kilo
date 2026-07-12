@@ -6,6 +6,7 @@ import { useUpdates } from 'expo-updates';
 
 import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
+import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
 
 import { HomeScreen } from './screens/HomeScreen';
@@ -72,12 +73,17 @@ export default function App() {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession();
-  useAutoSync(auth, {
+  const {
+    ownershipPrompt,
+    confirmOwnershipUpload,
+    startFreshOnDevice,
+    dismissOwnershipPrompt,
+  } = useAutoSync(auth, {
     onSyncComplete() {
       weightHook.reload();
       noteHook.reload();
     },
-  });
+  }) || {};
 
   // Web OAuth / password-reset callback handling. After a provider redirect or
   // a reset link, the app reloads at its web URL carrying the auth payload; this
@@ -371,6 +377,61 @@ export default function App() {
             addScrollListener={addScrollListener}
           />
         </SafeAreaView>
+        {ownershipPrompt ? (
+          <View style={styles.ownershipOverlay} testID="ownership-prompt">
+            <View style={styles.ownershipCard}>
+              {ownershipPrompt.type === 'first-upload' ? (
+                <>
+                  <Text style={styles.ownershipTitle}>
+                    Upload your local history?
+                  </Text>
+                  <Text style={styles.ownershipBody}>
+                    This is your first sign-in on this device. Kilo can upload
+                    the training history saved here into your account so it
+                    stays in sync across your devices.
+                  </Text>
+                  <Button
+                    title="Upload My History"
+                    loadingTitle="Working…"
+                    onPress={() => confirmOwnershipUpload()}
+                  />
+                  <Button title="Not Now" onPress={dismissOwnershipPrompt} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.ownershipTitle}>
+                    This device holds another account's history
+                  </Text>
+                  <Text style={styles.ownershipBody}>
+                    The training history saved on this device belongs to a
+                    different account. Choose what to do before cloud sync
+                    starts. Nothing is uploaded until you decide.
+                  </Text>
+                  <Button
+                    title="Start Fresh on This Device"
+                    loadingTitle="Working…"
+                    onPress={() => startFreshOnDevice()}
+                  />
+                  <Text style={styles.ownershipHint}>
+                    Recommended. Removes the history stored on this device,
+                    then downloads your account's own data. The other
+                    account's cloud copy is not affected.
+                  </Text>
+                  <Button
+                    title="Upload It Into My Account"
+                    loadingTitle="Working…"
+                    onPress={() => confirmOwnershipUpload()}
+                  />
+                  <Text style={styles.ownershipHint}>
+                    Only choose this if the history on this device is really
+                    yours.
+                  </Text>
+                  <Button title="Decide Later" onPress={dismissOwnershipPrompt} />
+                </>
+              )}
+            </View>
+          </View>
+        ) : null}
       </View>
     </ScrollContext.Provider>
   );
@@ -455,5 +516,37 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 14,
     fontWeight: '600',
+  },
+  ownershipOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  ownershipCard: {
+    alignSelf: 'stretch',
+    backgroundColor: Colors.background,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: 20,
+    gap: 12,
+  },
+  ownershipTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  ownershipBody: {
+    fontSize: 15,
+    color: Colors.text,
+    lineHeight: 22,
+  },
+  ownershipHint: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    marginTop: -6,
   },
 });
