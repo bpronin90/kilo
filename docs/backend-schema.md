@@ -62,11 +62,11 @@ This grant/RLS posture is what proves Kilo's rows are isolated inside the shared
 - **Exposed schemas:** `kilo` must be added to the project's exposed schemas (API settings, or `config.toml` `[api] schemas`) before the client can reach these tables over the auto-generated API. This is a project-config step, not part of a migration.
 - Client queries must always be user-scoped and index-backed; fetch changed records by table and `updated_at` cursor rather than scanning.
 
-## Relationship To `docs/backend-roadmap.md`
+## Relationship To `docs/archive/backend-roadmap.md`
 
 These two docs have distinct, non-overlapping authority:
 
-- **`docs/backend-roadmap.md`** owns sequencing and contract intent: the phased issue series, the auth/RLS/isolation contract, the sync and self-serve obligations, and the AsyncStorage-to-cloud mapping. It describes what the backend build is delivering and in what order.
+- **`docs/archive/backend-roadmap.md`** owns sequencing and contract intent: the phased issue series, the auth/RLS/isolation contract, the sync and self-serve obligations, and the AsyncStorage-to-cloud mapping. It describes what the backend build is delivering and in what order.
 - **`docs/backend-schema.md`** (this doc) owns the current schema structure and the naming, source-of-truth, ownership, and isolation policy that schema changes must follow.
 
 When the two appear to disagree on the shipped schema's structure or naming/ownership rules, this doc is authoritative for those rules and the roadmap is authoritative for sequencing and broader contract intent. New schema work should be consistent with both.

@@ -4,7 +4,7 @@ This doc is the canonical, repeatable, operator-facing procedure for turning Kil
 
 This activation has already been performed once against the shared project; the steps below describe the same procedure so it can be repeated (for example, against a fresh project or after a reset) with the same result.
 
-For schema structure and the naming/ownership/isolation policy, see `docs/backend-schema.md`. For phase sequencing and the broader backend contract, see `docs/backend-roadmap.md`. This doc does not duplicate either; it is the runbook that switches the shipped foundation on.
+For schema structure and the naming/ownership/isolation policy, see `docs/backend-schema.md`. For phase sequencing and the broader backend contract, see `docs/archive/backend-roadmap.md`. This doc does not duplicate either; it is the runbook that switches the shipped foundation on.
 
 ## Preconditions
 
@@ -145,5 +145,5 @@ Supported providers: SendGrid, Postmark, Resend, or any SMTP-capable transaction
 ## Relationship To Other Docs
 
 - `docs/backend-schema.md` owns the schema structure and the naming, source-of-truth, ownership, and isolation **policy** that schema changes must follow. Consult it for what the tables, columns, RLS, and grants mean.
-- `docs/backend-roadmap.md` owns phase **sequencing** and the broader backend/auth/sync contract. Consult it for where activation fits in the overall build order.
+- `docs/archive/backend-roadmap.md` owns phase **sequencing** and the broader backend/auth/sync contract. Consult it for where activation fits in the overall build order.
 - This doc owns the **activation procedure** only and defers to those two for structure/policy and sequencing.

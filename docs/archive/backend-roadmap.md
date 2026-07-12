@@ -1,4 +1,8 @@
-# Backend And Web-First Distribution Roadmap
+# Archived Backend And Web-First Distribution Roadmap
+
+Status: complete.
+Archive date: 2026-07-12.
+This roadmap was executed and is retained for historical reference only.
 
 Kilo is moving from a personal local-only app to a public self-serve product. This roadmap is the build contract for that move. The app must remain usable after every card, web is the primary distribution surface, and the shipped note-first workout model is the source of truth.
 
