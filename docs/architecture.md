@@ -111,19 +111,26 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   layer, including the persisted fatigue-multiplier state threaded into More
   and Analytics and the shared auth/session hook threaded through More into
   Account so Account entry does not create a second session probe
-- `mobile/lib/supabaseClient.js` stores native Supabase sessions in 2000-byte
+- `mobile/lib/supabaseClient.js` is the single authorized Supabase client
+  construction point in the app. Screens and hooks must not import
+  `@supabase/supabase-js` directly; auth flows reach it through
+  `mobile/hooks/useAuthSession.js`, and cloud storage reaches it through the
+  storage adapter. The module stores native Supabase sessions in 2000-byte
   SecureStore chunks. Authoritative high-water metadata is raised before chunk
   writes and lowered only after cleanup, preventing new orphaned token chunks
   across shrinking writes, interrupted cleanup, and sign-out. Legacy or corrupt
   pre-HWM states receive a documented bounded 64-chunk best-effort sweep because
   SecureStore cannot enumerate unknown keys.
 - `mobile/components/` holds reusable shell and UI primitives
-- `mobile/screens/MoreScreen.js` owns the extracted More-tab menu plus Profile,
-  Backup, Settings, Help, About, and signed-in Account lifecycle sub-screens,
-  including server-side account export and two-step deletion calls that stay
-  behind Supabase Edge Functions rather than exposing privileged credentials to
-  the client, leaving `HomeScreen.js` focused on dashboard rendering. The same
-  public-account surfaces expose placeholder privacy and terms links beside
+- `mobile/screens/MoreScreen.js` owns the More-tab routing shell. Help, About,
+  Backup, Settings, and Profile sub-screens are extracted to individual files in
+  `mobile/components/` (`HelpScreen.js`, `AboutScreen.js`, `BackupScreen.js`,
+  `SettingsScreen.js`, `ProfileScreen.js`); `MoreScreen.js` imports and renders
+  them. Account and AccountLifecycle remain in `mobile/screens/more/`. The
+  screen routes to server-side account export and two-step deletion calls that
+  stay behind Supabase Edge Functions rather than exposing privileged credentials
+  to the client, leaving `HomeScreen.js` focused on dashboard rendering. The
+  same public-account surfaces expose placeholder privacy and terms links beside
   signup, near Account export/delete actions, and in More > About Kilo. The
   Account screen also starts GitHub OAuth on web and Android; Android uses
   `expo-web-browser` with `kilo://auth/callback`, then exchanges the returned
@@ -337,7 +344,13 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_workout_notes` | JSON array of titled native workout note documents, including persisted `tracked_exercises`, `one_k_exercises`, `exercise_classifications`, `skip_markers`, `attendance_flags`, and `session_checkins` fields; legacy entries may still carry stale `rep_drop_off_flags` |
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`, optional `deload_session_ordinal`); `completed_at` drives calendar/display behavior while Analytics session counts use the furthest stored session anchor (`deload_session_ordinal` for new records, `session_count` for legacy records) |
+| `kilo_workout_deload_note` | Active in-progress deload note document; cleared on deload completion or discard |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
+| `kilo_fatigue_tracking_enabled` | Persisted feature toggle for fatigue / session check-in tracking (More > Settings) |
+| `kilo_deload_mode_enabled` | Persisted feature toggle enabling deload flow in Log (More > Settings) |
+| `kilo_weight_date_edit_enabled` | Developer / advanced setting enabling manual date editing on weight entries |
+| `kilo_deload_date_edit_enabled` | Developer / advanced setting enabling manual date editing on deload entries |
+| `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed data requires confirmation; a different user id or `unknown` keeps
@@ -554,7 +567,12 @@ Any downstream implementation issue that touches workout analytics must:
 ## Testing Shape
 
 The native Jest suite under `mobile/tests/` covers parser, data, storage,
-format, stats-screen, and weight-goal UI. Run it with `npm --prefix mobile test`.
+format, weight-goal UI, and account lifecycle. Additional test modules cover
+analytics screen derivations, auth session, auto-sync, autosave, backup screen,
+cloud bootstrap, error reporting, home dashboard, log screen, offline sync,
+plate math, reminders and reminder scheduling, screen shell, session check-in
+modal, storage adapter routing, sync recovery UI, unit display, units conversion,
+and weight screen. Run the suite with `npm --prefix mobile test`.
 
 The browser prototype's vitest suite and jsdom setup have been archived with the
 prototype source (issue #213). No browser test infrastructure remains in the
