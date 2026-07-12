@@ -1004,7 +1004,11 @@ screen now gates the configured signed-out form during
 the initial persisted-session restore probe, preventing a transient sign-in form
 flash before a restored session resolves (#365), and it uses the app-shell auth
 session rather than creating a second session probe when the Account subview
-opens (#366). Remaining launch-posture follow-ups are Supabase Auth
+opens (#366). Native session persistence now tracks an authoritative SecureStore
+chunk high-water mark so shrinking writes and sign-out remove every chunk owned
+by the current adapter, while legacy or corrupt states without trustworthy
+metadata receive a documented bounded best-effort cleanup (#453). Remaining
+launch-posture follow-ups are Supabase Auth
 configuration: Auth must keep platform rate limits, use production-owned SMTP
 before email signup, keep the published Privacy Policy and Terms of Service
 documents live, and enable CAPTCHA before open signup unless a closed-beta

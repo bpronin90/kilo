@@ -111,6 +111,12 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   layer, including the persisted fatigue-multiplier state threaded into More
   and Analytics and the shared auth/session hook threaded through More into
   Account so Account entry does not create a second session probe
+- `mobile/lib/supabaseClient.js` stores native Supabase sessions in 2000-byte
+  SecureStore chunks. Authoritative high-water metadata is raised before chunk
+  writes and lowered only after cleanup, preventing new orphaned token chunks
+  across shrinking writes, interrupted cleanup, and sign-out. Legacy or corrupt
+  pre-HWM states receive a documented bounded 64-chunk best-effort sweep because
+  SecureStore cannot enumerate unknown keys.
 - `mobile/components/` holds reusable shell and UI primitives
 - `mobile/screens/MoreScreen.js` owns the extracted More-tab menu plus Profile,
   Backup, Settings, Help, About, and signed-in Account lifecycle sub-screens,

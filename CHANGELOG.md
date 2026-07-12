@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.92.3 - 2026-07-12
+
+- Issue #453: Prevented newly written Supabase session chunks from becoming
+  orphaned during shrinking writes or sign-out by maintaining interruption-safe
+  high-water metadata. Added bounded best-effort cleanup for legacy/corrupt
+  metadata, explicit fallback-boundary coverage, and deletion-overhead tests for
+  fresh and routine writes.
+
 ## 0.92.2 - 2026-07-12
 
 - Issue #452: Hardened backup import validation for deload-history records and
