@@ -179,9 +179,12 @@ describe('secure store adapter', () => {
     expect(fake.store.size).toBe(0);
   });
 
-  test('removeItem purges chunks when the count key is absent', async () => {
+  test('removeItem purges chunks when the count key is absent (legacy single value present)', async () => {
     const fake = makeFakeSecureStore();
     const adapter = makeSecureStoreAdapter(fake);
+    // Legacy pre-HWM state: a small-value write left a single value behind
+    // while chunks from an earlier larger value linger with no count key.
+    fake.store.set('session', 'stale-single');
     fake.store.set('session.chunk.0', 'stale-a');
     fake.store.set('session.chunk.1', 'stale-b');
     await adapter.removeItem('session');
@@ -214,7 +217,10 @@ describe('secure store adapter', () => {
     for (const countState of [undefined, 'not-a-number', '1']) {
       const fake = makeFakeSecureStore();
       const adapter = makeSecureStoreAdapter(fake);
-      if (countState !== undefined) fake.store.set('session.chunks', countState);
+      // With no count key, a legacy state is marked by a stale single value
+      // (a completely metadata-free key is treated as fresh and not swept).
+      if (countState === undefined) fake.store.set('session', 'stale-single');
+      else fake.store.set('session.chunks', countState);
       fake.store.set('session.chunk.0', 'stale-a');
       fake.store.set('session.chunk.1', 'stale-b');
       fake.store.set('session.chunk.2', 'stale-c');
@@ -233,7 +239,10 @@ describe('secure store adapter', () => {
     for (const countState of [undefined, 'not-a-number', '1']) {
       const fake = makeFakeSecureStore();
       const adapter = makeSecureStoreAdapter(fake);
-      if (countState !== undefined) fake.store.set('session.chunks', countState);
+      // With no count key, a legacy state is marked by a stale single value
+      // (a completely metadata-free key is treated as fresh and not swept).
+      if (countState === undefined) fake.store.set('session', 'stale-single');
+      else fake.store.set('session.chunks', countState);
       for (let i = 0; i < 5; i += 1) fake.store.set(`session.chunk.${i}`, `stale-${i}`);
       const value = 'y'.repeat(2500); // 2 chunks
       // eslint-disable-next-line no-await-in-loop
@@ -258,8 +267,10 @@ describe('secure store adapter', () => {
   test('removeItem purges a surviving chunk behind a 3+ index gap', async () => {
     const fake = makeFakeSecureStore();
     const adapter = makeSecureStoreAdapter(fake);
-    // Indices 0-2 already deleted by an interrupted earlier removal; chunks 3
-    // and 4 survive, with no trustworthy metadata left behind.
+    // Legacy interrupted removal: the pre-HWM adapter deleted chunks 0-2 of a
+    // 5-chunk value and died before removing the count key; chunks 3-4 and
+    // the count survive.
+    fake.store.set('session.chunks', '5');
     fake.store.set('session.chunk.3', 'stale-d');
     fake.store.set('session.chunk.4', 'stale-e');
     await adapter.removeItem('session');
@@ -281,6 +292,9 @@ describe('secure store adapter', () => {
   test('small-value overwrite purges a surviving chunk behind a 3+ index gap', async () => {
     const fake = makeFakeSecureStore();
     const adapter = makeSecureStoreAdapter(fake);
+    // Legacy state: a stale single value marks prior use; chunks 0-2 are gone
+    // (interrupted cleanup) but 3-4 survive.
+    fake.store.set('session', 'stale-single');
     fake.store.set('session.chunk.3', 'stale-d');
     fake.store.set('session.chunk.4', 'stale-e');
     await adapter.setItem('session', 'small-value');
@@ -291,7 +305,9 @@ describe('secure store adapter', () => {
   test('chunked overwrite purges a surviving chunk behind a 3+ index gap after the new count', async () => {
     const fake = makeFakeSecureStore();
     const adapter = makeSecureStoreAdapter(fake);
-    // New value needs 2 chunks; indices 2-4 are missing, chunk 5 survives.
+    // HWM from an interrupted earlier op still records 6; new value needs 2
+    // chunks; indices 2-4 are missing, chunk 5 survives behind the gap.
+    fake.store.set('session.chunks.hwm', '6');
     fake.store.set('session.chunk.5', 'stale-f');
     const value = 'y'.repeat(2500); // 2 chunks
     await adapter.setItem('session', value);
@@ -301,7 +317,61 @@ describe('secure store adapter', () => {
       'session.chunks',
       'session.chunks.hwm',
     ]);
+    expect(fake.store.get('session.chunks.hwm')).toBe('2');
     expect(await adapter.getItem('session')).toBe(value);
+  });
+
+  // Round 3: the legacy fallback sweep is bounded and must not tax
+  // fresh/routine writes.
+
+  test('legacy fallback sweep boundary: index 63 is purged, index 64 is the accepted out-of-bound limitation', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    // Genuine legacy state: count key present, no HWM.
+    fake.store.set('session.chunks', '1');
+    fake.store.set('session.chunk.0', 'stale-a');
+    fake.store.set('session.chunk.63', 'stale-last-in-bound');
+    fake.store.set('session.chunk.64', 'stale-out-of-bound');
+    await adapter.removeItem('session');
+    // Everything inside the 64-chunk legacy bound is gone.
+    expect(fake.store.has('session.chunk.0')).toBe(false);
+    expect(fake.store.has('session.chunk.63')).toBe(false);
+    expect(fake.store.has('session.chunks')).toBe(false);
+    expect(fake.store.has('session.chunks.hwm')).toBe(false);
+    // Accepted limitation: index 64 is the first index beyond the legacy
+    // sweep bound; only a non-adapter writer could have created it, and it
+    // is intentionally not swept.
+    expect(fake.store.get('session.chunk.64')).toBe('stale-out-of-bound');
+    expect(fake.store.size).toBe(1);
+  });
+
+  test('first-ever write pays no legacy sweep (bounded deletion count)', async () => {
+    // Fresh small write: the only deletion is the count-key clear.
+    const fakeSmall = makeFakeSecureStore();
+    const small = makeSecureStoreAdapter(fakeSmall);
+    await small.setItem('session', 'small-value');
+    expect(fakeSmall.deleteItemAsync.mock.calls.map((c) => c[0])).toEqual(['session.chunks']);
+
+    // Fresh chunked write: the only deletion is the stale single-value clear.
+    const fakeBig = makeFakeSecureStore();
+    const big = makeSecureStoreAdapter(fakeBig);
+    await big.setItem('session', 'x'.repeat(5000)); // 3 chunks
+    expect(fakeBig.deleteItemAsync.mock.calls.map((c) => c[0])).toEqual(['session']);
+  });
+
+  test('routine overwrite deletes only what the HWM bounds', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    await adapter.setItem('session', 'x'.repeat(5000)); // 3 chunks, HWM 3
+    fake.deleteItemAsync.mockClear();
+    await adapter.setItem('session', 'y'.repeat(2500)); // 2 chunks
+    // Exactly two deletions: the stale single-value clear and the one
+    // HWM-bounded tail chunk (index 2). No legacy sweep.
+    expect(fake.deleteItemAsync.mock.calls.map((c) => c[0]).sort()).toEqual([
+      'session',
+      'session.chunk.2',
+    ]);
+    expect(await adapter.getItem('session')).toBe('y'.repeat(2500));
   });
 });
 

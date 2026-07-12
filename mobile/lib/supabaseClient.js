@@ -66,12 +66,16 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
   // the highest chunk index that can still exist.
   const hwmKey = (key) => `${key}.chunks.hwm`;
 
-  // Cleanup bound for keys that predate the HWM (or whose metadata was
-  // tampered with / lost): no recorded bound can be trusted, so sweep up to a
-  // generous fixed cap. Supabase session payloads are a few KB; 64 chunks
-  // (~128KB) is far beyond anything this adapter will ever write for auth
-  // storage. Once a key has been written through this adapter, its HWM is
-  // authoritative and this fallback is no longer used.
+  // Cleanup bound for keys carrying legacy or corrupt metadata (a count key
+  // or single-value key exists but no valid HWM does): no recorded bound can
+  // be trusted, so sweep up to a generous fixed cap. Supabase session payloads
+  // are a few KB; 64 chunks (~128KB) is far beyond anything this adapter will
+  // ever write for auth storage. Once a key has been written through this
+  // adapter, its HWM is authoritative and this fallback is no longer used.
+  //
+  // Accepted limitation: a legacy chunk at index >= 64 (i.e. beyond
+  // LEGACY_SWEEP_BOUND) is outside the fallback sweep and survives. Such a
+  // chunk can only exist if something other than this adapter wrote it.
   const LEGACY_SWEEP_BOUND = 64;
 
   const parseCount = (raw) => {
@@ -81,12 +85,26 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
   };
 
   // How far cleanup must sweep to cover every chunk that could exist for the
-  // key, given the recorded count and HWM (either of which may be absent or
-  // malformed).
+  // key.
+  //
+  // - Valid HWM: it is authoritative (write ordering keeps it from ever
+  //   understating reality), so sweep max(hwm, recorded count).
+  // - No HWM, no count key, no single-value key: a fresh key with no prior
+  //   representation written by this adapter. Nothing to clean; bound 0, so
+  //   fresh/routine writes never pay the legacy fallback sweep.
+  // - Anything else (count or single value present without a valid HWM, or a
+  //   malformed HWM): legacy/corrupt state whose recorded bound cannot be
+  //   trusted; sweep up to LEGACY_SWEEP_BOUND.
   async function cleanupBound(key) {
-    const count = parseCount(await SecureStore.getItemAsync(countKey(key))) ?? 0;
-    const hwm = parseCount(await SecureStore.getItemAsync(hwmKey(key)));
+    const hwmRaw = await SecureStore.getItemAsync(hwmKey(key));
+    const countRaw = await SecureStore.getItemAsync(countKey(key));
+    const hwm = parseCount(hwmRaw);
+    const count = parseCount(countRaw) ?? 0;
     if (hwm != null) return Math.max(hwm, count);
+    if (hwmRaw == null && countRaw == null) {
+      const single = await SecureStore.getItemAsync(key);
+      if (single == null) return 0;
+    }
     return Math.max(count, LEGACY_SWEEP_BOUND);
   }
 
@@ -125,11 +143,13 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
 
       const str = String(value);
       if (str.length <= SECURE_STORE_CHUNK_SIZE) {
-        // Persist the raised bound before mutating anything, so an
-        // interruption mid-cleanup cannot leave the HWM understating the
-        // chunks that still exist.
-        await SecureStore.setItemAsync(hwmKey(key), String(prevBound));
-        await purgeChunkRange(key, 0, prevBound);
+        if (prevBound > 0) {
+          // Persist the raised bound before mutating anything, so an
+          // interruption mid-cleanup cannot leave the HWM understating the
+          // chunks that still exist.
+          await SecureStore.setItemAsync(hwmKey(key), String(prevBound));
+          await purgeChunkRange(key, 0, prevBound);
+        }
         await SecureStore.deleteItemAsync(countKey(key));
         // All chunks are gone; record that no chunk can exist, then store the
         // single value. The stored representation is exactly this value.
@@ -152,8 +172,10 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       await SecureStore.deleteItemAsync(key);
       // Purge every chunk beyond the new count that could remain from any
       // earlier state, then lower the HWM only after cleanup has completed.
-      await purgeChunkRange(key, count, raisedBound);
-      await SecureStore.setItemAsync(hwmKey(key), String(count));
+      if (raisedBound > count) {
+        await purgeChunkRange(key, count, raisedBound);
+        await SecureStore.setItemAsync(hwmKey(key), String(count));
+      }
     },
     async removeItem(key) {
       // Sweep the full authoritative bound unconditionally: gaps from an
