@@ -10,7 +10,7 @@
 
 begin;
 
-select plan(16);
+select plan(14);
 
 -- ---------------------------------------------------------------------------
 -- rate_limit_check: requests within limit are admitted
