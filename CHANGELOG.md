@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.92.2 - 2026-07-12
+
+- Issue #452: Hardened backup import validation for deload-history records and
+  fatigue multipliers before any storage mutation, including bounded raw text,
+  finite range checks, untouched-storage rejection coverage, and a valid v3
+  export/import round trip.
+- Issue #454: Replaced wildcard CORS responses on the account export/delete
+  Edge Functions with a request-aware, default-closed allowlist while
+  preserving native callers, JWT verification, RLS, and rate limiting.
+
 ## 0.92.1 - 2026-07-11
 
 - Issue #451: Hardened the durable account export/delete rate limiter against

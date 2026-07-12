@@ -37,6 +37,8 @@ import {
   appendDeloadHistory,
   deleteDeloadHistory,
   updateDeloadHistory,
+  loadFatigueMultiplier,
+  saveFatigueMultiplier,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
   loadFatigueTrackingEnabled,
@@ -2274,6 +2276,159 @@ describe('importBackup — deload history', () => {
     const result = await importBackup(bad);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/deload_history/i);
+  });
+});
+
+// ── importBackup — deload history element validation (#452) ───────────────────
+
+// Matches the untrusted-input cap in mobile/storage/entries/backupImport.js.
+const RAW_TEXT_LIMIT = 200000;
+
+describe('importBackup — deload history element validation', () => {
+  test('rejects v3 backup with a non-object deload_history element without mutating storage', async () => {
+    await appendDeloadHistory(DL1);
+    await saveWeightEntry(W1);
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: ['not an object'] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload history/i);
+    // Nothing was written: existing deload history and weight entries are intact.
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+    const entries = await loadWeightEntries();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe(W1.id);
+  });
+
+  test('rejects null deload_history element', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [null] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload history/i);
+  });
+
+  test('rejects array deload_history element', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [[DL1]] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload history/i);
+  });
+
+  test('rejects deload record with non-string id', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [{ ...DL1, id: 42 }] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload history.*id/i);
+  });
+
+  test('rejects deload record with non-string raw_text', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [{ ...DL1, raw_text: { evil: true } }] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/deload history.*raw_text/i);
+  });
+
+  test('rejects deload raw_text over MAX_IMPORT_RAW_TEXT_LENGTH without mutating storage', async () => {
+    await appendDeloadHistory(DL1);
+    const oversized = { ...DL2, raw_text: 'x'.repeat(RAW_TEXT_LIMIT + 1) };
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [oversized] };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/raw_text too large/i);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+  });
+
+  test('accepts deload raw_text exactly at MAX_IMPORT_RAW_TEXT_LENGTH', async () => {
+    const atLimit = { ...DL1, raw_text: 'x'.repeat(RAW_TEXT_LIMIT) };
+    const backup = { ...BASE_V3, weight_entries: [], deload_history: [atLimit] };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].raw_text).toHaveLength(RAW_TEXT_LIMIT);
+  });
+});
+
+// ── importBackup — fatigue_multiplier validation (#452) ───────────────────────
+
+describe('importBackup — fatigue_multiplier validation', () => {
+  test('rejects string fatigue_multiplier and never writes it', async () => {
+    await saveFatigueMultiplier(1.2);
+    const bad = { ...BASE_V3, weight_entries: [], fatigue_multiplier: '1.07' };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/fatigue_multiplier/i);
+    expect(await loadFatigueMultiplier()).toBe(1.2);
+  });
+
+  test('rejects object fatigue_multiplier', async () => {
+    const bad = { ...BASE_V3, weight_entries: [], fatigue_multiplier: { value: 1.07 } };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/fatigue_multiplier/i);
+  });
+
+  test('rejects non-finite fatigue_multiplier (NaN, Infinity)', async () => {
+    for (const v of [NaN, Infinity, -Infinity]) {
+      const bad = { ...BASE_V3, weight_entries: [], fatigue_multiplier: v };
+      const result = await importBackup(bad);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/fatigue_multiplier/i);
+    }
+  });
+
+  test('rejects out-of-range fatigue_multiplier (zero, negative, absurdly large)', async () => {
+    for (const v of [0, -1.07, 11]) {
+      const bad = { ...BASE_V3, weight_entries: [], fatigue_multiplier: v };
+      const result = await importBackup(bad);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/fatigue_multiplier/i);
+    }
+  });
+
+  test('rejected fatigue_multiplier leaves all storage untouched', async () => {
+    await saveWeightEntry(W1);
+    await appendDeloadHistory(DL1);
+    await saveFatigueMultiplier(1.15);
+    const bad = { ...BASE_V3, weight_entries: [], deload_history: [DL2], fatigue_multiplier: 'bad' };
+    const result = await importBackup(bad);
+    expect(result.ok).toBe(false);
+    expect((await loadWeightEntries())[0].id).toBe(W1.id);
+    const history = await loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe(DL1.id);
+    expect(await loadFatigueMultiplier()).toBe(1.15);
+  });
+
+  test('valid fatigue_multiplier imports and is saved', async () => {
+    const backup = { ...BASE_V3, weight_entries: [], fatigue_multiplier: 1.09 };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    expect(await loadFatigueMultiplier()).toBe(1.09);
+  });
+
+  test('null fatigue_multiplier is accepted and skipped (existing value kept)', async () => {
+    await saveFatigueMultiplier(1.2);
+    const backup = { ...BASE_V3, weight_entries: [], fatigue_multiplier: null };
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    expect(await loadFatigueMultiplier()).toBe(1.2);
+  });
+
+  test('round-trip: v3 export with fatigue_multiplier and deload history imports cleanly', async () => {
+    await saveFatigueMultiplier(1.11);
+    await appendDeloadHistory(DL1);
+    await saveWeightEntry(W1);
+    const backup = await exportBackup();
+    AsyncStorage.clear();
+    const result = await importBackup(backup);
+    expect(result.ok).toBe(true);
+    expect(await loadFatigueMultiplier()).toBe(1.11);
+    expect((await loadDeloadHistory())[0].id).toBe(DL1.id);
+    expect((await loadWeightEntries())[0].id).toBe(W1.id);
   });
 });
 
