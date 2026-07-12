@@ -190,6 +190,10 @@ Run the active native test suite:
 npm --prefix mobile test
 ```
 
+GitHub Actions runs this same mobile Jest suite with Node 24 and a reproducible
+`npm ci` install on every pull request and every push to `main` via
+`.github/workflows/test.yml`.
+
 For the crash reporter specifically, the narrow bootstrap verification is:
 
 ```sh
