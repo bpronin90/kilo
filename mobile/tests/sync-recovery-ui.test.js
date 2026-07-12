@@ -210,6 +210,35 @@ describe('useSyncRecovery hook', () => {
     expect(await getLocalDataOwner()).toBe('u_1');
   });
 
+  test('a successful upload whose owner write fails leaves the phase failed/retryable and local mode active', async () => {
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+    await setLocalDataOwner('previous-owner');
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    // Fail only the owner-marker write; other storage writes still work.
+    const owners = require('../storage/entries/localDataOwner');
+    const ownerWriteSpy = jest
+      .spyOn(owners, 'setLocalDataOwner')
+      .mockRejectedValue(new Error('disk full'));
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+    ownerWriteSpy.mockRestore();
+
+    expect(result.ok).toBe(false);
+    expect(ref.current.bootstrap.status).toBe(SYNC_STATUS.FAILED);
+    expect(ref.current.bootstrap.retryable).toBe(true);
+    expect(entries.getStorageMode()).toBe('local');
+    // The prior owner is unchanged — the claim never became durable.
+    expect(await getLocalDataOwner()).toBe('previous-owner');
+  });
+
   test('initial bootstrap action drives idle -> running -> complete on success (no prior failure)', async () => {
     // Inject a fake adapter result via the bootstrap export; assert the runner
     // both calls bootstrapFromLocal(userId) and transitions the visible status

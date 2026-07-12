@@ -312,6 +312,38 @@ describe('useAutoSync: unclaimed owner requires confirmation', () => {
     expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
   });
 
+  test('a successful upload whose owner write fails is a failed bootstrap: local mode, no sync, owner unchanged', async () => {
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+
+    // Fail only the owner-marker write; every other storage write still works.
+    const owners = require('../storage/entries/localDataOwner');
+    const ownerWriteSpy = jest
+      .spyOn(owners, 'setLocalDataOwner')
+      .mockRejectedValue(new Error('disk full'));
+
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+    ownerWriteSpy.mockRestore();
+
+    expect(result.ok).toBe(false);
+    // The claim never became durable, so cloud activity must not start.
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(syncFn).not.toHaveBeenCalled();
+    const state = getSyncState();
+    expect(state[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
+    expect(state[SYNC_PHASE.BOOTSTRAP].retryable).toBe(true);
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+  });
+
   test('manual retry via useSyncRecovery recovers and claims ownership', async () => {
     jest
       .spyOn(cloudAdapter, 'bootstrapFromLocal')

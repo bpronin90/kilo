@@ -63,16 +63,13 @@ export async function getLocalDataOwner() {
   }
 }
 
-// Persist the owner. Failure is swallowed like the old bootstrap marker: the
-// worst case is a redundant confirmation prompt on the next launch, and
-// bootstrap upserts are idempotent.
+// Persist the owner. Errors intentionally propagate: ownership is the single
+// source of truth for whether bootstrap may run, so callers must not treat a
+// claim as durable (or activate cloud mode) unless this write actually
+// succeeded.
 export async function setLocalDataOwner(owner) {
   if (!owner) return;
-  try {
-    await AsyncStorage.setItem(LOCAL_DATA_OWNER_KEY, owner);
-  } catch {
-    // Intentionally swallowed — see comment above.
-  }
+  await AsyncStorage.setItem(LOCAL_DATA_OWNER_KEY, owner);
 }
 
 // Remove every kilo-prefixed key — all entry data from keys.js, the legacy

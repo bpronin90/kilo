@@ -44,13 +44,18 @@ export function useSyncRecovery(user = null) {
     if (!runner) {
       return { ok: false, error: 'Sign in to bootstrap your cloud data.' };
     }
-    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, runner);
-    if (result.ok && userId) {
-      // A successful upload makes this account the owner of the local data,
-      // and cloud mode can activate so subsequent writes are sync-tracked.
-      // A failed bootstrap leaves the owner unchanged so the next attempt
-      // retries (#450).
+    // The owner write is part of the phase runner: a successful upload whose
+    // ownership claim fails to persist is a failed (retryable) bootstrap, not
+    // a success — cloud mode must never activate without a durable owner
+    // (#450). Retrying re-runs the upload, which is safe: upserts are
+    // idempotent.
+    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, async () => {
+      const r = await runner();
+      if (r && r.ok === false) return r;
       await setLocalDataOwner(userId);
+      return r;
+    });
+    if (result.ok && userId) {
       Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
     }
     return result;
@@ -131,13 +136,17 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     if (!userId) return { ok: false, error: 'Not signed in.' };
     setOwnershipPrompt(null);
     const runner = makeBootstrapRunner({ id: userId });
-    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, runner);
-    if (!result.ok) {
-      // Owner unchanged and storage mode stays LOCAL; the failed/retryable
-      // phase lets CloudSyncRecovery retry, and the next launch re-prompts.
-      return result;
-    }
-    await setLocalDataOwner(userId);
+    // The owner write is part of the phase runner so a successful upload
+    // whose ownership claim fails to persist still fails the phase: owner
+    // unchanged, storage mode stays LOCAL, no sync. The failed/retryable
+    // phase lets CloudSyncRecovery retry, and the next launch re-prompts.
+    const result = await runPhase(SYNC_PHASE.BOOTSTRAP, async () => {
+      const r = await runner();
+      if (r && r.ok === false) return r;
+      await setLocalDataOwner(userId);
+      return r;
+    });
+    if (!result.ok) return result;
     Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
     await runInitialSync();
     return result;
