@@ -16,8 +16,9 @@ npm run mobile:android
 
 For a standalone installable Android APK that does not depend on a running dev
 machine, use the EAS build flow documented in `docs/phone-runbook.md`.
-For Play Store closed-testing participants, use `docs/tester-guide.md`; it now
-distinguishes the Play opt-in install path from the older direct EAS APK path.
+For Play Store closed-testing participants, use `docs/tester-guide.md`; it is
+the plain-language quick start for joining, installing, testing, and reporting
+feedback during the required 14-day window.
 Play production readiness is tracked in `docs/play-store-readiness.md`.
 
 For release-style update verification after a compatible build is installed,

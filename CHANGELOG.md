@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.91.4 - 2026-07-11
+
+- Issue #445: Rewrote the Play Store closed-testing guide as a plain-language
+  quick start covering Kilo's flexible workout-note purpose, opt-in and 14-day
+  requirements, core app workflow, GitHub-only optional sign-in, test steps,
+  feedback, updates, and on-device data behavior.
+
 ## 0.91.3 - 2026-07-08
 
 - Issue #444: Fixed preview app cloud sync after archiving a weight goal by

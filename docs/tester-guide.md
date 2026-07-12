@@ -1,125 +1,111 @@
-# Play Store Beta Tester Guide
+# Kilo Beta Tester Quick Start
 
-This guide is for beta testers installing and exercising Kilo through the
-Google Play closed-testing track on a physical Android phone. It only covers
-what testers need for the Play beta: join the test, install, stay opted in,
-exercise the app, and report what happened.
+Thank you for testing Kilo. Kilo is an Android app for recording workouts,
+tracking your weight, and viewing your progress over time.
 
-## What Kilo is
+I made Kilo because I wanted to log workouts in my own short, flexible format
+instead of choosing exercises from a preset list. Kilo is not an exercise
+catalog and does not provide workout plans or instructions. You type a simple
+workout note, and Kilo turns it into a saved workout you can review later.
 
-Kilo is a local-first fitness-tracking app built with Expo/React Native. Your
-workout notes, weight entries, and history stay on your device by default.
-Some beta builds are configured with cloud (Supabase) sign-in, which adds
-optional account sync on top of the same local-first behavior; if you never
-sign in, everything still stays local-only.
+You do not need to be technical or know anything about software testing. Use
+the app normally, try the short checklist below, and tell us what worked or
+what was confusing.
 
-## Join The Play Beta
+## Join the test and install Kilo
 
-Use this path if you received a Google Play testing opt-in link. This is the
-current production-readiness path.
+You will receive a Google Play testing link. Open it on the Android phone you
+will use for testing.
 
-1. Open the opt-in link on your Android phone.
+1. Open the testing link.
 2. Tap **Become a tester**.
-3. Tap the app download link that appears after you join.
-4. Install Kilo from the Play Store normally.
-5. Open Kilo from your phone launcher.
+3. Tap the Google Play download link that appears.
+4. Install Kilo from the Play Store.
+5. Open Kilo from your phone's app list.
 
-You do not need to allow "unknown sources" for this path — the app
-installs through the standard Play Store flow.
+Kilo installs like any other Play Store app. You do not need to change your
+phone's security settings.
 
-## 14-Day Beta Requirement
+## Please stay in the test for 14 days
 
-Stay opted in to the Play Store testing program for at least 14 continuous
-days. If you leave and rejoin, Google may reset your testing window.
+Google requires testers to remain opted in for at least **14 continuous
+days**. Please do not leave the testing program during that time. Leaving and
+joining again may restart your 14-day period.
 
 During the 14 days:
 
-- Keep the beta installed.
-- Open Kilo a few times instead of only installing it once.
-- Work through the checklist below.
-- Send feedback even if everything works.
+- Keep Kilo installed.
+- Open and use it a few times.
+- Complete the checklist below.
+- Send feedback, even if everything works correctly.
 
-Feedback can be brief:
+Updates will arrive through the Play Store just like updates for your other
+apps.
 
-- What device you used.
-- Whether install, launch, logging, analytics, and relaunch worked.
-- Anything confusing, broken, slow, or visually off.
-- "No issues found" if the pass was clean.
+## How Kilo works
 
-## Updates
+Kilo has five sections at the bottom of the screen:
 
-For Play beta testers, updates are delivered through the Play Store. You will
-receive update notifications the same way you would for any production app.
+- **Home** shows your recent workouts.
+- **Log** is where you record a workout using a short note.
+- **Weight** is where you record and review your weight.
+- **Analytics** shows progress based on what you have recorded.
+- **More** contains backup and other app options.
 
-## Accounts and data
+You can use Kilo without creating an account. Your workout and weight history
+is saved on your phone.
 
-Kilo works fully offline with no account at all — you can use every feature
-without signing in, and your data stays local to your device.
+If you choose to sign in, use **Continue with GitHub**. Creating an account
+with an email address does not work in the current test version. You will need
+an existing GitHub account to use the sign-in feature; otherwise, use Kilo
+without signing in.
 
-Some builds are configured with cloud sign-in for optional sync. If you're
-not given specific sign-in instructions with your build, assume the account
-features aren't available or aren't the focus of your test — use the app
-signed out. Open public signup is still gated pending CAPTCHA and production
-email delivery, so use whatever account instructions accompany your build
-rather than trying to self-register.
+## What to test
 
-If you do sign in and later delete your account, your local history on the
-device is preserved — deletion only removes the server-side account, not
-your on-device data.
+There are no wrong answers. If something is unclear, that is useful feedback.
 
-## What to exercise
+1. **Open the app.** Make sure it opens normally and does not show a blank
+   screen or close unexpectedly.
+2. **Try every section.** Tap **Home**, **Log**, **Weight**, **Analytics**, and
+   **More**.
+3. **Record a workout.** Open **Log**, enter `135 5,5,5`, and save it. Make
+   sure the app shows that the workout was saved.
+4. **Check your workout.** Return to **Home** and make sure the new workout
+   appears near the top of your recent history.
+5. **Record your weight.** Open **Weight**, enter a number such as `185`, and
+   save it. Make sure it appears in your entries.
+6. **View your progress.** Open **Analytics** after recording a workout and
+   weight. Make sure the page loads without an error.
+7. **Check that your history was saved.** Fully close Kilo, open it again, and
+   make sure your workout and weight are still there.
+8. **Try a backup.** Open **More**, find **Data & Backup**, and try the export
+   option. Before sharing, the app should warn you that the exported file is
+   not encrypted.
+9. **Use the app normally.** Scroll through lists and switch between sections.
+   Watch for buttons that do not respond, stuck screens, slow behavior, or
+   anything that looks wrong.
 
-Work through these on your device:
+## Send feedback
 
-1. Install and launch the app. Confirm it opens without crashing or showing
-   a blank screen.
-2. Confirm all five tabs are visible and respond to taps: **Home**, **Log**,
-   **Weight**, **Analytics**, **More**.
-3. On **Log**, enter a simple workout note (for example `135 5,5,5`).
-   Confirm a parse preview appears, the Save action becomes enabled, and
-   saving shows a confirmation.
-4. On **Weight**, log a weight entry (for example `185`). Confirm the Log
-   button is disabled when the field is empty and enabled once you enter a
-   value, and that the entry appears in your Entries list after saving.
-5. Check that **Analytics** renders without errors after you have at least
-   one workout and one weight entry logged.
-6. Go back to **Home** and confirm your new workout appears in Recent
-   history, most recent first.
-7. Fully close and relaunch the app. Confirm your workout and weight entries
-   are still there.
-8. From **More**, try the backup/export action under Data & Backup. You
-   should see a confirmation that the export is unencrypted before it
-   shares.
-9. Do a general touch pass: scroll history lists, switch between tabs a few
-   times, and confirm taps register cleanly with no missed or stuck
-   interactions.
+Send feedback through the channel where you received your testing invitation.
+If you were asked to use GitHub, report it through the Kilo GitHub Issues page.
 
-## Reporting issues
+Please include:
 
-When something looks wrong, include:
+- Your phone model and Android version.
+- What you were trying to do.
+- What you expected to happen.
+- What happened instead.
+- A screenshot, if it helps explain the problem.
 
-- The app version shown in the header (`vX.Y.Z`).
-- Your device model and Android version.
-- Steps to reproduce.
-- What you expected to see vs. what actually happened.
+Short feedback is welcome. If everything works, you can simply say which
+phone you used and **No issues found**.
 
-File issues through GitHub Issues on `bpronin90/kilo`, or whatever channel
-you were given the build through.
+## About your data
 
-## Legacy EAS APK Preview Path
+Kilo works without an account, and your history is stored on your phone. Use
+the export option under **Data & Backup** if you want a separate copy.
 
-Earlier preview phases used direct APK installs from EAS instead of the Play
-Store. That path is not the current beta testing path.
-
-If you are specifically given an EAS APK link instead of a Play Store opt-in
-link:
-
-1. Open the link on your Android phone and download the APK.
-2. If prompted, allow installs from your browser or "unknown sources".
-3. Install and open the app from your launcher.
-
-EAS APK builds receive over-the-air JavaScript and asset updates through the
-`preview` update channel. Play beta builds update through the Play Store.
-
-iOS preview delivery is not yet verified end to end and is deferred (issue
-#63). For now, beta testing is Android only.
+Some test versions may offer optional account syncing. If you sign in and
+later delete your account, the online account is removed but the history saved
+on that phone remains.
