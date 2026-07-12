@@ -673,9 +673,10 @@ The real native app path now has a modular React Native shell:
   path now exports a versioned v3 snapshot (weight entries, workout notes,
   current workout id, optional active weight goal, archived completed weight
   goals, optional fatigue multiplier, and completed deload history),
-  validates that payload before
-  any write, restores the full multi-note model plus weight goal, fatigue
-  multiplier, and deload history on v2/v3 import, and still accepts older v1
+  validates that payload before any write, accepts only a finite in-range
+  fatigue multiplier, validates each deload-history record and caps its raw
+  text, restores the full multi-note model plus weight goal, fatigue multiplier,
+  and deload history on v2/v3 import, and still accepts older v1
   backups to restore weight history without wiping the newer workout-note state.
   The export action now shows a blocking "export is unencrypted" confirmation
   before sharing, and the cloud export omits the signed-in account email by

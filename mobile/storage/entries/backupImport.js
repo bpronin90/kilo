@@ -36,6 +36,12 @@ const MAX_IMPORT_ARRAY_LENGTH = 100000;
 // Per-note raw_text cap, matching the workout-note parser's MAX_RAW_TEXT_LENGTH,
 // so an imported note cannot smuggle in text the parser would later reject.
 const MAX_IMPORT_RAW_TEXT_LENGTH = 200000;
+// Sane bounds for the fatigue multiplier (default 1.07; a realistic user-tunable
+// value stays close to 1.0). Anything non-finite, non-positive, or absurdly large
+// would otherwise flow into fatigue calc (kilo_max_adjusted = avg * multiplier)
+// producing NaN or nonsense results.
+const MIN_IMPORT_FATIGUE_MULTIPLIER = 0;
+const MAX_IMPORT_FATIGUE_MULTIPLIER = 10;
 
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
@@ -145,6 +151,40 @@ function validateWeightEntries(entries) {
   return { ok: true };
 }
 
+function validateDeloadHistory(entries) {
+  if (!Array.isArray(entries))
+    return { ok: false, error: 'Invalid backup: deload_history must be an array' };
+  if (entries.length > MAX_IMPORT_ARRAY_LENGTH)
+    return { ok: false, error: `Invalid backup: deload_history too large (${entries.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+  for (const d of entries) {
+    if (!d || typeof d !== 'object' || Array.isArray(d))
+      return { ok: false, error: 'Invalid backup: deload history entry is not an object' };
+    if ('id' in d && typeof d.id !== 'string')
+      return { ok: false, error: 'Invalid backup: deload history entry id must be a string' };
+    if ('title' in d && typeof d.title !== 'string')
+      return { ok: false, error: 'Invalid backup: deload history entry title must be a string' };
+    if ('raw_text' in d) {
+      if (typeof d.raw_text !== 'string')
+        return { ok: false, error: 'Invalid backup: deload history entry raw_text must be a string' };
+      if (d.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
+        return { ok: false, error: `Invalid backup: deload history raw_text too large (${d.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+    }
+  }
+  return { ok: true };
+}
+
+function validateFatigueMultiplier(value) {
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value <= MIN_IMPORT_FATIGUE_MULTIPLIER ||
+    value > MAX_IMPORT_FATIGUE_MULTIPLIER
+  ) {
+    return { ok: false, error: 'Invalid backup: fatigue_multiplier must be a finite number in a sane range' };
+  }
+  return { ok: true };
+}
+
 function validateBackup(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload))
     return { ok: false, error: 'Invalid backup: not an object' };
@@ -183,10 +223,12 @@ function validateBackup(payload) {
         return { ok: false, error: 'Invalid backup: weight_goal missing target_date' };
     }
     if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
-      if (!Array.isArray(payload.deload_history))
-        return { ok: false, error: 'Invalid backup: deload_history must be an array' };
-      if (payload.deload_history.length > MAX_IMPORT_ARRAY_LENGTH)
-        return { ok: false, error: `Invalid backup: deload_history too large (${payload.deload_history.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+      const deloadCheck = validateDeloadHistory(payload.deload_history);
+      if (!deloadCheck.ok) return deloadCheck;
+    }
+    if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
+      const fatigueCheck = validateFatigueMultiplier(payload.fatigue_multiplier);
+      if (!fatigueCheck.ok) return fatigueCheck;
     }
   }
 

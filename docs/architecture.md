@@ -243,8 +243,9 @@ id, an optional weight goal, an optional fatigue multiplier, and the completed
 deload history).
 `importBackup(payload, 'replace')` validates before any write, restores the
 full multi-note model for v2 and v3 backups, conditionally restores or clears the
-weight goal when the key is present, restores the fatigue multiplier when
-provided, restores the deload history when a v3 backup carries it, and still
+weight goal when the key is present, restores only a finite in-range fatigue
+multiplier, validates every v3 deload-history record and caps its raw text before
+restoring it, and still
 accepts v1 backups to restore weight history without
 clearing the newer workout-note state. The same storage module also performs a
 one-time forward migration from the legacy single-note key by seeding a
@@ -263,7 +264,10 @@ release explicitly records a temporary deferral.
 Kilo-owned Edge Functions remain responsible for app-specific abuse controls.
 `account-export` and `account-delete` require the caller JWT, perform no
 unauthenticated writes, keep service-role credentials server-side only, and
-apply durable, shared per-user and per-IP rate limits. Limit state lives in
+apply durable, shared per-user and per-IP rate limits. Their shared CORS helper
+defaults closed with no browser origins allowlisted; native callers are
+unaffected, and any future browser caller must be added explicitly rather than
+receiving a wildcard origin. Limit state lives in
 Postgres (`kilo.rate_limit_hits` via the `kilo.rate_limit_check` SECURITY
 DEFINER function, granted to `service_role` only), so the limits hold across
 Edge-Function isolate recycling and cold starts rather than resetting per

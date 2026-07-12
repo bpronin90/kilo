@@ -53,8 +53,10 @@ const rlAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // ---------------------------------------------------------------------------
 
 serve(async (req) => {
+  const cors = corsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
@@ -62,7 +64,7 @@ serve(async (req) => {
   if (!await rateLimitAllowed(rlAdmin, `delete:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '3600' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
     })
   }
 
@@ -70,7 +72,7 @@ serve(async (req) => {
   if (!token) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -85,7 +87,7 @@ serve(async (req) => {
   if (authError || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -93,7 +95,7 @@ serve(async (req) => {
   if (!await rateLimitAllowed(rlAdmin, `delete:user:${user.id}`, USER_MAX, USER_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '3600' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '3600' },
     })
   }
 
@@ -115,7 +117,7 @@ serve(async (req) => {
     console.error(`account-delete app data deletion failed: ${dataError.message}`)
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -127,12 +129,12 @@ serve(async (req) => {
     console.error(`account-delete auth deletion failed: ${deleteAuthError.message}`)
     return new Response(JSON.stringify({ error: 'Account deletion failed.' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   })
 })
