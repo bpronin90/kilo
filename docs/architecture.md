@@ -19,7 +19,7 @@ graph TD
         NativeLib["mobile/lib/\nparser.js · data.js/data/ · format.js"]
         NativeHooks["mobile/hooks/useEntries.js"]
         NativeStorage["mobile/storage/entries.js"]
-        AS[("AsyncStorage\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_weigh_in_reminder\nkilo_workout_reminder\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
+        AS[("AsyncStorage\nkilo_local_data_owner\nkilo_weight_entries\nkilo_weight_goal\nkilo_archived_weight_goals\nkilo_fatigue_multiplier\nkilo_weigh_in_reminder\nkilo_workout_reminder\nkilo_workout_sessions\nkilo_workout_notes\nkilo_current_workout_id\nkilo_workout_note (legacy backup/import)")]
     end
     subgraph supabase["Supabase Project"]
         EdgeExport["account-export Edge Function"]
@@ -309,6 +309,7 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 
 | Key | Contents |
 |-----|----------|
+| `kilo_local_data_owner` | Single bootstrap/sync ownership gate: `unclaimed`, `unknown`, or the owning Supabase user id. Foreign-owned history requires an explicit purge-or-upload choice before cloud mode starts. |
 | `kilo_weight_entries` | JSON array of native weight entries |
 | `kilo_weight_goal` | Optional native weight-goal object |
 | `kilo_archived_weight_goals` | JSON array of archived completed weight-goal records, including target/start/completed weights plus archive/sync metadata |
@@ -322,6 +323,13 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_current_workout_id` | String id of the selected current native workout note |
 | `kilo_workout_deload_history` | JSON array of completed deload records (`id`, `raw_text`, `generated_at`, `completed_at`, `session_count`, optional `deload_session_ordinal`); `completed_at` drives calendar/display behavior while Analytics session counts use the furthest stored session anchor (`deload_session_ordinal` for new records, `session_count` for legacy records) |
 | `kilo_workout_note` | Legacy single-note key retained for backup compatibility |
+
+On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
+Unclaimed data requires confirmation; a different user id or `unknown` keeps
+storage in local mode until the user explicitly starts fresh or uploads the
+device history. The one-time migration derives ownership from legacy
+`kilo_sync_bootstrapped_*` keys, and ownership is claimed only after bootstrap
+and marker persistence both succeed.
 
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving

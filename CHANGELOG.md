@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.92.0 - 2026-07-11
+
+- Issue #450: Prevented cross-account local-data uploads by replacing the
+  per-account bootstrap flags with one durable local-data owner marker. First
+  uploads now require confirmation, foreign-owned device history requires an
+  explicit start-fresh or upload choice, legacy installs migrate safely, and
+  failed ownership writes remain local and retryable.
+
 ## 0.91.5 - 2026-07-11
 
 - Issue #446: Fixed the current-routine A/B week editor so Week B remains
