@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.92.10 - 2026-07-12
+
+- Issue #463: Retired the redundant default-value issue labels so default effort,
+  reasoning, and Codex model behavior is represented by the absence of an
+  override label, leaving required ownership, area, and type labels unchanged.
+
 ## 0.92.9 - 2026-07-12
 
 - Issue #458: Prevented legacy-provenance `Routine 1` workout notes from
