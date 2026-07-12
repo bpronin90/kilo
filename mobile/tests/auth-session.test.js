@@ -220,7 +220,10 @@ describe('secure store adapter', () => {
       fake.store.set('session.chunk.2', 'stale-c');
       // eslint-disable-next-line no-await-in-loop
       await adapter.setItem('session', 'small-value');
-      expect([...fake.store.keys()]).toEqual(['session']);
+      // Only the single value and its zeroed high-water mark remain; every
+      // stale chunk is gone.
+      expect([...fake.store.keys()].sort()).toEqual(['session', 'session.chunks.hwm']);
+      expect(fake.store.get('session.chunks.hwm')).toBe('0');
       // eslint-disable-next-line no-await-in-loop
       expect(await adapter.getItem('session')).toBe('small-value');
     }
@@ -239,10 +242,66 @@ describe('secure store adapter', () => {
         'session.chunk.0',
         'session.chunk.1',
         'session.chunks',
+        'session.chunks.hwm',
       ]);
+      expect(fake.store.get('session.chunks.hwm')).toBe('2');
       // eslint-disable-next-line no-await-in-loop
       expect(await adapter.getItem('session')).toBe(value);
     }
+  });
+
+  // Regression for review round 2: a gap of three or more consecutive missing
+  // indices (the shape left by an interrupted sequential removal that deleted
+  // chunks 0..2 before dying) must not stop cleanup before surviving chunks
+  // at higher indices.
+
+  test('removeItem purges a surviving chunk behind a 3+ index gap', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    // Indices 0-2 already deleted by an interrupted earlier removal; chunks 3
+    // and 4 survive, with no trustworthy metadata left behind.
+    fake.store.set('session.chunk.3', 'stale-d');
+    fake.store.set('session.chunk.4', 'stale-e');
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
+
+  test('removeItem purges a chunk behind a gap even with a stale HWM from before the interruption', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    // Interrupted removal of a 5-chunk value: HWM still present (it is only
+    // dropped after all chunk deletions), chunks 0-2 gone, 3-4 survive.
+    fake.store.set('session.chunks.hwm', '5');
+    fake.store.set('session.chunk.3', 'stale-d');
+    fake.store.set('session.chunk.4', 'stale-e');
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
+
+  test('small-value overwrite purges a surviving chunk behind a 3+ index gap', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    fake.store.set('session.chunk.3', 'stale-d');
+    fake.store.set('session.chunk.4', 'stale-e');
+    await adapter.setItem('session', 'small-value');
+    expect([...fake.store.keys()].sort()).toEqual(['session', 'session.chunks.hwm']);
+    expect(await adapter.getItem('session')).toBe('small-value');
+  });
+
+  test('chunked overwrite purges a surviving chunk behind a 3+ index gap after the new count', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    // New value needs 2 chunks; indices 2-4 are missing, chunk 5 survives.
+    fake.store.set('session.chunk.5', 'stale-f');
+    const value = 'y'.repeat(2500); // 2 chunks
+    await adapter.setItem('session', value);
+    expect([...fake.store.keys()].sort()).toEqual([
+      'session.chunk.0',
+      'session.chunk.1',
+      'session.chunks',
+      'session.chunks.hwm',
+    ]);
+    expect(await adapter.getItem('session')).toBe(value);
   });
 });
 

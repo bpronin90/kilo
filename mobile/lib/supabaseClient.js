@@ -58,26 +58,45 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
 
   const chunkKey = (key, index) => `${key}.chunk.${index}`;
   const countKey = (key) => `${key}.chunks`;
+  // High-water mark: the maximum chunk count ever written for this key. This
+  // is the authoritative cleanup bound. Write ordering keeps it from ever
+  // understating reality: it is raised (and persisted) BEFORE new chunks are
+  // written, and lowered only AFTER all cleanup deletions have completed. An
+  // interrupted write or removal therefore always leaves the HWM at or above
+  // the highest chunk index that can still exist.
+  const hwmKey = (key) => `${key}.chunks.hwm`;
 
-  // Cleanup must not trust the recorded chunk count: the count key can be
-  // absent, malformed, or understate the chunks actually on disk (e.g. after an
-  // interrupted earlier write/remove). Instead, sweep ascending chunk indices
-  // and delete every chunk found, stopping only after a bounded run of
-  // consecutive misses so a small gap (such as a partially completed prior
-  // removal) does not strand the chunks behind it.
-  const SWEEP_MISS_LIMIT = 3;
-  async function sweepChunks(key, startIndex) {
-    let misses = 0;
-    for (let i = startIndex; misses < SWEEP_MISS_LIMIT; i += 1) {
+  // Cleanup bound for keys that predate the HWM (or whose metadata was
+  // tampered with / lost): no recorded bound can be trusted, so sweep up to a
+  // generous fixed cap. Supabase session payloads are a few KB; 64 chunks
+  // (~128KB) is far beyond anything this adapter will ever write for auth
+  // storage. Once a key has been written through this adapter, its HWM is
+  // authoritative and this fallback is no longer used.
+  const LEGACY_SWEEP_BOUND = 64;
+
+  const parseCount = (raw) => {
+    if (raw == null) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+
+  // How far cleanup must sweep to cover every chunk that could exist for the
+  // key, given the recorded count and HWM (either of which may be absent or
+  // malformed).
+  async function cleanupBound(key) {
+    const count = parseCount(await SecureStore.getItemAsync(countKey(key))) ?? 0;
+    const hwm = parseCount(await SecureStore.getItemAsync(hwmKey(key)));
+    if (hwm != null) return Math.max(hwm, count);
+    return Math.max(count, LEGACY_SWEEP_BOUND);
+  }
+
+  // Delete chunk indices [from, to) unconditionally. Deleting an absent key is
+  // a no-op, so gaps (e.g. from an interrupted earlier removal) cannot stop
+  // the sweep before surviving chunks behind them.
+  async function purgeChunkRange(key, from, to) {
+    for (let i = from; i < to; i += 1) {
       // eslint-disable-next-line no-await-in-loop
-      const part = await SecureStore.getItemAsync(chunkKey(key, i));
-      if (part == null) {
-        misses += 1;
-      } else {
-        misses = 0;
-        // eslint-disable-next-line no-await-in-loop
-        await SecureStore.deleteItemAsync(chunkKey(key, i));
-      }
+      await SecureStore.deleteItemAsync(chunkKey(key, i));
     }
   }
 
@@ -100,17 +119,29 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       return value;
     },
     async setItem(key, value) {
+      // Bound covering every chunk a prior (possibly larger, interrupted, or
+      // inconsistently recorded) value may have left behind.
+      const prevBound = await cleanupBound(key);
+
       const str = String(value);
       if (str.length <= SECURE_STORE_CHUNK_SIZE) {
+        // Persist the raised bound before mutating anything, so an
+        // interruption mid-cleanup cannot leave the HWM understating the
+        // chunks that still exist.
+        await SecureStore.setItemAsync(hwmKey(key), String(prevBound));
+        await purgeChunkRange(key, 0, prevBound);
         await SecureStore.deleteItemAsync(countKey(key));
-        // Purge every chunk a prior (possibly larger or inconsistently
-        // recorded) value may have left behind, so the stored representation
-        // is exactly the single value written below.
-        await sweepChunks(key, 0);
+        // All chunks are gone; record that no chunk can exist, then store the
+        // single value. The stored representation is exactly this value.
+        await SecureStore.setItemAsync(hwmKey(key), '0');
         await SecureStore.setItemAsync(key, str);
         return;
       }
       const count = Math.ceil(str.length / SECURE_STORE_CHUNK_SIZE);
+      // Raise the HWM before writing chunks so it never understates reality,
+      // even if this write is interrupted at any point below.
+      const raisedBound = Math.max(count, prevBound);
+      await SecureStore.setItemAsync(hwmKey(key), String(raisedBound));
       for (let i = 0; i < count; i += 1) {
         const slice = str.slice(i * SECURE_STORE_CHUNK_SIZE, (i + 1) * SECURE_STORE_CHUNK_SIZE);
         // eslint-disable-next-line no-await-in-loop
@@ -119,16 +150,21 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       await SecureStore.setItemAsync(countKey(key), String(count));
       // Remove any stale single-value copy from a prior small write.
       await SecureStore.deleteItemAsync(key);
-      // Purge any chunks beyond the new count left over from a larger
-      // previous value, regardless of what (if anything) the old count said.
-      await sweepChunks(key, count);
+      // Purge every chunk beyond the new count that could remain from any
+      // earlier state, then lower the HWM only after cleanup has completed.
+      await purgeChunkRange(key, count, raisedBound);
+      await SecureStore.setItemAsync(hwmKey(key), String(count));
     },
     async removeItem(key) {
+      // Sweep the full authoritative bound unconditionally: gaps from an
+      // interrupted earlier removal cannot hide surviving chunks, and an
+      // absent, malformed, or understated count key is never trusted.
+      const bound = await cleanupBound(key);
+      await purgeChunkRange(key, 0, bound);
       await SecureStore.deleteItemAsync(countKey(key));
       await SecureStore.deleteItemAsync(key);
-      // Sweep all chunk indices rather than trusting a recorded count, so no
-      // chunk survives an absent, malformed, or understated count key.
-      await sweepChunks(key, 0);
+      // Drop the HWM only after every chunk deletion has completed.
+      await SecureStore.deleteItemAsync(hwmKey(key));
     },
   };
 }
