@@ -60,8 +60,17 @@ export async function rateLimitRefund(
 // Derive a best-effort client IP from forwarding headers. IP buckets are weaker
 // than user buckets (callers can rotate IPs) but still raise the cost of
 // pre-auth hammering.
+//
+// Trusted-proxy assumption: Supabase Edge Functions receive requests through a
+// platform-controlled proxy layer that appends to X-Forwarded-For. Taking the
+// rightmost entry gives the IP the nearest trusted hop observed — that value
+// cannot be forged by the caller (only prepended, not overwritten). The
+// leftmost entry is caller-supplied and must not be used.
 export function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-         req.headers.get('x-real-ip') ??
-         'unknown'
+  const xff = req.headers.get('x-forwarded-for')
+  if (xff) {
+    const parts = xff.split(',')
+    return parts[parts.length - 1].trim()
+  }
+  return req.headers.get('x-real-ip') ?? 'unknown'
 }

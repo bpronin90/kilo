@@ -47,6 +47,11 @@ graph TD
 schema set, and `verify_jwt = false` for `account-export` and
 `account-delete`. Those functions perform their own JWT validation and must
 receive CORS preflight and pre-auth rate-limit requests before authentication.
+Their pre-auth IP buckets use the platform-controlled rightmost forwarding
+value, while durable limiter hits live in `kilo.rate_limit_hits`. A scheduled
+`pg_cron` reaper removes export hits after the 10-minute window and delete hits
+after the 1-hour window so abandoned bucket keys cannot grow the table without
+bound (#451).
 
 The config's `project_id` is not the remote deployment target. Run
 `scripts/deploy-kilo-functions.sh` from the repository root to deploy the two

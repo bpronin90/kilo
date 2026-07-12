@@ -539,12 +539,24 @@ retains non-test commands such as `npm run audit`.
 - verifies cross-user delete attempts affect zero rows under RLS
 - verifies owner self-delete removes the requester's rows while preserving
   another user's rows
-- rate-limit coverage is at the Edge Function layer and requires manual
-  verification (see Public Signup Legal And Abuse Checks above); the pgTAP suite
-  covers only DB-layer isolation
+- requester-isolation coverage remains separate from durable rate-limit SQL
+  coverage in `supabase/tests/rate-limit.test.sql`
 - run with `supabase test db --file supabase/tests/account-lifecycle.test.sql`
   from repo root, or `supabase test db --file tests/account-lifecycle.test.sql`
   from inside `supabase/`
+
+### `supabase/tests/rate-limit.test.sql`
+
+- pgTAP coverage for the durable `kilo.rate_limit_check` and scheduled global
+  prune contract
+- verifies admission through the configured maximum, denial above the maximum,
+  bucket independence, and persisted hit counts
+- verifies export rows are removed after 10 minutes, delete rows after 1 hour,
+  live rows survive, and unknown prefixes use the defensive fallback horizon
+- run with `supabase test db --local supabase/tests/rate-limit.test.sql`; the
+  Supabase CLI local database requires Docker
+- forged-header resistance remains a deployed Edge Function check because the
+  SQL suite cannot observe platform forwarding-header behavior
 
 ### Public Signup Legal And Abuse Checks
 
