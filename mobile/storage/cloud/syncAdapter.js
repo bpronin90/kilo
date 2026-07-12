@@ -22,6 +22,14 @@ function isLegacyPhantomNote(note) {
   );
 }
 
+async function clearTombstonedCurrentNote(tombstones) {
+  if (tombstones.length === 0) return;
+  const currentId = await Storage.loadCurrentWorkoutId();
+  if (tombstones.some((note) => note.id === currentId)) {
+    await Storage.clearCurrentWorkoutId();
+  }
+}
+
 // Tombstone any live phantom legacy notes already in local storage when non-phantom
 // notes co-exist. Running before the sync loop ensures the tombstone participates
 // in the LWW merge and that merged.get(id) returns the tombstone in syncTable
@@ -43,13 +51,15 @@ async function tombstoneLocalPhantoms() {
   if (toEnqueue.length === 0) return;
 
   await Storage.replaceWorkoutNotesRaw(processed);
+  await clearTombstonedCurrentNote(toEnqueue);
   for (const ts of toEnqueue) {
     // eslint-disable-next-line no-await-in-loop
     await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, ts);
   }
 }
 
-const TABLE_IO = {
+function createTableIo(deferWorkoutNoteTombstone) {
+  return {
   [SYNC_TABLES.WEIGHT_ENTRIES]: {
     read: () => Storage.loadWeightEntriesRaw(),
     write: (list) => Storage.replaceWeightEntriesRaw(list),
@@ -77,20 +87,22 @@ const TABLE_IO = {
         return ts;
       });
       await Storage.replaceWorkoutNotesRaw(processed);
-      for (const ts of tombstoned) {
-        // eslint-disable-next-line no-await-in-loop
-        await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, ts);
-      }
+      await clearTombstonedCurrentNote(tombstoned);
+      // syncTable snapshots and clears its dirty batch around writeLocal. Defer
+      // rows created during this write until the pass completes so they cannot
+      // be cleared before upload.
+      tombstoned.forEach(deferWorkoutNoteTombstone);
     },
   },
   [SYNC_TABLES.ARCHIVED_WEIGHT_GOALS]: {
     read: () => loadArchivedWeightGoalsRaw(),
     write: (list) => replaceArchivedWeightGoalsRaw(list),
   },
-};
+  };
+}
 
-async function syncOne(table) {
-  const io = TABLE_IO[table];
+async function syncOne(table, tableIo) {
+  const io = tableIo[table];
   return syncTable({
     table,
     transport: getTransport(),
@@ -101,6 +113,8 @@ async function syncOne(table) {
 }
 
 export async function sync() {
+  const pendingWorkoutNoteTombstones = [];
+  const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
   await tombstoneLocalPhantoms();
   const results = [];
   for (const table of [
@@ -109,7 +123,15 @@ export async function sync() {
     SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
   ]) {
     // eslint-disable-next-line no-await-in-loop
-    results.push(await syncOne(table));
+    results.push(await syncOne(table, tableIo));
+  }
+  if (pendingWorkoutNoteTombstones.length > 0) {
+    const tombstones = pendingWorkoutNoteTombstones.splice(0);
+    for (const tombstone of tombstones) {
+      // eslint-disable-next-line no-await-in-loop
+      await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
+    }
+    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo));
   }
   return results;
 }
