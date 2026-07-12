@@ -55,8 +55,10 @@ const rlAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // ---------------------------------------------------------------------------
 
 serve(async (req) => {
+  const cors = corsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: cors })
   }
 
   // IP rate check (pre-auth, blocks hammering callers before JWT verification).
@@ -64,7 +66,7 @@ serve(async (req) => {
   if (!await rateLimitAllowed(rlAdmin, `export:ip:${ip}`, IP_MAX, IP_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
     })
   }
 
@@ -72,7 +74,7 @@ serve(async (req) => {
   if (!token) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -87,7 +89,7 @@ serve(async (req) => {
   if (authError || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -98,7 +100,7 @@ serve(async (req) => {
   if (!await rateLimitAllowed(rlAdmin, userKey, USER_MAX, USER_WINDOW_MS)) {
     return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
       status: 429,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '600' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '600' },
     })
   }
 
@@ -140,7 +142,7 @@ serve(async (req) => {
     console.error(`account-export query failed: ${firstError.message}`)
     return new Response(JSON.stringify({ error: 'Export failed.' }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json' },
     })
   }
 
@@ -162,6 +164,6 @@ serve(async (req) => {
 
   return new Response(JSON.stringify(payload), {
     status: 200,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   })
 })
