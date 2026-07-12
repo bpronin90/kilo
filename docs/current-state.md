@@ -459,8 +459,7 @@ The real native app path now has a modular React Native shell:
 - `mobile/screens/MoreScreen.js` is a routing shell for the native More menu;
   it renders sub-screen components imported from `mobile/components/`
   (`User Profile`, `Settings`, `Data & Backup`, `App Guide`, `About Kilo`) and
-  from `mobile/screens/more/` (`Account`, `AccountLifecycle`, `CloudSyncRecovery`,
-  `LegalLinks`). When Supabase cloud
+  `Account` from `mobile/screens/more/AccountScreen`. When Supabase cloud
   accounts are configured and the user is signed in, the Account surface also
   exposes server-side account export and a two-step account deletion flow:
   export shares a v3-compatible JSON payload from the requester-scoped
