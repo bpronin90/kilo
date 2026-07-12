@@ -12,6 +12,10 @@ import {
 import { AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 
+function isValidActiveWeek(value) {
+  return value === 'A' || value === 'B';
+}
+
 export function useLogCurrentRoutineEditor({
   workoutNoteText,
   setWorkoutNoteText,
@@ -46,6 +50,10 @@ export function useLogCurrentRoutineEditor({
   const keyboardExitTimeoutRef = useRef(null);
   const readScrollYRef = useRef(0);
   const autosaveCurrentTimerRef = useRef(null);
+  const pendingActiveWeekRef = useRef(null);
+  const activeWeekAuthorityRef = useRef(
+    isValidActiveWeek(currentNote?.activeWeek) ? 'persisted' : 'fallback'
+  );
 
   // Live-value refs so async save callbacks read current state without stale closures.
   const workoutNoteTextRef = useRef(workoutNoteText);
@@ -58,6 +66,12 @@ export function useLogCurrentRoutineEditor({
   currentIdRef.current = currentId;
   currentNoteRef.current = currentNote;
   modeRef.current = mode;
+
+  const noteIdentity = currentNote?.id ?? currentId ?? null;
+  const [localActiveWeek, setLocalActiveWeek] = useState(
+    () => (isValidActiveWeek(currentNote?.activeWeek) ? currentNote.activeWeek : null)
+  );
+  const previousNoteIdentityRef = useRef(noteIdentity);
 
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -104,7 +118,46 @@ export function useLogCurrentRoutineEditor({
 
   const weekBStartIndex = parsed.weekBStartIndex ?? null;
   const hasABWeeks = weekBStartIndex !== null;
-  const effectiveActiveWeek = hasABWeeks ? (currentNote?.activeWeek ?? 'A') : null;
+  const effectiveActiveWeek = hasABWeeks ? (localActiveWeek ?? 'A') : null;
+  const activeWeekPatch =
+    hasABWeeks && isValidActiveWeek(effectiveActiveWeek)
+      ? { activeWeek: effectiveActiveWeek }
+      : {};
+
+  useEffect(() => {
+    const noteChanged = previousNoteIdentityRef.current !== noteIdentity;
+    previousNoteIdentityRef.current = noteIdentity;
+
+    const persistedActiveWeek = isValidActiveWeek(currentNote?.activeWeek)
+      ? currentNote.activeWeek
+      : null;
+
+    if (!hasABWeeks) {
+      pendingActiveWeekRef.current = null;
+      activeWeekAuthorityRef.current = 'fallback';
+      setLocalActiveWeek(null);
+      return;
+    }
+
+    if (noteChanged) {
+      pendingActiveWeekRef.current = null;
+      activeWeekAuthorityRef.current = persistedActiveWeek ? 'persisted' : 'fallback';
+      setLocalActiveWeek(persistedActiveWeek ?? 'A');
+      return;
+    }
+
+    if (pendingActiveWeekRef.current && persistedActiveWeek === pendingActiveWeekRef.current) {
+      pendingActiveWeekRef.current = null;
+    }
+
+    if (activeWeekAuthorityRef.current === 'fallback' && persistedActiveWeek) {
+      activeWeekAuthorityRef.current = 'persisted';
+      setLocalActiveWeek(prev => (prev === persistedActiveWeek ? prev : persistedActiveWeek));
+      return;
+    }
+
+    setLocalActiveWeek(prev => (isValidActiveWeek(prev) ? prev : (persistedActiveWeek ?? 'A')));
+  }, [currentNote?.activeWeek, hasABWeeks, noteIdentity]);
 
   const activeEditText = useMemo(() => {
     if (!hasABWeeks || !currentId) return workoutNoteText;
@@ -188,8 +241,25 @@ export function useLogCurrentRoutineEditor({
 
   const handleToggleWeek = async () => {
     if (!currentId || !hasABWeeks) return;
-    const next = effectiveActiveWeek === 'B' ? 'A' : 'B';
-    await update(currentId, { activeWeek: next });
+    const previous = effectiveActiveWeek ?? 'A';
+    const previousAuthority = activeWeekAuthorityRef.current;
+    const next = previous === 'B' ? 'A' : 'B';
+    activeWeekAuthorityRef.current = 'user';
+    pendingActiveWeekRef.current = next;
+    setLocalActiveWeek(next);
+    try {
+      const updated = await update(currentId, { activeWeek: next });
+      if (!updated) {
+        pendingActiveWeekRef.current = null;
+        activeWeekAuthorityRef.current = previousAuthority;
+        setLocalActiveWeek(previous);
+      }
+    } catch (err) {
+      pendingActiveWeekRef.current = null;
+      activeWeekAuthorityRef.current = previousAuthority;
+      setLocalActiveWeek(previous);
+      throw err;
+    }
   };
 
   const handleSave = async ({ autosave = false, overrideText } = {}) => {
@@ -235,12 +305,18 @@ export function useLogCurrentRoutineEditor({
           exercise_classifications,
           skip_markers,
           attendance_flags,
+          ...activeWeekPatch,
         });
       } else {
         result = await add(titleToSave, workoutNoteText);
         await selectCurrent(result.id);
         if (result) {
-          await update(result.id, { exercise_classifications, skip_markers, attendance_flags });
+          await update(result.id, {
+            exercise_classifications,
+            skip_markers,
+            attendance_flags,
+            ...activeWeekPatch,
+          });
         }
       }
 
@@ -371,6 +447,7 @@ export function useLogCurrentRoutineEditor({
       await update(currentId, {
         title: originalNoteState.title,
         raw_text: originalNoteState.text,
+        ...activeWeekPatch,
       });
       setWorkoutNoteTitle(originalNoteState.title);
       setWorkoutNoteText(originalNoteState.text);

@@ -1275,6 +1275,171 @@ describe('A/B week: parser splits sections by --- separator (#295)', () => {
   });
 });
 
+describe('A/B week: current editor preserves Week B through stale refreshes', () => {
+  const AB_RAW = 'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8\n';
+
+  test('editing after B is acknowledged and a stale A payload arrives keeps Week B selected and saves into the Week B body', async () => {
+    const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+    const update = jest.fn().mockImplementation(async (_id, patch) => ({
+      id: 'note1',
+      title: patch.title || 'Routine A',
+      raw_text: patch.raw_text || AB_RAW,
+      activeWeek: patch.activeWeek,
+    }));
+    const add = jest.fn();
+    const selectCurrent = jest.fn();
+    let latest = null;
+
+    function Harness({ currentNote, notes }) {
+      const [text, setText] = React.useState(AB_RAW);
+      const [title, setTitle] = React.useState('Routine A');
+      const hook = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: 'note1',
+        currentNote,
+        notes,
+        trackedLifts: [],
+        update,
+        add,
+        selectCurrent,
+        fatigueTrackingEnabled: false,
+        onCheckInPrompt: jest.fn(),
+        isActive: true,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = {
+        hook,
+        getText: () => text,
+      };
+      return null;
+    }
+
+    const initialNote = { id: 'note1', title: 'Routine A', raw_text: AB_RAW, activeWeek: 'A' };
+    let component;
+    render.act(() => {
+      component = render.create(<Harness currentNote={initialNote} notes={[initialNote]} />);
+    });
+
+    expect(latest.hook.effectiveActiveWeek).toBe('A');
+
+    await render.act(async () => {
+      await latest.hook.handleToggleWeek();
+    });
+
+    expect(latest.hook.effectiveActiveWeek).toBe('B');
+    expect(latest.hook.activeEditText).toContain('DB Floor Press 3x8');
+    expect(latest.hook.activeEditText).not.toContain('DB Bench Press 3x8');
+
+    const acknowledgedWeekBNote = { id: 'note1', title: 'Routine A', raw_text: AB_RAW, activeWeek: 'B' };
+    render.act(() => {
+      component.update(<Harness currentNote={acknowledgedWeekBNote} notes={[acknowledgedWeekBNote]} />);
+    });
+
+    expect(latest.hook.effectiveActiveWeek).toBe('B');
+
+    const staleRefreshedNote = { id: 'note1', title: 'Routine A', raw_text: AB_RAW, activeWeek: 'A' };
+    render.act(() => {
+      component.update(<Harness currentNote={staleRefreshedNote} notes={[staleRefreshedNote]} />);
+    });
+
+    expect(latest.hook.effectiveActiveWeek).toBe('B');
+    expect(latest.hook.activeEditText).toContain('DB Floor Press 3x8');
+    expect(latest.hook.activeEditText).not.toContain('DB Bench Press 3x8');
+
+    render.act(() => {
+      latest.hook.handleCurrentTextChange('MONDAY — Home\n-DB Floor Press 4x8\n');
+    });
+
+    expect(latest.getText()).toBe(
+      'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 4x8\n'
+    );
+
+    await render.act(async () => {
+      await latest.hook.handleSave({ autosave: true });
+    });
+
+    expect(update).toHaveBeenLastCalledWith(
+      'note1',
+      expect.objectContaining({
+        raw_text: 'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 4x8\n',
+        activeWeek: 'B',
+      })
+    );
+  });
+
+  test('editing and saving while remaining on Week A keeps changes in the Week A body', async () => {
+    const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+    const update = jest.fn().mockImplementation(async (_id, patch) => ({
+      id: 'note1',
+      title: patch.title || 'Routine A',
+      raw_text: patch.raw_text || AB_RAW,
+      activeWeek: patch.activeWeek,
+    }));
+    let latest = null;
+
+    function Harness({ currentNote, notes }) {
+      const [text, setText] = React.useState(AB_RAW);
+      const [title, setTitle] = React.useState('Routine A');
+      const hook = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: 'note1',
+        currentNote,
+        notes,
+        trackedLifts: [],
+        update,
+        add: jest.fn(),
+        selectCurrent: jest.fn(),
+        fatigueTrackingEnabled: false,
+        onCheckInPrompt: jest.fn(),
+        isActive: true,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = {
+        hook,
+        getText: () => text,
+      };
+      return null;
+    }
+
+    const currentNote = { id: 'note1', title: 'Routine A', raw_text: AB_RAW, activeWeek: 'A' };
+    render.act(() => {
+      render.create(<Harness currentNote={currentNote} notes={[currentNote]} />);
+    });
+
+    expect(latest.hook.effectiveActiveWeek).toBe('A');
+    expect(latest.hook.activeEditText).toContain('DB Bench Press 3x8');
+    expect(latest.hook.activeEditText).not.toContain('DB Floor Press 3x8');
+
+    render.act(() => {
+      latest.hook.handleCurrentTextChange('MONDAY — Push\n-DB Bench Press 4x8');
+    });
+
+    expect(latest.getText()).toBe(
+      'MONDAY — Push\n-DB Bench Press 4x8\n---\nMONDAY — Home\n-DB Floor Press 3x8\n'
+    );
+
+    await render.act(async () => {
+      await latest.hook.handleSave({ autosave: true });
+    });
+
+    expect(update).toHaveBeenLastCalledWith(
+      'note1',
+      expect.objectContaining({
+        raw_text: 'MONDAY — Push\n-DB Bench Press 4x8\n---\nMONDAY — Home\n-DB Floor Press 3x8\n',
+        activeWeek: 'A',
+      })
+    );
+  });
+});
+
 describe('A/B week: empty active card rendering', () => {
   test('renders B-week alternative text in small inline body text instead of emptyText style', () => {
     const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
@@ -1643,4 +1808,3 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     expect(src).toMatch(/if\s*\(!saved\)\s*return/);
   });
 });
-
