@@ -456,9 +456,11 @@ The real native app path now has a modular React Native shell:
   A failed weight-entry load
   now surfaces a retryable `ErrorBanner` at the top of the screen instead of a
   silent empty screen, and a successful Retry clears the banner.
-- `mobile/screens/MoreScreen.js` now owns the native More menu plus the
-  `User Profile`, `Account`, `Settings`, `Data & Backup`, `App Guide`, and
-  `About Kilo` sub-screens extracted out of `HomeScreen.js`. When Supabase cloud
+- `mobile/screens/MoreScreen.js` is a routing shell for the native More menu;
+  it renders sub-screen components imported from `mobile/components/`
+  (`User Profile`, `Settings`, `Data & Backup`, `App Guide`, `About Kilo`) and
+  from `mobile/screens/more/` (`Account`, `AccountLifecycle`, `CloudSyncRecovery`,
+  `LegalLinks`). When Supabase cloud
   accounts are configured and the user is signed in, the Account surface also
   exposes server-side account export and a two-step account deletion flow:
   export shares a v3-compatible JSON payload from the requester-scoped
@@ -604,16 +606,19 @@ The real native app path now has a modular React Native shell:
   flashes on entry, section loading placeholders stay scoped to the data each
   section actually needs, and incomplete weight rows are filtered before they
   reach the rolling-average path
-- `mobile/components/` contains shared shell, tab bar, and UI primitives; the
-  shared bottom tab bar now uses the lighter card/chip palette instead of the
-  older heavy dark floating treatment so it reads as lower-emphasis chrome
-  while keeping the active tab easy to distinguish, and it now behaves like a
-  content-aware overlay by fading toward transparency during shared-shell
-  scrolling, restoring a solid treatment during direct interaction, and then
-  settling back after a short timeout
+- `mobile/components/` contains the extracted sub-screen components
+  (AboutScreen, BackupScreen, HelpScreen, ProfileScreen, SettingsScreen —
+  rendered by the MoreScreen routing shell) plus shared shell, tab bar, and
+  UI primitives; the shared bottom tab bar now uses the lighter card/chip
+  palette instead of the older heavy dark floating treatment so it reads as
+  lower-emphasis chrome while keeping the active tab easy to distinguish, and
+  it now behaves like a content-aware overlay by fading toward transparency
+  during shared-shell scrolling, restoring a solid treatment during direct
+  interaction, and then settling back after a short timeout
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
 - `mobile/theme/colors.js` centralizes the native color system
-- `mobile/lib/parser.js` ports the MVP canonical parser path into native ES
+- `mobile/lib/parser.js` / `mobile/lib/parser/` — parser barrel and domain
+  implementations. Ports the MVP canonical parser path into native ES
   modules and now also includes tolerant workout-note parsing for the archived
   sample-style shorthand logs used by the v2 note-based workflow plus a
   derived analytics contract for later note-based UI and analytics work,
@@ -626,20 +631,23 @@ The real native app path now has a modular React Native shell:
   per-day signal derivation now share one comparable-building helper, and the
   module also exports `normalizeExerciseKey()` so alias resolution and
   lowercased key matching follow the same canonical chain everywhere
-- `mobile/lib/data.js` defines the native exercise catalog and entry factories,
+- `mobile/lib/data.js` / `mobile/lib/data/` — data barrel and domain
+  implementations. Defines the native exercise catalog and entry factories,
   including the default 1k exercise-slot selection used by analytics, a
   factory for titled workout-note items in the multi-note model, and
   per-session derivation for non-weighted tracked exercises covering
   reps-only (`total_reps` + arrow) and time-based (`longest_hold` + arrow)
   exercise classes with loaded-bodyweight exclusion
-- `mobile/hooks/useEntries.js` exposes the native read/write APIs used by the
-  UI, including multi-note current-workout reads/writes, cross-consumer
+- `mobile/hooks/useEntries.js` / `mobile/hooks/entries/` — compatibility barrel
+  for entry hooks; exposes read/write APIs used by the UI, including
+  multi-note current-workout reads/writes, cross-consumer
   refresh fanout, persisted weight-goal reads/writes, and a separate
   `useDeloadNote()` hook for the generated/editable deload note, plus a
   shared `useFeatureToggles()` hook that fans persisted fatigue/deload toggle
   changes live to Settings, Log, and Analytics without threading new props
   through `App.js`
-- `mobile/storage/entries.js` persists weight entries plus a local-only
+- `mobile/storage/entries.js` / `mobile/storage/entries/` — local persistence
+  barrel and domain implementations. Persists weight entries plus a local-only
   multi-note workout model via AsyncStorage: `kilo_workout_notes` stores
   multiple titled workout notes, `kilo_current_workout_id` stores the explicit
   current selection, and persisted note items now carry an `isCurrent` flag
