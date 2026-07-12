@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.4 - 2026-07-12
+
+- Issue #455: Archive completed backend roadmap doc
+
+
 ## 0.92.3 - 2026-07-12
 
 - Issue #453: Prevented newly written Supabase session chunks from becoming
