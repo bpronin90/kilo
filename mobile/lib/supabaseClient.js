@@ -78,8 +78,21 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       return value;
     },
     async setItem(key, value) {
+      // Read the previous chunk count (if any) so a write that needs fewer
+      // chunks than the prior value can purge the now-orphaned tail rather
+      // than leaving old token material readable under abandoned chunk keys.
+      const prevCountRaw = await SecureStore.getItemAsync(countKey(key));
+      const prevCount = prevCountRaw != null ? parseInt(prevCountRaw, 10) : NaN;
+      const hasPrevCount = Number.isFinite(prevCount) && prevCount > 0;
+
       const str = String(value);
       if (str.length <= SECURE_STORE_CHUNK_SIZE) {
+        if (hasPrevCount) {
+          for (let i = 0; i < prevCount; i += 1) {
+            // eslint-disable-next-line no-await-in-loop
+            await SecureStore.deleteItemAsync(chunkKey(key, i));
+          }
+        }
         await SecureStore.deleteItemAsync(countKey(key));
         await SecureStore.setItemAsync(key, str);
         return;
@@ -93,6 +106,14 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       await SecureStore.setItemAsync(countKey(key), String(count));
       // Remove any stale single-value copy from a prior small write.
       await SecureStore.deleteItemAsync(key);
+      // Purge any chunks left over from a larger previous value that this
+      // write no longer needs.
+      if (hasPrevCount && prevCount > count) {
+        for (let i = count; i < prevCount; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          await SecureStore.deleteItemAsync(chunkKey(key, i));
+        }
+      }
     },
     async removeItem(key) {
       const countRaw = await SecureStore.getItemAsync(countKey(key));

@@ -136,6 +136,48 @@ describe('secure store adapter', () => {
     expect(makeSecureStoreAdapter(null)).toBe(null);
     expect(makeSecureStoreAdapter({})).toBe(null);
   });
+
+  test('overwriting with fewer chunks purges the orphaned tail chunks', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    const big = 'x'.repeat(5000); // 3 chunks
+    await adapter.setItem('session', big);
+    expect(fake.store.get('session.chunks')).toBe('3');
+    expect(fake.store.has('session.chunk.2')).toBe(true);
+
+    const smaller = 'y'.repeat(2500); // 2 chunks
+    await adapter.setItem('session', smaller);
+    expect(fake.store.get('session.chunks')).toBe('2');
+    // Chunks M..N-1 (here just chunk 2) from the previous larger value must
+    // no longer be readable.
+    expect(fake.store.has('session.chunk.2')).toBe(false);
+    expect(await adapter.getItem('session')).toBe(smaller);
+  });
+
+  test('overwriting a chunked value with a sub-chunk-size value leaves no chunks', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    const big = 'x'.repeat(5000); // 3 chunks
+    await adapter.setItem('session', big);
+    expect(fake.store.get('session.chunks')).toBe('3');
+
+    const small = 'small-value';
+    await adapter.setItem('session', small);
+    expect(fake.store.has('session.chunk.0')).toBe(false);
+    expect(fake.store.has('session.chunk.1')).toBe(false);
+    expect(fake.store.has('session.chunk.2')).toBe(false);
+    expect(fake.store.has('session.chunks')).toBe(false);
+    expect(await adapter.getItem('session')).toBe(small);
+  });
+
+  test('removeItem after a chunked write leaves the fake store empty', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    const big = 'x'.repeat(5000); // 3 chunks
+    await adapter.setItem('session', big);
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
 });
 
 describe('useAuthSession', () => {
