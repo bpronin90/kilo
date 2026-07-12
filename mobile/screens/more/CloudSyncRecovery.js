@@ -4,6 +4,7 @@ import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
 import { useSyncRecovery, useCloudExport, useCloudSyncStatus } from '../../hooks/useEntries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
+import { OWNER_UNCLAIMED, getLocalDataOwner } from '../../storage/entries/localDataOwner';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
@@ -17,6 +18,7 @@ export function CloudSyncRecovery({ user }) {
   const cloudSyncStatus = useCloudSyncStatus();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
 
   const phaseLabel = (s) => {
     switch (s.status) {
@@ -50,6 +52,20 @@ export function CloudSyncRecovery({ user }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Ownership gate for the manual upload (#450): when the local history
+  // belongs to a different account (or an unidentifiable one), require an
+  // explicit confirmation instead of silently pushing someone else's data
+  // into this account. Unclaimed or own data uploads directly — pressing the
+  // button is the consent in those cases.
+  const handleBootstrapPress = async () => {
+    const owner = await getLocalDataOwner();
+    if (owner !== OWNER_UNCLAIMED && owner !== user?.id) {
+      setConfirmingForeignUpload(true);
+      return;
+    }
+    await handleRun('bootstrap', runBootstrap);
   };
 
   const isRunning = (s) => s.status === SYNC_STATUS.RUNNING;
@@ -117,13 +133,36 @@ export function CloudSyncRecovery({ user }) {
         First-time setup. Sends the history already on this device up to your
         account. Run this once after signing in.
       </Text>
-      {canStart(bootstrap) ? (
+      {canStart(bootstrap) && !confirmingForeignUpload ? (
         <Button
           title="Upload Local History"
           loadingTitle="Working…"
           disabled={busy || isRunning(bootstrap)}
-          onPress={() => handleRun('bootstrap', runBootstrap)}
+          onPress={handleBootstrapPress}
         />
+      ) : null}
+      {confirmingForeignUpload ? (
+        <View style={styles.summaryBlock}>
+          <Text style={styles.phaseDesc} accessibilityLabel="Foreign data warning">
+            The history on this device belongs to a different account. Uploading
+            will copy it into the account you are signed in to now. Only continue
+            if this is really your data.
+          </Text>
+          <Button
+            title="Upload Anyway"
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={async () => {
+              setConfirmingForeignUpload(false);
+              await handleRun('bootstrap', runBootstrap);
+            }}
+          />
+          <Button
+            title="Cancel"
+            disabled={busy}
+            onPress={() => setConfirmingForeignUpload(false)}
+          />
+        </View>
       ) : null}
       {bootstrap.retryable ? (
         <Button

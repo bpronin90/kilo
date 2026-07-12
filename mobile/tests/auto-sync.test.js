@@ -1,15 +1,15 @@
-// Automatic cloud sync tests (Issue #432).
+// Automatic cloud sync tests (Issue #432, ownership-gated by Issue #450).
 //
-// Covers the four required verification areas:
-//   1. First-sign-in upload trigger: useAutoSync auto-runs bootstrap on first sign-in.
-//   2. Repeated-launch idempotence: second session with the AsyncStorage marker set
-//      skips bootstrap and runs sync only.
-//   3. Cloud-mode writes: useAutoSync sets storage mode to cloud so entry-hook
-//      writes route through the cloud adapter and enter the dirty queue.
-//   4. Failed sync retry: a bootstrap failure leaves the phase failed/retryable;
-//      the manual retry (useSyncRecovery.retryBootstrap) recovers and marks done.
-//
-// Bootstrap marker persistence is also unit-tested directly.
+// Covers:
+//   1. Local-data owner marker: get/set, one-time legacy migration, purge.
+//   2. useAutoSync sign-in branches across all four owner states:
+//      equal / unclaimed / different userId / unknown — bootstrapFromLocal is
+//      called ONLY in the sanctioned cases (owner unclaimed + user confirmed,
+//      or explicit foreign upload).
+//   3. Cloud-mode writes: cloud mode activates only once ownership is resolved,
+//      and writes then route through the dirty queue.
+//   4. Failure paths: a rejecting bootstrap leaves the owner unchanged and the
+//      phase failed/retryable; manual retry recovers and claims ownership.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
@@ -19,11 +19,19 @@ import {
   SYNC_STATUS,
   SYNC_PHASE,
   getSyncState,
-  isBootstrapped,
-  setBootstrapped,
   markComplete,
   __resetSyncQueue,
 } from '../storage/syncRecovery';
+import {
+  LOCAL_DATA_OWNER_KEY,
+  OWNER_UNCLAIMED,
+  OWNER_UNKNOWN,
+  LEGACY_BOOTSTRAP_MARKER_PREFIX,
+  getLocalDataOwner,
+  setLocalDataOwner,
+  purgeLocalData,
+} from '../storage/entries/localDataOwner';
+import * as KEYS from '../storage/entries/keys';
 import { cloudAdapter } from '../storage/cloudAdapter';
 import * as Storage from '../storage/entries';
 import { useAutoSync, useSyncRecovery, useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
@@ -64,11 +72,20 @@ function renderHook(useHook) {
 }
 
 async function flush() {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+  // The auto-sync effect chains several awaits (owner read/migration, phase
+  // runners, owner writes); drain generously.
+  for (let i = 0; i < 8; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    await act(async () => { await Promise.resolve(); });
+  }
+}
+
+function mockCloudSyncAdapter(syncImpl) {
+  const syncFn = jest.fn(syncImpl || (() => Promise.resolve({ ok: true })));
+  jest
+    .spyOn(Storage, 'getStorageAdapter')
+    .mockReturnValue({ mode: 'cloud', sync: syncFn });
+  return syncFn;
 }
 
 beforeEach(async () => {
@@ -86,88 +103,390 @@ afterEach(() => {
   setCloudTransport(null);
 });
 
-// ── Bootstrap marker persistence ─────────────────────────────────────────────
+// ── Local-data owner marker ──────────────────────────────────────────────────
 
-describe('bootstrap marker persistence', () => {
-  test('isBootstrapped returns false when no marker is stored', async () => {
-    expect(await isBootstrapped(USER.id)).toBe(false);
+describe('localDataOwner: marker get/set', () => {
+  test('fresh storage derives unclaimed and persists the marker', async () => {
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+    expect(await AsyncStorage.getItem(LOCAL_DATA_OWNER_KEY)).toBe(OWNER_UNCLAIMED);
   });
 
-  test('isBootstrapped returns false for a null userId', async () => {
-    expect(await isBootstrapped(null)).toBe(false);
+  test('setLocalDataOwner persists and getLocalDataOwner returns it', async () => {
+    await setLocalDataOwner(USER.id);
+    expect(await getLocalDataOwner()).toBe(USER.id);
   });
 
-  test('setBootstrapped persists the marker; isBootstrapped returns true', async () => {
-    await setBootstrapped(USER.id);
-    expect(await isBootstrapped(USER.id)).toBe(true);
-  });
-
-  test('marker is per-userId: a different user id reads false', async () => {
-    await setBootstrapped('user-a');
-    expect(await isBootstrapped('user-b')).toBe(false);
-    expect(await isBootstrapped('user-a')).toBe(true);
-  });
-
-  test('marker survives an AsyncStorage.clear for the target id (cleared means gone)', async () => {
-    await setBootstrapped(USER.id);
-    await AsyncStorage.clear();
-    expect(await isBootstrapped(USER.id)).toBe(false);
+  test('setLocalDataOwner ignores empty values', async () => {
+    await setLocalDataOwner(USER.id);
+    await setLocalDataOwner(null);
+    expect(await getLocalDataOwner()).toBe(USER.id);
   });
 });
 
-// ── useAutoSync: first sign-in triggers automatic bootstrap ──────────────────
+describe('localDataOwner: one-time migration from legacy bootstrap markers', () => {
+  test('exactly one legacy marker: owner is that user, silently, no prompt state', async () => {
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-a`, 'true');
+    expect(await getLocalDataOwner()).toBe('user-a');
+    // Persisted so the derivation never reruns.
+    expect(await AsyncStorage.getItem(LOCAL_DATA_OWNER_KEY)).toBe('user-a');
+  });
 
-describe('useAutoSync: first sign-in auto-bootstrap', () => {
-  test('auto-runs bootstrap and sets the persistent marker when not yet bootstrapped', async () => {
+  test('more than one legacy marker: owner is unknown (co-mingled device)', async () => {
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-a`, 'true');
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-b`, 'true');
+    expect(await getLocalDataOwner()).toBe(OWNER_UNKNOWN);
+  });
+
+  test('no legacy markers: owner is unclaimed', async () => {
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+  });
+
+  test('an explicit marker wins over legacy markers (migration runs only when absent)', async () => {
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-a`, 'true');
+    await setLocalDataOwner('user-z');
+    expect(await getLocalDataOwner()).toBe('user-z');
+  });
+});
+
+describe('localDataOwner: purge', () => {
+  test('clears every keys.js key and every legacy marker, then writes the owner', async () => {
+    const entryKeys = Object.values(KEYS);
+    for (const key of entryKeys) {
+      // eslint-disable-next-line no-await-in-loop
+      await AsyncStorage.setItem(key, JSON.stringify([{ id: 'residue' }]));
+    }
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-a`, 'true');
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}user-b`, 'true');
+    await AsyncStorage.setItem('kilo_sync_dirty_weight_entries', '[{"id":"stale"}]');
+    await setLocalDataOwner('user-a');
+
+    await purgeLocalData('user-new');
+
+    for (const key of entryKeys) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await AsyncStorage.getItem(key)).toBeNull();
+    }
+    const remaining = await AsyncStorage.getAllKeys();
+    expect(remaining.filter((k) => k.startsWith(LEGACY_BOOTSTRAP_MARKER_PREFIX))).toEqual([]);
+    expect(remaining.filter((k) => k.startsWith('kilo_sync_dirty_'))).toEqual([]);
+    // Owner is written explicitly, never left absent.
+    expect(await AsyncStorage.getItem(LOCAL_DATA_OWNER_KEY)).toBe('user-new');
+    // No residue for a later read to re-derive from.
+    expect(await getLocalDataOwner()).toBe('user-new');
+  });
+
+  test('defaults the post-purge owner to unclaimed', async () => {
+    await setLocalDataOwner('user-a');
+    await purgeLocalData();
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+  });
+});
+
+// ── useAutoSync: owner === signed-in user ────────────────────────────────────
+
+describe('useAutoSync: owner equals signed-in user', () => {
+  test('skips bootstrap entirely, activates cloud mode, and syncs', async () => {
+    await setLocalDataOwner(USER.id);
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(ref.current.ownershipPrompt).toBeNull();
+  });
+
+  test('legacy upgrade regression: single-account install migrates silently, no prompt, no re-upload', async () => {
+    // Existing install: legacy bootstrap marker for this user, no owner marker.
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}${USER.id}`, 'true');
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(ref.current.ownershipPrompt).toBeNull();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+  });
+
+  test('does not re-run bootstrap if the phase is already complete this session', async () => {
+    await setLocalDataOwner(USER.id);
+    markComplete(SYNC_PHASE.BOOTSTRAP);
+
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(syncFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── useAutoSync: unclaimed local data (legitimate first sign-in) ─────────────
+
+describe('useAutoSync: unclaimed owner requires confirmation', () => {
+  test('does NOT auto-bootstrap; surfaces the first-upload prompt and stays in local mode', async () => {
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(syncFn).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+  });
+
+  test('confirmOwnershipUpload bootstraps, claims ownership, activates cloud mode, and syncs', async () => {
     const bootstrapSpy = jest
       .spyOn(cloudAdapter, 'bootstrapFromLocal')
       .mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: jest.fn().mockResolvedValue({ ok: true }) });
+    const syncFn = mockCloudSyncAdapter();
 
-    renderHook(() => useAutoSync(makeAuth()));
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
     await flush();
 
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+
+    expect(result.ok).toBe(true);
     expect(bootstrapSpy).toHaveBeenCalledWith(USER.id);
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
-    expect(await isBootstrapped(USER.id)).toBe(true);
-  });
-
-  test('sets storage mode to CLOUD on sign-in', async () => {
-    jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: jest.fn().mockResolvedValue({ ok: true }) });
-
-    renderHook(() => useAutoSync(makeAuth()));
-    await flush();
-
+    expect(await getLocalDataOwner()).toBe(USER.id);
     expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(ref.current.ownershipPrompt).toBeNull();
   });
 
-  test('also triggers sync after a successful bootstrap', async () => {
-    jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
-    const syncFn = jest.fn().mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
+  test('dismiss ("Not Now") leaves everything untouched: no bootstrap, no sync, local mode, owner unclaimed', async () => {
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
 
-    renderHook(() => useAutoSync(makeAuth()));
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
     await flush();
 
-    expect(syncFn).toHaveBeenCalledTimes(1);
-    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    act(() => {
+      ref.current.dismissOwnershipPrompt();
+    });
+
+    expect(ref.current.ownershipPrompt).toBeNull();
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(syncFn).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
   });
 
+  test('a failed confirmed bootstrap leaves the owner unchanged and the phase failed/retryable', async () => {
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockRejectedValue(new Error('network down'));
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+
+    expect(result.ok).toBe(false);
+    // Owner unchanged so the next launch retries the prompt/bootstrap.
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+    const state = getSyncState();
+    expect(state[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
+    expect(state[SYNC_PHASE.BOOTSTRAP].retryable).toBe(true);
+    expect(syncFn).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+  });
+
+  test('a successful upload whose owner write fails is a failed bootstrap: local mode, no sync, owner unchanged', async () => {
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+
+    // Fail only the owner-marker write; every other storage write still works.
+    const owners = require('../storage/entries/localDataOwner');
+    const ownerWriteSpy = jest
+      .spyOn(owners, 'setLocalDataOwner')
+      .mockRejectedValue(new Error('disk full'));
+
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+    ownerWriteSpy.mockRestore();
+
+    expect(result.ok).toBe(false);
+    // The claim never became durable, so cloud activity must not start.
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(syncFn).not.toHaveBeenCalled();
+    const state = getSyncState();
+    expect(state[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
+    expect(state[SYNC_PHASE.BOOTSTRAP].retryable).toBe(true);
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+  });
+
+  test('manual retry via useSyncRecovery recovers and claims ownership', async () => {
+    jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValueOnce({ ok: true });
+    mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    await act(async () => {
+      await ref.current.confirmOwnershipUpload();
+    });
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
+    expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+
+    const { ref: recoveryRef } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let retryResult;
+    await act(async () => {
+      retryResult = await recoveryRef.current.retryBootstrap();
+    });
+
+    expect(retryResult.ok).toBe(true);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+  });
+});
+
+// ── useAutoSync: foreign owner (different userId or unknown) ─────────────────
+
+describe('useAutoSync: foreign owner never auto-bootstraps', () => {
+  test('a different userId surfaces the foreign prompt with no upload and no sync', async () => {
+    await setLocalDataOwner('someone-else');
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(syncFn).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
+  });
+
+  test('unknown owner takes the same foreign branch', async () => {
+    await setLocalDataOwner(OWNER_UNKNOWN);
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
+  });
+
+  test('start fresh purges local data, claims ownership, and pulls cloud data — never uploading', async () => {
+    await AsyncStorage.setItem(KEYS.WEIGHT_KEY, JSON.stringify([{ id: 'a-weight' }]));
+    await AsyncStorage.setItem(`${LEGACY_BOOTSTRAP_MARKER_PREFIX}someone-else`, 'true');
+    await setLocalDataOwner('someone-else');
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.startFreshOnDevice();
+    });
+
+    expect(result.ok).toBe(true);
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(KEYS.WEIGHT_KEY)).toBeNull();
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(ref.current.ownershipPrompt).toBeNull();
+  });
+
+  test('explicit foreign upload is allowed after the deliberate choice', async () => {
+    await setLocalDataOwner('someone-else');
+    const bootstrapSpy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockResolvedValue({ ok: true });
+    const syncFn = mockCloudSyncAdapter();
+
+    const { ref } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+
+    expect(result.ok).toBe(true);
+    expect(bootstrapSpy).toHaveBeenCalledWith(USER.id);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(syncFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('user B on user A\'s device is never auto-uploaded (two accounts, one device)', async () => {
+    const USER_B = { id: 'u-b', email: 'b@test.co' };
+
+    // User A's session: owns the local data, syncs normally.
+    await setLocalDataOwner(USER.id);
+    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
+    mockCloudSyncAdapter();
+    renderHook(() => useAutoSync(makeAuth({ user: USER })));
+    await flush();
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+
+    // A signs out — phases reset, owner retained.
+    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
+    await flush();
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+
+    // B signs in on the same device: foreign branch, no automatic upload.
+    const { ref } = renderHook(() => useAutoSync(makeAuth({ user: USER_B })));
+    await flush();
+
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+  });
+});
+
+// ── useAutoSync: configured/loading/sign-out guards ──────────────────────────
+
+describe('useAutoSync: guards and sign-out', () => {
   test('does nothing when configured is false', async () => {
     const spy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
 
-    renderHook(() => useAutoSync(makeAuth({ configured: false })));
+    const { ref } = renderHook(() => useAutoSync(makeAuth({ configured: false })));
     await flush();
 
     expect(spy).not.toHaveBeenCalled();
     expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(ref.current.ownershipPrompt).toBeNull();
   });
 
   test('does nothing while auth is still loading', async () => {
@@ -178,57 +497,36 @@ describe('useAutoSync: first sign-in auto-bootstrap', () => {
 
     expect(spy).not.toHaveBeenCalled();
   });
-});
 
-// ── useAutoSync: repeated-launch idempotence ──────────────────────────────────
+  test('sets storage mode back to LOCAL and clears phases when signed out', async () => {
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    markComplete(SYNC_PHASE.BOOTSTRAP);
+    markComplete(SYNC_PHASE.SYNC);
 
-describe('useAutoSync: repeated-launch idempotence', () => {
-  test('skips bootstrap and runs sync only when marker is already set', async () => {
-    await setBootstrapped(USER.id);
-
-    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
-    const syncFn = jest.fn().mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
-
-    renderHook(() => useAutoSync(makeAuth()));
+    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
     await flush();
 
-    expect(bootstrapSpy).not.toHaveBeenCalled();
-    // Bootstrap phase reflects prior session completion (not idle).
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
-    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
   });
 
-  test('does not re-run bootstrap if the phase is already complete this session', async () => {
-    // Simulate the phase already being complete (e.g. useAutoSync ran once this session).
-    const { markComplete: mc } = require('../storage/syncRecovery');
-    mc(SYNC_PHASE.BOOTSTRAP);
+  test('sign-out does not clear the local-data owner (history stays theirs)', async () => {
+    await setLocalDataOwner(USER.id);
 
-    const bootstrapSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal');
-    const syncFn = jest.fn().mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
-
-    renderHook(() => useAutoSync(makeAuth()));
+    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
     await flush();
 
-    expect(bootstrapSpy).not.toHaveBeenCalled();
-    expect(syncFn).toHaveBeenCalledTimes(1);
+    expect(await getLocalDataOwner()).toBe(USER.id);
   });
 });
 
 // ── useAutoSync: cloud mode enables dirty-queue writes ────────────────────────
 
 describe('useAutoSync: cloud mode wires writes through the dirty queue', () => {
-  test('after useAutoSync activates cloud mode, a weight write enters the dirty queue', async () => {
-    jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
-    const syncFn = jest.fn().mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
+  test('after ownership resolves, a weight write enters the dirty queue', async () => {
+    await setLocalDataOwner(USER.id);
+    mockCloudSyncAdapter();
 
     renderHook(() => useAutoSync(makeAuth()));
     await flush();
@@ -249,117 +547,6 @@ describe('useAutoSync: cloud mode wires writes through the dirty queue', () => {
   });
 });
 
-// ── Failed bootstrap: retry behavior ─────────────────────────────────────────
-
-describe('useAutoSync: failed bootstrap leaves phase retryable', () => {
-  test('a throwing bootstrap runner leaves phase failed/retryable, skips sync', async () => {
-    jest
-      .spyOn(cloudAdapter, 'bootstrapFromLocal')
-      .mockRejectedValue(new Error('network down'));
-    const syncFn = jest.fn();
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
-
-    renderHook(() => useAutoSync(makeAuth()));
-    await flush();
-
-    const state = getSyncState();
-    expect(state[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
-    expect(state[SYNC_PHASE.BOOTSTRAP].retryable).toBe(true);
-    // Sync must not run after a failed bootstrap.
-    expect(syncFn).not.toHaveBeenCalled();
-    // Persistent marker must NOT be set so the next launch retries.
-    expect(await isBootstrapped(USER.id)).toBe(false);
-  });
-
-  test('manual retry via useSyncRecovery.retryBootstrap succeeds and sets the marker', async () => {
-    jest
-      .spyOn(cloudAdapter, 'bootstrapFromLocal')
-      .mockRejectedValueOnce(new Error('transient'))
-      .mockResolvedValueOnce({ ok: true });
-
-    // Drive the initial failure through useAutoSync.
-    renderHook(() => useAutoSync(makeAuth()));
-    await flush();
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
-    expect(await isBootstrapped(USER.id)).toBe(false);
-
-    // Now retry via useSyncRecovery.
-    const { ref } = renderHook(() => useSyncRecovery(USER));
-    await flush();
-
-    let retryResult;
-    await act(async () => {
-      retryResult = await ref.current.retryBootstrap();
-    });
-
-    expect(retryResult.ok).toBe(true);
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
-    expect(await isBootstrapped(USER.id)).toBe(true);
-  });
-});
-
-// ── Sign-out resets storage mode and phases (Finding 1 fix) ──────────────────
-
-describe('useAutoSync: sign-out resets storage mode and phases', () => {
-  test('sets storage mode back to LOCAL when signed out', async () => {
-    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
-
-    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
-    await flush();
-
-    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
-  });
-
-  test('resets bootstrap and sync phases on sign-out so a different user gets a clean slate', async () => {
-    const { markComplete: mc } = require('../storage/syncRecovery');
-    mc(SYNC_PHASE.BOOTSTRAP);
-    mc(SYNC_PHASE.SYNC);
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
-
-    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
-    await flush();
-
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
-    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.IDLE);
-  });
-
-  test('user B gets their own bootstrap after user A signs out in the same session', async () => {
-    const USER_B = { id: 'u-b', email: 'b@test.co' };
-
-    // User A signs in and bootstraps.
-    const bootstrapSpy = jest
-      .spyOn(cloudAdapter, 'bootstrapFromLocal')
-      .mockResolvedValue({ ok: true });
-    const syncFn = jest.fn().mockResolvedValue({ ok: true });
-    jest
-      .spyOn(Storage, 'getStorageAdapter')
-      .mockReturnValue({ mode: 'cloud', sync: syncFn });
-
-    renderHook(() => useAutoSync(makeAuth({ user: USER })));
-    await flush();
-    expect(await isBootstrapped(USER.id)).toBe(true);
-    expect(bootstrapSpy).toHaveBeenCalledWith(USER.id);
-
-    // User A signs out — phases reset.
-    renderHook(() => useAutoSync(makeAuth({ signedIn: false, user: null })));
-    await flush();
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.IDLE);
-
-    bootstrapSpy.mockClear();
-    syncFn.mockClear();
-
-    // User B signs in — should bootstrap for B (marker not set for B).
-    renderHook(() => useAutoSync(makeAuth({ user: USER_B })));
-    await flush();
-
-    expect(bootstrapSpy).toHaveBeenCalledWith(USER_B.id);
-    expect(await isBootstrapped(USER_B.id)).toBe(true);
-    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
-  });
-});
-
 // ── Stale UI fix: onSyncComplete reloads mounted entry hooks ─────────────────
 //
 // Verifies that after auto-sync writes remote data into local storage, the
@@ -369,7 +556,7 @@ describe('useAutoSync: sign-out resets storage mode and phases', () => {
 
 describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () => {
   test('mounted weight and workout entry hooks reflect remote data after auto-sync without manual action', async () => {
-    await setBootstrapped(USER.id);
+    await setLocalDataOwner(USER.id);
 
     const remoteEntry = {
       id: 'w-remote-ui-1',
@@ -433,9 +620,9 @@ describe('useAutoSync + useWeightEntries: UI stays current after auto-sync', () 
       renderer.create(React.createElement(Probe));
     });
 
-    // Flush deeply: isBootstrapped → sync → onSyncComplete → reload →
+    // Flush deeply: owner read → sync → onSyncComplete → reload →
     // loadWeightEntries → setState.
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       // eslint-disable-next-line no-await-in-loop
       await act(async () => { await Promise.resolve(); });
     }

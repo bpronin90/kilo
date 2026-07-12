@@ -970,8 +970,13 @@ synchronized cloud copy, most-recent-edit-wins conflict handling, and that
 account deletion preserves local history. The signed-in Account cloud-sync
 surface now shows whether this device is synced, has pending local changes,
 is actively syncing, or saw the last sync fail, and it surfaces the last
-successful sync time when known. Automatic first-sign-in upload now runs on the
-first sign-in path via `useAutoSync`, while manual Sync Now remains available.
+successful sync time when known. Issue #450 gates first-sign-in bootstrap on a
+single durable local-data owner marker. Unclaimed local history requires upload
+confirmation; history owned by another or unknown account is never uploaded
+automatically and instead offers an explicit start-fresh or deliberate-upload
+choice. Existing single-account installs migrate from the legacy bootstrap
+marker without a prompt or re-upload, and failed ownership writes remain local
+and retryable. Manual Sync Now remains available after ownership is resolved.
 The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
