@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.92.1 - 2026-07-11
+
+- Issue #451: Hardened the durable account export/delete rate limiter against
+  forged `X-Forwarded-For` prefixes by deriving IP buckets from the trusted
+  rightmost forwarding value. Added scheduled global pruning with the correct
+  10-minute export and 1-hour delete windows plus focused pgTAP limiter and
+  retention-boundary coverage, preventing abandoned bucket keys from growing
+  `kilo.rate_limit_hits` without bound.
+
 ## 0.92.0 - 2026-07-11
 
 - Issue #450: Prevented cross-account local-data uploads by replacing the

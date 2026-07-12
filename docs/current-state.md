@@ -994,8 +994,11 @@ surface near export/delete actions, and in More > About Kilo. Issue #328 adds
 conservative durable Edge Function abuse controls: `account-export` allows one
 successful export per signed-in user per 10 minutes plus an IP bucket, and
 `account-delete` allows three delete attempts per signed-in user per hour plus
-an IP bucket. Issue #429 masks internal account export/delete 500 details from
-client responses while preserving server-side console diagnostics. The Account
+an IP bucket. Issue #451 hardens those pre-auth buckets against caller-supplied
+forwarding values by selecting the platform-controlled rightmost value, and a
+scheduled global reaper removes expired export/delete hits independently of
+bucket cardinality. Issue #429 masks internal account export/delete 500 details
+from client responses while preserving server-side console diagnostics. The Account
 screen now gates the configured signed-out form during
 the initial persisted-session restore probe, preventing a transient sign-in form
 flash before a restored session resolves (#365), and it uses the app-shell auth

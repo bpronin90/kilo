@@ -415,7 +415,9 @@ Ordered tasks:
 - Follow-up implementation required:
   - #330: Add privacy/terms links on the signup/auth surface, signed-in Account lifecycle surface, and More > About Kilo. Complete.
   - #329: Enable or explicitly release-defer Supabase Auth CAPTCHA and custom SMTP configuration before open signup.
-  - #328: Add per-user and per-IP throttling to the `account-export` and `account-delete` Edge Functions.
+  - #328: Add per-user and per-IP throttling to the `account-export` and
+    `account-delete` Edge Functions. Complete; #451 hardened the IP derivation
+    and added bounded global cleanup for durable throttle state.
 - Stop condition: no legal claims beyond user-approved copy.
 
 ### Phase 6: Public Web Readiness Review
