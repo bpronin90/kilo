@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.92.5 - 2026-07-12
+
+- Issue #456: Verified and refreshed the architecture and repository-structure
+  documentation against current app boundaries, persistence keys, active
+  modules, entrypoints, and test surfaces.
+
 ## 0.92.4 - 2026-07-12
 
 - Issue #455: Archive completed backend roadmap doc
