@@ -10,7 +10,7 @@
 
 begin;
 
-select plan(10);
+select plan(16);
 
 -- ---------------------------------------------------------------------------
 -- rate_limit_check: requests within limit are admitted
@@ -60,32 +60,76 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- rate_limit_global_prune: removes only expired rows, leaves live ones
+-- rate_limit_global_prune: export-prefix rows pruned after 10-minute window
 -- ---------------------------------------------------------------------------
 
--- Insert a synthetic expired row (older than the 2-hour prune horizon).
+-- Expired: 11 minutes old — past the export window.
 insert into kilo.rate_limit_hits (bucket, occurred_at)
-values ('test:ip:expired', now() - interval '3 hours');
+values ('export:ip:10.0.0.1', now() - interval '11 minutes');
+
+-- Live: 9 minutes old — still inside the export window.
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values ('export:ip:10.0.0.2', now() - interval '9 minutes');
 
 select is(
-  (select count(*)::int from kilo.rate_limit_hits where bucket = 'test:ip:expired'),
-  1,
-  'expired row present before prune'
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'export:ip:10.0.0.1'),
+  1, 'expired export row present before prune'
 );
 
 select kilo.rate_limit_global_prune();
 
 select is(
-  (select count(*)::int from kilo.rate_limit_hits where bucket = 'test:ip:expired'),
-  0,
-  'global prune removed expired row'
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'export:ip:10.0.0.1'),
+  0, 'global prune removed expired export row (past 10-min window)'
+);
+select is(
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'export:ip:10.0.0.2'),
+  1, 'global prune kept live export row (within 10-min window)'
 );
 
--- Live rows for the limited bucket must survive the prune.
+-- ---------------------------------------------------------------------------
+-- rate_limit_global_prune: delete-prefix rows pruned after 1-hour window
+-- ---------------------------------------------------------------------------
+
+-- Expired: 61 minutes old — past the delete window.
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values ('delete:ip:10.0.0.3', now() - interval '61 minutes');
+
+-- Live: 59 minutes old — still inside the delete window.
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values ('delete:ip:10.0.0.4', now() - interval '59 minutes');
+
+select kilo.rate_limit_global_prune();
+
+select is(
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'delete:ip:10.0.0.3'),
+  0, 'global prune removed expired delete row (past 1-hour window)'
+);
+select is(
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'delete:ip:10.0.0.4'),
+  1, 'global prune kept live delete row (within 1-hour window)'
+);
+
+-- ---------------------------------------------------------------------------
+-- rate_limit_global_prune: live check-admitted rows survive prune
+-- ---------------------------------------------------------------------------
 select is(
   (select count(*)::int from kilo.rate_limit_hits where bucket = 'test:ip:1.2.3.4'),
   3,
-  'global prune left live rows untouched'
+  'global prune left live check-admitted rows untouched'
+);
+
+-- ---------------------------------------------------------------------------
+-- rate_limit_global_prune: unknown-prefix fallback uses 2-hour horizon
+-- ---------------------------------------------------------------------------
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values ('unknown:bucket', now() - interval '3 hours');
+
+select kilo.rate_limit_global_prune();
+
+select is(
+  (select count(*)::int from kilo.rate_limit_hits where bucket = 'unknown:bucket'),
+  0, 'global prune removed unknown-prefix row via 2-hour fallback'
 );
 
 select * from finish();

@@ -18,7 +18,13 @@ create extension if not exists pg_cron with schema extensions;
 create index if not exists rate_limit_hits_occurred_idx
   on kilo.rate_limit_hits (occurred_at);
 
--- Global prune: remove all rows older than 2 hours (>= longest window in use).
+-- Global prune: remove each row after its own bucket type's window has elapsed.
+-- Bucket naming convention (see account-export and account-delete index.ts):
+--   export:ip:<ip>      — 10-minute window
+--   export:user:<uuid>  — 10-minute window
+--   delete:ip:<ip>      — 1-hour window
+--   delete:user:<uuid>  — 1-hour window
+-- Any unrecognised prefix falls back to a 2-hour safety cutoff.
 create or replace function kilo.rate_limit_global_prune()
 returns void
 language sql
@@ -26,7 +32,11 @@ security definer
 set search_path = kilo, pg_temp
 as $$
   delete from kilo.rate_limit_hits
-  where occurred_at < now() - interval '2 hours';
+  where occurred_at < case
+    when bucket like 'export:%' then now() - interval '10 minutes'
+    when bucket like 'delete:%' then now() - interval '1 hour'
+    else                             now() - interval '2 hours'
+  end;
 $$;
 
 revoke all on function kilo.rate_limit_global_prune() from public;
