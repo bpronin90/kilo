@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.92.8 - 2026-07-12
+
+- Issue #462: Simplified local issue-routing labels so ownership, area, and type
+  remain required while effort, reasoning, and model labels are used only for
+  behavior-changing exceptions.
+
 ## 0.92.7 - 2026-07-12
 
 - Issue #460: Added GitHub Actions coverage for the mobile Jest suite on every
