@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.7 - 2026-07-12
+
+- Issue #460: Added GitHub Actions coverage for the mobile Jest suite on every
+  pull request and push to `main`, using Node 24 and reproducible npm installs.
+
 ## 0.92.6 - 2026-07-12
 
 - Issue #457: Verified and refreshed the current-state documentation against
