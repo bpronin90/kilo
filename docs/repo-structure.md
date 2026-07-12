@@ -38,7 +38,6 @@ docs/
   current-state.md
   architecture.md
   testing-and-qa.md
-  backend-roadmap.md
   backend-activation.md ← backend activation runbook
   backend-schema.md    ← cloud schema and source-of-truth policy
   ui-design-rules.md   ← adopted UI design rules; companion to design-system-map.md
@@ -58,6 +57,7 @@ docs/
     mvp-v4.5-roadmap.md ← archived MVP4.5 roadmap
     mvp-refine-roadmap.md ← archived MVP-Refine roadmap
     mvp-fatigue-roadmap.md ← archived Session Check-In / Fatigue roadmap
+    backend-roadmap.md ← archived backend / web-first distribution roadmap (executed)
     samples/           ← raw workout log files used during parser development
     browser-prototype/ ← archived frozen browser prototype (Kilo.html, src/, tests/)
 
@@ -191,7 +191,7 @@ npm --prefix mobile test
 | `docs/current-state.md` | Single source of truth for MVP status: what is implemented, known gaps, and the launch prerequisite checklist. Read this first. |
 | `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
-| `docs/backend-roadmap.md` | Active public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
+| `docs/archive/backend-roadmap.md` | Archived public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
 | `docs/backend-activation.md` | Backend activation runbook: env config, schema application, and cloud-mode verification steps. |
 | `docs/backend-schema.md` | Cloud `kilo` schema documentation and source-of-truth policy. |
 | `docs/ui-design-rules.md` | Adopted UI design rules (spacing, alignment, panels, history lists, collapse/filter, analytics hierarchy, anti-patterns). Companion to `docs/design-system-map.md`. |

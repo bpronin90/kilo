@@ -47,7 +47,7 @@ Roadmap status:
   and is also complete.
 - `docs/archive/mvp-v4.5-roadmap.md` tracks the cumulative state of the app
   through the end of the MVP4.5 pass and remains as a reference document.
-- `docs/backend-roadmap.md` is the active public self-serve planning roadmap.
+- `docs/archive/backend-roadmap.md` is the archived public self-serve planning roadmap.
   It sequences the `backend-v1` issue series (#310-#324) for moving from
   local-only personal use to a web-first Supabase product while preserving the
   current note-first workout model and local daily-use path between cards. The
@@ -1015,7 +1015,7 @@ documents live, and enable CAPTCHA before open signup unless a closed-beta
 release explicitly defers the still-pending gates.
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
-`docs/backend-roadmap.md` the remaining cloud work.
+`docs/archive/backend-roadmap.md` the remaining cloud work.
 
 Launch validation must still treat AsyncStorage as the immediate offline cache:
 the Phase 4 cloud paths are user-invokable from the Account screen only when the
