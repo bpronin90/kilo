@@ -59,6 +59,28 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
   const chunkKey = (key, index) => `${key}.chunk.${index}`;
   const countKey = (key) => `${key}.chunks`;
 
+  // Cleanup must not trust the recorded chunk count: the count key can be
+  // absent, malformed, or understate the chunks actually on disk (e.g. after an
+  // interrupted earlier write/remove). Instead, sweep ascending chunk indices
+  // and delete every chunk found, stopping only after a bounded run of
+  // consecutive misses so a small gap (such as a partially completed prior
+  // removal) does not strand the chunks behind it.
+  const SWEEP_MISS_LIMIT = 3;
+  async function sweepChunks(key, startIndex) {
+    let misses = 0;
+    for (let i = startIndex; misses < SWEEP_MISS_LIMIT; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const part = await SecureStore.getItemAsync(chunkKey(key, i));
+      if (part == null) {
+        misses += 1;
+      } else {
+        misses = 0;
+        // eslint-disable-next-line no-await-in-loop
+        await SecureStore.deleteItemAsync(chunkKey(key, i));
+      }
+    }
+  }
+
   return {
     async getItem(key) {
       const countRaw = await SecureStore.getItemAsync(countKey(key));
@@ -78,22 +100,13 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       return value;
     },
     async setItem(key, value) {
-      // Read the previous chunk count (if any) so a write that needs fewer
-      // chunks than the prior value can purge the now-orphaned tail rather
-      // than leaving old token material readable under abandoned chunk keys.
-      const prevCountRaw = await SecureStore.getItemAsync(countKey(key));
-      const prevCount = prevCountRaw != null ? parseInt(prevCountRaw, 10) : NaN;
-      const hasPrevCount = Number.isFinite(prevCount) && prevCount > 0;
-
       const str = String(value);
       if (str.length <= SECURE_STORE_CHUNK_SIZE) {
-        if (hasPrevCount) {
-          for (let i = 0; i < prevCount; i += 1) {
-            // eslint-disable-next-line no-await-in-loop
-            await SecureStore.deleteItemAsync(chunkKey(key, i));
-          }
-        }
         await SecureStore.deleteItemAsync(countKey(key));
+        // Purge every chunk a prior (possibly larger or inconsistently
+        // recorded) value may have left behind, so the stored representation
+        // is exactly the single value written below.
+        await sweepChunks(key, 0);
         await SecureStore.setItemAsync(key, str);
         return;
       }
@@ -106,28 +119,16 @@ export function makeSecureStoreAdapter(secureStore = loadSecureStore()) {
       await SecureStore.setItemAsync(countKey(key), String(count));
       // Remove any stale single-value copy from a prior small write.
       await SecureStore.deleteItemAsync(key);
-      // Purge any chunks left over from a larger previous value that this
-      // write no longer needs.
-      if (hasPrevCount && prevCount > count) {
-        for (let i = count; i < prevCount; i += 1) {
-          // eslint-disable-next-line no-await-in-loop
-          await SecureStore.deleteItemAsync(chunkKey(key, i));
-        }
-      }
+      // Purge any chunks beyond the new count left over from a larger
+      // previous value, regardless of what (if anything) the old count said.
+      await sweepChunks(key, count);
     },
     async removeItem(key) {
-      const countRaw = await SecureStore.getItemAsync(countKey(key));
-      if (countRaw != null) {
-        const count = parseInt(countRaw, 10);
-        if (Number.isFinite(count)) {
-          for (let i = 0; i < count; i += 1) {
-            // eslint-disable-next-line no-await-in-loop
-            await SecureStore.deleteItemAsync(chunkKey(key, i));
-          }
-        }
-        await SecureStore.deleteItemAsync(countKey(key));
-      }
+      await SecureStore.deleteItemAsync(countKey(key));
       await SecureStore.deleteItemAsync(key);
+      // Sweep all chunk indices rather than trusting a recorded count, so no
+      // chunk survives an absent, malformed, or understated count key.
+      await sweepChunks(key, 0);
     },
   };
 }

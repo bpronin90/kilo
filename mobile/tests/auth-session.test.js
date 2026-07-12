@@ -178,6 +178,72 @@ describe('secure store adapter', () => {
     await adapter.removeItem('session');
     expect(fake.store.size).toBe(0);
   });
+
+  test('removeItem purges chunks when the count key is absent', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    fake.store.set('session.chunk.0', 'stale-a');
+    fake.store.set('session.chunk.1', 'stale-b');
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
+
+  test('removeItem purges chunks when the count key is malformed', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    fake.store.set('session.chunks', 'not-a-number');
+    fake.store.set('session.chunk.0', 'stale-a');
+    fake.store.set('session.chunk.1', 'stale-b');
+    fake.store.set('session.chunk.2', 'stale-c');
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
+
+  test('removeItem purges chunks beyond an understated count', async () => {
+    const fake = makeFakeSecureStore();
+    const adapter = makeSecureStoreAdapter(fake);
+    fake.store.set('session.chunks', '1'); // understates the 3 chunks below
+    fake.store.set('session.chunk.0', 'stale-a');
+    fake.store.set('session.chunk.1', 'stale-b');
+    fake.store.set('session.chunk.2', 'stale-c');
+    await adapter.removeItem('session');
+    expect(fake.store.size).toBe(0);
+  });
+
+  test('overwrite with a small value purges chunks despite absent/malformed/understated counts', async () => {
+    for (const countState of [undefined, 'not-a-number', '1']) {
+      const fake = makeFakeSecureStore();
+      const adapter = makeSecureStoreAdapter(fake);
+      if (countState !== undefined) fake.store.set('session.chunks', countState);
+      fake.store.set('session.chunk.0', 'stale-a');
+      fake.store.set('session.chunk.1', 'stale-b');
+      fake.store.set('session.chunk.2', 'stale-c');
+      // eslint-disable-next-line no-await-in-loop
+      await adapter.setItem('session', 'small-value');
+      expect([...fake.store.keys()]).toEqual(['session']);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await adapter.getItem('session')).toBe('small-value');
+    }
+  });
+
+  test('overwrite with a chunked value purges stale tail chunks despite absent/malformed/understated counts', async () => {
+    for (const countState of [undefined, 'not-a-number', '1']) {
+      const fake = makeFakeSecureStore();
+      const adapter = makeSecureStoreAdapter(fake);
+      if (countState !== undefined) fake.store.set('session.chunks', countState);
+      for (let i = 0; i < 5; i += 1) fake.store.set(`session.chunk.${i}`, `stale-${i}`);
+      const value = 'y'.repeat(2500); // 2 chunks
+      // eslint-disable-next-line no-await-in-loop
+      await adapter.setItem('session', value);
+      expect([...fake.store.keys()].sort()).toEqual([
+        'session.chunk.0',
+        'session.chunk.1',
+        'session.chunks',
+      ]);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await adapter.getItem('session')).toBe(value);
+    }
+  });
 });
 
 describe('useAuthSession', () => {
