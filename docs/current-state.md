@@ -257,9 +257,10 @@ The real native app path now has a modular React Native shell:
   by separating the weeks with a standalone `---` line. When present, Log shows
   a persisted manual `Week A`/`Week B` toggle in the current-routine header,
   renders and edits only the active week's text in the editor while preserving
-  the full note on save, and keeps progression continuity shared across both
-  weeks because the underlying analytics still derive from the full note by
-  exercise name.
+  the full note on save, preserves the locally selected week across stale or
+  out-of-order persistence refreshes, and keeps progression continuity shared
+  across both weeks because the underlying analytics still derive from the full
+  note by exercise name.
   Existing saved routines now autosave raw-note edits through the current
   workout-note store with an 800 ms debounce plus an immediate `Done` flush,
   while stale-result guards prevent in-flight saves from overwriting newer

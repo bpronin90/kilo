@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.91.5 - 2026-07-11
+
+- Issue #446: Fixed the current-routine A/B week editor so Week B remains
+  selected through stale or out-of-order persistence refreshes, saves continue
+  targeting the intended week, and Week A behavior remains unchanged.
+
 ## 0.91.4 - 2026-07-11
 
 - Issue #445: Rewrote the Play Store closed-testing guide as a plain-language
