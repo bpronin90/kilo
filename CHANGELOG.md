@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.6 - 2026-07-12
+
+- Issue #457: Verified and refreshed the current-state documentation against
+  shipped feature behavior and canonical module boundaries.
+
 ## 0.92.5 - 2026-07-12
 
 - Issue #456: Verified and refreshed the architecture and repository-structure
