@@ -139,7 +139,9 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
-  shared reactive `useTrackedLifts()` hook consumed by both Log and Analytics
+  separate post-sync reload fanout that re-reads storage for every mounted
+  workout-note and weight-entry hook instance, plus a shared reactive
+  `useTrackedLifts()` hook consumed by both Log and Analytics
 - `mobile/lib/parser.js` ports the canonical MVP parser path into native ES
   modules, now exposes the note-derived analytics contract used by downstream
   native workout analytics work, and centralizes exercise alias resolution in
