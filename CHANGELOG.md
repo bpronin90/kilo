@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.11 - 2026-07-12
+
+- Issue #468: Restore explicit runtime routing labels on every actionable issue
+
+
 ## 0.92.10 - 2026-07-12
 
 - Issue #463: Retired the redundant default-value issue labels so default effort,
