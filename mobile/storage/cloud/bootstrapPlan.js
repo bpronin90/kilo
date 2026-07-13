@@ -111,7 +111,6 @@ function buildUserProfileRow(snapshot, userId) {
     fatigue_multiplier: fatigueMultiplier ?? null,
     tracked_lifts: trackedLifts ?? {},
     ui_state: { log_current_collapsed: !!logCurrentCollapsed },
-    profile_json: null,
     updated_at: new Date().toISOString(),
   };
 

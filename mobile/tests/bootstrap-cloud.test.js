@@ -249,7 +249,7 @@ describe('buildBootstrapPlan mapping', () => {
     expect(profile.ui_state.log_current_collapsed).toBe(true); // kilo_log_current_collapsed
     expect(profile.display_name).toBe('Ben'); // kilo_user_profile promoted
     expect(profile.unit_system).toBe('imperial'); // kilo_user_profile promoted
-    expect(profile.profile_json).toBeNull(); // allowlist: no arbitrary keys leave the device
+    expect(profile).not.toHaveProperty('profile_json'); // allowlist: no arbitrary keys leave the device
     expect(profile.current_deload_note_raw_text).toBe('deload draft'); // kilo_workout_deload_note
     expect(profile.current_deload_note_saved_at).toBe('2026-06-05T00:00:00.000Z');
 
@@ -334,7 +334,7 @@ describe('profile upload allowlist (issue #471)', () => {
     await bootstrapFromLocal(USER_ID, client);
 
     const profile = client.upsertsByTable.user_profile[0];
-    expect(profile.profile_json).toBeNull();
+    expect(profile).not.toHaveProperty('profile_json');
     expect(profile).not.toHaveProperty('age');
     expect(profile).not.toHaveProperty('gender');
     expect(profile).not.toHaveProperty('height_cm');
@@ -355,7 +355,7 @@ describe('profile upload allowlist (issue #471)', () => {
     const profile = client.upsertsByTable.user_profile[0];
     expect(profile.display_name).toBe('Alice');
     expect(profile.unit_system).toBe('metric');
-    expect(profile.profile_json).toBeNull();
+    expect(profile).not.toHaveProperty('profile_json');
   });
 
   it('sets display_name and unit_system to null when absent from profile', async () => {
@@ -367,7 +367,7 @@ describe('profile upload allowlist (issue #471)', () => {
     const profile = client.upsertsByTable.user_profile[0];
     expect(profile.display_name).toBeNull();
     expect(profile.unit_system).toBeNull();
-    expect(profile.profile_json).toBeNull();
+    expect(profile).not.toHaveProperty('profile_json');
   });
 });
 
