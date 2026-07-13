@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.12 - 2026-07-12
+
+- Issue #464: Harden Android release permissions
+
+
 ## 0.92.11 - 2026-07-12
 
 - Issue #468: Restore explicit runtime routing labels on every actionable issue
