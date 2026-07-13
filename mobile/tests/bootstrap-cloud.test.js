@@ -248,7 +248,8 @@ describe('buildBootstrapPlan mapping', () => {
     expect(profile.tracked_lifts).toEqual({ bench: true, squat: true }); // kilo_tracked_lifts
     expect(profile.ui_state.log_current_collapsed).toBe(true); // kilo_log_current_collapsed
     expect(profile.display_name).toBe('Ben'); // kilo_user_profile promoted
-    expect(profile.profile_json).toEqual({ custom: 'x' }); // kilo_user_profile unpromoted
+    expect(profile.unit_system).toBe('imperial'); // kilo_user_profile promoted
+    expect(profile.profile_json).toBeNull(); // allowlist: no arbitrary keys leave the device
     expect(profile.current_deload_note_raw_text).toBe('deload draft'); // kilo_workout_deload_note
     expect(profile.current_deload_note_saved_at).toBe('2026-06-05T00:00:00.000Z');
 
@@ -310,6 +311,63 @@ describe('buildBootstrapPlan mapping', () => {
     const writtenTables = new Set(client.calls.map((c) => c.table));
     expect(writtenTables.has('workout_sessions')).toBe(false);
     expect(writtenTables.has('workout_sets')).toBe(false);
+  });
+});
+
+describe('profile upload allowlist (issue #471)', () => {
+  it('does not include unknown profile keys in the cloud row', async () => {
+    await AsyncStorage.setItem(
+      'kilo_user_profile',
+      JSON.stringify({
+        display_name: 'Test',
+        unit_system: 'metric',
+        age: 35,
+        gender: 'female',
+        height_cm: 170,
+        blood_type: 'A+',
+        __sentinel__: 'should-not-upload',
+        custom: 'x',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const profile = client.upsertsByTable.user_profile[0];
+    expect(profile.profile_json).toBeNull();
+    expect(profile).not.toHaveProperty('age');
+    expect(profile).not.toHaveProperty('gender');
+    expect(profile).not.toHaveProperty('height_cm');
+    expect(profile).not.toHaveProperty('blood_type');
+    expect(profile).not.toHaveProperty('__sentinel__');
+    expect(profile).not.toHaveProperty('custom');
+  });
+
+  it('uploads display_name and unit_system from the local profile', async () => {
+    await AsyncStorage.setItem(
+      'kilo_user_profile',
+      JSON.stringify({ display_name: 'Alice', unit_system: 'metric' })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const profile = client.upsertsByTable.user_profile[0];
+    expect(profile.display_name).toBe('Alice');
+    expect(profile.unit_system).toBe('metric');
+    expect(profile.profile_json).toBeNull();
+  });
+
+  it('sets display_name and unit_system to null when absent from profile', async () => {
+    await AsyncStorage.setItem('kilo_user_profile', JSON.stringify({ custom: 'only-unknown' }));
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const profile = client.upsertsByTable.user_profile[0];
+    expect(profile.display_name).toBeNull();
+    expect(profile.unit_system).toBeNull();
+    expect(profile.profile_json).toBeNull();
   });
 });
 

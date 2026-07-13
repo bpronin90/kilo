@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.92.14 - 2026-07-12
+
+- Issue #471: Replaced wildcard cloud profile uploads with an explicit
+  `display_name` and `unit_system` allowlist, keeping undeclared demographic,
+  health, and arbitrary local profile fields on-device.
+
 ## 0.92.13 - 2026-07-12
 
 - Issue #459: Fixed post-sync Home and Analytics 1K progress divergence by
