@@ -98,6 +98,13 @@ export function useArchivedWeightGoals() {
 let weightListeners = [];
 const notifyWeight = () => safeNotify(weightListeners);
 
+// Reload fan-out. See the equivalent block in workoutNoteHooks.js (#459):
+// reload() is instance-local, so a post-sync reload of one instance leaves every
+// other mounted useWeightEntries() on the pre-sync snapshot. Listeners here are
+// the instances' reload (a storage read), so this cannot re-enter maybeSyncCloud.
+let weightReloadListeners = [];
+export const reloadWeightEntries = () => safeNotify(weightReloadListeners);
+
 export function useWeightEntries() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,10 +129,12 @@ export function useWeightEntries() {
   useEffect(() => {
     refresh();
     weightListeners.push(refresh);
+    weightReloadListeners.push(reload);
     return () => {
       weightListeners = weightListeners.filter(l => l !== refresh);
+      weightReloadListeners = weightReloadListeners.filter(l => l !== reload);
     };
-  }, [refresh]);
+  }, [refresh, reload]);
 
   const add = useCallback(async (entry) => {
     await writeVia('saveWeightEntry', Storage.saveWeightEntry, entry);
