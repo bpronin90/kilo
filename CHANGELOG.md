@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.16 - 2026-07-12
+
+- Issue #472: Align Play Data Safety guidance with the corrected privacy policy
+
+
 ## 0.92.15 - 2026-07-12
 
 - Issue #469: Align Kilo privacy policy and deletion disclosure with observed data flows
