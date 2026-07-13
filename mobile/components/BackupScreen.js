@@ -25,7 +25,7 @@ export function BackupScreen({ onBack, onExport, onImport }) {
       // nature of that payload explicit before it leaves the device.
       await Share.share({ message: result.json });
     } catch (e) {
-      setStatus({ ok: false, message: 'Export failed.' });
+      setStatus({ ok: false, message: e?.message ? `Export failed: ${e.message}` : 'Export failed.' });
     } finally {
       setBusy(false);
     }

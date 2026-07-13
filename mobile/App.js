@@ -227,8 +227,8 @@ export default function App() {
     try {
       const backup = await exportBackup();
       return { ok: true, json: JSON.stringify(backup, null, 2) };
-    } catch {
-      return { ok: false, error: 'Failed to export data.' };
+    } catch (e) {
+      return { ok: false, error: e?.message ? `Export failed: ${e.message}` : 'Export failed.' };
     }
   }, []);
 
