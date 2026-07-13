@@ -5,6 +5,8 @@
 - Issue #468: Restore explicit runtime routing labels on every actionable issue
 
 
+
+- Issue #461: Reconcile reasoning:xhigh label with AGENTS.md reasoning policy
 ## 0.92.10 - 2026-07-12
 
 - Issue #463: Retired the redundant default-value issue labels so default effort,
