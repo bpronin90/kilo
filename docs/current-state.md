@@ -203,7 +203,10 @@ The real native app path now has a modular React Native shell:
   Analytics, so the Home total reflects the latest complete aligned workout
   cycle rather than a sticky per-occurrence PR or a mixed-cycle fallback. All
   dashboard data comes from existing shared derivation functions; no Home-only
-  calculations exist. The success toast is removed from the render
+  calculations exist. After cloud sync, every mounted workout-note subscriber
+  now reloads from storage, keeping Home and Analytics on the same note snapshot
+  so their 1K totals and progress series update together (#459). The success
+  toast is removed from the render
   - Cross-routine alignment fixed (#396): the 1K headline and `1K Progress` graph
     now align lifts per note (`derive1kTotalSeriesFromSectionsList`) before
     concatenating, so unequal per-lift session counts across routines (e.g. a

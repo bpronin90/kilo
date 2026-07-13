@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.92.13 - 2026-07-12
+
+- Issue #459: Fixed post-sync Home and Analytics 1K progress divergence by
+  broadcasting storage reloads to every mounted workout-note subscriber, with
+  regression coverage for cross-screen snapshot freshness and equivalent 1K
+  chart points and totals.
+
 ## 0.92.12 - 2026-07-12
 
 - Issue #464: Harden Android release permissions

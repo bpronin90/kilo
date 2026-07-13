@@ -9,6 +9,18 @@ export const DELOAD_NOTE_PREFIX = 'Deload · ';
 export let workoutNotesListeners = [];
 export const notifyWorkoutNotes = () => safeNotify(workoutNotesListeners);
 
+// Reload fan-out, separate from the notify fan-out above.
+//
+// Every screen holding useWorkoutNotes() keeps its own React state, so an
+// instance-local reload() only refreshes the screen that called it (#459: App
+// reloaded its own instance after a cloud sync, leaving AnalyticsScreen's
+// instance on the pre-sync note set, so Home and Analytics derived their 1K
+// from different data). A sync that lands new rows must re-read EVERY mounted
+// instance. These listeners are the instances' reload — a plain storage read —
+// not refresh, so broadcasting cannot re-enter maybeSyncCloud.
+let workoutNoteReloadListeners = [];
+export const reloadWorkoutNotes = () => safeNotify(workoutNoteReloadListeners);
+
 export function useWorkoutNotes() {
   const [notes, setNotes] = useState([]);
   const [currentId, setCurrentId] = useState(null);
@@ -40,10 +52,12 @@ export function useWorkoutNotes() {
   useEffect(() => {
     refresh();
     workoutNotesListeners.push(refresh);
+    workoutNoteReloadListeners.push(reload);
     return () => {
       workoutNotesListeners = workoutNotesListeners.filter(l => l !== refresh);
+      workoutNoteReloadListeners = workoutNoteReloadListeners.filter(l => l !== reload);
     };
-  }, [refresh]);
+  }, [refresh, reload]);
 
   const currentNote = notes.find(n => n.id === currentId) ?? null;
   const deloadNotes = notes.filter(n => n.title?.startsWith(DELOAD_NOTE_PREFIX));

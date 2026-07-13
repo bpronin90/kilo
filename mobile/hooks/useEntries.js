@@ -84,8 +84,8 @@ export function useCloudSyncStatus() {
 }
 
 export { getNoteSections } from './entries/noteSections';
-export { useWeightGoal, useWeightEntries } from './entries/weightHooks';
-export { useWorkoutNotes } from './entries/workoutNoteHooks';
+export { useWeightGoal, useWeightEntries, reloadWeightEntries } from './entries/weightHooks';
+export { useWorkoutNotes, reloadWorkoutNotes } from './entries/workoutNoteHooks';
 export { useTrackedLifts } from './entries/trackedLiftHooks';
 export { useDeloadNote, useDeloadHistory } from './entries/deloadHooks';
 export { useFeatureToggles } from './entries/featureToggleHooks';

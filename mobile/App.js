@@ -15,7 +15,7 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
-import { useWeightEntries, useWorkoutNotes, useAutoSync } from './hooks/useEntries';
+import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
@@ -80,8 +80,11 @@ export default function App() {
     dismissOwnershipPrompt,
   } = useAutoSync(auth, {
     onSyncComplete() {
-      weightHook.reload();
-      noteHook.reload();
+      // Broadcast, not instance-local: Analytics, Log and Weight each hold their
+      // own useWorkoutNotes()/useWeightEntries() state, and reloading only App's
+      // instances left them rendering the pre-sync data (#459).
+      reloadWeightEntries();
+      reloadWorkoutNotes();
     },
   }) || {};
 
