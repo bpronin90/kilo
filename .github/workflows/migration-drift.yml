@@ -1,0 +1,28 @@
+name: Migration Drift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  migration-drift:
+    name: merged migrations are applied to the live project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The check shells out to psql. Fail here with a clear message rather than
+      # inside the script if the runner image ever drops the client.
+      - name: Verify psql is available
+        run: psql --version
+
+      - name: Check every merged migration is applied
+        env:
+          SUPABASE_MIGRATION_CHECK_URL: ${{ secrets.SUPABASE_MIGRATION_CHECK_URL }}
+        run: node scripts/check-migration-drift.mjs

@@ -194,6 +194,21 @@ GitHub Actions runs this same mobile Jest suite with Node 24 and a reproducible
 `npm ci` install on every pull request and every push to `main` via
 `.github/workflows/test.yml`.
 
+GitHub Actions also runs the migration drift check on every pull request and
+every push to `main` via `.github/workflows/migration-drift.yml`. The check uses
+the least-privilege `SUPABASE_MIGRATION_CHECK_URL` repository secret to compare
+the names of migrations in `supabase/migrations/` with the live
+`supabase_migrations.schema_migrations` ledger. Run the same check locally with:
+
+```sh
+SUPABASE_MIGRATION_CHECK_URL=postgresql://... npm run check:migrations
+```
+
+The URL must use the session pooler and the read-only `migration_check` role.
+Missing repo migrations fail the check; extra live migrations are allowed
+because the Supabase project is shared with another app. Missing credentials or
+database connection failures also fail rather than reporting a false pass.
+
 For the crash reporter specifically, the narrow bootstrap verification is:
 
 ```sh

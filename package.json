@@ -1,7 +1,7 @@
 {
   "name": "kilo",
   "private": true,
-  "version": "0.92.16",
+  "version": "0.92.17",
   "scripts": {
     "mobile:start": "npm --prefix mobile start",
     "mobile:start:tunnel": "npm --prefix mobile run start:tunnel",
@@ -10,6 +10,7 @@
     "web:export": "npm --prefix mobile run export:web",
     "web:serve": "npm --prefix mobile run serve:web",
     "web:smoke": "npm --prefix mobile run smoke:web",
-    "audit": "npm audit --audit-level=high"
+    "audit": "npm audit --audit-level=high",
+    "check:migrations": "node scripts/check-migration-drift.mjs"
   }
 }

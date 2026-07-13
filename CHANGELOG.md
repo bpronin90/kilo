@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.92.17 - 2026-07-13
+
+- Issue #473: Added a fail-closed GitHub Actions check that detects Kilo
+  migrations merged into the repository but missing from the live shared
+  Supabase project, using name-based comparison and a least-privilege session
+  pooler credential.
+
 ## 0.92.16 - 2026-07-12
 
 - Issue #472: Align Play Data Safety guidance with the corrected privacy policy
