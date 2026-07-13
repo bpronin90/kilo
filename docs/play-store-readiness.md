@@ -30,15 +30,24 @@ Google requires personal developer accounts to complete a closed test before app
 | Policy unfilled template blanks | done | Resolved by #469: policy rewritten to match observed data flows |
 
 ### Data Safety Form
-Declare under **Health & Fitness → Health info** for weight/body data, plus **Personal info → Email address** for auth identifiers.
+The form must agree with the published privacy policy, which #469 aligned to the observed data flows. All collection below is optional: Kilo is fully usable without an account, and cloud sync is opt-in.
 
 | Item | Status | Notes |
 |---|---|---|
 | Data safety form submitted | user-action-pending | |
-| Health info (weight/body) declared | user-action-pending | Collected; encrypted in transit |
-| Email/auth identifiers declared | user-action-pending | Collected; encrypted in transit |
+| Email address declared | user-action-pending | Personal info → Email address; account only |
+| User ID declared | user-action-pending | Personal info → User IDs (Kilo account user ID) |
+| Name declared | user-action-pending | Personal info → Name (`display_name`) |
+| Health info declared | user-action-pending | Health & Fitness → Health info: weight entries, weight goal, archived goals |
+| Fitness info declared | user-action-pending | Health & Fitness → Fitness info: workout notes, deload and fatigue history |
+| Synced preferences/toggles declared | user-action-pending | `user_profile` and `feature_toggles` rows: units, tracked lifts, workout-display state, fatigue/deload settings |
+| Crash logs / diagnostics declared | user-action-pending | App info and performance; applies only if the release build ships `EXPO_PUBLIC_SENTRY_DSN`. Sentry runs with `sendDefaultPii: false` |
+| Password credential treatment confirmed | user-action-pending | Email/password sign-in submits the credential to Supabase Auth; Kilo stores no plaintext password. Confirm the current Play data-type list before declaring or omitting a category |
+| IP rate-limit records treatment confirmed | user-action-pending | IP and user-ID rows persist in `kilo.rate_limit_hits` (10 min export, 1 h delete; cleanup every 30 min), so the ephemeral-processing exemption may not apply |
+| No device/install ID collected | done | The per-install sync `client_id` never leaves the device; the `transport.js` upsert whitelist strips it and no `kilo` table stores it |
+| Collection is optional (no account required) | done | Local-only use requires no signup |
 | Data deletion option declared | done | In-app deletion via account-delete Edge Function (#322); web deletion-request path on privacy page |
-| "Encrypted in transit" checked | user-action-pending | True for all Supabase-backed data |
+| "Encrypted in transit" checked | user-action-pending | True for all Supabase-backed data (HTTPS/TLS) |
 
 ### Health Apps Declaration
 | Item | Status |
