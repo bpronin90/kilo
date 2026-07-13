@@ -27,7 +27,7 @@ Google requires personal developer accounts to complete a closed test before app
 |---|---|---|
 | Privacy policy URL hosted | done | `https://bpronin90.github.io/privacy.html` |
 | URL entered in Play Console | user-action-pending | |
-| Policy unfilled template blanks | blocked | Tracked separately; not in scope here |
+| Policy unfilled template blanks | done | Resolved by #469: policy rewritten to match observed data flows |
 
 ### Data Safety Form
 Declare under **Health & Fitness → Health info** for weight/body data, plus **Personal info → Email address** for auth identifiers.

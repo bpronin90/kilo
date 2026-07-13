@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.15 - 2026-07-12
+
+- Issue #469: Align Kilo privacy policy and deletion disclosure with observed data flows
+
+
 ## 0.92.14 - 2026-07-12
 
 - Issue #471: Replaced wildcard cloud profile uploads with an explicit
