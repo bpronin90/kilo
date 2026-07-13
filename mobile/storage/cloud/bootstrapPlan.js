@@ -101,13 +101,7 @@ function buildUserProfileRow(snapshot, userId) {
     deloadNote,
   } = snapshot;
 
-  const PROMOTED = new Set(['display_name', 'unit_system', 'saved_at']);
   const profile = userProfile || {};
-
-  const profileJson = {};
-  for (const [k, v] of Object.entries(profile)) {
-    if (!PROMOTED.has(k)) profileJson[k] = v;
-  }
 
   const row = {
     user_id: userId,
@@ -117,7 +111,7 @@ function buildUserProfileRow(snapshot, userId) {
     fatigue_multiplier: fatigueMultiplier ?? null,
     tracked_lifts: trackedLifts ?? {},
     ui_state: { log_current_collapsed: !!logCurrentCollapsed },
-    profile_json: Object.keys(profileJson).length ? profileJson : null,
+    profile_json: null,
     updated_at: new Date().toISOString(),
   };
 
