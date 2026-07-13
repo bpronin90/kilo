@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.18 - 2026-07-13
+
+- Issue #474: Removed the unread `kilo.user_profile.profile_json` cloud payload
+  and database column so undeclared local profile data cannot refill it.
+
 ## 0.92.17 - 2026-07-13
 
 - Issue #473: Added a fail-closed GitHub Actions check that detects Kilo

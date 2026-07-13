@@ -362,8 +362,8 @@ device history. The one-time migration derives ownership from legacy
 and marker persistence both succeed.
 
 Cloud bootstrap allowlists `display_name` and `unit_system` from
-`kilo_user_profile`; all other local profile fields remain on-device, and the
-Supabase `user_profile.profile_json` payload is `null`.
+`kilo_user_profile`; all other local profile fields remain on-device. The
+Supabase `user_profile` schema has no catch-all profile payload column.
 
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving
