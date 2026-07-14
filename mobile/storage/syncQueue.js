@@ -28,15 +28,34 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const CLIENT_ID_KEY = 'kilo_sync_client_id';
 const DIRTY_KEY_PREFIX = 'kilo_sync_dirty_';
 const CURSOR_KEY_PREFIX = 'kilo_sync_cursor_';
+const SNAPSHOT_KEY_PREFIX = 'kilo_sync_snapshot_';
 
 // The roadmap tables this engine syncs. Weight entries and workout notes are the
 // Task 11 acceptance targets; archived_weight_goals was added in issue #372.
-// All are keyed by stable record id.
+// The last four were pushed once at bootstrap and never again until issue #489
+// routed them through the ongoing sync loop.
+//
+// Two shapes exist in the `kilo` schema:
+//   - COLLECTION tables key on (user_id, id): weight_entries, workout_notes,
+//     archived_weight_goals, deload_history.
+//   - SINGLETON tables key on user_id alone and have NO `id` column:
+//     user_profile, feature_toggles, weight_goal. The merge machinery below is
+//     keyed by id, so a pulled singleton row is given the synthetic id
+//     `SINGLETON_SYNC_ID` locally; the cloud upsert whitelist omits `id`, so the
+//     synthetic key is never sent to a column that does not exist.
 export const SYNC_TABLES = Object.freeze({
   WEIGHT_ENTRIES: 'weight_entries',
   WORKOUT_NOTES: 'workout_notes',
   ARCHIVED_WEIGHT_GOALS: 'archived_weight_goals',
+  USER_PROFILE: 'user_profile',
+  FEATURE_TOGGLES: 'feature_toggles',
+  WEIGHT_GOAL: 'weight_goal',
+  DELOAD_HISTORY: 'deload_history',
 });
+
+// Synthetic local id for the one row a singleton table can hold. Stable across
+// devices, so LWW merges the same logical row everywhere.
+export const SINGLETON_SYNC_ID = 'self';
 
 // Canonical workout-note derived fields. These are a recomputable cache of
 // `raw_text`; a difference in only these fields is never a user-facing conflict.
@@ -158,13 +177,29 @@ export function isTombstone(record) {
   return Boolean(record && record.deleted_at);
 }
 
+// True for a record that came back from the server. `client_id` is not a stored
+// column (transport.js drops it from every upsert), so its ABSENCE is what marks
+// a row as the server's copy rather than a local one. Used by the LWW tie-break.
+export function isServerRow(record) {
+  return Boolean(record) && !record.client_id;
+}
+
 // ── deterministic last-write-wins ──────────────────────────────────────────────
 
 // Compare two versions of the same record id. Returns the winner.
 //   1. Newer `updated_at` wins.
-//   2. On an exact `updated_at` tie, the lexicographically greater `client_id`
-//      wins. This is arbitrary but deterministic and identical on every device,
-//      so all devices converge on the same survivor.
+//   2. On an exact `updated_at` tie:
+//      a. A SERVER row beats a local one. `client_id` is not a stored column —
+//         `transport.js` drops it from every upsert — so a row that came back
+//         from the server never carries one, and its absence is what identifies
+//         it. Preferring the server row is what makes a tie CONVERGE: every
+//         device sees the same server row, so every device picks the same
+//         survivor. Preferring the local row instead would have each device keep
+//         its own copy and quietly diverge — which is what the old rule did,
+//         because `(a.client_id || '') >= (b.client_id || '')` always favours the
+//         side that has a client_id, i.e. the local one.
+//      b. Between two local rows, the lexicographically greater `client_id`
+//         wins: arbitrary, but deterministic and identical on every device.
 // A tombstone does not get special precedence; it competes on `updated_at` like
 // any other write, so a later edit can revive a record and a later delete wins
 // over an earlier edit. Per-device monotonic stamping (see stampWrite) keeps a
@@ -179,8 +214,11 @@ export function pickWinner(a, b) {
   if (ub > ua) return b;
   const ca = a.client_id || '';
   const cb = b.client_id || '';
-  if (ca >= cb) return a;
-  return b;
+  if (ca === cb) return a;
+  // Whichever side lacks a client_id is the server's copy; it wins the tie.
+  if (!ca) return a;
+  if (!cb) return b;
+  return ca > cb ? a : b;
 }
 
 // Resolve a single id's local vs remote versions. Handles the derived-JSON
@@ -337,19 +375,46 @@ export async function syncTable({
   // 1. Pull changed rows since the last cursor.
   const remote = (await transport.pull(table, cursor)) || [];
 
-  // 2. Merge remote into the local cache via LWW (+ derived recompute).
+  // 2. Collect what is awaiting upload BEFORE merging. These are local writes
+  //    and tombstones that have never reached the server.
+  //
+  //    (writeLocal may DEFER new workout-note tombstones rather than enqueueing
+  //    them — see createTableIo — so they are not in this set and ride the
+  //    follow-up pass sync() runs for them. Reading the queue here is therefore
+  //    equivalent to reading it after writeLocal, and lets the merge below see
+  //    which ids have local intent.)
+  const dirty = await getDirtyRecords(table);
+  const dirtyIds = new Set(dirty.map((d) => d.id));
+
+  // 3. Merge remote into the local cache via LWW (+ derived recompute) — but a
+  //    row with a pending local edit is NOT put to a vote against its remote
+  //    counterpart.
+  //
+  //    A local record carries a DEVICE-clock `updated_at`; `transport.push`
+  //    strips `updated_at` so the server trigger assigns the authoritative one.
+  //    The two are from different clocks and are not comparable. Running them
+  //    through pickWinner meant a device whose clock lagged the server lost:
+  //    `merged.get(id)` returned the REMOTE row, which was then pushed in place
+  //    of the pending local write and cleared from the dirty queue.
+  //
+  //    For a tombstone that means a DELETE never reaches the cloud and the row
+  //    resurrects on the next pull. This is the same defect fixed in
+  //    syncDiffTable; it lives here too, on the path that carries weight
+  //    entries and workout notes.
+  //
+  //    "Last write to REACH the server wins" — so arrival decides, not a guess
+  //    made on the client first. A pending row is always submitted; the server
+  //    stamps it on arrival, necessarily later than the row just pulled.
   const localList = (await readLocal()) || [];
-  const merged = mergeRecords(localList, remote, { table, recomputeDerived });
+  const contested = remote.filter((r) => !dirtyIds.has(r.id));
+  const merged = mergeRecords(localList, contested, { table, recomputeDerived });
   const mergedList = Array.from(merged.values());
   await writeLocal(mergedList);
 
-  // 3. Push dirty local records (live writes and tombstones together). A delete
+  // 4. Push dirty local records (live writes and tombstones together). A delete
   //    rides this same push as a tombstone, so it always reaches the cloud
   //    before any physical deletion happens locally.
-  const dirty = await getDirtyRecords(table);
   if (dirty.length > 0) {
-    // Push the post-merge version of each dirty id so a remote write that won
-    // the merge is not clobbered by a stale local snapshot.
     const toPush = dirty.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
     await clearDirty(
@@ -358,8 +423,10 @@ export async function syncTable({
     );
   }
 
-  // 4. Advance the cursor only after a successful push, covering both pulled
+  // 5. Advance the cursor only after a successful push, covering both pulled
   //    and pushed rows so the next pass starts past everything we've reconciled.
+  //    This spans the FULL remote set, including rows excluded from the merge —
+  //    they were still pulled, and the next pass must start past them.
   const advanced = maxUpdatedAt([...remote, ...dirty], cursor);
   if (advanced && advanced !== cursor) {
     await setCursor(table, advanced);
@@ -370,6 +437,314 @@ export async function syncTable({
     clientId,
     pulled: remote.length,
     pushed: dirty.length,
+    records: mergedList,
+  };
+}
+
+// ── diff-based dirty detection (issue #489) ────────────────────────────────────
+//
+// The three original tables mark records dirty at write time (`enqueueDirty`).
+// The four tables added in #489 (`user_profile`, `feature_toggles`,
+// `weight_goal`, `deload_history`) are not written through a single record
+// store — they are assembled from a spread of AsyncStorage keys touched by many
+// setters across several modules. Hooking every setter would mean editing
+// modules well outside this issue's scope, so these tables detect local changes
+// by DIFFING live local state against a persisted "last synced" snapshot
+// (`kilo_sync_snapshot_<table>`).
+//
+// THE CONVERGENCE RULE for these four tables, stated plainly:
+//
+//     Last write to REACH THE SERVER wins, per ROW; exact `updated_at` ties
+//     break by lexicographically greater `client_id`.
+//
+// Two consequences follow, and both are deliberate:
+//
+//   1. SYNC-TIME, NOT EDIT-TIME ordering. A diff-detected change is stamped by
+//      `stampWrite` when the sync pass runs, not when the user made the edit.
+//      A device that edits early and syncs late loses to a device that edits
+//      late and syncs early.
+//
+//   2. ROW-LEVEL, NOT FIELD-LEVEL resolution. `user_profile`, `feature_toggles`,
+//      and `weight_goal` are each a SINGLE cloud row, so the winning device's
+//      whole row wins — including fields it never touched. If device A changes
+//      the unit system and device B concurrently changes the fatigue multiplier,
+//      the row that syncs last carries its own value for BOTH fields and the
+//      loser's independent edit is overwritten. (A 3-way field-level merge
+//      against the snapshot would preserve both; that is deliberately not done
+//      here — #489 asked for an explicit last-writer-wins rule for the singleton
+//      rows, not a merge strategy.)
+//
+// It is not edit-time ordering and it is not a field merge, but it IS fully
+// deterministic — `pickWinner` is a total order and every device runs it
+// identically — so all devices converge on the same survivor, which is what the
+// convergence criteria deferred by #481/#482/#483 require.
+
+function snapshotKey(table) {
+  return `${SNAPSHOT_KEY_PREFIX}${table}`;
+}
+
+// The last state we agreed with the server on for a diff-tracked table, stored
+// as a list of sync records (live rows AND tombstones). `null` means this device
+// has never completed a sync pass for the table.
+export async function getSyncSnapshot(table) {
+  try {
+    const raw = await AsyncStorage.getItem(snapshotKey(table));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setSyncSnapshot(table, records) {
+  await AsyncStorage.setItem(snapshotKey(table), JSON.stringify(records || []));
+}
+
+// Key-order-independent structural stringify, so a jsonb column that round-trips
+// through Postgres with reordered keys is not misread as a local edit (which
+// would re-stamp the record every pass and let this device win LWW forever).
+export function stableStringify(value) {
+  if (value === undefined || value === null) return 'null';
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+}
+
+// Normalize a field before comparison. Postgres round-trips change the *spelling*
+// of a value without changing the value: `numeric` may come back as a string,
+// and `timestamptz` comes back as `+00:00` where the client wrote `Z`. Comparing
+// raw spellings would mark such a record permanently dirty.
+function normalizeForCompare(value, kind) {
+  if (value === undefined || value === null) return null;
+  if (kind === 'number') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (kind === 'timestamp') {
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? value : t;
+  }
+  return value;
+}
+
+// True when two records agree on every synced payload field. O(fields).
+export function samePayload(a, b, fields, fieldKinds = {}) {
+  for (const field of fields) {
+    const av = normalizeForCompare(a ? a[field] : null, fieldKinds[field]);
+    const bv = normalizeForCompare(b ? b[field] : null, fieldKinds[field]);
+    if (stableStringify(av) !== stableStringify(bv)) return false;
+  }
+  return true;
+}
+
+// Compare live local records against the snapshot baseline and produce (a) the
+// stamped local record list the LWW merge consumes and (b) the records that
+// changed locally and must be pushed. Pure; the caller persists the results.
+//
+// `seeded` is true when no snapshot exists yet and the baseline was seeded from
+// the remote rows instead — i.e. this is the first-ever reconciliation on this
+// device, so there is no evidence of what changed locally. Three rules apply
+// only on a seeded pass, and all three exist to stop a device from claiming
+// authorship of data it never wrote:
+//
+//   1. Never infer a delete. A baseline row missing from local state has simply
+//      never been downloaded (a clean install has an empty local table and a
+//      full remote one), not been deleted.
+//   2. Let a remote tombstone stand rather than reviving it from local state
+//      that predates sync.
+//   3. `isEmptyLocal` (singletons only): a singleton row ALWAYS exists locally,
+//      because it is assembled from storage keys that fall back to defaults. So
+//      unlike a collection row, "missing" is not available as a signal, and a
+//      clean install would otherwise look like a user who had deliberately
+//      cleared every field — stamping empty defaults at `now` and clobbering the
+//      authoring device's cloud row. When local state carries no user content at
+//      all, adopt the cloud row instead of overwriting it. A device with any real
+//      content is never "empty", so its data still wins and still repairs a stale
+//      cloud copy.
+export function diffAgainstBaseline({
+  current,
+  baseline,
+  clientId,
+  payloadFields,
+  fieldKinds,
+  allowDelete = false,
+  seeded = false,
+  isEmptyLocal,
+}) {
+  const baselineById = new Map();
+  for (const rec of baseline || []) {
+    if (rec && rec.id != null) baselineById.set(rec.id, rec);
+  }
+
+  const localList = [];
+  const dirty = [];
+  const seen = new Set();
+
+  for (const rec of current || []) {
+    if (!rec || rec.id == null) continue;
+    seen.add(rec.id);
+    const base = baselineById.get(rec.id);
+
+    if (base && isTombstone(base)) {
+      // First reconciliation: adopt a delete we have never seen rather than
+      // resurrecting the record from local state that predates sync.
+      if (seeded) {
+        localList.push(base);
+        continue;
+      }
+      // Otherwise the record genuinely came back locally after a synced delete
+      // (e.g. a new weight goal set after the old one was cleared). stampWrite
+      // clears `deleted_at`, so this is an explicit, ordered revive.
+      const revived = stampWrite({ ...base, ...rec }, clientId);
+      localList.push(revived);
+      dirty.push(revived);
+      continue;
+    }
+
+    if (seeded && base && typeof isEmptyLocal === 'function' && isEmptyLocal(rec)) {
+      // Rule 3 above: local state holds nothing the user actually authored, so
+      // adopt the cloud row rather than stamping defaults as a fresh local write.
+      localList.push(base);
+      continue;
+    }
+
+    if (base && samePayload(rec, base, payloadFields, fieldKinds)) {
+      // Unchanged: keep the baseline's sync metadata so we do not re-stamp (and
+      // therefore do not spuriously win LWW against another device's real edit).
+      localList.push({ ...base, ...rec });
+      continue;
+    }
+
+    const stamped = stampWrite({ ...(base || {}), ...rec }, clientId);
+    localList.push(stamped);
+    dirty.push(stamped);
+  }
+
+  for (const [id, base] of baselineById) {
+    if (seen.has(id)) continue;
+    if (isTombstone(base) || !allowDelete || seeded) {
+      // Carry the row unchanged: an already-synced tombstone (so it never
+      // resurrects), a table that cannot delete, or a seeded baseline row that
+      // is simply not downloaded yet.
+      localList.push(base);
+      continue;
+    }
+    const tombstone = stampTombstone({ ...base }, clientId);
+    localList.push(tombstone);
+    dirty.push(tombstone);
+  }
+
+  return { localList, dirty };
+}
+
+// One full sync pass for a diff-tracked table. Same loop shape as `syncTable`
+// (pull -> merge -> push dirty -> advance cursor only after a successful push)
+// and the same LWW primitives; the only difference is where "dirty" comes from.
+//
+//   buildLocal()  -> Promise<Array<record>>  live local state, payload fields + id
+//   applyMerged(list) -> Promise<void>       write the merged winners back into
+//                                            local domain storage (tombstoned
+//                                            rows removed, unsynced local fields
+//                                            preserved)
+export async function syncDiffTable({
+  table,
+  transport,
+  buildLocal,
+  applyMerged,
+  payloadFields,
+  fieldKinds,
+  allowDelete = false,
+  isEmptyLocal,
+}) {
+  const clientId = await getClientId();
+  const cursor = await getCursor(table);
+
+  // 1. Pull changed rows since the last cursor.
+  const remote = (await transport.pull(table, cursor)) || [];
+
+  // 2. Diff live local state against the last-synced snapshot. With no snapshot
+  //    (first pass on this device) seed the baseline from the remote rows, so
+  //    local state that already agrees with the cloud is not misread as a fresh
+  //    local edit — that would re-stamp it at `now` and let a clean install that
+  //    merely hydrated the cloud clobber another device's real data.
+  const current = (await buildLocal()) || [];
+  const persisted = await getSyncSnapshot(table);
+  const seeded = persisted == null;
+  const { localList, dirty } = diffAgainstBaseline({
+    current,
+    baseline: persisted || remote,
+    clientId,
+    payloadFields,
+    fieldKinds,
+    allowDelete,
+    seeded,
+    isEmptyLocal,
+  });
+
+  for (const rec of dirty) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueDirty(table, rec);
+  }
+
+  // 3. Collect everything awaiting upload BEFORE the merge: this pass's diffs
+  //    plus anything left over from a previously failed push. Both are genuine
+  //    local edits that have never reached the server.
+  const pending = await getDirtyRecords(table);
+  const pendingIds = new Set(pending.map((d) => d.id));
+
+  // 4. Merge remote into the diffed local list — but a row with a pending local
+  //    edit is NOT put to a vote against its remote counterpart.
+  //
+  //    A local record is stamped with the DEVICE clock, while `transport.push`
+  //    deliberately strips `updated_at` so the DB trigger assigns the
+  //    authoritative one. The two timestamps therefore come from different
+  //    clocks and are not comparable. Running them through pickWinner meant a
+  //    device whose clock merely lagged the server lost the comparison, so the
+  //    remote row became the "winner", got written back over the user's edit in
+  //    applyMerged, was pushed in place of it, and was then cleared from the
+  //    dirty queue — silently discarding the edit and never retrying it.
+  //
+  //    The rule is "last write to REACH THE SERVER wins", so arrival at the
+  //    server is what decides — not a guess made on the client beforehand. A
+  //    pending edit is always submitted; the server stamps it on arrival, which
+  //    is necessarily later than the row we just pulled, so it wins there. The
+  //    client never needs its clock to agree with the server's.
+  //
+  //    This gates on the DIFF, not on the clock: with no local edit there is
+  //    nothing pending, remote applies normally, and a second pass pushes
+  //    nothing. Idempotency is unaffected.
+  const contested = remote.filter((r) => !pendingIds.has(r.id));
+  const merged = mergeRecords(localList, contested, { table });
+  const mergedList = Array.from(merged.values());
+  await applyMerged(mergedList);
+  await setSyncSnapshot(table, mergedList);
+
+  // 5. Push the pending edits. merged.get() now returns the local record for
+  //    these ids, so the user's edit is what actually goes up.
+  if (pending.length > 0) {
+    const toPush = pending.map((d) => merged.get(d.id) || d);
+    await transport.push(table, toPush);
+    await clearDirty(
+      table,
+      pending.map((d) => d.id)
+    );
+  }
+
+  // 6. Advance the cursor only after a successful push. This spans the FULL
+  //    remote set, including rows excluded from the merge above — they were
+  //    still pulled, and the next pass must start past them.
+  const advanced = maxUpdatedAt([...remote, ...pending], cursor);
+  if (advanced && advanced !== cursor) {
+    await setCursor(table, advanced);
+  }
+
+  return {
+    table,
+    clientId,
+    pulled: remote.length,
+    pushed: pending.length,
     records: mergedList,
   };
 }

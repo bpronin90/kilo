@@ -980,7 +980,17 @@ implemented too: a transport-agnostic last-write-wins engine with per-install
 `client_id`, monotonic `updated_at` stamping, persisted per-table dirty queues
 and pull cursors, tombstone-first deletes, and derived-JSON recompute, wired
 behind the cloud adapter so cloud-mode reads/writes stamp and enqueue and
-reconcile on reconnect. The Task 12 (#321) recovery UX now surfaces this, and
+reconcile on reconnect. Issue #489 extends that ongoing path beyond weight
+entries, workout notes, and archived goals to the allowlisted user profile and
+current-routine state, feature toggles, active weight goal, and deload history,
+so all seven cloud tables push post-bootstrap changes and restore onto a clean
+install. Pending local changes are submitted before conflict resolution and
+receive server-authored timestamps on arrival, avoiding device-clock-skew data
+loss; exact timestamp ties converge on the shared server row, while local-only
+ties retain the stable per-install `client_id` rule. Snapshot-based dirty
+detection, idempotent passes, and tombstones prevent repeated writes,
+duplicates, and deleted-record resurrection. The Task 12 (#321) recovery UX
+now surfaces this, and
 issue #360 replaces its implementation jargon with a user-facing cloud model:
 the signed-in Account screen offers Upload Local History for the one-time local
 upload and Sync Now for bidirectional reconciliation, with descriptions and

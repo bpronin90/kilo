@@ -89,6 +89,36 @@ export function synthesizeSessionsNote(sessions) {
   return lines.join('\n');
 }
 
+// ── shared upload allowlists (issues #471/#475) ─────────────────────────────
+//
+// Exported so the ongoing sync path (storage/cloud/syncAdapter.js, issue #489)
+// promotes exactly the same fields bootstrap does. Keeping one definition
+// prevents the two paths from drifting into uploading different column sets.
+
+// The only fields the local weight-goal object legitimately promotes to the
+// cloud `weight_goal` row. Production audit (2026-07-13) found goal_json empty
+// on every row, so nothing else is forwarded — an unknown key added to the local
+// goal object must not upload silently via an Object.entries catch-all.
+export const WEIGHT_GOAL_SYNC_FIELDS = Object.freeze([
+  'target_weight',
+  'target_date',
+  'start_weight',
+  'start_date',
+  'goal_json',
+  'saved_at',
+]);
+
+// The fitness metadata the app legitimately carries in `deload_history.record_json`,
+// per the production audit (2026-07-13) of the live deload_history row. Any other
+// local key is dropped instead of uploaded.
+export const DELOAD_RECORD_JSON_FIELDS = Object.freeze([
+  'completed_at',
+  'deload_session_ordinal',
+  'generated_at',
+  'note_id',
+  'session_count',
+]);
+
 // ── payload builders (pure) ─────────────────────────────────────────────────
 
 function buildUserProfileRow(snapshot, userId) {
@@ -152,21 +182,15 @@ function buildWeightEntryRows(snapshot, userId) {
 function buildWeightGoalRow(snapshot, userId) {
   const g = snapshot.weightGoal;
   if (!g) return null;
-  // Explicit allowlist (issue #475): target_weight, target_date, start_weight,
-  // start_date, and saved_at are the only fields the local weight-goal object
-  // legitimately promotes. Production audit (2026-07-13) found goal_json empty
-  // on every row, so no further key is forwarded — an unknown key added to the
-  // local goal object must not upload silently via an Object.entries catch-all.
-  return {
-    user_id: userId,
-    target_weight: g.target_weight ?? null,
-    target_date: g.target_date ?? null,
-    start_weight: g.start_weight ?? null,
-    start_date: g.start_date ?? null,
-    goal_json: null,
-    saved_at: g.saved_at ?? null,
-    updated_at: new Date().toISOString(),
-  };
+  // Explicit allowlist (issue #475): see WEIGHT_GOAL_SYNC_FIELDS above.
+  const row = { user_id: userId, updated_at: new Date().toISOString() };
+  for (const field of WEIGHT_GOAL_SYNC_FIELDS) {
+    row[field] = g[field] ?? null;
+  }
+  // goal_json has never carried anything in production; bootstrap keeps writing
+  // it as null rather than promoting whatever a local goal object happens to hold.
+  row.goal_json = null;
+  return row;
 }
 
 function buildWorkoutNoteRows(snapshot, userId) {
@@ -261,31 +285,29 @@ function buildWorkoutNoteRows(snapshot, userId) {
   return [...byId.values()];
 }
 
+// Project one local deload-history record onto its cloud `record_json` payload.
+// Shared with the ongoing sync path so both promote the same keys (issue #489).
+export function buildDeloadRecordJson(record) {
+  const recordJson = {};
+  for (const key of DELOAD_RECORD_JSON_FIELDS) {
+    if (record[key] !== undefined) recordJson[key] = record[key];
+  }
+  return Object.keys(recordJson).length ? recordJson : null;
+}
+
 function buildDeloadHistoryRows(snapshot, userId) {
   const now = new Date().toISOString();
   // Explicit allowlist (issue #475): id, date, raw_text, and saved_at are
-  // promoted to named columns. The remaining keys below are the fitness
-  // metadata the app legitimately carries in record_json, per the production
-  // audit (2026-07-13) of the live deload_history row. Any other local key is
-  // dropped instead of uploaded — no Object.entries catch-all.
-  const JSON_ALLOWLIST = [
-    'completed_at',
-    'deload_session_ordinal',
-    'generated_at',
-    'note_id',
-    'session_count',
-  ];
+  // promoted to named columns; everything else must go through
+  // DELOAD_RECORD_JSON_FIELDS. No Object.entries catch-all.
   return (snapshot.deloadHistory || []).map((r) => {
-    const recordJson = {};
-    for (const k of JSON_ALLOWLIST) {
-      if (r[k] !== undefined) recordJson[k] = r[k];
-    }
+    const recordJson = buildDeloadRecordJson(r);
     return {
       user_id: userId,
       id: r.id,
       date: r.date ?? null,
       raw_text: r.raw_text ?? null,
-      record_json: Object.keys(recordJson).length ? recordJson : null,
+      record_json: recordJson,
       saved_at: r.saved_at ?? null,
       updated_at: now,
     };

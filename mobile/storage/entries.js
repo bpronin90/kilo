@@ -74,6 +74,7 @@ export {
   exportBackup,
   buildCloudExport,
   importBackup,
+  hydrateProfileFromCloud,
 } from './entries/backupImport';
 
 export {

@@ -28,6 +28,7 @@ import {
   enqueueDirty,
   getClientId,
   SYNC_TABLES,
+  SINGLETON_SYNC_ID,
 } from '../storage/syncQueue';
 
 import React from 'react';
@@ -44,13 +45,42 @@ jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
 //
 // Models a remote keyed by (table, id). `online` gates connectivity so we can
 // simulate edits made while offline that only push after "reconnect".
+// The three tables whose primary key is `user_id` alone. They have NO `id`
+// column, so a row pulled from the real database never carries one — the fake
+// strips `id` on pull to model that faithfully, and the sync engine must
+// synthesize `SINGLETON_SYNC_ID` to key its id-based merge.
+const SINGLETON_TABLES = new Set([
+  SYNC_TABLES.USER_PROFILE,
+  SYNC_TABLES.FEATURE_TOGGLES,
+  SYNC_TABLES.WEIGHT_GOAL,
+]);
+
 function makeFakeCloud() {
-  const tables = {
-    [SYNC_TABLES.WEIGHT_ENTRIES]: new Map(),
-    [SYNC_TABLES.WORKOUT_NOTES]: new Map(),
-    [SYNC_TABLES.ARCHIVED_WEIGHT_GOALS]: new Map(),
-  };
+  // Every table the sync engine touches, including the four routed through the
+  // ongoing sync path in issue #489.
+  const tables = {};
+  for (const table of Object.values(SYNC_TABLES)) {
+    tables[table] = new Map();
+  }
   const state = { online: true };
+  const pushes = [];
+
+  // Stands in for the Postgres `now()` the updated_at trigger uses. It must be
+  // strictly later than anything already stored, so an arriving write always
+  // orders after the rows it is racing — which is what makes "last write to
+  // reach the server wins" true, independent of any device's clock.
+  let lastServerMs = 0;
+  function serverNow(table) {
+    // Seed from wall-clock so stamps are realistic, then force them strictly
+    // past both the previous stamp and anything already in the table.
+    let maxMs = Math.max(lastServerMs, Date.now());
+    for (const row of tables[table].values()) {
+      const ms = Date.parse(row.updated_at || 0);
+      if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+    }
+    lastServerMs = maxMs + 1;
+    return new Date(lastServerMs).toISOString();
+  }
 
   const transport = {
     async pull(table, cursor) {
@@ -60,14 +90,40 @@ function makeFakeCloud() {
       // LWW tie at the boundary is still pulled. Idempotent merge makes the
       // re-pull safe.
       const changed = cursor ? rows.filter((r) => (r.updated_at || '') >= cursor) : rows;
-      return changed.sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''));
+      const sorted = changed.sort((a, b) =>
+        (a.updated_at || '').localeCompare(b.updated_at || '')
+      );
+      // `client_id` is NOT a stored column: transport.js drops it from every
+      // upsert, so no row in the real database has one and no pulled row can
+      // carry one back. Enforce that here — pull is the single point where rows
+      // leave the server — so pickWinner's tie-break is exercised against the
+      // same shape production actually produces.
+      const served = sorted.map(({ client_id: _c, ...row }) => row); // eslint-disable-line no-unused-vars
+      if (!SINGLETON_TABLES.has(table)) return served;
+      return served.map(({ id, ...row }) => row); // eslint-disable-line no-unused-vars
     },
     async push(table, records) {
       if (!state.online) throw new Error('offline');
+      pushes.push({ table, ids: records.map((r) => r.id) });
       for (const rec of records) {
-        // Server-side LWW guard: a stale push must not clobber a newer remote.
-        const existing = tables[table].get(rec.id);
-        tables[table].set(rec.id, existing ? pickWinner(existing, rec) : rec);
+        // Model the REAL server, which does not arbitrate by client clock.
+        //
+        // `transport.js` deliberately omits `updated_at` from every upsert
+        // whitelist because a BEFORE INSERT/UPDATE trigger forces `now()`. So
+        // Postgres accepts the upsert unconditionally and stamps it itself —
+        // there is no server-side pickWinner. "Last write to REACH the server
+        // wins" is a property of arrival order, not of a comparison.
+        //
+        // This fake previously ran pickWinner(existing, rec) against the
+        // CLIENT's updated_at, which no production code path does. That guard
+        // masked the clock-skew edit loss Codex found in #489: it made a lagging
+        // device's push look correctly rejected instead of wrongly discarded.
+        // A test double must not be kinder than the system it stands in for.
+        //
+        // `client_id` is dropped for the same reason: buildUpsertRow omits it
+        // (it is not a stored column), so it never survives a write.
+        const { client_id: _clientId, ...row } = rec; // eslint-disable-line no-unused-vars
+        tables[table].set(rec.id, { ...row, updated_at: serverNow(table) });
       }
     },
   };
@@ -75,7 +131,9 @@ function makeFakeCloud() {
   return {
     transport,
     state,
+    pushes,
     remoteRow: (table, id) => tables[table].get(id),
+    remoteRows: (table) => [...tables[table].values()],
     seedRemote: (table, rec) => tables[table].set(rec.id, rec),
     setOnline: (v) => {
       state.online = v;
@@ -103,6 +161,35 @@ afterEach(() => {
 // ── pure LWW unit coverage ──────────────────────────────────────────────────────
 
 describe('LWW resolution', () => {
+  // A server row is identified by the ABSENCE of client_id: transport.js drops it
+  // from every upsert because it is not a stored column, so nothing pulled from
+  // the database ever carries one.
+  it('on an exact tie the server row wins, so every device converges', () => {
+    const serverRow = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', weight_value: 199 };
+
+    // Two different devices, each holding its own local copy at the same instant.
+    const deviceA = { ...serverRow, weight_value: 180, client_id: 'aaaa-device' };
+    const deviceB = { ...serverRow, weight_value: 181, client_id: 'zzzz-device' };
+
+    // Both must adopt the server's copy — regardless of argument order, and
+    // regardless of how their client_ids compare to each other.
+    expect(pickWinner(deviceA, serverRow)).toBe(serverRow);
+    expect(pickWinner(serverRow, deviceA)).toBe(serverRow);
+    expect(pickWinner(deviceB, serverRow)).toBe(serverRow);
+    expect(pickWinner(serverRow, deviceB)).toBe(serverRow);
+
+    // The old rule fell through to `(a.client_id || '') >= (b.client_id || '')`,
+    // which always favours the side that HAS a client_id — the local row. Each
+    // device would have kept its own value (180 vs 181) and silently diverged.
+  });
+
+  it('between two local rows an exact tie still breaks deterministically on client_id', () => {
+    const a = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'aaaa' };
+    const b = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'zzzz' };
+    expect(pickWinner(a, b)).toBe(b);
+    expect(pickWinner(b, a)).toBe(b);
+  });
+
   it('newer updated_at wins', () => {
     const a = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a' };
     const b = { id: '1', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a' };
@@ -221,7 +308,11 @@ describe('weight entries offline create/edit/delete sync', () => {
     const remote = cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1');
     expect(remote).toBeDefined();
     expect(remote.weight_value).toBe(180);
-    expect(remote.client_id).toBeTruthy();
+    // client_id must NOT survive the write. buildUpsertRow omits it — it is not
+    // a stored column — so it exists only in the local sync engine. Asserting it
+    // came back was asserting the old fake's behavior, not the database's.
+    expect(remote.client_id).toBeUndefined();
+    expect(remote.updated_at).toBeTruthy(); // server-assigned, not the client's
   });
 
   it('offline edit pushes the updated value after reconnect', async () => {
@@ -259,7 +350,7 @@ describe('weight entries offline create/edit/delete sync', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(true);
   });
 
-  it('pulls an exact-timestamp tie at the cursor boundary and converges to the winning client_id', async () => {
+  it('pulls an exact-timestamp tie at the cursor boundary and converges on the server row', async () => {
     // Create + sync so this device's cursor advances to the row's updated_at.
     await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
     await cloudAdapter.sync();
@@ -267,19 +358,25 @@ describe('weight entries offline create/edit/delete sync', () => {
     const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
     expect(cursor).toBeTruthy();
 
-    // Another device wrote a row at EXACTLY the cursor timestamp with a winning
-    // (lexicographically greater) client_id. An exclusive `>` cursor would skip
-    // this forever; an inclusive `>=` re-pulls the boundary and LWW resolves it.
+    // Another device's write landed at EXACTLY the cursor timestamp. An exclusive
+    // `>` cursor would skip it forever; an inclusive `>=` re-pulls the boundary
+    // and LWW resolves it.
+    //
+    // Note what the row does NOT have: a client_id. It is not a stored column, so
+    // no row coming back from the server carries one — the fake now enforces that
+    // on pull. The tie therefore cannot be settled by comparing client_ids, and
+    // the old rule silently favoured whichever side HAD one, i.e. the local row.
+    // That does not converge: each device would keep its own copy. The server row
+    // wins instead, and every device sees the same server row, so all of them
+    // land on the same value.
     cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
       ...weightEntry('w1', 199),
       updated_at: cursor,
-      client_id: 'zzzz-winning-device',
     });
 
     await cloudAdapter.sync();
     const local = await cloudAdapter.loadWeightEntries();
     expect(local.find((e) => e.id === 'w1').weight_value).toBe(199);
-    expect(local.find((e) => e.id === 'w1').client_id).toBe('zzzz-winning-device');
   });
 
   it('remote newer edit wins over older local on pull (multi-device LWW)', async () => {
@@ -332,6 +429,59 @@ describe('workout notes offline create/edit/delete sync', () => {
     cloud.setOnline(true);
     await cloudAdapter.sync();
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'))).toBe(true);
+  });
+
+  // Codex re-review, #489: the same incomparable-clocks defect fixed in
+  // syncDiffTable also lived in syncTable — the path carrying weight entries and
+  // workout notes. A local tombstone is stamped with the DEVICE clock; the pulled
+  // row carries the SERVER's. Merging them through pickWinner meant a device whose
+  // clock lagged lost, so `merged.get(id)` yielded the live remote row, THAT was
+  // pushed in place of the tombstone, and the tombstone was cleared from the dirty
+  // queue. The delete never reached the cloud and the note resurrected on the next
+  // pull.
+  //
+  // The existing test above only hit this when real millisecond timing happened to
+  // line up, which is why it failed intermittently rather than reliably. This one
+  // forces the skew, so the defect cannot hide behind a lucky clock.
+  it('a delete still reaches the cloud when the device clock lags the server', async () => {
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5'));
+    await cloudAdapter.sync();
+
+    // Another device touched the row and the server stamped it far beyond
+    // anything this device's clock can mint.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      ...cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'),
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    await cloudAdapter.deleteWorkoutNoteItem('n1');
+    await cloudAdapter.sync();
+
+    // The delete must reach the server. Arrival decides the winner, not a
+    // comparison against a clock this device does not share.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'))).toBe(true);
+
+    // And it must not come back on the next pull.
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadWorkoutNotes()).map((n) => n.id)).not.toContain('n1');
+  });
+
+  it('an edit still reaches the cloud when the device clock lags the server', async () => {
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5'));
+    await cloudAdapter.sync();
+
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      ...cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'),
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 5x5'));
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1').raw_text).toBe('Squat 5x5');
+    expect(
+      (await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === 'n1').raw_text
+    ).toBe('Squat 5x5');
   });
 
   it('derived-only divergence on unchanged raw_text recomputes silently on sync', async () => {
@@ -671,9 +821,14 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
     expect(remotePhantom).toMatchObject({
       id: PHANTOM_ID,
       source_snapshot: { async_storage_key: 'kilo_workout_note' },
+      // deleted_at is a client-supplied column and survives the round trip
+      // verbatim. updated_at does NOT: it is stripped on push and reassigned by
+      // the server trigger, so it is necessarily LATER than the client's
+      // tombstone stamp rather than equal to it. Asserting equality here was
+      // asserting the old fake's behavior, not Postgres's.
       deleted_at: localPhantom.deleted_at,
-      updated_at: localPhantom.updated_at,
     });
+    expect(remotePhantom.updated_at >= localPhantom.deleted_at).toBe(true);
     expect(isTombstone(remotePhantom)).toBe(true);
 
     await cloudAdapter.sync();
@@ -853,5 +1008,613 @@ describe('deload-derived workout notes sync (latest review finding)', () => {
     cloud.setOnline(true);
     await cloudAdapter.sync();
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, noteId))).toBe(true);
+  });
+});
+
+// ── issue #489: profile, toggles, weight goal, and deload history sync ─────────
+//
+// Before #489 these four tables were written to the cloud exactly once, by
+// bootstrap, and never again: `sync()` looped over only weight_entries,
+// workout_notes, and archived_weight_goals. Every later change to the current
+// routine, tracked lifts, feature toggles, unit system, fatigue multiplier,
+// active weight goal, or deload history was invisible to the cloud, and the
+// active goal and deload history had no pull path at all.
+//
+// Convergence rule under test (see syncQueue.js): because these tables have no
+// per-setter dirty hooks, a local change is detected by diffing live storage
+// against the last-synced snapshot and is stamped at SYNC time. So the rule is
+// "last write to REACH THE SERVER wins; exact updated_at ties break by
+// lexicographically greater client_id" — deterministic and identical on every
+// device, but not edit-time ordering.
+describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
+  const SELF = SINGLETON_SYNC_ID;
+
+  // Swap the whole device: AsyncStorage IS the device. Capturing and restoring
+  // every key (including the persisted client id, cursors, dirty queues, and
+  // sync snapshots) lets one test drive two genuinely independent devices
+  // against one shared fake cloud.
+  async function captureDevice() {
+    const keys = await AsyncStorage.getAllKeys();
+    return AsyncStorage.multiGet(keys);
+  }
+
+  async function restoreDevice(pairs) {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    await AsyncStorage.multiSet(pairs);
+  }
+
+  async function cleanInstall() {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+  }
+
+  const deloadRecord = (id, date) => ({
+    id,
+    date,
+    raw_text: `deload ${id}`,
+    saved_at: `${date}T10:00:00.000Z`,
+    completed_at: `${date}T11:00:00.000Z`,
+    session_count: 3,
+    note_id: 'wn_1',
+  });
+
+  // Everything a user can change AFTER bootstrap that used to be stranded.
+  async function seedDeviceState() {
+    await Storage.saveCurrentWorkoutId('wn_1');
+    await Storage.saveTrackedLifts({ Squat: true, Bench: true });
+    await Storage.saveFatigueMultiplier(1.15);
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'lb' });
+    await Storage.saveWeightDateEditEnabled(true);
+    await Storage.saveDeloadModeEnabled(false);
+    await Storage.saveWeightGoal({
+      target_weight: 175,
+      target_date: '2026-12-01',
+      start_weight: 190,
+      start_date: '2026-06-01',
+    });
+    await Storage.appendDeloadHistory(deloadRecord('dh_1', '2026-06-20'));
+  }
+
+  it('pushes post-bootstrap routine, tracked-lift, toggle, unit, multiplier, goal, and deload changes', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    const profile = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
+    expect(profile.current_workout_note_id).toBe('wn_1');
+    expect(profile.tracked_lifts).toEqual({ Squat: true, Bench: true });
+    expect(profile.unit_system).toBe('lb');
+    expect(profile.display_name).toBe('Ben');
+    expect(profile.fatigue_multiplier).toBe(1.15);
+
+    const toggles = cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SELF);
+    expect(toggles.weight_date_edit_enabled).toBe(true);
+    expect(toggles.deload_mode_enabled).toBe(false);
+    expect(toggles.fatigue_tracking_enabled).toBe(true);
+
+    const goal = cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SELF);
+    expect(goal.target_weight).toBe(175);
+    expect(goal.start_weight).toBe(190);
+
+    const deload = cloud.remoteRow(SYNC_TABLES.DELOAD_HISTORY, 'dh_1');
+    expect(deload.raw_text).toBe('deload dh_1');
+    expect(deload.record_json).toEqual({
+      completed_at: '2026-06-20T11:00:00.000Z',
+      note_id: 'wn_1',
+      session_count: 3,
+    });
+  });
+
+  it('repairs a cloud row frozen at bootstrap on an existing device that already has real data', async () => {
+    // The exact production state observed on 2026-07-13 (project ogzhnscdqcdrhfqcobuv):
+    // the single user_profile row was still whatever it was at first sign-in —
+    // current_workout_note_id null, tracked_lifts {}, unit_system null — while
+    // weight entries had synced the same day. This is the bug #489 exists to fix.
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF,
+      display_name: null,
+      unit_system: null,
+      current_workout_note_id: null,
+      tracked_lifts: {},
+      fatigue_multiplier: 1.07,
+      ui_state: { log_current_collapsed: false },
+      updated_at: '2026-06-01T00:00:00.000Z',
+    });
+
+    // The device, meanwhile, has the user's real state — set AFTER bootstrap ran.
+    await seedDeviceState();
+
+    // This device has never run a #489 sync, so it has no snapshot. Its real data
+    // must win over the frozen cloud row rather than being overwritten by it.
+    await cloudAdapter.sync();
+
+    const repaired = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
+    expect(repaired.current_workout_note_id).toBe('wn_1');
+    expect(repaired.tracked_lifts).toEqual({ Squat: true, Bench: true });
+    expect(repaired.unit_system).toBe('lb');
+    expect(repaired.fatigue_multiplier).toBe(1.15);
+
+    // And the device kept its own data: the stale cloud row did not overwrite it.
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_1');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true });
+  });
+
+  // Codex review, #489: the device stamps a local edit with its OWN clock, while
+  // transport.push strips updated_at so the DB trigger assigns the authoritative
+  // one. Those timestamps come from different clocks. Putting them to a vote in
+  // pickWinner meant a device whose clock merely lagged the server lost: the
+  // remote row won, overwrote the user's edit locally, was pushed in place of it,
+  // and the edit was then cleared from the dirty queue — gone, and never retried.
+  //
+  // A user on a slightly slow phone would watch a setting silently revert.
+  //
+  // This test FAILS against 4d13ae7 and passes after the reconciliation fix.
+  it('a local edit still reaches the cloud when the device clock lags the server', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    // Another device wrote the row, and the server stamped it far ahead of
+    // anything this device's clock can mint. This is ordinary clock skew, not an
+    // exotic case — the server clock is simply not the device clock.
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF,
+      display_name: 'Ben',
+      unit_system: 'lb',
+      current_workout_note_id: 'wn_1',
+      tracked_lifts: { Squat: true, Bench: true },
+      fatigue_multiplier: 1.15,
+      ui_state: { log_current_collapsed: false },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    // The user now changes something on THIS device.
+    await Storage.saveTrackedLifts({ Squat: true, Bench: true, Deadlift: true });
+
+    await cloudAdapter.sync();
+
+    // The edit must actually be uploaded — arrival at the server is what decides
+    // the winner, not a comparison made on the client beforehand.
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+      Squat: true,
+      Bench: true,
+      Deadlift: true,
+    });
+
+    // And it must survive locally rather than being reverted by the pulled row.
+    expect(await Storage.loadTrackedLifts()).toEqual({
+      Squat: true,
+      Bench: true,
+      Deadlift: true,
+    });
+  });
+
+  it('a lagging clock does not make sync chatty: a pass with no local edit pushes nothing', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF,
+      display_name: 'Ben',
+      unit_system: 'lb',
+      current_workout_note_id: 'wn_1',
+      tracked_lifts: { Squat: true, Bench: true },
+      fatigue_multiplier: 1.15,
+      ui_state: { log_current_collapsed: false },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    // No local change this time. The push must be gated on the DIFF, not on the
+    // clock — otherwise the skew fix would turn every pass into a write.
+    const results = await cloudAdapter.sync();
+    const profilePass = results.find((r) => r.table === SYNC_TABLES.USER_PROFILE);
+    expect(profilePass.pushed).toBe(0);
+  });
+
+  it('never uploads the device-local demographics (issue #476 stays on hold)', async () => {
+    await Storage.saveUserProfile({
+      display_name: 'Ben',
+      unit_system: 'kg',
+      date_of_birth: '1990-01-01',
+      sex: 'male',
+      height_cm: 180,
+      activity_level: 'moderate',
+    });
+    await cloudAdapter.sync();
+
+    const profile = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
+    expect(profile.unit_system).toBe('kg');
+    expect(profile).not.toHaveProperty('date_of_birth');
+    expect(profile).not.toHaveProperty('sex');
+    expect(profile).not.toHaveProperty('height_cm');
+    expect(profile).not.toHaveProperty('activity_level');
+    expect(profile).not.toHaveProperty('profile_json');
+  });
+
+  it('a clean install pulls all four tables down from the cloud', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    await cleanInstall();
+    expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+    expect(await Storage.loadWeightGoal()).toBeNull();
+    expect(await Storage.loadDeloadHistory()).toEqual([]);
+
+    await cloudAdapter.sync();
+
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_1');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
+    expect((await Storage.loadUserProfile()).unit_system).toBe('lb');
+    expect(await Storage.loadWeightDateEditEnabled()).toBe(true);
+    expect(await Storage.loadDeloadModeEnabled()).toBe(false);
+
+    const goal = await Storage.loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+    expect(goal.start_date).toBe('2026-06-01');
+
+    const history = await Storage.loadDeloadHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe('dh_1');
+    expect(history[0].session_count).toBe(3);
+    expect(history[0].completed_at).toBe('2026-06-20T11:00:00.000Z');
+  });
+
+  it('re-running sync is a no-op: nothing is pushed and nothing changes', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    const before = {
+      profile: cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF),
+      toggles: cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SELF),
+      goal: cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SELF),
+      deload: cloud.remoteRows(SYNC_TABLES.DELOAD_HISTORY),
+    };
+
+    cloud.pushes.length = 0;
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    // No dirty record was manufactured by the diff, so no push happened at all.
+    expect(cloud.pushes).toEqual([]);
+    for (const table of [
+      SYNC_TABLES.USER_PROFILE,
+      SYNC_TABLES.FEATURE_TOGGLES,
+      SYNC_TABLES.WEIGHT_GOAL,
+      SYNC_TABLES.DELOAD_HISTORY,
+    ]) {
+      expect(await getDirtyRecords(table)).toEqual([]);
+    }
+
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF)).toEqual(before.profile);
+    expect(cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SELF)).toEqual(before.toggles);
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SELF)).toEqual(before.goal);
+    expect(cloud.remoteRows(SYNC_TABLES.DELOAD_HISTORY)).toEqual(before.deload);
+
+    // Local state is untouched by the extra passes.
+    expect(await Storage.loadDeloadHistory()).toHaveLength(1);
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true });
+  });
+
+  it('two devices editing the same settings converge: the later sync wins, and both devices agree', async () => {
+    // Device A: the user's existing device.
+    await seedDeviceState();
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B: clean install, signs into the same account, restores from cloud.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect((await Storage.loadUserProfile()).unit_system).toBe('lb');
+
+    // B changes the unit system and the fatigue multiplier, and syncs.
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'kg' });
+    await Storage.saveFatigueMultiplier(1.2);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).unit_system).toBe('kg');
+    const deviceB = await captureDevice();
+
+    // A, meanwhile, sets a different unit system and tracked lifts, and syncs
+    // LAST. Under the stated rule the last write to reach the server wins.
+    await restoreDevice(deviceA);
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'st' });
+    await Storage.saveTrackedLifts({ Deadlift: true });
+    await cloudAdapter.sync();
+
+    const remote = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
+    expect(remote.unit_system).toBe('st');
+    expect(remote.tracked_lifts).toEqual({ Deadlift: true });
+
+    // LWW here is ROW-level, not field-level: user_profile is a single cloud row,
+    // so the winning device's whole row wins — including fields it never touched.
+    // A's row still carries A's 1.15, so B's concurrent 1.2 is overwritten. This
+    // is the stated rule, not an accident of ordering: a losing concurrent edit
+    // to an independent field of the SAME row does not survive.
+    expect(remote.fatigue_multiplier).toBe(1.15);
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
+    const settledA = await captureDevice();
+
+    // B syncs again and converges on exactly the same state as A — no ping-pong,
+    // no divergence, and a third pass changes nothing.
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    expect((await Storage.loadUserProfile()).unit_system).toBe('st');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Deadlift: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
+
+    // Both devices report identical synced state: they have converged.
+    await restoreDevice(settledA);
+    await cloudAdapter.sync();
+    expect((await Storage.loadUserProfile()).unit_system).toBe('st');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Deadlift: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
+  });
+
+  it('an exact updated_at tie on a singleton resolves to the greater client_id on every device', () => {
+    const at = '2026-07-13T10:00:00.000Z';
+    const a = { id: SELF, updated_at: at, client_id: 'c_aaa', unit_system: 'lb' };
+    const z = { id: SELF, updated_at: at, client_id: 'c_zzz', unit_system: 'kg' };
+    // Deterministic and order-independent: both devices pick the same survivor.
+    expect(pickWinner(a, z)).toBe(z);
+    expect(pickWinner(z, a)).toBe(z);
+  });
+
+  it('a deleted deload record does not resurrect on the next sync or on the other device', async () => {
+    await seedDeviceState();
+    await Storage.appendDeloadHistory(deloadRecord('dh_2', '2026-06-27'));
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B mirrors both records.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadHistory()).map((r) => r.id)).toEqual(['dh_1', 'dh_2']);
+    const deviceB = await captureDevice();
+
+    // A deletes one record. The next sync must push a tombstone, not silently
+    // drop it (a silent drop would let the cloud copy re-download it).
+    await restoreDevice(deviceA);
+    await Storage.deleteDeloadHistory('dh_1');
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.DELOAD_HISTORY, 'dh_1'))).toBe(true);
+    expect((await Storage.loadDeloadHistory()).map((r) => r.id)).toEqual(['dh_2']);
+
+    // Re-syncing A does not bring it back.
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadHistory()).map((r) => r.id)).toEqual(['dh_2']);
+
+    // And B applies the delete instead of re-uploading its live copy.
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadHistory()).map((r) => r.id)).toEqual(['dh_2']);
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadHistory()).map((r) => r.id)).toEqual(['dh_2']);
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.DELOAD_HISTORY, 'dh_1'))).toBe(true);
+  });
+
+  it('clearing the active weight goal tombstones it and clears it on the other device', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect(await Storage.loadWeightGoal()).toBeTruthy();
+    const deviceB = await captureDevice();
+
+    await restoreDevice(deviceA);
+    await Storage.clearWeightGoal();
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SELF))).toBe(true);
+
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+    expect(await Storage.loadWeightGoal()).toBeNull();
+    // Idempotent: the cleared goal is not resurrected by a second pass.
+    await cloudAdapter.sync();
+    expect(await Storage.loadWeightGoal()).toBeNull();
+
+    // A new goal set afterwards revives the singleton rather than staying dead.
+    await Storage.saveWeightGoal({ target_weight: 165, start_weight: 175 });
+    await cloudAdapter.sync();
+    const revived = cloud.remoteRow(SYNC_TABLES.WEIGHT_GOAL, SELF);
+    expect(isTombstone(revived)).toBe(false);
+    expect(revived.target_weight).toBe(165);
+  });
+
+  it('applying a pulled profile does not clobber unsynced local data on a device that already has some', async () => {
+    // Device A publishes a profile.
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'kg' });
+    await Storage.saveTrackedLifts({ Squat: true });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B already has data of its own, including the device-local
+    // demographics that are deliberately NOT synced (issue #476) and a deload
+    // record carrying a key the cloud schema does not model.
+    await cleanInstall();
+    await Storage.saveUserProfile({
+      display_name: 'Ben',
+      unit_system: 'lb',
+      date_of_birth: '1990-01-01',
+      height_cm: 180,
+    });
+    await Storage.appendDeloadHistory({
+      ...deloadRecord('dh_9', '2026-07-01'),
+      local_only_field: 'keep me',
+    });
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    // A now changes the unit system and syncs after B, so A wins the merge.
+    await restoreDevice(deviceA);
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'st' });
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).unit_system).toBe('st');
+
+    // B (the SAME device, with its snapshot intact) pulls A's profile. The synced
+    // fields update; the unsynced local ones survive. saveUserProfile would have
+    // replaced the whole record and silently deleted the demographics, which is
+    // why the sync path merges instead.
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+
+    const profile = await Storage.loadUserProfile();
+    expect(profile.unit_system).toBe('st');
+    expect(profile.date_of_birth).toBe('1990-01-01');
+    expect(profile.height_cm).toBe(180);
+
+    // The deload record's local-only key survived the cloud round trip.
+    const history = await Storage.loadDeloadHistory();
+    expect(history.find((r) => r.id === 'dh_9').local_only_field).toBe('keep me');
+
+    // And B's tracked lifts came down from A rather than being lost.
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true });
+  });
+
+  it('a clean install that merely hydrated the cloud does not re-stamp and clobber the other device', async () => {
+    // Regression guard for the diff engine's first-pass seeding rule: with no
+    // snapshot, the baseline is seeded from the REMOTE rows. Without that, a
+    // fresh device would treat everything it just downloaded as a brand-new
+    // local edit, stamp it at `now`, and win LWW over the device that actually
+    // owns the data.
+    await seedDeviceState();
+    await cloudAdapter.sync();
+    const authored = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
+
+    await cleanInstall();
+    cloud.pushes.length = 0;
+    await cloudAdapter.sync();
+
+    // Nothing was pushed for the diff-tracked tables: the clean install had no
+    // local changes, only downloads.
+    const pushedTables = cloud.pushes.map((p) => p.table);
+    expect(pushedTables).not.toContain(SYNC_TABLES.USER_PROFILE);
+    expect(pushedTables).not.toContain(SYNC_TABLES.FEATURE_TOGGLES);
+    expect(pushedTables).not.toContain(SYNC_TABLES.WEIGHT_GOAL);
+    expect(pushedTables).not.toContain(SYNC_TABLES.DELOAD_HISTORY);
+
+    // The authoring device's row is byte-for-byte intact.
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF)).toEqual(authored);
+  });
+
+  it('an offline change to a synced setting pushes once back online', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    cloud.setOnline(false);
+    await Storage.saveTrackedLifts({ Squat: true, Bench: true, Row: true });
+    await Storage.saveFatigueTrackingEnabled(false);
+    await expect(cloudAdapter.sync()).rejects.toThrow('offline');
+
+    // The cloud still holds the pre-offline state.
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+      Squat: true,
+      Bench: true,
+    });
+
+    cloud.setOnline(true);
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+      Squat: true,
+      Bench: true,
+      Row: true,
+    });
+    expect(cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SELF).fatigue_tracking_enabled).toBe(
+      false
+    );
+    // Local data survived the failed pass untouched.
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true, Row: true });
+  });
+});
+
+// ── issue #489: the real transport's singleton upsert contract ─────────────────
+describe('real Supabase transport: singleton tables (issue #489)', () => {
+  function makeClient(userId, capture) {
+    const query = { gte: () => query, order: async () => ({ data: [], error: null }) };
+    return {
+      auth: {
+        getUser: async () => ({ data: { user: { id: userId } }, error: null }),
+      },
+      schema: () => ({
+        from: (table) => ({
+          select: () => query,
+          upsert: async (rows, options) => {
+            capture.push({ table, rows, options });
+            return { error: null };
+          },
+        }),
+      }),
+    };
+  }
+
+  it('upserts singletons on user_id, strips the synthetic id, and sends whitelisted columns only', async () => {
+    const capture = [];
+    getSupabaseClient.mockReturnValue(makeClient('user-489', capture));
+
+    await Storage.saveUserProfile({
+      display_name: 'Ben',
+      unit_system: 'kg',
+      // Device-local demographics must never reach the wire.
+      date_of_birth: '1990-01-01',
+    });
+    await Storage.saveTrackedLifts({ Squat: true });
+    await Storage.saveWeightDateEditEnabled(true);
+    await Storage.saveWeightGoal({ target_weight: 170, start_weight: 185 });
+
+    setCloudTransport(null); // force the REAL transport
+    await cloudAdapter.sync();
+
+    const byTable = new Map(capture.map((c) => [c.table, c]));
+
+    for (const table of ['user_profile', 'feature_toggles', 'weight_goal']) {
+      const call = byTable.get(table);
+      expect(call).toBeTruthy();
+      // Singletons key on user_id alone. The pre-#489 hardcoded 'user_id,id'
+      // could never have matched a table with no id column.
+      expect(call.options).toEqual({ onConflict: 'user_id' });
+      for (const row of call.rows) {
+        expect(row.user_id).toBe('user-489');
+        // The synthetic merge key must not reach a column that does not exist.
+        expect(row).not.toHaveProperty('id');
+        // Server-authoritative / local-only sync metadata is never forged.
+        expect(row).not.toHaveProperty('updated_at');
+        expect(row).not.toHaveProperty('client_id');
+      }
+    }
+
+    const profileRow = byTable.get('user_profile').rows[0];
+    expect(profileRow.unit_system).toBe('kg');
+    expect(profileRow.tracked_lifts).toEqual({ Squat: true });
+    expect(profileRow).not.toHaveProperty('date_of_birth');
+    expect(profileRow).not.toHaveProperty('profile_json');
+
+    expect(byTable.get('weight_goal').rows[0].target_weight).toBe(170);
+  });
+
+  it('keeps collection tables on the composite (user_id, id) conflict target', async () => {
+    const capture = [];
+    getSupabaseClient.mockReturnValue(makeClient('user-489', capture));
+
+    await Storage.appendDeloadHistory({
+      id: 'dh_x',
+      date: '2026-07-01',
+      raw_text: 'deload',
+      saved_at: '2026-07-01T10:00:00.000Z',
+      session_count: 4,
+      rogue_key: 'must not upload',
+    });
+
+    setCloudTransport(null);
+    await cloudAdapter.sync();
+
+    const call = capture.find((c) => c.table === 'deload_history');
+    expect(call.options).toEqual({ onConflict: 'user_id,id' });
+    expect(call.rows[0].id).toBe('dh_x');
+    expect(call.rows[0].record_json).toEqual({ session_count: 4 });
+    expect(call.rows[0]).not.toHaveProperty('rogue_key');
   });
 });

@@ -7,24 +7,24 @@ import {
   CURRENT_WORKOUT_ID_KEY,
 } from './keys';
 import { readList, writeList } from './jsonStorage';
-import { loadCurrentWorkoutId } from './workoutNotes';
+import { loadCurrentWorkoutId, saveCurrentWorkoutId } from './workoutNotes';
 import { loadWeightGoal } from './weightGoal';
 import { loadUserProfile, saveUserProfile } from './profileStorage';
 import {
   loadFatigueMultiplier,
-  loadWeightDateEditEnabled,
-  loadDeloadDateEditEnabled,
-  loadFatigueTrackingEnabled,
-  loadDeloadModeEnabled,
-  loadTrackedLifts,
-  loadWorkoutCollapsed,
   saveFatigueMultiplier,
-  saveTrackedLifts,
-  saveWorkoutCollapsed,
+  loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
+  loadDeloadDateEditEnabled,
   saveDeloadDateEditEnabled,
+  loadFatigueTrackingEnabled,
   saveFatigueTrackingEnabled,
+  loadDeloadModeEnabled,
   saveDeloadModeEnabled,
+  loadTrackedLifts,
+  saveTrackedLifts,
+  loadWorkoutCollapsed,
+  saveWorkoutCollapsed,
 } from './settings';
 import { loadDeloadNote, saveDeloadNote } from './deloadStorage';
 
@@ -147,6 +147,71 @@ export async function buildCloudExport({ account = null, includeEmail = false } 
       },
     },
   };
+}
+
+// ── clean-bootstrap cloud restore (issues #481/#482/#483) ──────────────────
+//
+// The cloud `user_profile` and `feature_toggles` rows are singletons that only
+// ever got pushed via bootstrapFromLocal (see mobile/storage/cloud/bootstrap.js);
+// nothing ever read them back. This is the write side of that missing
+// direction: given the two rows downloaded from Supabase for the signed-in
+// account, write each known field into the same local storage keys that
+// buildBootstrapPlan's buildUserProfileRow/buildFeatureTogglesRow originally
+// read from. Deliberately not a wildcard copy: only the named fields below
+// cross the boundary, mirroring the #471/#475 allowlist discipline already
+// applied to the upload/export direction. The fatigue-multiplier sanity check
+// reuses validateFatigueMultiplier so a corrupted or tampered cloud row can't
+// push a NaN/absurd value into local fatigue calculations.
+//
+// Caller contract: mobile/storage/cloud/bootstrap.js only invokes this when
+// the local device's snapshot is already clean/empty (a fresh install or a
+// device that has never held any profile/routine/tracked-lift state), so this
+// function's writes can never clobber a device's real existing local data.
+export async function hydrateProfileFromCloud(profileRow, featureTogglesRow) {
+  if (profileRow && typeof profileRow === 'object') {
+    if (profileRow.current_workout_note_id != null) {
+      await saveCurrentWorkoutId(profileRow.current_workout_note_id);
+    }
+    if (profileRow.fatigue_multiplier != null) {
+      const check = validateFatigueMultiplier(profileRow.fatigue_multiplier);
+      if (check.ok) {
+        await saveFatigueMultiplier(profileRow.fatigue_multiplier);
+      }
+    }
+    if (
+      profileRow.tracked_lifts &&
+      typeof profileRow.tracked_lifts === 'object' &&
+      !Array.isArray(profileRow.tracked_lifts)
+    ) {
+      await saveTrackedLifts(profileRow.tracked_lifts);
+    }
+    if (profileRow.ui_state && typeof profileRow.ui_state === 'object') {
+      await saveWorkoutCollapsed(!!profileRow.ui_state.log_current_collapsed);
+    }
+    if (profileRow.display_name != null || profileRow.unit_system != null) {
+      await saveUserProfile({
+        display_name: profileRow.display_name ?? null,
+        unit_system: profileRow.unit_system ?? null,
+      });
+    }
+  }
+
+  if (featureTogglesRow && typeof featureTogglesRow === 'object') {
+    if (typeof featureTogglesRow.weight_date_edit_enabled === 'boolean') {
+      await saveWeightDateEditEnabled(featureTogglesRow.weight_date_edit_enabled);
+    }
+    if (typeof featureTogglesRow.deload_date_edit_enabled === 'boolean') {
+      await saveDeloadDateEditEnabled(featureTogglesRow.deload_date_edit_enabled);
+    }
+    if (typeof featureTogglesRow.fatigue_tracking_enabled === 'boolean') {
+      await saveFatigueTrackingEnabled(featureTogglesRow.fatigue_tracking_enabled);
+    }
+    if (typeof featureTogglesRow.deload_mode_enabled === 'boolean') {
+      await saveDeloadModeEnabled(featureTogglesRow.deload_mode_enabled);
+    }
+  }
+
+  return { ok: true };
 }
 
 function validateWeightEntries(entries) {

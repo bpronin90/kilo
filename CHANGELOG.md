@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.94.0 - 2026-07-14
+
+- Issue #489: Extended ongoing cloud convergence to user profile and current
+  routine state, feature toggles, the active weight goal, and deload history;
+  clean installs now restore all seven synced tables. Added server-arrival
+  conflict ordering that is resilient to device-clock skew, deterministic
+  server-row tie handling, idempotent retries, and tombstone coverage that
+  prevents deleted records from resurfacing.
+
 ## 0.93.1 - 2026-07-13
 
 - Issue #486: Design an Art. 9(2)(a) explicit-consent flow for cloud health data
