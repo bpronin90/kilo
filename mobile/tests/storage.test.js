@@ -846,6 +846,55 @@ describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
     expect((await loadWeightEntries()).map((e) => e.id)).toContain(W1.id);
   });
 
+  // The cloud block is untrusted input. saveUserProfile spreads whatever object
+  // it is handed, so forwarding an imported profile straight through would
+  // persist arbitrary keys — the profile_json wildcard failure (#471/#474/#475)
+  // inverted: uncontrolled ingress instead of uncontrolled egress.
+  test('drops unknown keys from an imported profile instead of persisting them', async () => {
+    const payload = await buildCloudExport();
+    payload.cloud.user_profile = {
+      height_cm: 180,
+      sex: 'male',
+      injected_key: { evil: true },
+      __proto__polluter: 'nope',
+    };
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(true);
+
+    const restored = await loadUserProfile();
+    expect(restored).toMatchObject({ height_cm: 180, sex: 'male' });
+    expect(restored).not.toHaveProperty('injected_key');
+    expect(restored).not.toHaveProperty('__proto__polluter');
+  });
+
+  test('rejects a profile field of the wrong type', async () => {
+    const payload = await buildCloudExport();
+    payload.cloud.user_profile = { height_cm: [] };
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/height_cm must be a finite number/);
+  });
+
+  test('rejects an out-of-range height', async () => {
+    const payload = await buildCloudExport();
+    payload.cloud.user_profile = { height_cm: 99999 };
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/height_cm out of range/);
+  });
+
+  test('rejects non-boolean tracked-lift values', async () => {
+    const payload = await buildCloudExport();
+    payload.cloud.tracked_lifts = { squat: 'yes' };
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/tracked_lifts\.squat must be a boolean/);
+  });
+
   test('rejects a malformed cloud block without writing anything', async () => {
     await saveUserProfile({ height_cm: 180 });
     const payload = await buildCloudExport();

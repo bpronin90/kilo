@@ -36,6 +36,14 @@ const CLOUD_FEATURE_TOGGLE_KEYS = [
   'fatigue_tracking_enabled',
   'deload_mode_enabled',
 ];
+// The complete set of user_profile fields the app reads or writes. An imported
+// profile is rebuilt from this list, so an unknown key in a backup file cannot
+// reach local storage.
+const PROFILE_STRING_FIELDS = ['date_of_birth', 'sex', 'activity_level', 'display_name', 'unit_system'];
+const PROFILE_ALLOWLIST = [...PROFILE_STRING_FIELDS, 'height_cm'];
+// Sanity bound for an imported height. Anything outside it is malformed input,
+// not a real person, and would poison the BMR/TDEE calculation.
+const MAX_IMPORT_HEIGHT_CM = 300;
 const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
 
 // Untrusted-input bounds for imported backups. importBackup() receives arbitrary
@@ -260,12 +268,31 @@ function validateCloudBlock(cloud) {
     return { ok: false, error: 'Invalid backup: cloud must be an object' };
 
   if (cloud.user_profile != null) {
-    if (typeof cloud.user_profile !== 'object' || Array.isArray(cloud.user_profile))
+    const p = cloud.user_profile;
+    if (typeof p !== 'object' || Array.isArray(p))
       return { ok: false, error: 'Invalid backup: cloud.user_profile must be an object or null' };
+    // Field-level validation, not just "is an object". saveUserProfile persists
+    // whatever object it is handed, so an unvalidated profile writes arbitrary
+    // keys and types straight into local storage.
+    for (const key of PROFILE_STRING_FIELDS) {
+      if (p[key] != null && typeof p[key] !== 'string')
+        return { ok: false, error: `Invalid backup: cloud.user_profile.${key} must be a string` };
+    }
+    if (p.height_cm != null) {
+      if (typeof p.height_cm !== 'number' || !Number.isFinite(p.height_cm))
+        return { ok: false, error: 'Invalid backup: cloud.user_profile.height_cm must be a finite number' };
+      if (p.height_cm <= 0 || p.height_cm > MAX_IMPORT_HEIGHT_CM)
+        return { ok: false, error: `Invalid backup: cloud.user_profile.height_cm out of range (limit ${MAX_IMPORT_HEIGHT_CM})` };
+    }
   }
   if (cloud.tracked_lifts != null) {
-    if (typeof cloud.tracked_lifts !== 'object' || Array.isArray(cloud.tracked_lifts))
+    const t = cloud.tracked_lifts;
+    if (typeof t !== 'object' || Array.isArray(t))
       return { ok: false, error: 'Invalid backup: cloud.tracked_lifts must be an object or null' };
+    for (const [lift, value] of Object.entries(t)) {
+      if (typeof value !== 'boolean')
+        return { ok: false, error: `Invalid backup: cloud.tracked_lifts.${lift} must be a boolean` };
+    }
   }
   if (cloud.ui_state != null) {
     if (typeof cloud.ui_state !== 'object' || Array.isArray(cloud.ui_state))
@@ -302,8 +329,27 @@ function validateCloudBlock(cloud) {
 //
 // Fields are restored explicitly, never by wildcard copy (#471/#475).
 async function restoreCloudBlock(cloud) {
-  if (cloud.user_profile != null) await saveUserProfile(cloud.user_profile);
-  if (cloud.tracked_lifts != null) await saveTrackedLifts(cloud.tracked_lifts);
+  if (cloud.user_profile != null) {
+    // Build the row explicitly rather than forwarding the imported object.
+    // saveUserProfile spreads what it is given, so passing the payload through
+    // would persist any key an attacker put in the file — the same wildcard
+    // failure that put date_of_birth and sex into profile_json (#471/#474/#475),
+    // inverted: uncontrolled ingress instead of uncontrolled egress.
+    const p = cloud.user_profile;
+    const profile = {};
+    for (const key of PROFILE_ALLOWLIST) {
+      if (p[key] != null) profile[key] = p[key];
+    }
+    if (Object.keys(profile).length > 0) await saveUserProfile(profile);
+  }
+
+  if (cloud.tracked_lifts != null) {
+    const tracked = {};
+    for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
+      if (typeof value === 'boolean') tracked[lift] = value;
+    }
+    await saveTrackedLifts(tracked);
+  }
 
   if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {
     await saveWorkoutCollapsed(cloud.ui_state.log_current_collapsed);

@@ -97,13 +97,12 @@ export function BackupScreen({ onBack, onExport, onImport }) {
             setStatus({ ok: true, message: 'Backup saved to the folder you chose.' });
             return;
           }
-          if (saved.reason === 'cancelled') {
-            setStatus({ ok: false, message: 'Export cancelled — no folder chosen.' });
-            return;
-          }
+          // Declining the folder picker must NOT end the export. The user came
+          // here to get their data out; leaving them with no artifact is the
+          // failure mode this whole change exists to prevent. Fall through to
+          // the share sheet, which is still a real export route.
         } catch (e) {
           // Never let a file-write failure cost the user their only backup route.
-          // Fall through to the share sheet, which still works for small payloads.
           console.error('[BackupScreen] file export failed, falling back to share:', e);
         }
       }
