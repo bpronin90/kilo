@@ -548,6 +548,15 @@ retains non-test commands such as `npm run audit`.
   restored-data success state
 - verifies empty or whitespace-only input is rejected with guidance and without
   raising the alert
+- verifies local-export failures surface the provided error, retain a generic
+  fallback, and preserve native `Share.share()` exception messages
+
+### `mobile/tests/app-export.test.js`
+
+- direct unit coverage for the `buildExportPayload()` envelope used by
+  `mobile/App.js`
+- verifies successful backup serialization, preservation of thrown error
+  messages, and the generic fallback for thrown values without a message
 
 ### `supabase/tests/account-lifecycle.test.sql`
 

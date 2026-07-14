@@ -10,10 +10,14 @@
 // These tests render the real BackupScreen, drive the Import button's onPress,
 // mock Alert.alert to capture the button array (mirroring the pattern in
 // account-lifecycle-ui.test.js), and invoke the relevant button's onPress.
+//
+// Issue #479: export failure paths must preserve the underlying error message.
+// Tests for both the onExport rejection path and the Share.share() throw path
+// are in the "BackupScreen export error propagation" describe block below.
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Alert } from 'react-native';
+import { Alert, Share } from 'react-native';
 import { BackupScreen } from '../components/BackupScreen';
 
 // Capture the most recent Alert.alert invocation so tests can inspect/trigger
@@ -152,5 +156,79 @@ describe('BackupScreen import confirmation', () => {
     expect(Alert.alert).not.toHaveBeenCalled();
     expect(onImport).not.toHaveBeenCalled();
     expect(statusMatches(tree, /Paste your backup JSON first\./)).toBe(true);
+  });
+});
+
+// Issue #479: export failure paths must preserve the underlying error message.
+describe('BackupScreen export error propagation', () => {
+  function alertButton(label) {
+    return lastAlert.buttons.find((b) => b.text === label);
+  }
+
+  test('onExport returning { ok: false } surfaces the error message', async () => {
+    const onExport = jest.fn().mockResolvedValue({ ok: false, error: 'Storage read failed.' });
+    const tree = renderScreen({ onExport });
+
+    const exportBtn = findButton(tree, 'Export Local Backup');
+    act(() => {
+      exportBtn.props.onPress();
+    });
+
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+
+    expect(onExport).toHaveBeenCalledTimes(1);
+    expect(statusMatches(tree, /Storage read failed\./)).toBe(true);
+  });
+
+  test('onExport returning { ok: false } with no error falls back to generic message', async () => {
+    const onExport = jest.fn().mockResolvedValue({ ok: false });
+    const tree = renderScreen({ onExport });
+
+    const exportBtn = findButton(tree, 'Export Local Backup');
+    act(() => {
+      exportBtn.props.onPress();
+    });
+
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+
+    expect(statusMatches(tree, /Export failed\./)).toBe(true);
+  });
+
+  test('Share.share() throwing preserves the underlying error message', async () => {
+    const onExport = jest.fn().mockResolvedValue({ ok: true, json: '{"version":"3"}' });
+    jest.spyOn(Share, 'share').mockRejectedValue(new Error('Sharing unavailable'));
+    const tree = renderScreen({ onExport });
+
+    const exportBtn = findButton(tree, 'Export Local Backup');
+    act(() => {
+      exportBtn.props.onPress();
+    });
+
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+
+    expect(statusMatches(tree, /Sharing unavailable/)).toBe(true);
+  });
+
+  test('Share.share() throwing with no message falls back to generic message', async () => {
+    const onExport = jest.fn().mockResolvedValue({ ok: true, json: '{"version":"3"}' });
+    jest.spyOn(Share, 'share').mockRejectedValue(new Error());
+    const tree = renderScreen({ onExport });
+
+    const exportBtn = findButton(tree, 'Export Local Backup');
+    act(() => {
+      exportBtn.props.onPress();
+    });
+
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+
+    expect(statusMatches(tree, /Export failed\./)).toBe(true);
   });
 });
