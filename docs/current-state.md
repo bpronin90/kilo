@@ -689,7 +689,9 @@ The real native app path now has a modular React Native shell:
   and deload history on v2/v3 import, and still accepts older v1
   backups to restore weight history without wiping the newer workout-note state.
   The export action now shows a blocking "export is unencrypted" confirmation
-  before sharing, and the cloud export omits the signed-in account email by
+  before sharing; local export and native share failures preserve their
+  underlying error message and log the full exception for device diagnostics.
+  The cloud export omits the signed-in account email by
   default (it is included only in the dedicated cloud-recovery identity flow),
   and both import and parse paths reject oversized untrusted input
 

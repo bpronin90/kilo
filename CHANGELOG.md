@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.19 - 2026-07-13
+
+- Issue #479: Preserved and logged underlying local-backup generation and native
+  sharing errors, with focused regression coverage for both failure paths.
+
 ## 0.92.18 - 2026-07-13
 
 - Issue #474: Removed the unread `kilo.user_profile.profile_json` cloud payload
