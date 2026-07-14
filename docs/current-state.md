@@ -983,8 +983,12 @@ behind the cloud adapter so cloud-mode reads/writes stamp and enqueue and
 reconcile on reconnect. Issue #489 extends that ongoing path beyond weight
 entries, workout notes, and archived goals to the allowlisted user profile and
 current-routine state, feature toggles, active weight goal, and deload history,
-so all seven cloud tables push post-bootstrap changes and restore onto a clean
-install. Pending local changes are submitted before conflict resolution and
+and issue #487 moves the three ongoing health-profile values
+(`current_workout_note_id`, `fatigue_multiplier`, and `tracked_lifts`) out of
+the mixed `user_profile` row into the consent-gated `user_health_profile`, so
+all eight cloud tables push post-bootstrap changes and restore onto a clean
+install without routing health values through the ordinary account-settings
+row. Pending local changes are submitted before conflict resolution and
 receive server-authored timestamps on arrival, avoiding device-clock-skew data
 loss; exact timestamp ties converge on the shared server row, while local-only
 ties retain the stable per-install `client_id` rule. Snapshot-based dirty
@@ -1042,6 +1046,23 @@ configuration: Auth must keep platform rate limits, use production-owned SMTP
 before email signup, keep the published Privacy Policy and Terms of Service
 documents live, and enable CAPTCHA before open signup unless a closed-beta
 release explicitly defers the still-pending gates.
+
+Issue #487 adds the staged Article 9 explicit-consent boundary for Cloud Sync.
+The client renders the approved United States/SCC/health-category disclosure
+and records grants only through server-owned, material-versioned consent RPCs.
+Supabase RLS gates `user_health_profile` plus the six health-data tables; stale
+clients and grants receive distinct denial codes. Withdrawal immediately blocks
+cloud health access, queues an idempotent purge through `health-data-delete`,
+and advances to `withdrawn` only after the shared gated set is verified empty.
+Account export and both deletion paths consume that same table definition, and
+account deletion retains only a six-year HMAC-pseudonymized evidence archive.
+Existing users are not grandfathered: the deployment sequence is expand, ship
+the consent-capable client, wait through adoption, activate enforcement,
+contract the legacy columns, then separately arm per-account quarantine purge.
+None of those production migration or activation steps occurred during issue
+#487 closeout, and issue #477 remains blocked until deployment and policy
+publication make its Article 9 wording true.
+
 `docs/backend-schema.md` documents the schema and source-of-truth policy,
 `docs/backend-activation.md` the activation runbook, and
 `docs/archive/backend-roadmap.md` the remaining cloud work.
