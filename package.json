@@ -11,6 +11,7 @@
     "web:serve": "npm --prefix mobile run serve:web",
     "web:smoke": "npm --prefix mobile run smoke:web",
     "audit": "npm audit --audit-level=high",
-    "check:migrations": "node scripts/check-migration-drift.mjs"
+    "check:migrations": "node scripts/check-migration-drift.mjs",
+    "check:migrations:selftest": "node scripts/check-migration-drift.mjs --self-test"
   }
 }

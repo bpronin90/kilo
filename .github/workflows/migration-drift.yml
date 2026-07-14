@@ -1,5 +1,21 @@
 name: Migration Drift
 
+# #490 reached production because this workflow's only credentialed run was
+# the push-to-main job below, i.e. detection happened after merge, after the
+# broken code was already live. `migration-drift` now also runs on
+# same-repository pull requests and is the intended required status check on
+# `main` (see repo branch protection) -- the pre-merge gate that was missing.
+#
+# Fork pull requests cannot receive repository secrets from a `pull_request`
+# trigger (GitHub withholds them by design, to stop a malicious PR from
+# exfiltrating secrets), so a credentialed check is not possible there. Rather
+# than silently skip or silently pass, `migration-drift-fork` runs the same
+# script with no credentials available, which makes it exit 2 ("unable to
+# check") on its own -- never 0 ("no drift"). That job is deliberately NOT a
+# required status check: requiring it would permanently block every external
+# contributor, since they can never be given the secret. It exists only to
+# surface an honest, visible signal for a human reviewer. The push-to-main job
+# remains as defense in depth, not the first production-aware detection point.
 on:
   push:
     branches: [main]
@@ -7,8 +23,11 @@ on:
 
 jobs:
   migration-drift:
+    # Required status check (branch protection: main). Runs with credentials
+    # on push to main and on pull requests from this same repository.
     name: merged migrations are applied to the live project
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -25,4 +44,29 @@ jobs:
       - name: Check every merged migration is applied
         env:
           SUPABASE_MIGRATION_CHECK_URL: ${{ secrets.SUPABASE_MIGRATION_CHECK_URL }}
+        run: node scripts/check-migration-drift.mjs
+
+  migration-drift-fork:
+    # Informational only -- intentionally NOT a required status check. Fork
+    # PRs never receive repository secrets on the `pull_request` event, so
+    # SUPABASE_MIGRATION_CHECK_URL is unset here and the script exits 2
+    # ("unable to check") on its own. That is the correct, honest outcome:
+    # it must never be read as "no drift", and a human applies the
+    # credentialed check (locally, or via the required push-to-main run)
+    # before such a change reaches production.
+    name: fork PR — credentialed check unavailable (informational only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify psql is available
+        run: psql --version
+
+      - name: "Attempt check without credentials (expected: exit 2, not a pass)"
         run: node scripts/check-migration-drift.mjs
