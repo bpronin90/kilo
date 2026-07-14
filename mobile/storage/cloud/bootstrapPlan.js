@@ -152,24 +152,18 @@ function buildWeightEntryRows(snapshot, userId) {
 function buildWeightGoalRow(snapshot, userId) {
   const g = snapshot.weightGoal;
   if (!g) return null;
-  const PROMOTED = new Set([
-    'target_weight',
-    'target_date',
-    'start_weight',
-    'start_date',
-    'saved_at',
-  ]);
-  const goalJson = {};
-  for (const [k, v] of Object.entries(g)) {
-    if (!PROMOTED.has(k)) goalJson[k] = v;
-  }
+  // Explicit allowlist (issue #475): target_weight, target_date, start_weight,
+  // start_date, and saved_at are the only fields the local weight-goal object
+  // legitimately promotes. Production audit (2026-07-13) found goal_json empty
+  // on every row, so no further key is forwarded — an unknown key added to the
+  // local goal object must not upload silently via an Object.entries catch-all.
   return {
     user_id: userId,
     target_weight: g.target_weight ?? null,
     target_date: g.target_date ?? null,
     start_weight: g.start_weight ?? null,
     start_date: g.start_date ?? null,
-    goal_json: Object.keys(goalJson).length ? goalJson : null,
+    goal_json: null,
     saved_at: g.saved_at ?? null,
     updated_at: new Date().toISOString(),
   };
@@ -269,11 +263,22 @@ function buildWorkoutNoteRows(snapshot, userId) {
 
 function buildDeloadHistoryRows(snapshot, userId) {
   const now = new Date().toISOString();
-  const PROMOTED = new Set(['id', 'date', 'raw_text', 'saved_at']);
+  // Explicit allowlist (issue #475): id, date, raw_text, and saved_at are
+  // promoted to named columns. The remaining keys below are the fitness
+  // metadata the app legitimately carries in record_json, per the production
+  // audit (2026-07-13) of the live deload_history row. Any other local key is
+  // dropped instead of uploaded — no Object.entries catch-all.
+  const JSON_ALLOWLIST = [
+    'completed_at',
+    'deload_session_ordinal',
+    'generated_at',
+    'note_id',
+    'session_count',
+  ];
   return (snapshot.deloadHistory || []).map((r) => {
     const recordJson = {};
-    for (const [k, v] of Object.entries(r)) {
-      if (!PROMOTED.has(k)) recordJson[k] = v;
+    for (const k of JSON_ALLOWLIST) {
+      if (r[k] !== undefined) recordJson[k] = r[k];
     }
     return {
       user_id: userId,

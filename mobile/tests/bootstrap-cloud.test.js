@@ -265,12 +265,13 @@ describe('buildBootstrapPlan mapping', () => {
     expect(t.weight_entries[0].id).toBe('w1');
     expect(t.weight_entries[0].weight_value).toBe(180);
 
-    // weight_goal: singleton, unpromoted field carried in goal_json.
+    // weight_goal: singleton; allowlist (issue #475) drops unpromoted keys.
     expect(t.weight_goal).toHaveLength(1);
     expect(t.weight_goal[0].target_weight).toBe(170);
-    expect(t.weight_goal[0].goal_json).toEqual({ extra_local_field: 'keep-me' });
+    expect(t.weight_goal[0].goal_json).toBeNull();
+    expect(t.weight_goal[0]).not.toHaveProperty('extra_local_field');
 
-    // deload_history: one row, unknown fields → record_json.
+    // deload_history: one row, allowlisted fitness-metadata keys → record_json.
     expect(t.deload_history).toHaveLength(1);
     expect(t.deload_history[0].id).toBe('dl1');
     expect(t.deload_history[0].record_json).toMatchObject({
@@ -368,6 +369,118 @@ describe('profile upload allowlist (issue #471)', () => {
     expect(profile.display_name).toBeNull();
     expect(profile.unit_system).toBeNull();
     expect(profile).not.toHaveProperty('profile_json');
+  });
+});
+
+describe('weight-goal upload allowlist (issue #475)', () => {
+  it('does not include an unknown key added to the local weight-goal object', async () => {
+    await AsyncStorage.setItem(
+      'kilo_weight_goal',
+      JSON.stringify({
+        target_weight: 170,
+        target_date: '2026-12-01',
+        start_weight: 185,
+        start_date: '2026-01-01',
+        saved_at: '2026-06-01T00:00:00.000Z',
+        __sentinel__: 'should-not-upload',
+        notes: 'private goal notes',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const goal = client.upsertsByTable.weight_goal[0];
+    expect(goal.target_weight).toBe(170);
+    expect(goal.goal_json).toBeNull();
+    expect(goal).not.toHaveProperty('__sentinel__');
+    expect(goal).not.toHaveProperty('notes');
+  });
+
+  it('uploads only the promoted named columns from the local weight-goal object', async () => {
+    await AsyncStorage.setItem(
+      'kilo_weight_goal',
+      JSON.stringify({
+        target_weight: 160,
+        target_date: '2026-11-01',
+        start_weight: 190,
+        start_date: '2026-02-01',
+        saved_at: '2026-06-15T00:00:00.000Z',
+      })
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const goal = client.upsertsByTable.weight_goal[0];
+    expect(goal.target_weight).toBe(160);
+    expect(goal.target_date).toBe('2026-11-01');
+    expect(goal.start_weight).toBe(190);
+    expect(goal.start_date).toBe('2026-02-01');
+    expect(goal.saved_at).toBe('2026-06-15T00:00:00.000Z');
+    expect(goal.goal_json).toBeNull();
+  });
+});
+
+describe('deload-history upload allowlist (issue #475)', () => {
+  it('does not include an unknown key added to a local deload record', async () => {
+    await AsyncStorage.setItem(
+      'kilo_workout_deload_history',
+      JSON.stringify([
+        {
+          id: 'dl_unknown',
+          date: '2026-04-01',
+          raw_text: 'deload note',
+          saved_at: '2026-04-01T00:00:00.000Z',
+          session_count: 8,
+          note_id: 'wn_dl_y',
+          completed_at: '2026-04-02T00:00:00.000Z',
+          deload_session_ordinal: 3,
+          generated_at: '2026-04-01T00:00:00.000Z',
+          __sentinel__: 'should-not-upload',
+          coach_comment: 'private note',
+        },
+      ])
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const record = client.upsertsByTable.deload_history[0];
+    expect(record.id).toBe('dl_unknown');
+    // Allowlisted fitness-metadata keys are preserved.
+    expect(record.record_json).toEqual({
+      session_count: 8,
+      note_id: 'wn_dl_y',
+      completed_at: '2026-04-02T00:00:00.000Z',
+      deload_session_ordinal: 3,
+      generated_at: '2026-04-01T00:00:00.000Z',
+    });
+    // Unknown keys never leave the device.
+    expect(record.record_json).not.toHaveProperty('__sentinel__');
+    expect(record.record_json).not.toHaveProperty('coach_comment');
+  });
+
+  it('sets record_json to null when a deload record has no allowlisted keys', async () => {
+    await AsyncStorage.setItem(
+      'kilo_workout_deload_history',
+      JSON.stringify([
+        {
+          id: 'dl_bare',
+          date: '2026-03-01',
+          raw_text: 'bare deload note',
+          saved_at: '2026-03-01T00:00:00.000Z',
+          __sentinel__: 'should-not-upload',
+        },
+      ])
+    );
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const record = client.upsertsByTable.deload_history[0];
+    expect(record.id).toBe('dl_bare');
+    expect(record.record_json).toBeNull();
   });
 });
 
