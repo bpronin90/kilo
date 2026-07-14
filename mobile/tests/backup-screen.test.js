@@ -155,7 +155,7 @@ describe('BackupScreen import confirmation', () => {
 
     expect(Alert.alert).not.toHaveBeenCalled();
     expect(onImport).not.toHaveBeenCalled();
-    expect(statusMatches(tree, /Paste your backup JSON first\./)).toBe(true);
+    expect(statusMatches(tree, /Load a backup file or paste your backup JSON first\./)).toBe(true);
   });
 });
 

@@ -42,6 +42,37 @@ async function writeExportFile(json) {
   return { written: true, uri };
 }
 
+// Read the newest Kilo backup out of a folder the user picks.
+//
+// Without this the round trip does not close: the export writes a file, but the
+// only way back in was pasting the JSON into a TextInput — impractical for
+// exactly the large backups that forced the move to files in the first place. A
+// user could hold a perfectly good backup and have no way to restore it.
+//
+// expo-file-system's SAF can enumerate a directory, so this needs no document
+// picker and no new native module — it still ships over EAS Update.
+//
+// Returns { read: true, json, name } , or { read: false, reason }.
+async function readNewestBackupFile() {
+  const StorageAccessFramework = loadStorageAccessFramework();
+  const permission = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permission.granted) return { read: false, reason: 'cancelled' };
+
+  const uris = await StorageAccessFramework.readDirectoryAsync(permission.directoryUri);
+  // SAF returns opaque content:// URIs; the file name is the last path segment.
+  const backups = uris
+    .map((uri) => ({ uri, name: decodeURIComponent(uri).split('/').pop() || '' }))
+    .filter((f) => f.name.includes('kilo-backup'));
+
+  if (backups.length === 0) return { read: false, reason: 'none-found' };
+
+  // Names are kilo-backup-YYYY-MM-DD, so lexical descending is newest-first.
+  backups.sort((a, b) => b.name.localeCompare(a.name));
+  const newest = backups[0];
+  const json = await StorageAccessFramework.readAsStringAsync(newest.uri);
+  return { read: true, json, name: newest.name };
+}
+
 export function BackupScreen({ onBack, onExport, onImport }) {
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
@@ -129,12 +160,40 @@ export function BackupScreen({ onBack, onExport, onImport }) {
     }
   };
 
+  // Loads the newest backup file from a folder the user picks into the import
+  // box, so the destructive confirmation below still gates the actual replace.
+  const handleImportFromFile = async () => {
+    if (busy) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const found = await readNewestBackupFile();
+      if (!found.read) {
+        setStatus({
+          ok: false,
+          message:
+            found.reason === 'none-found'
+              ? 'No Kilo backup found in that folder.'
+              : 'Import cancelled — no folder chosen.',
+        });
+        return;
+      }
+      setImportText(found.json);
+      setStatus({ ok: true, message: `Loaded ${found.name}. Tap Import Data to restore it.` });
+    } catch (e) {
+      console.error('[BackupScreen] file import failed:', e);
+      setStatus({ ok: false, message: e?.message ? `Import failed: ${e.message}` : 'Import failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleImport = () => {
     if (busy) return;
     // Keep the empty-input guard before the Alert so an empty paste gives
     // direct feedback without prompting a destructive confirmation.
     if (!importText.trim()) {
-      setStatus({ ok: false, message: 'Paste your backup JSON first.' });
+      setStatus({ ok: false, message: 'Load a backup file or paste your backup JSON first.' });
       return;
     }
     // Data-safety: importing replaces all current local data and cannot be
@@ -172,8 +231,16 @@ export function BackupScreen({ onBack, onExport, onImport }) {
       <SectionTitle>Import</SectionTitle>
       <Card>
         <Text style={styles.helpText}>
-          Paste a previously exported backup below, then tap Import. This will replace all current data.
+          Load a previously exported backup file, or paste one below, then tap Import. This will replace all current data.
         </Text>
+        {Platform.OS === 'android' ? (
+          <Button
+            title="Load Backup File"
+            onPress={handleImportFromFile}
+            disabled={busy}
+            style={styles.actionButton}
+          />
+        ) : null}
         <TextInput
           style={styles.importInput}
           multiline
