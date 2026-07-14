@@ -23,6 +23,19 @@ import { exportBackup, importBackup, loadFatigueMultiplier, saveFatigueMultiplie
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 
+// Exported for testing. Encapsulates the ok/error envelope BackupScreen expects
+// so the failure path can be exercised without rendering the full App component.
+// exportFn defaults to the real exportBackup; tests inject a mock.
+export async function buildExportPayload(exportFn = exportBackup) {
+  try {
+    const backup = await exportFn();
+    return { ok: true, json: JSON.stringify(backup, null, 2) };
+  } catch (e) {
+    console.error('[handleExport] exportBackup threw unexpectedly:', e);
+    return { ok: false, error: e?.message ? `Export failed: ${e.message}` : 'Export failed.' };
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
@@ -223,14 +236,7 @@ export default function App() {
     }
   }, [weightSaving, weightValue, weightNote, weightHook]);
 
-  const handleExport = useCallback(async () => {
-    try {
-      const backup = await exportBackup();
-      return { ok: true, json: JSON.stringify(backup, null, 2) };
-    } catch (e) {
-      return { ok: false, error: e?.message ? `Export failed: ${e.message}` : 'Export failed.' };
-    }
-  }, []);
+  const handleExport = useCallback(() => buildExportPayload(exportBackup), []);
 
   const handleImport = useCallback(async (payload) => {
     const result = await importBackup(payload, 'replace');
