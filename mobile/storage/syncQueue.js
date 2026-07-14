@@ -640,15 +640,41 @@ export async function syncDiffTable({
     await enqueueDirty(table, rec);
   }
 
-  // 3. Merge remote into the diffed local list via the shared LWW resolver.
-  const merged = mergeRecords(localList, remote, { table });
+  // 3. Collect everything awaiting upload BEFORE the merge: this pass's diffs
+  //    plus anything left over from a previously failed push. Both are genuine
+  //    local edits that have never reached the server.
+  const pending = await getDirtyRecords(table);
+  const pendingIds = new Set(pending.map((d) => d.id));
+
+  // 4. Merge remote into the diffed local list — but a row with a pending local
+  //    edit is NOT put to a vote against its remote counterpart.
+  //
+  //    A local record is stamped with the DEVICE clock, while `transport.push`
+  //    deliberately strips `updated_at` so the DB trigger assigns the
+  //    authoritative one. The two timestamps therefore come from different
+  //    clocks and are not comparable. Running them through pickWinner meant a
+  //    device whose clock merely lagged the server lost the comparison, so the
+  //    remote row became the "winner", got written back over the user's edit in
+  //    applyMerged, was pushed in place of it, and was then cleared from the
+  //    dirty queue — silently discarding the edit and never retrying it.
+  //
+  //    The rule is "last write to REACH THE SERVER wins", so arrival at the
+  //    server is what decides — not a guess made on the client beforehand. A
+  //    pending edit is always submitted; the server stamps it on arrival, which
+  //    is necessarily later than the row we just pulled, so it wins there. The
+  //    client never needs its clock to agree with the server's.
+  //
+  //    This gates on the DIFF, not on the clock: with no local edit there is
+  //    nothing pending, remote applies normally, and a second pass pushes
+  //    nothing. Idempotency is unaffected.
+  const contested = remote.filter((r) => !pendingIds.has(r.id));
+  const merged = mergeRecords(localList, contested, { table });
   const mergedList = Array.from(merged.values());
   await applyMerged(mergedList);
   await setSyncSnapshot(table, mergedList);
 
-  // 4. Push everything still dirty (this pass's diffs plus any record left over
-  //    from a previously failed push).
-  const pending = await getDirtyRecords(table);
+  // 5. Push the pending edits. merged.get() now returns the local record for
+  //    these ids, so the user's edit is what actually goes up.
   if (pending.length > 0) {
     const toPush = pending.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
@@ -658,7 +684,9 @@ export async function syncDiffTable({
     );
   }
 
-  // 5. Advance the cursor only after a successful push.
+  // 6. Advance the cursor only after a successful push. This spans the FULL
+  //    remote set, including rows excluded from the merge above — they were
+  //    still pulled, and the next pass must start past them.
   const advanced = maxUpdatedAt([...remote, ...pending], cursor);
   if (advanced && advanced !== cursor) {
     await setCursor(table, advanced);

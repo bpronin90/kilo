@@ -65,6 +65,23 @@ function makeFakeCloud() {
   const state = { online: true };
   const pushes = [];
 
+  // Stands in for the Postgres `now()` the updated_at trigger uses. It must be
+  // strictly later than anything already stored, so an arriving write always
+  // orders after the rows it is racing — which is what makes "last write to
+  // reach the server wins" true, independent of any device's clock.
+  let lastServerMs = 0;
+  function serverNow(table) {
+    // Seed from wall-clock so stamps are realistic, then force them strictly
+    // past both the previous stamp and anything already in the table.
+    let maxMs = Math.max(lastServerMs, Date.now());
+    for (const row of tables[table].values()) {
+      const ms = Date.parse(row.updated_at || 0);
+      if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+    }
+    lastServerMs = maxMs + 1;
+    return new Date(lastServerMs).toISOString();
+  }
+
   const transport = {
     async pull(table, cursor) {
       if (!state.online) throw new Error('offline');
@@ -83,9 +100,25 @@ function makeFakeCloud() {
       if (!state.online) throw new Error('offline');
       pushes.push({ table, ids: records.map((r) => r.id) });
       for (const rec of records) {
-        // Server-side LWW guard: a stale push must not clobber a newer remote.
-        const existing = tables[table].get(rec.id);
-        tables[table].set(rec.id, existing ? pickWinner(existing, rec) : rec);
+        // Model the REAL server, which does not arbitrate by client clock.
+        //
+        // `transport.js` deliberately omits `updated_at` from every upsert
+        // whitelist because a BEFORE INSERT/UPDATE trigger forces `now()`. So
+        // Postgres accepts the upsert unconditionally and stamps it itself —
+        // there is no server-side pickWinner. "Last write to REACH the server
+        // wins" is a property of arrival order, not of a comparison.
+        //
+        // This fake previously ran pickWinner(existing, rec) against the
+        // CLIENT's updated_at, which no production code path does. That guard
+        // masked the clock-skew edit loss Codex found in #489: it made a lagging
+        // device's push look correctly rejected instead of wrongly discarded.
+        // A test double must not be kinder than the system it stands in for.
+        //
+        // (Separately: production also drops `client_id`, which is not a stored
+        // column, so pulled rows never carry one. This fake still keeps it —
+        // a second, independent divergence, left alone here rather than widened
+        // into pre-existing tests. Reported on the issue.)
+        tables[table].set(rec.id, { ...rec, updated_at: serverNow(table) });
       }
     },
   };
@@ -691,9 +724,14 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
     expect(remotePhantom).toMatchObject({
       id: PHANTOM_ID,
       source_snapshot: { async_storage_key: 'kilo_workout_note' },
+      // deleted_at is a client-supplied column and survives the round trip
+      // verbatim. updated_at does NOT: it is stripped on push and reassigned by
+      // the server trigger, so it is necessarily LATER than the client's
+      // tombstone stamp rather than equal to it. Asserting equality here was
+      // asserting the old fake's behavior, not Postgres's.
       deleted_at: localPhantom.deleted_at,
-      updated_at: localPhantom.updated_at,
     });
+    expect(remotePhantom.updated_at >= localPhantom.deleted_at).toBe(true);
     expect(isTombstone(remotePhantom)).toBe(true);
 
     await cloudAdapter.sync();
@@ -1002,6 +1040,77 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     // And the device kept its own data: the stale cloud row did not overwrite it.
     expect(await Storage.loadCurrentWorkoutId()).toBe('wn_1');
     expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true });
+  });
+
+  // Codex review, #489: the device stamps a local edit with its OWN clock, while
+  // transport.push strips updated_at so the DB trigger assigns the authoritative
+  // one. Those timestamps come from different clocks. Putting them to a vote in
+  // pickWinner meant a device whose clock merely lagged the server lost: the
+  // remote row won, overwrote the user's edit locally, was pushed in place of it,
+  // and the edit was then cleared from the dirty queue — gone, and never retried.
+  //
+  // A user on a slightly slow phone would watch a setting silently revert.
+  //
+  // This test FAILS against 4d13ae7 and passes after the reconciliation fix.
+  it('a local edit still reaches the cloud when the device clock lags the server', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    // Another device wrote the row, and the server stamped it far ahead of
+    // anything this device's clock can mint. This is ordinary clock skew, not an
+    // exotic case — the server clock is simply not the device clock.
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF,
+      display_name: 'Ben',
+      unit_system: 'lb',
+      current_workout_note_id: 'wn_1',
+      tracked_lifts: { Squat: true, Bench: true },
+      fatigue_multiplier: 1.15,
+      ui_state: { log_current_collapsed: false },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    // The user now changes something on THIS device.
+    await Storage.saveTrackedLifts({ Squat: true, Bench: true, Deadlift: true });
+
+    await cloudAdapter.sync();
+
+    // The edit must actually be uploaded — arrival at the server is what decides
+    // the winner, not a comparison made on the client beforehand.
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+      Squat: true,
+      Bench: true,
+      Deadlift: true,
+    });
+
+    // And it must survive locally rather than being reverted by the pulled row.
+    expect(await Storage.loadTrackedLifts()).toEqual({
+      Squat: true,
+      Bench: true,
+      Deadlift: true,
+    });
+  });
+
+  it('a lagging clock does not make sync chatty: a pass with no local edit pushes nothing', async () => {
+    await seedDeviceState();
+    await cloudAdapter.sync();
+
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF,
+      display_name: 'Ben',
+      unit_system: 'lb',
+      current_workout_note_id: 'wn_1',
+      tracked_lifts: { Squat: true, Bench: true },
+      fatigue_multiplier: 1.15,
+      ui_state: { log_current_collapsed: false },
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    // No local change this time. The push must be gated on the DIFF, not on the
+    // clock — otherwise the skew fix would turn every pass into a write.
+    const results = await cloudAdapter.sync();
+    const profilePass = results.find((r) => r.table === SYNC_TABLES.USER_PROFILE);
+    expect(profilePass.pushed).toBe(0);
   });
 
   it('never uploads the device-local demographics (issue #476 stays on hold)', async () => {
