@@ -13,11 +13,24 @@
 // Two callers, one code path:
 //
 //   worker mode  Authorization: Bearer <service-role key>. Drains up to
-//                MAX_JOBS_PER_RUN open jobs. This is what Supabase Cron retries.
+//                MAX_JOBS_PER_RUN open jobs.
+//
+//                This is what Supabase Cron invokes, every 5 minutes, via
+//                kilo.drain_health_deletion_jobs() -> pg_net POST (see migration
+//                20260714120002). The credentials come from Supabase Vault, not
+//                from the migration source. Cron re-opens jobs whose backoff has
+//                elapsed and reclaims jobs whose worker died, then calls this
+//                function to actually run them — re-queueing without a consumer
+//                would leave every withdrawal pending forever while looking
+//                perfectly healthy.
+//
 //   user mode    Authorization: Bearer <user JWT>. Drains only THAT user's own
 //                job, so a withdrawal is purged immediately rather than waiting
 //                for the next cron tick. A user can never reach another user's
 //                job: the job is looked up by the id from their verified JWT.
+//                This is a latency optimization on top of cron, never a
+//                replacement for it: if the client's kick fails or the app is
+//                killed mid-request, cron still finishes the erasure.
 //
 // Idempotent by construction. Every delete is an unconditional, user-scoped
 // statement (see _shared/health-data-scope.ts), so a crashed or partially applied

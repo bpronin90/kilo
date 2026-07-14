@@ -103,6 +103,12 @@ create table if not exists kilo.health_data_deletion_jobs (
   status text not null default 'pending',
   attempts integer not null default 0,
   last_error text,
+  -- Exponential backoff between retries. There is deliberately NO attempt cap: the
+  -- contract is to retry until every scoped row is gone, and a job that gives up
+  -- after N tries would leave a user who withdrew consent with their health data
+  -- still in the cloud and their state stuck in deletion_pending forever. Backoff
+  -- is what keeps "retry indefinitely" from becoming a hot loop.
+  next_attempt_at timestamptz not null default now(),
   -- Per-table counts and completion status ONLY. No deleted values, ever.
   table_counts jsonb,
   created_at timestamptz not null default now(),
@@ -232,6 +238,7 @@ begin
   select * into v_job
   from kilo.health_data_deletion_jobs
   where status in ('pending', 'failed')
+    and next_attempt_at <= now()
   order by created_at
   for update skip locked
   limit 1;
@@ -257,6 +264,21 @@ grant execute on function kilo.claim_health_deletion_job() to service_role;
 -- Complete a job. The deletion_pending -> withdrawn transition is allowed ONLY
 -- when the gated set is verifiably empty for that user; a worker that thinks it
 -- finished but left rows behind is recorded as failed and retried.
+-- Exponential backoff, capped. Fast enough that an ordinary transient failure is
+-- retried within a minute (withdrawal must complete "without undue delay"), slow
+-- enough that a genuinely wedged job is not hammered forever.
+create or replace function kilo.health_deletion_backoff(p_attempts integer)
+  returns interval
+  language sql
+  immutable
+  set search_path = ''
+as $$
+  select least(
+    interval '30 seconds' * power(2, least(coalesce(p_attempts, 0), 8)),
+    interval '1 hour'
+  );
+$$;
+
 create or replace function kilo.complete_health_deletion_job(p_job_id uuid)
   returns jsonb
   language plpgsql
@@ -285,6 +307,7 @@ begin
       status = 'failed',
       last_error = format('%s scoped rows remain', v_remaining),
       table_counts = v_counts,
+      next_attempt_at = now() + kilo.health_deletion_backoff(v_job.attempts),
       updated_at = now()
     where id = p_job_id;
 
@@ -325,6 +348,7 @@ as $$
     -- Bounded and message-only: a purge error must never carry a health value
     -- into an operational log.
     last_error = left(coalesce(p_error, 'unknown'), 500),
+    next_attempt_at = now() + kilo.health_deletion_backoff(attempts),
     updated_at = now()
   where id = p_job_id;
 $$;
@@ -355,6 +379,9 @@ begin
     update kilo.health_data_deletion_jobs set
       status = 'pending',
       last_error = null,
+      -- An operator re-enqueue is an explicit "retry now"; it must not sit out the
+      -- remaining backoff window.
+      next_attempt_at = now(),
       updated_at = now()
     where id = v_job_id;
   else
@@ -552,25 +579,177 @@ revoke all on function kilo.evidence_retention_sweep() from public, anon, authen
 grant execute on function kilo.evidence_retention_sweep() to service_role;
 
 -- ---------------------------------------------------------------------------
--- 7. Schedules
+-- 7. The queue consumer
+-- ---------------------------------------------------------------------------
+--
+-- Re-opening a failed job is not the same as running it. A queue with no consumer
+-- silently holds every withdrawal forever: the user is told their cloud data is
+-- being deleted, the row count never moves, and nothing ever calls the worker.
+-- So the schedule below has to actually INVOKE health-data-delete, not just flip
+-- job rows back to `pending`.
+--
+-- The invocation is an authenticated HTTP call from Postgres via pg_net. Its
+-- credentials come from Supabase Vault, never from this file: a service-role key
+-- committed to a migration is a service-role key published to the repository.
+
+create extension if not exists pg_net;
+
+-- Vault secret names the operator must create before the purge worker can run.
+-- Kept as a function (not a table) so the names are versioned with the schema.
+create or replace function kilo.worker_secret_names()
+  returns table (functions_base_url text, service_role_key text)
+  language sql
+  immutable
+  set search_path = ''
+as $$
+  select 'kilo_functions_base_url'::text, 'kilo_service_role_key'::text;
+$$;
+
+-- POST health-data-delete in worker mode. Returns the pg_net request id, or NULL
+-- when there is nothing to do or the worker is not configured.
+--
+-- Fail-safe, not fail-open: with no Vault secrets this returns NULL and warns
+-- rather than raising. A raise would abort the cron transaction and also stop the
+-- quarantine/retention work sharing the schedule — and it still would not delete
+-- anything. kilo.health_deletion_backlog() below is what makes an unconfigured or
+-- broken worker visible instead of silent.
+create or replace function kilo.dispatch_health_deletion_worker()
+  returns bigint
+  language plpgsql
+  security definer
+  set search_path = ''
+as $$
+declare
+  v_base_url text;
+  v_key text;
+  v_open integer;
+  v_request_id bigint;
+begin
+  -- Nothing queued: do not call the worker at all.
+  select count(*) into v_open
+  from kilo.health_data_deletion_jobs
+  where status in ('pending', 'failed')
+    and next_attempt_at <= now();
+
+  if v_open = 0 then
+    return null;
+  end if;
+
+  select decrypted_secret into v_base_url
+  from vault.decrypted_secrets
+  where name = (select functions_base_url from kilo.worker_secret_names());
+
+  select decrypted_secret into v_key
+  from vault.decrypted_secrets
+  where name = (select service_role_key from kilo.worker_secret_names());
+
+  if v_base_url is null or v_key is null then
+    raise warning
+      'health-data purge worker is not configured: % open job(s) cannot be dispatched. Create the Vault secrets named by kilo.worker_secret_names().',
+      v_open;
+    return null;
+  end if;
+
+  select net.http_post(
+    url     => rtrim(v_base_url, '/') || '/functions/v1/health-data-delete',
+    headers => jsonb_build_object(
+      'Authorization', 'Bearer ' || v_key,
+      'Content-Type', 'application/json'
+    ),
+    body    => jsonb_build_object('source', 'cron'),
+    timeout_milliseconds => 60000
+  ) into v_request_id;
+
+  return v_request_id;
+end;
+$$;
+
+revoke all on function kilo.dispatch_health_deletion_worker() from public, anon, authenticated;
+grant execute on function kilo.dispatch_health_deletion_worker() to service_role;
+
+-- One cron cycle: re-open whatever is due, then run it.
+create or replace function kilo.drain_health_deletion_jobs()
+  returns jsonb
+  language plpgsql
+  security definer
+  set search_path = ''
+as $$
+declare
+  v_reopened integer;
+  v_stale integer;
+  v_request_id bigint;
+begin
+  -- A failed job becomes eligible again once its backoff elapses. There is no
+  -- attempt cap: the job retries until the gated set is verifiably empty, because
+  -- the alternative is abandoning a user's erasure request.
+  update kilo.health_data_deletion_jobs set
+    status = 'pending',
+    updated_at = now()
+  where status = 'failed'
+    and next_attempt_at <= now();
+  get diagnostics v_reopened = row_count;
+
+  -- A job stuck in `running` past a generous ceiling means the worker died
+  -- mid-flight. The delete is idempotent, so retrying is always safe.
+  update kilo.health_data_deletion_jobs set
+    status = 'pending',
+    next_attempt_at = now(),
+    updated_at = now()
+  where status = 'running'
+    and updated_at < now() - interval '30 minutes';
+  get diagnostics v_stale = row_count;
+
+  v_request_id := kilo.dispatch_health_deletion_worker();
+
+  return jsonb_build_object(
+    'reopened', v_reopened,
+    'reclaimed_stale', v_stale,
+    'dispatched', v_request_id is not null,
+    'request_id', v_request_id
+  );
+end;
+$$;
+
+revoke all on function kilo.drain_health_deletion_jobs() from public, anon, authenticated;
+grant execute on function kilo.drain_health_deletion_jobs() to service_role;
+
+-- Monitoring hook. A purge that is queued but never draining is invisible in the
+-- product (the user just sees "deletion pending" forever), so it has to be visible
+-- to the operator. Alert on any row here.
+create or replace function kilo.health_deletion_backlog(p_older_than interval default interval '1 hour')
+  returns table (job_id uuid, user_id uuid, reason text, status text, attempts integer, age interval, last_error text)
+  language sql
+  stable
+  security definer
+  set search_path = ''
+as $$
+  select j.id, j.user_id, j.reason, j.status, j.attempts, now() - j.created_at, j.last_error
+  from kilo.health_data_deletion_jobs j
+  where j.status in ('pending', 'running', 'failed')
+    -- Inclusive: with p_older_than => 0 an operator wants "every open job right
+    -- now", and a strict `<` would silently exclude the newest ones — the exact
+    -- jobs an incident is about.
+    and j.created_at <= now() - p_older_than
+  order by j.created_at;
+$$;
+
+revoke all on function kilo.health_deletion_backlog(interval) from public, anon, authenticated;
+grant execute on function kilo.health_deletion_backlog(interval) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 8. Schedules
 -- ---------------------------------------------------------------------------
 
 create extension if not exists pg_cron with schema extensions;
 
--- Retry incomplete purges. The worker itself is the health-data-delete Edge
--- Function; this schedule re-opens failed jobs so a wedged or partially applied
--- delete is retried until the gated set is verifiably empty.
+-- Drain the purge queue: re-open what is due, then actually invoke the worker.
+-- Every 5 minutes rather than every 10 — a withdrawal must be erased "without
+-- undue delay", and this schedule is the safety net behind the client's own
+-- immediate kick.
 select cron.schedule(
-  'health-deletion-retry',
-  '*/10 * * * *',
-  $cron$
-    update kilo.health_data_deletion_jobs set status = 'pending', updated_at = now()
-    where status = 'failed' and attempts < 50;
-    -- A job stuck in `running` past a generous ceiling means the worker died
-    -- mid-flight. The delete is idempotent, so retrying is always safe.
-    update kilo.health_data_deletion_jobs set status = 'pending', updated_at = now()
-    where status = 'running' and updated_at < now() - interval '30 minutes';
-  $cron$
+  'health-deletion-drain',
+  '*/5 * * * *',
+  $cron$ select kilo.drain_health_deletion_jobs() $cron$
 );
 
 -- Per-account quarantine expiry. No-ops entirely until purge is separately armed.
