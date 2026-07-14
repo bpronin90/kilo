@@ -11,6 +11,8 @@
   migration, enforcement activation, contract migration, and purge arming each
   require separate approval.
 
+
+- Issue #495: Configure EAS runtimeVersion appVersion for 0.95.0 Android release
 ## 0.94.0 - 2026-07-14
 
 - Issue #489: Extended ongoing cloud convergence to user profile and current
