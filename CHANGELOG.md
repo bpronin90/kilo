@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.92.20 - 2026-07-13
+
+- Issue #475: Replaced the remaining wildcard cloud uploads for weight goals
+  and deload history with explicit field allowlists and regression coverage.
+
 ## 0.92.19 - 2026-07-13
 
 - Issue #479: Preserved and logged underlying local-backup generation and native
