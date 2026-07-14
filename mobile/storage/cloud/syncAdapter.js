@@ -493,6 +493,13 @@ const DIFF_TABLES = Object.freeze([
   },
 ]);
 
+// Consent (#487) is deliberately NOT checked here. This module is transport-
+// agnostic by contract — the transport is injected, and the tests drive it with no
+// Supabase client at all — so an authorization call in this loop would be both out
+// of place and unenforceable. The gate lives at the app seam
+// (hooks/entries/syncRecoveryHooks.js), which is where a denial becomes a screen
+// the user can act on, and the real boundary is the server's RLS, which refuses
+// these reads and writes whether or not any client ever asks.
 export async function sync() {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));

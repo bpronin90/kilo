@@ -27,3 +27,10 @@ verify_jwt = false
 
 [functions.account-delete]
 verify_jwt = false
+
+# health-data-delete authenticates two distinct callers itself: the Cron worker
+# (service-role key) and a withdrawing user (their JWT). verify_jwt = false lets
+# it tell them apart; it does not weaken auth, because neither path does anything
+# before the token is verified.
+[functions.health-data-delete]
+verify_jwt = false

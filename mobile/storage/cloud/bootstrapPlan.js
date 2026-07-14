@@ -121,36 +121,26 @@ export const DELOAD_RECORD_JSON_FIELDS = Object.freeze([
 
 // ── payload builders (pure) ─────────────────────────────────────────────────
 
+// Account settings only. The six health values this row used to carry moved to
+// user_health_profile in #487 and are built by buildUserHealthProfileRow below.
+//
+// A consent-capable client must NOT write them here, for two reasons: it would be
+// an ungated health write while the gate is armed, and the contract migration drops
+// those columns outright — an upsert naming them would then fail with PGRST204 and
+// break profile sync entirely. display_name, unit_system, and ui_state are ordinary
+// preferences and keep syncing for a user who refuses health consent.
 function buildUserProfileRow(snapshot, userId) {
-  const {
-    userProfile,
-    currentWorkoutId,
-    fatigueMultiplier,
-    trackedLifts,
-    logCurrentCollapsed,
-    deloadNote,
-  } = snapshot;
+  const { userProfile, logCurrentCollapsed } = snapshot;
 
   const profile = userProfile || {};
 
-  const row = {
+  return {
     user_id: userId,
     display_name: profile.display_name ?? null,
     unit_system: profile.unit_system ?? null,
-    current_workout_note_id: currentWorkoutId ?? null,
-    fatigue_multiplier: fatigueMultiplier ?? null,
-    tracked_lifts: trackedLifts ?? {},
     ui_state: { log_current_collapsed: !!logCurrentCollapsed },
     updated_at: new Date().toISOString(),
   };
-
-  if (deloadNote) {
-    row.current_deload_note_raw_text = deloadNote.raw_text ?? null;
-    row.current_deload_note_saved_at = deloadNote.saved_at ?? null;
-    row.current_deload_note_updated_at = deloadNote.updated_at ?? null;
-  }
-
-  return row;
 }
 
 function buildFeatureTogglesRow(snapshot, userId) {
@@ -314,9 +304,30 @@ function buildDeloadHistoryRows(snapshot, userId) {
   });
 }
 
+// The six values that used to ride along on the mixed user_profile row. They are
+// data concerning health under Art. 9, so they now live in their own consent-gated
+// table (issue #487) and are uploaded separately. During the expand phase the
+// server still mirrors them back onto user_profile for older clients; after the
+// contract migration those columns are gone and this is the only place they exist.
+function buildUserHealthProfileRow(snapshot, userId) {
+  const { currentWorkoutId, fatigueMultiplier, trackedLifts, deloadNote } = snapshot;
+  const note = deloadNote || {};
+
+  return {
+    user_id: userId,
+    current_workout_note_id: currentWorkoutId ?? null,
+    fatigue_multiplier: fatigueMultiplier ?? null,
+    tracked_lifts: trackedLifts ?? {},
+    current_deload_note_raw_text: note.raw_text ?? null,
+    current_deload_note_saved_at: note.saved_at ?? null,
+    current_deload_note_updated_at: note.updated_at ?? null,
+  };
+}
+
 export function buildBootstrapPlan(snapshot, userId) {
   return {
     user_profile: [buildUserProfileRow(snapshot, userId)],
+    user_health_profile: [buildUserHealthProfileRow(snapshot, userId)],
     feature_toggles: [buildFeatureTogglesRow(snapshot, userId)],
     weight_entries: buildWeightEntryRows(snapshot, userId),
     weight_goal: (() => {

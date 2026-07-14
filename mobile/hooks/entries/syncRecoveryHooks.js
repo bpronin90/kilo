@@ -16,6 +16,36 @@ import {
   setLocalDataOwner,
   purgeLocalData,
 } from '../../storage/entries/localDataOwner';
+import { fetchConsentStatus } from '../../storage/cloud/consent';
+
+// The Cloud Sync authorization seam (#487).
+//
+// Every table bootstrap and sync touch is consent-gated health data, so both are
+// checked here, once, before any upload is attempted. Two reasons this happens at
+// the app layer rather than inside the sync engine:
+//
+//   * A bootstrap that ran without a grant would push settings up and then have its
+//     health tables rejected by RLS one at a time, leaving a half-uploaded account
+//     and an error the user cannot act on. Refusing before the first write keeps the
+//     failure honest.
+//   * A denial has to become a SCREEN — update the app, consent, re-consent, or wait
+//     for a deletion to finish. Those are four different outcomes, and the engine has
+//     no way to express them.
+//
+// This is not the authorization boundary and must never be mistaken for one. The
+// server's RLS gate refuses the same reads and writes whether or not this check
+// runs; a tampered client that skipped it would simply get empty pulls and rejected
+// writes.
+async function assertConsent() {
+  const consent = await fetchConsentStatus();
+  if (consent.allowed) return null;
+  return {
+    ok: false,
+    code: consent.code,
+    consentDenied: true,
+    error: 'Cloud Sync needs your consent to store health data.',
+  };
+}
 
 function makeBootstrapRunner(user) {
   const userId = user?.id;
@@ -44,6 +74,11 @@ export function useSyncRecovery(user = null) {
     if (!runner) {
       return { ok: false, error: 'Sign in to bootstrap your cloud data.' };
     }
+    // No grant, no upload. The phase is left untouched (not failed): the user has
+    // not hit an error, they simply have not consented yet, and the consent surface
+    // is what resolves it.
+    const denied = await assertConsent();
+    if (denied) return denied;
     // The owner write is part of the phase runner: a successful upload whose
     // ownership claim fails to persist is a failed (retryable) bootstrap, not
     // a success — cloud mode must never activate without a durable owner
@@ -61,14 +96,16 @@ export function useSyncRecovery(user = null) {
     return result;
   }, [userId]);
 
-  const runSync = useCallback(() => {
+  const runSync = useCallback(async () => {
     const runner = makeSyncRunner();
     if (!runner) {
-      return Promise.resolve({
+      return {
         ok: false,
         error: 'Cloud sync is not available in this build yet.',
-      });
+      };
     }
+    const denied = await assertConsent();
+    if (denied) return denied;
     return runPhase(SYNC_PHASE.SYNC, runner);
   }, []);
 
@@ -116,6 +153,10 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   onSyncCompleteRef.current = onSyncComplete;
 
   const [ownershipPrompt, setOwnershipPrompt] = useState(null);
+  // The server's denial code, so App/CloudSyncRecovery can route the user to the
+  // consent surface, an update prompt, or a deletion-pending notice rather than
+  // silently doing nothing.
+  const [consentDenial, setConsentDenial] = useState(null);
 
   const userId = auth?.user?.id ?? null;
   const configured = auth?.configured ?? false;
@@ -123,6 +164,16 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   const signedIn = auth?.signedIn ?? false;
 
   const runInitialSync = useCallback(async () => {
+    // The automatic path is exactly where an ungated upload would be most damaging:
+    // it runs on sign-in, with no user watching. A user who has not granted
+    // health-data consent must not have their history pushed to the cloud simply
+    // because they signed in on a new device.
+    const denied = await assertConsent();
+    if (denied) {
+      setConsentDenial(denied.code);
+      return;
+    }
+    setConsentDenial(null);
     if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
       const runner = makeSyncRunner();
       if (runner) await runPhase(SYNC_PHASE.SYNC, runner);
@@ -134,6 +185,13 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   // deliberate upload of another account's data into theirs).
   const confirmOwnershipUpload = useCallback(async () => {
     if (!userId) return { ok: false, error: 'Not signed in.' };
+    // Confirming ownership is not consent. This upload is the largest health-data
+    // write the app makes, so it needs its own grant check.
+    const denied = await assertConsent();
+    if (denied) {
+      setConsentDenial(denied.code);
+      return denied;
+    }
     setOwnershipPrompt(null);
     const runner = makeBootstrapRunner({ id: userId });
     // The owner write is part of the phase runner so a successful upload
@@ -238,6 +296,7 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     confirmOwnershipUpload,
     startFreshOnDevice,
     dismissOwnershipPrompt,
+    consentDenial,
   };
 }
 

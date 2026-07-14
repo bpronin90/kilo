@@ -5,6 +5,9 @@ import { buildBootstrapPlan } from './bootstrapPlan';
 
 const SCHEMA = 'kilo';
 
+// user_health_profile carries the six health values that used to sit on the mixed
+// user_profile row (#487). It is gated: the upsert below only succeeds for a user
+// with an active grant.
 const UPSERT_ORDER = [
   'feature_toggles',
   'weight_entries',
@@ -12,10 +15,12 @@ const UPSERT_ORDER = [
   'workout_notes',
   'deload_history',
   'user_profile',
+  'user_health_profile',
 ];
 
 const CONFLICT_TARGETS = {
   user_profile: 'user_id',
+  user_health_profile: 'user_id',
   feature_toggles: 'user_id',
   weight_entries: 'user_id,id',
   weight_goal: 'user_id',
@@ -138,6 +143,10 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
     );
   }
 
+  // Consent (#487) is enforced by the caller (hooks/entries/syncRecoveryHooks.js)
+  // and, authoritatively, by the server's RLS gate: the user_health_profile upsert
+  // below simply fails for a user without an active grant. This function stays a
+  // pure upload plan so it remains drivable with an injected client.
   const snapshot = await readLocalSnapshot();
   const db = client.schema(SCHEMA);
 

@@ -10,6 +10,27 @@
 //   - AccountLifecycle renders Privacy Policy and Terms of Service links (issue #330).
 
 import React from 'react';
+
+// Health-data consent (#487) is granted for these suites. They exercise sync,
+// bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
+// covers the denial paths. Without this the hook's grant check would short-circuit
+// every sync here (no Supabase client is configured under test), and these tests
+// would silently pass for the wrong reason.
+jest.mock('../storage/cloud/consent', () => {
+  const actual = jest.requireActual('../storage/cloud/consent');
+  return {
+    ...actual,
+    fetchConsentStatus: jest.fn().mockResolvedValue({ allowed: true, code: 'OK' }),
+    withdrawConsent: jest.fn().mockResolvedValue({ ok: true, status: 'deletion_pending' }),
+    requestHealthDataDeletion: jest.fn().mockResolvedValue({ ok: true }),
+    fetchActiveConsentRevision: jest.fn().mockResolvedValue({
+      catalog_revision: 1,
+      material_version: 1,
+      privacy_policy_url: 'https://example.invalid/privacy.html',
+    }),
+  };
+});
+
 let renderer;
 let act;
 
@@ -769,7 +790,7 @@ describe('CloudSyncRecovery status summary', () => {
     Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
   });
 
-  test('shows fully synced and the last successful sync time when clean', () => {
+  test('shows fully synced and the last successful sync time when clean', async () => {
     mockCloudSyncStatus = makeCloudSyncStatus({
       statusLabel: 'Fully synced',
       dirtyCount: 0,
@@ -778,7 +799,10 @@ describe('CloudSyncRecovery status summary', () => {
     });
 
     let tree;
-    act(() => {
+    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
+    // (#487) and renders no sync controls until the server confirms one, so a
+    // synchronous act() would assert against the pre-consent render.
+    await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
 
@@ -787,7 +811,7 @@ describe('CloudSyncRecovery status summary', () => {
     expect(JSON.stringify(tree.toJSON())).toMatch(/Last synced[^]*Jul 6, 2026, 3:20 PM/);
   });
 
-  test('shows pending local changes when the dirty queue is not empty', () => {
+  test('shows pending local changes when the dirty queue is not empty', async () => {
     mockCloudSyncStatus = makeCloudSyncStatus({
       statusLabel: '2 pending local changes',
       dirtyCount: 2,
@@ -796,7 +820,10 @@ describe('CloudSyncRecovery status summary', () => {
     });
 
     let tree;
-    act(() => {
+    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
+    // (#487) and renders no sync controls until the server confirms one, so a
+    // synchronous act() would assert against the pre-consent render.
+    await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
 
@@ -805,7 +832,7 @@ describe('CloudSyncRecovery status summary', () => {
     expect(JSON.stringify(tree.toJSON())).toMatch(/Local data stays saved on this device while cloud sync is pending or failed\./);
   });
 
-  test('shows last sync failed when the sync phase failed', () => {
+  test('shows last sync failed when the sync phase failed', async () => {
     mockCloudSyncStatus = makeCloudSyncStatus({
       statusLabel: 'Last sync failed',
       hasFailed: true,
@@ -813,7 +840,10 @@ describe('CloudSyncRecovery status summary', () => {
     });
 
     let tree;
-    act(() => {
+    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
+    // (#487) and renders no sync controls until the server confirms one, so a
+    // synchronous act() would assert against the pre-consent render.
+    await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
 
