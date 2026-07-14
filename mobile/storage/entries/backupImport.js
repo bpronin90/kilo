@@ -12,6 +12,7 @@ import { loadWeightGoal } from './weightGoal';
 import { loadUserProfile, saveUserProfile } from './profileStorage';
 import {
   loadFatigueMultiplier,
+  saveFatigueMultiplier,
   loadWeightDateEditEnabled,
   saveWeightDateEditEnabled,
   loadDeloadDateEditEnabled,
@@ -24,13 +25,6 @@ import {
   saveTrackedLifts,
   loadWorkoutCollapsed,
   saveWorkoutCollapsed,
-  saveFatigueMultiplier,
-  saveTrackedLifts,
-  saveWorkoutCollapsed,
-  saveWeightDateEditEnabled,
-  saveDeloadDateEditEnabled,
-  saveFatigueTrackingEnabled,
-  saveDeloadModeEnabled,
 } from './settings';
 import { loadDeloadNote, saveDeloadNote } from './deloadStorage';
 
