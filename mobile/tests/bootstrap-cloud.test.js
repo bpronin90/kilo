@@ -13,6 +13,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import * as Storage from '../storage/entries';
 import {
   bootstrapFromLocal,
   buildBootstrapPlan,
@@ -37,7 +38,13 @@ const USER_ID = '11111111-1111-1111-1111-111111111111';
 //
 // Mirrors the supabase-js chain the adapter uses: client.schema(s).from(t).upsert(rows, opts).
 // Records calls and lets a test force a per-table failure.
-function makeFakeClient({ failTable = null } = {}) {
+// `remoteRows`: { [table]: row | null } — seeds what a `.select().eq().maybeSingle()`
+// call returns for that table, simulating the account's existing cloud state
+// (e.g. a `user_profile`/`feature_toggles` row already written by device A).
+// `selectFailTable` simulates a select-side error (distinct from `failTable`,
+// which simulates an upsert-side error) so restore-failure safety can be
+// exercised independently of push-failure safety.
+function makeFakeClient({ failTable = null, remoteRows = {}, selectFailTable = null } = {}) {
   const calls = []; // { table, rows, opts }
   const upsertsByTable = {};
 
@@ -65,6 +72,20 @@ function makeFakeClient({ failTable = null } = {}) {
                 else store.push(row);
               }
               return { data: rows, error: null };
+            },
+            select() {
+              return {
+                eq() {
+                  return {
+                    async maybeSingle() {
+                      if (selectFailTable && table === selectFailTable) {
+                        return { data: null, error: { message: `boom selecting ${table}` } };
+                      }
+                      return { data: remoteRows[table] ?? null, error: null };
+                    },
+                  };
+                },
+              };
             },
           };
         },
@@ -682,6 +703,195 @@ describe('bootstrap idempotency', () => {
     expect(secondCounts).toEqual(firstCounts);
     expect(secondCounts.weight_entries).toBe(1);
     expect(secondCounts.user_profile).toBe(1);
+  });
+});
+
+// ── clean-install cloud restore (issues #481/#482/#483) ─────────────────────
+//
+// bootstrapFromLocal previously only ever pushed the local snapshot to the
+// cloud; user_profile and feature_toggles (the two singleton tables carrying
+// current routine, tracked lifts, fatigue multiplier, unit system, ui_state,
+// and feature toggles) were never read back. These tests cover the
+// download-and-hydrate direction added to close that gap: a clean install
+// restores that state from an account's existing cloud rows, restoration
+// never clobbers a device that already has real local data, and the restore
+// is idempotent.
+
+const REMOTE_PROFILE = Object.freeze({
+  user_id: USER_ID,
+  display_name: 'Cloud Ben',
+  unit_system: 'metric',
+  current_workout_note_id: 'wn_cloud_1',
+  fatigue_multiplier: 1.12,
+  tracked_lifts: { bench: true, deadlift: true },
+  ui_state: { log_current_collapsed: true },
+  updated_at: '2026-07-01T00:00:00.000Z',
+});
+
+const REMOTE_TOGGLES = Object.freeze({
+  user_id: USER_ID,
+  weight_date_edit_enabled: true,
+  deload_date_edit_enabled: true,
+  fatigue_tracking_enabled: false,
+  deload_mode_enabled: false,
+  updated_at: '2026-07-01T00:00:00.000Z',
+});
+
+describe('clean-install cloud restore (#481/#482/#483)', () => {
+  it('hydrates current routine, tracked lifts, fatigue multiplier, unit system, ui_state, and feature toggles on a clean install', async () => {
+    // Nothing local at all — a genuinely fresh install signing into an
+    // account that already bootstrapped from another device.
+    const client = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+    });
+
+    const result = await bootstrapFromLocal(USER_ID, client);
+    expect(result.ok).toBe(true);
+
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_cloud_1');
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.12);
+    expect(await Storage.loadTrackedLifts()).toEqual({ bench: true, deadlift: true });
+    expect(await Storage.loadWorkoutCollapsed()).toBe(true);
+    const profile = await Storage.loadUserProfile();
+    expect(profile.display_name).toBe('Cloud Ben');
+    expect(profile.unit_system).toBe('metric');
+    expect(await Storage.loadWeightDateEditEnabled()).toBe(true);
+    expect(await Storage.loadDeloadDateEditEnabled()).toBe(true);
+    expect(await Storage.loadFatigueTrackingEnabled()).toBe(false);
+    expect(await Storage.loadDeloadModeEnabled()).toBe(false);
+  });
+
+  it('does not restore anything when the account has no cloud rows yet (first-ever bootstrap)', async () => {
+    const client = makeFakeClient({
+      remoteRows: { user_profile: null, feature_toggles: null },
+    });
+
+    await bootstrapFromLocal(USER_ID, client);
+
+    expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+    expect(await Storage.loadTrackedLifts()).toEqual({});
+    expect(await Storage.loadUserProfile()).toBeNull();
+  });
+
+  it('never overwrites a device that already has real local data, even if the cloud row differs', async () => {
+    // Device already has its own local routine/tracked lifts/profile — not a
+    // clean install, so isCleanLocalState must gate the download off entirely.
+    await seedLocalData();
+    const localBefore = await snapshotLocal();
+
+    const client = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+    });
+    await bootstrapFromLocal(USER_ID, client);
+
+    // Local storage is byte-for-byte unchanged by the restore attempt — only
+    // the (unrelated) push side of bootstrap ran.
+    const localAfter = await snapshotLocal();
+    expect(localAfter).toEqual(localBefore);
+
+    // The push still reflects this device's own (pre-existing) local values,
+    // not the divergent cloud row.
+    expect(client.upsertsByTable.user_profile[0].current_workout_note_id).toBe('wn1');
+    expect(client.upsertsByTable.user_profile[0].fatigue_multiplier).toBe(1.1);
+  });
+
+  it('is idempotent: running bootstrap twice does not change hydrated values or duplicate upserts', async () => {
+    const client = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+    });
+
+    await bootstrapFromLocal(USER_ID, client);
+    const firstCurrentId = await Storage.loadCurrentWorkoutId();
+    const firstTracked = await Storage.loadTrackedLifts();
+
+    await bootstrapFromLocal(USER_ID, client);
+    const secondCurrentId = await Storage.loadCurrentWorkoutId();
+    const secondTracked = await Storage.loadTrackedLifts();
+
+    expect(secondCurrentId).toBe(firstCurrentId);
+    expect(secondTracked).toEqual(firstTracked);
+    expect(client.upsertsByTable.user_profile).toHaveLength(1);
+    expect(client.upsertsByTable.feature_toggles).toHaveLength(1);
+  });
+
+  it('surfaces a select failure as a retryable BootstrapError and leaves local storage untouched', async () => {
+    const client = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+      selectFailTable: 'user_profile',
+    });
+
+    await expect(bootstrapFromLocal(USER_ID, client)).rejects.toBeInstanceOf(BootstrapError);
+
+    // Nothing was hydrated and nothing was pushed.
+    expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+    expect(client.upsertsByTable.user_profile).toBeUndefined();
+
+    // Retry against a healthy client succeeds from the same untouched state.
+    const healthy = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+    });
+    const result = await bootstrapFromLocal(USER_ID, healthy);
+    expect(result.ok).toBe(true);
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_cloud_1');
+  });
+
+  it('restores routine-scoped analytics (session count) from the restored current routine, without re-entering anything', async () => {
+    const {
+      getNoteSections,
+    } = require('../hooks/entries/noteSections');
+    const { deriveRoutineStatus } = require('../lib/data');
+
+    const remoteNote = {
+      user_id: USER_ID,
+      id: 'wn_cloud_1',
+      title: 'Restored Routine',
+      raw_text: '-Bench\n- 135 5,5,5\n- 145 5,5,5',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-02T00:00:00.000Z',
+      tracked_exercises: ['Bench'],
+      one_k_exercises: null,
+      skip_markers: null,
+      attendance_flags: null,
+      exercise_classifications: null,
+      session_checkins: null,
+      is_current: true,
+      source_snapshot: null,
+      client_id: 'device-a',
+      deleted_at: null,
+    };
+
+    const client = makeFakeClient({
+      remoteRows: { user_profile: REMOTE_PROFILE, feature_toggles: REMOTE_TOGGLES },
+    });
+    // 1. Bootstrap restores the current-routine pointer (user_profile row).
+    await bootstrapFromLocal(USER_ID, client);
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_cloud_1');
+
+    // 2. The workout-notes row itself restores via the existing bidirectional
+    //    sync() pull (SYNC_TABLES.WORKOUT_NOTES) — unchanged by this issue,
+    //    exercised here only to prove the two combine into working analytics.
+    setCloudTransport({
+      async pull(table) {
+        return table === 'workout_notes' ? [remoteNote] : [];
+      },
+      async push() {},
+    });
+    try {
+      await sync();
+    } finally {
+      setCloudTransport(null);
+    }
+
+    const notes = await Storage.loadWorkoutNotes();
+    const currentId = await Storage.loadCurrentWorkoutId();
+    const currentNote = notes.find((n) => n.id === currentId);
+    expect(currentNote).toBeTruthy();
+
+    const currentSections = getNoteSections(currentNote);
+    const status = deriveRoutineStatus(currentSections, currentNote, []);
+    // Two logged Bench sessions in the restored note's raw_text, without the
+    // user re-entering or re-tracking anything on this device.
+    expect(status.sessionsLogged).toBeGreaterThan(0);
   });
 });
 
