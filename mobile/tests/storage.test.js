@@ -45,6 +45,8 @@ import {
   saveFatigueTrackingEnabled,
   loadDeloadModeEnabled,
   saveDeloadModeEnabled,
+  loadTrackedLifts,
+  saveTrackedLifts,
 } from '../storage/entries';
 import { computeWeightTrends, computeWeightGoal, computeCalorieEstimate, makeWorkoutNoteItem } from '../lib/data';
 import { parseWorkoutNote, buildSessionsFromNote } from '../lib/parser';
@@ -796,6 +798,64 @@ describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
       fatigue_tracking_enabled: true,
       deload_mode_enabled: false,
     });
+  });
+
+  // #488 — the reinstall round trip. date_of_birth, sex, height_cm, and
+  // activity_level exist in no cloud table (user_profile has no such columns),
+  // so this file is the ONLY artifact that can carry them across an uninstall.
+  // Before #488 importBackup dropped the whole cloud block, so exporting and
+  // reimporting silently lost them.
+  test('export -> wipe -> import restores profile, tracked lifts, and toggles', async () => {
+    await saveUserProfile({
+      date_of_birth: '1990-04-02',
+      sex: 'male',
+      height_cm: 180,
+      activity_level: 'moderate',
+    });
+    await saveTrackedLifts({ squat: true, bench: true });
+    await saveWeightDateEditEnabled(true);
+    await saveDeloadModeEnabled(true);
+
+    const payload = await buildCloudExport();
+
+    // Simulate the uninstall: every local key is gone.
+    await AsyncStorage.clear();
+    expect(await loadUserProfile()).toBeNull();
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(true);
+
+    expect(await loadUserProfile()).toMatchObject({
+      date_of_birth: '1990-04-02',
+      sex: 'male',
+      height_cm: 180,
+      activity_level: 'moderate',
+    });
+    expect(await loadTrackedLifts()).toEqual({ squat: true, bench: true });
+    expect(await loadWeightDateEditEnabled()).toBe(true);
+    expect(await loadDeloadModeEnabled()).toBe(true);
+  });
+
+  test('a v3 payload with no cloud block still imports unchanged', async () => {
+    await saveWeightEntry(W1);
+    const v3 = await exportBackup();
+    expect('cloud' in v3).toBe(false);
+
+    const result = await importBackup(v3);
+    expect(result.ok).toBe(true);
+    expect((await loadWeightEntries()).map((e) => e.id)).toContain(W1.id);
+  });
+
+  test('rejects a malformed cloud block without writing anything', async () => {
+    await saveUserProfile({ height_cm: 180 });
+    const payload = await buildCloudExport();
+    payload.cloud.feature_toggles = { weight_date_edit_enabled: 'yes' };
+
+    const result = await importBackup(payload);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/feature_toggles\.weight_date_edit_enabled/);
+    // Validation runs before any write, so local state is untouched.
+    expect(await loadUserProfile()).toMatchObject({ height_cm: 180 });
   });
 
   test('includes only non-sensitive account id by default, email only on opt-in, null otherwise', async () => {

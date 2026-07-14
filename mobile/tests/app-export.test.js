@@ -35,6 +35,7 @@ jest.mock('../hooks/useEntries', () => ({
 }));
 jest.mock('../storage/entries', () => ({
   exportBackup: jest.fn(),
+  buildCloudExport: jest.fn(),
   importBackup: jest.fn(),
   loadFatigueMultiplier: jest.fn().mockResolvedValue(1.07),
   saveFatigueMultiplier: jest.fn(),
@@ -72,5 +73,20 @@ describe('buildExportPayload', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.error).toBe('Export failed.');
+  });
+
+  // #488: the v3 payload omits user_profile, so a v3 export cannot carry
+  // date_of_birth / sex / height_cm / activity_level — device-local fields no
+  // cloud table holds. Defaulting to buildCloudExport is what makes a reinstall
+  // survivable; a regression back to exportBackup silently loses them.
+  test('defaults to buildCloudExport, not exportBackup', async () => {
+    const entries = require('../storage/entries');
+    entries.buildCloudExport.mockResolvedValue({ version: '3', cloud: { user_profile: {} } });
+
+    const result = await buildExportPayload();
+
+    expect(entries.buildCloudExport).toHaveBeenCalled();
+    expect(entries.exportBackup).not.toHaveBeenCalled();
+    expect(JSON.parse(result.json).cloud).toBeDefined();
   });
 });
