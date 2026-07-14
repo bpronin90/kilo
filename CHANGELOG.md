@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.93.1 - 2026-07-13
+
+- Issue #486: Design an Art. 9(2)(a) explicit-consent flow for cloud health data
+
+
 ## 0.93.0 - 2026-07-13
 
 - Issue #488: Made local backup export/import a durable reinstall-safe round
