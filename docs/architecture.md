@@ -24,7 +24,8 @@ graph TD
     subgraph supabase["Supabase Project"]
         EdgeExport["account-export Edge Function"]
         EdgeDelete["account-delete Edge Function"]
-        KiloSchema[("kilo schema\nRLS app tables")]
+        EdgeHealthDelete["health-data-delete Edge Function"]
+        KiloSchema[("kilo schema\nRLS app tables · consent ledger\npurge jobs · evidence archive")]
         Auth[("Supabase Auth")]
     end
 
@@ -36,8 +37,10 @@ graph TD
     NativeStorage <--> AS
     NativeScreens --> EdgeExport
     NativeScreens --> EdgeDelete
+    NativeScreens --> EdgeHealthDelete
     EdgeExport --> KiloSchema
     EdgeDelete --> KiloSchema
+    EdgeHealthDelete --> KiloSchema
     EdgeDelete --> Auth
 ```
 
@@ -45,7 +48,10 @@ graph TD
 
 `supabase/config.toml` records the local project identifier, the exact exposed
 schema set, and `verify_jwt = false` for `account-export` and
-`account-delete`. Those functions perform their own JWT validation and must
+`account-delete`. `health-data-delete` also disables platform JWT verification
+because it authenticates either the withdrawing user's JWT or the Vault-backed
+service-role Cron worker itself. Those functions perform their own JWT
+validation and must
 receive CORS preflight and pre-auth rate-limit requests before authentication.
 Their pre-auth IP buckets use the platform-controlled rightmost forwarding
 value, while durable limiter hits live in `kilo.rate_limit_hits`. A scheduled
@@ -365,9 +371,12 @@ Cloud bootstrap allowlists `display_name` and `unit_system` from
 `kilo_user_profile`; all other local profile fields remain on-device. The
 Supabase `user_profile` schema has no catch-all profile payload column.
 
-After bootstrap, ongoing cloud reconciliation covers seven table contracts:
+After bootstrap, ongoing cloud reconciliation covers eight table contracts:
 `weight_entries`, `workout_notes`, `archived_weight_goals`, `user_profile`,
-`feature_toggles`, `weight_goal`, and `deload_history`. The first three enqueue
+`user_health_profile`, `feature_toggles`, `weight_goal`, and `deload_history`.
+Ordinary account settings remain in `user_profile`; current routine, fatigue
+multiplier, and tracked lifts reconcile through the consent-gated
+`user_health_profile`. The first three enqueue
 dirty rows at write time; the profile, toggles, active goal, and deload history
 diff their allowlisted local projections against persisted sync snapshots. A
 pending local row always reaches Supabase before conflict ordering is settled,
@@ -376,6 +385,20 @@ trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.
 Singleton tables use a synthetic local merge id that is removed before upsert,
 and tombstones remain in the sync contract so deletes do not resurrect.
+
+Cloud health authorization is server-owned. Material-versioned grants and
+withdrawals are recorded in an immutable consent catalog/event ledger with a
+keyed current state. RLS checks the active grant before any health-table read or
+write, while protocol and material-version denial codes give the mobile client
+actionable UI states without becoming the security boundary. Withdrawal moves
+`granted -> deletion_pending -> withdrawn`: the first transition blocks access
+and creates a durable job, `health-data-delete` erases the shared gated scope,
+and the final transition occurs only after server-side zero-row verification.
+Supabase Cron dispatches the worker through `pg_net` with Vault-held
+credentials, retries indefinitely with capped backoff, and exposes an operator
+backlog/re-enqueue path. Account export, account deletion, and withdrawal purge
+share one health-data scope; account deletion replaces linked consent rows with
+minimum HMAC-pseudonymized evidence retained for six years.
 
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving

@@ -36,6 +36,27 @@ import {
 } from '../storage/entries/localDataOwner';
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 
+// Health-data consent (#487) is granted for these suites. They exercise sync,
+// bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
+// covers the denial paths. Without this the hook's grant check would short-circuit
+// every sync here (no Supabase client is configured under test), and these tests
+// would silently pass for the wrong reason.
+jest.mock('../storage/cloud/consent', () => {
+  const actual = jest.requireActual('../storage/cloud/consent');
+  return {
+    ...actual,
+    fetchConsentStatus: jest.fn().mockResolvedValue({ allowed: true, code: 'OK' }),
+    withdrawConsent: jest.fn().mockResolvedValue({ ok: true, status: 'deletion_pending' }),
+    requestHealthDataDeletion: jest.fn().mockResolvedValue({ ok: true }),
+    fetchActiveConsentRevision: jest.fn().mockResolvedValue({
+      catalog_revision: 1,
+      material_version: 1,
+      privacy_policy_url: 'https://example.invalid/privacy.html',
+    }),
+  };
+});
+
+
 beforeEach(() => {
   AsyncStorage.clear();
   __resetSyncQueue();

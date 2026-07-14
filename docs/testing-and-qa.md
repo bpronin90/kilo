@@ -509,6 +509,19 @@ retains non-test commands such as `npm run audit`.
 - keep the fake offline-sync cloud table map aligned with all tables processed
   by the sync adapter, preventing new sync tables from regressing existing
   offline create/edit/delete tests
+- verify ordinary profile settings stay on `user_profile` while current routine,
+  tracked lifts, and fatigue multiplier use the consent-gated
+  `user_health_profile`, including singleton conflict targets, clean-install
+  restore, row-level LWW convergence, retry behavior, and post-contract-safe
+  transport allowlists
+
+### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
+
+- pin the exact Cloud Sync consent/withdrawal copy, unchecked affirmation, grant
+  failure behavior, and distinct client handling for update-required, missing,
+  stale, and deletion-pending consent states
+- verify bootstrap and automatic sync remain off until preflight confirms the
+  required material version and protocol
 
 ### `mobile/tests/account-lifecycle-ui.test.js`
 
@@ -585,6 +598,25 @@ retains non-test commands such as `npm run audit`.
   Supabase CLI local database requires Docker
 - forged-header resistance remains a deployed Edge Function check because the
   SQL suite cannot observe platform forwarding-header behavior
+
+### Consent, migration, and purge suites
+
+- `supabase/tests/health-mirror.test.sql` covers expand/backfill parity,
+  depth-guarded dual writes, timestamp preservation, later-origin conflict
+  resolution, canonical tie-breaking, and client clock-forgery resistance
+- `supabase/tests/consent-gate.test.sql` covers all server modes and denial
+  states plus RLS/privilege resistance to forged revisions, events, grants,
+  wording, timestamps, and configuration
+- `supabase/tests/consent-lifecycle.test.sql` covers withdrawal transitions,
+  partial-purge retry, operator re-enqueue, re-grant, per-account quarantine,
+  purge arming, and evidence-key lifecycle behavior
+- `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
+  Vault-authenticated Edge Function worker, honors capped backoff without an
+  abandonment limit, reclaims stale jobs, and completes only after verified
+  deletion
+- `supabase/functions/_shared/health-data-scope.test.ts` is the Deno contract
+  suite preventing `account-export`, `account-delete`, and
+  `health-data-delete` from diverging from the shared gated table set
 
 ### Public Signup Legal And Abuse Checks
 

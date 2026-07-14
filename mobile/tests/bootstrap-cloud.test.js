@@ -260,19 +260,38 @@ describe('buildBootstrapPlan mapping', () => {
     await bootstrapFromLocal(USER_ID, client);
     const t = client.upsertsByTable;
 
-    // user_profile: pointer + preferences + draft deload note + unpromoted json.
+    // user_profile: account settings ONLY. The six health values moved to the
+    // consent-gated user_health_profile table in #487, and a consent-capable client
+    // must not write them here: it would be an ungated health write, and the
+    // contract migration drops those columns outright.
     expect(t.user_profile).toHaveLength(1);
     const profile = t.user_profile[0];
     expect(profile.user_id).toBe(USER_ID);
-    expect(profile.current_workout_note_id).toBe('wn1'); // kilo_current_workout_id
-    expect(profile.fatigue_multiplier).toBe(1.1); // kilo_fatigue_multiplier
-    expect(profile.tracked_lifts).toEqual({ bench: true, squat: true }); // kilo_tracked_lifts
     expect(profile.ui_state.log_current_collapsed).toBe(true); // kilo_log_current_collapsed
     expect(profile.display_name).toBe('Ben'); // kilo_user_profile promoted
     expect(profile.unit_system).toBe('imperial'); // kilo_user_profile promoted
     expect(profile).not.toHaveProperty('profile_json'); // allowlist: no arbitrary keys leave the device
-    expect(profile.current_deload_note_raw_text).toBe('deload draft'); // kilo_workout_deload_note
-    expect(profile.current_deload_note_saved_at).toBe('2026-06-05T00:00:00.000Z');
+
+    for (const healthColumn of [
+      'current_workout_note_id',
+      'fatigue_multiplier',
+      'tracked_lifts',
+      'current_deload_note_raw_text',
+      'current_deload_note_saved_at',
+      'current_deload_note_updated_at',
+    ]) {
+      expect(profile).not.toHaveProperty(healthColumn);
+    }
+
+    // user_health_profile: the six Art. 9 health values, in their own gated table.
+    expect(t.user_health_profile).toHaveLength(1);
+    const health = t.user_health_profile[0];
+    expect(health.user_id).toBe(USER_ID);
+    expect(health.current_workout_note_id).toBe('wn1'); // kilo_current_workout_id
+    expect(health.fatigue_multiplier).toBe(1.1); // kilo_fatigue_multiplier
+    expect(health.tracked_lifts).toEqual({ bench: true, squat: true }); // kilo_tracked_lifts
+    expect(health.current_deload_note_raw_text).toBe('deload draft'); // kilo_workout_deload_note
+    expect(health.current_deload_note_saved_at).toBe('2026-06-05T00:00:00.000Z');
 
     // feature_toggles: four boolean settings.
     const toggles = t.feature_toggles[0];
@@ -790,9 +809,10 @@ describe('clean-install cloud restore (#481/#482/#483)', () => {
     expect(localAfter).toEqual(localBefore);
 
     // The push still reflects this device's own (pre-existing) local values,
-    // not the divergent cloud row.
-    expect(client.upsertsByTable.user_profile[0].current_workout_note_id).toBe('wn1');
-    expect(client.upsertsByTable.user_profile[0].fatigue_multiplier).toBe(1.1);
+    // not the divergent cloud row. The health values live in user_health_profile
+    // since #487; user_profile carries account settings only.
+    expect(client.upsertsByTable.user_health_profile[0].current_workout_note_id).toBe('wn1');
+    expect(client.upsertsByTable.user_health_profile[0].fatigue_multiplier).toBe(1.1);
   });
 
   it('is idempotent: running bootstrap twice does not change hydrated values or duplicate upserts', async () => {

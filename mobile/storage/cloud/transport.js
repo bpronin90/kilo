@@ -70,13 +70,24 @@ const UPSERT_COLUMNS = Object.freeze({
   // The device-local demographic fields (date_of_birth, sex, height_cm,
   // activity_level) are NOT here and must not be added: cloud sync for them is
   // issue #476, on hold pending Play Data Safety / DPA / privacy-policy updates.
+  // Account settings ONLY. current_workout_note_id, fatigue_multiplier, and
+  // tracked_lifts are data concerning health (Art. 9) and moved to
+  // user_health_profile in #487. They must not be listed here: writing them would
+  // be an ungated health write into a mixed table, and the contract migration
+  // drops those columns outright — an upsert naming them fails with PGRST204 and
+  // takes ordinary settings sync down with it.
   user_profile: Object.freeze([
     'display_name',
     'unit_system',
+    'ui_state',
+    'deleted_at',
+  ]),
+  // The consent-gated health singleton (#487). Same singleton shape as
+  // user_profile: keys on user_id, carries no `id` column.
+  user_health_profile: Object.freeze([
     'current_workout_note_id',
     'fatigue_multiplier',
     'tracked_lifts',
-    'ui_state',
     'deleted_at',
   ]),
   feature_toggles: Object.freeze([
@@ -113,6 +124,7 @@ const SINGLETON_CONFLICT_TARGET = 'user_id';
 const COLLECTION_CONFLICT_TARGET = 'user_id,id';
 const CONFLICT_TARGETS = Object.freeze({
   user_profile: SINGLETON_CONFLICT_TARGET,
+  user_health_profile: SINGLETON_CONFLICT_TARGET,
   feature_toggles: SINGLETON_CONFLICT_TARGET,
   weight_goal: SINGLETON_CONFLICT_TARGET,
 });

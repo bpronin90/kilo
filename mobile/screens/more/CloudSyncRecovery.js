@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
 import { useSyncRecovery, useCloudExport, useCloudSyncStatus } from '../../hooks/useEntries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
 import { OWNER_UNCLAIMED, getLocalDataOwner } from '../../storage/entries/localDataOwner';
+import { HealthDataConsent } from './HealthDataConsent';
+import {
+  DENIAL_CODES,
+  WITHDRAWAL_COPY,
+  fetchConsentStatus,
+  withdrawConsent,
+  requestHealthDataDeletion,
+} from '../../storage/cloud/consent';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
@@ -19,6 +27,21 @@ export function CloudSyncRecovery({ user }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
+
+  // Health-data consent (#487). `consent` is the server's answer, never a local
+  // preference: the backend is the authorization boundary and this state only
+  // decides what to SHOW.
+  const [consent, setConsent] = useState(null);
+  const [showingConsent, setShowingConsent] = useState(false);
+  const [confirmingWithdrawal, setConfirmingWithdrawal] = useState(false);
+
+  const refreshConsent = useCallback(async () => {
+    setConsent(await fetchConsentStatus());
+  }, []);
+
+  useEffect(() => {
+    refreshConsent();
+  }, [refreshConsent]);
 
   const phaseLabel = (s) => {
     switch (s.status) {
@@ -95,6 +118,86 @@ export function CloudSyncRecovery({ user }) {
     }
   };
 
+  // Withdrawal. The server blocks access and queues the purge atomically, then the
+  // worker is kicked so the delete happens now rather than at the next cron tick.
+  // A failed kick is not a failed withdrawal: the durable job is already queued and
+  // cron retries it, so the user is told deletion is in progress, never that it
+  // failed and never that it finished when it has not.
+  const handleWithdraw = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await withdrawConsent();
+      if (!result.ok) {
+        setStatus(result.error || 'Could not withdraw consent — Cloud Sync is unchanged.');
+        return;
+      }
+      setConfirmingWithdrawal(false);
+      await requestHealthDataDeletion();
+      await refreshConsent();
+      setStatus('Cloud Sync is off. Your cloud health data is being deleted; your data on this device is untouched.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const denialCode = consent && !consent.allowed ? consent.code : null;
+  const deletionPending = denialCode === DENIAL_CODES.HEALTH_DATA_DELETION_PENDING;
+  const needsConsent =
+    denialCode === DENIAL_CODES.CONSENT_REQUIRED ||
+    denialCode === DENIAL_CODES.CONSENT_VERSION_STALE;
+  const needsUpdate = denialCode === DENIAL_CODES.CLIENT_UPDATE_REQUIRED;
+  const syncAllowed = Boolean(consent?.allowed);
+
+  // A purge is in flight. The user gets deletion status and a support path — NOT a
+  // sync toggle that would appear to work and silently do nothing.
+  if (deletionPending) {
+    return (
+      <View style={styles.accountBlock}>
+        <SectionTitle>Cloud Sync</SectionTitle>
+        <Text style={styles.accountNote} accessibilityLabel="Deletion pending">
+          Cloud Sync is off and your cloud health data is being deleted. This can take
+          a few minutes. Your data on this device and your Kilo account are unaffected.
+          You can turn Cloud Sync back on once the deletion finishes.
+        </Text>
+      </View>
+    );
+  }
+
+  if (needsUpdate) {
+    return (
+      <View style={styles.accountBlock}>
+        <SectionTitle>Cloud Sync</SectionTitle>
+        <Text style={styles.accountNote} accessibilityLabel="Client update required">
+          This version of Kilo can no longer sync health data. Update Kilo to continue
+          syncing. Your data on this device is safe and every local feature still works.
+        </Text>
+      </View>
+    );
+  }
+
+  // The consent surface is the entry point to Cloud Sync, and it is a dedicated
+  // step: no sync control is offered behind it until the server confirms a grant.
+  if (showingConsent) {
+    return (
+      <View style={styles.accountBlock}>
+        <HealthDataConsent
+          onGranted={async () => {
+            setShowingConsent(false);
+            await refreshConsent();
+            setStatus('Cloud Sync is on.');
+          }}
+          onDecline={() => {
+            // Records no grant and leaves Cloud Sync off. Every local feature keeps
+            // working; refusal must cost the user nothing.
+            setShowingConsent(false);
+            setStatus('Cloud Sync stays off. Kilo keeps working on this device.');
+          }}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.accountBlock}>
       <SectionTitle>Cloud Sync</SectionTitle>
@@ -106,6 +209,39 @@ export function CloudSyncRecovery({ user }) {
         two — for any item changed in both places, the most recent change wins.
       </Text>
 
+      {needsConsent ? (
+        <View style={styles.summaryBlock}>
+          <Text style={styles.accountNote} accessibilityLabel="Consent required">
+            {denialCode === DENIAL_CODES.CONSENT_VERSION_STALE
+              ? 'Kilo has updated what it asks you to agree to for cloud health data. Review it to turn Cloud Sync back on.'
+              : 'Cloud Sync stores health and fitness data, so Kilo needs your explicit consent before it can turn on.'}
+            {consent?.quarantine_expires_at
+              ? ' Until then your existing cloud data is retained only so you can export it or delete it.'
+              : ''}
+          </Text>
+          <Button
+            title="Review and enable Cloud Sync"
+            disabled={busy}
+            onPress={() => setShowingConsent(true)}
+            accessibilityLabel="Review and enable Cloud Sync"
+          />
+          {/* Export stays available to a non-granting user: the right of access
+              does not depend on the Art. 9 consent, and the quarantine window
+              explicitly offers "export, then delete". */}
+          <Button
+            title="Export Cloud Copy"
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={handleCloudExport}
+          />
+        </View>
+      ) : null}
+
+      {/* Everything below is a health-data operation, so it appears only once the
+          SERVER confirms an active grant. Rendering these controls to a user who
+          has not consented would offer them an action the backend will refuse. */}
+      {!syncAllowed ? null : (
+      <>
       <View style={styles.summaryBlock}>
         <View style={styles.syncRow}>
           <Text style={styles.syncLabel}>Cloud status</Text>
@@ -218,6 +354,44 @@ export function CloudSyncRecovery({ user }) {
         disabled={busy}
         onPress={handleCloudExport}
       />
+
+      {/* Withdrawal. Turning Cloud Sync off IS the withdrawal mechanism, and the
+          control says what it actually does. A "pause" that quietly leaves the
+          cloud copy in place would not be a withdrawal at all, and Art. 7(3)
+          requires withdrawing to be as easy as consenting — so this lives here,
+          one tap from the toggle that turned it on, not behind account deletion. */}
+      {!confirmingWithdrawal ? (
+        <Button
+          title="Turn Off Cloud Sync"
+          disabled={busy}
+          onPress={() => setConfirmingWithdrawal(true)}
+          accessibilityLabel="Turn Off Cloud Sync"
+        />
+      ) : (
+        <View style={styles.summaryBlock}>
+          <Text style={styles.syncLabel} accessibilityLabel={WITHDRAWAL_COPY.title}>
+            {WITHDRAWAL_COPY.title}
+          </Text>
+          <Text style={styles.accountNote} accessibilityLabel="Withdrawal disclosure">
+            {WITHDRAWAL_COPY.body}
+          </Text>
+          <Button
+            title={WITHDRAWAL_COPY.primaryAction}
+            loadingTitle="Working…"
+            disabled={busy}
+            onPress={handleWithdraw}
+            accessibilityLabel={WITHDRAWAL_COPY.primaryAction}
+          />
+          <Button
+            title={WITHDRAWAL_COPY.secondaryAction}
+            disabled={busy}
+            onPress={() => setConfirmingWithdrawal(false)}
+            accessibilityLabel={WITHDRAWAL_COPY.secondaryAction}
+          />
+        </View>
+      )}
+      </>
+      )}
 
       {status ? (
         <Text style={styles.accountStatus} accessibilityLabel="Cloud sync status">

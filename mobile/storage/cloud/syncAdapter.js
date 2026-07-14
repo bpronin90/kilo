@@ -151,6 +151,7 @@ async function syncOne(table, tableIo) {
 
 const SINGLETON_TABLES = new Set([
   SYNC_TABLES.USER_PROFILE,
+  SYNC_TABLES.USER_HEALTH_PROFILE,
   SYNC_TABLES.FEATURE_TOGGLES,
   SYNC_TABLES.WEIGHT_GOAL,
 ]);
@@ -183,40 +184,54 @@ function singletonRow(mergedList) {
   return mergedList.find((rec) => rec && rec.id === SINGLETON_SYNC_ID) || null;
 }
 
-// user_profile ---------------------------------------------------------------
+// user_profile / user_health_profile ------------------------------------------
+//
+// One logical "profile" on the device, two cloud rows since #487: account
+// settings in user_profile, and the three Art. 9 health values
+// (current_workout_note_id, fatigue_multiplier, tracked_lifts) in the
+// consent-gated user_health_profile.
+//
+// The split is not cosmetic. Left on user_profile, those three would keep syncing
+// through an ungated table, and the contract migration that drops the columns
+// would break settings sync along with them. Splitting also means a user who
+// refuses health consent still syncs their display name and unit system: the gate
+// blocks the health row, not their account.
+//
+// (user_profile.current_deload_note_* is still bootstrap-only — see transport.js.
+// It is not part of ongoing sync and so is not part of this singleton.)
 
 const USER_PROFILE_FIELDS = Object.freeze([
   'display_name',
   'unit_system',
+  'ui_state',
+]);
+
+const USER_HEALTH_PROFILE_FIELDS = Object.freeze([
   'current_workout_note_id',
   'fatigue_multiplier',
   'tracked_lifts',
-  'ui_state',
 ]);
 
 // The multiplier a device reports when the user has never touched it.
 const DEFAULT_FATIGUE_MULTIPLIER = 1.07;
 
-// True when the local profile carries nothing the user actually authored. A
-// singleton row always exists locally (its storage keys fall back to defaults),
-// so on the FIRST sync pass this is the only way to tell a clean install apart
-// from a user who deliberately cleared every field. Without it, a clean install
-// would stamp its empty defaults at `now` and overwrite the cloud profile that
-// another device authored. `ui_state` is not consulted: a collapsed panel is not
-// user content.
+// True when the local row carries nothing the user actually authored. A singleton
+// always exists locally (its storage keys fall back to defaults), so on the FIRST
+// sync pass this is the only way to tell a clean install apart from a user who
+// deliberately cleared every field. Without it, a clean install would stamp its
+// empty defaults at `now` and overwrite the row another device authored.
+// `ui_state` is not consulted: a collapsed panel is not user content.
 function isEmptyUserProfile(record) {
+  return record.display_name == null && record.unit_system == null;
+}
+
+function isEmptyUserHealthProfile(record) {
   const noTrackedLifts =
     !record.tracked_lifts || Object.keys(record.tracked_lifts).length === 0;
   const defaultMultiplier =
     record.fatigue_multiplier == null ||
     Number(record.fatigue_multiplier) === DEFAULT_FATIGUE_MULTIPLIER;
-  return (
-    record.current_workout_note_id == null &&
-    noTrackedLifts &&
-    record.display_name == null &&
-    record.unit_system == null &&
-    defaultMultiplier
-  );
+  return record.current_workout_note_id == null && noTrackedLifts && defaultMultiplier;
 }
 
 // Same first-pass rule for toggles: all four at their shipped defaults means the
@@ -232,28 +247,63 @@ function isDefaultFeatureToggles(record) {
 }
 
 async function buildUserProfileRecords() {
-  const [profile, currentWorkoutId, fatigueMultiplier, trackedLifts, collapsed] =
-    await Promise.all([
-      Storage.loadUserProfile(),
-      Storage.loadCurrentWorkoutId(),
-      Storage.loadFatigueMultiplier(),
-      Storage.loadTrackedLifts(),
-      Storage.loadWorkoutCollapsed(),
-    ]);
+  const [profile, collapsed] = await Promise.all([
+    Storage.loadUserProfile(),
+    Storage.loadWorkoutCollapsed(),
+  ]);
   return [
     {
       id: SINGLETON_SYNC_ID,
       display_name: profile?.display_name ?? null,
       unit_system: profile?.unit_system ?? null,
-      current_workout_note_id: currentWorkoutId ?? null,
-      fatigue_multiplier: fatigueMultiplier ?? null,
-      tracked_lifts: trackedLifts ?? {},
       ui_state: { log_current_collapsed: !!collapsed },
     },
   ];
 }
 
 async function applyUserProfile(mergedList) {
+  const row = singletonRow(mergedList);
+  if (!row || isTombstone(row)) return;
+
+  if (row.ui_state && typeof row.ui_state === 'object') {
+    const next = !!row.ui_state.log_current_collapsed;
+    const local = !!(await Storage.loadWorkoutCollapsed());
+    if (local !== next) await Storage.saveWorkoutCollapsed(next);
+  }
+
+  // MERGE, never replace: the local profile record also holds the device-local
+  // demographics (date_of_birth/sex/height_cm/activity_level) that are
+  // deliberately not synced (issue #476). saveUserProfile would drop them.
+  const profile = await Storage.loadUserProfile();
+  const nextName = row.display_name ?? null;
+  const nextUnit = row.unit_system ?? null;
+  if (
+    (profile?.display_name ?? null) !== nextName ||
+    (profile?.unit_system ?? null) !== nextUnit
+  ) {
+    await mergeUserProfile({ display_name: nextName, unit_system: nextUnit });
+  }
+}
+
+// user_health_profile --------------------------------------------------------
+
+async function buildUserHealthProfileRecords() {
+  const [currentWorkoutId, fatigueMultiplier, trackedLifts] = await Promise.all([
+    Storage.loadCurrentWorkoutId(),
+    Storage.loadFatigueMultiplier(),
+    Storage.loadTrackedLifts(),
+  ]);
+  return [
+    {
+      id: SINGLETON_SYNC_ID,
+      current_workout_note_id: currentWorkoutId ?? null,
+      fatigue_multiplier: fatigueMultiplier ?? null,
+      tracked_lifts: trackedLifts ?? {},
+    },
+  ];
+}
+
+async function applyUserHealthProfile(mergedList) {
   const row = singletonRow(mergedList);
   if (!row || isTombstone(row)) return;
 
@@ -279,25 +329,6 @@ async function applyUserProfile(mergedList) {
     if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
       await Storage.saveTrackedLifts(row.tracked_lifts);
     }
-  }
-
-  if (row.ui_state && typeof row.ui_state === 'object') {
-    const next = !!row.ui_state.log_current_collapsed;
-    const local = !!(await Storage.loadWorkoutCollapsed());
-    if (local !== next) await Storage.saveWorkoutCollapsed(next);
-  }
-
-  // MERGE, never replace: the local profile record also holds the device-local
-  // demographics (date_of_birth/sex/height_cm/activity_level) that are
-  // deliberately not synced (issue #476). saveUserProfile would drop them.
-  const profile = await Storage.loadUserProfile();
-  const nextName = row.display_name ?? null;
-  const nextUnit = row.unit_system ?? null;
-  if (
-    (profile?.display_name ?? null) !== nextName ||
-    (profile?.unit_system ?? null) !== nextUnit
-  ) {
-    await mergeUserProfile({ display_name: nextName, unit_system: nextUnit });
   }
 }
 
@@ -447,9 +478,9 @@ async function applyDeloadHistory(mergedList) {
   }
 }
 
-// Sync order note: workout_notes runs before user_profile, so a routine pulled in
-// the same pass already exists locally by the time current_workout_note_id points
-// at it.
+// Sync order note: workout_notes runs before user_health_profile, so a routine
+// pulled in the same pass already exists locally by the time
+// current_workout_note_id points at it.
 const DIFF_TABLES = Object.freeze([
   {
     table: SYNC_TABLES.DELOAD_HISTORY,
@@ -487,12 +518,30 @@ const DIFF_TABLES = Object.freeze([
     buildLocal: buildUserProfileRecords,
     applyMerged: applyUserProfile,
     payloadFields: USER_PROFILE_FIELDS,
-    fieldKinds: { fatigue_multiplier: 'number' },
+    fieldKinds: {},
     allowDelete: false,
     isEmptyLocal: isEmptyUserProfile,
   },
+  {
+    // Consent-gated (#487). A user without an active grant is denied this table by
+    // RLS while their account settings above keep syncing normally.
+    table: SYNC_TABLES.USER_HEALTH_PROFILE,
+    buildLocal: buildUserHealthProfileRecords,
+    applyMerged: applyUserHealthProfile,
+    payloadFields: USER_HEALTH_PROFILE_FIELDS,
+    fieldKinds: { fatigue_multiplier: 'number' },
+    allowDelete: false,
+    isEmptyLocal: isEmptyUserHealthProfile,
+  },
 ]);
 
+// Consent (#487) is deliberately NOT checked here. This module is transport-
+// agnostic by contract — the transport is injected, and the tests drive it with no
+// Supabase client at all — so an authorization call in this loop would be both out
+// of place and unenforceable. The gate lives at the app seam
+// (hooks/entries/syncRecoveryHooks.js), which is where a denial becomes a screen
+// the user can act on, and the real boundary is the server's RLS, which refuses
+// these reads and writes whether or not any client ever asks.
 export async function sync() {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
@@ -515,9 +564,9 @@ export async function sync() {
     results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo));
   }
 
-  // The four tables bootstrap used to push once and abandon (issue #489). Run
-  // them after the workout-note passes above (including the phantom-tombstone
-  // rerun, which can clear the current routine) so user_profile uploads the
+  // The tables bootstrap used to push once and abandon (issue #489). Run them
+  // after the workout-note passes above (including the phantom-tombstone rerun,
+  // which can clear the current routine) so user_health_profile uploads the
   // settled current_workout_note_id rather than one this pass is about to drop.
   const singletonAware = withSingletonIds(getTransport());
   for (const config of DIFF_TABLES) {

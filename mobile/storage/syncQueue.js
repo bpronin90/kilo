@@ -48,6 +48,10 @@ export const SYNC_TABLES = Object.freeze({
   WORKOUT_NOTES: 'workout_notes',
   ARCHIVED_WEIGHT_GOALS: 'archived_weight_goals',
   USER_PROFILE: 'user_profile',
+  // The six Art. 9 health values split out of the mixed user_profile row (#487).
+  // user_profile keeps only account settings; anything the user's body did lives
+  // here, behind the consent gate.
+  USER_HEALTH_PROFILE: 'user_health_profile',
   FEATURE_TOGGLES: 'feature_toggles',
   WEIGHT_GOAL: 'weight_goal',
   DELOAD_HISTORY: 'deload_history',

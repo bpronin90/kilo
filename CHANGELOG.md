@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.95.0 - 2026-07-14
+
+- Issue #487: Added material-versioned explicit consent for cloud health data,
+  including a dedicated Cloud Sync consent and withdrawal surface, a
+  server-enforced Supabase authorization gate, conflict-safe migration of mixed
+  health fields into `user_health_profile`, shared export/deletion scope,
+  durable withdrawal and existing-user purge jobs, and lifecycle-managed
+  pseudonymized consent evidence. Deployment remains staged: production
+  migration, enforcement activation, contract migration, and purge arming each
+  require separate approval.
+
 ## 0.94.0 - 2026-07-14
 
 - Issue #489: Extended ongoing cloud convergence to user profile and current

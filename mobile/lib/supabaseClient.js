@@ -27,6 +27,9 @@
 
 import { Platform } from 'react-native';
 import { createClient } from '@supabase/supabase-js';
+// Kept in sync with the canonical repo version by scripts/sync-version.mjs, so the
+// client version reported to the server is the one that actually shipped.
+import { version as APP_VERSION } from '../package.json';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -220,6 +223,28 @@ export function isSupabaseConfigured() {
   return getSupabaseConfig() != null;
 }
 
+// Consent wire-protocol version, sent on every request (issue #487).
+//
+// The server owns a `minimum_consent_protocol_version`. At the enforcement cutover
+// it is raised, and any client below the floor is denied with CLIENT_UPDATE_REQUIRED
+// instead of being allowed to sync — because a client built before the health-column
+// split still reads and writes the six legacy `user_profile` columns, and the
+// contract migration drops them. Letting such a client through would silently lose
+// the user's deload notes, tracked lifts, and fatigue data.
+//
+// This is a COMPATIBILITY signal, not a security one: a tampered client can claim
+// any version it likes. That buys it nothing. Authorization is the consent gate,
+// which no header can satisfy.
+//
+// Declared here rather than in storage/cloud/consent.js so the client factory does
+// not have to import the consent module (which imports this one). consent.js
+// re-exports it, and health-consent.test.js asserts the header the client actually
+// sends matches the version consent.js advertises.
+export const CONSENT_PROTOCOL_VERSION = 1;
+
+export const CONSENT_PROTOCOL_HEADER = 'X-Kilo-Consent-Protocol';
+export const CLIENT_VERSION_HEADER = 'X-Kilo-Client-Version';
+
 let cachedClient;
 
 // Build the Supabase client. Returns null (without throwing) when env config is
@@ -238,6 +263,15 @@ export function getSupabaseClient() {
   const isWeb = Platform.OS === 'web';
 
   cachedClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // Sent on every PostgREST and RPC call so the server can tell a consent-capable
+    // client apart from one that predates the health-column split. kilo.health_gate_ok()
+    // reads the protocol header out of request.headers.
+    global: {
+      headers: {
+        [CONSENT_PROTOCOL_HEADER]: String(CONSENT_PROTOCOL_VERSION),
+        [CLIENT_VERSION_HEADER]: APP_VERSION,
+      },
+    },
     auth: {
       ...(storage ? { storage } : {}),
       autoRefreshToken: true,
