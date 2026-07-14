@@ -93,8 +93,14 @@ function makeFakeCloud() {
       const sorted = changed.sort((a, b) =>
         (a.updated_at || '').localeCompare(b.updated_at || '')
       );
-      if (!SINGLETON_TABLES.has(table)) return sorted;
-      return sorted.map(({ id, ...row }) => row); // eslint-disable-line no-unused-vars
+      // `client_id` is NOT a stored column: transport.js drops it from every
+      // upsert, so no row in the real database has one and no pulled row can
+      // carry one back. Enforce that here — pull is the single point where rows
+      // leave the server — so pickWinner's tie-break is exercised against the
+      // same shape production actually produces.
+      const served = sorted.map(({ client_id: _c, ...row }) => row); // eslint-disable-line no-unused-vars
+      if (!SINGLETON_TABLES.has(table)) return served;
+      return served.map(({ id, ...row }) => row); // eslint-disable-line no-unused-vars
     },
     async push(table, records) {
       if (!state.online) throw new Error('offline');
@@ -114,11 +120,10 @@ function makeFakeCloud() {
         // device's push look correctly rejected instead of wrongly discarded.
         // A test double must not be kinder than the system it stands in for.
         //
-        // (Separately: production also drops `client_id`, which is not a stored
-        // column, so pulled rows never carry one. This fake still keeps it —
-        // a second, independent divergence, left alone here rather than widened
-        // into pre-existing tests. Reported on the issue.)
-        tables[table].set(rec.id, { ...rec, updated_at: serverNow(table) });
+        // `client_id` is dropped for the same reason: buildUpsertRow omits it
+        // (it is not a stored column), so it never survives a write.
+        const { client_id: _clientId, ...row } = rec; // eslint-disable-line no-unused-vars
+        tables[table].set(rec.id, { ...row, updated_at: serverNow(table) });
       }
     },
   };
@@ -156,6 +161,35 @@ afterEach(() => {
 // ── pure LWW unit coverage ──────────────────────────────────────────────────────
 
 describe('LWW resolution', () => {
+  // A server row is identified by the ABSENCE of client_id: transport.js drops it
+  // from every upsert because it is not a stored column, so nothing pulled from
+  // the database ever carries one.
+  it('on an exact tie the server row wins, so every device converges', () => {
+    const serverRow = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', weight_value: 199 };
+
+    // Two different devices, each holding its own local copy at the same instant.
+    const deviceA = { ...serverRow, weight_value: 180, client_id: 'aaaa-device' };
+    const deviceB = { ...serverRow, weight_value: 181, client_id: 'zzzz-device' };
+
+    // Both must adopt the server's copy — regardless of argument order, and
+    // regardless of how their client_ids compare to each other.
+    expect(pickWinner(deviceA, serverRow)).toBe(serverRow);
+    expect(pickWinner(serverRow, deviceA)).toBe(serverRow);
+    expect(pickWinner(deviceB, serverRow)).toBe(serverRow);
+    expect(pickWinner(serverRow, deviceB)).toBe(serverRow);
+
+    // The old rule fell through to `(a.client_id || '') >= (b.client_id || '')`,
+    // which always favours the side that HAS a client_id — the local row. Each
+    // device would have kept its own value (180 vs 181) and silently diverged.
+  });
+
+  it('between two local rows an exact tie still breaks deterministically on client_id', () => {
+    const a = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'aaaa' };
+    const b = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'zzzz' };
+    expect(pickWinner(a, b)).toBe(b);
+    expect(pickWinner(b, a)).toBe(b);
+  });
+
   it('newer updated_at wins', () => {
     const a = { id: '1', updated_at: '2026-06-15T10:00:00.000Z', client_id: 'a' };
     const b = { id: '1', updated_at: '2026-06-15T11:00:00.000Z', client_id: 'a' };
@@ -274,7 +308,11 @@ describe('weight entries offline create/edit/delete sync', () => {
     const remote = cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1');
     expect(remote).toBeDefined();
     expect(remote.weight_value).toBe(180);
-    expect(remote.client_id).toBeTruthy();
+    // client_id must NOT survive the write. buildUpsertRow omits it — it is not
+    // a stored column — so it exists only in the local sync engine. Asserting it
+    // came back was asserting the old fake's behavior, not the database's.
+    expect(remote.client_id).toBeUndefined();
+    expect(remote.updated_at).toBeTruthy(); // server-assigned, not the client's
   });
 
   it('offline edit pushes the updated value after reconnect', async () => {
@@ -312,7 +350,7 @@ describe('weight entries offline create/edit/delete sync', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w1'))).toBe(true);
   });
 
-  it('pulls an exact-timestamp tie at the cursor boundary and converges to the winning client_id', async () => {
+  it('pulls an exact-timestamp tie at the cursor boundary and converges on the server row', async () => {
     // Create + sync so this device's cursor advances to the row's updated_at.
     await cloudAdapter.saveWeightEntry(weightEntry('w1', 180));
     await cloudAdapter.sync();
@@ -320,19 +358,25 @@ describe('weight entries offline create/edit/delete sync', () => {
     const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
     expect(cursor).toBeTruthy();
 
-    // Another device wrote a row at EXACTLY the cursor timestamp with a winning
-    // (lexicographically greater) client_id. An exclusive `>` cursor would skip
-    // this forever; an inclusive `>=` re-pulls the boundary and LWW resolves it.
+    // Another device's write landed at EXACTLY the cursor timestamp. An exclusive
+    // `>` cursor would skip it forever; an inclusive `>=` re-pulls the boundary
+    // and LWW resolves it.
+    //
+    // Note what the row does NOT have: a client_id. It is not a stored column, so
+    // no row coming back from the server carries one — the fake now enforces that
+    // on pull. The tie therefore cannot be settled by comparing client_ids, and
+    // the old rule silently favoured whichever side HAD one, i.e. the local row.
+    // That does not converge: each device would keep its own copy. The server row
+    // wins instead, and every device sees the same server row, so all of them
+    // land on the same value.
     cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
       ...weightEntry('w1', 199),
       updated_at: cursor,
-      client_id: 'zzzz-winning-device',
     });
 
     await cloudAdapter.sync();
     const local = await cloudAdapter.loadWeightEntries();
     expect(local.find((e) => e.id === 'w1').weight_value).toBe(199);
-    expect(local.find((e) => e.id === 'w1').client_id).toBe('zzzz-winning-device');
   });
 
   it('remote newer edit wins over older local on pull (multi-device LWW)', async () => {

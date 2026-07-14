@@ -177,13 +177,29 @@ export function isTombstone(record) {
   return Boolean(record && record.deleted_at);
 }
 
+// True for a record that came back from the server. `client_id` is not a stored
+// column (transport.js drops it from every upsert), so its ABSENCE is what marks
+// a row as the server's copy rather than a local one. Used by the LWW tie-break.
+export function isServerRow(record) {
+  return Boolean(record) && !record.client_id;
+}
+
 // ── deterministic last-write-wins ──────────────────────────────────────────────
 
 // Compare two versions of the same record id. Returns the winner.
 //   1. Newer `updated_at` wins.
-//   2. On an exact `updated_at` tie, the lexicographically greater `client_id`
-//      wins. This is arbitrary but deterministic and identical on every device,
-//      so all devices converge on the same survivor.
+//   2. On an exact `updated_at` tie:
+//      a. A SERVER row beats a local one. `client_id` is not a stored column —
+//         `transport.js` drops it from every upsert — so a row that came back
+//         from the server never carries one, and its absence is what identifies
+//         it. Preferring the server row is what makes a tie CONVERGE: every
+//         device sees the same server row, so every device picks the same
+//         survivor. Preferring the local row instead would have each device keep
+//         its own copy and quietly diverge — which is what the old rule did,
+//         because `(a.client_id || '') >= (b.client_id || '')` always favours the
+//         side that has a client_id, i.e. the local one.
+//      b. Between two local rows, the lexicographically greater `client_id`
+//         wins: arbitrary, but deterministic and identical on every device.
 // A tombstone does not get special precedence; it competes on `updated_at` like
 // any other write, so a later edit can revive a record and a later delete wins
 // over an earlier edit. Per-device monotonic stamping (see stampWrite) keeps a
@@ -198,8 +214,11 @@ export function pickWinner(a, b) {
   if (ub > ua) return b;
   const ca = a.client_id || '';
   const cb = b.client_id || '';
-  if (ca >= cb) return a;
-  return b;
+  if (ca === cb) return a;
+  // Whichever side lacks a client_id is the server's copy; it wins the tie.
+  if (!ca) return a;
+  if (!cb) return b;
+  return ca > cb ? a : b;
 }
 
 // Resolve a single id's local vs remote versions. Handles the derived-JSON
