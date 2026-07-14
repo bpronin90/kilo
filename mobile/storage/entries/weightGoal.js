@@ -22,6 +22,18 @@ export async function clearWeightGoal() {
   await AsyncStorage.removeItem(WEIGHT_GOAL_KEY);
 }
 
+// Write the active weight goal verbatim, WITHOUT re-stamping `saved_at`
+// (issue #489).
+//
+// saveWeightGoal always overwrites `saved_at` with `now`. The cloud sync path
+// compares the local goal against the last-synced snapshot to detect local
+// edits, so re-stamping `saved_at` every time a pulled cloud goal is applied
+// would make the goal look permanently dirty and ping-pong between devices
+// forever. The sync engine applies merged goals through this raw writer instead.
+export async function replaceWeightGoalRaw(goal) {
+  await AsyncStorage.setItem(WEIGHT_GOAL_KEY, JSON.stringify(goal));
+}
+
 export async function loadArchivedWeightGoals() {
   try {
     const raw = await AsyncStorage.getItem(ARCHIVED_WEIGHT_GOALS_KEY);
