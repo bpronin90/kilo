@@ -356,19 +356,46 @@ export async function syncTable({
   // 1. Pull changed rows since the last cursor.
   const remote = (await transport.pull(table, cursor)) || [];
 
-  // 2. Merge remote into the local cache via LWW (+ derived recompute).
+  // 2. Collect what is awaiting upload BEFORE merging. These are local writes
+  //    and tombstones that have never reached the server.
+  //
+  //    (writeLocal may DEFER new workout-note tombstones rather than enqueueing
+  //    them — see createTableIo — so they are not in this set and ride the
+  //    follow-up pass sync() runs for them. Reading the queue here is therefore
+  //    equivalent to reading it after writeLocal, and lets the merge below see
+  //    which ids have local intent.)
+  const dirty = await getDirtyRecords(table);
+  const dirtyIds = new Set(dirty.map((d) => d.id));
+
+  // 3. Merge remote into the local cache via LWW (+ derived recompute) — but a
+  //    row with a pending local edit is NOT put to a vote against its remote
+  //    counterpart.
+  //
+  //    A local record carries a DEVICE-clock `updated_at`; `transport.push`
+  //    strips `updated_at` so the server trigger assigns the authoritative one.
+  //    The two are from different clocks and are not comparable. Running them
+  //    through pickWinner meant a device whose clock lagged the server lost:
+  //    `merged.get(id)` returned the REMOTE row, which was then pushed in place
+  //    of the pending local write and cleared from the dirty queue.
+  //
+  //    For a tombstone that means a DELETE never reaches the cloud and the row
+  //    resurrects on the next pull. This is the same defect fixed in
+  //    syncDiffTable; it lives here too, on the path that carries weight
+  //    entries and workout notes.
+  //
+  //    "Last write to REACH the server wins" — so arrival decides, not a guess
+  //    made on the client first. A pending row is always submitted; the server
+  //    stamps it on arrival, necessarily later than the row just pulled.
   const localList = (await readLocal()) || [];
-  const merged = mergeRecords(localList, remote, { table, recomputeDerived });
+  const contested = remote.filter((r) => !dirtyIds.has(r.id));
+  const merged = mergeRecords(localList, contested, { table, recomputeDerived });
   const mergedList = Array.from(merged.values());
   await writeLocal(mergedList);
 
-  // 3. Push dirty local records (live writes and tombstones together). A delete
+  // 4. Push dirty local records (live writes and tombstones together). A delete
   //    rides this same push as a tombstone, so it always reaches the cloud
   //    before any physical deletion happens locally.
-  const dirty = await getDirtyRecords(table);
   if (dirty.length > 0) {
-    // Push the post-merge version of each dirty id so a remote write that won
-    // the merge is not clobbered by a stale local snapshot.
     const toPush = dirty.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
     await clearDirty(
@@ -377,8 +404,10 @@ export async function syncTable({
     );
   }
 
-  // 4. Advance the cursor only after a successful push, covering both pulled
+  // 5. Advance the cursor only after a successful push, covering both pulled
   //    and pushed rows so the next pass starts past everything we've reconciled.
+  //    This spans the FULL remote set, including rows excluded from the merge —
+  //    they were still pulled, and the next pass must start past them.
   const advanced = maxUpdatedAt([...remote, ...dirty], cursor);
   if (advanced && advanced !== cursor) {
     await setCursor(table, advanced);

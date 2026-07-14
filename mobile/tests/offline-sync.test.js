@@ -387,6 +387,59 @@ describe('workout notes offline create/edit/delete sync', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'))).toBe(true);
   });
 
+  // Codex re-review, #489: the same incomparable-clocks defect fixed in
+  // syncDiffTable also lived in syncTable — the path carrying weight entries and
+  // workout notes. A local tombstone is stamped with the DEVICE clock; the pulled
+  // row carries the SERVER's. Merging them through pickWinner meant a device whose
+  // clock lagged lost, so `merged.get(id)` yielded the live remote row, THAT was
+  // pushed in place of the tombstone, and the tombstone was cleared from the dirty
+  // queue. The delete never reached the cloud and the note resurrected on the next
+  // pull.
+  //
+  // The existing test above only hit this when real millisecond timing happened to
+  // line up, which is why it failed intermittently rather than reliably. This one
+  // forces the skew, so the defect cannot hide behind a lucky clock.
+  it('a delete still reaches the cloud when the device clock lags the server', async () => {
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5'));
+    await cloudAdapter.sync();
+
+    // Another device touched the row and the server stamped it far beyond
+    // anything this device's clock can mint.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      ...cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'),
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    await cloudAdapter.deleteWorkoutNoteItem('n1');
+    await cloudAdapter.sync();
+
+    // The delete must reach the server. Arrival decides the winner, not a
+    // comparison against a clock this device does not share.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'))).toBe(true);
+
+    // And it must not come back on the next pull.
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadWorkoutNotes()).map((n) => n.id)).not.toContain('n1');
+  });
+
+  it('an edit still reaches the cloud when the device clock lags the server', async () => {
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 3x5'));
+    await cloudAdapter.sync();
+
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      ...cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1'),
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    await cloudAdapter.saveWorkoutNoteItem(note('n1', 'Squat 5x5'));
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'n1').raw_text).toBe('Squat 5x5');
+    expect(
+      (await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === 'n1').raw_text
+    ).toBe('Squat 5x5');
+  });
+
   it('derived-only divergence on unchanged raw_text recomputes silently on sync', async () => {
     // Inject a deterministic recompute so we can assert it ran.
     setRecomputeDerived((raw) => ({ tracked_exercises: [`recomputed:${raw}`] }));
