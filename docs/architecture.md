@@ -365,6 +365,18 @@ Cloud bootstrap allowlists `display_name` and `unit_system` from
 `kilo_user_profile`; all other local profile fields remain on-device. The
 Supabase `user_profile` schema has no catch-all profile payload column.
 
+After bootstrap, ongoing cloud reconciliation covers seven table contracts:
+`weight_entries`, `workout_notes`, `archived_weight_goals`, `user_profile`,
+`feature_toggles`, `weight_goal`, and `deload_history`. The first three enqueue
+dirty rows at write time; the profile, toggles, active goal, and deload history
+diff their allowlisted local projections against persisted sync snapshots. A
+pending local row always reaches Supabase before conflict ordering is settled,
+so the database's server-authored `updated_at` establishes arrival order without
+trusting the device clock. Exact timestamp ties prefer the shared server row;
+ties between two local candidates use the stable per-install `client_id`.
+Singleton tables use a synthetic local merge id that is removed before upsert,
+and tombstones remain in the sync contract so deletes do not resurrect.
+
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving
 the migrated result before returning. Tracked exercise toggles update the global
