@@ -194,20 +194,50 @@ GitHub Actions runs this same mobile Jest suite with Node 24 and a reproducible
 `npm ci` install on every pull request and every push to `main` via
 `.github/workflows/test.yml`.
 
-GitHub Actions also runs the migration drift check on every pull request and
-every push to `main` via `.github/workflows/migration-drift.yml`. The check uses
-the least-privilege `SUPABASE_MIGRATION_CHECK_URL` repository secret to compare
-the names of migrations in `supabase/migrations/` with the live
-`supabase_migrations.schema_migrations` ledger. Run the same check locally with:
+GitHub Actions also runs the migration drift check via
+`.github/workflows/migration-drift.yml`, and it is a **required pre-merge
+status check on `main`** (job `merged migrations are applied to the live
+project`): it runs credentialed on every push to `main` and on every pull
+request from this same repository, not only after merge. #490 reached
+production because the only credentialed run used to happen after merge; the
+pre-merge run is the fix. The check uses the least-privilege
+`SUPABASE_MIGRATION_CHECK_URL` repository secret to compare the names of
+migrations in `supabase/migrations/` with the live
+`supabase_migrations.schema_migrations` ledger.
+
+Fork pull requests cannot receive that secret (GitHub withholds repository
+secrets from a `pull_request` run whose head repo differs from this one), so a
+separate, non-required job (`migration-drift-fork`) runs the same script with
+no credentials and reports the honest result: exit 2, "unable to check" — never
+exit 0, "no drift". A maintainer applies the credentialed check to a fork PR's
+changes locally, or relies on the required push-to-main run, before it reaches
+production. The post-merge push-to-main run remains as defense in depth, not
+the first detection point.
+
+Run the same check locally with either:
 
 ```sh
+# explicit export — always takes precedence over a local .env file
 SUPABASE_MIGRATION_CHECK_URL=postgresql://... npm run check:migrations
+
+# or create a .env file (gitignored) in the repo root:
+#   SUPABASE_MIGRATION_CHECK_URL=postgresql://...
+npm run check:migrations
 ```
 
 The URL must use the session pooler and the read-only `migration_check` role.
 Missing repo migrations fail the check; extra live migrations are allowed
 because the Supabase project is shared with another app. Missing credentials or
 database connection failures also fail rather than reporting a false pass.
+
+`scripts/check-migration-drift.mjs` has a deterministic self-test harness that
+exercises env-loading precedence and the exit-code contract (0/1/2) against a
+stubbed `psql` and disposable temp-dir fixtures only — it never connects to a
+real database or touches a real secret:
+
+```sh
+npm run check:migrations:selftest
+```
 
 For the crash reporter specifically, the narrow bootstrap verification is:
 
