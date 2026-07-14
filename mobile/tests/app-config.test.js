@@ -25,6 +25,14 @@ describe('app config', () => {
     expect(result.runtimeVersion).toBe('preview-3');
   });
 
+  test('uses the appVersion runtime policy for production builds', () => {
+    const configFactory = require('../app.config.js');
+
+    const result = configFactory({ config: { plugins: [] } });
+
+    expect(result.runtimeVersion).toEqual({ policy: 'appVersion' });
+  });
+
   test('adds the Sentry plugin only when the full build env is present', () => {
     process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://public@example.ingest.sentry.io/1';
     process.env.SENTRY_ORG = 'org';
