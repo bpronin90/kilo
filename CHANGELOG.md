@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.93.0 - 2026-07-13
+
+- Issue #488: Made local backup export/import a durable reinstall-safe round
+  trip: exports now include device-local profile, tracked-lift, toggle, UI, and
+  deload-note state; Android saves large backups through the Storage Access
+  Framework and can load them back from a chosen folder; imports validate and
+  allowlist the cloud block while preserving legacy v3 compatibility and safe
+  share fallback behavior.
+
 ## 0.92.20 - 2026-07-13
 
 - Issue #475: Replaced the remaining wildcard cloud uploads for weight goals

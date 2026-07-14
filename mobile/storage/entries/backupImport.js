@@ -9,7 +9,7 @@ import {
 import { readList, writeList } from './jsonStorage';
 import { loadCurrentWorkoutId } from './workoutNotes';
 import { loadWeightGoal } from './weightGoal';
-import { loadUserProfile } from './profileStorage';
+import { loadUserProfile, saveUserProfile } from './profileStorage';
 import {
   loadFatigueMultiplier,
   loadWeightDateEditEnabled,
@@ -19,11 +19,31 @@ import {
   loadTrackedLifts,
   loadWorkoutCollapsed,
   saveFatigueMultiplier,
+  saveTrackedLifts,
+  saveWorkoutCollapsed,
+  saveWeightDateEditEnabled,
+  saveDeloadDateEditEnabled,
+  saveFatigueTrackingEnabled,
+  saveDeloadModeEnabled,
 } from './settings';
-import { loadDeloadNote } from './deloadStorage';
+import { loadDeloadNote, saveDeloadNote } from './deloadStorage';
 
 const BACKUP_VERSION = '3';
 const CLOUD_EXPORT_FORMAT = 'cloud-1';
+const CLOUD_FEATURE_TOGGLE_KEYS = [
+  'weight_date_edit_enabled',
+  'deload_date_edit_enabled',
+  'fatigue_tracking_enabled',
+  'deload_mode_enabled',
+];
+// The complete set of user_profile fields the app reads or writes. An imported
+// profile is rebuilt from this list, so an unknown key in a backup file cannot
+// reach local storage.
+const PROFILE_STRING_FIELDS = ['date_of_birth', 'sex', 'activity_level', 'display_name', 'unit_system'];
+const PROFILE_ALLOWLIST = [...PROFILE_STRING_FIELDS, 'height_cm'];
+// Sanity bound for an imported height. Anything outside it is malformed input,
+// not a real person, and would poison the BMR/TDEE calculation.
+const MAX_IMPORT_HEIGHT_CM = 300;
 const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
 
 // Untrusted-input bounds for imported backups. importBackup() receives arbitrary
@@ -232,7 +252,124 @@ function validateBackup(payload) {
     }
   }
 
+  if ('cloud' in payload && payload.cloud != null) {
+    const cloudCheck = validateCloudBlock(payload.cloud);
+    if (!cloudCheck.ok) return cloudCheck;
+  }
+
   return { ok: true };
+}
+
+// The `cloud` block is optional: a plain v3 file has none and must still import
+// exactly as before. When present it is untrusted input like the rest of the
+// payload, so it is validated before any write.
+function validateCloudBlock(cloud) {
+  if (typeof cloud !== 'object' || Array.isArray(cloud))
+    return { ok: false, error: 'Invalid backup: cloud must be an object' };
+
+  if (cloud.user_profile != null) {
+    const p = cloud.user_profile;
+    if (typeof p !== 'object' || Array.isArray(p))
+      return { ok: false, error: 'Invalid backup: cloud.user_profile must be an object or null' };
+    // Field-level validation, not just "is an object". saveUserProfile persists
+    // whatever object it is handed, so an unvalidated profile writes arbitrary
+    // keys and types straight into local storage.
+    for (const key of PROFILE_STRING_FIELDS) {
+      if (p[key] != null && typeof p[key] !== 'string')
+        return { ok: false, error: `Invalid backup: cloud.user_profile.${key} must be a string` };
+    }
+    if (p.height_cm != null) {
+      if (typeof p.height_cm !== 'number' || !Number.isFinite(p.height_cm))
+        return { ok: false, error: 'Invalid backup: cloud.user_profile.height_cm must be a finite number' };
+      if (p.height_cm <= 0 || p.height_cm > MAX_IMPORT_HEIGHT_CM)
+        return { ok: false, error: `Invalid backup: cloud.user_profile.height_cm out of range (limit ${MAX_IMPORT_HEIGHT_CM})` };
+    }
+  }
+  if (cloud.tracked_lifts != null) {
+    const t = cloud.tracked_lifts;
+    if (typeof t !== 'object' || Array.isArray(t))
+      return { ok: false, error: 'Invalid backup: cloud.tracked_lifts must be an object or null' };
+    for (const [lift, value] of Object.entries(t)) {
+      if (typeof value !== 'boolean')
+        return { ok: false, error: `Invalid backup: cloud.tracked_lifts.${lift} must be a boolean` };
+    }
+  }
+  if (cloud.ui_state != null) {
+    if (typeof cloud.ui_state !== 'object' || Array.isArray(cloud.ui_state))
+      return { ok: false, error: 'Invalid backup: cloud.ui_state must be an object or null' };
+  }
+  if (cloud.feature_toggles != null) {
+    const t = cloud.feature_toggles;
+    if (typeof t !== 'object' || Array.isArray(t))
+      return { ok: false, error: 'Invalid backup: cloud.feature_toggles must be an object or null' };
+    for (const key of CLOUD_FEATURE_TOGGLE_KEYS) {
+      if (key in t && typeof t[key] !== 'boolean')
+        return { ok: false, error: `Invalid backup: cloud.feature_toggles.${key} must be a boolean` };
+    }
+  }
+  if (cloud.current_deload_note != null) {
+    const n = cloud.current_deload_note;
+    if (typeof n !== 'object' || Array.isArray(n))
+      return { ok: false, error: 'Invalid backup: cloud.current_deload_note must be an object or null' };
+    if (n.raw_text != null && typeof n.raw_text !== 'string')
+      return { ok: false, error: 'Invalid backup: cloud.current_deload_note.raw_text must be a string' };
+    if (typeof n.raw_text === 'string' && n.raw_text.length > MAX_IMPORT_RAW_TEXT_LENGTH)
+      return { ok: false, error: `Invalid backup: cloud.current_deload_note.raw_text too large (${n.raw_text.length}; limit ${MAX_IMPORT_RAW_TEXT_LENGTH})` };
+  }
+
+  return { ok: true };
+}
+
+// Restores the account/profile state that lives only in the cloud block.
+//
+// buildCloudExport is the only export shape carrying user_profile (which holds
+// the device-local date_of_birth, sex, height_cm, activity_level — no cloud
+// table has these), tracked_lifts, and feature_toggles. Before #488 the importer
+// dropped all of it on the floor, so a reinstall lost them permanently.
+//
+// Fields are restored explicitly, never by wildcard copy (#471/#475).
+async function restoreCloudBlock(cloud) {
+  if (cloud.user_profile != null) {
+    // Build the row explicitly rather than forwarding the imported object.
+    // saveUserProfile spreads what it is given, so passing the payload through
+    // would persist any key an attacker put in the file — the same wildcard
+    // failure that put date_of_birth and sex into profile_json (#471/#474/#475),
+    // inverted: uncontrolled ingress instead of uncontrolled egress.
+    const p = cloud.user_profile;
+    const profile = {};
+    for (const key of PROFILE_ALLOWLIST) {
+      if (p[key] != null) profile[key] = p[key];
+    }
+    if (Object.keys(profile).length > 0) await saveUserProfile(profile);
+  }
+
+  if (cloud.tracked_lifts != null) {
+    const tracked = {};
+    for (const [lift, value] of Object.entries(cloud.tracked_lifts)) {
+      if (typeof value === 'boolean') tracked[lift] = value;
+    }
+    await saveTrackedLifts(tracked);
+  }
+
+  if (cloud.ui_state != null && typeof cloud.ui_state.log_current_collapsed === 'boolean') {
+    await saveWorkoutCollapsed(cloud.ui_state.log_current_collapsed);
+  }
+
+  const toggles = cloud.feature_toggles;
+  if (toggles != null) {
+    if (typeof toggles.weight_date_edit_enabled === 'boolean')
+      await saveWeightDateEditEnabled(toggles.weight_date_edit_enabled);
+    if (typeof toggles.deload_date_edit_enabled === 'boolean')
+      await saveDeloadDateEditEnabled(toggles.deload_date_edit_enabled);
+    if (typeof toggles.fatigue_tracking_enabled === 'boolean')
+      await saveFatigueTrackingEnabled(toggles.fatigue_tracking_enabled);
+    if (typeof toggles.deload_mode_enabled === 'boolean')
+      await saveDeloadModeEnabled(toggles.deload_mode_enabled);
+  }
+
+  if (cloud.current_deload_note != null && typeof cloud.current_deload_note.raw_text === 'string') {
+    await saveDeloadNote(cloud.current_deload_note.raw_text);
+  }
 }
 
 // Restores a backup. strategy 'replace' overwrites all local data atomically.
@@ -271,6 +408,10 @@ export async function importBackup(payload, strategy = 'replace') {
     } else {
       // v1: restore weight entries only; workout notes model was not part of the v1 contract
       await AsyncStorage.multiSet(pairs);
+    }
+
+    if ('cloud' in payload && payload.cloud != null) {
+      await restoreCloudBlock(payload.cloud);
     }
   }
 

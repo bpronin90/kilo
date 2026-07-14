@@ -682,8 +682,15 @@ The real native app path now has a modular React Native shell:
   synthesizing a `Routine 1` current entry. The local Data & Backup recovery
   path now exports a versioned v3 snapshot (weight entries, workout notes,
   current workout id, optional active weight goal, archived completed weight
-  goals, optional fatigue multiplier, and completed deload history),
-  validates that payload before any write, accepts only a finite in-range
+  goals, optional fatigue multiplier, and completed deload history) plus an
+  allowlisted cloud block carrying the local user profile, tracked lifts,
+  feature toggles, Log collapsed state, and current deload note. On Android,
+  large backups are written through the Storage Access Framework to a folder
+  chosen by the user and can be loaded back from that folder without crossing
+  the share-intent size limit; picker cancellation or write failure retains the
+  native share fallback. Import validates the cloud block before any write and
+  reconstructs profile and tracked-lift objects from supported fields only.
+  Base-payload validation accepts only a finite in-range
   fatigue multiplier, validates each deload-history record and caps its raw
   text, restores the full multi-note model plus weight goal, fatigue multiplier,
   and deload history on v2/v3 import, and still accepts older v1

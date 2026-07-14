@@ -17,8 +17,24 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Alert, Share } from 'react-native';
+import { Alert, Platform, Share } from 'react-native';
 import { BackupScreen } from '../components/BackupScreen';
+
+// BackupScreen requires this lazily (a static import that failed to resolve
+// would break the bundle and leave the app unopenable), so a module-scope mock
+// is what the require() inside the component picks up.
+jest.mock('expo-file-system/legacy', () => ({
+  StorageAccessFramework: {
+    requestDirectoryPermissionsAsync: jest.fn(),
+    createFileAsync: jest.fn(),
+    writeAsStringAsync: jest.fn(),
+    readDirectoryAsync: jest.fn(),
+    readAsStringAsync: jest.fn(),
+  },
+}));
+
+// eslint-disable-next-line import/first
+import { StorageAccessFramework as SAF } from 'expo-file-system/legacy';
 
 // Capture the most recent Alert.alert invocation so tests can inspect/trigger
 // the confirm/cancel buttons it was given.
@@ -155,7 +171,149 @@ describe('BackupScreen import confirmation', () => {
 
     expect(Alert.alert).not.toHaveBeenCalled();
     expect(onImport).not.toHaveBeenCalled();
-    expect(statusMatches(tree, /Paste your backup JSON first\./)).toBe(true);
+    expect(statusMatches(tree, /Load a backup file or paste your backup JSON first\./)).toBe(true);
+  });
+});
+
+// Issue #488: the Android file export/import path.
+//
+// Share.share({ message }) pushes the payload through a share intent, which
+// crosses Binder and caps out near 1MB — so large backups threw instead of
+// exporting. The file path exists to keep the payload out of the intent, and it
+// is the ONLY artifact that can carry device-local profile fields
+// (date_of_birth, sex, height_cm, activity_level) across an uninstall.
+//
+// The safety contract: the user must never be left with no export route. A
+// cancelled folder picker or a failed write falls back to the share sheet.
+describe('BackupScreen file export/import (Android)', () => {
+  const originalOS = Platform.OS;
+  // Comfortably past the Binder transaction limit that broke Share.share.
+  const LARGE_JSON = JSON.stringify({ version: '3', blob: 'x'.repeat(2 * 1024 * 1024) });
+
+  beforeEach(() => {
+    Platform.OS = 'android';
+    SAF.requestDirectoryPermissionsAsync.mockReset();
+    SAF.createFileAsync.mockReset();
+    SAF.writeAsStringAsync.mockReset();
+    SAF.readDirectoryAsync.mockReset();
+    SAF.readAsStringAsync.mockReset();
+    jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+  });
+
+  // Drives Export through the unencrypted-data confirmation the user must ack.
+  async function confirmExport(tree) {
+    const exportBtn = findButton(tree, 'Export Local Backup');
+    act(() => {
+      exportBtn.props.onPress();
+    });
+    await act(async () => {
+      await alertButton('Export anyway').onPress();
+    });
+  }
+
+  test('writes a large payload to a file and never touches the share intent', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/downloads' });
+    SAF.createFileAsync.mockResolvedValue('content://tree/downloads/kilo-backup-2026-07-14');
+    SAF.writeAsStringAsync.mockResolvedValue(undefined);
+
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: true, json: LARGE_JSON }) });
+    await confirmExport(tree);
+
+    expect(SAF.createFileAsync).toHaveBeenCalledWith(
+      'content://tree/downloads',
+      expect.stringContaining('kilo-backup-'),
+      'application/json',
+    );
+    expect(SAF.writeAsStringAsync).toHaveBeenCalledWith(
+      'content://tree/downloads/kilo-backup-2026-07-14',
+      LARGE_JSON,
+    );
+    // The whole point: the payload must not go through the intent.
+    expect(Share.share).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /Backup saved to the folder you chose\./)).toBe(true);
+  });
+
+  test('cancelling the folder picker falls back to the share sheet, not an error', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: false });
+
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: true, json: VALID_JSON }) });
+    await confirmExport(tree);
+
+    // The user must never be left with no way to get their data out.
+    expect(Share.share).toHaveBeenCalledWith({ message: VALID_JSON });
+    expect(SAF.writeAsStringAsync).not.toHaveBeenCalled();
+  });
+
+  test('a failed file write falls back to the share sheet', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/x' });
+    SAF.createFileAsync.mockRejectedValue(new Error('SAF unavailable'));
+
+    const tree = renderScreen({ onExport: jest.fn().mockResolvedValue({ ok: true, json: VALID_JSON }) });
+    await confirmExport(tree);
+
+    expect(Share.share).toHaveBeenCalledWith({ message: VALID_JSON });
+  });
+
+  test('Load Backup File reads the newest kilo backup into the import box', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/dl' });
+    SAF.readDirectoryAsync.mockResolvedValue([
+      'content://tree/dl/unrelated.txt',
+      'content://tree/dl/kilo-backup-2026-07-01',
+      'content://tree/dl/kilo-backup-2026-07-14',
+    ]);
+    SAF.readAsStringAsync.mockResolvedValue(VALID_JSON);
+
+    const tree = renderScreen();
+    const loadBtn = findButton(tree, 'Load Backup File');
+    await act(async () => {
+      await loadBtn.props.onPress();
+    });
+
+    // Newest wins, and non-Kilo files in the folder are ignored.
+    expect(SAF.readAsStringAsync).toHaveBeenCalledWith('content://tree/dl/kilo-backup-2026-07-14');
+    expect(tree.root.findByType('TextInput').props.value).toBe(VALID_JSON);
+    expect(statusMatches(tree, /Loaded kilo-backup-2026-07-14/)).toBe(true);
+  });
+
+  test('loading a file does NOT restore until the destructive confirm is accepted', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/dl' });
+    SAF.readDirectoryAsync.mockResolvedValue(['content://tree/dl/kilo-backup-2026-07-14']);
+    SAF.readAsStringAsync.mockResolvedValue(VALID_JSON);
+    const onImport = jest.fn().mockResolvedValue({ ok: true });
+
+    const tree = renderScreen({ onImport });
+    await act(async () => {
+      await findButton(tree, 'Load Backup File').props.onPress();
+    });
+
+    // Loading a file must not itself replace data.
+    expect(onImport).not.toHaveBeenCalled();
+
+    act(() => {
+      findButton(tree, 'Import Data').props.onPress();
+    });
+    expect(lastAlert.title).toBe('Replace all data?');
+    await act(async () => {
+      await alertButton('Replace data').onPress();
+    });
+    expect(onImport).toHaveBeenCalledWith(JSON.parse(VALID_JSON));
+  });
+
+  test('reports when the chosen folder holds no Kilo backup', async () => {
+    SAF.requestDirectoryPermissionsAsync.mockResolvedValue({ granted: true, directoryUri: 'content://tree/dl' });
+    SAF.readDirectoryAsync.mockResolvedValue(['content://tree/dl/holiday-photo.jpg']);
+
+    const tree = renderScreen();
+    await act(async () => {
+      await findButton(tree, 'Load Backup File').props.onPress();
+    });
+
+    expect(SAF.readAsStringAsync).not.toHaveBeenCalled();
+    expect(statusMatches(tree, /No Kilo backup found in that folder\./)).toBe(true);
   });
 });
 
