@@ -809,9 +809,10 @@ describe('clean-install cloud restore (#481/#482/#483)', () => {
     expect(localAfter).toEqual(localBefore);
 
     // The push still reflects this device's own (pre-existing) local values,
-    // not the divergent cloud row.
-    expect(client.upsertsByTable.user_profile[0].current_workout_note_id).toBe('wn1');
-    expect(client.upsertsByTable.user_profile[0].fatigue_multiplier).toBe(1.1);
+    // not the divergent cloud row. The health values live in user_health_profile
+    // since #487; user_profile carries account settings only.
+    expect(client.upsertsByTable.user_health_profile[0].current_workout_note_id).toBe('wn1');
+    expect(client.upsertsByTable.user_health_profile[0].fatigue_multiplier).toBe(1.1);
   });
 
   it('is idempotent: running bootstrap twice does not change hydrated values or duplicate upserts', async () => {

@@ -1080,12 +1080,17 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     await seedDeviceState();
     await cloudAdapter.sync();
 
+    // Account settings and health values are two cloud rows since #487: the three
+    // Art. 9 values (current routine, tracked lifts, fatigue multiplier) sync
+    // through the consent-gated user_health_profile, not user_profile.
     const profile = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
-    expect(profile.current_workout_note_id).toBe('wn_1');
-    expect(profile.tracked_lifts).toEqual({ Squat: true, Bench: true });
     expect(profile.unit_system).toBe('lb');
     expect(profile.display_name).toBe('Ben');
-    expect(profile.fatigue_multiplier).toBe(1.15);
+
+    const health = cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF);
+    expect(health.current_workout_note_id).toBe('wn_1');
+    expect(health.tracked_lifts).toEqual({ Squat: true, Bench: true });
+    expect(health.fatigue_multiplier).toBe(1.15);
 
     const toggles = cloud.remoteRow(SYNC_TABLES.FEATURE_TOGGLES, SELF);
     expect(toggles.weight_date_edit_enabled).toBe(true);
@@ -1129,10 +1134,12 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     await cloudAdapter.sync();
 
     const repaired = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
-    expect(repaired.current_workout_note_id).toBe('wn_1');
-    expect(repaired.tracked_lifts).toEqual({ Squat: true, Bench: true });
     expect(repaired.unit_system).toBe('lb');
-    expect(repaired.fatigue_multiplier).toBe(1.15);
+
+    const repairedHealth = cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF);
+    expect(repairedHealth.current_workout_note_id).toBe('wn_1');
+    expect(repairedHealth.tracked_lifts).toEqual({ Squat: true, Bench: true });
+    expect(repairedHealth.fatigue_multiplier).toBe(1.15);
 
     // And the device kept its own data: the stale cloud row did not overwrite it.
     expect(await Storage.loadCurrentWorkoutId()).toBe('wn_1');
@@ -1174,7 +1181,7 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
 
     // The edit must actually be uploaded — arrival at the server is what decides
     // the winner, not a comparison made on the client beforehand.
-    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+    expect(cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF).tracked_lifts).toEqual({
       Squat: true,
       Bench: true,
       Deadlift: true,
@@ -1322,14 +1329,17 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
 
     const remote = cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF);
     expect(remote.unit_system).toBe('st');
-    expect(remote.tracked_lifts).toEqual({ Deadlift: true });
 
-    // LWW here is ROW-level, not field-level: user_profile is a single cloud row,
+    const remoteHealth = cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF);
+    expect(remoteHealth.tracked_lifts).toEqual({ Deadlift: true });
+
+    // LWW here is ROW-level, not field-level: tracked_lifts and fatigue_multiplier
+    // share the single user_health_profile row (#487 moved them off user_profile),
     // so the winning device's whole row wins — including fields it never touched.
-    // A's row still carries A's 1.15, so B's concurrent 1.2 is overwritten. This
-    // is the stated rule, not an accident of ordering: a losing concurrent edit
-    // to an independent field of the SAME row does not survive.
-    expect(remote.fatigue_multiplier).toBe(1.15);
+    // A's row still carries A's 1.15, so B's concurrent 1.2 is overwritten. This is
+    // the stated rule, not an accident of ordering: a losing concurrent edit to an
+    // independent field of the SAME row does not survive.
+    expect(remoteHealth.fatigue_multiplier).toBe(1.15);
     expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
     const settledA = await captureDevice();
 
@@ -1510,7 +1520,7 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     await expect(cloudAdapter.sync()).rejects.toThrow('offline');
 
     // The cloud still holds the pre-offline state.
-    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+    expect(cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF).tracked_lifts).toEqual({
       Squat: true,
       Bench: true,
     });
@@ -1518,7 +1528,7 @@ describe('ongoing profile/toggles/goal/deload sync (issue #489)', () => {
     cloud.setOnline(true);
     await cloudAdapter.sync();
 
-    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SELF).tracked_lifts).toEqual({
+    expect(cloud.remoteRow(SYNC_TABLES.USER_HEALTH_PROFILE, SELF).tracked_lifts).toEqual({
       Squat: true,
       Bench: true,
       Row: true,
@@ -1570,7 +1580,7 @@ describe('real Supabase transport: singleton tables (issue #489)', () => {
 
     const byTable = new Map(capture.map((c) => [c.table, c]));
 
-    for (const table of ['user_profile', 'feature_toggles', 'weight_goal']) {
+    for (const table of ['user_profile', 'user_health_profile', 'feature_toggles', 'weight_goal']) {
       const call = byTable.get(table);
       expect(call).toBeTruthy();
       // Singletons key on user_id alone. The pre-#489 hardcoded 'user_id,id'
@@ -1588,9 +1598,17 @@ describe('real Supabase transport: singleton tables (issue #489)', () => {
 
     const profileRow = byTable.get('user_profile').rows[0];
     expect(profileRow.unit_system).toBe('kg');
-    expect(profileRow.tracked_lifts).toEqual({ Squat: true });
     expect(profileRow).not.toHaveProperty('date_of_birth');
     expect(profileRow).not.toHaveProperty('profile_json');
+    // The Art. 9 values are NOT on this row any more (#487). Sending them here
+    // would be an ungated health write, and the contract migration drops the
+    // columns, so a PGRST204 would take ordinary settings sync down with it.
+    expect(profileRow).not.toHaveProperty('tracked_lifts');
+    expect(profileRow).not.toHaveProperty('fatigue_multiplier');
+    expect(profileRow).not.toHaveProperty('current_workout_note_id');
+
+    const healthRow = byTable.get('user_health_profile').rows[0];
+    expect(healthRow.tracked_lifts).toEqual({ Squat: true });
 
     expect(byTable.get('weight_goal').rows[0].target_weight).toBe(170);
   });
