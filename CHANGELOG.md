@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.97.2 - 2026-07-14
+
+- Issue #478: Configured production Supabase Auth to send email signup
+  confirmations and password resets through Resend from a verified domain;
+  verified both flows against production and documented the current
+  cold-domain spam-placement limitation.
+
 ## 0.97.1 - 2026-07-14
 
 - Issue #496: Replaced misleading Account signup and password-sign-in messages

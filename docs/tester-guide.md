@@ -55,10 +55,10 @@ Kilo has five sections at the bottom of the screen:
 You can use Kilo without creating an account. Your workout and weight history
 is saved on your phone.
 
-If you choose to sign in, use **Continue with GitHub**. Creating an account
-with an email address does not work in the current test version. You will need
-an existing GitHub account to use the sign-in feature; otherwise, use Kilo
-without signing in.
+If you choose to sign in, you can create an account with an email address or
+use **Continue with GitHub**. Email confirmation and password reset messages
+may land in spam while the new sending domain builds reputation. You can also
+continue using Kilo without signing in.
 
 ## What to test
 
