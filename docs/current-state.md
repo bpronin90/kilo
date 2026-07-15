@@ -67,11 +67,14 @@ Roadmap status:
   recovery now requests an explicit base redirect, handles cold- and warm-start
   callbacks, navigates directly to More > Account, and presents a dedicated
   set-new-password or readable link-error surface (#497). The
-  redirect is allow-listed in Supabase; the first installed-build callback and
-  restart-persistence pass remains deferred by owner direction. Account signup
-  and failed password-sign-in messages now use enumeration-safe wording and
-  direct users who may have registered through GitHub to Continue with GitHub
-  without revealing whether an email address exists (#496).
+  redirect is allow-listed in Supabase, and production Auth now sends signup
+  confirmation and password-recovery email through Resend from a verified
+  domain (#478). Signup confirmation and password reset have completed against
+  production, with current spam placement documented as a cold-domain
+  reputation limitation. Account signup and failed password-sign-in messages
+  now use enumeration-safe wording and direct users who may have registered
+  through GitHub to Continue with GitHub without revealing whether an email
+  address exists (#496).
 
 The archived browser prototype was a seeded fitness-logging app with
 approximately 221 synthetic workout sessions and bodyweight entries used as
@@ -1059,10 +1062,11 @@ chunk high-water mark so shrinking writes and sign-out remove every chunk owned
 by the current adapter, while legacy or corrupt states without trustworthy
 metadata receive a documented bounded best-effort cleanup (#453). Remaining
 launch-posture follow-ups are Supabase Auth
-configuration: Auth must keep platform rate limits, use production-owned SMTP
-before email signup, keep the published Privacy Policy and Terms of Service
-documents live, and enable CAPTCHA before open signup unless a closed-beta
-release explicitly defers the still-pending gates.
+configuration: Auth keeps platform rate limits and now uses production-owned
+Resend SMTP from a verified domain for email signup and password recovery
+(#478). The published Privacy Policy and Terms of Service documents must remain
+live, and CAPTCHA must be enabled before open signup unless a closed-beta
+release explicitly defers that still-pending gate.
 
 Issue #487 adds the staged Article 9 explicit-consent boundary for Cloud Sync.
 The client renders the approved United States/SCC/health-category disclosure

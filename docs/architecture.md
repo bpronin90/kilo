@@ -283,8 +283,10 @@ No remote sync is involved.
 Supabase Auth owns platform authentication throttles and CAPTCHA enforcement for
 signup, password recovery, verification, and token endpoints. Kilo's launch
 configuration keeps those platform limits active, uses production-owned SMTP for
-public email signup, and enables CAPTCHA before open signup unless a closed-beta
-release explicitly records a temporary deferral.
+public email signup and password recovery, and enables CAPTCHA before open
+signup unless a closed-beta release explicitly records a temporary deferral.
+The production SMTP boundary is Resend with a verified sender domain (#478);
+delivery authentication is configured outside the repository in Supabase Auth.
 
 Kilo-owned Edge Functions remain responsible for app-specific abuse controls.
 `account-export` and `account-delete` require the caller JWT, perform no
