@@ -179,6 +179,10 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   const configured = auth?.configured ?? false;
   const authLoading = auth?.loading ?? true;
   const signedIn = auth?.signedIn ?? false;
+  // PASSWORD_RECOVERY establishes an authenticated session, but it is not an
+  // ordinary sign-in: completing (or explicitly exiting) password recovery
+  // must take precedence over any local-data ownership decision (#500).
+  const recoveryActive = Boolean(auth?.passwordRecovery || auth?.recoveryError);
 
   const runInitialSync = useCallback(async () => {
     // The automatic path is exactly where an ungated upload would be most damaging:
@@ -297,6 +301,16 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   useEffect(() => {
     if (!configured || authLoading) return;
 
+    if (recoveryActive) {
+      // A recovery callback may arrive after a sign-in ownership check has
+      // already surfaced its prompt. Hide it and leave the owner marker alone;
+      // when recovery ends this effect re-runs and presents the still-valid
+      // decision through the normal path.
+      setOwnershipPrompt(null);
+      setCanRestore(false);
+      return;
+    }
+
     if (!signedIn || !userId) {
       Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
       // Reset phases so the next sign-in (possibly a different user) starts
@@ -352,7 +366,7 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     })().catch(() => {});
 
     return () => { cancelled = true; };
-  }, [configured, authLoading, signedIn, userId, runInitialSync]);
+  }, [configured, authLoading, recoveryActive, signedIn, userId, runInitialSync]);
 
   return {
     ownershipPrompt,
