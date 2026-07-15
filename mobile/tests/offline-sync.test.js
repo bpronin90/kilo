@@ -952,6 +952,144 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
   });
 });
 
+// ── Regression #501: legacy phantom re-uploaded with its provenance stripped ──────
+//
+// The ownership-confirmation "Upload It Into My Account" path re-uploads the whole
+// local notebook through bootstrap. On the buggy 0.95.0 build bootstrap set
+// source_snapshot: null on every notebook row, so a legacy phantom that a device
+// re-uploaded arrived in the account as a LIVE cloud row with NO
+// async_storage_key provenance. The #458 sync guard keyed only on source_snapshot,
+// so it no longer recognized that row and wrote it to local as a visible note that
+// survived restart and repeated sync.
+//
+// The account may already hold such a row from that build, so the sync path must
+// clean it without a source_snapshot: the `wn_legacy_<userId>` id namespace is
+// bootstrap-only provenance (user notes and the local migrate-to-notebook entry
+// use `wn_<date>_<ts>` ids) and is the durable signal the cleanup now also keys on.
+describe('phantom Routine 1 regression via provenance-stripped id (issue #501)', () => {
+  const USER_ID = 'u-phantom-501';
+  const PHANTOM_ID = `wn_legacy_${USER_ID}`;
+
+  // A LIVE legacy row as the buggy ownership upload left it in the account:
+  // correct id namespace, but source_snapshot stripped to null.
+  function strippedPhantomRow(overrides = {}) {
+    return {
+      id: PHANTOM_ID,
+      title: 'Routine 1',
+      raw_text: '-Squat\n- 225 5,5,5',
+      saved_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-02T00:00:00.000Z',
+      source_snapshot: null,
+      ...overrides,
+    };
+  }
+
+  function realNote(id = 'wn_real_501') {
+    return {
+      id,
+      title: 'Summer 2026 Routine',
+      raw_text: '-Bench\n- 185 5,5,5',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-15T00:00:00.000Z',
+    };
+  }
+
+  it('a provenance-stripped legacy row pulled from cloud is tombstoned, hidden, and converged in the same pass', async () => {
+    const preserved = realNote();
+    await Storage.replaceWorkoutNotesRaw([preserved]);
+    await Storage.setCurrentWorkoutNote(preserved.id);
+
+    // The account already holds the resurrected, provenance-stripped phantom.
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, strippedPhantomRow());
+
+    await cloudAdapter.sync();
+
+    // Never user-visible, and the user's real note (and selection) is intact.
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(notes.find((n) => n.id === preserved.id)).toMatchObject({
+      id: preserved.id,
+      raw_text: preserved.raw_text,
+      isCurrent: true,
+    });
+    expect(await Storage.loadCurrentWorkoutId()).toBe(preserved.id);
+
+    // Tombstoned locally by the id-namespace guard even without a source_snapshot.
+    const localPhantom = (await Storage.loadWorkoutNotesRaw()).find((n) => n.id === PHANTOM_ID);
+    expect(isTombstone(localPhantom)).toBe(true);
+
+    // Cloud converges to a tombstone in the same public sync operation.
+    const remotePhantom = cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID);
+    expect(isTombstone(remotePhantom)).toBe(true);
+    expect(remotePhantom.deleted_at).toBe(localPhantom.deleted_at);
+  });
+
+  it('repeated sync passes (restart) never resurface the provenance-stripped phantom', async () => {
+    await Storage.replaceWorkoutNotesRaw([realNote()]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, strippedPhantomRow());
+
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    expect((await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+  });
+
+  it('a stale local tombstone is not resurrected by the newer live cloud row', async () => {
+    // Local carries the #458 tombstone; cloud carries the buggy live resurrection
+    // with a strictly newer server stamp, so LWW would otherwise revive it.
+    const tombstone = {
+      ...strippedPhantomRow({ source_snapshot: { async_storage_key: 'kilo_workout_note' } }),
+      updated_at: '2026-05-03T00:00:00.000Z',
+      deleted_at: '2026-05-03T00:00:00.000Z',
+    };
+    await Storage.replaceWorkoutNotesRaw([realNote(), tombstone]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, strippedPhantomRow({ updated_at: '2026-06-20T00:00:00.000Z' }));
+
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    expect((await cloudAdapter.loadWorkoutNotes()).find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+  });
+
+  it('an "Imported sessions" note (wn_sessions_ namespace) is NOT treated as a phantom', async () => {
+    // wn_sessions_<userId> is a legitimate one-time migration, not a phantom, so
+    // the id-namespace guard must match wn_legacy_ only.
+    const sessionsNote = {
+      id: `wn_sessions_${USER_ID}`,
+      title: 'Imported sessions',
+      raw_text: '-Bench\n- 135 5,5,5',
+      saved_at: null,
+      updated_at: '2026-06-15T00:00:00.000Z',
+      source_snapshot: { async_storage_key: 'kilo_workout_sessions' },
+    };
+    await Storage.replaceWorkoutNotesRaw([sessionsNote, realNote('wn_other_501')]);
+
+    await cloudAdapter.sync();
+
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === sessionsNote.id)).toMatchObject({
+      id: sessionsNote.id,
+      raw_text: sessionsNote.raw_text,
+    });
+  });
+
+  it('preserves a legacy-only user whose sole note is the wn_legacy_ row', async () => {
+    // Even provenance-stripped, a legacy-only user's only note must survive: the
+    // guard fires only when a non-phantom note co-exists.
+    await Storage.replaceWorkoutNotesRaw([strippedPhantomRow()]);
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, strippedPhantomRow());
+
+    await cloudAdapter.sync();
+
+    const notes = await cloudAdapter.loadWorkoutNotes();
+    expect(notes.find((n) => n.id === PHANTOM_ID)).toBeTruthy();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(false);
+  });
+});
+
 // ── Latest review finding: deload-derived workout notes must sync too ────────────
 //
 // completeDeload() creates a workout-note row and deleteDeloadNote() removes one.
