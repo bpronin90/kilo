@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.98.0 - 2026-07-15
+
+- Issue #502: Made `Skip week` append a new skip marker on every press and
+  added a guarded `Remove skip` action that removes one trailing universal
+  skip, keeps fatigue reasons aligned with surviving sessions, confirms before
+  removing manual skips, and persists its advisory counter atomically with the
+  workout note.
+
 ## 0.97.6 - 2026-07-15
 
 - Issue #484: Kept the mobile bottom tab bar and its tap targets above runtime
