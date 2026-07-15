@@ -12,12 +12,92 @@
 // behavior is unchanged for signed-out users.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Linking, Platform } from 'react-native';
 import { getSupabaseClient, getSupabaseConfig, hasSupabaseConfig } from '../lib/supabaseClient';
 
 const LOCAL_ONLY_RESULT = Object.freeze({
   ok: false,
   error: 'Cloud accounts are not configured in this build.',
 });
+
+// Deep link the app registers for both the GitHub OAuth callback and the
+// password-recovery callback (#497). Native delivers both via this URL
+// scheme; web carries the same payload as query/hash params on the app's own
+// origin (see App.js's web callback effect).
+export const KILO_AUTH_REDIRECT = 'kilo://auth/callback';
+
+// Web-only recovery discriminator (#497).
+//
+// GitHub OAuth and password recovery both return to window.location on web, so
+// a callback URL alone cannot tell a recovery-link error apart from a generic
+// OAuth error. We deliberately do NOT solve this by marking the redirect URL:
+// the redirect must stay a plain allowlisted base URL (`kilo://auth/callback`
+// native, the web origin on web). A query-bearing variant is not guaranteed to
+// match Supabase's redirect-URL allowlist, and a rejected redirect falls back
+// to the project Site URL — recreating the exact dead end this issue fixes.
+//
+// Instead, when a reset is requested we record a short-lived "recovery pending"
+// flag in localStorage, and consume it when a callback error arrives. It is
+// localStorage, not sessionStorage, because the email link commonly opens a new
+// tab. The TTL is aligned to the reset-link validity so a stale flag cannot
+// misclassify a much-later unrelated OAuth error.
+//
+// Native needs no discriminator at all: GitHub OAuth is captured by
+// WebBrowser.openAuthSessionAsync's own return value, so any error that reaches
+// the general kilo:// deep-link listener is unambiguously a recovery error
+// (handled by that listener directly). getRecoveryStorage() returns null on
+// native, so every helper here is a no-op there.
+export const RECOVERY_PENDING_KEY = 'kilo.auth.recoveryPending';
+// ~1h, matching the default Supabase reset-link validity.
+export const RECOVERY_PENDING_TTL_MS = 60 * 60 * 1000;
+
+function getRecoveryStorage() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+  } catch (e) {
+    // Accessing window.localStorage can throw (privacy mode, sandboxed frame).
+  }
+  return null;
+}
+
+function markRecoveryPending() {
+  const storage = getRecoveryStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(RECOVERY_PENDING_KEY, String(Date.now()));
+  } catch (e) {
+    // Best-effort: if this fails, a returning web error just stays unclassified.
+  }
+}
+
+function clearRecoveryPending() {
+  const storage = getRecoveryStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(RECOVERY_PENDING_KEY);
+  } catch (e) {
+    // ignore
+  }
+}
+
+// Returns true — and clears the flag — when a recovery request was made within
+// the TTL window. Returns false (leaving nothing behind) otherwise, including
+// on native where there is no localStorage.
+function consumeRecoveryPending() {
+  const storage = getRecoveryStorage();
+  if (!storage) return false;
+  let raw = null;
+  try {
+    raw = storage.getItem(RECOVERY_PENDING_KEY);
+  } catch (e) {
+    return false;
+  }
+  if (raw == null) return false;
+  clearRecoveryPending();
+  const ts = Number(raw);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts <= RECOVERY_PENDING_TTL_MS;
+}
 
 export function useAuthSession() {
   const configured = hasSupabaseConfig();
@@ -26,12 +106,26 @@ export function useAuthSession() {
   // Loading reflects the initial session-restore probe. When unconfigured we
   // are immediately settled in signed-out local-only mode.
   const [loading, setLoading] = useState(configured);
+  // True once Supabase reports a PASSWORD_RECOVERY auth-state event: the
+  // session just established is a recovery session (the user followed a
+  // password-reset link), not a normal sign-in. Screens gate a
+  // set-new-password surface on this instead of on `signedIn` alone.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  // Readable failure from a recovery-link callback that did not establish a
+  // session (expired or already-used link). Cleared by clearPasswordRecovery.
+  const [recoveryError, setRecoveryError] = useState('');
   const mountedRef = useRef(true);
 
   const applySession = useCallback((nextSession) => {
     if (!mountedRef.current) return;
     setSession(nextSession || null);
     setUser(nextSession?.user || null);
+  }, []);
+
+  const clearPasswordRecovery = useCallback(() => {
+    setPasswordRecovery(false);
+    setRecoveryError('');
+    clearRecoveryPending();
   }, []);
 
   useEffect(() => {
@@ -57,7 +151,17 @@ export function useAuthSession() {
         if (mountedRef.current) setLoading(false);
       });
 
-    const { data: sub } = client.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: sub } = client.auth.onAuthStateChange((event, nextSession) => {
+      // Supabase fires PASSWORD_RECOVERY (instead of SIGNED_IN) when the
+      // session just came from a password-reset link, so screens can show a
+      // set-new-password surface instead of the normal signed-in view.
+      if (event === 'PASSWORD_RECOVERY' && mountedRef.current) {
+        setPasswordRecovery(true);
+        setRecoveryError('');
+        // Recovery succeeded — drop the web pending flag so a later unrelated
+        // OAuth error within the TTL window is not misclassified.
+        clearRecoveryPending();
+      }
       applySession(nextSession);
     });
 
@@ -100,11 +204,19 @@ export function useAuthSession() {
   const resetPasswordForEmail = useCallback(async (email, options) => {
     const client = requireClient();
     if (!client) return LOCAL_ONLY_RESULT;
+    // Send the bare, allowlisted redirect URL unchanged (kilo://auth/callback
+    // native, the web origin on web). No query marker is added — that would
+    // risk an allowlist miss and a Site-URL fallback (see the discriminator
+    // note above).
     const { error } = await client.auth.resetPasswordForEmail(
       email,
-      options ? { redirectTo: options.redirectTo } : undefined,
+      options?.redirectTo ? { redirectTo: options.redirectTo } : undefined,
     );
     if (error) return { ok: false, error: error.message };
+    // Record that a recovery is in flight so a returning web callback error
+    // (expired/used link) can be attributed to recovery without a URL marker.
+    // No-op on native (no localStorage).
+    markRecoveryPending();
     return { ok: true };
   }, [requireClient]);
 
@@ -184,13 +296,29 @@ export function useAuthSession() {
     if (!target) return { ok: false, error: 'No callback URL available.' };
 
     // Surface any provider/Supabase error in the callback URL immediately.
-    const errorMatch = /[?&]error=([^&#]*)/.exec(target);
+    // Errors can arrive as query (?error=) or hash (#error=) params depending
+    // on flow, so match either delimiter here.
+    const errorMatch = /[?&#]error=([^&#]*)/.exec(target);
     if (errorMatch) {
       const errorCode = decodeURIComponent(errorMatch[1].replace(/\+/g, ' '));
-      const descMatch = /[?&]error_description=([^&#]*)/.exec(target);
+      const descMatch = /[?&#]error_description=([^&#]*)/.exec(target);
       const desc = descMatch
         ? decodeURIComponent(descMatch[1].replace(/\+/g, ' '))
         : errorCode;
+      // A recovery link that errored (expired/already-used) must land on the
+      // set-new-password surface, not vanish. On web the caller (App.js's mount
+      // effect) invokes this and ignores the return value, so persist the error
+      // into recoveryError here. consumeRecoveryPending() is what keeps generic
+      // OAuth sign-in errors — which set no pending flag — from being misfiled
+      // as recovery failures, and it is a no-op on native (native recovery
+      // errors are handled by the deep-link listener below, whose wrapper sets
+      // recoveryError, and native OAuth never reaches that listener). Only the
+      // explicit error-param branch consults it: a failed code exchange on the
+      // success path is often just the web detectSessionInUrl double-exchange
+      // race and must NOT surface as a recovery error.
+      if (mountedRef.current && consumeRecoveryPending()) {
+        setRecoveryError(desc || 'Password reset link is invalid or has expired.');
+      }
       return { ok: false, error: desc };
     }
 
@@ -214,18 +342,75 @@ export function useAuthSession() {
     return { ok: true, session: data.session };
   }, [requireClient, applySession]);
 
+  // Native cold/warm-start deep-link handling for the recovery callback,
+  // following the same code-exchange path as the GitHub OAuth callback
+  // (handleAuthCallbackUrl above). Web does not need this: App.js's web
+  // effect already drives handleAuthCallbackUrl from window.location on
+  // mount, and detectSessionInUrl covers the implicit fallback.
+  //
+  // GitHub sign-in on native (see AccountScreen) already captures its
+  // redirect directly via WebBrowser.openAuthSessionAsync's return value,
+  // which intercepts the kilo:// redirect through its own auth-session
+  // mechanism rather than the app's general deep-link surface, so this
+  // listener does not race it. This listener's only real-world source is a
+  // password-recovery link opened from outside the app (e.g. a mail client),
+  // including the cold-start case where the app was not already running.
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const client = getSupabaseClient();
+    if (!client) return undefined;
+
+    const handleUrl = (url) => {
+      if (!url || !url.startsWith(KILO_AUTH_REDIRECT)) return;
+      handleAuthCallbackUrl(url).then((result) => {
+        if (!result.ok && mountedRef.current) {
+          setRecoveryError(result.error || 'Password reset link is invalid or has expired.');
+        }
+      }).catch(() => {});
+    };
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    }).catch(() => {});
+
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+
+    return () => {
+      sub?.remove?.();
+    };
+  }, [handleAuthCallbackUrl]);
+
+  // Set-new-password surface calls this after a recovery session is
+  // established. Clears passwordRecovery on success so the caller falls back
+  // to its normal signed-in view.
+  const updatePassword = useCallback(async (password) => {
+    const client = requireClient();
+    if (!client) return LOCAL_ONLY_RESULT;
+    const { data, error } = await client.auth.updateUser({ password });
+    if (error) return { ok: false, error: error.message };
+    if (mountedRef.current) {
+      setPasswordRecovery(false);
+      setRecoveryError('');
+    }
+    return { ok: true, user: data?.user || null };
+  }, [requireClient]);
+
   return {
     configured,
     loading,
     session,
     user,
     signedIn: Boolean(session),
+    passwordRecovery,
+    recoveryError,
+    clearPasswordRecovery,
     signInWithPassword,
     signUpWithPassword,
     signOut,
     resetPasswordForEmail,
     signInWithOAuth,
     handleAuthCallbackUrl,
+    updatePassword,
     serverExport,
     deleteAccount,
   };

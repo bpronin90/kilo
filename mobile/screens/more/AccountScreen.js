@@ -4,11 +4,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { ScreenShell } from '../../components/ScreenShell';
 import { Button, InputStyle, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
+import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
 import { AccountLifecycle } from './AccountLifecycle';
 import { LegalLinks } from './LegalLinks';
-
-const KILO_AUTH_REDIRECT = 'kilo://auth/callback';
+import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 
 // Minimal account surface to exercise sign in / sign out / session restore /
 // password reset against the auth/session hook. This is intentionally narrow:
@@ -59,6 +59,19 @@ export function AccountScreen({ onBack, auth }) {
     }
   };
 
+  // Explicit redirectTo (#497): without one, the reset link falls back to the
+  // project's default Site URL and the app never sees the callback. Mirrors
+  // the redirectTo split already used for GitHub sign-in above — web targets
+  // its own origin (handled by App.js's web callback effect), native targets
+  // the kilo:// deep link (handled by useAuthSession's native listener).
+  const handleResetPassword = () => run(async () => {
+    const redirectTo = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' ? window.location.origin : undefined)
+      : KILO_AUTH_REDIRECT;
+    const result = await auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+    return result.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : result;
+  });
+
   const handleGitHubSignInNative = async () => {
     setBusy(true);
     setStatus('');
@@ -96,6 +109,16 @@ export function AccountScreen({ onBack, auth }) {
       setBusy(false);
     }
   };
+
+  // Recovery link handling (#497): once useAuthSession's native deep-link
+  // listener (or, on web, App.js's callback effect) has processed a
+  // password-reset link, show the set-new-password surface instead of the
+  // normal Sign In / Signed In views — both for a successfully established
+  // recovery session (auth.passwordRecovery) and for a link that failed to
+  // establish one (auth.recoveryError: expired or already-used).
+  if (auth.configured && (auth.passwordRecovery || auth.recoveryError)) {
+    return <SetNewPasswordScreen auth={auth} onDone={() => {}} />;
+  }
 
   return (
     <ScreenShell
@@ -179,7 +202,8 @@ export function AccountScreen({ onBack, auth }) {
           <Button
             title="Reset Password"
             disabled={busy}
-            onPress={() => run(() => auth.resetPasswordForEmail(email).then((r) => (r.ok ? { ok: true, message: 'Password reset email sent if the address exists.' } : r)))}
+            onPress={handleResetPassword}
+            accessibilityLabel="Reset Password"
           />
           {(Platform.OS === 'web' || Platform.OS === 'android') && (
             <Button

@@ -82,6 +82,7 @@ let useAuthSession;
 let resetSupabaseClientForTests;
 let AccountLifecycle;
 let AccountScreen;
+let MoreScreen;
 let Platform;
 let Linking;
 let WebBrowser;
@@ -225,6 +226,7 @@ beforeEach(() => {
   const moreScreen = require('../screens/MoreScreen');
   AccountLifecycle = moreScreen.AccountLifecycle;
   AccountScreen = moreScreen.AccountScreen;
+  MoreScreen = moreScreen.MoreScreen;
   WebBrowser = require('expo-web-browser');
 
   resetSupabaseClientForTests();
@@ -859,5 +861,287 @@ describe('CloudSyncRecovery status summary', () => {
 
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Cloud sync summary' }).length).toBe(0);
     expect(JSON.stringify(tree.toJSON())).not.toMatch(/Cloud Sync/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reset Password redirectTo (#497): without an explicit redirectTo the reset
+// link falls back to the project's default Site URL and the app never sees
+// the callback (the bug this issue reports). Mirrors the redirectTo split
+// already covered above for GitHub sign-in.
+// ---------------------------------------------------------------------------
+
+describe('Reset Password redirectTo', () => {
+  let originalPlatformOS;
+  let originalWindow;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    originalWindow = global.window;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+    if (originalWindow !== undefined) {
+      global.window = originalWindow;
+    } else {
+      delete global.window;
+    }
+  });
+
+  test('passes the kilo:// deep link redirectTo on native (Android)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const resetPasswordForEmail = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { resetPasswordForEmail });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const emailInput = tree.root.findByProps({ accessibilityLabel: 'Email' });
+    act(() => { emailInput.props.onChangeText('user@test.com'); });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Reset Password' });
+    await act(async () => { await button.props.onPress(); });
+
+    expect(resetPasswordForEmail).toHaveBeenCalledWith('user@test.com', { redirectTo: 'kilo://auth/callback' });
+  });
+
+  test('passes the web origin as redirectTo on web', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    global.window = { location: { origin: 'https://kilo-app.example.com' } };
+    const resetPasswordForEmail = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { resetPasswordForEmail });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const emailInput = tree.root.findByProps({ accessibilityLabel: 'Email' });
+    act(() => { emailInput.props.onChangeText('user@test.com'); });
+
+    const button = tree.root.findByProps({ accessibilityLabel: 'Reset Password' });
+    await act(async () => { await button.props.onPress(); });
+
+    expect(resetPasswordForEmail).toHaveBeenCalledWith('user@test.com', { redirectTo: 'https://kilo-app.example.com' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Set New Password surface (#497): AccountScreen shows SetNewPasswordScreen
+// instead of its normal Sign In / Signed In views whenever the shared `auth`
+// instance reports an active recovery session or a failed recovery-link
+// callback (see useAuthSession.js's PASSWORD_RECOVERY event handling and
+// native deep-link listener, covered at the hook level in
+// auth-session.test.js).
+// ---------------------------------------------------------------------------
+
+describe('Set New Password surface', () => {
+  test('shows the set-new-password surface instead of the Signed-In view when a recovery session is active', () => {
+    const authProp = makeResolvedAuthProp(FAKE_SESSION, {
+      passwordRecovery: true,
+      recoveryError: '',
+      clearPasswordRecovery: jest.fn(),
+      updatePassword: jest.fn().mockResolvedValue({ ok: true }),
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    // findAllByProps defaults to a deep search, which also matches the
+    // TextInput's own host descendant (composite + host both carry the
+    // prop) — findByProps (used elsewhere in this file) defaults to a
+    // shallow search and is used here to assert exactly one logical input.
+    expect(tree.root.findByProps({ accessibilityLabel: 'New Password' })).toBeTruthy();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Confirm New Password' })).toBeTruthy();
+    expect(JSON.stringify(tree.toJSON())).not.toMatch(/Signed In/);
+  });
+
+  test('submitting a matching new password calls updatePassword with the password', async () => {
+    const updatePassword = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(FAKE_SESSION, {
+      passwordRecovery: true,
+      recoveryError: '',
+      clearPasswordRecovery: jest.fn(),
+      updatePassword,
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'New Password' }).props.onChangeText('brand-new-pw'); });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Confirm New Password' }).props.onChangeText('brand-new-pw'); });
+
+    const submit = tree.root.findByProps({ accessibilityLabel: 'Set New Password' });
+    await act(async () => { await submit.props.onPress(); });
+
+    expect(updatePassword).toHaveBeenCalledWith('brand-new-pw');
+    const status = tree.root.findByProps({ accessibilityLabel: 'Set password status' });
+    expect(status.props.children).toMatch(/Password updated/);
+  });
+
+  test('mismatched passwords are rejected locally without calling updatePassword', async () => {
+    const updatePassword = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(FAKE_SESSION, {
+      passwordRecovery: true,
+      recoveryError: '',
+      clearPasswordRecovery: jest.fn(),
+      updatePassword,
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'New Password' }).props.onChangeText('brand-new-pw'); });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Confirm New Password' }).props.onChangeText('different-pw'); });
+
+    const submit = tree.root.findByProps({ accessibilityLabel: 'Set New Password' });
+    await act(async () => { await submit.props.onPress(); });
+
+    expect(updatePassword).not.toHaveBeenCalled();
+    const status = tree.root.findByProps({ accessibilityLabel: 'Set password status' });
+    expect(status.props.children).toBe('Passwords do not match.');
+  });
+
+  test('a weak-password failure from updateUser surfaces a readable message', async () => {
+    const updatePassword = jest.fn().mockResolvedValue({ ok: false, error: 'Password should be at least 6 characters.' });
+    const authProp = makeResolvedAuthProp(FAKE_SESSION, {
+      passwordRecovery: true,
+      recoveryError: '',
+      clearPasswordRecovery: jest.fn(),
+      updatePassword,
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'New Password' }).props.onChangeText('123456'); });
+    act(() => { tree.root.findByProps({ accessibilityLabel: 'Confirm New Password' }).props.onChangeText('123456'); });
+
+    const submit = tree.root.findByProps({ accessibilityLabel: 'Set New Password' });
+    await act(async () => { await submit.props.onPress(); });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Set password status' });
+    expect(status.props.children).toBe('Password should be at least 6 characters.');
+  });
+
+  test('an expired or already-used link shows a readable error with no silent bounce back to the app', () => {
+    const clearPasswordRecovery = jest.fn();
+    const authProp = makeResolvedAuthProp(null, {
+      passwordRecovery: false,
+      recoveryError: 'Email link is invalid or has expired',
+      clearPasswordRecovery,
+      updatePassword: jest.fn(),
+    });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Set password status' });
+    expect(status.props.children).toBe('Email link is invalid or has expired');
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'New Password' }).length).toBe(0);
+
+    const backButton = tree.root.findByProps({ accessibilityLabel: 'Back to Sign In' });
+    act(() => { backButton.props.onPress(); });
+    expect(clearPasswordRecovery).toHaveBeenCalled();
+  });
+
+  test('does not show the recovery surface for a normal signed-out session', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(null) }));
+    });
+
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'New Password' }).length).toBe(0);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Email' })).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MoreScreen recovery auto-navigation (#497 Finding 1): a recovery deep link
+// can be opened from any tab. App.js switches to the More tab; MoreScreen must
+// switch its own sub-view to Account so the set-new-password surface actually
+// appears, instead of the recovery link being a visible dead end. MoreScreen
+// stays mounted across tabs, so this switch is driven purely by the shared
+// auth instance's recovery signals.
+// ---------------------------------------------------------------------------
+
+describe('MoreScreen recovery auto-navigation', () => {
+  function makeRecoveryAuth(overrides = {}) {
+    return {
+      configured: true,
+      loading: false,
+      session: null,
+      user: null,
+      signedIn: false,
+      passwordRecovery: false,
+      recoveryError: '',
+      clearPasswordRecovery: jest.fn(),
+      updatePassword: jest.fn().mockResolvedValue({ ok: true }),
+      resetPasswordForEmail: jest.fn().mockResolvedValue({ ok: true }),
+      signInWithPassword: jest.fn(),
+      signUpWithPassword: jest.fn(),
+      signOut: jest.fn(),
+      signInWithOAuth: jest.fn(),
+      handleAuthCallbackUrl: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  test('starts on the menu (no set-password surface) when there is no recovery signal', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(MoreScreen, { isActive: true, auth: makeRecoveryAuth() }));
+    });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'New Password' }).length).toBe(0);
+  });
+
+  test('auto-opens the Account set-new-password surface when a recovery session is active', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(MoreScreen, { isActive: true, auth: makeRecoveryAuth({ passwordRecovery: true }) }));
+    });
+    expect(tree.root.findByProps({ accessibilityLabel: 'New Password' })).toBeTruthy();
+  });
+
+  test('auto-opens the Account surface (showing the readable error) when a recovery link failed', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(MoreScreen, {
+        isActive: true,
+        auth: makeRecoveryAuth({ recoveryError: 'Email link is invalid or has expired' }),
+      }));
+    });
+    const status = tree.root.findByProps({ accessibilityLabel: 'Set password status' });
+    expect(status.props.children).toBe('Email link is invalid or has expired');
+  });
+
+  test('switches to the Account surface when the recovery signal arrives after mount (deep link while running)', () => {
+    let tree;
+    const auth = makeRecoveryAuth();
+    act(() => {
+      tree = renderer.create(React.createElement(MoreScreen, { isActive: true, auth }));
+    });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'New Password' }).length).toBe(0);
+
+    // Recovery becomes active on the shared instance (as it would after the
+    // deep-link listener establishes the session): the screen re-renders with
+    // the updated auth prop and the effect opens the Account surface.
+    act(() => {
+      tree.update(React.createElement(MoreScreen, { isActive: true, auth: makeRecoveryAuth({ passwordRecovery: true }) }));
+    });
+    expect(tree.root.findByProps({ accessibilityLabel: 'New Password' })).toBeTruthy();
   });
 });

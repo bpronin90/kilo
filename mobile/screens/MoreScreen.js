@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect } from 'react';
+import React, { useState, useLayoutEffect, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionTitle } from '../components/UI';
@@ -29,6 +29,21 @@ export function MoreScreen({
   onUpdateDeloadDateEditEnabled,
 }) {
   const [activeView, setActiveView] = useState('menu');
+
+  // Password recovery (#497): when the shell reports an active recovery
+  // session or a failed recovery link, open the Account sub-view so the
+  // set-new-password surface (rendered by AccountScreen for these states) is
+  // shown. App.js makes the matching switch to the More tab, so together the
+  // recovery deep link lands the user directly on the reset surface instead
+  // of a dead end. This screen stays mounted across tabs, so the switch is
+  // safe even when More is not the visible tab yet. Keyed on the recovery
+  // signals so it fires once when recovery begins and does not otherwise
+  // override the user's own menu navigation.
+  useEffect(() => {
+    if (auth?.passwordRecovery || auth?.recoveryError) {
+      setActiveView('account');
+    }
+  }, [auth?.passwordRecovery, auth?.recoveryError]);
 
   const inSubView = activeView !== 'menu';
 
