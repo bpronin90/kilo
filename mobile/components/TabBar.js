@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
 
 export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
-  const { bottom: bottomInset } = useSafeAreaInsets();
+  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const timeoutRef = useRef(null);
 
