@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
 
 export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const timeoutRef = useRef(null);
 
@@ -57,11 +59,8 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
   };
 
   return (
-    <Animated.View 
-      style={[
-        styles.container, 
-        { opacity: fadeAnim }
-      ]}
+    <Animated.View
+      style={[styles.container, { opacity: fadeAnim, bottom: 24 + bottomInset }]}
       onTouchStart={handleInteractionStart}
       onTouchEnd={handleInteractionEnd}
     >
@@ -85,7 +84,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 24,
     flexDirection: 'row',
     gap: 8,
     backgroundColor: Colors.card,

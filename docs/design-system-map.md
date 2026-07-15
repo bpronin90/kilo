@@ -136,7 +136,7 @@ Source: `mobile/components/ScreenShell.js`
 | Property | Value | Line |
 |---|---|---|
 | Content horizontal padding | `16` | `63` |
-| Content bottom padding | `120` (tab bar clearance) | `64` |
+| Content bottom padding | `120 + bottom safe-area inset` (tab bar clearance) | `51`, `128-131` |
 | Gap between top-level children | `16` | `65` |
 | Header paddingTop | `8` | `71` |
 | Header paddingBottom | `8` | `72` |
@@ -152,6 +152,12 @@ Current values live in `styles` at the bottom of `ScreenShell.js`
 (`container` gap/padding ~123-127, `header` ~131-135, `title` ~152-156). The
 sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12`
 with a 1px `cardBorder` bottom.
+
+The absolute `TabBar` keeps 16px horizontal insets and a 24px visual bottom
+gap, then adds the runtime bottom safe-area inset from
+`react-native-safe-area-context`. `SafeAreaProvider` is owned by
+`mobile/App.js`; `ScreenShell` consumes only the bottom inset so existing top
+spacing is unchanged.
 
 ---
 

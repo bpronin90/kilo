@@ -8,6 +8,7 @@ import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
 import { MoreScreen } from './screens/MoreScreen';
@@ -364,6 +365,7 @@ export default function App() {
   };
 
   return (
+    <SafeAreaProvider>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         <SafeAreaView style={styles.topSafeArea} />
@@ -401,14 +403,12 @@ export default function App() {
           )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
-        <SafeAreaView style={styles.tabBarSafeArea} pointerEvents="box-none">
-          <TabBar
-            tabs={TABS}
-            activeTab={activeTab}
-            onTabPress={handleTabPress}
-            addScrollListener={addScrollListener}
-          />
-        </SafeAreaView>
+        <TabBar
+          tabs={TABS}
+          activeTab={activeTab}
+          onTabPress={handleTabPress}
+          addScrollListener={addScrollListener}
+        />
         {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
           <View style={styles.ownershipOverlay} testID="ownership-prompt">
             <View style={styles.ownershipCard}>
@@ -481,6 +481,7 @@ export default function App() {
         ) : null}
       </View>
     </ScrollContext.Provider>
+    </SafeAreaProvider>
   );
 }
 
