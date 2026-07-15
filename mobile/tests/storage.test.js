@@ -1396,6 +1396,48 @@ describe('session_checkins round-trip', () => {
   });
 });
 
+describe('applyDeloadNoteFromSync (issue #498)', () => {
+  it('writes a pulled deload note with its timestamps verbatim', async () => {
+    const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
+    await applyDeloadNoteFromSync({
+      raw_text: 'pulled deload',
+      saved_at: '2026-06-05T00:00:00.000Z',
+      updated_at: '2026-06-06T00:00:00.000Z',
+    });
+    expect(await loadDeloadNote()).toEqual({
+      raw_text: 'pulled deload',
+      saved_at: '2026-06-05T00:00:00.000Z',
+      updated_at: '2026-06-06T00:00:00.000Z',
+    });
+  });
+
+  it('does not mint a fresh updated_at the way saveDeloadNote does', async () => {
+    const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
+    await saveDeloadNote('local draft');
+    const before = await loadDeloadNote();
+    // Applying a pulled winner must keep its own (older) timestamp; re-stamping
+    // here would make the next diff see a change and ping-pong across devices.
+    await applyDeloadNoteFromSync({
+      raw_text: 'winner',
+      saved_at: '2020-01-01T00:00:00.000Z',
+      updated_at: '2020-01-02T00:00:00.000Z',
+    });
+    const after = await loadDeloadNote();
+    expect(after.updated_at).toBe('2020-01-02T00:00:00.000Z');
+    expect(after.updated_at).not.toBe(before.updated_at);
+  });
+
+  it('nulls missing timestamps rather than inventing them', async () => {
+    const { applyDeloadNoteFromSync } = require('../storage/entries/deloadStorage');
+    await applyDeloadNoteFromSync({ raw_text: 'bare' });
+    expect(await loadDeloadNote()).toEqual({
+      raw_text: 'bare',
+      saved_at: null,
+      updated_at: null,
+    });
+  });
+});
+
 describe('deleteWorkoutNoteItem', () => {
   const NOTE_A = { id: 'wn_2026-05-01_1', title: 'Push Day', raw_text: '', saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };
   const NOTE_B = { id: 'wn_2026-05-02_1', title: 'Pull Day', raw_text: '', saved_at: '2026-05-02T00:00:00.000Z', updated_at: '2026-05-02T00:00:00.000Z', tracked_exercises: [], one_k_exercises: null };

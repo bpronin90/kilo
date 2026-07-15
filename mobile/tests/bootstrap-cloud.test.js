@@ -915,6 +915,71 @@ describe('clean-install cloud restore (#481/#482/#483)', () => {
   });
 });
 
+// ── fatigue projection after bootstrap (issue #498) ─────────────────────────
+//
+// Bootstrap pushes workout_notes (including their session_checkins), but never
+// wrote the derived fatigue_checkins projection. The ongoing sync that follows
+// bootstrap now derives it from the just-bootstrapped canonical notes, so an
+// account with existing session_checkins ends up with populated fatigue_checkins.
+describe('fatigue projection populates after bootstrap (issue #498)', () => {
+  it('derives and pushes fatigue_checkins from existing note session_checkins', async () => {
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+
+    const CHECKIN = {
+      status: 'rough',
+      reasons: ['fatigued'],
+      responded_at: '2026-06-02T08:00:00.000Z',
+      note: 'tough',
+      exercises_skipped: 0,
+      volume_decline_pct: null,
+      flagged: [],
+      detectors: [],
+    };
+    await AsyncStorage.setItem(
+      'kilo_workout_notes',
+      JSON.stringify([
+        {
+          id: 'wn1',
+          title: 'Routine A',
+          raw_text: '-Squat\n- 225 5,5,5',
+          saved_at: '2026-06-01T00:00:00.000Z',
+          updated_at: '2026-06-02T00:00:00.000Z',
+          session_checkins: { '0': CHECKIN },
+          isCurrent: true,
+        },
+      ])
+    );
+
+    // Bootstrap uploads the canonical note; it does not itself write the projection.
+    await bootstrapFromLocal(USER_ID, makeFakeClient());
+
+    // The ongoing sync after bootstrap derives fatigue_checkins from the note.
+    const pushed = {};
+    setCloudTransport({
+      async pull() {
+        return [];
+      },
+      async push(table, records) {
+        pushed[table] = (pushed[table] || []).concat(records);
+      },
+    });
+    try {
+      await sync();
+    } finally {
+      setCloudTransport(null);
+    }
+
+    expect(pushed.fatigue_checkins).toHaveLength(1);
+    const row = pushed.fatigue_checkins[0];
+    expect(row.id).toBe('fc_wn1_0');
+    expect(row.workout_note_id).toBe('wn1');
+    expect(row.session_date).toBe('2026-06-02');
+    expect(row.status).toBe('rough');
+    expect(row.reasons).toEqual(['fatigued']);
+  });
+});
+
 // ── sync adapter: archived_weight_goals transport ───────────────────────────
 //
 // Proves that archived_weight_goals is processed by the sync adapter (pushed

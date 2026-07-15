@@ -32,6 +32,11 @@ import {
   SINGLETON_SYNC_ID,
 } from '../storage/syncQueue';
 
+import {
+  deriveFatigueCheckinRows,
+  fatigueCheckinId,
+} from '../storage/cloud/bootstrapPlan';
+
 import React from 'react';
 import TestRenderer from 'react-test-renderer';
 import { useWeightEntries, useDeloadHistory } from '../hooks/useEntries';
@@ -1749,5 +1754,355 @@ describe('clean device restores the whole account from cloud (issue #499)', () =
     for (const pass of results) {
       expect(pass.pushed).toBe(0);
     }
+  });
+});
+
+// ── issue #498: fatigue-checkin projection + active-deload cross-device sync ────
+//
+// Two ongoing-sync gaps closed here:
+//   1. kilo.fatigue_checkins is the queryable projection of the canonical
+//      workout_notes.session_checkins, but nothing ever wrote it. It is now
+//      derived from the converged workout-note state and maintained through the
+//      ongoing sync path, one-directionally: a pulled derived row is never written
+//      back into a note.
+//   2. The active in-progress generated deload (kilo_workout_deload_note) synced
+//      only at bootstrap, so a deload generated on device A never reached device B.
+//      It now rides the consent-gated user_health_profile singleton via the three
+//      current_deload_note_* columns.
+describe('fatigue-checkin projection + active-deload sync (issue #498)', () => {
+  const SELF = SINGLETON_SYNC_ID;
+  const FATIGUE = SYNC_TABLES.FATIGUE_CHECKINS;
+  const HEALTH = SYNC_TABLES.USER_HEALTH_PROFILE;
+
+  async function captureDevice() {
+    const keys = await AsyncStorage.getAllKeys();
+    return AsyncStorage.multiGet(keys);
+  }
+  async function restoreDevice(pairs) {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    await AsyncStorage.multiSet(pairs);
+  }
+  async function cleanInstall() {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+  }
+
+  const checkin = (respondedAt, status = 'rough') => ({
+    status,
+    reasons: status === 'rough' ? ['fatigued'] : [],
+    responded_at: respondedAt,
+    note: 'hard session',
+    exercises_skipped: 1,
+    volume_decline_pct: 10,
+    flagged: ['bench'],
+    detectors: ['collapse'],
+  });
+
+  // Write a workout note carrying session_checkins into local storage and mark it
+  // dirty, the way the app's own note writes reach the sync loop. Replaces the
+  // note if it already exists so an "edit" is just a re-seed with new content.
+  async function seedNoteWithCheckins(id, checkins) {
+    const clientId = await getClientId();
+    const note = stampWrite(
+      {
+        id,
+        title: id,
+        raw_text: 'Squat 3x5',
+        saved_at: '2026-05-01T00:00:00.000Z',
+        session_checkins: checkins,
+        is_current: false,
+      },
+      clientId
+    );
+    const list = await Storage.loadWorkoutNotesRaw();
+    await Storage.replaceWorkoutNotesRaw([...list.filter((n) => n.id !== id), note]);
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, note);
+    return note;
+  }
+
+  const T0 = '2026-05-03T08:00:00.000Z';
+  const T1 = '2026-05-10T08:00:00.000Z';
+
+  // ── pure projection ────────────────────────────────────────────────────────
+
+  it('derives one row per answered check-in with a stable id and allowlisted source_json', () => {
+    const rows = deriveFatigueCheckinRows([
+      {
+        id: 'wn_a',
+        session_checkins: {
+          0: { ...checkin(T0, 'rough'), __sentinel__: 'must not leave the device' },
+          1: checkin(T1, 'ok'),
+          2: { status: 'ok' }, // unanswered (no responded_at) → no row
+        },
+      },
+      { id: 'wn_b', deleted_at: '2026-05-04T00:00:00.000Z', session_checkins: { 0: checkin(T0) } },
+    ]);
+
+    // Two answered check-ins on the live note; the tombstoned note is skipped.
+    expect(rows).toHaveLength(2);
+    const r0 = rows.find((r) => r.id === fatigueCheckinId('wn_a', 0));
+    expect(r0.workout_note_id).toBe('wn_a');
+    expect(r0.session_date).toBe('2026-05-03');
+    expect(r0.status).toBe('rough');
+    expect(r0.reasons).toEqual(['fatigued']);
+    // Explicit allowlist: no wildcard copy of an unknown check-in key.
+    expect(r0.source_json).not.toHaveProperty('__sentinel__');
+    expect(r0.source_json).not.toHaveProperty('status');
+    expect(r0.source_json).toMatchObject({ responded_at: T0, note: 'hard session' });
+  });
+
+  // ── projection sync ──────────────────────────────────────────────────────
+
+  it('projects a fatigue_checkins row to the cloud from a note check-in', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0) });
+    await cloudAdapter.sync();
+
+    const row = cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0));
+    expect(row).toBeTruthy();
+    expect(row.workout_note_id).toBe('wn_f1');
+    expect(row.session_date).toBe('2026-05-03');
+    expect(row.status).toBe('rough');
+    expect(row.reasons).toEqual(['fatigued']);
+  });
+
+  it('re-syncing the projection is idempotent: no duplicate rows, no re-push', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0) });
+    await cloudAdapter.sync();
+
+    cloud.pushes.length = 0;
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+
+    expect(cloud.pushes.filter((p) => p.table === FATIGUE)).toEqual([]);
+    expect(cloud.remoteRows(FATIGUE)).toHaveLength(1);
+  });
+
+  it('editing a check-in updates the derived row in place (stable id, no duplicate)', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0, 'ok') });
+    await cloudAdapter.sync();
+
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0, 'rough') });
+    await cloudAdapter.sync();
+
+    const rows = cloud.remoteRows(FATIGUE).filter((r) => !isTombstone(r));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(fatigueCheckinId('wn_f1', 0));
+    expect(rows[0].status).toBe('rough');
+  });
+
+  it('removing a check-in tombstones its derived row without resurrection', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0), 1: checkin(T1) });
+    await cloudAdapter.sync();
+    expect(cloud.remoteRows(FATIGUE).filter((r) => !isTombstone(r))).toHaveLength(2);
+
+    // Drop session index 1.
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0) });
+    await cloudAdapter.sync();
+
+    const gone = cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 1));
+    expect(isTombstone(gone)).toBe(true);
+    expect(isTombstone(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0)))).toBe(false);
+
+    // Idempotent: repeated passes do not resurrect the removed row.
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 1)))).toBe(true);
+  });
+
+  it('deleting the source note tombstones its derived fatigue rows', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0) });
+    await cloudAdapter.sync();
+    expect(isTombstone(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0)))).toBe(false);
+
+    // Delete the note the way the sync loop carries a delete: a tombstone row.
+    const clientId = await getClientId();
+    const list = await Storage.loadWorkoutNotesRaw();
+    const tomb = stampTombstone(
+      list.find((n) => n.id === 'wn_f1'),
+      clientId
+    );
+    await Storage.replaceWorkoutNotesRaw(list.map((n) => (n.id === 'wn_f1' ? tomb : n)));
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tomb);
+    await cloudAdapter.sync();
+
+    expect(isTombstone(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0)))).toBe(true);
+  });
+
+  it('a pulled derived fatigue row never mutates the canonical session_checkins', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0, 'rough') });
+    await cloudAdapter.sync();
+
+    // A tampered remote fatigue row claims a different status/date. Nothing about
+    // it may leak back into the note's canonical session_checkins.
+    cloud.seedRemote(FATIGUE, {
+      id: fatigueCheckinId('wn_f1', 0),
+      workout_note_id: 'wn_f1',
+      session_date: '1999-01-01',
+      status: 'ok',
+      reasons: [],
+      source_json: null,
+      updated_at: '2099-01-01T00:00:00.000Z',
+    });
+    await cloudAdapter.sync();
+
+    const note = (await Storage.loadWorkoutNotesRaw()).find((n) => n.id === 'wn_f1');
+    expect(note.session_checkins['0'].status).toBe('rough');
+    expect(note.session_checkins['0'].responded_at).toBe(T0);
+  });
+
+  it('two devices converge on the same projection; the second derives, it does not re-push', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0, 'rough') });
+    await cloudAdapter.sync();
+
+    // Device B: clean install pulls the note, derives the identical row, and has
+    // nothing new to push for the projection.
+    await cleanInstall();
+    cloud.pushes.length = 0;
+    await cloudAdapter.sync();
+
+    expect(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0)).status).toBe('rough');
+    expect(cloud.pushes.filter((p) => p.table === FATIGUE)).toEqual([]);
+  });
+
+  it('a failed projection push is retried on the next sync, not lost', async () => {
+    await seedNoteWithCheckins('wn_f1', { 0: checkin(T0) });
+
+    let failFatigue = true;
+    setCloudTransport({
+      pull: (t, c) => cloud.transport.pull(t, c),
+      push: async (t, records) => {
+        if (t === FATIGUE && failFatigue) {
+          failFatigue = false;
+          throw new Error('boom fatigue');
+        }
+        return cloud.transport.push(t, records);
+      },
+    });
+
+    await expect(cloudAdapter.sync()).rejects.toThrow('boom fatigue');
+    expect(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0))).toBeUndefined();
+    expect((await getDirtyRecords(FATIGUE)).length).toBeGreaterThan(0);
+
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(FATIGUE, fatigueCheckinId('wn_f1', 0)).workout_note_id).toBe('wn_f1');
+    expect(await getDirtyRecords(FATIGUE)).toEqual([]);
+  });
+
+  // ── active deload ─────────────────────────────────────────────────────────
+
+  it('a generated active deload on device A appears as the active deload on device B', async () => {
+    await Storage.saveDeloadNote('deload week 1');
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBe('deload week 1');
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+
+    const note = await Storage.loadDeloadNote();
+    expect(note.raw_text).toBe('deload week 1');
+  });
+
+  it('editing the active deload converges across devices with no ping-pong', async () => {
+    await Storage.saveDeloadNote('v1');
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadNote()).raw_text).toBe('v1');
+    const deviceB = await captureDevice();
+
+    // A edits and syncs last.
+    await restoreDevice(deviceA);
+    await Storage.saveDeloadNote('v2');
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBe('v2');
+
+    // B pulls v2, applies it verbatim, and does NOT push it back — no ping-pong.
+    await restoreDevice(deviceB);
+    cloud.pushes.length = 0;
+    await cloudAdapter.sync();
+    await cloudAdapter.sync();
+    expect((await Storage.loadDeloadNote()).raw_text).toBe('v2');
+    expect(cloud.pushes.filter((p) => p.table === HEALTH)).toEqual([]);
+  });
+
+  it('clearing the active deload converges across devices without resurrection', async () => {
+    await Storage.saveDeloadNote('to be cleared');
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect(await Storage.loadDeloadNote()).toBeTruthy();
+    const deviceB = await captureDevice();
+
+    await restoreDevice(deviceA);
+    await Storage.clearDeloadNote();
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBeNull();
+
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+    expect(await Storage.loadDeloadNote()).toBeNull();
+    await cloudAdapter.sync();
+    expect(await Storage.loadDeloadNote()).toBeNull();
+  });
+
+  it('active-deload sync does not overwrite current routine, tracked lifts, or fatigue multiplier', async () => {
+    await Storage.saveCurrentWorkoutId('wn_x');
+    await Storage.saveTrackedLifts({ Squat: true });
+    await Storage.saveFatigueMultiplier(1.2);
+    await Storage.saveDeloadNote('deload A');
+    await cloudAdapter.sync();
+
+    const health = cloud.remoteRow(HEALTH, SELF);
+    expect(health.current_workout_note_id).toBe('wn_x');
+    expect(health.tracked_lifts).toEqual({ Squat: true });
+    expect(health.fatigue_multiplier).toBe(1.2);
+    expect(health.current_deload_note_raw_text).toBe('deload A');
+
+    // Device B restores every health field together, then edits ONLY the deload.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_x');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.2);
+    expect((await Storage.loadDeloadNote()).raw_text).toBe('deload A');
+
+    await Storage.saveDeloadNote('deload B2');
+    await cloudAdapter.sync();
+
+    // The deload change did not null out the sibling health fields on the row.
+    const after = cloud.remoteRow(HEALTH, SELF);
+    expect(after.current_deload_note_raw_text).toBe('deload B2');
+    expect(after.current_workout_note_id).toBe('wn_x');
+    expect(after.tracked_lifts).toEqual({ Squat: true });
+    expect(after.fatigue_multiplier).toBe(1.2);
+  });
+
+  it('a failed user_health_profile push carrying an active deload is retried, not lost', async () => {
+    await Storage.saveDeloadNote('retry me');
+
+    let failHealth = true;
+    setCloudTransport({
+      pull: (t, c) => cloud.transport.pull(t, c),
+      push: async (t, records) => {
+        if (t === HEALTH && failHealth) {
+          failHealth = false;
+          throw new Error('boom health');
+        }
+        return cloud.transport.push(t, records);
+      },
+    });
+
+    await expect(cloudAdapter.sync()).rejects.toThrow('boom health');
+    expect(cloud.remoteRow(HEALTH, SELF)).toBeUndefined();
+    expect((await getDirtyRecords(HEALTH)).length).toBeGreaterThan(0);
+
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBe('retry me');
+    expect((await Storage.loadDeloadNote()).raw_text).toBe('retry me');
   });
 });

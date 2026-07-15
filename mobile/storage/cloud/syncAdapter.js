@@ -5,6 +5,11 @@ import {
   replaceWeightGoalRaw,
 } from '../entries/weightGoal';
 import { mergeUserProfile } from '../entries/profileStorage';
+import {
+  loadDeloadNote,
+  clearDeloadNote,
+  applyDeloadNoteFromSync,
+} from '../entries/deloadStorage';
 import { WORKOUT_DELOAD_HISTORY_KEY } from '../entries/keys';
 import { writeList } from '../entries/jsonStorage';
 import {
@@ -22,6 +27,7 @@ import {
   WEIGHT_GOAL_SYNC_FIELDS,
   DELOAD_RECORD_JSON_FIELDS,
   buildDeloadRecordJson,
+  deriveFatigueCheckinRows,
 } from './bootstrapPlan';
 import { getTransport, getRecomputeDerived } from './transport';
 
@@ -197,8 +203,11 @@ function singletonRow(mergedList) {
 // refuses health consent still syncs their display name and unit system: the gate
 // blocks the health row, not their account.
 //
-// (user_profile.current_deload_note_* is still bootstrap-only — see transport.js.
-// It is not part of ongoing sync and so is not part of this singleton.)
+// The active generated deload (issue #498) rides the same consent-gated health
+// singleton via current_deload_note_raw_text / _saved_at / _updated_at, so a
+// deload generated on device A becomes the active deload on device B. Its pulled
+// winner is applied through applyDeloadNoteFromSync (timestamps written verbatim,
+// no re-stamp) so it does not ping-pong.
 
 const USER_PROFILE_FIELDS = Object.freeze([
   'display_name',
@@ -210,6 +219,10 @@ const USER_HEALTH_PROFILE_FIELDS = Object.freeze([
   'current_workout_note_id',
   'fatigue_multiplier',
   'tracked_lifts',
+  // Active in-progress deload (issue #498). Health data, so gated with the row.
+  'current_deload_note_raw_text',
+  'current_deload_note_saved_at',
+  'current_deload_note_updated_at',
 ]);
 
 // The multiplier a device reports when the user has never touched it.
@@ -231,7 +244,16 @@ function isEmptyUserHealthProfile(record) {
   const defaultMultiplier =
     record.fatigue_multiplier == null ||
     Number(record.fatigue_multiplier) === DEFAULT_FATIGUE_MULTIPLIER;
-  return record.current_workout_note_id == null && noTrackedLifts && defaultMultiplier;
+  // A device with an active deload note has real health content, so it must not be
+  // treated as an empty clean-install row (which would adopt the cloud row and drop
+  // the local deload on the seeded first pass).
+  const noDeloadNote = record.current_deload_note_raw_text == null;
+  return (
+    record.current_workout_note_id == null &&
+    noTrackedLifts &&
+    defaultMultiplier &&
+    noDeloadNote
+  );
 }
 
 // Same first-pass rule for toggles: all four at their shipped defaults means the
@@ -288,17 +310,23 @@ async function applyUserProfile(mergedList) {
 // user_health_profile --------------------------------------------------------
 
 async function buildUserHealthProfileRecords() {
-  const [currentWorkoutId, fatigueMultiplier, trackedLifts] = await Promise.all([
-    Storage.loadCurrentWorkoutId(),
-    Storage.loadFatigueMultiplier(),
-    Storage.loadTrackedLifts(),
-  ]);
+  const [currentWorkoutId, fatigueMultiplier, trackedLifts, deloadNote] =
+    await Promise.all([
+      Storage.loadCurrentWorkoutId(),
+      Storage.loadFatigueMultiplier(),
+      Storage.loadTrackedLifts(),
+      loadDeloadNote(),
+    ]);
+  const note = deloadNote || {};
   return [
     {
       id: SINGLETON_SYNC_ID,
       current_workout_note_id: currentWorkoutId ?? null,
       fatigue_multiplier: fatigueMultiplier ?? null,
       tracked_lifts: trackedLifts ?? {},
+      current_deload_note_raw_text: note.raw_text ?? null,
+      current_deload_note_saved_at: note.saved_at ?? null,
+      current_deload_note_updated_at: note.updated_at ?? null,
     },
   ];
 }
@@ -328,6 +356,37 @@ async function applyUserHealthProfile(mergedList) {
     const local = await Storage.loadTrackedLifts();
     if (stableStringify(local) !== stableStringify(row.tracked_lifts)) {
       await Storage.saveTrackedLifts(row.tracked_lifts);
+    }
+  }
+
+  // Active deload (issue #498). A null raw_text is a cleared deload; removing the
+  // local note is what stops the next diff from re-pushing it (no resurrection).
+  // Otherwise write the winner's timestamps VERBATIM via applyDeloadNoteFromSync,
+  // never saveDeloadNote — re-stamping updated_at here would ping-pong the row
+  // between devices. Compare on normalized timestamps so a Postgres +00:00/Z
+  // round-trip is not mistaken for a change.
+  const nextDeloadRaw = row.current_deload_note_raw_text ?? null;
+  const nextDeloadSaved = row.current_deload_note_saved_at ?? null;
+  const nextDeloadUpdated = row.current_deload_note_updated_at ?? null;
+  const localDeload = await loadDeloadNote();
+  if (nextDeloadRaw == null) {
+    if (localDeload) await clearDeloadNote();
+  } else {
+    const sameTs = (a, b) => {
+      const ta = a == null ? null : Date.parse(a);
+      const tb = b == null ? null : Date.parse(b);
+      return ta === tb;
+    };
+    const changed =
+      (localDeload?.raw_text ?? null) !== nextDeloadRaw ||
+      !sameTs(localDeload?.saved_at ?? null, nextDeloadSaved) ||
+      !sameTs(localDeload?.updated_at ?? null, nextDeloadUpdated);
+    if (changed) {
+      await applyDeloadNoteFromSync({
+        raw_text: nextDeloadRaw,
+        saved_at: nextDeloadSaved,
+        updated_at: nextDeloadUpdated,
+      });
     }
   }
 }
@@ -478,10 +537,52 @@ async function applyDeloadHistory(mergedList) {
   }
 }
 
+// fatigue_checkins (derived projection, issue #498) ---------------------------
+//
+// Canonical is workout_notes.session_checkins. These rows are DERIVED from the
+// converged workout-note state (buildLocal reads the same raw notebook the
+// workout_notes pass just merged), so every device produces the identical
+// projection and repeated passes are idempotent. The projection is
+// one-directional: applyFatigueCheckins is a deliberate no-op — a pulled remote
+// fatigue row is NEVER written back into a note, so it can never become a second
+// source of truth or mutate session_checkins. The syncDiffTable snapshot handles
+// create/update/tombstone deterministically: a check-in that stops being derived
+// (removed, or its source note deleted/tombstoned) drops out of buildLocal and is
+// tombstoned against the snapshot without resurrection.
+
+const FATIGUE_CHECKIN_FIELDS = Object.freeze([
+  'workout_note_id',
+  'session_date',
+  'status',
+  'reasons',
+  'source_json',
+]);
+
+async function buildFatigueCheckinRecords() {
+  const notes = await Storage.loadWorkoutNotesRaw();
+  return deriveFatigueCheckinRows(notes);
+}
+
+// Intentionally does nothing: the canonical session_checkins on each note is the
+// only source of truth, and syncDiffTable already persists the reconciled snapshot
+// this table needs. Writing merged rows anywhere else would create a second copy.
+async function applyFatigueCheckins() {}
+
 // Sync order note: workout_notes runs before user_health_profile, so a routine
 // pulled in the same pass already exists locally by the time
 // current_workout_note_id points at it.
 const DIFF_TABLES = Object.freeze([
+  {
+    // Derived from the converged workout_notes just synced above. Runs first among
+    // the diff tables so it reflects the notebook's settled state this pass.
+    table: SYNC_TABLES.FATIGUE_CHECKINS,
+    buildLocal: buildFatigueCheckinRecords,
+    applyMerged: applyFatigueCheckins,
+    payloadFields: FATIGUE_CHECKIN_FIELDS,
+    fieldKinds: {},
+    // A removed check-in or a deleted source note must tombstone the derived row.
+    allowDelete: true,
+  },
   {
     table: SYNC_TABLES.DELOAD_HISTORY,
     buildLocal: buildDeloadHistoryRecords,
@@ -529,7 +630,11 @@ const DIFF_TABLES = Object.freeze([
     buildLocal: buildUserHealthProfileRecords,
     applyMerged: applyUserHealthProfile,
     payloadFields: USER_HEALTH_PROFILE_FIELDS,
-    fieldKinds: { fatigue_multiplier: 'number' },
+    fieldKinds: {
+      fatigue_multiplier: 'number',
+      current_deload_note_saved_at: 'timestamp',
+      current_deload_note_updated_at: 'timestamp',
+    },
     allowDelete: false,
     isEmptyLocal: isEmptyUserHealthProfile,
   },

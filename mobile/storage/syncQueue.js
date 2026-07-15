@@ -55,6 +55,12 @@ export const SYNC_TABLES = Object.freeze({
   FEATURE_TOGGLES: 'feature_toggles',
   WEIGHT_GOAL: 'weight_goal',
   DELOAD_HISTORY: 'deload_history',
+  // Derived projection of workout_notes.session_checkins (issue #498). Canonical
+  // stays the session_checkins on each note; this collection is a one-directional,
+  // deterministic projection of it for server-side queryability and an accurate
+  // Art. 9 health-data scope. A pulled fatigue row is never written back into a
+  // note — see syncAdapter.applyFatigueCheckins.
+  FATIGUE_CHECKINS: 'fatigue_checkins',
 });
 
 // Synthetic local id for the one row a singleton table can hold. Stable across
