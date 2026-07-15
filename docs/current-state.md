@@ -257,8 +257,13 @@ The real native app path now has a modular React Native shell:
   line at the top of the expanded current-note body and a matching low-emphasis
   `Skip week` action that appends the normal bare `-` skip marker to each
   active-week exercise that already has logged session entries regardless of
-  tracked-lift selection, saves the note, and then enters the existing
-  fatigue-reason prompt path only after the save succeeds, an explicit `Edit`
+  tracked-lift selection on every press. A neighboring `Remove skip` action
+  removes one trailing universal skip at a time, confirms before removing
+  trailing skips that were entered manually, and removes the matching
+  session check-in while preserving the attribution of surviving check-ins.
+  Both actions show visible status, persist the advisory universal-skip count
+  with the note update, and keep the existing fatigue-reason prompt limited to
+  successful `Skip week` saves. The card also includes an explicit `Edit`
   button in the current routine card header row (using the same
   `inlineSwitchButton` style as the `Set Current` button on other routine
   cards), and a double-tap on the rendered note body as an alternative

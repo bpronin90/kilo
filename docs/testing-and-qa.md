@@ -95,9 +95,10 @@ Current limitation:
   skip-marker interleaving and bare-unparsed-row chronological positioning for
   the workout-note clean view, week-level `Skip week` dash insertion for only
   exercises with existing session entries including untracked accessory
-  exercises, idempotency for repeated use and existing trailing skip markers,
-  and the save-success gate before fatigue
-  check-in detection, plus source-contract coverage that pins the
+  exercises, repeated skip stacking, guarded removal of universal versus
+  manual trailing skips, atomic fatigue-check-in cleanup, universal-skip
+  counter lifecycle and failed-clamp retry behavior, and the save-success gate
+  before fatigue check-in detection, plus source-contract coverage that pins the
   Log autosave regression boundary by asserting both debounce timers pass
   `{ autosave: true }` and both save handlers guard the visible `Saved!`
   notice behind `!autosave`, plus the past-deload save-path regression boundary
