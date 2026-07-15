@@ -2,8 +2,15 @@ import * as Storage from '../entries';
 import { getSupabaseClient } from '../../lib/supabaseClient';
 import { BootstrapError } from './errors';
 import { buildBootstrapPlan } from './bootstrapPlan';
+import { loadArchivedWeightGoalsRaw } from '../entries/weightGoal';
+import { SYNC_TABLES, getDirtyRecords } from '../syncQueue';
 
 const SCHEMA = 'kilo';
+
+// The fatigue multiplier a device reports when the user has never touched it.
+// Mirrors syncAdapter's DEFAULT_FATIGUE_MULTIPLIER; a value equal to it is not
+// user content.
+const DEFAULT_FATIGUE_MULTIPLIER = 1.07;
 
 // user_health_profile carries the six health values that used to sit on the mixed
 // user_profile row (#487). It is gated: the upsert below only succeeds for a user
@@ -104,6 +111,92 @@ function isCleanLocalState(snapshot) {
     snapshot.trackedLifts && Object.keys(snapshot.trackedLifts).length > 0;
   const hasProfile = snapshot.userProfile != null;
   return !hasWorkoutContent && !hasCurrentWorkout && !hasTrackedLifts && !hasProfile;
+}
+
+// True only when this device holds NOTHING that a sync could push to the cloud
+// and nothing the "This device is empty" restore prompt would misrepresent: no
+// local domain records (weight entries, workout content, current routine,
+// tracked lifts, profile, active goal, ARCHIVED goals, deload history, a current
+// deload note), every setting/singleton at its shipped default (toggles, fatigue
+// multiplier, and the collapsed-panel ui_state), and no records queued dirty.
+//
+// This is the precondition for the pull-only restore path (issue #499). The
+// ongoing sync is genuinely download-only exactly when there is nothing to push
+// — a truly empty device pulls the account down and pushes nothing — so
+// "Download my account's data" may only be offered/run on a device that
+// satisfies this. A device with any real local state must instead use "Upload My
+// History" (a merge), so Download never silently uploads or overwrites the
+// account with unrelated local data.
+//
+// The check spans EVERY field bootstrap or ongoing sync touches, not just the
+// synced push tables, because:
+//   - archived_weight_goals is a collection contract carried by ongoing sync;
+//   - the current deload note is projected into user_profile by bootstrap;
+//   - a non-default collapsed panel is projected into user_profile.ui_state and,
+//     on a seeded first pass with an absent remote profile row, is stamped dirty
+//     and pushed by the normal bidirectional sync (isEmptyUserProfile ignores
+//     ui_state, so it does NOT protect this path).
+// The dirty-queue check alone does not close these gaps: local records/settings
+// can exist without a pending dirty entry — the guard's job is to decide whether
+// the DEVICE is empty before switching it to the merge engine.
+//
+// Deliberately STRICTER than isCleanLocalState above, which only gates the
+// bootstrap-time profile hydrate and inspects profile/routine/tracked lifts.
+export async function isLocalDataEmpty() {
+  const [snapshot, archivedGoals] = await Promise.all([
+    readLocalSnapshot(),
+    loadArchivedWeightGoalsRaw(),
+  ]);
+
+  const hasWeightEntries =
+    Array.isArray(snapshot.weightEntries) && snapshot.weightEntries.length > 0;
+  const hasWorkoutContent =
+    (Array.isArray(snapshot.workoutNotes) && snapshot.workoutNotes.length > 0) ||
+    Boolean(snapshot.workoutNote && snapshot.workoutNote.raw_text) ||
+    (Array.isArray(snapshot.workoutSessions) && snapshot.workoutSessions.length > 0);
+  const hasCurrentWorkout = snapshot.currentWorkoutId != null;
+  const hasTrackedLifts =
+    snapshot.trackedLifts && Object.keys(snapshot.trackedLifts).length > 0;
+  const hasProfile = snapshot.userProfile != null;
+  const hasGoal = snapshot.weightGoal != null;
+  const hasArchivedGoals = Array.isArray(archivedGoals) && archivedGoals.length > 0;
+  const hasDeloadHistory =
+    Array.isArray(snapshot.deloadHistory) && snapshot.deloadHistory.length > 0;
+  const hasDeloadNote = Boolean(snapshot.deloadNote && snapshot.deloadNote.raw_text);
+  const hasCollapsedState = snapshot.logCurrentCollapsed === true;
+  const hasNonDefaultToggles =
+    snapshot.weightDateEditEnabled === true ||
+    snapshot.deloadDateEditEnabled === true ||
+    snapshot.fatigueTrackingEnabled === false ||
+    snapshot.deloadModeEnabled === false;
+  const hasNonDefaultMultiplier =
+    snapshot.fatigueMultiplier != null &&
+    Number(snapshot.fatigueMultiplier) !== DEFAULT_FATIGUE_MULTIPLIER;
+
+  if (
+    hasWeightEntries ||
+    hasWorkoutContent ||
+    hasCurrentWorkout ||
+    hasTrackedLifts ||
+    hasProfile ||
+    hasGoal ||
+    hasArchivedGoals ||
+    hasDeloadHistory ||
+    hasDeloadNote ||
+    hasCollapsedState ||
+    hasNonDefaultToggles ||
+    hasNonDefaultMultiplier
+  ) {
+    return false;
+  }
+
+  // Even with empty domain state, a leftover dirty record (e.g. a tombstone from
+  // a prior cloud session) would push on the next pass. Fetch all tables in
+  // parallel — keyed reads, no nested scan.
+  const dirtyByTable = await Promise.all(
+    Object.values(SYNC_TABLES).map((table) => getDirtyRecords(table))
+  );
+  return dirtyByTable.every((records) => records.length === 0);
 }
 
 // Download the account's existing user_profile and feature_toggles rows (the

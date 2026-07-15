@@ -12,6 +12,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as Storage from '../storage/entries';
+import { loadArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
 import { cloudAdapter, setCloudTransport, setRecomputeDerived } from '../storage/cloudAdapter';
 import {
   pickWinner,
@@ -1634,5 +1635,119 @@ describe('real Supabase transport: singleton tables (issue #489)', () => {
     expect(call.rows[0].id).toBe('dh_x');
     expect(call.rows[0].record_json).toEqual({ session_count: 4 });
     expect(call.rows[0]).not.toHaveProperty('rogue_key');
+  });
+});
+
+// ── clean-device restore end-to-end (issue #499) ─────────────────────────────
+//
+// The production failure: a signed-in device with EMPTY local state, whose
+// account already holds a full cloud dataset, ran a sync that reported success
+// and restored nothing. Two defects combined — a missing pull-only restore path
+// at the app seam, and the local no-op adapter reporting a false "Fully synced".
+// The engine itself pulls correctly in cloud mode; this proves the whole seven-
+// contract dataset restores from a production-shaped remote onto a clean device
+// WITHOUT the device pushing empty rows back over the good cloud copy.
+describe('clean device restores the whole account from cloud (issue #499)', () => {
+  const SELF = SINGLETON_SYNC_ID;
+  const T = '2026-07-14T23:34:00.000Z';
+
+  // Seed every synced contract directly on the remote, in the shape the real
+  // database serves (singleton rows keyed on user_id; the fake strips their id
+  // on pull exactly as Postgres has no id column for them).
+  function seedProductionAccount() {
+    cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
+      id: 'we_1', entry_type: 'weigh_in', date: '2026-07-14',
+      logged_at: '2026-07-14T08:00:00.000Z', weight_value: 182.4, note: null,
+      saved_at: T, updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.WEIGHT_ENTRIES, {
+      id: 'we_2', entry_type: 'weigh_in', date: '2026-07-13',
+      logged_at: '2026-07-13T08:00:00.000Z', weight_value: 183.0, note: 'am',
+      saved_at: T, updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, {
+      id: 'wn_1', title: 'Upper A', raw_text: 'Bench 3x5\nRow 3x8',
+      is_current: true, saved_at: T, updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS, {
+      id: 'ag_1', target_weight: 180, target_date: '2026-05-01',
+      start_weight: 195, start_date: '2026-01-01', completed_weight: 181,
+      archived_at: '2026-05-02T00:00:00.000Z', goal_json: {}, saved_at: T,
+      updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.USER_PROFILE, {
+      id: SELF, display_name: 'Ben', unit_system: 'lb',
+      ui_state: { log_current_collapsed: true }, updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.USER_HEALTH_PROFILE, {
+      id: SELF, current_workout_note_id: 'wn_1',
+      tracked_lifts: { Squat: true, Bench: true }, fatigue_multiplier: 1.15,
+      updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.FEATURE_TOGGLES, {
+      id: SELF, weight_date_edit_enabled: true, deload_date_edit_enabled: false,
+      fatigue_tracking_enabled: true, deload_mode_enabled: false, updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.WEIGHT_GOAL, {
+      id: SELF, target_weight: 175, target_date: '2026-12-01',
+      start_weight: 190, start_date: '2026-06-01', goal_json: {}, saved_at: T,
+      updated_at: T,
+    });
+    cloud.seedRemote(SYNC_TABLES.DELOAD_HISTORY, {
+      id: 'dh_1', date: '2026-06-20', raw_text: 'deload week',
+      record_json: { session_count: 3, completed_at: '2026-06-20T11:00:00.000Z' },
+      saved_at: T, updated_at: T,
+    });
+  }
+
+  it('pulls all seven contracts onto empty local state and pushes nothing back', async () => {
+    seedProductionAccount();
+
+    // Precondition: the device is genuinely clean — the exact state the report
+    // describes (eligible remote rows exist, local data empty).
+    expect(await Storage.loadWeightEntries()).toEqual([]);
+    expect(await Storage.loadWorkoutNotes()).toEqual([]);
+    expect(await Storage.loadWeightGoal()).toBeNull();
+    expect(await Storage.loadDeloadHistory()).toEqual([]);
+    expect(await Storage.loadCurrentWorkoutId()).toBeNull();
+
+    const results = await cloudAdapter.sync();
+
+    // Every synced contract is now visible locally, no app restart required.
+    const entries = await Storage.loadWeightEntries();
+    expect(entries.map((e) => e.id).sort()).toEqual(['we_1', 'we_2']);
+
+    const notes = await Storage.loadWorkoutNotes();
+    expect(notes.map((n) => n.id)).toContain('wn_1');
+
+    const archived = await loadArchivedWeightGoalsRaw();
+    expect(archived.map((g) => g.id)).toContain('ag_1');
+
+    const profile = await Storage.loadUserProfile();
+    expect(profile.display_name).toBe('Ben');
+    expect(profile.unit_system).toBe('lb');
+
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_1');
+    expect(await Storage.loadTrackedLifts()).toEqual({ Squat: true, Bench: true });
+    expect(await Storage.loadFatigueMultiplier()).toBe(1.15);
+
+    expect(await Storage.loadWeightDateEditEnabled()).toBe(true);
+    expect(await Storage.loadDeloadModeEnabled()).toBe(false);
+
+    const goal = await Storage.loadWeightGoal();
+    expect(goal.target_weight).toBe(175);
+    expect(goal.start_date).toBe('2026-06-01');
+
+    const history = await Storage.loadDeloadHistory();
+    expect(history.map((h) => h.id)).toContain('dh_1');
+    expect(history.find((h) => h.id === 'dh_1').session_count).toBe(3);
+
+    // The good cloud copy is untouched: a clean restore is pull-only. Nothing
+    // dirty exists, so no empty-device row is ever pushed back (which would
+    // clobber the account via LWW-at-now — the risk called out in #489/#499).
+    expect(cloud.pushes).toEqual([]);
+    for (const pass of results) {
+      expect(pass.pushed).toBe(0);
+    }
   });
 });

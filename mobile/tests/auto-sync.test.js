@@ -44,6 +44,7 @@ import {
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { setCloudTransport } from '../storage/cloudAdapter';
+import { replaceArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
 import { useCloudSyncStatus } from '../hooks/useEntries';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
@@ -391,6 +392,138 @@ describe('useAutoSync: unclaimed owner requires confirmation', () => {
     expect(retryResult.ok).toBe(true);
     expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
     expect(await getLocalDataOwner()).toBe(USER.id);
+  });
+});
+
+// ── useAutoSync: clean-device pull-only restore (issue #499) ────────────────
+//
+// The production failure: a clean device signed into an account with existing
+// cloud data got only Upload / Not Now, and a later Sync Now reported success
+// while restoring nothing. The fix adds a genuinely pull-only Download action,
+// offered ONLY when the device is verifiably empty so it can never push local
+// state up.
+
+describe('useAutoSync: clean-device download restore', () => {
+  test('an empty device is offered the restore, and Download claims ownership, activates cloud mode, runs a real pull, and refreshes the UI', async () => {
+    const syncFn = mockCloudSyncAdapter();
+    const onSyncComplete = jest.fn();
+
+    const { ref } = renderHook(() =>
+      useAutoSync(makeAuth(), { onSyncComplete })
+    );
+    await flush();
+
+    // Empty device: unclaimed prompt AND the pull-only restore affordance.
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+    expect(ref.current.canRestore).toBe(true);
+
+    let result;
+    await act(async () => {
+      result = await ref.current.downloadAccountData();
+    });
+
+    expect(result.ok).toBe(true);
+    // Claimed for this account, cloud mode active, bootstrap marked done.
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    // A real pull ran through the cloud runner (not the local no-op)...
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    // ...and the refresh callback fired so restored data is visible with no restart.
+    expect(onSyncComplete).toHaveBeenCalled();
+    expect(ref.current.ownershipPrompt).toBeNull();
+  });
+
+  // The "This device is empty" promise must hold across EVERY local state that
+  // bootstrap or ongoing sync can carry — not just user_profile. Each case seeds
+  // one such state on an unclaimed device and proves the restore is neither
+  // offered (canRestore false) nor performed (refuses, zero pushes, ownership and
+  // storage mode unchanged). Reviewer #499 flagged archived goals, a current
+  // deload note, and a non-default collapsed panel as the specific gaps; the rest
+  // pin the whole surface.
+  describe.each([
+    ['a user profile', async () => {
+      await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'lb' });
+    }],
+    ['a weight entry', async () => {
+      await Storage.saveWeightEntry({
+        id: 'w1',
+        entry_type: 'weigh_in',
+        date: '2026-07-14',
+        logged_at: '2026-07-14T08:00:00.000Z',
+        weight_value: 180,
+      });
+    }],
+    ['an archived weight goal', async () => {
+      await replaceArchivedWeightGoalsRaw([
+        {
+          id: 'ag_1',
+          target_weight: 180,
+          start_weight: 195,
+          archived_at: '2026-05-02T00:00:00.000Z',
+        },
+      ]);
+    }],
+    ['a current deload note', async () => {
+      await Storage.saveDeloadNote('deload week notes');
+    }],
+    ['a non-default collapsed panel', async () => {
+      await Storage.saveWorkoutCollapsed(true);
+    }],
+    ['an active weight goal', async () => {
+      await Storage.saveWeightGoal({ target_weight: 175, start_weight: 190 });
+    }],
+    ['tracked lifts', async () => {
+      await Storage.saveTrackedLifts({ Squat: true });
+    }],
+    ['a non-default feature toggle', async () => {
+      await Storage.saveWeightDateEditEnabled(true);
+    }],
+    ['a non-default fatigue multiplier', async () => {
+      await Storage.saveFatigueMultiplier(1.2);
+    }],
+    ['deload history', async () => {
+      await Storage.appendDeloadHistory({
+        id: 'dh_1',
+        date: '2026-06-20',
+        raw_text: 'deload',
+        saved_at: '2026-06-20T10:00:00.000Z',
+      });
+    }],
+  ])('Download is hidden and non-uploading when the device holds %s', (_label, seed) => {
+    test('canRestore false, direct invocation refuses, zero pushes, ownership/mode unchanged', async () => {
+      await seed();
+
+      const pushes = [];
+      setCloudTransport({
+        async pull() {
+          return [];
+        },
+        async push(table, records) {
+          pushes.push({ table, ids: records.map((r) => r.id) });
+        },
+      });
+
+      const { ref } = renderHook(() => useAutoSync(makeAuth()));
+      await flush();
+
+      // The restore affordance is hidden on a device that has data to protect.
+      expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+      expect(ref.current.canRestore).toBe(false);
+
+      // Even if invoked directly, Download refuses rather than uploading.
+      let result;
+      await act(async () => {
+        result = await ref.current.downloadAccountData();
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/already has training data/i);
+      // Zero pushes, account untouched, device still unclaimed and in local mode.
+      expect(pushes).toEqual([]);
+      expect(await getLocalDataOwner()).toBe(OWNER_UNCLAIMED);
+      expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    });
   });
 });
 

@@ -544,6 +544,18 @@ retains non-test commands such as `npm run audit`.
   `user_health_profile`, including singleton conflict targets, clean-install
   restore, row-level LWW convergence, retry behavior, and post-contract-safe
   transport allowlists
+- verify the clean-device recovery path restores all eight cloud contracts
+  without pushing local state, while every non-empty local-state family and a
+  pending dirty queue suppress or reject that path
+
+### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
+
+- verify a truly empty unclaimed device can explicitly download the signed-in
+  account's data, claim ownership, activate cloud mode, pull, and refresh the UI
+- verify the recovery action rechecks local emptiness before running and leaves
+  non-empty or dirty local state untouched without a cloud push
+- verify Manual Sync Now cannot report completion while the local adapter is
+  active, and pull failures remain visible and retryable
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Storage from '../../storage/entries';
-import { cloudAdapter } from '../../storage/cloudAdapter';
+import { cloudAdapter, isLocalDataEmpty } from '../../storage/cloudAdapter';
 import {
   SYNC_PHASE,
   SYNC_STATUS,
@@ -55,7 +55,18 @@ function makeBootstrapRunner(user) {
 
 function makeSyncRunner() {
   const adapter = Storage.getStorageAdapter();
-  return typeof adapter.sync === 'function' ? () => adapter.sync() : null;
+  // The local adapter also exposes `sync`, but it is a deliberate no-op
+  // (localAdapter.js) that resolves successfully without ever contacting the
+  // cloud. That no-op is exactly how a signed-in device which never activated
+  // cloud mode could report "Fully synced" while restoring none of the
+  // account's data (issue #499): a manual Sync Now ran the local no-op and the
+  // SYNC phase flipped to complete. Only a cloud-backed adapter performs a real
+  // pull/push, so refuse the explicit local no-op (`mode: 'local'`) — leaving
+  // the phase untouched and honest — while a cloud adapter still drives sync.
+  // Feature detection on `sync` is kept for the cloud adapter shell.
+  return adapter.mode !== 'local' && typeof adapter.sync === 'function'
+    ? () => adapter.sync()
+    : null;
 }
 
 export function useSyncRecovery(user = null) {
@@ -153,6 +164,12 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   onSyncCompleteRef.current = onSyncComplete;
 
   const [ownershipPrompt, setOwnershipPrompt] = useState(null);
+  // Whether the unclaimed-device prompt may offer the pull-only restore. True
+  // only when this device is verifiably empty (isLocalDataEmpty), so the
+  // "Download my account's data" action can never push local state up. Kept
+  // separate from ownershipPrompt so the prompt shape stays {type} and the
+  // restore affordance simply hides on a device that has data to protect.
+  const [canRestore, setCanRestore] = useState(false);
   // The server's denial code, so App/CloudSyncRecovery can route the user to the
   // consent surface, an update prompt, or a deletion-pending notice rather than
   // silently doing nothing.
@@ -231,6 +248,46 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     return { ok: true };
   }, [userId, runInitialSync]);
 
+  // Restore-only claim for a clean/unclaimed device (issue #499). A device that
+  // signs into an account which already holds cloud data must be able to PULL
+  // that data down WITHOUT first uploading its own (empty or unrelated) local
+  // history. Claim the device for this account, activate cloud mode, and run the
+  // initial sync — which is pull-only when there is nothing dirty to push, so a
+  // clean device restores the account without pushing empty rows over the good
+  // cloud copy. Mirrors startFreshOnDevice minus the purge: there is nothing to
+  // discard on the restore path, so any local history is preserved and merged
+  // rather than destroyed.
+  const downloadAccountData = useCallback(async () => {
+    if (!userId) return { ok: false, error: 'Not signed in.' };
+    // Genuinely pull-only: a download must never push local state up. The
+    // ongoing sync is download-only exactly when there is nothing to push, so
+    // re-verify (defense in depth behind the hidden button) that this device is
+    // empty before claiming it. A device with real local data uses "Upload My
+    // History" (a merge) instead — Download never silently uploads (#499).
+    if (!(await isLocalDataEmpty())) {
+      return {
+        ok: false,
+        error:
+          'This device already has training data. Use Upload My History to merge it into your account.',
+      };
+    }
+    setOwnershipPrompt(null);
+    try {
+      await setLocalDataOwner(userId);
+    } catch (e) {
+      // Ownership did not persist, so the device must not silently enter cloud
+      // mode. Re-surface the choice instead of syncing unclaimed.
+      setOwnershipPrompt({ type: 'first-upload' });
+      return { ok: false, error: e?.message || 'Could not claim this device.' };
+    }
+    // Nothing to bootstrap on the restore path; reflect that so the manual
+    // upload button doesn't reappear.
+    markComplete(SYNC_PHASE.BOOTSTRAP);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    await runInitialSync();
+    return { ok: true };
+  }, [userId, runInitialSync]);
+
   // "Decide later": no bootstrap, no sync, storage mode stays LOCAL. The
   // prompt returns on the next launch because the owner marker is unchanged.
   const dismissOwnershipPrompt = useCallback(() => {
@@ -248,6 +305,7 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
       resetPhase(SYNC_PHASE.BOOTSTRAP);
       resetPhase(SYNC_PHASE.SYNC);
       setOwnershipPrompt(null);
+      setCanRestore(false);
       return;
     }
 
@@ -281,6 +339,11 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
         markComplete(SYNC_PHASE.BOOTSTRAP);
         if (!cancelled) await runInitialSync();
       } else if (owner === OWNER_UNCLAIMED) {
+        // Offer the pull-only restore only on a verifiably empty device, so
+        // "Download my account's data" can never push local state up (#499).
+        const empty = await isLocalDataEmpty();
+        if (cancelled) return;
+        setCanRestore(empty);
         setOwnershipPrompt({ type: 'first-upload' });
       } else {
         // A different userId or 'unknown': the data belongs to someone else.
@@ -293,7 +356,9 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
 
   return {
     ownershipPrompt,
+    canRestore,
     confirmOwnershipUpload,
+    downloadAccountData,
     startFreshOnDevice,
     dismissOwnershipPrompt,
     consentDenial,

@@ -361,11 +361,16 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
-Unclaimed data requires confirmation; a different user id or `unknown` keeps
-storage in local mode until the user explicitly starts fresh or uploads the
-device history. The one-time migration derives ownership from legacy
-`kilo_sync_bootstrapped_*` keys, and ownership is claimed only after bootstrap
-and marker persistence both succeed.
+Unclaimed non-empty data requires upload confirmation. When the complete local
+state projection is empty and no dirty sync work is queued, an unclaimed device
+may instead claim the signed-in account, activate cloud mode, and perform a
+pull-only restore; the action rechecks emptiness immediately before claiming
+ownership. A different user id or `unknown` keeps storage in local mode until
+the user explicitly starts fresh or uploads the device history. The one-time
+migration derives ownership from legacy `kilo_sync_bootstrapped_*` keys, and
+ownership is claimed only after the selected bootstrap or restore path and
+marker persistence succeed. Local-adapter no-ops are never valid manual sync
+runners and cannot produce a completed cloud-sync status.
 
 Cloud bootstrap allowlists `display_name` and `unit_system` from
 `kilo_user_profile`; all other local profile fields remain on-device. The

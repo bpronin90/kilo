@@ -395,6 +395,49 @@ describe('useSyncRecovery hook', () => {
     // Status must not flip to complete on a missing runner.
     expect(ref.current.sync.status).not.toBe(SYNC_STATUS.COMPLETE);
   });
+
+  // issue #499: the local adapter exposes a no-op `sync` that resolves cleanly.
+  // Before the fix, a signed-in device still in LOCAL mode ran that no-op on
+  // Sync Now and the SYNC phase flipped to complete — reporting "Fully synced"
+  // while restoring nothing. The runner must refuse the local no-op so status
+  // stays honest (never complete).
+  test('local-mode Sync Now cannot transition to complete (real local no-op adapter)', async () => {
+    // No getStorageAdapter mock: use the REAL local adapter (mode 'local').
+    entries.setStorageMode('local');
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runSync();
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/not available/i);
+    expect(ref.current.sync.status).not.toBe(SYNC_STATUS.COMPLETE);
+    expect(ref.current.sync.status).toBe(SYNC_STATUS.IDLE);
+  });
+
+  test('a pull/persist failure leaves the sync phase failed and retryable, not complete', async () => {
+    const sync = jest.fn().mockRejectedValue(new Error('pull exploded'));
+    jest
+      .spyOn(entries, 'getStorageAdapter')
+      .mockReturnValue({ mode: 'cloud', sync });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runSync();
+    });
+
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(ref.current.sync.status).toBe(SYNC_STATUS.FAILED);
+    expect(ref.current.sync.retryable).toBe(true);
+  });
 });
 
 describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)', () => {
