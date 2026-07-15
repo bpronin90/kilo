@@ -556,6 +556,10 @@ retains non-test commands such as `npm run audit`.
 - verify the clean-device recovery path restores all nine cloud contracts
   without pushing local state, while every non-empty local-state family and a
   pending dirty queue suppress or reject that path
+- verify ownership bootstrap preserves workout-note provenance and tombstones,
+  already-stripped `wn_legacy_` rows converge back to tombstones, repeated sync
+  stays idempotent, and legitimate legacy-only/user-authored notes survive
+  (#501)
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
@@ -568,6 +572,10 @@ retains non-test commands such as `npm run audit`.
 - verify an active password recovery or recovery-link error suppresses and defers
   the ownership prompt, then re-presents the still-valid decision once recovery
   ends, without disturbing ordinary sign-in ownership behavior (#500)
+- verify the full foreign-owner upload lifecycle through the real
+  `confirmOwnershipUpload()` entrypoint: prompt, persisted owner marker,
+  bootstrap plus sync, fresh-mount restart with no recurring prompt, and
+  repeated-launch phantom-note convergence (#501)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 
