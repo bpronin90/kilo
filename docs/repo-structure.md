@@ -30,6 +30,7 @@ AGENTS.md              ← shared repo protocol (local-only, gitignored — not 
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions (local-only, gitignored — not tracked)
 .gitignore             ← root ignore policy for generated output, local-only runtime state, and agent instruction files
 package.json
+.github/workflows/     ← required CI, review-disposition, audit, and version gates
 mobile/                ← active Expo / React Native app path
 scripts/               ← repository maintenance and deployment entrypoints
 supabase/              ← tracked Supabase config, Edge Functions, and DB tests
@@ -190,6 +191,8 @@ supabase/
 
 scripts/
   sync-version.mjs     ← syncs mobile version fields from root package.json
+  review-disposition.mjs ← trusted current-PR-head review gate evaluator
+  review-disposition.test.mjs ← deterministic evaluator contract tests
   deploy-kilo-functions.sh ← deploys kilo Edge Functions to the tracked remote project ref
 ```
 
