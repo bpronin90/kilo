@@ -68,7 +68,10 @@ Roadmap status:
   callbacks, navigates directly to More > Account, and presents a dedicated
   set-new-password or readable link-error surface (#497). The
   redirect is allow-listed in Supabase; the first installed-build callback and
-  restart-persistence pass remains deferred by owner direction.
+  restart-persistence pass remains deferred by owner direction. Account signup
+  and failed password-sign-in messages now use enumeration-safe wording and
+  direct users who may have registered through GitHub to Continue with GitHub
+  without revealing whether an email address exists (#496).
 
 The archived browser prototype was a seeded fitness-logging app with
 approximately 221 synthetic workout sessions and bodyweight entries used as

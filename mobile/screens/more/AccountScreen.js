@@ -192,12 +192,24 @@ export function AccountScreen({ onBack, auth }) {
             title="Sign In"
             loadingTitle="Working…"
             disabled={busy}
-            onPress={() => run(() => auth.signInWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : r)))}
+            // On any failed password sign-in, append the GitHub hint
+            // unconditionally (#496). It is shown for every failure and does not
+            // branch on whether the address exists, so it adds no enumeration
+            // oracle: a GitHub-only account and a wrong password produce the same
+            // generic `Invalid login credentials`, and both now point at the
+            // other sign-in method.
+            onPress={() => run(() => auth.signInWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Signed in.' } : { ...r, ok: false, error: `${r.error || 'Invalid login credentials.'} If you signed up with GitHub, use Continue with GitHub.` })))}
           />
           <Button
             title="Create Account"
             disabled={busy}
-            onPress={() => run(() => auth.signUpWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'Account created. Check your email if confirmation is required.' } : r)))}
+            // Honest, enumeration-safe signup copy (#496). Supabase returns the
+            // same 200 whether the address is new or already registered (it will
+            // not confirm existence), so this wording must be true in both cases:
+            // a new address gets a confirmation email; an existing one does not,
+            // and either way the user is pointed at Continue with GitHub without
+            // revealing which case they are in.
+            onPress={() => run(() => auth.signUpWithPassword(email, password).then((r) => (r.ok ? { ok: true, message: 'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.' } : r)))}
           />
           <Button
             title="Reset Password"
