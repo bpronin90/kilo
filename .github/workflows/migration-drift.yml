@@ -21,20 +21,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-drift-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   migration-drift:
     # Required status check (branch protection: main). Runs with credentials
     # on push to main and on pull requests from this same repository.
     name: merged migrations are applied to the live project
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20
+          node-version: 24
 
       # The check shells out to psql. Fail here with a clear message rather than
       # inside the script if the runner image ever drops the client.
@@ -56,14 +64,15 @@ jobs:
     # before such a change reaches production.
     name: fork PR — credentialed check unavailable (informational only)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Verify psql is available
         run: psql --version
