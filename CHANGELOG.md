@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.97.1 - 2026-07-14
+
+- Issue #496: Replaced misleading Account signup and password-sign-in messages
+  with enumeration-safe copy that directs GitHub users to the matching sign-in
+  method without revealing whether an email address is registered.
+
 ## 0.97.0 - 2026-07-14
 
 - Issue #497: Completed password recovery end to end with explicit allowlisted
