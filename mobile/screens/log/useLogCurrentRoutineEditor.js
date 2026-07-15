@@ -76,6 +76,24 @@ export function useLogCurrentRoutineEditor({
   );
   const previousNoteIdentityRef = useRef(noteIdentity);
 
+  // Universal-skip counter: how many not-yet-removed 'Skip week' presses this
+  // note has. Persisted inside skip_markers (same single update as raw_text,
+  // see handleSave) so a partial write can never desync it from the text.
+  // Advisory only — it decides whether 'Remove skip' needs a confirmation
+  // dialog (manual skips) and never causes removal of anything the
+  // text-driven rules wouldn't remove. Held in a ref (local authority after
+  // any mutation in this session, like activeWeek) and re-seeded from the
+  // persisted note whenever the note identity changes.
+  const _persistedUniversalSkipCount = (note) => {
+    const v = note?.skip_markers?.universal_skip_count;
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  const universalSkipCountRef = useRef(_persistedUniversalSkipCount(currentNote));
+  useEffect(() => {
+    universalSkipCountRef.current = _persistedUniversalSkipCount(currentNoteRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteIdentity]);
+
   const handleReadScroll = (e) => {
     readScrollYRef.current = e.nativeEvent.contentOffset.y;
   };
@@ -290,7 +308,13 @@ export function useLogCurrentRoutineEditor({
     }
   };
 
-  const handleSave = async ({ autosave = false, overrideText } = {}) => {
+  // universalSkipCount: explicit new value for the universal-skip counter
+  // (skip/unskip paths); omitted = carry the current value forward unchanged.
+  // sessionCheckins: full replacement session_checkins object to persist in
+  // the SAME update as raw_text (unskip cleanup path); omitted = untouched.
+  // Bundling both here keeps text, counter, and check-in cleanup atomic — a
+  // failed save changes none of them.
+  const handleSave = async ({ autosave = false, overrideText, universalSkipCount, sessionCheckins } = {}) => {
     if (isSaving) return;
     const textToSave = overrideText ?? workoutNoteText;
     if (!currentId && !textToSave.trim()) {
@@ -324,7 +348,11 @@ export function useLogCurrentRoutineEditor({
       const { classifications: exercise_classifications } =
         deriveWorkoutNoteAnalytics(allSections, trackedNames);
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
-      const skip_markers = { exercise_skips, day_skips };
+      const resolvedUniversalSkipCount = Math.max(
+        0,
+        universalSkipCount ?? universalSkipCountRef.current
+      );
+      const skip_markers = { exercise_skips, day_skips, universal_skip_count: resolvedUniversalSkipCount };
 
       if (currentId) {
         result = await update(currentId, {
@@ -333,6 +361,7 @@ export function useLogCurrentRoutineEditor({
           exercise_classifications,
           skip_markers,
           attendance_flags,
+          ...(sessionCheckins !== undefined ? { session_checkins: sessionCheckins } : {}),
           ...activeWeekPatch,
         });
       } else {
@@ -349,6 +378,9 @@ export function useLogCurrentRoutineEditor({
       }
 
       if (result) {
+        // Commit the counter only after the write actually persisted, so a
+        // failed save leaves the advisory flag in sync with the stored text.
+        universalSkipCountRef.current = resolvedUniversalSkipCount;
         const contentUnchanged =
           (overrideText != null ? overrideText : workoutNoteTextRef.current) === snapshotText &&
           workoutNoteTitleRef.current === snapshotTitle;
@@ -510,11 +542,21 @@ export function useLogCurrentRoutineEditor({
       return;
     }
 
+    const prevFullText = workoutNoteText;
     const newFullText = _spliceActiveText(newActiveText);
     setWorkoutNoteText(newFullText);
     workoutNoteTextRef.current = newFullText;
-    const saved = await handleSave({ overrideText: newFullText });
+    const saved = await handleSave({
+      overrideText: newFullText,
+      // One more outstanding universal skip; persisted atomically with the
+      // text (inside skip_markers) and committed to the ref only on success.
+      universalSkipCount: universalSkipCountRef.current + 1,
+    });
     if (!saved) {
+      // Revert the optimistic local text so it stays in sync with what was
+      // actually persisted and 'try again' starts from the same state.
+      setWorkoutNoteText(prevFullText);
+      workoutNoteTextRef.current = prevFullText;
       setSkipWeekStatus('Could not save skip — try again');
       return;
     }
@@ -522,15 +564,12 @@ export function useLogCurrentRoutineEditor({
     _runCheckInDetection();
   };
 
-  const handleUnskipWeek = async () => {
-    if (!currentId) return;
-    const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);
-    if (newActiveText === activeEditText) {
-      // Nothing to undo: no exercise currently ends in a skip marker.
-      setSkipWeekStatus('No skip to remove');
-      return;
-    }
-
+  // Performs the actual removal for handleUnskipWeek once any confirmation
+  // has been resolved. nextUniversalSkipCount is the counter value to persist
+  // alongside the removal (count-1 on a universal undo, 0 on a confirmed
+  // manual removal). Text, counter, and check-in cleanup are persisted in one
+  // update via handleSave so a partial write can never desync them.
+  const _performUnskipRemoval = async (newActiveText, nextUniversalSkipCount) => {
     // The session being removed is the note's current deepest session column
     // (the one the just-removed trailing skip belonged to), computed from the
     // full note text before the removal — this matches the sessionIndex
@@ -538,19 +577,12 @@ export function useLogCurrentRoutineEditor({
     // for that skip.
     const removedSessionIndex = computeWeeksIn(parseWorkoutNote(workoutNoteText).sections) - 1;
 
-    const newFullText = _spliceActiveText(newActiveText);
-    setWorkoutNoteText(newFullText);
-    workoutNoteTextRef.current = newFullText;
-    const saved = await handleSave({ overrideText: newFullText });
-    if (!saved) {
-      setSkipWeekStatus('Could not remove skip — try again');
-      return;
-    }
-
     // Drop the fatigue-reason check-in recorded for the removed session (if
     // any), and re-key any remaining check-ins whose session index shifted
     // down by one so they stay attached to the correct session. Sessions
-    // before the removed one are untouched.
+    // before the removed one are untouched. Computed up front so it rides in
+    // the same update as raw_text.
+    let sessionCheckins; // undefined = leave persisted check-ins untouched
     const prevCheckins = currentNoteRef.current?.session_checkins;
     if (prevCheckins && typeof prevCheckins === 'object' && removedSessionIndex >= 0) {
       const nextCheckins = {};
@@ -562,14 +594,79 @@ export function useLogCurrentRoutineEditor({
         if (nextIdx !== idx) changed = true;
         nextCheckins[String(nextIdx)] = value;
       }
-      if (changed) {
-        await update(currentId, { session_checkins: nextCheckins });
-      }
+      if (changed) sessionCheckins = nextCheckins;
+    }
+
+    const prevFullText = workoutNoteText;
+    const newFullText = _spliceActiveText(newActiveText);
+    setWorkoutNoteText(newFullText);
+    workoutNoteTextRef.current = newFullText;
+    const saved = await handleSave({
+      overrideText: newFullText,
+      universalSkipCount: nextUniversalSkipCount,
+      sessionCheckins,
+    });
+    if (!saved) {
+      // Revert the optimistic local text: nothing persisted (text, counter,
+      // and check-in cleanup travel in one update), so the local state must
+      // return to match — otherwise a retry would find no trailing skip and
+      // the stale-clamp path would desync the counter from the stored text.
+      setWorkoutNoteText(prevFullText);
+      workoutNoteTextRef.current = prevFullText;
+      setSkipWeekStatus('Could not remove skip — try again');
+      return;
     }
 
     // Removing a skip is not new logged work, so it does not run fatigue
     // check-in detection — only a successful 'Skip week' save does.
     setSkipWeekStatus('Skip removed');
+  };
+
+  const handleUnskipWeek = async () => {
+    if (!currentId) return;
+    const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);
+    const count = universalSkipCountRef.current;
+    if (newActiveText === activeEditText) {
+      // Nothing to undo: no exercise currently ends in a skip marker. The
+      // text-driven no-op rule always wins; if the advisory counter says
+      // otherwise it is stale (hand-edited text), so clamp it to reality.
+      setSkipWeekStatus('No skip to remove');
+      if (count > 0) {
+        universalSkipCountRef.current = 0;
+        const prevMarkers = currentNoteRef.current?.skip_markers;
+        try {
+          await update(currentId, {
+            skip_markers: { ...(prevMarkers || {}), universal_skip_count: 0 },
+          });
+        } catch {
+          // Advisory-only flag: a failed clamp write just leaves it stale,
+          // and the text-driven rules still decide what can be removed.
+        }
+      }
+      return;
+    }
+
+    if (count > 0) {
+      // The trailing skips include at least one Skip-week press: undo one.
+      await _performUnskipRemoval(newActiveText, count - 1);
+      return;
+    }
+
+    // Counter says no outstanding Skip-week press, but trailing skips exist:
+    // they were added manually (per-exercise dashes). Confirm before
+    // deleting the user's hand-entered history.
+    Alert.alert(
+      'Remove skips?',
+      "These skips weren't added by Skip week. Remove them anyway?",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => _performUnskipRemoval(newActiveText, 0),
+        },
+      ]
+    );
   };
 
   const handleNoteBodyPress = () => {

@@ -1866,11 +1866,11 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     );
     // Must capture the return value (not fire-and-forget)
     expect(src).toMatch(/const saved = await handleSave\(/);
-    // Must bail (directly or via a braced block) before check-in detection
-    // when save fails. The actual failure-gating behavior — including that
-    // _runCheckInDetection is never reached — is covered by the integration
-    // tests below.
-    expect(src).toMatch(/if\s*\(!saved\)\s*\{?\s*\n?\s*(setSkipWeekStatus\([^)]*\);\s*)?return/);
+    // Must guard on the captured result before check-in detection. The
+    // actual failure-gating behavior — including that _runCheckInDetection
+    // is never reached and the optimistic text is reverted — is covered by
+    // the integration tests below.
+    expect(src).toMatch(/if\s*\(!saved\)\s*\{/);
   });
 });
 
@@ -1885,12 +1885,28 @@ describe('Skip week / Undo skip: integration (#502)', () => {
   const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
   const RAW = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5';
 
-  function makeHarness({ updateImpl, fatigueTrackingEnabled = false, onCheckInPrompt = jest.fn() } = {}) {
+  // Unmount every harness after each test so the skipWeekStatus/saveSuccess
+  // auto-clear timers are cleaned up by their effect teardown instead of
+  // firing into an unmounted tree (React act warnings).
+  const mounted = [];
+  afterEach(() => {
+    render.act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+    jest.restoreAllMocks();
+  });
+
+  function makeHarness({
+    updateImpl,
+    fatigueTrackingEnabled = false,
+    onCheckInPrompt = jest.fn(),
+    raw = RAW,
+    noteExtras = {},
+  } = {}) {
     const update = jest.fn().mockImplementation(
       updateImpl || (async (_id, patch) => ({
         id: 'note1',
         title: patch.title || 'Routine',
-        raw_text: patch.raw_text !== undefined ? patch.raw_text : RAW,
+        raw_text: patch.raw_text !== undefined ? patch.raw_text : raw,
       }))
     );
     const add = jest.fn();
@@ -1898,7 +1914,7 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     let latest = null;
 
     function Harness({ currentNote, notes }) {
-      const [text, setText] = React.useState(RAW);
+      const [text, setText] = React.useState(raw);
       const [title, setTitle] = React.useState('Routine');
       const hook = useLogCurrentRoutineEditor({
         workoutNoteText: text,
@@ -1922,9 +1938,9 @@ describe('Skip week / Undo skip: integration (#502)', () => {
       return null;
     }
 
-    const initialNote = { id: 'note1', title: 'Routine', raw_text: RAW };
+    const initialNote = { id: 'note1', title: 'Routine', raw_text: raw, ...noteExtras };
     render.act(() => {
-      render.create(<Harness currentNote={initialNote} notes={[initialNote]} />);
+      mounted.push(render.create(<Harness currentNote={initialNote} notes={[initialNote]} />));
     });
     return { getLatest: () => latest, update };
   }
@@ -2002,6 +2018,124 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     expect(getLatest().getText()).toContain('140 3,3,3');
     expect(getLatest().hook.skipWeekStatus).toBe('');
   });
+
+  // ── Universal-skip counter (advisory flag) ────────────────────────────────
+
+  test('counter increments on each skip and decrements on removal, persisted atomically with the text', async () => {
+    const { getLatest, update } = makeHarness();
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({
+      raw_text: expect.stringContaining('- 135 5,5,5'),
+      skip_markers: expect.objectContaining({ universal_skip_count: 1 }),
+    }));
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({
+      skip_markers: expect.objectContaining({ universal_skip_count: 2 }),
+    }));
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    // Decrement rides in the SAME update as the raw_text change (atomic).
+    const lastPatch = update.mock.calls[update.mock.calls.length - 1][1];
+    expect(lastPatch.skip_markers.universal_skip_count).toBe(1);
+    expect(lastPatch.raw_text).toBeDefined();
+  });
+
+  test('failed Skip week save does not advance the counter', async () => {
+    let fail = true;
+    const { getLatest, update } = makeHarness({
+      updateImpl: async (_id, patch) => (fail ? null : {
+        id: 'note1', title: 'Routine', raw_text: patch.raw_text,
+      }),
+    });
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip — try again');
+
+    // Next successful skip still persists count 1, not 2: the failed write
+    // never committed to the counter.
+    fail = false;
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({
+      skip_markers: expect.objectContaining({ universal_skip_count: 1 }),
+    }));
+  });
+
+  test('Remove skip with an outstanding Skip-week press does not ask for confirmation', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { getLatest } = makeHarness();
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+  });
+
+  test('Remove skip on manual-only trailing skips shows a confirmation; confirm removes them', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    // Trailing manual dash, no persisted universal-skip counter.
+    const { getLatest, update } = makeHarness({ raw: RAW + '\n-' });
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    // Dialog shown; nothing removed or saved yet.
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+    expect(getLatest().getText()).toBe(RAW + '\n-');
+
+    const buttons = alertSpy.mock.calls[0][2];
+    const removeBtn = buttons.find(b => b.text === 'Remove');
+    await render.act(async () => { await removeBtn.onPress(); });
+
+    // Confirmed: trailing dash removed, counter stays at 0.
+    expect((getLatest().getText().match(/^-$/gm) || []).length).toBe(0);
+    expect(update).toHaveBeenLastCalledWith('note1', expect.objectContaining({
+      skip_markers: expect.objectContaining({ universal_skip_count: 0 }),
+    }));
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+  });
+
+  test('Remove skip confirmation: cancel leaves the text intact', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { getLatest, update } = makeHarness({ raw: RAW + '\n-' });
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    const buttons = alertSpy.mock.calls[0][2];
+    const cancelBtn = buttons.find(b => b.text === 'Cancel');
+    // Cancel has no onPress handler — it must do nothing.
+    expect(cancelBtn.onPress).toBeUndefined();
+    expect(update).not.toHaveBeenCalled();
+    expect(getLatest().getText()).toBe(RAW + '\n-');
+  });
+
+  test('stale counter with no trailing skips: no-op wins and the counter clamps to reality', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    // Counter claims 3 outstanding skips, but the text has none (hand-edited).
+    const { getLatest, update } = makeHarness({
+      noteExtras: { skip_markers: { universal_skip_count: 3 } },
+    });
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    // Text-driven no-op rule wins; no dialog, no text change.
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(getLatest().hook.skipWeekStatus).toBe('No skip to remove');
+    expect(getLatest().getText()).toBe(RAW);
+    // Counter clamped to match reality in a markers-only patch (no raw_text).
+    expect(update).toHaveBeenCalledTimes(1);
+    const clampPatch = update.mock.calls[0][1];
+    expect(clampPatch.skip_markers.universal_skip_count).toBe(0);
+    expect(clampPatch.raw_text).toBeUndefined();
+
+    // A second press finds the counter already clamped: pure no-op.
+    update.mockClear();
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).not.toHaveBeenCalled();
+  });
 });
 
 // ── Undo skip: fatigue-reason check-in cleanup (#502 follow-up) ────────────
@@ -2015,12 +2149,20 @@ describe('Skip week / Undo skip: integration (#502)', () => {
 describe('Undo skip: fatigue-reason check-in cleanup', () => {
   const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
 
-  function renderWithNote(initialNote) {
-    const update = jest.fn().mockImplementation(async (_id, patch) => ({
-      id: 'note1',
-      title: patch.title || initialNote.title,
-      raw_text: patch.raw_text !== undefined ? patch.raw_text : initialNote.raw_text,
-    }));
+  const mounted = [];
+  afterEach(() => {
+    render.act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+  });
+
+  function renderWithNote(initialNote, { updateImpl } = {}) {
+    const update = jest.fn().mockImplementation(
+      updateImpl || (async (_id, patch) => ({
+        id: 'note1',
+        title: patch.title || initialNote.title,
+        raw_text: patch.raw_text !== undefined ? patch.raw_text : initialNote.raw_text,
+      }))
+    );
     const add = jest.fn();
     const selectCurrent = jest.fn();
     let latest = null;
@@ -2050,42 +2192,87 @@ describe('Undo skip: fatigue-reason check-in cleanup', () => {
       return null;
     }
 
-    render.act(() => { render.create(<Harness />); });
+    render.act(() => { mounted.push(render.create(<Harness />)); });
     return { getLatest: () => latest, update };
   }
 
-  test('Undo skip removes the fatigue-reason check-in recorded for the removed session', async () => {
-    // Depth 2: index 0 is the logged set, index 1 is the trailing skip that
-    // Undo skip is about to remove.
-    const raw = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5\n-';
+  // Depth 2: index 0 is the logged set, index 1 is the trailing skip that
+  // Undo skip is about to remove. universal_skip_count 1 marks the trailing
+  // skip as Skip-week-added so removal proceeds without a confirmation.
+  const RAW_WITH_SKIP = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5\n-';
+  const MARKERS_ONE_UNIVERSAL = { skip_markers: { universal_skip_count: 1 } };
+
+  test('Undo skip removes the fatigue-reason check-in for the removed session in the same update as the text', async () => {
     const initialNote = {
       id: 'note1',
       title: 'Routine',
-      raw_text: raw,
+      raw_text: RAW_WITH_SKIP,
+      ...MARKERS_ONE_UNIVERSAL,
       session_checkins: { '0': { reason: 'sore' }, '1': { reason: 'sick' } },
     };
     const { getLatest, update } = renderWithNote(initialNote);
 
     await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
 
+    // One atomic update: raw_text change, counter decrement, and check-in
+    // cleanup all in a single call — a partial write cannot desync them.
+    expect(update).toHaveBeenCalledTimes(1);
+    const patch = update.mock.calls[0][1];
+    expect(patch.raw_text).not.toMatch(/^-$/m);
+    expect(patch.skip_markers.universal_skip_count).toBe(0);
     // The removed session's (index 1) check-in is dropped; the unaffected
     // earlier session's (index 0) check-in survives with its original key.
-    expect(update).toHaveBeenLastCalledWith('note1', {
-      session_checkins: { '0': { reason: 'sore' } },
-    });
+    expect(patch.session_checkins).toEqual({ '0': { reason: 'sore' } });
     expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
   });
 
   test('Undo skip with no recorded fatigue reason still works and touches no check-in state', async () => {
-    const raw = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5\n-';
-    const initialNote = { id: 'note1', title: 'Routine', raw_text: raw }; // no session_checkins at all
+    const initialNote = {
+      id: 'note1',
+      title: 'Routine',
+      raw_text: RAW_WITH_SKIP,
+      ...MARKERS_ONE_UNIVERSAL,
+      // no session_checkins at all
+    };
     const { getLatest, update } = renderWithNote(initialNote);
 
     await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
 
-    // Only the handleSave-driven update call happened; no follow-up
-    // session_checkins patch, since there was nothing to clean up.
     expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][1]).not.toHaveProperty('session_checkins');
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+  });
+
+  test('failed removal write reports failure — the UI never claims success when cleanup did not persist', async () => {
+    // Regression for the review finding: text + check-in cleanup must not be
+    // able to desync. With the single atomic update, a failed write persists
+    // neither, and the status must be the failure message, never 'Skip removed'.
+    const initialNote = {
+      id: 'note1',
+      title: 'Routine',
+      raw_text: RAW_WITH_SKIP,
+      ...MARKERS_ONE_UNIVERSAL,
+      session_checkins: { '1': { reason: 'sick' } },
+    };
+    const { getLatest, update } = renderWithNote(initialNote, {
+      updateImpl: async () => null, // persistence failure
+    });
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    // Exactly one write was attempted (the atomic one) and it failed; there
+    // is no separate cleanup write that could have half-applied.
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not remove skip — try again');
+
+    // A retry once persistence recovers still carries the full atomic patch.
+    update.mockImplementation(async (_id, patch) => ({
+      id: 'note1', title: 'Routine', raw_text: patch.raw_text,
+    }));
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    const retryPatch = update.mock.calls[update.mock.calls.length - 1][1];
+    expect(retryPatch.session_checkins).toEqual({});
+    expect(retryPatch.skip_markers.universal_skip_count).toBe(0);
     expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
   });
 });
