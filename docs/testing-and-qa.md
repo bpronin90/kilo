@@ -565,6 +565,9 @@ retains non-test commands such as `npm run audit`.
   non-empty or dirty local state untouched without a cloud push
 - verify Manual Sync Now cannot report completion while the local adapter is
   active, and pull failures remain visible and retryable
+- verify an active password recovery or recovery-link error suppresses and defers
+  the ownership prompt, then re-presents the still-valid decision once recovery
+  ends, without disturbing ordinary sign-in ownership behavior (#500)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 

@@ -629,6 +629,62 @@ describe('useAutoSync: foreign owner never auto-bootstraps', () => {
   });
 });
 
+// ── useAutoSync: password recovery takes precedence over ownership ───────────
+
+describe('useAutoSync: password recovery defers ownership decisions', () => {
+  test('suppresses the first-upload prompt during recovery, then presents it after recovery exits', async () => {
+    let auth = makeAuth({ passwordRecovery: true });
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useAutoSync(auth);
+      return null;
+    }
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(Probe));
+    });
+    await flush();
+
+    expect(ref.current.ownershipPrompt).toBeNull();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+
+    auth = makeAuth();
+    act(() => {
+      tree.update(React.createElement(Probe));
+    });
+    await flush();
+
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'first-upload' });
+  });
+
+  test('hides an already-visible foreign-owner prompt while a recovery callback is active', async () => {
+    await setLocalDataOwner('someone-else');
+    let auth = makeAuth();
+    const ref = { current: null };
+    function Probe() {
+      ref.current = useAutoSync(auth);
+      return null;
+    }
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(Probe));
+    });
+    await flush();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
+
+    auth = makeAuth({ recoveryError: 'Email link is invalid or has expired' });
+    act(() => {
+      tree.update(React.createElement(Probe));
+    });
+    await flush();
+
+    expect(ref.current.ownershipPrompt).toBeNull();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+  });
+});
+
 // ── useAutoSync: configured/loading/sign-out guards ──────────────────────────
 
 describe('useAutoSync: guards and sign-out', () => {

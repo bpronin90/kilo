@@ -409,7 +409,7 @@ export default function App() {
             addScrollListener={addScrollListener}
           />
         </SafeAreaView>
-        {ownershipPrompt ? (
+        {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
           <View style={styles.ownershipOverlay} testID="ownership-prompt">
             <View style={styles.ownershipCard}>
               {ownershipPrompt.type === 'first-upload' ? (
