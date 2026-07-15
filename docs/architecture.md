@@ -144,7 +144,11 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   `App.js`. Password recovery reuses that callback boundary: the shared auth
   hook handles recovery sessions and native cold/warm deep links, while `App.js`
   and `MoreScreen.js` route active recovery state to the Account-owned
-  set-new-password surface.
+  set-new-password surface. While a recovery session or recovery-link error is
+  active, the auto-sync ownership gate defers: it suppresses any upload/start-fresh
+  prompt without clearing the owner marker and re-presents the still-valid decision
+  once recovery completes or is exited, so recovery never sits behind the ownership
+  overlay (#500).
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a

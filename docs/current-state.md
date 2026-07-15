@@ -1029,8 +1029,11 @@ is queued, an unclaimed device can explicitly download the signed-in account's
 cloud data. The action rechecks that invariant, claims the device for the
 account, activates cloud mode, and performs a real pull without pushing local
 state. Non-empty devices continue to require the upload/start-fresh ownership
-flow. Manual Sync Now remains available after ownership is resolved, and local
-mode can no longer report its no-op adapter as a completed cloud sync.
+flow, except that an active password-recovery session or recovery-link error now
+takes precedence: the ownership prompt is suppressed and deferred until recovery
+completes or is exited, then re-presented through the normal flow (#500). Manual
+Sync Now remains available after ownership is resolved, and local mode can no
+longer report its no-op adapter as a completed cloud sync.
 The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a
