@@ -376,12 +376,15 @@ Cloud bootstrap allowlists `display_name` and `unit_system` from
 `kilo_user_profile`; all other local profile fields remain on-device. The
 Supabase `user_profile` schema has no catch-all profile payload column.
 
-After bootstrap, ongoing cloud reconciliation covers eight table contracts:
+After bootstrap, ongoing cloud reconciliation covers nine table contracts:
 `weight_entries`, `workout_notes`, `archived_weight_goals`, `user_profile`,
-`user_health_profile`, `feature_toggles`, `weight_goal`, and `deload_history`.
+`user_health_profile`, `feature_toggles`, `weight_goal`, `deload_history`, and
+`fatigue_checkins`.
 Ordinary account settings remain in `user_profile`; current routine, fatigue
-multiplier, and tracked lifts reconcile through the consent-gated
-`user_health_profile`. The first three enqueue
+multiplier, tracked lifts, and the active generated deload reconcile through the
+consent-gated `user_health_profile`. The ninth contract, `fatigue_checkins`, is
+derived deterministically from converged `workout_notes.session_checkins` and
+never applies pulled projection rows back to canonical notes. The first three enqueue
 dirty rows at write time; the profile, toggles, active goal, and deload history
 diff their allowlisted local projections against persisted sync snapshots. A
 pending local row always reaches Supabase before conflict ordering is settled,

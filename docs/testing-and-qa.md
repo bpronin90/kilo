@@ -544,7 +544,11 @@ retains non-test commands such as `npm run audit`.
   `user_health_profile`, including singleton conflict targets, clean-install
   restore, row-level LWW convergence, retry behavior, and post-contract-safe
   transport allowlists
-- verify the clean-device recovery path restores all eight cloud contracts
+- verify active-deload create/edit/clear convergence through `user_health_profile`
+  without timestamp ping-pong or sibling-field clobbering, and verify the
+  deterministic one-way `fatigue_checkins` projection covers create, update,
+  tombstone, retry, idempotency, bootstrap follow-up, and two-device convergence
+- verify the clean-device recovery path restores all nine cloud contracts
   without pushing local state, while every non-empty local-state family and a
   pending dirty queue suppress or reject that path
 

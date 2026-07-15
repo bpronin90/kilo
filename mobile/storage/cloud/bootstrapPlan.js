@@ -119,6 +119,69 @@ export const DELOAD_RECORD_JSON_FIELDS = Object.freeze([
   'session_count',
 ]);
 
+// ── fatigue-checkin projection (issue #498) ─────────────────────────────────
+//
+// kilo.fatigue_checkins is a DERIVED, queryable projection of the canonical
+// per-note session_checkins. It is never a second source of truth: the sync
+// path builds these rows from the converged workout-note state and pushes them,
+// and a pulled fatigue row is never written back into a note. Defined here so
+// the derivation and its allowlist live with the other shared upload builders,
+// and can be unit-tested as a pure function.
+//
+// A session check-in on a note holds: responded_at, status, reasons, note,
+// exercises_skipped, volume_decline_pct, flagged, detectors. `status` and
+// `reasons` become their own columns; the remaining fields are carried, EXPLICITLY
+// allowlisted, in source_json. No wildcard object copy — an unknown key added to a
+// check-in must not silently reach the cloud.
+export const FATIGUE_CHECKIN_SOURCE_FIELDS = Object.freeze([
+  'responded_at',
+  'note',
+  'exercises_skipped',
+  'volume_decline_pct',
+  'flagged',
+  'detectors',
+]);
+
+// Stable, deterministic id for a derived fatigue row: workout note id + session
+// index. Identical on every device (the note id and session index are canonical),
+// so the id-keyed LWW merge resolves the same logical row everywhere, and repeated
+// sync passes upsert the same row instead of creating duplicates.
+export function fatigueCheckinId(workoutNoteId, sessionIndex) {
+  return `fc_${workoutNoteId}_${sessionIndex}`;
+}
+
+// Project converged workout notes onto derived fatigue_checkins rows. Pure and
+// deterministic: same notes in, same rows out, on every device. Tombstoned notes
+// and unanswered check-ins produce no row, so a removed check-in or a deleted note
+// simply drops out of the projection (the sync diff then tombstones the cloud row).
+// Returns id + payload only; sync metadata is stamped by the sync engine.
+export function deriveFatigueCheckinRows(notes) {
+  const rows = [];
+  for (const note of notes || []) {
+    if (!note || note.id == null || note.deleted_at) continue;
+    const checkins = note.session_checkins;
+    if (!checkins || typeof checkins !== 'object') continue;
+    for (const [key, ci] of Object.entries(checkins)) {
+      if (!ci || !ci.responded_at) continue;
+      const idx = Number(key);
+      if (!Number.isInteger(idx) || idx < 0) continue;
+      const source = {};
+      for (const field of FATIGUE_CHECKIN_SOURCE_FIELDS) {
+        if (ci[field] !== undefined) source[field] = ci[field];
+      }
+      rows.push({
+        id: fatigueCheckinId(note.id, idx),
+        workout_note_id: note.id,
+        session_date: ci.responded_at.slice(0, 10),
+        status: ci.status ?? null,
+        reasons: ci.reasons ?? [],
+        source_json: Object.keys(source).length ? source : null,
+      });
+    }
+  }
+  return rows;
+}
+
 // ── payload builders (pure) ─────────────────────────────────────────────────
 
 // Account settings only. The six health values this row used to carry moved to

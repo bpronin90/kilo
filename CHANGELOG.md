@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.96.0 - 2026-07-14
+
+- Issue #498: Added deterministic ongoing sync for the queryable
+  `fatigue_checkins` projection sourced from canonical workout-note check-ins,
+  including update/tombstone/retry/idempotency coverage, and synchronized the
+  active generated deload through the consent-gated health profile so edits and
+  clears converge across devices without timestamp ping-pong.
+
 ## 0.95.1 - 2026-07-14
 
 - Issue #499: Restored the safe cloud-to-local path for signed-in accounts on

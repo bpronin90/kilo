@@ -29,6 +29,24 @@ export async function clearDeloadNote() {
   await AsyncStorage.removeItem(WORKOUT_DELOAD_NOTE_KEY);
 }
 
+// Apply an active-deload note pulled from cloud sync (issue #498).
+//
+// Unlike saveDeloadNote, this does NOT re-stamp saved_at/updated_at with `now()`:
+// it writes the winning row's own timestamps verbatim. That is what keeps
+// cross-device sync from ping-ponging — if applying a pulled winner minted a fresh
+// updated_at, the next diff would see a "change", push it back, and the two devices
+// would rewrite the row forever. The health-value timestamps here are content, not
+// sync metadata; the sync engine stamps its own updated_at separately.
+export async function applyDeloadNoteFromSync({ raw_text, saved_at, updated_at }) {
+  const note = {
+    raw_text,
+    saved_at: saved_at ?? null,
+    updated_at: updated_at ?? null,
+  };
+  await AsyncStorage.setItem(WORKOUT_DELOAD_NOTE_KEY, JSON.stringify(note));
+  return note;
+}
+
 // ── deload history ─────────────────────────────────────────────────────────────
 
 export async function loadDeloadHistory() {

@@ -61,11 +61,10 @@ const UPSERT_COLUMNS = Object.freeze({
   // id `self` so the id-keyed merge works, and buildUpsertRow drops it right
   // back out here so it is never sent to a column that does not exist.
   //
-  // `user_profile.current_deload_note_*` is also deliberately absent: those
-  // columns are written by bootstrap only. Round-tripping them through ongoing
-  // sync needs `deloadStorage.saveDeloadNote`, which re-stamps `updated_at` on
-  // every write and would ping-pong forever. A partial upsert leaves the columns
-  // untouched on the UPDATE path, so bootstrap's values survive.
+  // `user_profile.current_deload_note_*` is deliberately absent from the
+  // user_profile whitelist: those columns are health data and moved to
+  // user_health_profile in #487, where the active deload now syncs (see below).
+  // On the mixed user_profile row they stay bootstrap-only.
   //
   // The device-local demographic fields (date_of_birth, sex, height_cm,
   // activity_level) are NOT here and must not be added: cloud sync for them is
@@ -84,10 +83,20 @@ const UPSERT_COLUMNS = Object.freeze({
   ]),
   // The consent-gated health singleton (#487). Same singleton shape as
   // user_profile: keys on user_id, carries no `id` column.
+  //
+  // The three current_deload_note_* columns (issue #498) carry the active,
+  // in-progress generated deload so it converges across devices. They are safe to
+  // round-trip here — unlike the abandoned user_profile path — because
+  // syncAdapter.applyUserHealthProfile writes the pulled winner's timestamps
+  // VERBATIM via deloadStorage.applyDeloadNoteFromSync instead of re-stamping
+  // through saveDeloadNote, so there is no updated_at ping-pong.
   user_health_profile: Object.freeze([
     'current_workout_note_id',
     'fatigue_multiplier',
     'tracked_lifts',
+    'current_deload_note_raw_text',
+    'current_deload_note_saved_at',
+    'current_deload_note_updated_at',
     'deleted_at',
   ]),
   feature_toggles: Object.freeze([
@@ -112,6 +121,20 @@ const UPSERT_COLUMNS = Object.freeze({
     'raw_text',
     'record_json',
     'saved_at',
+    'deleted_at',
+  ]),
+  // Derived fatigue projection (issue #498). A COLLECTION keyed on (user_id, id):
+  // the id is the stable fatigueCheckinId, so it is whitelisted and sent. The
+  // projection is one-directional — the client only ever pushes/tombstones these
+  // rows; a pulled row is never written back into a note's canonical
+  // session_checkins.
+  fatigue_checkins: Object.freeze([
+    'id',
+    'workout_note_id',
+    'session_date',
+    'status',
+    'reasons',
+    'source_json',
     'deleted_at',
   ]),
 });

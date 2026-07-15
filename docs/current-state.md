@@ -985,10 +985,14 @@ entries, workout notes, and archived goals to the allowlisted user profile and
 current-routine state, feature toggles, active weight goal, and deload history,
 and issue #487 moves the three ongoing health-profile values
 (`current_workout_note_id`, `fatigue_multiplier`, and `tracked_lifts`) out of
-the mixed `user_profile` row into the consent-gated `user_health_profile`, so
-all eight cloud tables push post-bootstrap changes and restore onto a clean
-install without routing health values through the ordinary account-settings
-row. Pending local changes are submitted before conflict resolution and
+the mixed `user_profile` row into the consent-gated `user_health_profile`.
+Issue #498 extends that health projection with the active generated deload and
+maintains `fatigue_checkins` as a deterministic, one-way projection of canonical
+`workout_notes.session_checkins`, so active deload edits/clears converge across
+devices and queryable fatigue rows stay synchronized without becoming a second
+source of truth. All nine cloud tables push post-bootstrap changes and restore
+onto a clean install without routing health values through the ordinary
+account-settings row. Pending local changes are submitted before conflict resolution and
 receive server-authored timestamps on arrival, avoiding device-clock-skew data
 loss; exact timestamp ties converge on the shared server row, while local-only
 ties retain the stable per-install `client_id` rule. Snapshot-based dirty
