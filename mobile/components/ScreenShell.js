@@ -1,5 +1,6 @@
 import React, { useContext, createContext } from 'react';
-import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, SafeAreaView, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, useWindowDimensions } from 'react-native';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
 import { Button } from './UI';
 import pkg from '../package.json';
@@ -22,6 +23,7 @@ const DESKTOP_CONTENT_MAX_WIDTH = 640;
 export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
+  const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
   const { width: windowWidth } = useWindowDimensions();
   const isWideWeb = Platform.OS === 'web' && windowWidth > DESKTOP_CONTENT_MAX_WIDTH;
   const wideContentStyle = isWideWeb
@@ -46,7 +48,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
       <ScrollView
         ref={ref}
         style={styles.scroll}
-        contentContainerStyle={[styles.container, wideContentStyle]}
+        contentContainerStyle={[styles.container, { paddingBottom: 120 + bottomInset }, wideContentStyle]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -118,6 +120,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   scroll: {
+    flex: 1,
+  },
+  scrollSafeArea: {
     flex: 1,
   },
   container: {

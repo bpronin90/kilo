@@ -716,11 +716,13 @@ before persistence, and the native Log flow now saves through the current item
 in a local multi-note workout store instead of requiring a structured
 title-and-detail workout entry form. Saved native weight entries, workout note
 items, and the selected current workout all reload across app restarts through
-the native hook/storage layer. The native app shell now owns the stable
-top/bottom safe-area boundaries in `mobile/App.js`, with an Android-aware top
-cap for the status bar/notch and an absolute bottom safe-area wrapper for the
-tab bar, while `ScreenShell` standardizes the in-screen content padding and
-header layout used across Home, Log, Weight, Analytics, and More/Help. Its
+the native hook/storage layer. The native app shell now provides runtime
+safe-area metrics in `mobile/App.js`, retains its Android-aware top cap for the
+status bar/notch, and positions the absolute tab bar above the current bottom
+system-navigation inset. `ScreenShell` adds that same bottom inset once to its
+standard 120px tab-bar clearance while preserving the shared in-screen content
+padding and header layout used across Home, Log, Weight, Analytics, and
+More/Help. Its
 no-title header state now uses a plain text `Kilo` title plus a quiet
 `vX.Y.Z` version label instead of the heavier logo/wordmark-and-badge
 treatment. The

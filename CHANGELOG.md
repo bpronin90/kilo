@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.97.6 - 2026-07-15
+
+- Issue #484: Kept the mobile bottom tab bar and its tap targets above runtime
+  system-navigation insets, preserved phone spacing, and extended scroll
+  clearance with zero/non-zero safe-area regression coverage.
+
 ## 0.97.5 - 2026-07-15
 
 - Issue #501: Fixed the foreign-owner `Upload It Into My Account` path so

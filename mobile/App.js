@@ -8,6 +8,7 @@ import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
 import { MoreScreen } from './screens/MoreScreen';
@@ -22,6 +23,10 @@ import { makeWeightEntry } from './lib/data';
 import { buildCloudExport, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
+const ZERO_SAFE_AREA_METRICS = {
+  frame: { x: 0, y: 0, width: 0, height: 0 },
+  insets: { top: 0, right: 0, bottom: 0, left: 0 },
+};
 
 // Exported for testing. Encapsulates the ok/error envelope BackupScreen expects
 // so the failure path can be exercised without rendering the full App component.
@@ -364,6 +369,7 @@ export default function App() {
   };
 
   return (
+    <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         <SafeAreaView style={styles.topSafeArea} />
@@ -401,14 +407,12 @@ export default function App() {
           )}
           <View style={styles.content}>{renderContent()}</View>
         </KeyboardAvoidingView>
-        <SafeAreaView style={styles.tabBarSafeArea} pointerEvents="box-none">
-          <TabBar
-            tabs={TABS}
-            activeTab={activeTab}
-            onTabPress={handleTabPress}
-            addScrollListener={addScrollListener}
-          />
-        </SafeAreaView>
+        <TabBar
+          tabs={TABS}
+          activeTab={activeTab}
+          onTabPress={handleTabPress}
+          addScrollListener={addScrollListener}
+        />
         {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
           <View style={styles.ownershipOverlay} testID="ownership-prompt">
             <View style={styles.ownershipCard}>
@@ -481,6 +485,7 @@ export default function App() {
         ) : null}
       </View>
     </ScrollContext.Provider>
+    </SafeAreaProvider>
   );
 }
 
