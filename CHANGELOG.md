@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.95.1 - 2026-07-14
+
+- Issue #499: Restored the safe cloud-to-local path for signed-in accounts on
+  truly empty devices. The recovery prompt can now download account data
+  without uploading local state, rechecks emptiness before starting, and no
+  longer reports a local-adapter no-op as a completed sync.
+
 ## 0.95.0 - 2026-07-14
 
 - Issue #487: Added material-versioned explicit consent for cloud health data,

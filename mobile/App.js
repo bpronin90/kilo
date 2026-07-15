@@ -94,7 +94,9 @@ export default function App() {
   const auth = useAuthSession();
   const {
     ownershipPrompt,
+    canRestore,
     confirmOwnershipUpload,
+    downloadAccountData,
     startFreshOnDevice,
     dismissOwnershipPrompt,
   } = useAutoSync(auth, {
@@ -402,14 +404,29 @@ export default function App() {
                   </Text>
                   <Text style={styles.ownershipBody}>
                     This is your first sign-in on this device. Kilo can upload
-                    the training history saved here into your account so it
-                    stays in sync across your devices.
+                    the training history saved here into your account
+                    {canRestore
+                      ? ', or download the data already in your account onto this device.'
+                      : ' so it stays in sync across your devices.'}
                   </Text>
                   <Button
                     title="Upload My History"
                     loadingTitle="Working…"
                     onPress={() => confirmOwnershipUpload()}
                   />
+                  {canRestore ? (
+                    <>
+                      <Button
+                        title="Download My Account's Data"
+                        loadingTitle="Working…"
+                        onPress={() => downloadAccountData()}
+                      />
+                      <Text style={styles.ownershipHint}>
+                        This device is empty. Pull the data already in your
+                        account down onto it — nothing is uploaded.
+                      </Text>
+                    </>
+                  ) : null}
                   <Button title="Not Now" onPress={dismissOwnershipPrompt} />
                 </>
               ) : (

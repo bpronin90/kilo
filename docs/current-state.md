@@ -1010,7 +1010,14 @@ confirmation; history owned by another or unknown account is never uploaded
 automatically and instead offers an explicit start-fresh or deliberate-upload
 choice. Existing single-account installs migrate from the legacy bootstrap
 marker without a prompt or re-upload, and failed ownership writes remain local
-and retryable. Manual Sync Now remains available after ownership is resolved.
+and retryable. Issue #499 adds the complementary clean-device restore path:
+when every synced and device-local state family is empty and no dirty sync work
+is queued, an unclaimed device can explicitly download the signed-in account's
+cloud data. The action rechecks that invariant, claims the device for the
+account, activates cloud mode, and performs a real pull without pushing local
+state. Non-empty devices continue to require the upload/start-fresh ownership
+flow. Manual Sync Now remains available after ownership is resolved, and local
+mode can no longer report its no-op adapter as a completed cloud sync.
 The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a

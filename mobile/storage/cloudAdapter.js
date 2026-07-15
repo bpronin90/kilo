@@ -19,7 +19,7 @@ import {
 export { CloudNotImplementedError } from './cloud/errors';
 export { BootstrapError } from './cloud/errors';
 export { synthesizeSessionsNote, buildBootstrapPlan } from './cloud/bootstrapPlan';
-export { bootstrapFromLocal } from './cloud/bootstrap';
+export { bootstrapFromLocal, isLocalDataEmpty } from './cloud/bootstrap';
 export { setCloudTransport } from './cloud/transport';
 export { setRecomputeDerived } from './cloud/transport';
 export { sync } from './cloud/syncAdapter';
