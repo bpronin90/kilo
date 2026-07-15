@@ -1006,8 +1006,12 @@ receive server-authored timestamps on arrival, avoiding device-clock-skew data
 loss; exact timestamp ties converge on the shared server row, while local-only
 ties retain the stable per-install `client_id` rule. Snapshot-based dirty
 detection, idempotent passes, and tombstones prevent repeated writes,
-duplicates, and deleted-record resurrection. The Task 12 (#321) recovery UX
-now surfaces this, and
+duplicates, and deleted-record resurrection. Ownership-confirmation uploads now
+preserve each workout note's tombstone and legacy provenance, and ongoing sync
+repairs provenance-stripped `wn_legacy_` rows only when a real non-legacy note
+coexists, preventing the phantom `Routine 1` regression without deleting
+legitimate legacy-only or user-authored notes (#501). The Task 12 (#321)
+recovery UX now surfaces this, and
 issue #360 replaces its implementation jargon with a user-facing cloud model:
 the signed-in Account screen offers Upload Local History for the one-time local
 upload and Sync Now for bidirectional reconciliation, with descriptions and
