@@ -121,6 +121,21 @@ export default function App() {
     auth.handleAuthCallbackUrl(href).catch(() => {});
   }, [auth.configured]);
 
+  // Password recovery (#497): a recovery link can be opened while the user is
+  // on any tab (or the app is cold-started straight into one). When the shell
+  // detects a recovery session or a failed recovery link — via the native
+  // deep-link listener or the web callback effect above — switch to the More
+  // tab so its Account screen can present the set-new-password surface, rather
+  // than leaving the user on an unrelated tab with nothing happening. Keyed on
+  // the recovery signals only, so it fires once when recovery begins and does
+  // not otherwise fight the user's tab navigation. MoreScreen makes the
+  // matching switch to its Account sub-view.
+  React.useEffect(() => {
+    if (auth.passwordRecovery || auth.recoveryError) {
+      setActiveTab('More');
+    }
+  }, [auth.passwordRecovery, auth.recoveryError]);
+
   const [weightValue, setWeightValue] = useState('');
   const [weightNote, setWeightNote] = useState('');
   const [workoutNoteText, setWorkoutNoteText] = useState('');

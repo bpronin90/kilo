@@ -1,5 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { Linking } from 'react-native';
 
 // --- Supabase client mock -------------------------------------------------
 // A controllable fake of the supabase-js auth surface so we can assert the hook
@@ -18,7 +19,32 @@ jest.mock('@supabase/supabase-js', () => ({
 process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
 process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
-const { useAuthSession } = require('../hooks/useAuthSession');
+const {
+  useAuthSession,
+  KILO_AUTH_REDIRECT,
+  RECOVERY_PENDING_KEY,
+  RECOVERY_PENDING_TTL_MS,
+} = require('../hooks/useAuthSession');
+
+// Fake localStorage for the web recovery-discriminator tests (#497). The hook
+// reads window.localStorage via getRecoveryStorage(); native has none, so these
+// helpers install/remove a controllable store on global.window per test and are
+// only used by the web-path suites below.
+function installFakeLocalStorage(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    clear: () => store.clear(),
+  };
+  global.window = { ...(global.window || {}), localStorage };
+  return { store, localStorage };
+}
+
+function removeFakeLocalStorage() {
+  delete global.window;
+}
 const {
   getSupabaseClient,
   resetSupabaseClientForTests,
@@ -41,6 +67,7 @@ function makeMockAuth(overrides = {}) {
     resetPasswordForEmail: jest.fn().mockResolvedValue({ error: null }),
     signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: 'https://oauth' }, error: null }),
     exchangeCodeForSession: jest.fn().mockResolvedValue({ data: { session: { user: { email: 'oauth@b.com' } } }, error: null }),
+    updateUser: jest.fn().mockResolvedValue({ data: { user: { email: 'a@b.com' } }, error: null }),
     _emit: (event, session) => authStateCb && authStateCb(event, session),
     ...overrides,
   };
@@ -479,5 +506,338 @@ describe('useAuthSession', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/did not complete/i);
     expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Password recovery (#497): the PASSWORD_RECOVERY auth-state event, the
+// set-new-password call, and clearing recovery state.
+// ---------------------------------------------------------------------------
+
+describe('password recovery', () => {
+  test('PASSWORD_RECOVERY auth-state event sets passwordRecovery and applies the session', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    expect(ref.current.passwordRecovery).toBe(false);
+
+    await act(async () => {
+      mockAuth._emit('PASSWORD_RECOVERY', { user: { email: 'recover@b.com' } });
+    });
+
+    expect(ref.current.passwordRecovery).toBe(true);
+    expect(ref.current.signedIn).toBe(true);
+    expect(ref.current.user.email).toBe('recover@b.com');
+  });
+
+  test('a normal SIGNED_IN event does not set passwordRecovery', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => {
+      mockAuth._emit('SIGNED_IN', { user: { email: 'a@b.com' } });
+    });
+
+    expect(ref.current.signedIn).toBe(true);
+    expect(ref.current.passwordRecovery).toBe(false);
+  });
+
+  test('updatePassword calls updateUser({ password }) and clears passwordRecovery on success', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    await act(async () => { mockAuth._emit('PASSWORD_RECOVERY', { user: { email: 'recover@b.com' } }); });
+    expect(ref.current.passwordRecovery).toBe(true);
+
+    let result;
+    await act(async () => { result = await ref.current.updatePassword('new-strong-pw'); });
+
+    expect(mockAuth.updateUser).toHaveBeenCalledWith({ password: 'new-strong-pw' });
+    expect(result.ok).toBe(true);
+    expect(ref.current.passwordRecovery).toBe(false);
+  });
+
+  test('updatePassword surfaces a readable error and leaves the recovery session active on failure', async () => {
+    mockAuth.updateUser.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'Password should be at least 6 characters.' },
+    });
+    const { ref } = renderAuthHook();
+    await flush();
+    await act(async () => { mockAuth._emit('PASSWORD_RECOVERY', { user: { email: 'recover@b.com' } }); });
+
+    let result;
+    await act(async () => { result = await ref.current.updatePassword('123'); });
+
+    expect(result).toEqual({ ok: false, error: 'Password should be at least 6 characters.' });
+    // Still in recovery — the user gets another chance rather than being
+    // silently bounced out of the set-password surface.
+    expect(ref.current.passwordRecovery).toBe(true);
+  });
+
+  test('clearPasswordRecovery resets both passwordRecovery and recoveryError', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    await act(async () => { mockAuth._emit('PASSWORD_RECOVERY', { user: { email: 'recover@b.com' } }); });
+    expect(ref.current.passwordRecovery).toBe(true);
+
+    act(() => { ref.current.clearPasswordRecovery(); });
+
+    expect(ref.current.passwordRecovery).toBe(false);
+    expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('resetPasswordForEmail sends the BASE redirect URL unchanged (no query marker)', async () => {
+    const store = installFakeLocalStorage().store;
+    try {
+      const { ref } = renderAuthHook();
+      await flush();
+
+      await act(async () => { await ref.current.resetPasswordForEmail('a@b.com', { redirectTo: KILO_AUTH_REDIRECT }); });
+      // The exact allowlisted base URL, with nothing appended.
+      expect(mockAuth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.com', { redirectTo: KILO_AUTH_REDIRECT });
+
+      await act(async () => { await ref.current.resetPasswordForEmail('a@b.com', { redirectTo: 'https://kilo.example.com' }); });
+      expect(mockAuth.resetPasswordForEmail).toHaveBeenLastCalledWith('a@b.com', { redirectTo: 'https://kilo.example.com' });
+
+      // A successful request records the short-lived web recovery-pending flag.
+      expect(store.has(RECOVERY_PENDING_KEY)).toBe(true);
+    } finally {
+      removeFakeLocalStorage();
+    }
+  });
+
+  test('resetPasswordForEmail without a redirectTo passes no options', async () => {
+    const { ref } = renderAuthHook();
+    await flush();
+    await act(async () => { await ref.current.resetPasswordForEmail('a@b.com'); });
+    expect(mockAuth.resetPasswordForEmail).toHaveBeenCalledWith('a@b.com', undefined);
+  });
+
+  test('a failed reset request does NOT set the recovery-pending flag', async () => {
+    const store = installFakeLocalStorage().store;
+    try {
+      mockAuth.resetPasswordForEmail.mockResolvedValueOnce({ error: { message: 'rate limited' } });
+      const { ref } = renderAuthHook();
+      await flush();
+      let result;
+      await act(async () => { result = await ref.current.resetPasswordForEmail('a@b.com', { redirectTo: KILO_AUTH_REDIRECT }); });
+      expect(result).toEqual({ ok: false, error: 'rate limited' });
+      expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
+    } finally {
+      removeFakeLocalStorage();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Web recovery callback failures (#497): App.js's web mount effect calls
+// auth.handleAuthCallbackUrl(window.location.href) and ignores the returned
+// value, so a failed web recovery link (expired/already-used) has to persist
+// its own error into recoveryError. The redirect URL is a plain allowlisted
+// base URL (no query marker), so the recovery context is carried by a
+// short-lived localStorage "pending" flag set when the reset was requested —
+// NOT by anything in the callback URL. These tests exercise that exact caller
+// path (handleAuthCallbackUrl directly) and confirm generic OAuth errors, which
+// set no pending flag, are never misfiled as recovery.
+// ---------------------------------------------------------------------------
+
+describe('web recovery callback failures', () => {
+  afterEach(() => {
+    removeFakeLocalStorage();
+  });
+
+  test('a recovery error callback with the pending flag set persists recoveryError (full request→callback path)', async () => {
+    installFakeLocalStorage();
+    const { ref } = renderAuthHook();
+    await flush();
+
+    // Request a reset first (this sets the pending flag), then the returning
+    // expired-link callback is attributed to recovery.
+    await act(async () => { await ref.current.resetPasswordForEmail('a@b.com', { redirectTo: 'https://kilo.example.com' }); });
+
+    let result;
+    await act(async () => {
+      result = await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/?error=access_denied&error_description=Email+link+is+invalid+or+has+expired',
+      );
+    });
+
+    expect(result.ok).toBe(false);
+    expect(ref.current.recoveryError).toBe('Email link is invalid or has expired');
+    expect(ref.current.passwordRecovery).toBe(false);
+  });
+
+  test('an error in the hash fragment is also handled when a recovery is pending', async () => {
+    installFakeLocalStorage({ [RECOVERY_PENDING_KEY]: String(Date.now()) });
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => {
+      await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/#error=access_denied&error_description=Email+link+is+invalid+or+has+expired',
+      );
+    });
+
+    expect(ref.current.recoveryError).toBe('Email link is invalid or has expired');
+  });
+
+  test('a generic OAuth error callback with NO pending flag does NOT set recoveryError', async () => {
+    installFakeLocalStorage(); // no pending flag seeded
+    const { ref } = renderAuthHook();
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/?error=access_denied&error_description=User+cancelled+login',
+      );
+    });
+
+    // Still surfaced to the direct caller...
+    expect(result).toEqual({ ok: false, error: 'User cancelled login' });
+    // ...but not misfiled onto the password-recovery surface.
+    expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('an expired pending flag (older than the TTL) does NOT classify a later error as recovery', async () => {
+    installFakeLocalStorage({ [RECOVERY_PENDING_KEY]: String(Date.now() - RECOVERY_PENDING_TTL_MS - 1000) });
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => {
+      await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/?error=access_denied&error_description=Email+link+is+invalid+or+has+expired',
+      );
+    });
+
+    expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('consuming the pending flag clears it, so a second unrelated error is not misclassified', async () => {
+    const { store } = installFakeLocalStorage({ [RECOVERY_PENDING_KEY]: String(Date.now()) });
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => {
+      await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/?error=access_denied&error_description=Email+link+is+invalid+or+has+expired',
+      );
+    });
+    expect(ref.current.recoveryError).toBe('Email link is invalid or has expired');
+    expect(store.has(RECOVERY_PENDING_KEY)).toBe(false);
+
+    // Clear the surfaced error, then a second generic error must not re-classify.
+    act(() => { ref.current.clearPasswordRecovery(); });
+    await act(async () => {
+      await ref.current.handleAuthCallbackUrl(
+        'https://kilo.example.com/?error=access_denied&error_description=User+cancelled+login',
+      );
+    });
+    expect(ref.current.recoveryError).toBe('');
+  });
+
+  test('a recovery success callback does not set recoveryError from the code-exchange race', async () => {
+    // On web, detectSessionInUrl auto-exchanges the code before App.js's
+    // effect runs, so handleAuthCallbackUrl's own exchange can fail with an
+    // already-used code even though recovery SUCCEEDED. That failure has no
+    // error= param (it is a code= URL), so it must not surface as a recovery
+    // error — the PASSWORD_RECOVERY event is what conveys success — even with a
+    // pending flag set.
+    installFakeLocalStorage({ [RECOVERY_PENDING_KEY]: String(Date.now()) });
+    mockAuth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'invalid request: both auth code and code verifier should be non-empty' },
+    });
+    const { ref } = renderAuthHook();
+    await flush();
+
+    await act(async () => {
+      await ref.current.handleAuthCallbackUrl('https://kilo.example.com/?code=already-consumed');
+    });
+
+    expect(ref.current.recoveryError).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Native recovery deep-link handling (#497): resetPasswordForEmail's
+// redirectTo is a kilo:// deep link (see AccountScreen), delivered to the app
+// via Linking rather than an in-app WebBrowser session (unlike native GitHub
+// sign-in). Both the cold-start (getInitialURL) and warm-start
+// (addEventListener) delivery paths must exchange the code the same way
+// handleAuthCallbackUrl already does for the OAuth callback.
+// ---------------------------------------------------------------------------
+
+describe('native recovery deep-link handling', () => {
+  beforeEach(() => {
+    Linking.getInitialURL.mockReset().mockResolvedValue(undefined);
+    Linking.addEventListener.mockReset().mockReturnValue({ remove: jest.fn() });
+  });
+
+  test('cold start: a pending kilo:// recovery URL from getInitialURL is exchanged for a session', async () => {
+    Linking.getInitialURL.mockResolvedValue(`${KILO_AUTH_REDIRECT}?code=recovery-code`);
+
+    const { ref } = renderAuthHook();
+    await flush();
+    await flush();
+
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('recovery-code');
+    expect(ref.current.signedIn).toBe(true);
+  });
+
+  test('warm start: a kilo:// url delivered while the app is running is exchanged for a session', async () => {
+    let urlHandler;
+    Linking.addEventListener.mockImplementation((_event, cb) => {
+      urlHandler = cb;
+      return { remove: jest.fn() };
+    });
+
+    const { ref } = renderAuthHook();
+    await flush();
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+
+    await act(async () => { urlHandler({ url: `${KILO_AUTH_REDIRECT}?code=warm-code` }); });
+    await flush();
+
+    expect(mockAuth.exchangeCodeForSession).toHaveBeenCalledWith('warm-code');
+    expect(ref.current.signedIn).toBe(true);
+  });
+
+  test('an expired or already-used recovery link surfaces a readable recoveryError instead of failing silently', async () => {
+    Linking.getInitialURL.mockResolvedValue(
+      `${KILO_AUTH_REDIRECT}?error=access_denied&error_description=Email+link+is+invalid+or+has+expired`,
+    );
+
+    const { ref } = renderAuthHook();
+    await flush();
+    await flush();
+
+    expect(ref.current.recoveryError).toBe('Email link is invalid or has expired');
+    expect(ref.current.passwordRecovery).toBe(false);
+    expect(ref.current.signedIn).toBe(false);
+  });
+
+  test('a code-exchange failure (e.g. a reused code) surfaces a readable recoveryError', async () => {
+    mockAuth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'invalid request: both auth code and code verifier should be non-empty' },
+    });
+    Linking.getInitialURL.mockResolvedValue(`${KILO_AUTH_REDIRECT}?code=used-code`);
+
+    const { ref } = renderAuthHook();
+    await flush();
+    await flush();
+
+    expect(ref.current.recoveryError).toBe('invalid request: both auth code and code verifier should be non-empty');
+  });
+
+  test('urls outside the kilo auth-callback scheme are ignored', async () => {
+    Linking.getInitialURL.mockResolvedValue('kilo://some-other-deep-link?x=1');
+
+    const { ref } = renderAuthHook();
+    await flush();
+    await flush();
+
+    expect(mockAuth.exchangeCodeForSession).not.toHaveBeenCalled();
+    expect(ref.current.recoveryError).toBe('');
   });
 });

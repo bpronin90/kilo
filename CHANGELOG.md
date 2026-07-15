@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.97.0 - 2026-07-14
+
+- Issue #497: Completed password recovery end to end with explicit allowlisted
+  redirects, native cold/warm callback handling, automatic navigation to a
+  dedicated set-new-password surface, readable expired/used/weak-password
+  errors, and regression coverage that preserves existing email and GitHub auth.
+
 ## 0.96.0 - 2026-07-14
 
 - Issue #498: Added deterministic ongoing sync for the queryable

@@ -165,6 +165,11 @@ Current limitation:
   OAuth implementation adds `expo-web-browser` and a native URL scheme, the
   first release containing it requires a fresh APK/AAB rather than OTA-only
   delivery.
+- Password recovery has hook and rendered regression coverage for explicit base
+  redirects, `PASSWORD_RECOVERY` sessions, native cold/warm callbacks, web
+  pending/error discrimination, automatic More > Account routing, password
+  update/validation failures, and unchanged sign-in/signup/GitHub actions. A
+  real-device email-link round trip remains a release-validation requirement.
 - No automated native test yet verifies the rendered Home `Weekly Summary`
   surface end to end from a saved workout note. The current suite covers the
   underlying helper behavior and persisted field shaping, but not the rendered
@@ -579,6 +584,9 @@ retains non-test commands such as `npm run audit`.
 - verifies Account consumes an injected app-shell auth object, preserving the
   cold-start loading gate while rendering a resolved signed-in session
   immediately without a signed-out form flash
+- verifies reset requests use explicit native/web base redirects, recovery state
+  opens the set-new-password surface through More > Account, expired links show
+  readable errors, and matching passwords reach `updateUser({ password })`
 - verifies `serverExport()` calls `/functions/v1/account-export` with the
   current session JWT and returns the JSON payload on success
 - verifies export and deletion function errors are surfaced without clearing
