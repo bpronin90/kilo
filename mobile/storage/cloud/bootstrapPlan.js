@@ -271,7 +271,22 @@ function buildWorkoutNoteRows(snapshot, userId) {
       exercise_classifications: n.exercise_classifications ?? null,
       session_checkins: n.session_checkins ?? null,
       is_current: currentId != null && n.id === currentId,
-      source_snapshot: null,
+      // Carry each notebook entry's own provenance and tombstone state through
+      // the upload instead of forcing them to a clean live row (issue #501).
+      // The ownership-confirmation "Upload It Into My Account" path re-uploads
+      // the whole local notebook through bootstrap. Two prior defaults here made
+      // that path resurrect a legacy phantom Routine 1:
+      //   * source_snapshot: null stripped the async_storage_key='kilo_workout_note'
+      //     provenance, so the pulled-back row no longer matched the sync path's
+      //     provenance-keyed phantom cleanup and stayed user-visible.
+      //   * dropping deleted_at revived a locally-tombstoned phantom (already
+      //     cleaned by #458) as a fresh LIVE cloud row via the unconditional
+      //     bootstrap upsert, which then won LWW over the older local tombstone.
+      // Preserving both keeps a tombstoned note dead and keeps a live legacy
+      // row's provenance intact so the sync guards can retombstone it. A
+      // legitimate user-authored note carries neither field, so it is unaffected.
+      source_snapshot: n.source_snapshot ?? null,
+      deleted_at: n.deleted_at ?? null,
     });
   }
 

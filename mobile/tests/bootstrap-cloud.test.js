@@ -26,6 +26,7 @@ import {
   enqueueDirty,
   stampWrite,
   getClientId,
+  isTombstone,
   SYNC_TABLES,
   resetClientIdCacheForTests,
   resetStampClockForTests,
@@ -669,6 +670,211 @@ describe('phantom Routine 1 prevention (issue #443)', () => {
     expect(legacyRow.saved_at).toBeNull();
     // updated_at falls back to bootstrap time when absent.
     expect(legacyRow.updated_at).toBeTruthy();
+  });
+});
+
+describe('phantom Routine 1 ownership-upload regression (issue #501)', () => {
+  const PHANTOM_ID = `wn_legacy_${USER_ID}`;
+
+  // buildBootstrapPlan is the pure boundary the ownership "Upload It Into My
+  // Account" path pushes through. These assert the uploaded workout_notes row
+  // shape directly, independent of the sync path.
+
+  it('does NOT resurrect a locally-tombstoned legacy phantom on upload', async () => {
+    const snapshot = {
+      workoutNotes: [
+        {
+          id: 'wn_real',
+          title: 'Summer 2026 Routine',
+          raw_text: '-Bench\n- 185 5,5,5',
+          updated_at: '2026-06-15T00:00:00.000Z',
+        },
+        // A legacy phantom the #458 cleanup already tombstoned in the notebook.
+        {
+          id: PHANTOM_ID,
+          title: 'Routine 1',
+          raw_text: '-Squat\n- 225 5,5,5',
+          saved_at: '2026-05-01T00:00:00.000Z',
+          updated_at: '2026-05-03T00:00:00.000Z',
+          deleted_at: '2026-05-03T00:00:00.000Z',
+          source_snapshot: { async_storage_key: 'kilo_workout_note' },
+        },
+      ],
+      workoutNote: null,
+      workoutSessions: [],
+      currentWorkoutId: 'wn_real',
+    };
+
+    const plan = buildBootstrapPlan(snapshot, USER_ID);
+    const phantom = plan.workout_notes.find((n) => n.id === PHANTOM_ID);
+    expect(phantom).toBeTruthy();
+    // Stays a tombstone: not revived into a fresh live cloud row by the upsert.
+    expect(phantom.deleted_at).toBe('2026-05-03T00:00:00.000Z');
+    // Provenance preserved so the sync guard can still recognize it.
+    expect(phantom.source_snapshot).toEqual({ async_storage_key: 'kilo_workout_note' });
+  });
+
+  it('preserves legacy provenance when a LIVE legacy phantom is re-uploaded', async () => {
+    const snapshot = {
+      workoutNotes: [
+        { id: 'wn_real', title: 'Summer 2026 Routine', raw_text: '-Bench\n- 185 5', updated_at: '2026-06-15T00:00:00.000Z' },
+        {
+          id: PHANTOM_ID,
+          title: 'Routine 1',
+          raw_text: '-Squat\n- 225 5,5,5',
+          updated_at: '2026-05-02T00:00:00.000Z',
+          source_snapshot: { async_storage_key: 'kilo_workout_note' },
+        },
+      ],
+      workoutNote: null,
+      workoutSessions: [],
+      currentWorkoutId: 'wn_real',
+    };
+
+    const plan = buildBootstrapPlan(snapshot, USER_ID);
+    const phantom = plan.workout_notes.find((n) => n.id === PHANTOM_ID);
+    // source_snapshot must NOT be nulled; deleted_at stays null (still live).
+    expect(phantom.source_snapshot).toEqual({ async_storage_key: 'kilo_workout_note' });
+    expect(phantom.deleted_at).toBeNull();
+  });
+
+  it('leaves a legitimate user-authored note untouched (no provenance, live)', async () => {
+    const snapshot = {
+      workoutNotes: [
+        {
+          id: 'wn_2026-06-01_123',
+          title: 'Routine 1',
+          raw_text: '-Press\n- 95 5,5,5',
+          updated_at: '2026-06-15T00:00:00.000Z',
+        },
+      ],
+      workoutNote: null,
+      workoutSessions: [],
+      currentWorkoutId: 'wn_2026-06-01_123',
+    };
+
+    const plan = buildBootstrapPlan(snapshot, USER_ID);
+    const note = plan.workout_notes.find((n) => n.id === 'wn_2026-06-01_123');
+    expect(note.source_snapshot).toBeNull();
+    expect(note.deleted_at).toBeNull();
+  });
+
+  // End-to-end: real bootstrap upsert + real sync + repeated launch, sharing one
+  // in-memory store, reproduces the full reported path and proves convergence.
+  describe('end-to-end upload → sync → restart', () => {
+    // A store both a Supabase-client-shaped facade (bootstrap) and a transport
+    // (sync) write into, so the phantom bootstrap produces is the one sync pulls.
+    // A server trigger stamps updated_at on every write (as Postgres does), while
+    // the client-supplied deleted_at survives verbatim.
+    function makeSharedCloud() {
+      const tables = {};
+      for (const table of Object.values(SYNC_TABLES)) tables[table] = new Map();
+      let lastMs = 0;
+      const serverNow = (table) => {
+        let maxMs = Math.max(lastMs, Date.now());
+        for (const row of tables[table].values()) {
+          const ms = Date.parse(row.updated_at || 0);
+          if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+        }
+        lastMs = maxMs + 1;
+        return new Date(lastMs).toISOString();
+      };
+      const applyUpsert = (table, rows) => {
+        for (const rec of rows) {
+          const { client_id: _c, ...row } = rec; // eslint-disable-line no-unused-vars
+          tables[table].set(row.id, { ...row, updated_at: serverNow(table) });
+        }
+      };
+      const transport = {
+        async pull(table, cursor) {
+          const rows = [...tables[table].values()];
+          const changed = cursor ? rows.filter((r) => (r.updated_at || '') >= cursor) : rows;
+          return changed
+            .sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''))
+            .map(({ client_id: _c, ...row }) => row); // eslint-disable-line no-unused-vars
+        },
+        async push(table, records) { applyUpsert(table, records); },
+      };
+      const client = {
+        schema() {
+          return {
+            from(table) {
+              return {
+                async upsert(rows) { applyUpsert(table, rows); return { data: rows, error: null }; },
+                select() {
+                  return { eq() { return { async maybeSingle() { return { data: null, error: null }; } }; } };
+                },
+              };
+            },
+          };
+        },
+      };
+      return { tables, transport, client, remoteRow: (t, id) => tables[t].get(id) };
+    }
+
+    beforeEach(() => {
+      resetClientIdCacheForTests();
+      resetStampClockForTests();
+      Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    });
+
+    afterEach(() => {
+      setCloudTransport(null);
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    });
+
+    it('does not surface a phantom Routine 1 after Upload It Into My Account + sync + restart', async () => {
+      // Local notebook (owned by the account): a real note plus a legacy phantom
+      // the prior #458 cleanup tombstoned locally.
+      await AsyncStorage.setItem(
+        'kilo_workout_notes',
+        JSON.stringify([
+          {
+            id: 'wn_real',
+            title: 'Summer 2026 Routine',
+            raw_text: '-Bench\n- 185 5,5,5',
+            saved_at: '2026-06-01T00:00:00.000Z',
+            updated_at: '2026-06-15T00:00:00.000Z',
+            isCurrent: true,
+          },
+          {
+            id: PHANTOM_ID,
+            title: 'Routine 1',
+            raw_text: '-Squat\n- 225 5,5,5',
+            saved_at: '2026-05-01T00:00:00.000Z',
+            updated_at: '2026-05-03T00:00:00.000Z',
+            deleted_at: '2026-05-03T00:00:00.000Z',
+            source_snapshot: { async_storage_key: 'kilo_workout_note' },
+          },
+        ])
+      );
+      await AsyncStorage.setItem('kilo_current_workout_id', JSON.stringify('wn_real'));
+
+      const shared = makeSharedCloud();
+      setCloudTransport(shared.transport);
+
+      // "Upload It Into My Account": bootstrap uploads the whole local notebook.
+      await bootstrapFromLocal(USER_ID, shared.client);
+      // Ongoing sync runs immediately after (confirmOwnershipUpload → runInitialSync).
+      await sync();
+
+      // The phantom must never be user-visible after the upload/sync path.
+      let notes = await Storage.loadWorkoutNotes();
+      const visible = notes.filter((n) => !n.deleted_at);
+      expect(visible.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+      expect(visible.find((n) => n.id === 'wn_real')).toBeTruthy();
+
+      // Cloud converged to a tombstone; the user's real note is live.
+      expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+      expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'wn_real'))).toBe(false);
+
+      // Restart: repeated sync stays idempotent — no phantom returns.
+      await sync();
+      await sync();
+      notes = await Storage.loadWorkoutNotes();
+      expect(notes.filter((n) => !n.deleted_at).find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+      expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+    });
   });
 });
 

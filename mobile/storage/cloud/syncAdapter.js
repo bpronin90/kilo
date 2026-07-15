@@ -31,16 +31,33 @@ import {
 } from './bootstrapPlan';
 import { getTransport, getRecomputeDerived } from './transport';
 
-// Returns true for a workout-note row created by the legacy-note bootstrap path
-// (buildBootstrapPlan's kilo_workout_note import when workoutNotes was empty).
-// Only those bootstrap-generated rows carry source_snapshot.async_storage_key;
-// user-created notes (including any the user names "Routine 1") never have it.
-function isLegacyPhantomNote(note) {
-  return (
-    !isTombstone(note) &&
+// Legacy-note bootstrap provenance. A row is legacy-provenance when EITHER:
+//   * it carries source_snapshot.async_storage_key === 'kilo_workout_note'
+//     (the marker buildBootstrapPlan stamps on the kilo_workout_note import), OR
+//   * its id is in the `wn_legacy_<userId>` namespace that ONLY bootstrap mints
+//     for that import (see bootstrapPlan.js). User-authored notes and the local
+//     `migrateToNotebook` entry use `wn_<date>_<ts>` ids, never this prefix.
+//
+// The id check exists because of issue #501: the ownership-confirmation upload
+// path could re-upload a legacy row through bootstrap with its source_snapshot
+// stripped to null, producing a live cloud row that the source_snapshot-only
+// check no longer recognized. The id namespace is the durable provenance signal
+// that survives that round trip, so a row already resurrected that way (including
+// one already sitting in an account from the buggy build) is still cleaned.
+function isLegacyProvenanceNote(note) {
+  if (
     note.source_snapshot != null &&
     note.source_snapshot.async_storage_key === 'kilo_workout_note'
-  );
+  ) {
+    return true;
+  }
+  return typeof note.id === 'string' && note.id.startsWith('wn_legacy_');
+}
+
+// Returns true for a LIVE legacy-provenance row. Both phantom guards gate on
+// hasNonPhantom, so a legacy-only user whose sole note is this row is preserved.
+function isLegacyPhantomNote(note) {
+  return !isTombstone(note) && isLegacyProvenanceNote(note);
 }
 
 async function clearTombstonedCurrentNote(tombstones) {

@@ -402,7 +402,13 @@ so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.
 Singleton tables use a synthetic local merge id that is removed before upsert,
-and tombstones remain in the sync contract so deletes do not resurrect.
+and tombstones remain in the sync contract so deletes do not resurrect. The
+ownership-confirmation bootstrap projection preserves workout-note
+`deleted_at` and `source_snapshot` fields. Workout-note reconciliation also
+recognizes the bootstrap-only `wn_legacy_` id namespace when legacy provenance
+was stripped by an older upload, but tombstones that row only when a live
+non-legacy note coexists; this keeps cleanup linear and preserves legacy-only
+and user-authored `Routine 1` notes (#501).
 
 Cloud health authorization is server-owned. Material-versioned grants and
 withdrawals are recorded in an immutable consent catalog/event ledger with a

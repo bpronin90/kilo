@@ -140,6 +140,10 @@ those issues fixed.
   value push the layout wider than the shell.
 - The desktop-web build caps content width (640px, centered) in `ScreenShell`;
   do not defeat that cap with fixed pixel widths on panels.
+- Native bottom navigation uses the runtime bottom safe-area inset without
+  device checks. Add that inset once to both the tab bar's 24px visual gap and
+  `ScreenShell`'s 120px content clearance; do not apply it as a second top
+  inset.
 
 ## 10. Anti-patterns (what caused the fixed problems)
 
