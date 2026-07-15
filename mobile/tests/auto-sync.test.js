@@ -32,7 +32,7 @@ import {
   purgeLocalData,
 } from '../storage/entries/localDataOwner';
 import * as KEYS from '../storage/entries/keys';
-import { cloudAdapter } from '../storage/cloudAdapter';
+import { cloudAdapter, bootstrapFromLocal } from '../storage/cloudAdapter';
 import * as Storage from '../storage/entries';
 import { useAutoSync, useSyncRecovery, useWeightEntries, useWorkoutNotes } from '../hooks/useEntries';
 import {
@@ -40,6 +40,7 @@ import {
   clearDirty,
   getDirtyRecords,
   enqueueDirty,
+  isTombstone,
   resetClientIdCacheForTests,
   resetStampClockForTests,
 } from '../storage/syncQueue';
@@ -626,6 +627,189 @@ describe('useAutoSync: foreign owner never auto-bootstraps', () => {
     expect(bootstrapSpy).not.toHaveBeenCalled();
     expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
     expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+  });
+});
+
+// ── Regression #501: full foreign-owner "Upload It Into My Account" lifecycle ────
+//
+// Drives the REAL ownership-resolution entrypoint (useAutoSync →
+// confirmOwnershipUpload), not bootstrap/sync called directly: foreign-owner
+// prompt → current-account upload confirmation (real bootstrapFromLocal against a
+// shared in-memory cloud) → real ongoing sync → a modeled process restart
+// (unmount + module sync-state reset + fresh hook mount re-running the sign-in
+// ownership check against persisted AsyncStorage) → prompt absent, ownership
+// decision persisted, and no phantom Routine 1 anywhere in the lifecycle.
+describe('foreign-owner upload lifecycle: no phantom Routine 1 (issue #501)', () => {
+  const PHANTOM_ID = `wn_legacy_${USER.id}`;
+
+  // One in-memory store that BOTH the bootstrap upsert path (Supabase-client
+  // facade) and the ongoing sync path (transport) write into, so the rows the
+  // ownership upload pushes are exactly the rows sync later pulls. A server
+  // trigger stamps updated_at on every write, as Postgres does; the
+  // client-supplied deleted_at survives verbatim.
+  function makeSharedCloud() {
+    const tables = {};
+    for (const table of Object.values(SYNC_TABLES)) tables[table] = new Map();
+    let lastMs = 0;
+    const serverNow = (table) => {
+      let maxMs = Math.max(lastMs, Date.now());
+      for (const row of tables[table].values()) {
+        const ms = Date.parse(row.updated_at || 0);
+        if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+      }
+      lastMs = maxMs + 1;
+      return new Date(lastMs).toISOString();
+    };
+    const applyUpsert = (table, rows) => {
+      for (const rec of rows) {
+        const { client_id: _c, ...row } = rec; // eslint-disable-line no-unused-vars
+        tables[table].set(row.id, { ...row, updated_at: serverNow(table) });
+      }
+    };
+    const transport = {
+      async pull(table, cursor) {
+        const rows = [...tables[table].values()];
+        const changed = cursor ? rows.filter((r) => (r.updated_at || '') >= cursor) : rows;
+        return changed
+          .sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''))
+          .map(({ client_id: _c, ...row }) => row); // eslint-disable-line no-unused-vars
+      },
+      async push(table, records) { applyUpsert(table, records); },
+    };
+    const client = {
+      schema() {
+        return {
+          from(table) {
+            return {
+              async upsert(rows) { applyUpsert(table, rows); return { data: rows, error: null }; },
+              select() {
+                return { eq() { return { async maybeSingle() { return { data: null, error: null }; } }; } };
+              },
+            };
+          },
+        };
+      },
+    };
+    return { transport, client, remoteRow: (t, id) => tables[t].get(id) };
+  }
+
+  async function visibleNotes() {
+    const notes = await Storage.loadWorkoutNotes();
+    return notes.filter((n) => !n.deleted_at);
+  }
+
+  test('foreign prompt → Upload It Into My Account → sync → restart: owner persisted, prompt absent, phantom never visible', async () => {
+    // Device state as reported on 0.95.0: the phone history belongs to the
+    // signed-in account but the owner marker says otherwise, and the notebook
+    // holds the user's real routine plus a legacy phantom the #458 cleanup
+    // already tombstoned.
+    await AsyncStorage.setItem(
+      KEYS.WORKOUT_NOTES_KEY,
+      JSON.stringify([
+        {
+          id: 'wn_real',
+          title: 'Summer 2026 Routine',
+          raw_text: '-Bench\n- 185 5,5,5',
+          saved_at: '2026-06-01T00:00:00.000Z',
+          updated_at: '2026-06-15T00:00:00.000Z',
+          isCurrent: true,
+        },
+        {
+          id: PHANTOM_ID,
+          title: 'Routine 1',
+          raw_text: '-Squat\n- 225 5,5,5',
+          saved_at: '2026-05-01T00:00:00.000Z',
+          updated_at: '2026-05-03T00:00:00.000Z',
+          deleted_at: '2026-05-03T00:00:00.000Z',
+          source_snapshot: { async_storage_key: 'kilo_workout_note' },
+        },
+      ])
+    );
+    await AsyncStorage.setItem(KEYS.CURRENT_WORKOUT_ID_KEY, JSON.stringify('wn_real'));
+    await setLocalDataOwner('someone-else');
+
+    const shared = makeSharedCloud();
+    setCloudTransport(shared.transport);
+    // Route the hook's real bootstrap call through the shared cloud instead of a
+    // live Supabase client. The upload logic itself is the REAL bootstrapFromLocal.
+    const bootstrapSpy = jest
+      .spyOn(cloudAdapter, 'bootstrapFromLocal')
+      .mockImplementation((uid) => bootstrapFromLocal(uid, shared.client));
+
+    // Sign in: the foreign-owner prompt surfaces; nothing uploads or syncs.
+    const { ref, tree } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(ref.current.ownershipPrompt).toEqual({ type: 'foreign' });
+    expect(bootstrapSpy).not.toHaveBeenCalled();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+
+    // The user chooses "Upload It Into My Account" — the real confirmation path:
+    // real bootstrap upload, owner claim, cloud-mode activation, real initial sync.
+    let result;
+    await act(async () => {
+      result = await ref.current.confirmOwnershipUpload();
+    });
+    await flush();
+
+    expect(result.ok).toBe(true);
+    expect(bootstrapSpy).toHaveBeenCalledWith(USER.id);
+    // The ownership decision is PERSISTED (durable marker, not hook state).
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(ref.current.ownershipPrompt).toBeNull();
+
+    // No phantom after upload + sync: hidden locally, tombstoned in the account,
+    // and the user's real note is live in both places with selection intact.
+    let visible = await visibleNotes();
+    expect(visible.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(visible.find((n) => n.id === 'wn_real')).toBeTruthy();
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_real');
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, 'wn_real'))).toBe(false);
+
+    // ── Restart ──────────────────────────────────────────────────────────────
+    // Model a real process restart, not just another sync call: unmount the app
+    // tree, wipe the in-memory sync-phase state (module state does not survive a
+    // process), and mount a fresh hook that re-runs the sign-in ownership check
+    // against what actually persisted (owner marker, notebook, cursors).
+    act(() => tree.unmount());
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+
+    const { ref: ref2 } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    await flush();
+
+    // The persisted decision routes sign-in down the owner === userId branch:
+    // the ownership prompt does NOT recur, cloud mode reactivates, sync reruns.
+    expect(ref2.current.ownershipPrompt).toBeNull();
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    // Bootstrap is not re-run on restart — the upload already happened.
+    expect(bootstrapSpy).toHaveBeenCalledTimes(1);
+
+    // The phantom stays invisible after the restart's sync pass, and the
+    // tombstone state remains converged — no repeated cleanup, no resurrection.
+    visible = await visibleNotes();
+    expect(visible.find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(visible.find((n) => n.id === 'wn_real')).toBeTruthy();
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn_real');
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+
+    // Second restart: repeated launch remains idempotent.
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    const { ref: ref3 } = renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    await flush();
+    expect(ref3.current.ownershipPrompt).toBeNull();
+    expect((await visibleNotes()).find((n) => n.id === PHANTOM_ID)).toBeUndefined();
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+
+    setCloudTransport(null);
   });
 });
 
