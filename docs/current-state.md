@@ -1134,9 +1134,14 @@ Android: the `preview` profile produces a plain `.apk` for sideloading. The
 EAS `production` environment, which carries the same `EXPO_PUBLIC_SUPABASE_*`
 variables as preview so store builds are cloud-enabled (sign-in, sync, account
 lifecycle), and it auto-increments `versionCode` for repeat Play uploads (#425).
-As of the issue #431 release-path check on 2026-07-06, EAS still has no Android
-production build recorded, so creating and verifying that AAB remains a
-pre-Play-upload user action.
+Issue #491 qualified the owner-built Android production release from commit
+`6f6bfcf871a4a609ad8a169e514abdbb070e1945`: app version `0.95.0`, versionCode
+8, runtime `0.95.0`, distributed as an AAB through the Play closed track. The
+Play-installed client retained local data, restored the account cloud copy
+after #499, exported the large Android backup, and continuously synchronized
+workout-note, tracked-lift, and profile changes. Production remains in
+`legacy` consent mode; consent-surface and grant qualification moved to #492's
+controlled enforcement cutover and was not waived by the release qualification.
 
 iOS: two profiles are available:
 - `ios-simulator` — builds a Simulator `.app` bundle; no Apple Developer account

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.97.4 - 2026-07-15
+
+- Issue #491: Qualified the owner-built `0.95.0` Android production AAB through
+  the Play closed track, including runtime/version identity, local-data
+  retention, cloud restoration, large-backup export, and ongoing workout,
+  tracked-lift, and profile synchronization. Consent-surface qualification is
+  explicitly transferred to the controlled enforcement cutover in #492.
+
 ## 0.97.3 - 2026-07-14
 
 - Issue #500: Prevent ownership prompt from obscuring password recovery
