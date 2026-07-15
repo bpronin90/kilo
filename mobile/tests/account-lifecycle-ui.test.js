@@ -779,6 +779,104 @@ describe('AccountScreen OAuth Flow', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// AccountScreen auth copy (#496): signing up with an email already registered
+// via GitHub used to claim "Account created." then reject the login with a bare
+// "Invalid login credentials", pointing nowhere. Supabase deliberately will not
+// confirm whether an address exists, so the fix is in the copy, not in branching
+// on existence: the signup message is true whether or not the address was
+// already registered, and the sign-in hint is appended on EVERY failure so it
+// leaks no account-existence oracle. Both messages render in the existing
+// `accountStatus` status line — no new panels, spacing, or tokens — so the
+// ScreenShell spacing contract (ui-design-rules.md sections 1-3) is unchanged.
+// ---------------------------------------------------------------------------
+
+describe('AccountScreen auth copy (#496)', () => {
+  let originalPlatformOS;
+
+  beforeEach(() => {
+    originalPlatformOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockSession = null;
+    mockAuth = makeMockAuth(null);
+    resetSupabaseClientForTests();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  // The Sign In / Create Account buttons carry no accessibilityLabel (only a
+  // title), and the "Sign In" title also appears as the SectionTitle heading.
+  // Match the button by its onPress + wrapped title Text so the section heading
+  // (which has no onPress) is never selected.
+  function findButtonByTitle(tree, title) {
+    const matches = tree.root.findAll((node) => (
+      typeof node.type === 'string'
+      && typeof node.props.onPress === 'function'
+      && node.props.children
+      && node.props.children.props
+      && node.props.children.props.children === title
+    ));
+    expect(matches.length).toBe(1);
+    return matches[0];
+  }
+
+  test('Create Account shows honest, enumeration-safe copy instead of "Account created."', async () => {
+    const signUpWithPassword = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { signUpWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const button = findButtonByTitle(tree, 'Create Account');
+    await act(async () => { await button.props.onPress(); });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toBe(
+      'If that address is new, check your email to confirm it. If you already signed up with GitHub, use Continue with GitHub instead.',
+    );
+    expect(status.props.children).not.toMatch(/Account created/);
+  });
+
+  test('failed sign-in appends the GitHub hint on a generic Invalid login credentials failure', async () => {
+    // The exact opaque error Supabase returns for both a wrong password and a
+    // GitHub-only account. The hint must be present regardless.
+    const signInWithPassword = jest.fn().mockResolvedValue({ ok: false, error: 'Invalid login credentials' });
+    const authProp = makeResolvedAuthProp(null, { signInWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const button = findButtonByTitle(tree, 'Sign In');
+    await act(async () => { await button.props.onPress(); });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toMatch(/Invalid login credentials/);
+    expect(status.props.children).toMatch(/If you signed up with GitHub, use Continue with GitHub/);
+  });
+
+  test('successful sign-in still shows "Signed in." with no GitHub hint appended', async () => {
+    const signInWithPassword = jest.fn().mockResolvedValue({ ok: true });
+    const authProp = makeResolvedAuthProp(null, { signInWithPassword });
+
+    let tree;
+    act(() => {
+      tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: authProp }));
+    });
+
+    const button = findButtonByTitle(tree, 'Sign In');
+    await act(async () => { await button.props.onPress(); });
+
+    const status = tree.root.findByProps({ accessibilityLabel: 'Account status' });
+    expect(status.props.children).toBe('Signed in.');
+  });
+});
+
 describe('CloudSyncRecovery status summary', () => {
   let originalPlatformOS;
 
