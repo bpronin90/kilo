@@ -228,23 +228,24 @@ export function parseWorkoutNote(noteText) {
   return { ok: true, sections, weekBStartIndex };
 }
 
-// Insert a standalone '-' skip marker after each exercise block that has at
-// least one recorded session entry. Preserves all existing logged values.
-// sections must come from parseWorkoutNote(rawText) so exercise order matches.
-export function applyWeekSkipToText(rawText, sections) {
-  // For each exercise in section order: whether it needs a new skip marker.
-  // An exercise needs one only when it has sessions AND the last session entry
-  // is not already a skip (idempotent: repeated calls don't pile up dashes).
-  const needsDash = [];
-  for (const section of sections) {
-    for (const ex of section.exercises) {
-      const entries = ex.session_entries;
-      needsDash.push(entries.length > 0 && !entries[entries.length - 1].skipped);
-    }
-  }
+// Shared line-classifier for the skip-week transforms below: matches the
+// same section/exercise boundary lines parseWorkoutNote uses, so occurrence
+// order lines up with `sections[*].exercises` order.
+function _isExerciseHeaderLine(t) {
+  return (
+    /^-([^-\s].*)/.test(t) ||
+    /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
+    /^Core:\s+.+/i.test(t)
+  );
+}
 
-  if (!needsDash.some(Boolean)) return rawText;
-
+// Walks rawText line-by-line, grouping lines into per-exercise blocks in the
+// same order as `sections[*].exercises`, and calls `onExerciseBlock(pending,
+// eligible)` when each block closes, where `pending` is the mutable array of
+// lines belonging to that block and `eligible` is `eligibleFlags[occIdx]`.
+// Shared by applyWeekSkipToText and removeWeekSkipFromText so both stay a
+// single linear pass over the note text.
+function _transformExerciseBlocks(rawText, eligibleFlags, onExerciseBlock) {
   const lines = rawText.split('\n');
   const result = [];
   let occIdx = 0;
@@ -253,8 +254,8 @@ export function applyWeekSkipToText(rawText, sections) {
   const pending = [];
 
   function flush() {
+    if (inExercise) onExerciseBlock(pending, eligible);
     result.push(...pending);
-    if (inExercise && eligible) result.push('-');
     pending.length = 0;
     inExercise = false;
     eligible = false;
@@ -276,15 +277,10 @@ export function applyWeekSkipToText(rawText, sections) {
       continue;
     }
 
-    const isHeader =
-      /^-([^-\s].*)/.test(t) ||
-      /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
-      /^Core:\s+.+/i.test(t);
-
-    if (isHeader) {
+    if (_isExerciseHeaderLine(t)) {
       flush();
       inExercise = true;
-      eligible = occIdx < needsDash.length ? needsDash[occIdx] : false;
+      eligible = occIdx < eligibleFlags.length ? eligibleFlags[occIdx] : false;
       occIdx++;
       pending.push(line);
       continue;
@@ -295,4 +291,58 @@ export function applyWeekSkipToText(rawText, sections) {
 
   flush();
   return result.join('\n');
+}
+
+// Insert a standalone '-' skip marker after each exercise block that has at
+// least one recorded session entry. Preserves all existing logged values.
+// Every press appends exactly one marker per eligible exercise — there is no
+// same-marker guard, so an exercise that already ends in a skip still gets
+// another one on a further press (repeated presses stack skip markers, and
+// each stack level can be undone one at a time with removeWeekSkipFromText).
+// sections must come from parseWorkoutNote(rawText) so exercise order matches.
+export function applyWeekSkipToText(rawText, sections) {
+  const needsDash = [];
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      needsDash.push(ex.session_entries.length > 0);
+    }
+  }
+
+  if (!needsDash.some(Boolean)) return rawText;
+
+  return _transformExerciseBlocks(rawText, needsDash, (pending, eligible) => {
+    if (eligible) pending.push('-');
+  });
+}
+
+// Inverse of applyWeekSkipToText: removes exactly one trailing skip marker
+// (a standalone '-' line) from each exercise block whose last session entry
+// is a skip, undoing one 'Skip week' press. Exercises with no session
+// entries, or whose last entry is not a skip, are left untouched — this
+// never removes a non-trailing skip marker or any logged value. Trailing
+// blank lines after the marker are preserved. sections must come from
+// parseWorkoutNote(rawText) so exercise order matches.
+export function removeWeekSkipFromText(rawText, sections) {
+  const needsRemoval = [];
+  for (const section of sections) {
+    for (const ex of section.exercises) {
+      const entries = ex.session_entries;
+      const last = entries[entries.length - 1];
+      needsRemoval.push(!!last && last.skipped);
+    }
+  }
+
+  if (!needsRemoval.some(Boolean)) return rawText;
+
+  return _transformExerciseBlocks(rawText, needsRemoval, (pending, eligible) => {
+    if (!eligible) return;
+    // Remove the last non-blank line in this block only if it is exactly a
+    // bare skip marker; trailing blank lines are skipped over and preserved.
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const lt = pending[i].trim();
+      if (lt === '') continue;
+      if (lt === '-') pending.splice(i, 1);
+      break;
+    }
+  });
 }
