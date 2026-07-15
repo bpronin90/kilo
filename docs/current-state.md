@@ -63,7 +63,10 @@ Roadmap status:
   restore probe is in flight, so returning signed-in users no longer see a
   transient sign-in flash on cold start (#365), and Account now consumes the
   app-shell auth session instead of re-probing on each entry, so a resolved
-  signed-in session renders immediately when the screen opens (#366). The
+  signed-in session renders immediately when the screen opens (#366). Password
+  recovery now requests an explicit base redirect, handles cold- and warm-start
+  callbacks, navigates directly to More > Account, and presents a dedicated
+  set-new-password or readable link-error surface (#497). The
   redirect is allow-listed in Supabase; the first installed-build callback and
   restart-persistence pass remains deferred by owner direction.
 

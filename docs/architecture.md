@@ -141,7 +141,10 @@ registers `mobile/App.js` with Expo. The current native architecture is narrow:
   Account screen also starts GitHub OAuth on web and Android; Android uses
   `expo-web-browser` with `kilo://auth/callback`, then exchanges the returned
   PKCE code through the app-shell Supabase auth/session hook passed down from
-  `App.js`.
+  `App.js`. Password recovery reuses that callback boundary: the shared auth
+  hook handles recovery sessions and native cold/warm deep links, while `App.js`
+  and `MoreScreen.js` route active recovery state to the Account-owned
+  set-new-password surface.
 - `mobile/hooks/useEntries.js` owns native read/write hooks for weight entries
   plus the persisted weight-goal and multi-note current-workout read/write
   paths, plus lightweight listener fanout for cross-consumer refreshes and a
@@ -209,9 +212,10 @@ Android Home/exit fallback, and the same child-ownership signal suppresses the
 global web Home control in a pre-paint layout effect. `App.js` also provides shared scroll
 activity down through `ScreenShell` so the tab bar can react to content
 scrolling as an overlay surface. There is no router library or persisted
-navigation state in the native path. The only registered deep link is the
-dedicated `kilo://auth/callback` OAuth return path; it is consumed by the active
-Android browser auth session rather than routed as an app screen.
+navigation state in the native path. The only registered deep link is
+`kilo://auth/callback`: active Android GitHub OAuth consumes it through the
+browser auth session, while password-recovery links opened externally are
+handled by the shared auth hook and route the shell to More > Account.
 
 `mobile/screens/WeightScreen.js` also renders saved weight history as a direct
 correction surface. Tapping a row reloads that entry into the shared form
