@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.97.3 - 2026-07-14
+
+- Issue #500: Prevent ownership prompt from obscuring password recovery
+
+
 ## 0.97.2 - 2026-07-14
 
 - Issue #478: Configured production Supabase Auth to send email signup
