@@ -2136,6 +2136,67 @@ describe('Skip week / Undo skip: integration (#502)', () => {
     await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
     expect(update).not.toHaveBeenCalled();
   });
+
+  test('falsy clamp write does not commit the counter locally; the next press retries the clamp', async () => {
+    // Stale counter, no trailing skips, and a persistence layer that returns
+    // a falsy result for the clamp write. The ref must NOT be zeroed on the
+    // failed write — otherwise a second press is a pure no-op while storage
+    // still holds the stale counter (and a reload resurrects it).
+    const { getLatest, update } = makeHarness({
+      updateImpl: async () => null,
+      noteExtras: { skip_markers: { universal_skip_count: 2 } },
+    });
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(getLatest().hook.skipWeekStatus).toBe('No skip to remove');
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // Second press: counter is still considered stale, so the clamp is
+    // retried instead of silently skipped.
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1][1].skip_markers.universal_skip_count).toBe(0);
+  });
+
+  test('rejected clamp write is caught, does not commit the counter, and the next press retries', async () => {
+    const { getLatest, update } = makeHarness({
+      updateImpl: async () => { throw new Error('offline'); },
+      noteExtras: { skip_markers: { universal_skip_count: 2 } },
+    });
+
+    // Must not throw out of the handler.
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(getLatest().hook.skipWeekStatus).toBe('No skip to remove');
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // Ref kept the stale value, so the clamp is attempted again.
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  test('clamp retry succeeds after an earlier failure and then stops retrying', async () => {
+    let fail = true;
+    const { getLatest, update } = makeHarness({
+      updateImpl: async (_id, patch) => (fail ? null : {
+        id: 'note1', title: 'Routine', raw_text: patch.raw_text !== undefined ? patch.raw_text : RAW,
+      }),
+      noteExtras: { skip_markers: { universal_skip_count: 2 } },
+    });
+
+    // First press: clamp write fails, ref stays stale.
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).toHaveBeenCalledTimes(1);
+
+    // Persistence recovers: the retry press clamps and commits the ref.
+    fail = false;
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1][1].skip_markers.universal_skip_count).toBe(0);
+
+    // Counter now committed to 0: a third press is a pure no-op.
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect(update).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ── Undo skip: fatigue-reason check-in cleanup (#502 follow-up) ────────────

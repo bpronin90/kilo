@@ -632,15 +632,21 @@ export function useLogCurrentRoutineEditor({
       // otherwise it is stale (hand-edited text), so clamp it to reality.
       setSkipWeekStatus('No skip to remove');
       if (count > 0) {
-        universalSkipCountRef.current = 0;
         const prevMarkers = currentNoteRef.current?.skip_markers;
         try {
-          await update(currentId, {
+          const clamped = await update(currentId, {
             skip_markers: { ...(prevMarkers || {}), universal_skip_count: 0 },
           });
+          // Commit the ref only after the clamp actually persisted (same
+          // rule as every other counter write). On a falsy result or a
+          // rejection the ref keeps the stale value, so the next press
+          // retries the clamp instead of becoming a pure no-op while
+          // persistence still holds the stale counter.
+          if (clamped) universalSkipCountRef.current = 0;
         } catch {
-          // Advisory-only flag: a failed clamp write just leaves it stale,
-          // and the text-driven rules still decide what can be removed.
+          // Advisory-only flag: a failed clamp write just leaves it stale
+          // (and retryable); the text-driven rules still decide what can
+          // be removed.
         }
       }
       return;
