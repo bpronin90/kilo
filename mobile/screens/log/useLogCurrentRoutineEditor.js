@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert, Keyboard, Platform } from 'react-native';
 import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
+import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
 import {
   normalizeLiftName,
   deriveWorkoutNoteAnalytics,
@@ -8,6 +9,7 @@ import {
   getDefaultTrackedNames,
   deriveSkipData,
   deriveSessionCheckIn,
+  computeWeeksIn,
 } from '../../lib/data';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
@@ -44,6 +46,7 @@ export function useLogCurrentRoutineEditor({
   const [roughNoteId, setRoughNoteId] = useState(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [roughCheckInData, setRoughCheckInData] = useState(null);
+  const [skipWeekStatus, setSkipWeekStatus] = useState('');
 
   const keyboardVisibleRef = useRef(false);
   const lastTapRef = useRef(0);
@@ -83,6 +86,17 @@ export function useLogCurrentRoutineEditor({
       return () => clearTimeout(timer);
     }
   }, [saveSuccess]);
+
+  // 'Skip week' / 'Undo skip' are used from the read-mode card (not the
+  // editor), so they can't rely on the editor's saveSuccess banner. This
+  // message is the visible confirmation that a skip was applied or removed
+  // (or that the press was a no-op), so presses are never silent.
+  useEffect(() => {
+    if (skipWeekStatus) {
+      const timer = setTimeout(() => setSkipWeekStatus(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [skipWeekStatus]);
 
   useEffect(() => {
     if (roughSessionIndex == null) return;
@@ -177,6 +191,20 @@ export function useLogCurrentRoutineEditor({
     () => buildDayGroups(activeWeekParsed.sections),
     [activeWeekParsed]
   );
+
+  // Whether there is a trailing skip marker on at least one exercise in the
+  // active week, i.e. whether 'Undo skip' has anything to remove. Used to
+  // disable/no-op the undo action instead of silently doing nothing.
+  const canUnskipWeek = useMemo(() => {
+    for (const section of activeWeekParsed.sections) {
+      for (const ex of section.exercises) {
+        const entries = ex.session_entries;
+        const last = entries[entries.length - 1];
+        if (last && last.skipped) return true;
+      }
+    }
+    return false;
+  }, [activeWeekParsed]);
 
   const hasUnsavedCurrent = useMemo(() => {
     if (!currentNote) return workoutNoteTitle.trim() !== '' || workoutNoteText.trim() !== '';
@@ -457,31 +485,91 @@ export function useLogCurrentRoutineEditor({
     }
   };
 
+  // Splices a transformed active-week body back into the full note text,
+  // preserving the other A/B week's body untouched. Shared by handleSkipWeek
+  // and handleUnskipWeek so both stay consistent with the existing A/B
+  // active-week slicing in activeEditText/handleCurrentTextChange.
+  const _spliceActiveText = (newActiveText) => {
+    if (!hasABWeeks) return newActiveText;
+    const lines = workoutNoteText.split('\n');
+    const sepIdx = lines.findIndex(l => l.trim() === '---');
+    if (sepIdx === -1) return newActiveText;
+    if (effectiveActiveWeek === 'A') {
+      return newActiveText + '\n---\n' + lines.slice(sepIdx + 1).join('\n');
+    }
+    return lines.slice(0, sepIdx).join('\n') + '\n---\n' + newActiveText;
+  };
+
   const handleSkipWeek = async () => {
     if (!currentId) return;
     const newActiveText = applyWeekSkipToText(activeEditText, activeWeekParsed.sections);
-    if (newActiveText === activeEditText) return;
-
-    let newFullText;
-    if (!hasABWeeks) {
-      newFullText = newActiveText;
-    } else {
-      const lines = workoutNoteText.split('\n');
-      const sepIdx = lines.findIndex(l => l.trim() === '---');
-      if (sepIdx === -1) {
-        newFullText = newActiveText;
-      } else if (effectiveActiveWeek === 'A') {
-        newFullText = newActiveText + '\n---\n' + lines.slice(sepIdx + 1).join('\n');
-      } else {
-        newFullText = lines.slice(0, sepIdx).join('\n') + '\n---\n' + newActiveText;
-      }
+    if (newActiveText === activeEditText) {
+      // No eligible logged exercise to skip: surface this so the press is
+      // never silent.
+      setSkipWeekStatus('No logged exercises to skip');
+      return;
     }
 
+    const newFullText = _spliceActiveText(newActiveText);
     setWorkoutNoteText(newFullText);
     workoutNoteTextRef.current = newFullText;
     const saved = await handleSave({ overrideText: newFullText });
-    if (!saved) return;
+    if (!saved) {
+      setSkipWeekStatus('Could not save skip — try again');
+      return;
+    }
+    setSkipWeekStatus('Skip applied');
     _runCheckInDetection();
+  };
+
+  const handleUnskipWeek = async () => {
+    if (!currentId) return;
+    const newActiveText = removeWeekSkipFromText(activeEditText, activeWeekParsed.sections);
+    if (newActiveText === activeEditText) {
+      // Nothing to undo: no exercise currently ends in a skip marker.
+      setSkipWeekStatus('No skip to remove');
+      return;
+    }
+
+    // The session being removed is the note's current deepest session column
+    // (the one the just-removed trailing skip belonged to), computed from the
+    // full note text before the removal — this matches the sessionIndex
+    // _runCheckInDetection used when it recorded a fatigue-reason check-in
+    // for that skip.
+    const removedSessionIndex = computeWeeksIn(parseWorkoutNote(workoutNoteText).sections) - 1;
+
+    const newFullText = _spliceActiveText(newActiveText);
+    setWorkoutNoteText(newFullText);
+    workoutNoteTextRef.current = newFullText;
+    const saved = await handleSave({ overrideText: newFullText });
+    if (!saved) {
+      setSkipWeekStatus('Could not remove skip — try again');
+      return;
+    }
+
+    // Drop the fatigue-reason check-in recorded for the removed session (if
+    // any), and re-key any remaining check-ins whose session index shifted
+    // down by one so they stay attached to the correct session. Sessions
+    // before the removed one are untouched.
+    const prevCheckins = currentNoteRef.current?.session_checkins;
+    if (prevCheckins && typeof prevCheckins === 'object' && removedSessionIndex >= 0) {
+      const nextCheckins = {};
+      let changed = false;
+      for (const [key, value] of Object.entries(prevCheckins)) {
+        const idx = Number(key);
+        if (idx === removedSessionIndex) { changed = true; continue; }
+        const nextIdx = idx > removedSessionIndex ? idx - 1 : idx;
+        if (nextIdx !== idx) changed = true;
+        nextCheckins[String(nextIdx)] = value;
+      }
+      if (changed) {
+        await update(currentId, { session_checkins: nextCheckins });
+      }
+    }
+
+    // Removing a skip is not new logged work, so it does not run fatigue
+    // check-in detection — only a successful 'Skip week' save does.
+    setSkipWeekStatus('Skip removed');
   };
 
   const handleNoteBodyPress = () => {
@@ -514,6 +602,9 @@ export function useLogCurrentRoutineEditor({
     autosaveCurrentTimerRef,
     handleReadScroll,
     handleSkipWeek,
+    handleUnskipWeek,
+    canUnskipWeek,
+    skipWeekStatus,
     handleNoteBodyPress,
     handleSave,
     enterCurrentEditor,

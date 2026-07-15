@@ -12,6 +12,9 @@ export function LogActiveRoutineCard({
   enterCurrentEditor,
   handleNoteBodyPress,
   handleSkipWeek,
+  handleUnskipWeek,
+  canUnskipWeek,
+  skipWeekStatus,
   toggleCollapsed,
   isCollapsed,
   dayGroups,
@@ -63,17 +66,39 @@ export function LogActiveRoutineCard({
         >
           <View style={styles.editHintRow}>
             <Text style={styles.editHint}>Double-tap to edit</Text>
-            {handleSkipWeek && (
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel="Skip week"
-                accessibilityRole="button"
-              >
-                <Text style={styles.skipWeekText}>Skip week</Text>
-              </Pressable>
-            )}
+            <View style={styles.skipWeekActions}>
+              {handleSkipWeek && (
+                <Pressable
+                  onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Skip week"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.skipWeekText}>Skip week</Text>
+                </Pressable>
+              )}
+              {handleUnskipWeek && (
+                <Pressable
+                  onPress={(e) => { e.stopPropagation(); handleUnskipWeek(); }}
+                  disabled={!canUnskipWeek}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Remove skip"
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !canUnskipWeek }}
+                >
+                  {/* Deliberately not "Undo skip": that text collides with the
+                      unrelated editor-header "Undo" button substring-matched
+                      by tests elsewhere in this screen tree. */}
+                  <Text style={[styles.skipWeekText, !canUnskipWeek && styles.skipWeekTextDisabled]}>
+                    Remove skip
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           </View>
+          {skipWeekStatus ? (
+            <Text style={styles.skipWeekStatusText}>{skipWeekStatus}</Text>
+          ) : null}
           <WorkoutContentRenderer
             dayGroups={dayGroups}
             trackedLifts={trackedLifts}
@@ -150,8 +175,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
   },
+  skipWeekActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   skipWeekText: {
     fontSize: 11,
     color: Colors.textMuted,
+  },
+  skipWeekTextDisabled: {
+    opacity: 0.4,
+  },
+  skipWeekStatusText: {
+    fontSize: 11,
+    color: Colors.accent,
+    marginBottom: 8,
+    marginTop: -4,
   },
 });

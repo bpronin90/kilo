@@ -12,6 +12,7 @@ jest.mock('expo-updates', () => ({
   reloadAsync: jest.fn(),
 }));
 import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
+import { removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
 import { deriveRoutineStatus } from '../lib/data';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -1759,7 +1760,10 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
     expect(facePull.session_entries.at(-1).skipped).toBe(true);
   });
 
-  test('is idempotent: second call does not append another dash', () => {
+  test('Skip week can be pressed at any time: no same-marker guard, repeated presses stack skip markers', () => {
+    // Per the revised #502 direction, applyWeekSkipToText has no idempotency
+    // guard: every call appends exactly one more skip marker per eligible
+    // exercise, even when the exercise already ends in a skip.
     const raw = `Monday
 +Lifting
 -Bench Press
@@ -1768,26 +1772,84 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
     const once = applyWeekSkipToText(raw, s1);
     const { sections: s2 } = parseWorkoutNote(once);
     const twice = applyWeekSkipToText(once, s2);
-    expect(twice).toBe(once);
-    const { sections: after } = parseWorkoutNote(twice);
+    expect(twice).not.toBe(once);
+    const { sections: s3 } = parseWorkoutNote(twice);
+    const thrice = applyWeekSkipToText(twice, s3);
+
+    const { sections: after } = parseWorkoutNote(thrice);
     const bench = after[0].exercises[0];
     const skipCount = bench.session_entries.filter(e => e.skipped).length;
-    expect(skipCount).toBe(1);
+    expect(skipCount).toBe(3);
   });
+});
 
-  test('exercise already ending with a trailing skip does not get a second dash', () => {
+// ── removeWeekSkipFromText ──────────────────────────────────────────────────
+
+describe('removeWeekSkipFromText: undoes one Skip week press', () => {
+  test('removes exactly the last trailing skip marker per exercise', () => {
     const raw = `Monday
 +Lifting
 -Bench Press
 - 135 5,5,5
+-
+-
+-Squat
+- 225 5,5,5
 -`;
     const { sections } = parseWorkoutNote(raw);
-    const result = applyWeekSkipToText(raw, sections);
+    const result = removeWeekSkipFromText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const squat = after[0].exercises.find(e => /squat/i.test(e.name));
+    expect(bench.session_entries.filter(e => e.skipped).length).toBe(1);
+    expect(squat.session_entries.filter(e => e.skipped).length).toBe(0);
+    // Logged values are untouched.
+    expect(bench.session_entries.filter(e => !e.skipped)).toHaveLength(1);
+    expect(squat.session_entries.filter(e => !e.skipped)).toHaveLength(1);
+  });
+
+  test('is a safe no-op when there is no trailing skip to remove', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = removeWeekSkipFromText(raw, sections);
     expect(result).toBe(raw);
+  });
+
+  test('does not touch a non-trailing skip marker or logged values', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-
+- 140 3,3,3
+-`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = removeWeekSkipFromText(raw, sections);
     const { sections: after } = parseWorkoutNote(result);
     const bench = after[0].exercises[0];
-    const skipCount = bench.session_entries.filter(e => e.skipped).length;
-    expect(skipCount).toBe(1);
+    // The trailing skip is gone, but the mid-history skip and both logged
+    // entries remain intact.
+    expect(bench.session_entries.map(e => e.skipped)).toEqual([false, true, false]);
+    expect(bench.sets.length).toBeGreaterThan(0);
+  });
+
+  test('leaves exercises with no logged sessions unchanged', () => {
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5,5
+-
+-OHP`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = removeWeekSkipFromText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const ohp = after[0].exercises.find(e => /ohp/i.test(e.name));
+    expect(bench.session_entries.filter(e => e.skipped)).toHaveLength(0);
+    expect(ohp.session_entries).toHaveLength(0);
   });
 });
 
@@ -1804,7 +1866,226 @@ describe('handleSkipWeek: fatigue prompt gated on successful save', () => {
     );
     // Must capture the return value (not fire-and-forget)
     expect(src).toMatch(/const saved = await handleSave\(/);
-    // Must bail before check-in detection when save fails
-    expect(src).toMatch(/if\s*\(!saved\)\s*return/);
+    // Must bail (directly or via a braced block) before check-in detection
+    // when save fails. The actual failure-gating behavior — including that
+    // _runCheckInDetection is never reached — is covered by the integration
+    // tests below.
+    expect(src).toMatch(/if\s*\(!saved\)\s*\{?\s*\n?\s*(setSkipWeekStatus\([^)]*\);\s*)?return/);
+  });
+});
+
+// ── Skip week / Undo skip: integration (#502 revised direction) ────────────
+// #502 dropped the calendar-week model: 'Skip week' can be pressed at any
+// time with no idempotency guard (repeated presses stack skip markers), and
+// a new 'Undo skip' action removes one trailing skip marker per exercise.
+// These tests drive the real hook (not source-level regex) through a
+// harness matching the pattern used for the A/B week tests above.
+
+describe('Skip week / Undo skip: integration (#502)', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const RAW = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5';
+
+  function makeHarness({ updateImpl, fatigueTrackingEnabled = false, onCheckInPrompt = jest.fn() } = {}) {
+    const update = jest.fn().mockImplementation(
+      updateImpl || (async (_id, patch) => ({
+        id: 'note1',
+        title: patch.title || 'Routine',
+        raw_text: patch.raw_text !== undefined ? patch.raw_text : RAW,
+      }))
+    );
+    const add = jest.fn();
+    const selectCurrent = jest.fn();
+    let latest = null;
+
+    function Harness({ currentNote, notes }) {
+      const [text, setText] = React.useState(RAW);
+      const [title, setTitle] = React.useState('Routine');
+      const hook = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: 'note1',
+        currentNote,
+        notes,
+        trackedLifts: [],
+        update,
+        add,
+        selectCurrent,
+        fatigueTrackingEnabled,
+        onCheckInPrompt,
+        isActive: true,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook, getText: () => text };
+      return null;
+    }
+
+    const initialNote = { id: 'note1', title: 'Routine', raw_text: RAW };
+    render.act(() => {
+      render.create(<Harness currentNote={initialNote} notes={[initialNote]} />);
+    });
+    return { getLatest: () => latest, update };
+  }
+
+  test('consecutive Skip week presses append multiple skip markers (no idempotency guard)', async () => {
+    const { getLatest } = makeHarness();
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    const skipCount = (getLatest().getText().match(/^-$/gm) || []).length;
+    expect(skipCount).toBe(2);
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip applied');
+  });
+
+  test('Undo skip removes exactly the last universal skip', async () => {
+    const { getLatest } = makeHarness();
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    expect((getLatest().getText().match(/^-$/gm) || []).length).toBe(2);
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+    expect((getLatest().getText().match(/^-$/gm) || []).length).toBe(1);
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+
+    // Logged values survive both the skips and the undo.
+    expect(getLatest().getText()).toContain('135 5,5,5');
+  });
+
+  test('Undo skip is a safe no-op when there is nothing to remove', async () => {
+    const { getLatest, update } = makeHarness();
+    const before = getLatest().getText();
+    update.mockClear();
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    expect(getLatest().getText()).toBe(before);
+    expect(update).not.toHaveBeenCalled();
+    expect(getLatest().hook.skipWeekStatus).toBe('No skip to remove');
+  });
+
+  test('save failure on Skip week surfaces a status message and does not run fatigue detection', async () => {
+    const onCheckInPrompt = jest.fn();
+    const { getLatest } = makeHarness({
+      updateImpl: async () => null, // handleSave treats a falsy result as a failed save
+      fatigueTrackingEnabled: true,
+      onCheckInPrompt,
+    });
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+
+    expect(onCheckInPrompt).not.toHaveBeenCalled();
+    expect(getLatest().hook.skipWeekStatus).toBe('Could not save skip — try again');
+  });
+
+  test('Undo skip never triggers the fatigue-reason prompt, even on a successful save', async () => {
+    const onCheckInPrompt = jest.fn();
+    const { getLatest } = makeHarness({ fatigueTrackingEnabled: true, onCheckInPrompt });
+
+    await render.act(async () => { await getLatest().hook.handleSkipWeek(); });
+    onCheckInPrompt.mockClear();
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    expect(onCheckInPrompt).not.toHaveBeenCalled();
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+  });
+
+  test('ordinary workout-note path: editing and saving a normal note is unaffected', async () => {
+    const { getLatest } = makeHarness();
+
+    render.act(() => {
+      getLatest().hook.handleCurrentTextChange('Monday\n+Lifting\n-Bench Press\n- 140 3,3,3');
+    });
+    await render.act(async () => { await getLatest().hook.handleSave(); });
+
+    expect(getLatest().getText()).toContain('140 3,3,3');
+    expect(getLatest().hook.skipWeekStatus).toBe('');
+  });
+});
+
+// ── Undo skip: fatigue-reason check-in cleanup (#502 follow-up) ────────────
+// Removing a universal skip must also remove the fatigue-reason check-in
+// that was recorded for the session it added, and leave other sessions'
+// check-ins correctly attributed. session_checkins is keyed by the note's
+// global session index (computeWeeksIn(sections) - 1 at the time the
+// check-in was recorded) — the same index removeWeekSkipFromText's removed
+// entry occupied.
+
+describe('Undo skip: fatigue-reason check-in cleanup', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+
+  function renderWithNote(initialNote) {
+    const update = jest.fn().mockImplementation(async (_id, patch) => ({
+      id: 'note1',
+      title: patch.title || initialNote.title,
+      raw_text: patch.raw_text !== undefined ? patch.raw_text : initialNote.raw_text,
+    }));
+    const add = jest.fn();
+    const selectCurrent = jest.fn();
+    let latest = null;
+
+    function Harness() {
+      const [text, setText] = React.useState(initialNote.raw_text);
+      const [title, setTitle] = React.useState(initialNote.title);
+      const hook = useLogCurrentRoutineEditor({
+        workoutNoteText: text,
+        setWorkoutNoteText: setText,
+        workoutNoteTitle: title,
+        setWorkoutNoteTitle: setTitle,
+        currentId: 'note1',
+        currentNote: initialNote,
+        notes: [initialNote],
+        trackedLifts: [],
+        update,
+        add,
+        selectCurrent,
+        fatigueTrackingEnabled: false,
+        onCheckInPrompt: jest.fn(),
+        isActive: true,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook, getText: () => text };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness />); });
+    return { getLatest: () => latest, update };
+  }
+
+  test('Undo skip removes the fatigue-reason check-in recorded for the removed session', async () => {
+    // Depth 2: index 0 is the logged set, index 1 is the trailing skip that
+    // Undo skip is about to remove.
+    const raw = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5\n-';
+    const initialNote = {
+      id: 'note1',
+      title: 'Routine',
+      raw_text: raw,
+      session_checkins: { '0': { reason: 'sore' }, '1': { reason: 'sick' } },
+    };
+    const { getLatest, update } = renderWithNote(initialNote);
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    // The removed session's (index 1) check-in is dropped; the unaffected
+    // earlier session's (index 0) check-in survives with its original key.
+    expect(update).toHaveBeenLastCalledWith('note1', {
+      session_checkins: { '0': { reason: 'sore' } },
+    });
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
+  });
+
+  test('Undo skip with no recorded fatigue reason still works and touches no check-in state', async () => {
+    const raw = 'Monday\n+Lifting\n-Bench Press\n- 135 5,5,5\n-';
+    const initialNote = { id: 'note1', title: 'Routine', raw_text: raw }; // no session_checkins at all
+    const { getLatest, update } = renderWithNote(initialNote);
+
+    await render.act(async () => { await getLatest().hook.handleUnskipWeek(); });
+
+    // Only the handleSave-driven update call happened; no follow-up
+    // session_checkins patch, since there was nothing to clean up.
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
   });
 });
