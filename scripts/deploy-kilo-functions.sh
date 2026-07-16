@@ -7,15 +7,15 @@ set -euo pipefail
 # checkout without first running `supabase link`. The remote target is
 # therefore reproducible from tracked files alone.
 #
-# verify_jwt=false for both functions is pinned in supabase/config.toml
-# ([functions.account-export] and [functions.account-delete]); the CLI
-# reads that config during deploy so the setting cannot silently regress
-# to the default of true.
+# verify_jwt=false for all three functions is pinned in supabase/config.toml
+# ([functions.account-export], [functions.account-delete], and
+# [functions.health-data-delete]); the CLI reads that config during deploy
+# so the setting cannot silently regress to the default of true.
 #
 # The unrelated anime function is not deployed by this script.
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
-readonly FUNCTIONS=(account-export account-delete)
+readonly FUNCTIONS=(account-export account-delete health-data-delete)
 
 die() {
   echo "ERROR: $*" >&2
