@@ -4,7 +4,7 @@ import render from 'react-test-renderer';
 import { Modal } from 'react-native';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 
-jest.mock('@expo/vector-icons', () => ({ MaterialIcons: 'MaterialIcons' }));
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: 'MaterialIcons' }));
 jest.mock('../theme/colors', () => ({ Colors: {} }));
 jest.mock('../components/UI', () => ({ InputStyle: {} }));
 

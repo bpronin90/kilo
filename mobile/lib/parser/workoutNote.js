@@ -230,12 +230,16 @@ export function parseWorkoutNote(noteText) {
 
 // Shared line-classifier for the skip-week transforms below: matches the
 // same section/exercise boundary lines parseWorkoutNote uses, so occurrence
-// order lines up with `sections[*].exercises` order.
+// order lines up with `sections[*].exercises` order. Deload lines
+// ("Name: 135 lbs 3x5") count too — parseWorkoutNote turns each into its own
+// exercise, so omitting them here would shift every later exercise onto the
+// wrong eligibility flag.
 function _isExerciseHeaderLine(t) {
   return (
     /^-([^-\s].*)/.test(t) ||
     /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
-    /^Core:\s+.+/i.test(t)
+    /^Core:\s+.+/i.test(t) ||
+    _DELOAD_RE.test(t)
   );
 }
 

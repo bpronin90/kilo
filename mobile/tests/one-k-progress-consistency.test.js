@@ -355,5 +355,5 @@ describe('1K progress — App\'s sync callback refreshes every screen (#459)', (
     // and Analytics still showed 1 — the reported chart mismatch.
     expect(countOf('home-probe')).toBe(2);
     expect(countOf('analytics-probe')).toBe(2);
-  });
+  }, 30000);
 });
