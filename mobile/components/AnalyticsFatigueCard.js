@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card } from './UI';
 import { Colors } from '../theme/colors';
 import { formatCheckInDate } from '../lib/AnalyticsScreenHelpers';

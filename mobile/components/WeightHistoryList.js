@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors } from '../theme/colors';
 import { formatDate, formatDelta } from '../lib/format';

@@ -3,7 +3,7 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-jest.mock('@expo/vector-icons', () => ({ MaterialIcons: () => null }), { virtual: true });
+jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: () => null }), { virtual: true });
 
 import { SetLine } from '../components/UI';
 import { WeightHistoryList } from '../components/WeightHistoryList';

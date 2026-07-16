@@ -26,9 +26,9 @@ jest.mock('../components/LineChart', () => {
   return { LineChart: () => null };
 });
 
-jest.mock('@expo/vector-icons', () => {
+jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
-  return { MaterialIcons: () => null };
+  return { __esModule: true, default: () => null };
 }, { virtual: true });
 
 // Keep the real getNoteSections (per-note parse cache) so the screen parses
