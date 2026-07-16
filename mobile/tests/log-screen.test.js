@@ -1760,6 +1760,30 @@ describe('applyWeekSkipToText: skip week dash insertion', () => {
     expect(facePull.session_entries.at(-1).skipped).toBe(true);
   });
 
+  test('deload line between exercises does not misalign skip markers', () => {
+    // parseWorkoutNote turns a "Name: 135 lbs 3x5" deload line into its own
+    // exercise, so the text walker must treat it as a block boundary too.
+    // Before the fix, the flags shifted by one: Bench's marker landed after
+    // the deload line (where re-parsing drops it) and Row got Squat's flag.
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5
+Squat: 225 lbs 3x5
+-Row
+- 95 10,10`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = applyWeekSkipToText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const squat = after[0].exercises.find(e => /squat/i.test(e.name));
+    const row = after[0].exercises.find(e => /row/i.test(e.name));
+    expect(bench.session_entries.at(-1).skipped).toBe(true);
+    expect(row.session_entries.at(-1).skipped).toBe(true);
+    // The deload pseudo-exercise has no session entries and gets no marker.
+    expect(squat.session_entries).toHaveLength(0);
+  });
+
   test('Skip week can be pressed at any time: no same-marker guard, repeated presses stack skip markers', () => {
     // Per the revised #502 direction, applyWeekSkipToText has no idempotency
     // guard: every call appends exactly one more skip marker per eligible
@@ -1834,6 +1858,30 @@ describe('removeWeekSkipFromText: undoes one Skip week press', () => {
     // entries remain intact.
     expect(bench.session_entries.map(e => e.skipped)).toEqual([false, true, false]);
     expect(bench.sets.length).toBeGreaterThan(0);
+  });
+
+  test('deload line between exercises does not misalign skip removal', () => {
+    // Mirror of the applyWeekSkipToText alignment case: the deload line is a
+    // block boundary, so the trailing skips on Bench and Row (not the deload
+    // or a neighbor) are the ones removed.
+    const raw = `Monday
++Lifting
+-Bench Press
+- 135 5,5
+-
+Squat: 225 lbs 3x5
+-Row
+- 95 10,10
+-`;
+    const { sections } = parseWorkoutNote(raw);
+    const result = removeWeekSkipFromText(raw, sections);
+    const { sections: after } = parseWorkoutNote(result);
+    const bench = after[0].exercises.find(e => /bench/i.test(e.name));
+    const row = after[0].exercises.find(e => /row/i.test(e.name));
+    expect(bench.session_entries.filter(e => e.skipped)).toHaveLength(0);
+    expect(row.session_entries.filter(e => e.skipped)).toHaveLength(0);
+    expect(bench.session_entries.filter(e => !e.skipped)).toHaveLength(1);
+    expect(row.session_entries.filter(e => !e.skipped)).toHaveLength(1);
   });
 
   test('leaves exercises with no logged sessions unchanged', () => {

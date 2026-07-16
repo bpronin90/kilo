@@ -13,9 +13,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(),
 }));
 
-jest.mock('@expo/vector-icons', () => {
+jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
-  return { MaterialIcons: () => null };
+  return { __esModule: true, default: () => null };
 }, { virtual: true });
 
 jest.mock('@react-native-community/datetimepicker', () => {
