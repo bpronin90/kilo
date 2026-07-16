@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const REVIEW_CONTEXT = 'review disposition accepted';
 const AUTHORIZED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -112,7 +112,10 @@ export function evaluateDisposition({ pr, comments, carryForward = null }) {
   }
 
   if (current.disposition === 'APPROVED' || current.disposition === 'OWNER_OVERRIDE') {
-    return { state: 'success', description: `${current.disposition.toLowerCase()} for current PR head` };
+    const description = current.disposition === 'APPROVED'
+      ? exactApprovalDescription(implementation.execution)
+      : 'owner_override for current PR head';
+    return { state: 'success', description };
   }
 
   return { state: 'failure', description: `${current.disposition.toLowerCase()} for current PR head` };
@@ -190,16 +193,46 @@ function rawDelta(from, to) {
 }
 
 function buffersEqual(left, right) {
-  return left.length === right.length && timingSafeEqual(left, right);
+  return left.equals(right);
 }
 
-async function acceptedExactHeadStatus(repository, sha) {
-  const combined = await githubRequest(`/repos/${repository}/commits/${sha}/status?per_page=100`);
-  return combined.statuses.find((status) => (
-    status.context === REVIEW_CONTEXT
-      && status.state === 'success'
-      && status.description === 'approved for current PR head'
-  )) ?? null;
+export function implementationFingerprint(execution) {
+  return createHash('sha256').update(execution).digest('hex').slice(0, 32);
+}
+
+function exactApprovalDescription(execution) {
+  return `approved for current PR head; impl=${implementationFingerprint(execution)}`;
+}
+
+async function getAllCommitStatuses(repository, sha) {
+  const statuses = [];
+  for (let page = 1; ; page += 1) {
+    const batch = await githubRequest(`/repos/${repository}/commits/${sha}/statuses?per_page=100&page=${page}`);
+    statuses.push(...batch);
+    if (batch.length < 100) return statuses;
+  }
+}
+
+export function isMatchingExactApprovalStatus(status, implementationExecution) {
+  return status?.context === REVIEW_CONTEXT
+    && status.state === 'success'
+    && status.description === exactApprovalDescription(implementationExecution);
+}
+
+async function acceptedExactHeadStatus(repository, sha, implementationExecution) {
+  const statuses = await getAllCommitStatuses(repository, sha);
+  return statuses.find((status) => isMatchingExactApprovalStatus(status, implementationExecution)) ?? null;
+}
+
+export function validateParentApproval({ comments, reviewedHead, implementationExecution, exactStatus }) {
+  const reviewed = controllingDisposition({ comments, commit: reviewedHead, implementationExecution });
+  if (!reviewed || reviewed.record !== 'REVIEW' || reviewed.disposition !== 'APPROVED') {
+    return { state: 'failure', description: 'parent head lacks a controlling ordinary approval' };
+  }
+  if (!exactStatus) {
+    return { state: 'failure', description: 'parent approval was not accepted for the same implementation execution' };
+  }
+  return { state: 'success' };
 }
 
 export function verifyRefreshObjects({ head, base }) {
@@ -251,19 +284,14 @@ async function proveCarryForward({ repository, pr, comments, implementation }) {
   if (objectProof.state !== 'success') return objectProof;
   const { reviewedHead } = objectProof;
 
-  const reviewed = controllingDisposition({
+  const exactStatus = await acceptedExactHeadStatus(repository, reviewedHead, implementation.execution);
+  const approvalProof = validateParentApproval({
     comments,
-    commit: reviewedHead,
+    reviewedHead,
     implementationExecution: implementation.execution,
+    exactStatus,
   });
-  if (!reviewed || reviewed.record !== 'REVIEW' || reviewed.disposition !== 'APPROVED') {
-    return { state: 'failure', description: 'parent head lacks a controlling ordinary approval' };
-  }
-
-  const priorStatus = await acceptedExactHeadStatus(repository, reviewedHead);
-  if (!priorStatus) {
-    return { state: 'failure', description: 'parent approval was not accepted as an ordinary exact-head review' };
-  }
+  if (approvalProof.state !== 'success') return approvalProof;
 
   return {
     state: 'success',

@@ -6,8 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   evaluateDisposition,
+  implementationFingerprint,
+  isMatchingExactApprovalStatus,
   parseDisposition,
   pathsOverlap,
+  validateParentApproval,
   verifyRefreshObjects,
 } from './review-disposition.mjs';
 
@@ -66,7 +69,9 @@ test('derives current-head implementation metadata for Dependabot PRs', () => {
 });
 
 test('accepts an independent approval for the exact head', () => {
-  assert.equal(evaluateDisposition({ pr: pr(), comments: [comment()] }).state, 'success');
+  const result = evaluateDisposition({ pr: pr(), comments: [comment()] });
+  assert.equal(result.state, 'success');
+  assert.equal(result.description, `approved for current PR head; impl=${implementationFingerprint('impl-1')}`);
 });
 
 test('rejects review from the implementation execution', () => {
@@ -145,6 +150,56 @@ test('detects exact and namespace path overlap without blocking ordinary sibling
   assert.equal(pathsOverlap(['config/a.json'], ['config/b.json']), null);
 });
 
+test('carry-forward requires the controlling parent approval and its implementation-bound exact status', () => {
+  const approved = comment();
+  assert.equal(validateParentApproval({
+    comments: [approved],
+    reviewedHead: HEAD,
+    implementationExecution: 'impl-1',
+    exactStatus: { state: 'success' },
+  }).state, 'success');
+  assert.equal(validateParentApproval({
+    comments: [],
+    reviewedHead: HEAD,
+    implementationExecution: 'impl-1',
+    exactStatus: { state: 'success' },
+  }).state, 'failure');
+  assert.equal(validateParentApproval({
+    comments: [approved],
+    reviewedHead: HEAD,
+    implementationExecution: 'impl-1',
+    exactStatus: null,
+  }).state, 'failure');
+  assert.equal(validateParentApproval({
+    comments: [comment({ execution: 'impl-1' })],
+    reviewedHead: HEAD,
+    implementationExecution: 'impl-1',
+    exactStatus: { state: 'success' },
+  }).state, 'failure');
+  assert.equal(validateParentApproval({
+    comments: [approved, comment({ id: 2, disposition: 'FEEDBACK', created: '2026-07-15T12:01:00Z' })],
+    reviewedHead: HEAD,
+    implementationExecution: 'impl-1',
+    exactStatus: { state: 'success' },
+  }).state, 'failure');
+  const exactDescription = `approved for current PR head; impl=${implementationFingerprint('impl-1')}`;
+  assert.equal(isMatchingExactApprovalStatus({
+    context: 'review disposition accepted',
+    state: 'success',
+    description: exactDescription,
+  }, 'impl-1'), true);
+  assert.equal(isMatchingExactApprovalStatus({
+    context: 'review disposition accepted',
+    state: 'success',
+    description: 'carried approval from abcdef123456; object delta unchanged',
+  }, 'impl-1'), false);
+  assert.equal(isMatchingExactApprovalStatus({
+    context: 'review disposition accepted',
+    state: 'success',
+    description: exactDescription,
+  }, 'different-implementation'), false);
+});
+
 test('proves only the reproducible object-identical merge refresh', () => {
   const originalCwd = process.cwd();
   const repo = mkdtempSync(join(tmpdir(), 'review-refresh-'));
@@ -181,6 +236,20 @@ test('proves only the reproducible object-identical merge refresh', () => {
     const wrongTree = run('rev-parse', `${reviewed}^{tree}`);
     const manufactured = run('commit-tree', wrongTree, '-p', reviewed, '-p', currentBase, '-m', 'wrong');
     assert.equal(verifyRefreshObjects({ head: manufactured, base: currentBase }).state, 'failure');
+    assert.equal(verifyRefreshObjects({ head: reviewed, base: currentBase }).description, 'refresh head must have exactly two parents');
+    assert.equal(verifyRefreshObjects({ head: refresh, base }).description, 'refresh does not merge the current PR base');
+
+    run('switch', '--quiet', '--detach', base);
+    writeFileSync(join(repo, 'base.txt'), 'reviewed overlap\n');
+    run('commit', '--quiet', '-am', 'reviewed overlap');
+    const reviewedOverlap = run('rev-parse', 'HEAD');
+    run('switch', '--quiet', '--detach', base);
+    writeFileSync(join(repo, 'base.txt'), 'base overlap\n');
+    run('commit', '--quiet', '-am', 'base overlap');
+    const baseOverlap = run('rev-parse', 'HEAD');
+    const overlapTree = run('rev-parse', `${reviewedOverlap}^{tree}`);
+    const overlapHead = run('commit-tree', overlapTree, '-p', reviewedOverlap, '-p', baseOverlap, '-m', 'overlap');
+    assert.match(verifyRefreshObjects({ head: overlapHead, base: baseOverlap }).description, /^refresh path overlap:/);
   } finally {
     process.chdir(originalCwd);
     rmSync(repo, { recursive: true, force: true });
