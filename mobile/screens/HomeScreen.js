@@ -9,6 +9,12 @@ import { deriveHomeDashboardData } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
+// The exact example the welcome card teaches (issue #517). Exported so tests
+// can round-trip it through the real parser — the copy must never drift back
+// to a shape parseWorkoutNote silently rejects.
+export const WELCOME_EXAMPLE_EXERCISE_LINE = '-Squat';
+export const WELCOME_EXAMPLE_SETS_LINE = '315 5,5';
+
 function lerpColor(a, b, t) {
   const p = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
   const [ar,ag,ab] = p(a), [br,bg,bb] = p(b);
@@ -119,7 +125,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               <View style={styles.welcomeStepTextContainer}>
                 <Text style={styles.welcomeStepTitle}>1. Log a Workout</Text>
                 <Text style={styles.welcomeStepDesc}>
-                  Write sets in plain text (e.g. "Squat: 315x5, 315x5"). Kilo automatically parses and tracks your volume.
+                  Write workouts in plain text: an exercise line like "{WELCOME_EXAMPLE_EXERCISE_LINE}", then its sets like "{WELCOME_EXAMPLE_SETS_LINE}". Kilo automatically parses and tracks your volume.
                 </Text>
               </View>
             </View>
