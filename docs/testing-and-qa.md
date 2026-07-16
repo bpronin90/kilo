@@ -204,12 +204,29 @@ web build as a production-style bundle smoke check.
 Every PR additionally requires the `review disposition accepted` status for
 its exact current head SHA. The trusted evaluator in
 `scripts/review-disposition.mjs` reads current-head implementation metadata and
-the newest valid independent review or owner-override record. A new commit
-returns the status to pending. Review disposition is independent from CI: an
+the newest valid independent review or owner-override record. Missing
+current-head implementation metadata, or the absence of any exact-head review,
+fails the check with an actionable status rather than leaving it pending
+indefinitely.
+
+As a narrow exception, an ordinary exact-head approval is carried forward
+across a verified closeout refresh. When the current head is a two-parent merge
+of a previously approved head and the current base, and the refresh is
+object-identical to the reviewed change — namespace-disjoint paths, an unchanged
+raw object delta, and a tree equal to the reproducible conflict-free Git merge —
+the evaluator preserves the prior approval, so an already-approved, disjoint PR
+does not need re-review solely because another PR merged first. The carried
+approval is bound to the same implementation execution as the reviewed head;
+chained refreshes, changed deltas, path overlap, manufactured trees, or a
+missing ordinary approval all fail closed. Exact-head review, owner override,
+self-review rejection, and branch-protection enforcement are unaffected.
+
+Review disposition is independent from CI: an
 override cannot satisfy a pending or failed test, audit, version, or migration
 check. Dependabot PRs derive their implementation execution from the bot and
 current head, but still require an accepted review disposition before their
-guarded auto-merge can complete. The evaluator's deterministic parser tests run with:
+guarded auto-merge can complete. The evaluator's deterministic parser and
+refresh-verification tests run with:
 
 ```sh
 node --test scripts/review-disposition.test.mjs
