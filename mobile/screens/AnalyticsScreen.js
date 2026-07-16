@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';

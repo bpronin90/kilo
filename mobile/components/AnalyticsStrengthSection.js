@@ -4,7 +4,7 @@ import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI'
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { Colors } from '../theme/colors';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
-import { MaterialIcons } from '@expo/vector-icons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight } from '../lib/units';
 
