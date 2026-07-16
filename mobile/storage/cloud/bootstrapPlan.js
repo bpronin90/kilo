@@ -229,6 +229,10 @@ function buildWeightEntryRows(snapshot, userId) {
     note: e.note ?? null,
     saved_at: e.saved_at ?? null,
     updated_at: now,
+    // Carry the tombstone through the upload (issue #513). Dropping it would
+    // re-upsert a locally-deleted entry as a fresh LIVE row that wins LWW on
+    // every device — the same resurrection mechanism #501 fixed for notes.
+    deleted_at: e.deleted_at ?? null,
   }));
 }
 
@@ -378,6 +382,8 @@ function buildDeloadHistoryRows(snapshot, userId) {
       record_json: recordJson,
       saved_at: r.saved_at ?? null,
       updated_at: now,
+      // Tombstone carry-through (issue #513), same as weight entries above.
+      deleted_at: r.deleted_at ?? null,
     };
   });
 }
