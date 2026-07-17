@@ -104,6 +104,9 @@ Current limitation:
   notice behind `!autosave`, plus the past-deload save-path regression boundary
   by asserting the non-current note editor reuses one in-flight save promise
   during `Done` flushes and clears that pending state in `finally`, plus a
+  behavioral boundary that drives the real editor hook to prove `Done` flushes
+  the latest editor text when it races an in-flight autosave so trailing
+  keystrokes are never lost (#528), plus a
   `react-test-renderer` suite for the Weight goal card's loss,
   gain, maintain, no-estimate, and pace-warning states, plus merged Trends
   rendering checks that lock the day-level `date` trend bucketing contract

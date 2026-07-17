@@ -468,6 +468,85 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
   });
 });
 
+// ── Done vs in-flight autosave: trailing edits must be flushed (#528) ─────────
+// Deterministic reproduction of the #522/#528 race: an autosave for older content
+// is still in flight when the user types more and presses Done. Done coalesces onto
+// the in-flight promise, which persists the OLD snapshot, and then closes the editor
+// without ever persisting the trailing keystrokes. This behavioral test drives the
+// real hook and asserts the final persisted content is the latest text.
+
+describe('handleDoneOther flushes trailing edits when Done races an in-flight autosave (#528)', () => {
+  const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
+
+  test('the latest keystrokes are persisted when Done is pressed during an in-flight autosave', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+
+    // Hold the first write (the "A" autosave) in flight until we release it, so Done
+    // deterministically races it. Later writes resolve immediately.
+    let releaseFirstSave;
+    const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
+    let calls = 0;
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      calls += 1;
+      if (calls === 1) await firstSaveGate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'n1',
+        currentNote: note,
+        deloadHistory: [],
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: false,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[note]} />); });
+
+    // Open the existing note, then type "A".
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    render.act(() => { latest.hook.setEditingText('A'); });
+
+    // The "A" autosave starts and is held in flight.
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.hook.handleSaveOtherNote({ autosave: true }); });
+
+    // The user types "B" while the "A" autosave is still running.
+    render.act(() => { latest.hook.setEditingText('B'); });
+
+    // Done is pressed mid-flight.
+    let donePromise;
+    render.act(() => { donePromise = latest.hook.handleDoneOther(); });
+
+    // Release the in-flight "A" save and let everything Done chains after it settle.
+    await render.act(async () => {
+      releaseFirstSave();
+      await autosavePromise;
+      await donePromise;
+    });
+
+    // The trailing keystrokes ("B") must be the last persisted content, and the
+    // editor must have closed only after that succeeded.
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'B' }));
+    expect(latest.hook.editingNoteId).toBe(null);
+  });
+});
+
 // ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
 // Web has no reliable double-tap idiom, so Log must expose an explicit tap-once
 // edit affordance. LogScreen passes enterCurrentEditor (single-press editor
