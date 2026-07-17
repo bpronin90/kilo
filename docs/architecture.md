@@ -60,7 +60,7 @@ after the 1-hour window so abandoned bucket keys cannot grow the table without
 bound (#451).
 
 The config's `project_id` is not the remote deployment target. Run
-`scripts/deploy-kilo-functions.sh` from the repository root to deploy the two
+`scripts/deploy-kilo-functions.sh` from the repository root to deploy the three
 Kilo-owned functions; the script supplies project ref
 `ogzhnscdqcdrhfqcobuv` explicitly and does not deploy the unrelated `anime`
 function hosted in the same Supabase project.
