@@ -87,18 +87,22 @@ test('parses exactly one issue reference', () => {
   assert.equal(parseIssueReference('no issue field'), null);
 });
 
-test('parses complete immutable handoffs and rejects edited or unauthorized records', () => {
+test('accepts only immutable owner-authored handoffs', () => {
   assert.equal(parseHandoff(handoff()).commit, HEAD);
   assert.equal(parseHandoff(handoff({ updated: '2026-07-16T12:02:00Z' })), null);
+  assert.equal(parseHandoff(handoff({ association: 'MEMBER' })), null);
+  assert.equal(parseHandoff(handoff({ association: 'COLLABORATOR' })), null);
   assert.equal(parseHandoff(handoff({ association: 'NONE' })), null);
   const incomplete = handoff();
   incomplete.body = `UPDATE=IMPLEMENTED\nPR: #42\nCommit: ${HEAD}`;
   assert.equal(parseHandoff(incomplete), null);
 });
 
-test('parses verdicts and verifies owner overrides by GitHub association', () => {
+test('accepts only immutable owner-authored verdicts and overrides', () => {
   assert.equal(parseDisposition(verdict()).disposition, 'APPROVED');
   assert.equal(parseDisposition(verdict({ ownerOverride: true })).disposition, 'OWNER_OVERRIDE');
+  assert.equal(parseDisposition(verdict({ association: 'MEMBER' })), null);
+  assert.equal(parseDisposition(verdict({ association: 'COLLABORATOR' })), null);
   assert.equal(parseDisposition(verdict({ ownerOverride: true, association: 'COLLABORATOR' })), null);
   assert.equal(parseDisposition(verdict({ updated: '2026-07-16T12:02:00Z' })), null);
 });
@@ -144,7 +148,7 @@ test('requires the exact-head verdict to follow the current handoff', () => {
   }).description, /predates/);
 });
 
-test('an owner override can supersede feedback and a later verdict can supersede the override', () => {
+test('the latest owner override remains controlling over later ordinary verdicts', () => {
   const comments = [
     handoff(),
     verdict({ disposition: 'FEEDBACK' }),
@@ -152,7 +156,24 @@ test('an owner override can supersede feedback and a later verdict can supersede
   ];
   assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'success');
   comments.push(verdict({ id: 4, disposition: 'BLOCKED', created: '2026-07-16T12:03:00Z' }));
-  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'failure');
+  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'success');
+  comments.push(verdict({ id: 5, ownerOverride: true, created: '2026-07-16T12:04:00Z' }));
+  assert.equal(controllingDisposition(comments, 42, HEAD).id, 5);
+});
+
+test('a replacement handoff retires older overrides for later approvals', () => {
+  const replacementHandoff = handoff({ id: 4, created: '2026-07-16T12:03:00Z' });
+  const comments = [
+    handoff(),
+    verdict({ id: 2, disposition: 'FEEDBACK' }),
+    verdict({ id: 3, ownerOverride: true, created: '2026-07-16T12:02:00Z' }),
+    replacementHandoff,
+    verdict({ id: 5, created: '2026-07-16T12:04:00Z' }),
+  ];
+  assert.equal(controllingDisposition(comments, 42, HEAD, parseHandoff(replacementHandoff)).id, 5);
+  assert.equal(evaluateDisposition({
+    pr: pr(), comments, handoff: parseHandoff(replacementHandoff),
+  }).state, 'success');
 });
 
 test('a new head invalidates old handoffs and verdicts', () => {
