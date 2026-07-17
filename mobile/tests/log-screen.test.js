@@ -468,6 +468,214 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
   });
 });
 
+// ── Done vs in-flight autosave: trailing edits must be flushed (#528) ─────────
+// Deterministic reproduction of the #522/#528 race: an autosave for older content
+// is still in flight when the user types more and presses Done. Done coalesces onto
+// the in-flight promise, which persists the OLD snapshot, and then closes the editor
+// without ever persisting the trailing keystrokes. This behavioral test drives the
+// real hook and asserts the final persisted content is the latest text.
+
+describe('handleDoneOther flushes trailing edits when Done races an in-flight autosave (#528)', () => {
+  const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
+
+  test('the latest keystrokes are persisted when Done is pressed during an in-flight autosave', async () => {
+    const note = { id: 'n1', title: 'R', raw_text: 'A0' };
+
+    // Hold the first write (the "A" autosave) in flight until we release it, so Done
+    // deterministically races it. Later writes resolve immediately.
+    let releaseFirstSave;
+    const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
+    let calls = 0;
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      calls += 1;
+      if (calls === 1) await firstSaveGate;
+      return { id, title: patch.title, raw_text: patch.raw_text };
+    });
+
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'n1',
+        currentNote: note,
+        deloadHistory: [],
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: false,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[note]} />); });
+
+    // Open the existing note, then type "A".
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    render.act(() => { latest.hook.setEditingText('A'); });
+
+    // The "A" autosave starts and is held in flight.
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.hook.handleSaveOtherNote({ autosave: true }); });
+
+    // The user types "B" while the "A" autosave is still running.
+    render.act(() => { latest.hook.setEditingText('B'); });
+
+    // Done is pressed mid-flight.
+    let donePromise;
+    render.act(() => { donePromise = latest.hook.handleDoneOther(); });
+
+    // Release the in-flight "A" save and let everything Done chains after it settle.
+    await render.act(async () => {
+      releaseFirstSave();
+      await autosavePromise;
+      await donePromise;
+    });
+
+    // The trailing keystrokes ("B") must be the last persisted content, and the
+    // editor must have closed only after that succeeded.
+    expect(update).toHaveBeenLastCalledWith('n1', expect.objectContaining({ raw_text: 'B' }));
+    expect(latest.hook.editingNoteId).toBe(null);
+  });
+
+  test('a linked-deload Session # changed during an in-flight autosave is persisted on Done', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const note = {
+      id: 'd1',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: '2026-01-01T12:00:00.000Z',
+    };
+    const histRecord = {
+      id: 'h1', note_id: 'd1', deload_session_ordinal: 1, completed_at: '2026-01-01T12:00:00.000Z',
+    };
+
+    let releaseFirstSave;
+    const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
+    let calls = 0;
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      calls += 1;
+      if (calls === 1) await firstSaveGate; // hold the body autosave in flight
+      return { id, title: patch.title, raw_text: patch.raw_text, saved_at: patch.saved_at };
+    });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: true,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // Edit the body so the autosave persists something, and start it in flight.
+    render.act(() => { latest.hook.setEditingText('body2'); });
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.hook.handleSaveOtherNote({ autosave: true }); });
+
+    // While the body autosave is in flight, change ONLY the Session # ordinal.
+    render.act(() => { latest.hook.setDeloadEditOrdinal('2'); });
+
+    let donePromise;
+    render.act(() => { donePromise = latest.hook.handleDoneOther(); });
+
+    await render.act(async () => {
+      releaseFirstSave();
+      await autosavePromise;
+      await donePromise;
+    });
+
+    // The new ordinal must reach the linked deload history record, and the editor
+    // must close only after that metadata save succeeded.
+    expect(updateDeload).toHaveBeenCalledWith('h1', expect.objectContaining({ deload_session_ordinal: 2 }));
+    expect(latest.hook.editingNoteId).toBe(null);
+  });
+
+  test('a failed flush save keeps the editor open with the latest text for retry', async () => {
+    const note = { id: 'n2', title: 'R', raw_text: 'A0' };
+
+    let releaseFirstSave;
+    const firstSaveGate = new Promise((resolve) => { releaseFirstSave = resolve; });
+    let calls = 0;
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      calls += 1;
+      if (calls === 1) { await firstSaveGate; return { id, title: patch.title, raw_text: patch.raw_text }; }
+      return null; // the flush save of the trailing edit fails
+    });
+
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory: [],
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: false,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[note]} />); });
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    render.act(() => { latest.hook.setEditingText('A'); });
+    let autosavePromise;
+    render.act(() => { autosavePromise = latest.hook.handleSaveOtherNote({ autosave: true }); });
+    render.act(() => { latest.hook.setEditingText('B'); });
+    let donePromise;
+    render.act(() => { donePromise = latest.hook.handleDoneOther(); });
+
+    await render.act(async () => {
+      releaseFirstSave();
+      await autosavePromise;
+      await donePromise;
+    });
+
+    // The flush attempted to persist "B" and it failed, so the editor stays open
+    // with the note still in edit (latest text retained for retry).
+    expect(update).toHaveBeenLastCalledWith('n2', expect.objectContaining({ raw_text: 'B' }));
+    expect(latest.hook.editingNoteId).not.toBe(null);
+  });
+});
+
 // ── Web edit path: explicit non-double-tap edit control (#314) ───────────────
 // Web has no reliable double-tap idiom, so Log must expose an explicit tap-once
 // edit affordance. LogScreen passes enterCurrentEditor (single-press editor
