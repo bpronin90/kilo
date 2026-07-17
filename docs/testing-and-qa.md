@@ -572,6 +572,16 @@ retains non-test commands such as `npm run audit`.
   (`type: 'dismissed'`) change so the sentinel `01-01-2000` value is never
   committed, while confirmed selections still update the chip
 
+### `mobile/tests/sync-queue.test.js`
+
+- deterministically defers the first transport push, enqueues a newer snapshot
+  under the same id, and verifies exact-snapshot cleanup retains and later sends
+  the replacement
+- covers live rows and tombstones through both the write-enqueued `syncTable`
+  path and the diff-tracked `syncDiffTable` path
+- verifies a failed push leaves the acknowledged snapshot queued and a later
+  successful retry clears it idempotently
+
 ### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
 
 - cover archived weight-goal cloud transport wiring so dirty

@@ -401,6 +401,12 @@ pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.
+After a successful push, dirty-queue cleanup compares the queue snapshot captured
+for that upload with the value still queued under the same id. The live row sent
+to Supabase may also carry local-only state, so it is not the queue identity. A
+newer edit or tombstone enqueued while the older push is in flight therefore
+stays pending for the next pass instead of being cleared by the older
+acknowledgment.
 Singleton tables use a synthetic local merge id that is removed before upsert,
 and tombstones remain in the sync contract so deletes do not resurrect. The
 ownership-confirmation bootstrap projection preserves workout-note
