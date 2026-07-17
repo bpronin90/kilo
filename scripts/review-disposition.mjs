@@ -3,7 +3,6 @@
 import { execFileSync } from 'node:child_process';
 
 const REVIEW_CONTEXT = 'review disposition accepted';
-const AUTHORIZED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const SHA_RE = /^[0-9a-f]{40}$/;
 
 function fieldValues(body, name) {
@@ -34,7 +33,7 @@ function parseNumber(value) {
 }
 
 function immutableAuthorizedComment(comment) {
-  return AUTHORIZED_ASSOCIATIONS.has(comment?.author_association)
+  return comment?.author_association === 'OWNER'
     && comment.created_at === comment.updated_at
     && Number.isSafeInteger(Number(comment.id));
 }
@@ -130,12 +129,13 @@ export function latestHandoff(comments, prNumber, commit) {
 }
 
 export function controllingDisposition(comments, prNumber, commit) {
-  return comments
+  const records = comments
     .map(parseDisposition)
     .filter(Boolean)
     .filter((record) => record.pr === prNumber && record.commit === commit)
-    .sort(compareRecords)
-    .at(-1) ?? null;
+    .sort(compareRecords);
+  const overrides = records.filter((record) => record.record === 'OWNER_OVERRIDE');
+  return overrides.at(-1) ?? records.at(-1) ?? null;
 }
 
 export function selectAuthoritativeEvidence(evidence) {
