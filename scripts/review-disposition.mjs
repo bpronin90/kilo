@@ -69,6 +69,15 @@ export function parseHandoff(comment) {
   };
 }
 
+export function implicitDependabotHandoff(prNumber, commit) {
+  return {
+    pr: prNumber,
+    commit,
+    createdAt: '1970-01-01T00:00:00Z',
+    id: 0,
+  };
+}
+
 export function parseDisposition(comment) {
   if (!immutableAuthorizedComment(comment)) return null;
   const pr = parseNumber(singleField(comment.body, 'PR'));
@@ -343,7 +352,7 @@ async function proveCarryForward({ repository, pr, comments }) {
   if (objectProof.state !== 'success') return objectProof;
   const { reviewedHead } = objectProof;
   const parentHandoff = pr.user?.login === 'dependabot[bot]'
-    ? { createdAt: '0000', id: 0, pr: pr.number, commit: reviewedHead }
+    ? implicitDependabotHandoff(pr.number, reviewedHead)
     : latestHandoff(comments, pr.number, reviewedHead);
   if (!parentHandoff) return { state: 'failure', description: 'reviewed parent lacks a valid implementation handoff' };
   const exactStatus = await latestReviewStatus(repository, reviewedHead);
@@ -435,7 +444,9 @@ async function evaluatePullConversation(repository, pr) {
     await publishStatus(repository, pr, 'failure', 'PR body requires exactly one Issue: #number or Issue: none field');
     return;
   }
-  const handoff = pr.user?.login === 'dependabot[bot]' ? { pr: pr.number, commit: head } : latestHandoff(comments, pr.number, head);
+  const handoff = pr.user?.login === 'dependabot[bot]'
+    ? implicitDependabotHandoff(pr.number, head)
+    : latestHandoff(comments, pr.number, head);
   const carryForward = handoff ? null : await proveCarryForward({ repository, pr, comments });
   await publishStatus(repository, pr, 'pending', 'evaluating current PR head review disposition');
   const result = evaluateDisposition({ pr, comments, handoff, carryForward });

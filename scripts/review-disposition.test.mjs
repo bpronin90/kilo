@@ -8,6 +8,7 @@ import {
   controllingDisposition,
   evaluateDisposition,
   exactApprovalDescription,
+  implicitDependabotHandoff,
   issueNumbersForPullEvent,
   isMatchingExactApprovalStatus,
   latestHandoff,
@@ -162,7 +163,8 @@ test('a new head invalidates old handoffs and verdicts', () => {
 test('Dependabot has an implicit implementation handoff but still needs review', () => {
   const dependabot = pr({ issue: null, login: 'dependabot[bot]' });
   assert.equal(evaluateDisposition({ pr: dependabot, comments: [] }).state, 'failure');
-  assert.equal(evaluateDisposition({ pr: dependabot, comments: [verdict()] }).state, 'success');
+  const syntheticHandoff = implicitDependabotHandoff(dependabot.number, HEAD);
+  assert.equal(evaluateDisposition({ pr: dependabot, comments: [verdict()], handoff: syntheticHandoff }).state, 'success');
 });
 
 test('non-authoritative competing PRs fail even with exact-head approval', () => {
