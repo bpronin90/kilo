@@ -43,19 +43,27 @@ export function useLogOtherRoutineEditor({
   const autosaveOtherTimerRef = useRef(null);
   const saveOtherNoteInFlightRef = useRef(null);
 
-  // The raw editor content most recently persisted by handleSaveOtherNote. Done
-  // compares the live editor against this to detect trailing keystrokes that an
-  // in-flight autosave for older content did not save.
+  // The editor fields most recently persisted by handleSaveOtherNote. Done
+  // compares the live editor against these to detect any field an in-flight
+  // autosave for older content did not save — every field hasUnsavedOther tracks
+  // (text, title, and linked-deload date/ordinal) must be covered or a metadata
+  // edit made during the race is lost.
   const lastSavedTextRef = useRef(null);
   const lastSavedTitleRef = useRef(null);
+  const lastSavedDeloadDateRef = useRef(null);
+  const lastSavedDeloadOrdinalRef = useRef(null);
 
   // Live-value refs so async save callbacks read current state without stale closures.
   const editingTextRef = useRef(editingText);
   const editingTitleRef = useRef(editingTitle);
   const editingNoteIdRef = useRef(editingNoteId);
+  const deloadEditDateRef = useRef(deloadEditDate);
+  const deloadEditOrdinalRef = useRef(deloadEditOrdinal);
   editingTextRef.current = editingText;
   editingTitleRef.current = editingTitle;
   editingNoteIdRef.current = editingNoteId;
+  deloadEditDateRef.current = deloadEditDate;
+  deloadEditOrdinalRef.current = deloadEditOrdinal;
 
   useEffect(() => {
     if (saveSuccess) {
@@ -185,6 +193,8 @@ export function useLogOtherRoutineEditor({
     const savedNoteId = editingNoteId;
     const snapshotText = editingText;
     const snapshotTitle = editingTitle;
+    const snapshotDeloadDate = deloadEditDate;
+    const snapshotDeloadOrdinal = deloadEditOrdinal;
 
     const run = async () => {
       setNoteIsSaving(true);
@@ -238,6 +248,8 @@ export function useLogOtherRoutineEditor({
           // live editor has since moved past it (the in-flight autosave race).
           lastSavedTextRef.current = snapshotText;
           lastSavedTitleRef.current = snapshotTitle;
+          lastSavedDeloadDateRef.current = snapshotDeloadDate;
+          lastSavedDeloadOrdinalRef.current = snapshotDeloadOrdinal;
           const contentUnchanged =
             editingTextRef.current === snapshotText &&
             editingTitleRef.current === snapshotTitle;
@@ -290,7 +302,9 @@ export function useLogOtherRoutineEditor({
       let guard = 0;
       while (
         editingTextRef.current !== lastSavedTextRef.current ||
-        editingTitleRef.current !== lastSavedTitleRef.current
+        editingTitleRef.current !== lastSavedTitleRef.current ||
+        deloadEditDateRef.current !== lastSavedDeloadDateRef.current ||
+        deloadEditOrdinalRef.current !== lastSavedDeloadOrdinalRef.current
       ) {
         if (guard >= 5) return;
         guard += 1;
