@@ -189,6 +189,40 @@ describe('dirty queue compare-and-clear', () => {
     });
   });
 
+  it('clears the queued snapshot when the pushed row only gained local-only fields', async () => {
+    const table = SYNC_TABLES.WORKOUT_NOTES;
+    const clientId = await getClientId();
+    const queued = stampWrite(
+      { id: 'note-local-only', raw_text: '-Squat\n- 225 5,5,5' },
+      clientId,
+      '2026-07-17T11:30:00.000Z'
+    );
+    let local = [{ ...queued, isCurrent: true }];
+    await enqueueDirty(table, queued);
+
+    const pushed = [];
+    await syncTable({
+      table,
+      transport: {
+        async pull() {
+          return [];
+        },
+        async push(_table, records) {
+          pushed.push(cloneRecords(records));
+        },
+      },
+      async readLocal() {
+        return local;
+      },
+      async writeLocal(records) {
+        local = records;
+      },
+    });
+
+    expect(pushed).toEqual([[{ ...queued, isCurrent: true }]]);
+    expect(await getDirtyRecords(table)).toEqual([]);
+  });
+
   it('leaves the acknowledged snapshot queued when push fails, then clears it after retry', async () => {
     const table = SYNC_TABLES.WEIGHT_ENTRIES;
     const clientId = await getClientId();

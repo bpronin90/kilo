@@ -307,15 +307,17 @@ export async function getDirtyRecords(table) {
   return Object.values(map);
 }
 
-// Clear only the exact snapshots acknowledged by a confirmed successful push.
+// Clear only the exact queued snapshots acknowledged by a confirmed successful
+// push.
 // A newer enqueue may replace a record under the same id while the transport is
 // in flight; compare the full queued value so acknowledging the older snapshot
 // cannot delete the replacement. The work stays O(queue + acknowledgements),
 // with no cross-product scan.
 //
 // Primitive ids remain supported for direct queue-maintenance callers. That
-// form captures the value currently in the queue; sync loops always pass the
-// actual records sent to the transport so their cleanup is compare-and-clear.
+// form captures the value currently in the queue. Sync loops pass the snapshots
+// they read from the queue, not the live rows rebuilt for transport: local-only
+// fields may legitimately change the latter without creating new sync work.
 export async function clearDirty(table, acknowledged) {
   if (!acknowledged || acknowledged.length === 0) return;
   const map = await readDirty(table);
@@ -441,7 +443,7 @@ export async function syncTable({
   if (dirty.length > 0) {
     const toPush = dirty.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
-    await clearDirty(table, toPush);
+    await clearDirty(table, dirty);
   }
 
   // 5. Advance the cursor only after a successful push, covering both pulled
@@ -747,7 +749,7 @@ export async function syncDiffTable({
   if (pending.length > 0) {
     const toPush = pending.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
-    await clearDirty(table, toPush);
+    await clearDirty(table, pending);
   }
 
   // 6. Advance the cursor only after a successful push. This spans the FULL
