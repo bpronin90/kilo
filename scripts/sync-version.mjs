@@ -1,77 +1,65 @@
 #!/usr/bin/env node
-// Keeps the mobile app's version values aligned with the canonical root
-// package.json version. The displayed version (mobile/package.json) and the
-// OTA runtime boundary (mobile/app.json expo.version) must mirror the root.
-//
+// Keeps every packaged app version aligned with the canonical root package.json.
 // Usage:
-//   node scripts/sync-version.mjs          Write the canonical version into the mobile files.
-//   node scripts/sync-version.mjs --check  Exit non-zero if any mobile file is out of sync (CI guard).
+//   node scripts/sync-version.mjs          Write synchronized versions.
+//   node scripts/sync-version.mjs --check  Fail if any synchronized version drifts.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const canonical = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-
-const targets = [
-  { path: join(root, 'mobile', 'package.json'), label: 'mobile/package.json' },
-  { path: join(root, 'mobile', 'app.json'), label: 'mobile/app.json' },
-];
-
-const check = process.argv.includes('--check');
-// Matches the first top-level "version": "x.y.z" field. In package.json that is
-// the package version; in app.json that is expo.version. Dependency entries are
-// keyed by name (not "version"), and "runtimeVersion" does not match.
+const defaultRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const versionRe = /("version"\s*:\s*")([^"]*)(")/;
 
-let drift = false;
-for (const target of targets) {
-  const text = readFileSync(target.path, 'utf8');
-  const match = text.match(versionRe);
-  if (!match) {
-    console.error(`No "version" field found in ${target.label}`);
-    process.exitCode = 1;
-    continue;
-  }
-  const current = match[2];
-  if (current === canonical) continue;
+export function syncVersions({ root = defaultRoot, check = false, logger = console } = {}) {
+  const canonical = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+  const drift = [];
+  const textTargets = [
+    { path: join(root, 'mobile', 'package.json'), label: 'mobile/package.json' },
+    { path: join(root, 'mobile', 'app.json'), label: 'mobile/app.json' },
+  ];
 
-  drift = true;
-  if (check) {
-    console.error(`Version drift: ${target.label} is ${current}, expected ${canonical}`);
-  } else {
-    writeFileSync(target.path, text.replace(versionRe, `$1${canonical}$3`));
-    console.log(`Updated ${target.label}: ${current} -> ${canonical}`);
+  for (const target of textTargets) {
+    const source = readFileSync(target.path, 'utf8');
+    const match = source.match(versionRe);
+    if (!match) throw new Error(`No "version" field found in ${target.label}`);
+    if (match[2] === canonical) continue;
+    drift.push({ label: target.label, from: match[2], to: canonical });
+    if (!check) writeFileSync(target.path, source.replace(versionRe, `$1${canonical}$3`));
   }
+
+  const lockTargets = [
+    { path: join(root, 'package-lock.json'), label: 'package-lock.json' },
+    { path: join(root, 'mobile', 'package-lock.json'), label: 'mobile/package-lock.json' },
+  ];
+  for (const target of lockTargets) {
+    const lock = JSON.parse(readFileSync(target.path, 'utf8'));
+    const packageRoot = lock.packages?.[''];
+    if (lock.version === canonical && (!packageRoot || packageRoot.version === canonical)) continue;
+    drift.push({ label: target.label, from: lock.version, to: canonical });
+    if (!check) {
+      lock.version = canonical;
+      if (packageRoot) packageRoot.version = canonical;
+      writeFileSync(target.path, `${JSON.stringify(lock, null, 2)}\n`);
+    }
+  }
+
+  if (check && drift.length > 0) {
+    const details = drift.map(({ label, from, to }) => `${label} is ${from}, expected ${to}`).join('; ');
+    throw new Error(`Version drift: ${details}. Run "node scripts/sync-version.mjs".`);
+  }
+  if (!check) {
+    for (const item of drift) logger.log(`Updated ${item.label}: ${item.from} -> ${item.to}`);
+    if (drift.length === 0) logger.log(`All version files already at ${canonical}.`);
+  }
+  return { canonical, drift };
 }
 
-// The lockfile carries its own self-version in two places: the top-level
-// `.version` and `.packages[""].version`. These are not safely reachable with
-// the shared `versionRe` (the file has hundreds of dependency "version" keys),
-// so handle it via JSON. Re-serializing with 2-space indent round-trips the
-// npm lockfile byte-for-byte, so only the self-version fields actually change.
-const lockPath = join(root, 'mobile', 'package-lock.json');
-const lockLabel = 'mobile/package-lock.json';
-const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-const lockSelf = lock.packages && lock.packages[''];
-const lockCurrent = lock.version;
-if (lockCurrent !== canonical || (lockSelf && lockSelf.version !== canonical)) {
-  drift = true;
-  if (check) {
-    console.error(`Version drift: ${lockLabel} is ${lockCurrent}, expected ${canonical}`);
-  } else {
-    lock.version = canonical;
-    if (lockSelf) lockSelf.version = canonical;
-    writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
-    console.log(`Updated ${lockLabel}: ${lockCurrent} -> ${canonical}`);
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  try {
+    syncVersions({ check: process.argv.includes('--check') });
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
   }
-}
-
-if (check && drift) {
-  console.error(`\nRun "node scripts/sync-version.mjs" to align mobile versions to ${canonical}.`);
-  process.exit(1);
-}
-if (!check && !drift) {
-  console.log(`All mobile version files already at ${canonical}.`);
 }
