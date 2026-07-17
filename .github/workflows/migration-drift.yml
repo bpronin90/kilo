@@ -78,4 +78,18 @@ jobs:
         run: psql --version
 
       - name: "Attempt check without credentials (expected: exit 2, not a pass)"
-        run: node scripts/check-migration-drift.mjs
+        run: |
+          if node scripts/check-migration-drift.mjs; then
+            echo "::error::Credentialless migration drift check unexpectedly succeeded"
+            exit 1
+          else
+            status=$?
+          fi
+
+          if [ "$status" -eq 2 ]; then
+            echo "::notice::Credentialed migration drift check is unavailable for fork pull requests"
+            exit 0
+          fi
+
+          echo "::error::Credentialless migration drift check failed unexpectedly with exit code $status"
+          exit "$status"
