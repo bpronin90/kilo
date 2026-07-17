@@ -307,14 +307,28 @@ export async function getDirtyRecords(table) {
   return Object.values(map);
 }
 
-// Clear specific ids from the dirty queue after a confirmed successful push.
-// Callers should clear only ids they actually pushed.
-export async function clearDirty(table, ids) {
-  if (!ids || ids.length === 0) return;
+// Clear only the exact snapshots acknowledged by a confirmed successful push.
+// A newer enqueue may replace a record under the same id while the transport is
+// in flight; compare the full queued value so acknowledging the older snapshot
+// cannot delete the replacement. The work stays O(queue + acknowledgements),
+// with no cross-product scan.
+//
+// Primitive ids remain supported for direct queue-maintenance callers. That
+// form captures the value currently in the queue; sync loops always pass the
+// actual records sent to the transport so their cleanup is compare-and-clear.
+export async function clearDirty(table, acknowledged) {
+  if (!acknowledged || acknowledged.length === 0) return;
   const map = await readDirty(table);
+  const expectedById = new Map();
+  for (const item of acknowledged) {
+    const id = item && typeof item === 'object' ? item.id : item;
+    if (id == null || !(id in map)) continue;
+    expectedById.set(String(id), item && typeof item === 'object' ? item : map[id]);
+  }
+
   let changed = false;
-  for (const id of ids) {
-    if (id in map) {
+  for (const [id, expected] of expectedById) {
+    if (id in map && stableStringify(map[id]) === stableStringify(expected)) {
       delete map[id];
       changed = true;
     }
@@ -427,10 +441,7 @@ export async function syncTable({
   if (dirty.length > 0) {
     const toPush = dirty.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
-    await clearDirty(
-      table,
-      dirty.map((d) => d.id)
-    );
+    await clearDirty(table, toPush);
   }
 
   // 5. Advance the cursor only after a successful push, covering both pulled
@@ -736,10 +747,7 @@ export async function syncDiffTable({
   if (pending.length > 0) {
     const toPush = pending.map((d) => merged.get(d.id) || d);
     await transport.push(table, toPush);
-    await clearDirty(
-      table,
-      pending.map((d) => d.id)
-    );
+    await clearDirty(table, toPush);
   }
 
   // 6. Advance the cursor only after a successful push. This spans the FULL
