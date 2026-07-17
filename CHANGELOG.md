@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.98.1 - 2026-07-16
+
+- Issue #519: Fixed account deletion for consented users. The `kilo.consent_events`
+  append-only trigger raised on the `auth.users` deletion cascade, failing account
+  deletion with SQLSTATE `23514` and leaving a partial-deletion state. A forward
+  migration now permits only the FK-cascade child delete (parent already removed)
+  while still rejecting direct deletes and all updates, with regression coverage
+  exercising the real parent delete.
+
 ## 0.98.0 - 2026-07-15
 
 - Issue #502: Made `Skip week` append a new skip marker on every press and
