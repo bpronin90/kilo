@@ -707,7 +707,9 @@ retains non-test commands such as `npm run audit`.
   wording, timestamps, and configuration
 - `supabase/tests/consent-lifecycle.test.sql` covers withdrawal transitions,
   partial-purge retry, operator re-enqueue, re-grant, per-account quarantine,
-  purge arming, and evidence-key lifecycle behavior
+  purge arming, evidence-key lifecycle behavior, and the account-deletion cascade
+  that erases the consent ledger while keeping direct deletes and updates
+  append-only (#519)
 - `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified
