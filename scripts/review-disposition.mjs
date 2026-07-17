@@ -128,11 +128,12 @@ export function latestHandoff(comments, prNumber, commit) {
     .at(-1) ?? null;
 }
 
-export function controllingDisposition(comments, prNumber, commit) {
+export function controllingDisposition(comments, prNumber, commit, handoff = null) {
   const records = comments
     .map(parseDisposition)
     .filter(Boolean)
     .filter((record) => record.pr === prNumber && record.commit === commit)
+    .filter((record) => !handoff || compareRecords(record, handoff) > 0)
     .sort(compareRecords);
   const overrides = records.filter((record) => record.record === 'OWNER_OVERRIDE');
   return overrides.at(-1) ?? records.at(-1) ?? null;
@@ -160,8 +161,9 @@ export function evaluateDisposition({ pr, comments, handoff = null, authoritativ
     return { state: 'failure', description: 'current PR head requires an unedited implementation handoff' };
   }
 
-  const current = controllingDisposition(comments, prNumber, head);
-  if (current && handoff && compareRecords(current, handoff) < 0) {
+  const current = controllingDisposition(comments, prNumber, head, handoff);
+  const latestExactHead = controllingDisposition(comments, prNumber, head);
+  if (!current && handoff && latestExactHead && compareRecords(latestExactHead, handoff) < 0) {
     return { state: 'failure', description: 'exact-head verdict predates the current implementation handoff' };
   }
   if (current?.disposition === 'APPROVED' || current?.disposition === 'OWNER_OVERRIDE') {
@@ -262,12 +264,9 @@ export function isMatchingExactApprovalStatus(status, commentId) {
 }
 
 export function validateParentApproval({ comments, prNumber, reviewedHead, handoff, exactStatus }) {
-  const reviewed = controllingDisposition(comments, prNumber, reviewedHead);
+  const reviewed = controllingDisposition(comments, prNumber, reviewedHead, handoff);
   if (!reviewed || reviewed.record !== 'REVIEW' || reviewed.disposition !== 'APPROVED') {
     return { state: 'failure', description: 'parent head lacks a controlling unedited approval' };
-  }
-  if (handoff && compareRecords(reviewed, handoff) < 0) {
-    return { state: 'failure', description: 'parent approval predates its implementation handoff' };
   }
   if (!isMatchingExactApprovalStatus(exactStatus, reviewed.id)) {
     return { state: 'failure', description: 'parent approval is not the latest accepted review status' };

@@ -161,6 +161,21 @@ test('the latest owner override remains controlling over later ordinary verdicts
   assert.equal(controllingDisposition(comments, 42, HEAD).id, 5);
 });
 
+test('a replacement handoff retires older overrides for later approvals', () => {
+  const replacementHandoff = handoff({ id: 4, created: '2026-07-16T12:03:00Z' });
+  const comments = [
+    handoff(),
+    verdict({ id: 2, disposition: 'FEEDBACK' }),
+    verdict({ id: 3, ownerOverride: true, created: '2026-07-16T12:02:00Z' }),
+    replacementHandoff,
+    verdict({ id: 5, created: '2026-07-16T12:04:00Z' }),
+  ];
+  assert.equal(controllingDisposition(comments, 42, HEAD, parseHandoff(replacementHandoff)).id, 5);
+  assert.equal(evaluateDisposition({
+    pr: pr(), comments, handoff: parseHandoff(replacementHandoff),
+  }).state, 'success');
+});
+
 test('a new head invalidates old handoffs and verdicts', () => {
   const comments = [handoff(), verdict()];
   assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments }).state, 'failure');
