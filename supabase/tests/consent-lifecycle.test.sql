@@ -15,10 +15,12 @@
 
 begin;
 
-select plan(33);
+select plan(42);
 
 \set user_a '99999999-9999-9999-9999-999999999999'
 \set user_b 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+\set user_c 'cccccccc-cccc-cccc-cccc-cccccccccccc'
+\set user_d 'dddddddd-dddd-dddd-dddd-dddddddddddd'
 
 insert into auth.users (id) values (:'user_a'::uuid) on conflict do nothing;
 insert into auth.users (id) values (:'user_b'::uuid) on conflict do nothing;
@@ -342,6 +344,85 @@ select is(
   (select count(*) from kilo.consent_events where user_id = :'user_b'::uuid),
   0::bigint,
   'an existing user is never synthetically consented or given a fabricated event'
+);
+
+-- ---------------------------------------------------------------------------
+-- Account deletion cascades the consent ledger (issue #519)
+-- ---------------------------------------------------------------------------
+--
+-- consent_events.user_id is auth.users(id) ON DELETE CASCADE, but the append-only
+-- trigger raised on every delete, so deleting a consented user's auth.users row
+-- failed with the append-only violation and permanently broke account deletion.
+-- The forward migration relaxes the trigger for exactly the FK-cascade case while
+-- keeping direct mutation append-only. These tests exercise the real parent delete
+-- and pin both the allowed cascade and the still-rejected direct mutations.
+
+-- user_a is currently granted and has real consent events; use them to prove the
+-- append-only guarantee still holds against direct mutation.
+select throws_ok(
+  $$ delete from kilo.consent_events
+       where user_id = '99999999-9999-9999-9999-999999999999' $$,
+  '23514', 'kilo.consent_events is append-only',
+  'a direct DELETE against consent_events is still rejected as append-only'
+);
+
+select throws_ok(
+  $$ update kilo.consent_events set surface = 'tamper'
+       where user_id = '99999999-9999-9999-9999-999999999999' $$,
+  '23514', 'kilo.consent_events is append-only',
+  'an UPDATE against consent_events is still rejected as append-only'
+);
+
+-- Control: an auth user with no consent history has always deleted fine and must
+-- keep doing so.
+insert into auth.users (id) values (:'user_c'::uuid) on conflict do nothing;
+
+select lives_ok(
+  $$ delete from auth.users where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc' $$,
+  'a control auth user with no consent history deletes successfully'
+);
+
+select is(
+  (select count(*) from auth.users where id = :'user_c'::uuid),
+  0::bigint,
+  'the control auth user is gone'
+);
+
+-- The regression itself: a consented user with a real ledger row must delete and
+-- cascade the ledger, instead of failing with the append-only violation.
+insert into auth.users (id) values (:'user_d'::uuid) on conflict do nothing;
+
+select pg_temp.as_user(:'user_d'::uuid);
+select kilo.consent_grant(1, '1.2.3', 'android');
+reset role;
+
+select cmp_ok(
+  (select count(*) from kilo.consent_events where user_id = :'user_d'::uuid),
+  '>', 0::bigint,
+  'the consented user has a real consent event before deletion'
+);
+
+select lives_ok(
+  $$ delete from auth.users where id = 'dddddddd-dddd-dddd-dddd-dddddddddddd' $$,
+  'deleting a consented auth user succeeds instead of raising the append-only violation'
+);
+
+select is(
+  (select count(*) from kilo.consent_events where user_id = :'user_d'::uuid),
+  0::bigint,
+  'the cascade erased all of the deleted user''s consent events'
+);
+
+select is(
+  (select count(*) from kilo.consent_state where user_id = :'user_d'::uuid),
+  0::bigint,
+  'the cascade erased the deleted user''s consent state'
+);
+
+select is(
+  (select count(*) from auth.users where id = :'user_d'::uuid),
+  0::bigint,
+  'the consented auth user is gone'
 );
 
 select * from finish();
