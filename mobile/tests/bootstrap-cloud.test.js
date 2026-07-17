@@ -878,6 +878,62 @@ describe('phantom Routine 1 ownership-upload regression (issue #501)', () => {
   });
 });
 
+describe('weight-entry and deload tombstone upload regression (issue #513)', () => {
+  // buildBootstrapPlan is the pure boundary the ownership "Upload It Into My
+  // Account" path pushes through. Same mechanism as the #501 notes fix: a
+  // builder that drops deleted_at re-upserts a locally-deleted record as a
+  // fresh LIVE row that wins LWW on every device.
+
+  it('does NOT resurrect a locally-tombstoned weight entry on upload', () => {
+    const snapshot = {
+      weightEntries: [
+        {
+          id: 'we_live',
+          entry_type: 'weight',
+          date: '2026-06-10',
+          weight_value: 181,
+          updated_at: '2026-06-10T08:00:00.000Z',
+        },
+        {
+          id: 'we_deleted',
+          entry_type: 'weight',
+          date: '2026-06-11',
+          weight_value: 305,
+          updated_at: '2026-06-12T09:00:00.000Z',
+          deleted_at: '2026-06-12T09:00:00.000Z',
+        },
+      ],
+    };
+
+    const plan = buildBootstrapPlan(snapshot, USER_ID);
+    const dead = plan.weight_entries.find((e) => e.id === 'we_deleted');
+    expect(dead).toBeTruthy();
+    // Stays a tombstone: not revived into a fresh live cloud row by the upsert.
+    expect(dead.deleted_at).toBe('2026-06-12T09:00:00.000Z');
+    const live = plan.weight_entries.find((e) => e.id === 'we_live');
+    expect(live.deleted_at).toBeNull();
+  });
+
+  it('does NOT resurrect a locally-tombstoned deload record on upload', () => {
+    const snapshot = {
+      deloadHistory: [
+        {
+          id: 'dl_deleted',
+          date: '2026-05-20',
+          raw_text: 'deload note',
+          saved_at: '2026-05-20T00:00:00.000Z',
+          deleted_at: '2026-05-21T00:00:00.000Z',
+        },
+      ],
+    };
+
+    const plan = buildBootstrapPlan(snapshot, USER_ID);
+    const dead = plan.deload_history.find((r) => r.id === 'dl_deleted');
+    expect(dead).toBeTruthy();
+    expect(dead.deleted_at).toBe('2026-05-21T00:00:00.000Z');
+  });
+});
+
 describe('bootstrap failure safety', () => {
   it('leaves local AsyncStorage untouched and is retryable on failure', async () => {
     await seedLocalData();

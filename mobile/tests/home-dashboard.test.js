@@ -89,7 +89,11 @@ describe('1k progress — Home vs Analytics consistency (issue #379)', () => {
 
 import React from 'react';
 import render from 'react-test-renderer';
-import { HomeScreen } from '../screens/HomeScreen';
+import {
+  HomeScreen,
+  WELCOME_EXAMPLE_EXERCISE_LINE,
+  WELCOME_EXAMPLE_SETS_LINE,
+} from '../screens/HomeScreen';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
@@ -255,5 +259,38 @@ describe('HomeScreen — hydration gating (issue #442)', () => {
       component = render.create(<HomeScreen {...makeHomeProps({ loading: false })} />);
     });
     expect(hasText(component.root, 'Welcome to Kilo')).toBe(false);
+  });
+});
+
+// ── Welcome-card example syntax (issue #517) ─────────────────────────────────
+//
+// The old copy taught "Squat: 315x5, 315x5", which parseWorkoutNote silently
+// drops (zero sections, no error) — the app's first instruction produced an
+// empty note. These tests pin the taught example to the real grammar.
+
+describe('HomeScreen — welcome-card example teaches parseable syntax (issue #517)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('the exact taught example round-trips through the parser into an exercise with sets', () => {
+    const taught = `${WELCOME_EXAMPLE_EXERCISE_LINE}\n${WELCOME_EXAMPLE_SETS_LINE}`;
+    const { ok, sections } = parseWorkoutNote(taught);
+    expect(ok).toBe(true);
+    const exercises = sections.flatMap(s => s.exercises);
+    expect(exercises).toHaveLength(1);
+    expect(exercises[0].name).toBe('Squat');
+    expect(exercises[0].sets.length).toBeGreaterThan(0);
+    expect(exercises[0].unparsed_rows).toHaveLength(0);
+  });
+
+  test('the welcome card shows the taught example on first run', () => {
+    setupHooks();
+    let component;
+    render.act(() => {
+      component = render.create(<HomeScreen {...makeHomeProps({ loading: false })} />);
+    });
+    expect(hasText(component.root, WELCOME_EXAMPLE_EXERCISE_LINE)).toBe(true);
+    expect(hasText(component.root, WELCOME_EXAMPLE_SETS_LINE)).toBe(true);
+    // The old, unparseable example must not come back.
+    expect(hasText(component.root, 'Squat: 315x5')).toBe(false);
   });
 });
