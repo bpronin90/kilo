@@ -1,15 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  controllingDisposition,
   evaluateDisposition,
-  implementationFingerprint,
+  exactApprovalDescription,
+  issueNumbersForPullEvent,
   isMatchingExactApprovalStatus,
+  latestHandoff,
   parseDisposition,
+  parseHandoff,
+  parseIssueReference,
   pathsOverlap,
+  pullsForIssue,
+  selectAuthoritativeEvidence,
   validateParentApproval,
   verifyRefreshObjects,
 } from './review-disposition.mjs';
@@ -17,190 +24,227 @@ import {
 const HEAD = 'a'.repeat(40);
 const NEXT = 'b'.repeat(40);
 
-function pr({ head = HEAD, execution = 'impl-1', commit = head } = {}) {
+function pr({ number = 42, head = HEAD, issue = 600, login = 'owner' } = {}) {
   return {
+    number,
     head: { sha: head },
-    body: [
-      'Implementation-Agent: agent:claude',
-      `Implementation-Execution: ${execution}`,
-      `Implementation-Commit: ${commit}`,
-    ].join('\n'),
+    body: issue === null ? 'Issue: none' : `Issue: #${issue}`,
+    user: { login },
   };
 }
 
-function comment({
+function handoff({
   id = 1,
-  disposition = 'APPROVED',
+  prNumber = 42,
   commit = HEAD,
-  execution = 'review-1',
+  update = 'IMPLEMENTED',
   association = 'OWNER',
-  created = '2026-07-15T12:00:00Z',
+  created = '2026-07-16T12:00:00Z',
   updated = created,
-  record = 'REVIEW',
 } = {}) {
-  const details = record === 'OWNER_OVERRIDE'
-    ? ['Reason: owner accepts the review findings']
-    : [`Reviewer-Execution: ${execution}`, 'Findings: none'];
   return {
     id,
     author_association: association,
     created_at: created,
     updated_at: updated,
     body: [
-      `RECORD=${record}`,
-      `DISPOSITION=${disposition}`,
+      `UPDATE=${update}`,
+      `PR: #${prNumber}`,
       `Commit: ${commit}`,
-      ...details,
+      'Summary: Fixed the scoped behavior.',
+      'Verification: Targeted tests passed.',
+      'Remaining: none',
     ].join('\n'),
   };
 }
 
-test('fails actionably before review', () => {
-  assert.equal(evaluateDisposition({ pr: pr(), comments: [] }).state, 'failure');
+function verdict({
+  id = 2,
+  prNumber = 42,
+  commit = HEAD,
+  disposition = 'APPROVED',
+  association = 'OWNER',
+  created = '2026-07-16T12:01:00Z',
+  updated = created,
+  ownerOverride = false,
+} = {}) {
+  return {
+    id,
+    author_association: association,
+    created_at: created,
+    updated_at: updated,
+    body: ownerOverride
+      ? [`STATUS=OWNER_OVERRIDE`, `PR: #${prNumber}`, `Commit: ${commit}`, 'Reason: owner accepts the risk'].join('\n')
+      : [`VERDICT=${disposition}`, `PR: #${prNumber}`, `Commit: ${commit}`, 'Findings: none'].join('\n'),
+  };
+}
+
+test('parses exactly one issue reference', () => {
+  assert.deepEqual(parseIssueReference('Issue: #600'), { kind: 'issue', number: 600 });
+  assert.deepEqual(parseIssueReference('Issue: none'), { kind: 'none', number: null });
+  assert.equal(parseIssueReference('Issue: #600\nIssue: #601'), null);
+  assert.equal(parseIssueReference('no issue field'), null);
 });
 
-test('requires implementation metadata for the current head', () => {
-  assert.equal(evaluateDisposition({ pr: pr({ commit: NEXT }), comments: [comment()] }).state, 'failure');
+test('parses complete immutable handoffs and rejects edited or unauthorized records', () => {
+  assert.equal(parseHandoff(handoff()).commit, HEAD);
+  assert.equal(parseHandoff(handoff({ updated: '2026-07-16T12:02:00Z' })), null);
+  assert.equal(parseHandoff(handoff({ association: 'NONE' })), null);
+  const incomplete = handoff();
+  incomplete.body = `UPDATE=IMPLEMENTED\nPR: #42\nCommit: ${HEAD}`;
+  assert.equal(parseHandoff(incomplete), null);
 });
 
-test('derives current-head implementation metadata for Dependabot PRs', () => {
-  const dependabotPr = { head: { sha: HEAD }, body: '', user: { login: 'dependabot[bot]' } };
-  assert.equal(evaluateDisposition({ pr: dependabotPr, comments: [comment()] }).state, 'success');
+test('parses verdicts and verifies owner overrides by GitHub association', () => {
+  assert.equal(parseDisposition(verdict()).disposition, 'APPROVED');
+  assert.equal(parseDisposition(verdict({ ownerOverride: true })).disposition, 'OWNER_OVERRIDE');
+  assert.equal(parseDisposition(verdict({ ownerOverride: true, association: 'COLLABORATOR' })), null);
+  assert.equal(parseDisposition(verdict({ updated: '2026-07-16T12:02:00Z' })), null);
 });
 
-test('accepts an independent approval for the exact head', () => {
-  const result = evaluateDisposition({ pr: pr(), comments: [comment()] });
-  assert.equal(result.state, 'success');
-  assert.equal(result.description, `approved for current PR head; impl=${implementationFingerprint('impl-1')}`);
+test('requires a current-head implementation handoff before review', () => {
+  const result = evaluateDisposition({ pr: pr(), comments: [verdict()] });
+  assert.equal(result.state, 'failure');
+  assert.match(result.description, /handoff/);
 });
 
-test('rejects review from the implementation execution', () => {
-  assert.equal(evaluateDisposition({ pr: pr(), comments: [comment({ execution: 'impl-1' })] }).state, 'failure');
+test('accepts an exact-head approval without pretending to verify execution identity', () => {
+  const comments = [handoff(), verdict()];
+  const result = evaluateDisposition({ pr: pr(), comments, handoff: latestHandoff(comments, 42, HEAD) });
+  assert.deepEqual(result, {
+    state: 'success',
+    description: 'approved for current PR head; review=2',
+    controllingCommentId: 2,
+  });
 });
 
-test('feedback and blocked dispositions fail only the review gate', () => {
-  assert.equal(evaluateDisposition({ pr: pr(), comments: [comment({ disposition: 'FEEDBACK' })] }).state, 'failure');
-  assert.equal(evaluateDisposition({ pr: pr(), comments: [comment({ disposition: 'BLOCKED' })] }).state, 'failure');
+test('feedback and blocked verdicts fail the gate', () => {
+  for (const disposition of ['FEEDBACK', 'BLOCKED']) {
+    const comments = [handoff(), verdict({ disposition })];
+    assert.equal(evaluateDisposition({
+      pr: pr(), comments, handoff: latestHandoff(comments, 42, HEAD),
+    }).state, 'failure');
+  }
 });
 
-test('owner override supersedes earlier feedback for the exact head', () => {
+test('latest exact-head disposition controls deterministically', () => {
   const comments = [
-    comment({ id: 1, disposition: 'FEEDBACK' }),
-    comment({ id: 2, record: 'OWNER_OVERRIDE', disposition: 'OWNER_OVERRIDE', created: '2026-07-15T12:01:00Z' }),
+    verdict(),
+    verdict({ id: 3, disposition: 'FEEDBACK', created: '2026-07-16T12:02:00Z' }),
   ];
-  assert.equal(evaluateDisposition({ pr: pr(), comments }).state, 'success');
+  assert.equal(controllingDisposition(comments, 42, HEAD).disposition, 'FEEDBACK');
 });
 
-test('only an owner-associated comment can override review', () => {
+test('requires the exact-head verdict to follow the current handoff', () => {
+  const earlyVerdict = verdict({ created: '2026-07-16T11:59:00Z' });
+  const currentHandoff = handoff();
+  assert.match(evaluateDisposition({
+    pr: pr(), comments: [earlyVerdict, currentHandoff], handoff: parseHandoff(currentHandoff),
+  }).description, /predates/);
+});
+
+test('an owner override can supersede feedback and a later verdict can supersede the override', () => {
   const comments = [
-    comment({ disposition: 'FEEDBACK' }),
-    comment({
-      id: 2,
-      record: 'OWNER_OVERRIDE',
-      disposition: 'OWNER_OVERRIDE',
-      association: 'COLLABORATOR',
-      created: '2026-07-15T12:01:00Z',
-    }),
+    handoff(),
+    verdict({ disposition: 'FEEDBACK' }),
+    verdict({ id: 3, ownerOverride: true, created: '2026-07-16T12:02:00Z' }),
   ];
-  assert.equal(evaluateDisposition({ pr: pr(), comments }).state, 'failure');
+  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'success');
+  comments.push(verdict({ id: 4, disposition: 'BLOCKED', created: '2026-07-16T12:03:00Z' }));
+  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'failure');
 });
 
-test('a later review can supersede an owner override', () => {
-  const comments = [
-    comment({ id: 1, record: 'OWNER_OVERRIDE', disposition: 'OWNER_OVERRIDE' }),
-    comment({ id: 2, disposition: 'BLOCKED', created: '2026-07-15T12:01:00Z' }),
-  ];
-  assert.equal(evaluateDisposition({ pr: pr(), comments }).state, 'failure');
+test('a new head invalidates old handoffs and verdicts', () => {
+  const comments = [handoff(), verdict()];
+  assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments }).state, 'failure');
 });
 
-test('a new head invalidates old dispositions', () => {
-  assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments: [comment()] }).state, 'failure');
+test('Dependabot has an implicit implementation handoff but still needs review', () => {
+  const dependabot = pr({ issue: null, login: 'dependabot[bot]' });
+  assert.equal(evaluateDisposition({ pr: dependabot, comments: [] }).state, 'failure');
+  assert.equal(evaluateDisposition({ pr: dependabot, comments: [verdict()] }).state, 'success');
 });
 
-test('accepts a required-check-verified closeout refresh without a second review', () => {
+test('non-authoritative competing PRs fail even with exact-head approval', () => {
+  const comments = [handoff(), verdict()];
+  assert.equal(evaluateDisposition({
+    pr: pr(), comments, handoff: parseHandoff(comments[0]), authoritative: false,
+  }).state, 'failure');
+});
+
+test('selects authoritative evidence by created time then numeric comment id', () => {
+  const first = parseHandoff(handoff({ id: 8 }));
+  const second = parseHandoff(handoff({ id: 9 }));
+  assert.equal(selectAuthoritativeEvidence([
+    { pr: pr({ number: 41 }), handoff: first },
+    { pr: pr({ number: 42 }), handoff: second },
+  ]).pr.number, 42);
+});
+
+test('links only open PR bodies that name the issue', () => {
+  const pulls = [pr({ number: 1, issue: 600 }), pr({ number: 2, issue: 601 }), pr({ number: 3, issue: null })];
+  assert.deepEqual(pullsForIssue(pulls, 600).map((pull) => pull.number), [1]);
+});
+
+test('reevaluates both sides when a PR changes its linked issue', () => {
+  assert.deepEqual(issueNumbersForPullEvent({
+    changes: { body: { from: 'Issue: #600' } },
+  }, 'Issue: #601'), [601, 600]);
+});
+
+test('keeps PR-head tests unprivileged and the production evaluator on trusted base code', () => {
+  const testWorkflow = readFileSync('.github/workflows/test.yml', 'utf8');
+  assert.match(testWorkflow, /on:\n  pull_request:/);
+  assert.doesNotMatch(testWorkflow, /pull_request_target/);
+  assert.match(testWorkflow, /permissions:\n  contents: read/);
+  assert.doesNotMatch(testWorkflow, /secrets\./);
+
+  const gateWorkflow = readFileSync('.github/workflows/review-disposition.yml', 'utf8');
+  assert.match(gateWorkflow, /pull_request_target:/);
+  assert.match(gateWorkflow, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+});
+
+test('edited approval withdrawal produces a failing current-head evaluation', () => {
+  const comments = [handoff(), verdict({ updated: '2026-07-16T12:02:00Z' })];
+  assert.equal(evaluateDisposition({ pr: pr(), comments, handoff: parseHandoff(comments[0]) }).state, 'failure');
+});
+
+test('accepts a verified carry-forward only when no exact-head disposition supersedes it', () => {
   const carryForward = { state: 'success', description: 'carried approval from reviewed head' };
-  assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments: [comment()], carryForward }).state, 'success');
-});
-
-test('exact-head feedback overrides a supplied carry-forward result', () => {
-  const carryForward = { state: 'success', description: 'carried approval from reviewed head' };
-  const feedback = comment({ disposition: 'FEEDBACK', commit: NEXT });
+  assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments: [], carryForward }).state, 'success');
+  const feedback = verdict({ commit: NEXT, disposition: 'FEEDBACK' });
   assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments: [feedback], carryForward }).state, 'failure');
 });
 
-test('ignores unauthorized, edited, and malformed comments', () => {
-  const invalid = [
-    comment({ id: 1, association: 'NONE' }),
-    comment({ id: 2, updated: '2026-07-15T12:02:00Z' }),
-    { ...comment({ id: 3 }), body: 'RECORD=REVIEW\nDISPOSITION=APPROVED' },
-  ];
-  assert.equal(evaluateDisposition({ pr: pr(), comments: invalid }).state, 'failure');
+test('matches an accepted parent approval to its immutable comment id', () => {
+  const approved = verdict({ id: 77 });
+  const status = {
+    context: 'review disposition accepted',
+    state: 'success',
+    description: exactApprovalDescription(77),
+  };
+  assert.equal(isMatchingExactApprovalStatus(status, 77), true);
+  assert.equal(isMatchingExactApprovalStatus(status, 78), false);
+  assert.deepEqual(validateParentApproval({
+    comments: [approved], prNumber: 42, reviewedHead: HEAD, handoff: parseHandoff(handoff()), exactStatus: status,
+  }), { state: 'success', reviewCommentId: 77 });
+  assert.equal(validateParentApproval({
+    comments: [verdict({ id: 77, updated: '2026-07-16T12:02:00Z' })],
+    prNumber: 42,
+    reviewedHead: HEAD,
+    handoff: parseHandoff(handoff()),
+    exactStatus: status,
+  }).state, 'failure');
 });
 
-test('requires exactly one value for each control field', () => {
-  const duplicate = comment();
-  duplicate.body += '\nDISPOSITION=BLOCKED';
-  assert.equal(parseDisposition(duplicate), null);
-});
-
-test('detects exact and namespace path overlap without blocking ordinary siblings', () => {
+test('detects exact and namespace path overlap without blocking siblings', () => {
   assert.equal(pathsOverlap(['config'], ['config']), 'config ↔ config');
   assert.equal(pathsOverlap(['config'], ['config/app.json']), 'config ↔ config/app.json');
   assert.equal(pathsOverlap(['config/app.json'], ['config']), 'config/app.json ↔ config');
   assert.equal(pathsOverlap(['config/a.json'], ['config/b.json']), null);
 });
 
-test('carry-forward requires the controlling parent approval and its implementation-bound exact status', () => {
-  const approved = comment();
-  assert.equal(validateParentApproval({
-    comments: [approved],
-    reviewedHead: HEAD,
-    implementationExecution: 'impl-1',
-    exactStatus: { state: 'success' },
-  }).state, 'success');
-  assert.equal(validateParentApproval({
-    comments: [],
-    reviewedHead: HEAD,
-    implementationExecution: 'impl-1',
-    exactStatus: { state: 'success' },
-  }).state, 'failure');
-  assert.equal(validateParentApproval({
-    comments: [approved],
-    reviewedHead: HEAD,
-    implementationExecution: 'impl-1',
-    exactStatus: null,
-  }).state, 'failure');
-  assert.equal(validateParentApproval({
-    comments: [comment({ execution: 'impl-1' })],
-    reviewedHead: HEAD,
-    implementationExecution: 'impl-1',
-    exactStatus: { state: 'success' },
-  }).state, 'failure');
-  assert.equal(validateParentApproval({
-    comments: [approved, comment({ id: 2, disposition: 'FEEDBACK', created: '2026-07-15T12:01:00Z' })],
-    reviewedHead: HEAD,
-    implementationExecution: 'impl-1',
-    exactStatus: { state: 'success' },
-  }).state, 'failure');
-  const exactDescription = `approved for current PR head; impl=${implementationFingerprint('impl-1')}`;
-  assert.equal(isMatchingExactApprovalStatus({
-    context: 'review disposition accepted',
-    state: 'success',
-    description: exactDescription,
-  }, 'impl-1'), true);
-  assert.equal(isMatchingExactApprovalStatus({
-    context: 'review disposition accepted',
-    state: 'success',
-    description: 'carried approval from abcdef123456; object delta unchanged',
-  }, 'impl-1'), false);
-  assert.equal(isMatchingExactApprovalStatus({
-    context: 'review disposition accepted',
-    state: 'success',
-    description: exactDescription,
-  }, 'different-implementation'), false);
-});
-
-test('proves only the reproducible object-identical merge refresh', () => {
+test('proves only a reproducible object-identical merge refresh', () => {
   const originalCwd = process.cwd();
   const repo = mkdtempSync(join(tmpdir(), 'review-refresh-'));
   const run = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
@@ -229,10 +273,8 @@ test('proves only the reproducible object-identical merge refresh', () => {
 
     process.chdir(repo);
     assert.deepEqual(verifyRefreshObjects({ head: refresh, base: currentBase }), {
-      state: 'success',
-      reviewedHead: reviewed,
+      state: 'success', reviewedHead: reviewed,
     });
-
     const wrongTree = run('rev-parse', `${reviewed}^{tree}`);
     const manufactured = run('commit-tree', wrongTree, '-p', reviewed, '-p', currentBase, '-m', 'wrong');
     assert.equal(verifyRefreshObjects({ head: manufactured, base: currentBase }).state, 'failure');

@@ -27,8 +27,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      - name: Test review-disposition evaluator
-        run: node --test scripts/review-disposition.test.mjs
+      - name: Test governance tooling
+        run: node --test scripts/review-disposition.test.mjs scripts/changelog-fragments.test.mjs
 
       - run: npm --prefix mobile ci
 

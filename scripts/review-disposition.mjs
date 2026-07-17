@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 
 const REVIEW_CONTEXT = 'review disposition accepted';
 const AUTHORIZED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -29,96 +28,147 @@ function singleControl(body, name) {
   return values.length === 1 && values[0] ? values[0] : null;
 }
 
-export function parseImplementation(body) {
-  const agent = singleField(body, 'Implementation-Agent');
-  const execution = singleField(body, 'Implementation-Execution');
-  const commit = singleField(body, 'Implementation-Commit');
-  if (!agent || !execution || !commit || !SHA_RE.test(commit)) return null;
-  return { agent, execution, commit };
+function parseNumber(value) {
+  const match = String(value ?? '').match(/^#?([1-9][0-9]*)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function immutableAuthorizedComment(comment) {
+  return AUTHORIZED_ASSOCIATIONS.has(comment?.author_association)
+    && comment.created_at === comment.updated_at
+    && Number.isSafeInteger(Number(comment.id));
+}
+
+export function parseIssueReference(body) {
+  const values = fieldValues(body, 'Issue');
+  if (values.length !== 1) return null;
+  if (values[0].toLowerCase() === 'none') return { kind: 'none', number: null };
+  const number = parseNumber(values[0]);
+  return number ? { kind: 'issue', number } : null;
+}
+
+export function parseHandoff(comment) {
+  if (!immutableAuthorizedComment(comment)) return null;
+  const update = singleControl(comment.body, 'UPDATE');
+  if (!new Set(['IMPLEMENTED', 'FEEDBACK_ADDRESSED']).has(update)) return null;
+  const pr = parseNumber(singleField(comment.body, 'PR'));
+  const commit = singleField(comment.body, 'Commit')?.toLowerCase();
+  const summary = singleField(comment.body, 'Summary');
+  const verification = singleField(comment.body, 'Verification');
+  const remaining = singleField(comment.body, 'Remaining');
+  if (!pr || !SHA_RE.test(commit ?? '') || !summary || !verification || !remaining) return null;
+  return {
+    update,
+    pr,
+    commit,
+    summary,
+    verification,
+    remaining,
+    createdAt: comment.created_at,
+    id: Number(comment.id),
+  };
 }
 
 export function parseDisposition(comment) {
-  if (!AUTHORIZED_ASSOCIATIONS.has(comment.author_association)) return null;
-  if (comment.created_at !== comment.updated_at) return null;
+  if (!immutableAuthorizedComment(comment)) return null;
+  const pr = parseNumber(singleField(comment.body, 'PR'));
+  const commit = singleField(comment.body, 'Commit')?.toLowerCase();
+  if (!pr || !SHA_RE.test(commit ?? '')) return null;
 
-  const record = singleControl(comment.body, 'RECORD');
-  const disposition = singleControl(comment.body, 'DISPOSITION');
-  const commit = singleField(comment.body, 'Commit');
-  if (!record || !disposition || !commit || !SHA_RE.test(commit)) return null;
-
-  if (record === 'REVIEW') {
-    if (!new Set(['APPROVED', 'FEEDBACK', 'BLOCKED']).has(disposition)) return null;
-    const reviewerExecution = singleField(comment.body, 'Reviewer-Execution');
+  const verdict = singleControl(comment.body, 'VERDICT');
+  if (new Set(['APPROVED', 'FEEDBACK', 'BLOCKED']).has(verdict)) {
     const findings = singleField(comment.body, 'Findings');
-    if (!reviewerExecution || !findings) return null;
+    if (!findings) return null;
     return {
-      record,
-      disposition,
+      record: 'REVIEW',
+      disposition: verdict,
+      pr,
       commit,
-      reviewerExecution,
+      findings,
       createdAt: comment.created_at,
       id: Number(comment.id),
     };
   }
 
-  if (record === 'OWNER_OVERRIDE' && disposition === 'OWNER_OVERRIDE') {
+  if (singleControl(comment.body, 'STATUS') === 'OWNER_OVERRIDE') {
     if (comment.author_association !== 'OWNER') return null;
     const reason = singleField(comment.body, 'Reason');
     if (!reason) return null;
     return {
-      record,
-      disposition,
+      record: 'OWNER_OVERRIDE',
+      disposition: 'OWNER_OVERRIDE',
+      pr,
       commit,
-      reviewerExecution: null,
+      reason,
       createdAt: comment.created_at,
       id: Number(comment.id),
     };
   }
-
   return null;
 }
 
-export function controllingDisposition({ comments, commit, implementationExecution }) {
+function compareRecords(left, right) {
+  return left.createdAt.localeCompare(right.createdAt) || left.id - right.id;
+}
+
+export function latestHandoff(comments, prNumber, commit) {
   return comments
-    .map(parseDisposition)
+    .map(parseHandoff)
     .filter(Boolean)
-    .filter((record) => record.commit === commit)
-    .filter((record) => record.record === 'OWNER_OVERRIDE' || record.reviewerExecution !== implementationExecution)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id)
+    .filter((record) => record.pr === prNumber && record.commit === commit)
+    .sort(compareRecords)
     .at(-1) ?? null;
 }
 
-export function evaluateDisposition({ pr, comments, carryForward = null }) {
+export function controllingDisposition(comments, prNumber, commit) {
+  return comments
+    .map(parseDisposition)
+    .filter(Boolean)
+    .filter((record) => record.pr === prNumber && record.commit === commit)
+    .sort(compareRecords)
+    .at(-1) ?? null;
+}
+
+export function selectAuthoritativeEvidence(evidence) {
+  return evidence
+    .filter((item) => item?.handoff)
+    .sort((left, right) => compareRecords(left.handoff, right.handoff))
+    .at(-1) ?? null;
+}
+
+export function evaluateDisposition({ pr, comments, handoff = null, authoritative = true, carryForward = null }) {
   const head = String(pr?.head?.sha ?? '').toLowerCase();
-  if (!SHA_RE.test(head)) {
-    return { state: 'error', description: 'PR head SHA is unavailable' };
+  const prNumber = Number(pr?.number);
+  if (!SHA_RE.test(head) || !Number.isSafeInteger(prNumber)) {
+    return { state: 'error', description: 'PR number or head SHA is unavailable' };
+  }
+  if (!authoritative) {
+    return { state: 'failure', description: 'PR is not the authoritative implementation for its linked issue' };
   }
 
-  const implementation = pr?.user?.login === 'dependabot[bot]'
-    ? { agent: 'dependabot[bot]', execution: `dependabot:${head}`, commit: head }
-    : parseImplementation(pr.body);
-  if (!implementation || implementation.commit !== head) {
-    return { state: 'failure', description: 'PR body requires unique current-head implementation metadata' };
+  const implicitDependabotHandoff = pr?.user?.login === 'dependabot[bot]';
+  if (!handoff && !implicitDependabotHandoff && carryForward?.state !== 'success') {
+    return { state: 'failure', description: 'current PR head requires an unedited implementation handoff' };
   }
 
-  const current = controllingDisposition({
-    comments,
-    commit: head,
-    implementationExecution: implementation.execution,
-  });
-  if (!current) {
-    if (carryForward?.state === 'success') return carryForward;
-    return carryForward ?? { state: 'failure', description: 'exact-head review or verified closeout refresh required' };
+  const current = controllingDisposition(comments, prNumber, head);
+  if (current && handoff && compareRecords(current, handoff) < 0) {
+    return { state: 'failure', description: 'exact-head verdict predates the current implementation handoff' };
   }
-
-  if (current.disposition === 'APPROVED' || current.disposition === 'OWNER_OVERRIDE') {
-    const description = current.disposition === 'APPROVED'
-      ? exactApprovalDescription(implementation.execution)
-      : 'owner_override for current PR head';
-    return { state: 'success', description };
+  if (current?.disposition === 'APPROVED' || current?.disposition === 'OWNER_OVERRIDE') {
+    return {
+      state: 'success',
+      description: current.disposition === 'APPROVED'
+        ? `approved for current PR head; review=${current.id}`
+        : `owner override for current PR head; comment=${current.id}`,
+      controllingCommentId: current.id,
+    };
   }
-
-  return { state: 'failure', description: `${current.disposition.toLowerCase()} for current PR head` };
+  if (current) {
+    return { state: 'failure', description: `${current.disposition.toLowerCase()} for current PR head` };
+  }
+  if (carryForward?.state === 'success') return carryForward;
+  return carryForward ?? { state: 'failure', description: 'exact-head review or verified closeout refresh required' };
 }
 
 function git(args, options = {}) {
@@ -192,72 +242,43 @@ function rawDelta(from, to) {
   ]);
 }
 
-function buffersEqual(left, right) {
-  return left.equals(right);
+export function exactApprovalDescription(commentId) {
+  return `approved for current PR head; review=${commentId}`;
 }
 
-export function implementationFingerprint(execution) {
-  return createHash('sha256').update(execution).digest('hex').slice(0, 32);
-}
-
-function exactApprovalDescription(execution) {
-  return `approved for current PR head; impl=${implementationFingerprint(execution)}`;
-}
-
-async function getAllCommitStatuses(repository, sha) {
-  const statuses = [];
-  for (let page = 1; ; page += 1) {
-    const batch = await githubRequest(`/repos/${repository}/commits/${sha}/statuses?per_page=100&page=${page}`);
-    statuses.push(...batch);
-    if (batch.length < 100) return statuses;
-  }
-}
-
-export function isMatchingExactApprovalStatus(status, implementationExecution) {
+export function isMatchingExactApprovalStatus(status, commentId) {
   return status?.context === REVIEW_CONTEXT
     && status.state === 'success'
-    && status.description === exactApprovalDescription(implementationExecution);
+    && status.description === exactApprovalDescription(commentId);
 }
 
-async function acceptedExactHeadStatus(repository, sha, implementationExecution) {
-  const statuses = await getAllCommitStatuses(repository, sha);
-  return statuses.find((status) => isMatchingExactApprovalStatus(status, implementationExecution)) ?? null;
-}
-
-export function validateParentApproval({ comments, reviewedHead, implementationExecution, exactStatus }) {
-  const reviewed = controllingDisposition({ comments, commit: reviewedHead, implementationExecution });
+export function validateParentApproval({ comments, prNumber, reviewedHead, handoff, exactStatus }) {
+  const reviewed = controllingDisposition(comments, prNumber, reviewedHead);
   if (!reviewed || reviewed.record !== 'REVIEW' || reviewed.disposition !== 'APPROVED') {
-    return { state: 'failure', description: 'parent head lacks a controlling ordinary approval' };
+    return { state: 'failure', description: 'parent head lacks a controlling unedited approval' };
   }
-  if (!exactStatus) {
-    return { state: 'failure', description: 'parent approval was not accepted for the same implementation execution' };
+  if (handoff && compareRecords(reviewed, handoff) < 0) {
+    return { state: 'failure', description: 'parent approval predates its implementation handoff' };
   }
-  return { state: 'success' };
+  if (!isMatchingExactApprovalStatus(exactStatus, reviewed.id)) {
+    return { state: 'failure', description: 'parent approval is not the latest accepted review status' };
+  }
+  return { state: 'success', reviewCommentId: reviewed.id };
 }
 
 export function verifyRefreshObjects({ head, base }) {
   ensureCommit(head);
   ensureCommit(base);
-
   const ancestry = git(['rev-list', '--parents', '-n', '1', head], { encoding: 'utf8' }).trim().split(/\s+/);
-  if (ancestry.length !== 3) {
-    return { state: 'failure', description: 'refresh head must have exactly two parents' };
-  }
+  if (ancestry.length !== 3) return { state: 'failure', description: 'refresh head must have exactly two parents' };
   const [, reviewedHead, mergedBase] = ancestry;
-  if (mergedBase !== base) {
-    return { state: 'failure', description: 'refresh does not merge the current PR base' };
-  }
+  if (mergedBase !== base) return { state: 'failure', description: 'refresh does not merge the current PR base' };
 
   ensureCommit(reviewedHead);
   const mergeBase = git(['merge-base', reviewedHead, base], { encoding: 'utf8' }).trim();
   const overlap = pathsOverlap(changedPaths(mergeBase, reviewedHead), changedPaths(mergeBase, base));
-  if (overlap) {
-    return { state: 'failure', description: `refresh path overlap: ${overlap}` };
-  }
-
-  const originalDelta = rawDelta(mergeBase, reviewedHead);
-  const refreshedDelta = rawDelta(base, head);
-  if (!buffersEqual(originalDelta, refreshedDelta)) {
+  if (overlap) return { state: 'failure', description: `refresh path overlap: ${overlap}` };
+  if (!rawDelta(mergeBase, reviewedHead).equals(rawDelta(base, head))) {
     return { state: 'failure', description: 'refresh changes the reviewed object-level delta' };
   }
 
@@ -273,30 +294,7 @@ export function verifyRefreshObjects({ head, base }) {
   if (expectedTree !== actualTree) {
     return { state: 'failure', description: 'refresh tree is not the reproducible Git merge result' };
   }
-
   return { state: 'success', reviewedHead };
-}
-
-async function proveCarryForward({ repository, pr, comments, implementation }) {
-  const head = pr.head.sha.toLowerCase();
-  const base = pr.base.sha.toLowerCase();
-  const objectProof = verifyRefreshObjects({ head, base });
-  if (objectProof.state !== 'success') return objectProof;
-  const { reviewedHead } = objectProof;
-
-  const exactStatus = await acceptedExactHeadStatus(repository, reviewedHead, implementation.execution);
-  const approvalProof = validateParentApproval({
-    comments,
-    reviewedHead,
-    implementationExecution: implementation.execution,
-    exactStatus,
-  });
-  if (approvalProof.state !== 'success') return approvalProof;
-
-  return {
-    state: 'success',
-    description: `carried approval from ${reviewedHead.slice(0, 12)}; object delta unchanged`,
-  };
 }
 
 async function githubRequest(path, options = {}) {
@@ -315,56 +313,167 @@ async function githubRequest(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function getAllComments(repository, prNumber) {
-  const comments = [];
+async function getAllPages(path) {
+  const values = [];
   for (let page = 1; ; page += 1) {
-    const batch = await githubRequest(`/repos/${repository}/issues/${prNumber}/comments?per_page=100&page=${page}`);
-    comments.push(...batch);
-    if (batch.length < 100) return comments;
+    const separator = path.includes('?') ? '&' : '?';
+    const batch = await githubRequest(`${path}${separator}per_page=100&page=${page}`);
+    values.push(...batch);
+    if (batch.length < 100) return values;
   }
+}
+
+async function getAllComments(repository, issueNumber) {
+  return getAllPages(`/repos/${repository}/issues/${issueNumber}/comments`);
+}
+
+async function getOpenPulls(repository) {
+  return getAllPages(`/repos/${repository}/pulls?state=open`);
+}
+
+async function latestReviewStatus(repository, sha) {
+  const statuses = await getAllPages(`/repos/${repository}/commits/${sha}/statuses`);
+  return statuses.find((status) => status.context === REVIEW_CONTEXT) ?? null;
+}
+
+async function proveCarryForward({ repository, pr, comments }) {
+  const head = pr.head.sha.toLowerCase();
+  const base = pr.base.sha.toLowerCase();
+  const objectProof = verifyRefreshObjects({ head, base });
+  if (objectProof.state !== 'success') return objectProof;
+  const { reviewedHead } = objectProof;
+  const parentHandoff = pr.user?.login === 'dependabot[bot]'
+    ? { createdAt: '0000', id: 0, pr: pr.number, commit: reviewedHead }
+    : latestHandoff(comments, pr.number, reviewedHead);
+  if (!parentHandoff) return { state: 'failure', description: 'reviewed parent lacks a valid implementation handoff' };
+  const exactStatus = await latestReviewStatus(repository, reviewedHead);
+  const approvalProof = validateParentApproval({
+    comments, prNumber: pr.number, reviewedHead, handoff: parentHandoff, exactStatus,
+  });
+  if (approvalProof.state !== 'success') return approvalProof;
+  return {
+    state: 'success',
+    description: `carried approval from ${reviewedHead.slice(0, 12)}; patch unchanged`,
+    reviewedHead,
+    reviewCommentId: approvalProof.reviewCommentId,
+    handoff: parentHandoff,
+  };
+}
+
+async function publishStatus(repository, pr, state, description) {
+  const runUrl = `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+  return githubRequest(`/repos/${repository}/statuses/${pr.head.sha}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state, context: REVIEW_CONTEXT, description: description.slice(0, 140), target_url: runUrl }),
+  });
+}
+
+async function postCarryForwardRecord(repository, issueNumber, pr, carry, comments) {
+  if (!issueNumber) return;
+  const marker = [
+    'STATUS=REVIEW_CARRIED_FORWARD',
+    `PR: #${pr.number}`,
+    `Reviewed-Commit: ${carry.reviewedHead}`,
+    `Commit: ${pr.head.sha.toLowerCase()}`,
+    `Review-Comment: ${carry.reviewCommentId}`,
+    'Verification: conflict-free base refresh with identical object-level patch',
+  ].join('\n');
+  if (comments.some((comment) => comment.body === marker && comment.created_at === comment.updated_at)) return;
+  await githubRequest(`/repos/${repository}/issues/${issueNumber}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: marker }),
+  });
+}
+
+export function pullsForIssue(pulls, issueNumber) {
+  return pulls.filter((pr) => parseIssueReference(pr.body)?.number === issueNumber);
+}
+
+export function issueNumbersForPullEvent(event, currentBody) {
+  const numbers = new Set();
+  const current = parseIssueReference(currentBody);
+  const previous = parseIssueReference(event?.changes?.body?.from);
+  if (current?.kind === 'issue') numbers.add(current.number);
+  if (previous?.kind === 'issue') numbers.add(previous.number);
+  return [...numbers];
+}
+
+async function evaluateIssuePulls(repository, issueNumber, pulls) {
+  const comments = await getAllComments(repository, issueNumber);
+  const evidence = [];
+  for (const pr of pulls) {
+    const head = pr.head.sha.toLowerCase();
+    const handoff = latestHandoff(comments, pr.number, head);
+    let carryForward = null;
+    if (!handoff) carryForward = await proveCarryForward({ repository, pr, comments });
+    evidence.push({ pr, handoff: handoff ?? carryForward?.handoff ?? null, exactHandoff: handoff, carryForward });
+  }
+  const authoritative = selectAuthoritativeEvidence(evidence);
+  for (const item of evidence) {
+    await publishStatus(repository, item.pr, 'pending', 'evaluating current PR head review disposition');
+    const result = evaluateDisposition({
+      pr: item.pr,
+      comments,
+      handoff: item.exactHandoff,
+      authoritative: authoritative?.pr.number === item.pr.number,
+      carryForward: item.carryForward,
+    });
+    await publishStatus(repository, item.pr, result.state, result.description);
+    if (result.state === 'success' && item.carryForward?.state === 'success') {
+      await postCarryForwardRecord(repository, issueNumber, item.pr, item.carryForward, comments);
+    }
+    console.log(`PR #${item.pr.number}: ${result.state} — ${result.description}`);
+  }
+}
+
+async function evaluatePullConversation(repository, pr) {
+  const comments = await getAllComments(repository, pr.number);
+  const head = pr.head.sha.toLowerCase();
+  if (pr.user?.login !== 'dependabot[bot]' && parseIssueReference(pr.body)?.kind !== 'none') {
+    await publishStatus(repository, pr, 'failure', 'PR body requires exactly one Issue: #number or Issue: none field');
+    return;
+  }
+  const handoff = pr.user?.login === 'dependabot[bot]' ? { pr: pr.number, commit: head } : latestHandoff(comments, pr.number, head);
+  const carryForward = handoff ? null : await proveCarryForward({ repository, pr, comments });
+  await publishStatus(repository, pr, 'pending', 'evaluating current PR head review disposition');
+  const result = evaluateDisposition({ pr, comments, handoff, carryForward });
+  await publishStatus(repository, pr, result.state, result.description);
+  console.log(`PR #${pr.number}: ${result.state} — ${result.description}`);
 }
 
 async function applyStatus() {
   const repository = process.env.GITHUB_REPOSITORY;
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!repository || !eventPath) throw new Error('GITHUB_REPOSITORY and GITHUB_EVENT_PATH are required');
-
   const { readFile } = await import('node:fs/promises');
   const event = JSON.parse(await readFile(eventPath, 'utf8'));
+
+  if (event.issue && !event.issue.pull_request) {
+    const pulls = pullsForIssue(await getOpenPulls(repository), event.issue.number);
+    if (pulls.length === 0) return console.log(`Issue #${event.issue.number} has no linked open PRs.`);
+    return evaluateIssuePulls(repository, event.issue.number, pulls);
+  }
+
   const prNumber = event.pull_request?.number ?? (event.issue?.pull_request ? event.issue.number : null);
-  if (!prNumber) {
-    console.log('Event is not associated with a pull request; nothing to evaluate.');
-    return;
-  }
-
+  if (!prNumber) return console.log('Event is not associated with an issue or pull request.');
   const pr = await githubRequest(`/repos/${repository}/pulls/${prNumber}`);
-  const runUrl = `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-
-  const publish = (state, description) => githubRequest(`/repos/${repository}/statuses/${pr.head.sha}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state, context: REVIEW_CONTEXT, description: description.slice(0, 140), target_url: runUrl }),
-  });
-
-  await publish('pending', 'evaluating current PR head review disposition');
-  const comments = await getAllComments(repository, prNumber);
-  const implementation = pr.user?.login === 'dependabot[bot]'
-    ? { agent: 'dependabot[bot]', execution: `dependabot:${pr.head.sha}`, commit: pr.head.sha }
-    : parseImplementation(pr.body);
-  let carryForward = null;
-  if (implementation?.commit === pr.head.sha.toLowerCase()) {
-    const exact = controllingDisposition({
-      comments,
-      commit: pr.head.sha.toLowerCase(),
-      implementationExecution: implementation.execution,
-    });
-    if (!exact) {
-      carryForward = await proveCarryForward({ repository, pr, comments, implementation });
+  const issue = parseIssueReference(pr.body);
+  if (event.pull_request) {
+    const openPulls = await getOpenPulls(repository);
+    for (const issueNumber of issueNumbersForPullEvent(event, pr.body)) {
+      const pulls = pullsForIssue(openPulls, issueNumber);
+      if (pulls.length > 0) await evaluateIssuePulls(repository, issueNumber, pulls);
     }
+    if (issue?.kind === 'issue') return;
+    return evaluatePullConversation(repository, pr);
   }
-  const result = evaluateDisposition({ pr, comments, carryForward });
-  await publish(result.state, result.description);
-  console.log(`${REVIEW_CONTEXT}: ${result.state} — ${result.description}`);
+  if (issue?.kind === 'issue') {
+    const pulls = pullsForIssue(await getOpenPulls(repository), issue.number);
+    return evaluateIssuePulls(repository, issue.number, pulls);
+  }
+  return evaluatePullConversation(repository, pr);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

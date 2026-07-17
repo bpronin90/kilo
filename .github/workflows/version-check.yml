@@ -27,3 +27,6 @@ jobs:
 
       - name: Check mobile versions are aligned with root package.json
         run: node scripts/sync-version.mjs --check
+
+      - name: Validate changelog fragments
+        run: node scripts/changelog-fragments.mjs check

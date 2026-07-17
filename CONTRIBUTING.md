@@ -57,12 +57,29 @@ See `mobile/package.json` for the full set of platform-specific scripts (iOS, tu
   - `0.x.y` patch (`y`) bumps for bug fixes, docs, and small updates that do not materially change behavior.
   - `0.x.0` minor bumps for new user-visible capability or meaningful behavior changes.
   - `1.0.0` marks the launch-ready stable release.
-- When the root version changes, keep the mobile version fields in sync by running:
+- When the root version changes, keep the root lockfile and mobile version fields in sync by running:
   ```sh
   node scripts/sync-version.mjs
   ```
   Do not hand-edit the mobile version fields independently.
-- User-visible changes should be reflected in `CHANGELOG.md` with a version heading, release date, and a short bullet describing the change.
+- Product pull requests add a changelog fragment when they change user-visible
+  behavior, fix a bug, materially change an operational workflow, or update
+  public documentation. Internal refactors, tests, and governance-only changes
+  do not need a fragment.
+- Name fragments `.changes/<issue>-<sequence>.md`. Use `patch` for fixes and
+  small changes or `minor` for a new capability or meaningful behavior change:
+  ```text
+  issue: 600
+  bump: patch
+
+  Fixed the user-visible behavior.
+  ```
+- Validate fragments with `npm run check:changes`.
+- A release maintainer runs `npm run release:prepare` in a dedicated release
+  branch. The command selects the highest requested bump, creates the dated
+  `CHANGELOG.md` entry, synchronizes version files, and consumes only the
+  fragments present when preparation starts. Later fragments remain for the
+  next release.
 
 ## Code Quality Expectations
 
