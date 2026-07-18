@@ -635,7 +635,8 @@ retains non-test commands such as `npm run audit`.
 - verify withdrawal and deletion-pending restarts switch to local-only storage,
   retain the reconciled legacy tombstone only in raw storage, keep legitimate
   user-authored `Routine 1` notes visible, and perform no health sync on repeated
-  refresh (#544)
+  refresh; verify a successful same-owner re-grant restores cloud routing without
+  bypassing the foreign-owner gate (#544)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 

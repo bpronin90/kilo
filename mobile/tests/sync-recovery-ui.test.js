@@ -35,6 +35,7 @@ import {
   setLocalDataOwner,
 } from '../storage/entries/localDataOwner';
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
+import { HealthDataConsent } from '../screens/more/HealthDataConsent';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
@@ -56,10 +57,13 @@ jest.mock('../storage/cloud/consent', () => {
   };
 });
 
+const { DENIAL_CODES, fetchConsentStatus } = require('../storage/cloud/consent');
+
 
 beforeEach(() => {
   AsyncStorage.clear();
   __resetSyncQueue();
+  fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
 });
 
 function flush() {
@@ -526,6 +530,48 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     expect(withdrawConsent).toHaveBeenCalledTimes(1);
     expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.LOCAL);
     expect(requestHealthDataDeletion).toHaveBeenCalledTimes(1);
+  });
+
+  test('successful same-owner re-grant restores cloud mode in the current session', async () => {
+    await setLocalDataOwner(USER.id);
+    entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    fetchConsentStatus
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: DENIAL_CODES.CONSENT_VERSION_STALE,
+      })
+      .mockResolvedValue({ allowed: true, code: 'OK' });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    const consent = tree.root.findByType(HealthDataConsent);
+    await act(async () => {
+      await consent.props.onGranted({ ok: true, status: 'granted' });
+    });
+
+    expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.CLOUD);
+  });
+
+  test('successful re-grant does not bypass a foreign local-data owner', async () => {
+    await setLocalDataOwner('someone-else');
+    entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    fetchConsentStatus
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: DENIAL_CODES.CONSENT_VERSION_STALE,
+      })
+      .mockResolvedValue({ allowed: true, code: 'OK' });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    const consent = tree.root.findByType(HealthDataConsent);
+    await act(async () => {
+      await consent.props.onGranted({ ok: true, status: 'granted' });
+    });
+
+    expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.LOCAL);
   });
 });
 

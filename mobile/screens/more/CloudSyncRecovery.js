@@ -189,6 +189,14 @@ export function CloudSyncRecovery({ user }) {
         <HealthDataConsent
           onGranted={async () => {
             setShowingConsent(false);
+            // A denied preflight deliberately moved the app to local-only mode.
+            // Restore cloud routing only for the signed-in owner after the server
+            // has recorded the new grant; foreign or unclaimed device data must
+            // still pass through the explicit ownership decision first.
+            const owner = await getLocalDataOwner();
+            if (owner === user?.id) {
+              Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+            }
             await refreshConsent();
             setStatus('Cloud Sync is on.');
           }}

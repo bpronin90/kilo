@@ -439,7 +439,9 @@ and creates a durable job; the client immediately switches to local-only storage
 and any denied preflight does the same so ordinary entry-hook refreshes cannot
 attempt consent-gated reads or writes. `health-data-delete` erases the shared
 gated scope, and the final transition occurs only after server-side zero-row
-verification.
+verification. After a renewed grant, the client restores cloud routing in-session
+only when `kilo_local_data_owner` matches the signed-in user; foreign or unclaimed
+device data remains behind the explicit ownership decision.
 Supabase Cron dispatches the worker through `pg_net` with Vault-held
 credentials, retries indefinitely with capped backoff, and exposes an operator
 backlog/re-enqueue path. Account export, account deletion, and withdrawal purge
