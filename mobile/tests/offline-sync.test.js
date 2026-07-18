@@ -51,16 +51,10 @@ import { getSupabaseClient } from '../lib/supabaseClient';
 // transport via setCloudTransport, so this mock stays dormant for them.
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
 
-// rebuildCloudCopy() (issue #538) confirms completion through the real RPC
-// wrapper; stub only that one export so the rebuild tests below drive the
-// real rearm + sync engine end to end while controlling just the server
-// acknowledgement.
-jest.mock('../storage/cloud/consent', () => {
-  const actual = jest.requireActual('../storage/cloud/consent');
-  return { ...actual, completeCloudRebuild: jest.fn() };
-});
-
-const { completeCloudRebuild } = require('../storage/cloud/consent');
+// rebuildCloudCopy() (issue #538) drives the real rearm + sync engine end to
+// end here; the per-device generation bookkeeping that decides WHEN to run it
+// lives in the hook and is covered in auto-sync.test.js, so these tests call
+// rebuildCloudCopy() directly against the in-memory transport.
 
 // ── in-memory fake cloud ───────────────────────────────────────────────────────
 //
@@ -2286,15 +2280,6 @@ describe('reconsent cloud rebuild (issue #538)', () => {
   const SELF = SINGLETON_SYNC_ID;
   const GATED_TABLES = [WE, WN, AWG, WG, DH, HEALTH, FC];
 
-  beforeEach(() => {
-    completeCloudRebuild.mockReset();
-    completeCloudRebuild.mockResolvedValue({
-      ok: true,
-      cloud_rebuild_required: false,
-      already: false,
-    });
-  });
-
   // A live row and a tombstone on every syncTable-engine collection, a live
   // record on every diff-tracked table, and a workout note with an answered
   // check-in so the derived fatigue_checkins projection is non-empty.
@@ -2415,7 +2400,7 @@ describe('reconsent cloud rebuild (issue #538)', () => {
     expect(await Storage.loadCurrentWorkoutId()).toBe('wn1');
   });
 
-  it('rebuildCloudCopy() confirms completion with the server and runs a reconciliation pass', async () => {
+  it('rebuildCloudCopy() reconstructs every gated table and runs a reconciliation pass that leaves nothing dirty', async () => {
     await seedFullAccount();
     await cloudAdapter.sync();
     for (const table of GATED_TABLES) cloud.clearRemote(table);
@@ -2423,7 +2408,6 @@ describe('reconsent cloud rebuild (issue #538)', () => {
     const result = await rebuildCloudCopy();
 
     expect(result.ok).toBe(true);
-    expect(completeCloudRebuild).toHaveBeenCalledTimes(1);
     for (const table of GATED_TABLES) {
       expect(cloud.remoteRows(table).length).toBeGreaterThan(0);
     }
@@ -2433,25 +2417,29 @@ describe('reconsent cloud rebuild (issue #538)', () => {
     }
   });
 
-  it('a failed completion confirmation leaves data pushed but does not falsely report success, and a retry is safe', async () => {
+  it('a push interrupted mid-rebuild does not falsely report success, leaves data retryable, and a retry is safe', async () => {
     await seedFullAccount();
     await cloudAdapter.sync();
     for (const table of GATED_TABLES) cloud.clearRemote(table);
 
-    completeCloudRebuild.mockResolvedValueOnce({ ok: false, error: 'network blip' });
+    // The transport drops mid-rebuild: the push throws, so rebuildCloudCopy
+    // propagates the failure exactly as an ordinary sync() would — this is what
+    // keeps the SYNC phase honest instead of reporting a rebuild that never
+    // finished. Local data is untouched and the dirty queue stays armed.
+    cloud.setOnline(false);
+    await expect(rebuildCloudCopy()).rejects.toThrow();
+    expect(await getDirtyRecords(WE)).not.toEqual([]);
 
-    const first = await rebuildCloudCopy();
-    expect(first.ok).toBe(false);
-    // The push itself already succeeded — only the server confirmation failed —
-    // so the data is already there, just not yet acknowledged as "rebuilt".
-    expect(cloud.remoteRows(WE).length).toBe(2);
-
-    const second = await rebuildCloudCopy();
-    expect(second.ok).toBe(true);
-    expect(completeCloudRebuild).toHaveBeenCalledTimes(2);
-    // No duplicate rows from the retried rearm/push: still exactly the seeded set.
+    // Reconnect and retry: the rearm re-enqueues from local state (idempotent),
+    // so the whole gated set lands with no duplicate rows.
+    cloud.setOnline(true);
+    const retry = await rebuildCloudCopy();
+    expect(retry.ok).toBe(true);
     expect(idsOf(cloud.remoteRows(WE))).toEqual(['w1', 'w2']);
     expect(idsOf(cloud.remoteRows(WN))).toEqual(['wn1', 'wn2']);
+    for (const table of GATED_TABLES) {
+      expect(await getDirtyRecords(table)).toEqual([]);
+    }
   });
 
   it('rebuildCloudCopy() run twice in a row is idempotent (no duplicate rows, no errors)', async () => {

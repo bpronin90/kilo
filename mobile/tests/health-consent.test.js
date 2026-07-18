@@ -14,7 +14,6 @@ import {
   DENIAL_CODES,
   canonicalConsentText,
   isConsentDenial,
-  completeCloudRebuild,
 } from '../storage/cloud/consent';
 import {
   CONSENT_PROTOCOL_HEADER,
@@ -200,48 +199,6 @@ describe('the affirmative act', () => {
     });
 
     expect(byLabel(tree, 'Consent status').props.children).toContain('still being deleted');
-  });
-});
-
-describe('completeCloudRebuild (issue #538)', () => {
-  // The client's confirmation that a post-purge rebuild (and its
-  // reconciliation pass) actually succeeded — see storage/cloud/syncAdapter.js
-  // rebuildCloudCopy(). This is what finally clears the server's
-  // cloud_rebuild_required signal, so it must report the server's outcome
-  // faithfully rather than assuming success.
-  it('calls the consent_rebuild_complete RPC and returns the server payload', async () => {
-    const rpc = jest.fn().mockResolvedValue({
-      data: { ok: true, cloud_rebuild_required: false, already: false },
-      error: null,
-    });
-    const client = { schema: jest.fn().mockReturnValue({ rpc }) };
-
-    const result = await completeCloudRebuild(client);
-
-    expect(client.schema).toHaveBeenCalledWith('kilo');
-    expect(rpc).toHaveBeenCalledWith('consent_rebuild_complete');
-    expect(result).toEqual({ ok: true, cloud_rebuild_required: false, already: false });
-  });
-
-  it('reports failure without throwing when the server refuses (e.g. no active grant)', async () => {
-    const client = {
-      schema: () => ({
-        rpc: jest.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'no active grant to complete a cloud rebuild for' },
-        }),
-      }),
-    };
-
-    const result = await completeCloudRebuild(client);
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('no active grant');
-  });
-
-  it('treats a missing Supabase client as a clean failure, not a crash', async () => {
-    const result = await completeCloudRebuild(null);
-    expect(result).toEqual({ ok: false, error: 'Cloud is not configured.' });
   });
 });
 

@@ -32,7 +32,6 @@ import {
   deriveFatigueCheckinRows,
 } from './bootstrapPlan';
 import { getTransport, getRecomputeDerived } from './transport';
-import { completeCloudRebuild } from './consent';
 
 // Legacy-note bootstrap provenance. A row is legacy-provenance when EITHER:
 //   * it carries source_snapshot.async_storage_key === 'kilo_workout_note'
@@ -708,10 +707,11 @@ export async function sync() {
 // held was acknowledged before withdrawal) and every diff-tracked table's
 // last-synced snapshot already agrees with what is now an intentionally empty
 // cloud copy — so ordinary sync() above has nothing to detect and pushes
-// nothing. The server tells the client this explicitly via
-// consent_state.cloud_rebuild_required (storage/cloud/consent.js); when it is
-// armed, the app must run rebuildCloudCopy() instead of an ordinary sync pass
-// (see hooks/entries/syncRecoveryHooks.js).
+// nothing. The server tells the client this explicitly via a monotonic
+// consent_state.cloud_rebuild_generation (storage/cloud/consent.js); when the
+// server's generation is ahead of the one THIS device last rebuilt for
+// (storage/entries/localDataOwner.js), the app runs rebuildCloudCopy() instead
+// of an ordinary sync pass (see hooks/entries/syncRecoveryHooks.js).
 //
 // The rebuild reuses the SAME engine ordinary sync() uses for every one of the
 // seven gated tables, rather than a separate one-off upload path: it only
@@ -774,30 +774,24 @@ export async function rearmGatedTablesForRebuild() {
 }
 
 // The full post-purge cloud rebuild: rearm every gated table, push everything
-// through the ordinary sync loop, confirm completion with the server (which is
-// what finally clears cloud_rebuild_required), then run one more ordinary sync
-// pass as the reconciliation the acceptance criteria require — proving the
-// rebuild converged and picking up anything another device pushed
-// concurrently.
+// through the ordinary sync loop, then run one more ordinary sync pass as the
+// reconciliation the acceptance criteria require — proving the rebuild
+// converged and picking up anything another device pushed concurrently.
 //
-// A failure at any step propagates, mirroring sync()'s own contract so the
-// existing runPhase failure handling in syncRecoveryHooks.js applies
-// unchanged: local data is never touched by a failure here, and
-// cloud_rebuild_required stays armed server-side until completeCloudRebuild()
-// actually succeeds. A retry from any point — a fresh rearm, a re-push of
-// already-acknowledged rows, a retried completion call — is always safe: it
-// can duplicate network traffic but never duplicate rows or lose data.
+// Recording that this device has caught up to the server's rebuild generation
+// is the CALLER's job (syncRecoveryHooks.js), done only after this resolves
+// successfully: keeping the per-device generation write next to the phase
+// runner is what makes "the rebuild finished" and "we recorded that it
+// finished" a single retryable unit. A failure at any step propagates,
+// mirroring sync()'s own contract so the existing runPhase failure handling
+// applies unchanged: local data is never touched by a failure here, this
+// device's persisted generation is not advanced, and the next launch simply
+// sees the server generation still ahead and rebuilds again. Every retry — a
+// fresh rearm, a re-push of already-acknowledged rows — is idempotent: it can
+// duplicate network traffic but never duplicate rows or lose data.
 export async function rebuildCloudCopy() {
   await rearmGatedTablesForRebuild();
   const rebuildResults = await sync();
-  const completion = await completeCloudRebuild();
-  if (!completion.ok) {
-    return {
-      ok: false,
-      error: completion.error || 'Could not confirm the cloud rebuild finished.',
-      results: rebuildResults,
-    };
-  }
   const reconciliationResults = await sync();
   return { ok: true, results: [...rebuildResults, ...reconciliationResults] };
 }

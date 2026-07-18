@@ -15,6 +15,8 @@ import {
   getLocalDataOwner,
   setLocalDataOwner,
   purgeLocalData,
+  getCloudRebuildGeneration,
+  setCloudRebuildGeneration,
 } from '../../storage/entries/localDataOwner';
 import { fetchConsentStatus } from '../../storage/cloud/consent';
 import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
@@ -45,11 +47,12 @@ import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
 // convergence.
 //
 // On success returns the full consent payload, not just a boolean: callers
-// that select a sync runner need `consent.cloud_rebuild_required` (issue
-// #538) — the server-authenticated signal that a completed withdrawal purge
-// emptied this account's cloud copy and the next sync must be a full rebuild,
-// not an ordinary pass. It is a plain field on the same payload
-// fetchConsentStatus already returns, so no extra round trip is needed.
+// that select a sync runner need `consent.cloud_rebuild_generation` (issue
+// #538) — the server-authenticated monotonic counter of how many times a
+// verified-zero purge has emptied this account's cloud copy. A device whose
+// own last-rebuilt generation is behind it must run a full rebuild rather than
+// an ordinary pass. It is a plain field on the same payload fetchConsentStatus
+// already returns, so no extra round trip is needed.
 async function checkConsent() {
   const consent = await fetchConsentStatus();
   if (consent.allowed) return { ok: true, consent };
@@ -71,14 +74,19 @@ function makeBootstrapRunner(user) {
   return () => cloudAdapter.bootstrapFromLocal(userId);
 }
 
-// `cloudRebuildRequired` selects the runner (issue #538): when the server
-// reports a completed purge is still awaiting its rebuild, the ordinary
-// adapter.sync() pass is replaced by rebuildCloudCopy(), which rearms every
-// gated table for a full reupload, pushes through the same sync engine, and
-// only then confirms completion with the server. Both run under the identical
+// Select the SYNC_PHASE.SYNC runner for this pass (issue #538). When the
+// server's cloud_rebuild_generation is ahead of the one THIS device last
+// rebuilt for, the ordinary adapter.sync() pass is replaced by a runner that
+// calls rebuildCloudCopy() (rearm every gated table + push + reconcile through
+// the same sync engine) and, only after it succeeds, records the caught-up
+// generation for this device. Both branches run under the identical
 // SYNC_PHASE.SYNC state machine, so the UI and retry behavior are unchanged —
 // only which operation "Sync Now" / automatic sign-in sync actually performs.
-function makeSyncRunner(cloudRebuildRequired) {
+//
+// Per-device on purpose: the generation write is local to this device, so two
+// of an account's devices each rebuild their own complete local copy rather
+// than the first one to sync clearing a single server flag for the rest.
+async function selectSyncRunner(consent, userId) {
   const adapter = Storage.getStorageAdapter();
   // The local adapter also exposes `sync`, but it is a deliberate no-op
   // (localAdapter.js) that resolves successfully without ever contacting the
@@ -90,7 +98,22 @@ function makeSyncRunner(cloudRebuildRequired) {
   // the phase untouched and honest — while a cloud adapter still drives sync.
   // Feature detection on `sync` is kept for the cloud adapter shell.
   if (adapter.mode === 'local' || typeof adapter.sync !== 'function') return null;
-  return cloudRebuildRequired ? rebuildCloudCopy : () => adapter.sync();
+
+  const serverGeneration = Number(consent?.cloud_rebuild_generation ?? 0);
+  const deviceGeneration = await getCloudRebuildGeneration(userId);
+  if (userId && serverGeneration > deviceGeneration) {
+    return async () => {
+      const result = await rebuildCloudCopy();
+      if (result && result.ok === false) return result;
+      // Advance this device's generation only after the rebuild AND its
+      // reconciliation pass have both succeeded. A failure to persist here is
+      // treated like any other phase failure (a retry re-rebuilds, which is
+      // idempotent), mirroring how the bootstrap runner treats its owner write.
+      await setCloudRebuildGeneration(userId, serverGeneration);
+      return result;
+    };
+  }
+  return () => adapter.sync();
 }
 
 export function useSyncRecovery(user = null) {
@@ -134,7 +157,7 @@ export function useSyncRecovery(user = null) {
   const runSync = useCallback(async () => {
     const checked = await checkConsent();
     if (!checked.ok) return checked.denial;
-    const runner = makeSyncRunner(checked.consent.cloud_rebuild_required);
+    const runner = await selectSyncRunner(checked.consent, userId);
     if (!runner) {
       return {
         ok: false,
@@ -142,7 +165,7 @@ export function useSyncRecovery(user = null) {
       };
     }
     return runPhase(SYNC_PHASE.SYNC, runner);
-  }, []);
+  }, [userId]);
 
   return {
     bootstrap: snapshot[SYNC_PHASE.BOOTSTRAP],
@@ -222,16 +245,17 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
       // This is the primary path issue #538 fixes: a same-owner device skips
       // bootstrap entirely on sign-in and lands here automatically, with no
-      // user action. makeSyncRunner reads cloud_rebuild_required off the SAME
-      // preflight response and silently substitutes the full rebuild for the
-      // ordinary sync pass whenever a completed withdrawal purge is still
-      // awaiting one — otherwise a same-owner re-grant after a purge would
+      // user action. selectSyncRunner compares cloud_rebuild_generation from
+      // the SAME preflight response against this device's own last-rebuilt
+      // generation and silently substitutes the full rebuild for the ordinary
+      // sync pass whenever this device has not yet caught up to a completed
+      // withdrawal purge — otherwise a same-owner re-grant after a purge would
       // report "Fully synced" while the cloud copy stayed empty.
-      const runner = makeSyncRunner(checked.consent.cloud_rebuild_required);
+      const runner = await selectSyncRunner(checked.consent, userId);
       if (runner) await runPhase(SYNC_PHASE.SYNC, runner);
     }
     onSyncCompleteRef.current?.();
-  }, []);
+  }, [userId]);
 
   // The user confirmed the upload (first-sign-in claim of unclaimed data, or a
   // deliberate upload of another account's data into theirs).

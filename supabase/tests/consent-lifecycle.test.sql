@@ -15,7 +15,7 @@
 
 begin;
 
-select plan(55);
+select plan(51);
 
 \set user_a '99999999-9999-9999-9999-999999999999'
 \set user_b 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -36,17 +36,6 @@ begin
   perform set_config('request.jwt.claim.sub', p_user::text, true);
   perform set_config('request.jwt.claims',
     json_build_object('sub', p_user::text, 'role', 'authenticated')::text, true);
-  perform set_config('request.headers', '{}', true);
-  execute 'set local role authenticated';
-end $$;
-
--- No `sub` claim at all: models a request with no valid session, distinct from
--- an authenticated-but-unprivileged one.
-create or replace function pg_temp.as_anon()
-  returns void language plpgsql as $$
-begin
-  perform set_config('request.jwt.claim.sub', '', true);
-  perform set_config('request.jwt.claims', '{}', true);
   perform set_config('request.headers', '{}', true);
   execute 'set local role authenticated';
 end $$;
@@ -263,14 +252,14 @@ select is(
 -- Reconsent cloud rebuild signal (#538)
 -- ---------------------------------------------------------------------------
 
--- The verified-zero purge just above armed the signal. It must stay armed
--- while the user is withdrawn (not granted) — this is exactly the window a
--- rebuild-completion call must refuse, since there is no active grant yet for
--- the rebuild to belong to.
+-- The verified-zero purge just above advanced the monotonic rebuild
+-- generation from 0 to 1. It stays at 1 while the user is withdrawn: only a
+-- purge advances the counter, and each device compares it against its own
+-- last-rebuilt generation (stored client-side) to decide whether to rebuild.
 select is(
-  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
-  true,
-  'a verified-zero purge arms the rebuild-required signal'
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  1,
+  'a verified-zero purge advances the rebuild generation to 1'
 );
 
 select isnt(
@@ -278,16 +267,6 @@ select isnt(
   null,
   'the arming timestamp is recorded'
 );
-
-select pg_temp.as_user(:'user_a'::uuid);
-
-select throws_ok(
-  $$ select kilo.consent_rebuild_complete() $$,
-  null, null,
-  'consent_rebuild_complete refuses a user who is not currently granted'
-);
-
-reset role;
 
 -- Re-granting from `withdrawn` is allowed; from deletion_pending it was not.
 select pg_temp.as_user(:'user_a'::uuid);
@@ -304,62 +283,56 @@ select is(
 );
 
 select is(
-  (kilo.consent_grant(1, '1.2.3', 'android') ->> 'cloud_rebuild_required')::boolean,
-  true,
-  'consent_grant reports the armed rebuild signal in its own response, and does not clear it'
+  (kilo.consent_grant(1, '1.2.3', 'android') ->> 'cloud_rebuild_generation')::integer,
+  1,
+  'consent_grant reports the current rebuild generation in its own response'
 );
 
 select is(
-  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
-  true,
-  'granting again does not clear the rebuild-required signal — only an explicit rebuild completion does'
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  1,
+  'granting again never resets the rebuild generation — only a purge advances it'
 );
 
 select is(
-  (kilo.health_sync_preflight() ->> 'cloud_rebuild_required')::boolean,
-  true,
-  'preflight also surfaces the rebuild signal on every check, not only right after granting'
-);
-
-select is(
-  (kilo.consent_rebuild_complete() ->> 'already')::boolean,
-  false,
-  'the first completion call reports it actually cleared an armed signal'
-);
-
-select is(
-  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
-  false,
-  'consent_rebuild_complete clears the signal'
-);
-
-select isnt(
-  (select cloud_rebuild_completed_at from kilo.consent_state where user_id = :'user_a'::uuid),
-  null,
-  'the completion timestamp is recorded'
-);
-
-select is(
-  (kilo.consent_rebuild_complete() ->> 'already')::boolean,
-  true,
-  'a repeated completion call is idempotent and reports already-cleared rather than erroring'
-);
-
-select is(
-  (kilo.health_sync_preflight() ->> 'cloud_rebuild_required')::boolean,
-  false,
-  'preflight no longer reports a rebuild requirement once completion is recorded'
-);
-
-select pg_temp.as_anon();
-
-select throws_ok(
-  $$ select kilo.consent_rebuild_complete() $$,
-  null, 'not authenticated',
-  'consent_rebuild_complete refuses an unauthenticated caller'
+  (kilo.health_sync_preflight() ->> 'cloud_rebuild_generation')::integer,
+  1,
+  'preflight surfaces the rebuild generation on every check, not only right after granting'
 );
 
 reset role;
+
+-- Monotonic: a SECOND verified-zero purge advances the generation again, so a
+-- device that had already caught up to generation 1 is behind again and
+-- rebuilds afresh. This is the multi-device property a single boolean flag
+-- (cleared by whichever device rebuilt first) could not express.
+select pg_temp.as_user(:'user_a'::uuid);
+select kilo.consent_withdraw();
+reset role;
+
+select is(
+  (select status from kilo.consent_state where user_id = :'user_a'::uuid),
+  'deletion_pending',
+  'a second withdrawal re-enters deletion_pending'
+);
+
+-- user_a holds no health rows (they were purged and never re-added), so the
+-- job verifies zero immediately and reaches withdrawn.
+select is(
+  (kilo.complete_health_deletion_job(
+    (select id from kilo.health_data_deletion_jobs
+       where user_id = :'user_a'::uuid and status in ('pending', 'running')
+       order by created_at desc limit 1)
+  ) ->> 'ok')::boolean,
+  true,
+  'the second purge completes with zero scoped rows'
+);
+
+select is(
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  2,
+  'a second verified-zero purge advances the rebuild generation to 2 (monotonic)'
+);
 
 -- ---------------------------------------------------------------------------
 -- Per-account quarantine
@@ -495,11 +468,11 @@ reset role;
 
 -- Regression guard: a user granting for the very first time, with no purge
 -- ever having emptied their gated set, must never be told to rebuild data
--- they never had. The signal is armed only by a verified-zero purge.
+-- they never had. The generation only advances on a verified-zero purge.
 select is(
-  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_d'::uuid),
-  false,
-  'a fresh first-time grant with no completed purge never requires a cloud rebuild'
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_d'::uuid),
+  0,
+  'a fresh first-time grant with no completed purge sits at rebuild generation 0'
 );
 
 select cmp_ok(
