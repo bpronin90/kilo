@@ -39,6 +39,11 @@ import { fetchConsentStatus } from '../../storage/cloud/consent';
 async function assertConsent() {
   const consent = await fetchConsentStatus();
   if (consent.allowed) return null;
+  // A denial is also a storage-mode boundary. Keeping the cloud adapter active
+  // would let ordinary entry-hook refreshes bypass this preflight seam and try
+  // consent-gated reads/writes one table at a time. Local data remains usable,
+  // including retained raw tombstones needed for later convergence.
+  Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
   return {
     ok: false,
     code: consent.code,

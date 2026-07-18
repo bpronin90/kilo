@@ -3,6 +3,7 @@ import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
 import { useSyncRecovery, useCloudExport, useCloudSyncStatus } from '../../hooks/useEntries';
+import * as Storage from '../../storage/entries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
 import { OWNER_UNCLAIMED, getLocalDataOwner } from '../../storage/entries/localDataOwner';
 import { HealthDataConsent } from './HealthDataConsent';
@@ -132,6 +133,10 @@ export function CloudSyncRecovery({ user }) {
         setStatus(result.error || 'Could not withdraw consent — Cloud Sync is unchanged.');
         return;
       }
+      // consent_withdraw atomically blocks health access before returning. Move
+      // the client to local-only mode immediately so mounted entry hooks cannot
+      // start another consent-gated refresh while the purge is pending.
+      Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
       setConfirmingWithdrawal(false);
       await requestHealthDataDeletion();
       await refreshConsent();
@@ -184,6 +189,14 @@ export function CloudSyncRecovery({ user }) {
         <HealthDataConsent
           onGranted={async () => {
             setShowingConsent(false);
+            // A denied preflight deliberately moved the app to local-only mode.
+            // Restore cloud routing only for the signed-in owner after the server
+            // has recorded the new grant; foreign or unclaimed device data must
+            // still pass through the explicit ownership decision first.
+            const owner = await getLocalDataOwner();
+            if (owner === user?.id) {
+              Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+            }
             await refreshConsent();
             setStatus('Cloud Sync is on.');
           }}
