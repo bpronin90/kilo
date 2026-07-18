@@ -22,6 +22,8 @@ import {
   stableStringify,
   getClientId,
   enqueueDirty,
+  clearCursor,
+  clearSyncSnapshot,
 } from '../syncQueue';
 import {
   WEIGHT_GOAL_SYNC_FIELDS,
@@ -30,6 +32,7 @@ import {
   deriveFatigueCheckinRows,
 } from './bootstrapPlan';
 import { getTransport, getRecomputeDerived } from './transport';
+import { completeCloudRebuild } from './consent';
 
 // Legacy-note bootstrap provenance. A row is legacy-provenance when EITHER:
 //   * it carries source_snapshot.async_storage_key === 'kilo_workout_note'
@@ -696,4 +699,105 @@ export async function sync() {
     results.push(await syncDiffTable({ ...config, transport: singletonAware }));
   }
   return results;
+}
+
+// ── reconsent cloud rebuild (issue #538) ─────────────────────────────────────
+//
+// A completed withdrawal purge empties every gated table server-side. If the
+// SAME device later re-grants, its dirty queue is already empty (everything it
+// held was acknowledged before withdrawal) and every diff-tracked table's
+// last-synced snapshot already agrees with what is now an intentionally empty
+// cloud copy — so ordinary sync() above has nothing to detect and pushes
+// nothing. The server tells the client this explicitly via
+// consent_state.cloud_rebuild_required (storage/cloud/consent.js); when it is
+// armed, the app must run rebuildCloudCopy() instead of an ordinary sync pass
+// (see hooks/entries/syncRecoveryHooks.js).
+//
+// The rebuild reuses the SAME engine ordinary sync() uses for every one of the
+// seven gated tables, rather than a separate one-off upload path: it only
+// rearms each table's local bookkeeping so the next sync() pass treats every
+// local record — live rows AND tombstones, since a tombstone is itself a row
+// the purge deleted and omitting it would leave row-count parity wrong even
+// though it stays invisible — as unpushed, then lets the ordinary
+// pull/push/merge loop do the actual work. That keeps tombstone handling, LWW,
+// and cursor advancement identical to every other sync pass instead of a
+// second, differently-tested code path, and it naturally never pulls the
+// (intentionally empty) post-purge cloud snapshot over local state first: the
+// merge step unions local-only records straight into the push set exactly as
+// it does for any other unsynced local write.
+const REBUILD_COLLECTION_TABLES = Object.freeze([
+  SYNC_TABLES.WEIGHT_ENTRIES,
+  SYNC_TABLES.WORKOUT_NOTES,
+  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+]);
+
+// The diff-tracked tables among the seven gated ones. FEATURE_TOGGLES and
+// USER_PROFILE are diff-tracked too but are NOT gated/purged — a withdrawal
+// never touches them — so they are deliberately excluded: there is nothing on
+// them to rebuild.
+const REBUILD_DIFF_TABLES = Object.freeze([
+  SYNC_TABLES.USER_HEALTH_PROFILE,
+  SYNC_TABLES.WEIGHT_GOAL,
+  SYNC_TABLES.DELOAD_HISTORY,
+  SYNC_TABLES.FATIGUE_CHECKINS,
+]);
+
+// Re-enqueue every local record (including tombstones) of a dirty-queue
+// tracked collection table, so the next syncTable pass pushes the complete
+// local set instead of only whatever a write-time hook already queued.
+// Idempotent: re-enqueuing an id already in the dirty queue just overwrites
+// its snapshot with the same value, and clearing an already-clear cursor is a
+// no-op — so re-running this after a partial or retried rebuild is safe.
+async function reseedCollectionTable(table, readLocal) {
+  const list = (await readLocal()) || [];
+  for (const record of list) {
+    if (!record || record.id == null) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueDirty(table, record);
+  }
+  await clearCursor(table);
+}
+
+// Rearm every consent-gated table for a full reupload.
+export async function rearmGatedTablesForRebuild() {
+  const tableIo = createTableIo(() => {});
+  for (const table of REBUILD_COLLECTION_TABLES) {
+    // eslint-disable-next-line no-await-in-loop
+    await reseedCollectionTable(table, tableIo[table].read);
+  }
+  for (const table of REBUILD_DIFF_TABLES) {
+    // eslint-disable-next-line no-await-in-loop
+    await clearSyncSnapshot(table);
+    // eslint-disable-next-line no-await-in-loop
+    await clearCursor(table);
+  }
+}
+
+// The full post-purge cloud rebuild: rearm every gated table, push everything
+// through the ordinary sync loop, confirm completion with the server (which is
+// what finally clears cloud_rebuild_required), then run one more ordinary sync
+// pass as the reconciliation the acceptance criteria require — proving the
+// rebuild converged and picking up anything another device pushed
+// concurrently.
+//
+// A failure at any step propagates, mirroring sync()'s own contract so the
+// existing runPhase failure handling in syncRecoveryHooks.js applies
+// unchanged: local data is never touched by a failure here, and
+// cloud_rebuild_required stays armed server-side until completeCloudRebuild()
+// actually succeeds. A retry from any point — a fresh rearm, a re-push of
+// already-acknowledged rows, a retried completion call — is always safe: it
+// can duplicate network traffic but never duplicate rows or lose data.
+export async function rebuildCloudCopy() {
+  await rearmGatedTablesForRebuild();
+  const rebuildResults = await sync();
+  const completion = await completeCloudRebuild();
+  if (!completion.ok) {
+    return {
+      ok: false,
+      error: completion.error || 'Could not confirm the cloud rebuild finished.',
+      results: rebuildResults,
+    };
+  }
+  const reconciliationResults = await sync();
+  return { ok: true, results: [...rebuildResults, ...reconciliationResults] };
 }

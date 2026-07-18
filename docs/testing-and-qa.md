@@ -616,6 +616,15 @@ retains non-test commands such as `npm run audit`.
   already-stripped `wn_legacy_` rows converge back to tombstones, repeated sync
   stays idempotent, and legitimate legacy-only/user-authored notes survive
   (#501)
+- verify a verified-zero purge leaves an ordinary sync pass with nothing to
+  detect (the #538 failure mode, pinned directly against the real engine);
+  verify `rearmGatedTablesForRebuild()` plus one ordinary pass fully
+  reconstructs all seven gated tables, including tombstones and the derived
+  `fatigue_checkins` projection, while leaving ungated tables untouched; verify
+  `rebuildCloudCopy()` confirms completion with the server and runs a
+  reconciliation pass; verify a failed completion confirmation does not
+  falsely report success and a retry is safe and idempotent (no duplicate
+  rows) (#538)
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
@@ -637,6 +646,13 @@ retains non-test commands such as `npm run audit`.
   user-authored `Routine 1` notes visible, and perform no health sync on repeated
   refresh; verify a successful same-owner re-grant restores cloud routing without
   bypassing the foreign-owner gate (#544)
+- verify a same-owner sign-in whose grant reports `cloud_rebuild_required` runs
+  the full post-purge cloud rebuild automatically, in place of the ordinary sync
+  pass, with no user action; verify a cleared or absent signal always falls back
+  to the ordinary pass (never a spurious rebuild); verify manual Sync Now selects
+  the rebuild the same way; verify a failed rebuild leaves the sync phase
+  failed/retryable without touching local data or the owner marker, and a retry
+  re-attempts it (#538)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 
@@ -645,6 +661,9 @@ retains non-test commands such as `npm run audit`.
   stale, and deletion-pending consent states
 - verify bootstrap and automatic sync remain off until preflight confirms the
   required material version and protocol
+- verify `completeCloudRebuild()` calls the `consent_rebuild_complete` RPC and
+  faithfully reports the server's outcome, including a refusal (e.g. no active
+  grant) and a missing/unconfigured client, without throwing (#538)
 
 ### `mobile/tests/account-lifecycle-ui.test.js`
 
@@ -735,7 +754,13 @@ retains non-test commands such as `npm run audit`.
   wording, timestamps, and configuration
 - `supabase/tests/consent-lifecycle.test.sql` covers withdrawal transitions,
   partial-purge retry, operator re-enqueue, re-grant, per-account quarantine,
-  purge arming, and evidence-key lifecycle behavior
+  purge arming, and evidence-key lifecycle behavior; also covers the
+  reconsent cloud-rebuild signal (#538): a verified-zero purge arms
+  `cloud_rebuild_required`, `consent_grant` and `health_sync_preflight` both
+  surface it without clearing it, `consent_rebuild_complete` clears it
+  idempotently and only for an active grant (rejecting an unauthenticated or
+  not-currently-granted caller), and a fresh first-time grant with no prior
+  purge never requires a rebuild
 - `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified

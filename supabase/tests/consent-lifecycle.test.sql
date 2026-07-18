@@ -15,7 +15,7 @@
 
 begin;
 
-select plan(42);
+select plan(55);
 
 \set user_a '99999999-9999-9999-9999-999999999999'
 \set user_b 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -36,6 +36,17 @@ begin
   perform set_config('request.jwt.claim.sub', p_user::text, true);
   perform set_config('request.jwt.claims',
     json_build_object('sub', p_user::text, 'role', 'authenticated')::text, true);
+  perform set_config('request.headers', '{}', true);
+  execute 'set local role authenticated';
+end $$;
+
+-- No `sub` claim at all: models a request with no valid session, distinct from
+-- an authenticated-but-unprivileged one.
+create or replace function pg_temp.as_anon()
+  returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claims', '{}', true);
   perform set_config('request.headers', '{}', true);
   execute 'set local role authenticated';
 end $$;
@@ -248,6 +259,36 @@ select is(
   'withdrawal preserves the account'
 );
 
+-- ---------------------------------------------------------------------------
+-- Reconsent cloud rebuild signal (#538)
+-- ---------------------------------------------------------------------------
+
+-- The verified-zero purge just above armed the signal. It must stay armed
+-- while the user is withdrawn (not granted) — this is exactly the window a
+-- rebuild-completion call must refuse, since there is no active grant yet for
+-- the rebuild to belong to.
+select is(
+  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
+  true,
+  'a verified-zero purge arms the rebuild-required signal'
+);
+
+select isnt(
+  (select cloud_rebuild_armed_at from kilo.consent_state where user_id = :'user_a'::uuid),
+  null,
+  'the arming timestamp is recorded'
+);
+
+select pg_temp.as_user(:'user_a'::uuid);
+
+select throws_ok(
+  $$ select kilo.consent_rebuild_complete() $$,
+  null, null,
+  'consent_rebuild_complete refuses a user who is not currently granted'
+);
+
+reset role;
+
 -- Re-granting from `withdrawn` is allowed; from deletion_pending it was not.
 select pg_temp.as_user(:'user_a'::uuid);
 
@@ -260,6 +301,62 @@ select is(
   (select status from kilo.consent_state where user_id = :'user_a'::uuid),
   'granted',
   're-grant restores access'
+);
+
+select is(
+  (kilo.consent_grant(1, '1.2.3', 'android') ->> 'cloud_rebuild_required')::boolean,
+  true,
+  'consent_grant reports the armed rebuild signal in its own response, and does not clear it'
+);
+
+select is(
+  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
+  true,
+  'granting again does not clear the rebuild-required signal — only an explicit rebuild completion does'
+);
+
+select is(
+  (kilo.health_sync_preflight() ->> 'cloud_rebuild_required')::boolean,
+  true,
+  'preflight also surfaces the rebuild signal on every check, not only right after granting'
+);
+
+select is(
+  (kilo.consent_rebuild_complete() ->> 'already')::boolean,
+  false,
+  'the first completion call reports it actually cleared an armed signal'
+);
+
+select is(
+  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_a'::uuid),
+  false,
+  'consent_rebuild_complete clears the signal'
+);
+
+select isnt(
+  (select cloud_rebuild_completed_at from kilo.consent_state where user_id = :'user_a'::uuid),
+  null,
+  'the completion timestamp is recorded'
+);
+
+select is(
+  (kilo.consent_rebuild_complete() ->> 'already')::boolean,
+  true,
+  'a repeated completion call is idempotent and reports already-cleared rather than erroring'
+);
+
+select is(
+  (kilo.health_sync_preflight() ->> 'cloud_rebuild_required')::boolean,
+  false,
+  'preflight no longer reports a rebuild requirement once completion is recorded'
+);
+
+select pg_temp.as_anon();
+
+select throws_ok(
+  $$ select kilo.consent_rebuild_complete() $$,
+  null, 'not authenticated',
+  'consent_rebuild_complete refuses an unauthenticated caller'
 );
 
 reset role;
@@ -395,6 +492,15 @@ insert into auth.users (id) values (:'user_d'::uuid) on conflict do nothing;
 select pg_temp.as_user(:'user_d'::uuid);
 select kilo.consent_grant(1, '1.2.3', 'android');
 reset role;
+
+-- Regression guard: a user granting for the very first time, with no purge
+-- ever having emptied their gated set, must never be told to rebuild data
+-- they never had. The signal is armed only by a verified-zero purge.
+select is(
+  (select cloud_rebuild_required from kilo.consent_state where user_id = :'user_d'::uuid),
+  false,
+  'a fresh first-time grant with no completed purge never requires a cloud rebuild'
+);
 
 select cmp_ok(
   (select count(*) from kilo.consent_events where user_id = :'user_d'::uuid),

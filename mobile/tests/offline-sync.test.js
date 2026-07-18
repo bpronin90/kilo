@@ -12,8 +12,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as Storage from '../storage/entries';
-import { loadArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
+import {
+  loadArchivedWeightGoalsRaw,
+  replaceArchivedWeightGoalsRaw,
+} from '../storage/entries/weightGoal';
 import { cloudAdapter, setCloudTransport, setRecomputeDerived } from '../storage/cloudAdapter';
+import { rearmGatedTablesForRebuild, rebuildCloudCopy } from '../storage/cloud/syncAdapter';
 import {
   pickWinner,
   resolveRecord,
@@ -46,6 +50,17 @@ import { getSupabaseClient } from '../lib/supabaseClient';
 // REAL transport without a network. Every other test injects its own fake
 // transport via setCloudTransport, so this mock stays dormant for them.
 jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
+
+// rebuildCloudCopy() (issue #538) confirms completion through the real RPC
+// wrapper; stub only that one export so the rebuild tests below drive the
+// real rearm + sync engine end to end while controlling just the server
+// acknowledgement.
+jest.mock('../storage/cloud/consent', () => {
+  const actual = jest.requireActual('../storage/cloud/consent');
+  return { ...actual, completeCloudRebuild: jest.fn() };
+});
+
+const { completeCloudRebuild } = require('../storage/cloud/consent');
 
 // ── in-memory fake cloud ───────────────────────────────────────────────────────
 //
@@ -141,6 +156,10 @@ function makeFakeCloud() {
     remoteRow: (table, id) => tables[table].get(id),
     remoteRows: (table) => [...tables[table].values()],
     seedRemote: (table, rec) => tables[table].set(rec.id, rec),
+    // Models a verified-zero withdrawal purge (issue #538): empties one gated
+    // table's cloud rows without touching local storage, dirty queues, sync
+    // snapshots, or cursors — exactly what the server-side purge does.
+    clearRemote: (table) => tables[table].clear(),
     setOnline: (v) => {
       state.online = v;
     },
@@ -2242,5 +2261,210 @@ describe('fatigue-checkin projection + active-deload sync (issue #498)', () => {
     await cloudAdapter.sync();
     expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBe('retry me');
     expect((await Storage.loadDeloadNote()).raw_text).toBe('retry me');
+  });
+});
+
+// ── reconsent cloud rebuild (issue #538) ─────────────────────────────────────
+//
+// #492 qualified this production lifecycle: a granted account withdraws, the
+// server verifiably purges every gated table, the SAME device later re-grants
+// while still holding its complete local history — and ordinary sync has
+// nothing to detect, because its dirty queue and diff-tracked snapshots
+// already agree with what is now an intentionally empty cloud copy. These
+// tests first pin that failure mode directly against the real sync engine
+// (proving it is real, not assumed), then prove rearmGatedTablesForRebuild()
+// and rebuildCloudCopy() recover it across every one of the seven gated
+// tables, including tombstones and the derived fatigue-checkin projection.
+describe('reconsent cloud rebuild (issue #538)', () => {
+  const WE = SYNC_TABLES.WEIGHT_ENTRIES;
+  const WN = SYNC_TABLES.WORKOUT_NOTES;
+  const AWG = SYNC_TABLES.ARCHIVED_WEIGHT_GOALS;
+  const WG = SYNC_TABLES.WEIGHT_GOAL;
+  const DH = SYNC_TABLES.DELOAD_HISTORY;
+  const HEALTH = SYNC_TABLES.USER_HEALTH_PROFILE;
+  const FC = SYNC_TABLES.FATIGUE_CHECKINS;
+  const SELF = SINGLETON_SYNC_ID;
+  const GATED_TABLES = [WE, WN, AWG, WG, DH, HEALTH, FC];
+
+  beforeEach(() => {
+    completeCloudRebuild.mockReset();
+    completeCloudRebuild.mockResolvedValue({
+      ok: true,
+      cloud_rebuild_required: false,
+      already: false,
+    });
+  });
+
+  // A live row and a tombstone on every syncTable-engine collection, a live
+  // record on every diff-tracked table, and a workout note with an answered
+  // check-in so the derived fatigue_checkins projection is non-empty.
+  //
+  // Every syncTable-engine collection record is also enqueued dirty here,
+  // mirroring how a real create/edit/delete enters the dirty queue at write
+  // time — the point of the first test below is that once an ordinary sync
+  // pass has already pushed and acknowledged them (clearing the queue), a
+  // second ordinary pass after a purge has nothing left to detect.
+  async function seedFullAccount() {
+    const weightEntries = [
+      {
+        id: 'w1', entry_type: 'weight', date: '2026-07-01',
+        logged_at: '2026-07-01T08:00:00.000Z', weight_value: 180, deleted_at: null,
+      },
+      {
+        id: 'w2', entry_type: 'weight', date: '2026-06-01',
+        logged_at: '2026-06-01T08:00:00.000Z', weight_value: 190,
+        deleted_at: '2026-06-15T00:00:00.000Z',
+      },
+    ];
+    await Storage.replaceWeightEntriesRaw(weightEntries);
+    for (const rec of weightEntries) await enqueueDirty(WE, rec);
+
+    const workoutNotes = [
+      {
+        id: 'wn1', title: 'Routine', raw_text: '-Bench\n- 185 5,5,5', deleted_at: null,
+        session_checkins: {
+          0: { responded_at: '2026-07-01T09:00:00.000Z', status: 'ok', reasons: [] },
+        },
+      },
+      {
+        id: 'wn2', title: 'Old', raw_text: '-Squat\n- 200 5,5,5',
+        deleted_at: '2026-06-20T00:00:00.000Z',
+      },
+    ];
+    await Storage.replaceWorkoutNotesRaw(workoutNotes);
+    for (const rec of workoutNotes) await enqueueDirty(WN, rec);
+    await Storage.saveCurrentWorkoutId('wn1');
+
+    const archivedGoals = [
+      {
+        id: 'ag1', target_weight: 175, start_weight: 195,
+        archived_at: '2026-05-01T00:00:00.000Z', deleted_at: null,
+      },
+      {
+        id: 'ag2', target_weight: 170, start_weight: 200,
+        archived_at: '2026-04-01T00:00:00.000Z', deleted_at: '2026-04-15T00:00:00.000Z',
+      },
+    ];
+    await replaceArchivedWeightGoalsRaw(archivedGoals);
+    for (const rec of archivedGoals) await enqueueDirty(AWG, rec);
+
+    await Storage.saveWeightGoal({ target_weight: 175, start_weight: 195 });
+    await Storage.appendDeloadHistory({
+      id: 'dh1', date: '2026-06-20', raw_text: 'deload', saved_at: '2026-06-20T10:00:00.000Z',
+    });
+    await Storage.saveTrackedLifts({ Squat: true });
+    await Storage.saveFatigueMultiplier(1.2);
+  }
+
+  function idsOf(rows) {
+    return rows.map((r) => r.id).sort();
+  }
+
+  it('proves the failure mode: after a verified-zero purge, an ordinary sync pushes nothing back', async () => {
+    await seedFullAccount();
+
+    // "Already synced before withdrawal": one ordinary pass converges local
+    // state with the cloud, leaving every dirty queue empty and every
+    // diff-tracked snapshot equal to current local state.
+    await cloudAdapter.sync();
+    expect(cloud.remoteRows(WE).length).toBe(2);
+    expect(cloud.remoteRows(WN).length).toBe(2);
+    expect(cloud.remoteRows(AWG).length).toBe(2);
+    expect(cloud.remoteRow(WG, SELF)).toBeTruthy();
+    expect(cloud.remoteRows(DH).length).toBe(1);
+    expect(cloud.remoteRow(HEALTH, SELF)).toBeTruthy();
+    expect(cloud.remoteRows(FC).length).toBe(1);
+
+    // The server purge: every gated table emptied, local state untouched.
+    for (const table of GATED_TABLES) cloud.clearRemote(table);
+
+    await cloudAdapter.sync();
+
+    for (const table of GATED_TABLES) {
+      expect(cloud.remoteRows(table)).toEqual([]);
+    }
+  });
+
+  it('rearmGatedTablesForRebuild() + an ordinary sync pass fully reconstructs every gated table, including tombstones and the derived fatigue projection', async () => {
+    await seedFullAccount();
+    await cloudAdapter.sync();
+    for (const table of GATED_TABLES) cloud.clearRemote(table);
+
+    await rearmGatedTablesForRebuild();
+    await cloudAdapter.sync();
+
+    expect(idsOf(cloud.remoteRows(WE))).toEqual(['w1', 'w2']);
+    expect(cloud.remoteRow(WE, 'w2').deleted_at).toBeTruthy();
+    expect(cloud.remoteRow(WE, 'w1').deleted_at).toBeFalsy();
+
+    expect(idsOf(cloud.remoteRows(WN))).toEqual(['wn1', 'wn2']);
+    expect(cloud.remoteRow(WN, 'wn2').deleted_at).toBeTruthy();
+
+    expect(idsOf(cloud.remoteRows(AWG))).toEqual(['ag1', 'ag2']);
+    expect(cloud.remoteRow(AWG, 'ag2').deleted_at).toBeTruthy();
+
+    expect(cloud.remoteRow(WG, SELF)).toMatchObject({ target_weight: 175 });
+    expect(idsOf(cloud.remoteRows(DH))).toEqual(['dh1']);
+    expect(cloud.remoteRow(HEALTH, SELF)).toMatchObject({
+      tracked_lifts: { Squat: true },
+      fatigue_multiplier: 1.2,
+    });
+    expect(idsOf(cloud.remoteRows(FC))).toEqual(['fc_wn1_0']);
+
+    // Ungated tables were never purged and are untouched by the rearm.
+    expect(await Storage.loadCurrentWorkoutId()).toBe('wn1');
+  });
+
+  it('rebuildCloudCopy() confirms completion with the server and runs a reconciliation pass', async () => {
+    await seedFullAccount();
+    await cloudAdapter.sync();
+    for (const table of GATED_TABLES) cloud.clearRemote(table);
+
+    const result = await rebuildCloudCopy();
+
+    expect(result.ok).toBe(true);
+    expect(completeCloudRebuild).toHaveBeenCalledTimes(1);
+    for (const table of GATED_TABLES) {
+      expect(cloud.remoteRows(table).length).toBeGreaterThan(0);
+    }
+    // The reconciliation pass is a real second sync(): nothing is left dirty.
+    for (const table of GATED_TABLES) {
+      expect(await getDirtyRecords(table)).toEqual([]);
+    }
+  });
+
+  it('a failed completion confirmation leaves data pushed but does not falsely report success, and a retry is safe', async () => {
+    await seedFullAccount();
+    await cloudAdapter.sync();
+    for (const table of GATED_TABLES) cloud.clearRemote(table);
+
+    completeCloudRebuild.mockResolvedValueOnce({ ok: false, error: 'network blip' });
+
+    const first = await rebuildCloudCopy();
+    expect(first.ok).toBe(false);
+    // The push itself already succeeded — only the server confirmation failed —
+    // so the data is already there, just not yet acknowledged as "rebuilt".
+    expect(cloud.remoteRows(WE).length).toBe(2);
+
+    const second = await rebuildCloudCopy();
+    expect(second.ok).toBe(true);
+    expect(completeCloudRebuild).toHaveBeenCalledTimes(2);
+    // No duplicate rows from the retried rearm/push: still exactly the seeded set.
+    expect(idsOf(cloud.remoteRows(WE))).toEqual(['w1', 'w2']);
+    expect(idsOf(cloud.remoteRows(WN))).toEqual(['wn1', 'wn2']);
+  });
+
+  it('rebuildCloudCopy() run twice in a row is idempotent (no duplicate rows, no errors)', async () => {
+    await seedFullAccount();
+    await cloudAdapter.sync();
+    for (const table of GATED_TABLES) cloud.clearRemote(table);
+
+    await rebuildCloudCopy();
+    const beforeCounts = GATED_TABLES.map((t) => cloud.remoteRows(t).length);
+
+    await expect(rebuildCloudCopy()).resolves.toMatchObject({ ok: true });
+
+    const afterCounts = GATED_TABLES.map((t) => cloud.remoteRows(t).length);
+    expect(afterCounts).toEqual(beforeCounts);
   });
 });

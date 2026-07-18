@@ -448,6 +448,29 @@ backlog/re-enqueue path. Account export, account deletion, and withdrawal purge
 share one health-data scope; account deletion replaces linked consent rows with
 minimum HMAC-pseudonymized evidence retained for six years.
 
+A same-owner device that keeps its complete local copy across a verified-zero
+purge and a later re-grant cannot rely on ordinary sync to notice: its dirty
+queue is already empty and every diff-tracked snapshot already agrees with
+what is now an intentionally empty cloud copy, so a normal pass pushes
+nothing (#538). `consent_state.cloud_rebuild_required` is the server-
+authenticated signal that resolves this without the client ever inferring
+anything from an empty cloud copy — which a brand-new account also has on its
+first grant. `kilo.complete_health_deletion_job` arms it unconditionally on
+any verified-zero purge; `kilo.consent_grant` and `kilo.health_sync_preflight`
+both surface it; `kilo.consent_rebuild_complete` is the only way to clear it,
+and only an active grant may call it. The mobile client checks it on every
+preflight a sync runner is selected from (automatic sign-in sync and manual
+Sync Now alike) and, when armed, runs `rebuildCloudCopy()` instead of an
+ordinary pass: it rearms every one of the seven gated tables for a full
+reupload — collection tables by re-enqueuing every local record, live and
+tombstoned, as dirty; diff-tracked tables by discarding their last-synced
+snapshot so the next pass treats local state as unreconciled — then pushes
+through the ordinary sync engine, confirms completion with the server, and
+runs one more ordinary pass as reconciliation. A failure at any step leaves
+local data untouched and the signal armed, so any retry (a fresh rearm, a
+re-push of already-acknowledged rows, a retried confirmation) is safe and
+never loses or duplicates data.
+
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving
 the migrated result before returning. Tracked exercise toggles update the global

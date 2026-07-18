@@ -146,6 +146,22 @@ export async function withdrawConsent(client = getSupabaseClient()) {
   return { ok: true, ...data };
 }
 
+// Confirm the post-purge cloud rebuild finished (issue #538). Call this only
+// after the rebuild push AND its reconciliation pass have both actually
+// succeeded — the server keeps `cloud_rebuild_required` armed until this call
+// lands, which is what makes a crash mid-rebuild retryable across an app
+// restart without ever touching local data: the next launch simply sees the
+// signal still armed and rebuilds again.
+export async function completeCloudRebuild(client = getSupabaseClient()) {
+  if (!client) return { ok: false, error: 'Cloud is not configured.' };
+
+  const { data, error } = await client.schema(SCHEMA).rpc('consent_rebuild_complete');
+  if (error) {
+    return { ok: false, error: error.message, code: mapPostgrestError(error) };
+  }
+  return { ok: true, ...data };
+}
+
 // Kick the purge worker so an ordinary withdrawal is erased now rather than at the
 // next cron tick. Best-effort by design: the durable job is already queued, so a
 // failure here delays the purge, it does not lose it.

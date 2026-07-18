@@ -17,6 +17,7 @@ import {
   purgeLocalData,
 } from '../../storage/entries/localDataOwner';
 import { fetchConsentStatus } from '../../storage/cloud/consent';
+import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
 
 // The Cloud Sync authorization seam (#487).
 //
@@ -36,19 +37,31 @@ import { fetchConsentStatus } from '../../storage/cloud/consent';
 // server's RLS gate refuses the same reads and writes whether or not this check
 // runs; a tampered client that skipped it would simply get empty pulls and rejected
 // writes.
-async function assertConsent() {
+// Checks the server's consent status and, on a denial, also moves storage to
+// local-only (a denial is a storage-mode boundary: keeping the cloud adapter
+// active would let ordinary entry-hook refreshes bypass this preflight seam
+// and try consent-gated reads/writes one table at a time). Local data remains
+// usable either way, including retained raw tombstones needed for later
+// convergence.
+//
+// On success returns the full consent payload, not just a boolean: callers
+// that select a sync runner need `consent.cloud_rebuild_required` (issue
+// #538) — the server-authenticated signal that a completed withdrawal purge
+// emptied this account's cloud copy and the next sync must be a full rebuild,
+// not an ordinary pass. It is a plain field on the same payload
+// fetchConsentStatus already returns, so no extra round trip is needed.
+async function checkConsent() {
   const consent = await fetchConsentStatus();
-  if (consent.allowed) return null;
-  // A denial is also a storage-mode boundary. Keeping the cloud adapter active
-  // would let ordinary entry-hook refreshes bypass this preflight seam and try
-  // consent-gated reads/writes one table at a time. Local data remains usable,
-  // including retained raw tombstones needed for later convergence.
+  if (consent.allowed) return { ok: true, consent };
   Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
   return {
     ok: false,
-    code: consent.code,
-    consentDenied: true,
-    error: 'Cloud Sync needs your consent to store health data.',
+    denial: {
+      ok: false,
+      code: consent.code,
+      consentDenied: true,
+      error: 'Cloud Sync needs your consent to store health data.',
+    },
   };
 }
 
@@ -58,7 +71,14 @@ function makeBootstrapRunner(user) {
   return () => cloudAdapter.bootstrapFromLocal(userId);
 }
 
-function makeSyncRunner() {
+// `cloudRebuildRequired` selects the runner (issue #538): when the server
+// reports a completed purge is still awaiting its rebuild, the ordinary
+// adapter.sync() pass is replaced by rebuildCloudCopy(), which rearms every
+// gated table for a full reupload, pushes through the same sync engine, and
+// only then confirms completion with the server. Both run under the identical
+// SYNC_PHASE.SYNC state machine, so the UI and retry behavior are unchanged —
+// only which operation "Sync Now" / automatic sign-in sync actually performs.
+function makeSyncRunner(cloudRebuildRequired) {
   const adapter = Storage.getStorageAdapter();
   // The local adapter also exposes `sync`, but it is a deliberate no-op
   // (localAdapter.js) that resolves successfully without ever contacting the
@@ -69,9 +89,8 @@ function makeSyncRunner() {
   // pull/push, so refuse the explicit local no-op (`mode: 'local'`) — leaving
   // the phase untouched and honest — while a cloud adapter still drives sync.
   // Feature detection on `sync` is kept for the cloud adapter shell.
-  return adapter.mode !== 'local' && typeof adapter.sync === 'function'
-    ? () => adapter.sync()
-    : null;
+  if (adapter.mode === 'local' || typeof adapter.sync !== 'function') return null;
+  return cloudRebuildRequired ? rebuildCloudCopy : () => adapter.sync();
 }
 
 export function useSyncRecovery(user = null) {
@@ -93,8 +112,8 @@ export function useSyncRecovery(user = null) {
     // No grant, no upload. The phase is left untouched (not failed): the user has
     // not hit an error, they simply have not consented yet, and the consent surface
     // is what resolves it.
-    const denied = await assertConsent();
-    if (denied) return denied;
+    const checked = await checkConsent();
+    if (!checked.ok) return checked.denial;
     // The owner write is part of the phase runner: a successful upload whose
     // ownership claim fails to persist is a failed (retryable) bootstrap, not
     // a success — cloud mode must never activate without a durable owner
@@ -113,15 +132,15 @@ export function useSyncRecovery(user = null) {
   }, [userId]);
 
   const runSync = useCallback(async () => {
-    const runner = makeSyncRunner();
+    const checked = await checkConsent();
+    if (!checked.ok) return checked.denial;
+    const runner = makeSyncRunner(checked.consent.cloud_rebuild_required);
     if (!runner) {
       return {
         ok: false,
         error: 'Cloud sync is not available in this build yet.',
       };
     }
-    const denied = await assertConsent();
-    if (denied) return denied;
     return runPhase(SYNC_PHASE.SYNC, runner);
   }, []);
 
@@ -194,14 +213,21 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     // it runs on sign-in, with no user watching. A user who has not granted
     // health-data consent must not have their history pushed to the cloud simply
     // because they signed in on a new device.
-    const denied = await assertConsent();
-    if (denied) {
-      setConsentDenial(denied.code);
+    const checked = await checkConsent();
+    if (!checked.ok) {
+      setConsentDenial(checked.denial.code);
       return;
     }
     setConsentDenial(null);
     if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
-      const runner = makeSyncRunner();
+      // This is the primary path issue #538 fixes: a same-owner device skips
+      // bootstrap entirely on sign-in and lands here automatically, with no
+      // user action. makeSyncRunner reads cloud_rebuild_required off the SAME
+      // preflight response and silently substitutes the full rebuild for the
+      // ordinary sync pass whenever a completed withdrawal purge is still
+      // awaiting one — otherwise a same-owner re-grant after a purge would
+      // report "Fully synced" while the cloud copy stayed empty.
+      const runner = makeSyncRunner(checked.consent.cloud_rebuild_required);
       if (runner) await runPhase(SYNC_PHASE.SYNC, runner);
     }
     onSyncCompleteRef.current?.();
@@ -213,10 +239,10 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     if (!userId) return { ok: false, error: 'Not signed in.' };
     // Confirming ownership is not consent. This upload is the largest health-data
     // write the app makes, so it needs its own grant check.
-    const denied = await assertConsent();
-    if (denied) {
-      setConsentDenial(denied.code);
-      return denied;
+    const checked = await checkConsent();
+    if (!checked.ok) {
+      setConsentDenial(checked.denial.code);
+      return checked.denial;
     }
     setOwnershipPrompt(null);
     const runner = makeBootstrapRunner({ id: userId });
@@ -340,9 +366,13 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
         if (state[SYNC_PHASE.BOOTSTRAP].status === SYNC_STATUS.COMPLETE) {
           Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
           if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
-            const runner = makeSyncRunner();
-            if (runner && !cancelled) await runPhase(SYNC_PHASE.SYNC, runner);
-            if (!cancelled) onSyncCompleteRef.current?.();
+            // Route through runInitialSync rather than duplicating its consent
+            // check and rebuild-aware runner selection inline (issue #538): this
+            // branch (the effect re-running mid-session, e.g. once a password
+            // recovery interruption clears) is exactly as capable of landing on a
+            // same-owner device whose grant still awaits a post-purge rebuild as
+            // the ordinary sign-in path is.
+            if (!cancelled) await runInitialSync();
           }
         }
         return;
