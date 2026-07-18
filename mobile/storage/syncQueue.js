@@ -360,6 +360,10 @@ export async function setCursor(table, cursor) {
   await AsyncStorage.setItem(cursorKey(table), cursor);
 }
 
+async function clearCursor(table) {
+  await AsyncStorage.removeItem(cursorKey(table));
+}
+
 // Compute the highest `updated_at` across a set of records. Sync loops pass only
 // rows returned by the server (pull results and push acknowledgements); local
 // dirty timestamps are device-owned and must never become pull cursors.
@@ -370,6 +374,24 @@ export function maxUpdatedAt(records, current = null) {
     if (u > max) max = u;
   }
   return max || null;
+}
+
+async function advanceCursorFromServerEvidence(table, cursor, remote, acknowledged) {
+  const acknowledgementMax = maxUpdatedAt(acknowledged);
+
+  // A successful write is stamped at the server's current time. If that
+  // authoritative acknowledgement is older than our stored cursor, the cursor
+  // came from the old device-clock path (or is otherwise invalid). Lowering it
+  // merely to the acknowledgement would still skip rows hidden between the two
+  // timestamps, so remove it and let the next pass perform a complete pull.
+  if (cursor && acknowledgementMax && acknowledgementMax < cursor) {
+    await clearCursor(table);
+    return null;
+  }
+
+  const advanced = maxUpdatedAt([...remote, ...acknowledged], cursor);
+  if (advanced && advanced !== cursor) await setCursor(table, advanced);
+  return advanced;
 }
 
 const SINGLETON_SYNC_TABLES = new Set([
@@ -522,10 +544,7 @@ export async function syncTable({
   //    remote set, including rows excluded from the merge above. If an injected
   //    transport does not return acknowledgements, the pushed rows are safely
   //    picked up by the next inclusive pull instead.
-  const advanced = maxUpdatedAt([...remote, ...acknowledged], cursor);
-  if (advanced && advanced !== cursor) {
-    await setCursor(table, advanced);
-  }
+  await advanceCursorFromServerEvidence(table, cursor, remote, acknowledged);
 
   return {
     table,
@@ -841,10 +860,7 @@ export async function syncDiffTable({
 
   // 6. Advance only from the full set of server-authored pull rows and
   //    server-stamped push acknowledgements.
-  const advanced = maxUpdatedAt([...remote, ...acknowledged], cursor);
-  if (advanced && advanced !== cursor) {
-    await setCursor(table, advanced);
-  }
+  await advanceCursorFromServerEvidence(table, cursor, remote, acknowledged);
 
   return {
     table,

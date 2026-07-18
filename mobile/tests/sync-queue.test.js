@@ -7,6 +7,7 @@ import {
   getDirtyRecords,
   resetClientIdCacheForTests,
   resetStampClockForTests,
+  setCursor,
   setSyncSnapshot,
   stampTombstone,
   stampWrite,
@@ -266,6 +267,8 @@ describe('dirty queue compare-and-clear', () => {
 });
 
 describe('server-authoritative cursor advancement', () => {
+  const POISONED_CURSOR = '2099-01-01T00:00:00.000Z';
+  const SERVER_HIDDEN_AT = '2026-07-17T11:59:00.000Z';
   const SERVER_PUSHED_AT = '2026-07-17T12:00:00.000Z';
   const SERVER_LATER_AT = '2026-07-17T12:01:00.000Z';
 
@@ -406,4 +409,91 @@ describe('server-authoritative cursor advancement', () => {
       }
     );
   });
+
+  it.each(['syncTable', 'syncDiffTable'])(
+    '%s clears an already-poisoned cursor and recovers every hidden row',
+    async (syncKind) => {
+      const table =
+        syncKind === 'syncTable'
+          ? SYNC_TABLES.WEIGHT_ENTRIES
+          : SYNC_TABLES.DELOAD_HISTORY;
+      const cloud = makeServerTransport();
+      cloud.rows.set('hidden-row', {
+        id: 'hidden-row',
+        value: 'previously hidden remote edit',
+        updated_at: SERVER_HIDDEN_AT,
+      });
+      await setCursor(table, POISONED_CURSOR);
+
+      let visible = [];
+      let runPass;
+      let restoreClock = () => {};
+      if (syncKind === 'syncTable') {
+        const clientId = await getClientId();
+        const local = stampWrite(
+          { id: 'local-row', value: 'local edit' },
+          clientId,
+          POISONED_CURSOR
+        );
+        visible = [local];
+        await enqueueDirty(table, local);
+        runPass = () =>
+          syncTable({
+            table,
+            transport: cloud.transport,
+            async readLocal() {
+              return visible;
+            },
+            async writeLocal(records) {
+              visible = records;
+            },
+          });
+      } else {
+        await setSyncSnapshot(table, [
+          {
+            id: 'local-row',
+            value: 'before edit',
+            updated_at: '2026-07-17T11:00:00.000Z',
+          },
+        ]);
+        visible = [{ id: 'local-row', value: 'local edit' }];
+        const nowSpy = jest
+          .spyOn(Date, 'now')
+          .mockReturnValue(Date.parse(POISONED_CURSOR));
+        restoreClock = () => nowSpy.mockRestore();
+        runPass = () =>
+          syncDiffTable({
+            table,
+            transport: cloud.transport,
+            async buildLocal() {
+              return visible.map(({ id, value }) => ({ id, value }));
+            },
+            async applyMerged(records) {
+              visible = records;
+            },
+            payloadFields: ['value'],
+            allowDelete: true,
+          });
+      }
+
+      try {
+        await runPass();
+        expect(cloud.pullCursors).toEqual([POISONED_CURSOR]);
+        expect(await getCursor(table)).toBeNull();
+
+        await runPass();
+        expect(cloud.pullCursors).toEqual([POISONED_CURSOR, null]);
+        expect(visible).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 'hidden-row', updated_at: SERVER_HIDDEN_AT }),
+            expect.objectContaining({ id: 'local-row', updated_at: SERVER_PUSHED_AT }),
+          ])
+        );
+        expect(cloud.pushes).toHaveLength(1);
+        expect(await getCursor(table)).toBe(SERVER_PUSHED_AT);
+      } finally {
+        restoreClock();
+      }
+    }
+  );
 });

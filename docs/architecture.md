@@ -408,6 +408,10 @@ timestamp boundary and fetch the complete PostgREST result in explicit pages,
 ordered by `updated_at` and then the table primary key (`id` for collections,
 `user_id` for singletons). Equal-timestamp boundary rows may be read again, but
 the stable secondary order and idempotent merge prevent skipped or starved rows.
+If a successful server acknowledgement is older than the stored cursor, the
+cursor is known to be poisoned by the former device-clock path. It is removed
+rather than clamped to the acknowledgement, so the next pass performs a complete
+pull and recovers rows hidden anywhere below that bad cursor.
 After a successful push, dirty-queue cleanup compares the queue snapshot captured
 for that upload with the value still queued under the same id. The live row sent
 to Supabase may also carry local-only state, so it is not the queue identity. A

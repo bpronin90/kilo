@@ -584,6 +584,9 @@ retains non-test commands such as `npm run audit`.
 - verifies future and lagging device clocks cannot become pull cursors in either
   sync engine, server acknowledgements replace device-stamped metadata, and a
   later remote row remains pullable without causing a redundant second push
+- verifies both sync engines clear an already-poisoned future cursor after a
+  normal server acknowledgement, then recover all previously hidden rows on the
+  next full pull without re-pushing the acknowledged local edit
 
 ### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
 
