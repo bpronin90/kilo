@@ -581,6 +581,12 @@ retains non-test commands such as `npm run audit`.
   path and the diff-tracked `syncDiffTable` path
 - verifies a failed push leaves the acknowledged snapshot queued and a later
   successful retry clears it idempotently
+- verifies future and lagging device clocks cannot become pull cursors in either
+  sync engine, server acknowledgements replace device-stamped metadata, and a
+  later remote row remains pullable without causing a redundant second push
+- verifies both sync engines clear an already-poisoned future cursor after a
+  normal server acknowledgement, then recover all previously hidden rows on the
+  next full pull without re-pushing the acknowledged local edit
 
 ### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
 
@@ -588,6 +594,9 @@ retains non-test commands such as `npm run audit`.
   `archived_weight_goals` records are pushed, remote archived goals are pulled
   into local storage, and the sync result set includes the table alongside
   weight entries and workout notes
+- cover the real Supabase transport's server-stamped upsert response, stable
+  collection/singleton secondary ordering, inclusive cursor filter, and complete
+  pagination when equal-timestamp rows exceed one PostgREST response page
 - keep the fake offline-sync cloud table map aligned with all tables processed
   by the sync adapter, preventing new sync tables from regressing existing
   offline create/edit/delete tests
