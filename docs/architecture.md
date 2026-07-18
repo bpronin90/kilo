@@ -401,6 +401,13 @@ pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.
+Supabase returns each pushed row after its timestamp trigger runs; that
+acknowledgement replaces the device-stamped sync metadata locally and is the only
+push-side evidence allowed to advance the pull cursor. Pulls use an inclusive
+timestamp boundary and fetch the complete PostgREST result in explicit pages,
+ordered by `updated_at` and then the table primary key (`id` for collections,
+`user_id` for singletons). Equal-timestamp boundary rows may be read again, but
+the stable secondary order and idempotent merge prevent skipped or starved rows.
 After a successful push, dirty-queue cleanup compares the queue snapshot captured
 for that upload with the value still queued under the same id. The live row sent
 to Supabase may also carry local-only state, so it is not the queue identity. A

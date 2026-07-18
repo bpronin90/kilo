@@ -32,8 +32,58 @@ import {
   resetStampClockForTests,
 } from '../storage/syncQueue';
 import { replaceArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
+import { createSupabaseTransport } from '../storage/cloud/transport';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
+
+function makePagedPullClient(seedRows) {
+  const queries = [];
+  const client = {
+    schema(schema) {
+      return {
+        from(table) {
+          return {
+            select(_columns, options = {}) {
+              const state = { schema, table, options, filters: [], orders: [], range: null };
+              return {
+                gte(column, value) {
+                  state.filters.push({ column, value });
+                  return this;
+                },
+                order(column, optionsForOrder) {
+                  state.orders.push({ column, options: optionsForOrder });
+                  return this;
+                },
+                async range(from, to) {
+                  state.range = [from, to];
+                  queries.push(state);
+                  let rows = seedRows.filter((row) =>
+                    state.filters.every(({ column, value }) => row[column] >= value)
+                  );
+                  rows = [...rows].sort((a, b) => {
+                    for (const { column } of state.orders) {
+                      const compared = String(a[column] ?? '').localeCompare(
+                        String(b[column] ?? '')
+                      );
+                      if (compared) return compared;
+                    }
+                    return 0;
+                  });
+                  return {
+                    data: rows.slice(from, to + 1),
+                    error: null,
+                    count: options.count === 'exact' ? rows.length : null,
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { client, queries };
+}
 
 // ── fake Supabase client ────────────────────────────────────────────────────
 //
@@ -97,6 +147,98 @@ function makeFakeClient({ failTable = null, remoteRows = {}, selectFailTable = n
   client.upsertsByTable = upsertsByTable;
   return client;
 }
+
+describe('Supabase sync transport cursor contract', () => {
+  it('pulls every equal-timestamp collection row in deterministic pages', async () => {
+    const at = '2026-07-17T12:00:00.000Z';
+    const rows = Array.from({ length: 1005 }, (_unused, index) => ({
+      id: `row-${String(1004 - index).padStart(4, '0')}`,
+      updated_at: at,
+    }));
+    const fake = makePagedPullClient(rows);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    const pulled = await transport.pull(SYNC_TABLES.WEIGHT_ENTRIES, at);
+
+    expect(pulled).toHaveLength(1005);
+    expect(pulled.map((row) => row.id)).toEqual(
+      [...pulled.map((row) => row.id)].sort()
+    );
+    expect(fake.queries.map((query) => query.range)).toEqual([
+      [0, 999],
+      [1000, 1999],
+    ]);
+    expect(fake.queries[0].filters).toEqual([{ column: 'updated_at', value: at }]);
+    for (const query of fake.queries) {
+      expect(query.orders).toEqual([
+        { column: 'updated_at', options: { ascending: true } },
+        { column: 'id', options: { ascending: true } },
+      ]);
+    }
+  });
+
+  it('uses the singleton primary key as the stable secondary order', async () => {
+    const fake = makePagedPullClient([
+      { user_id: USER_ID, updated_at: '2026-07-17T12:00:00.000Z' },
+    ]);
+    const transport = createSupabaseTransport(() => fake.client);
+
+    await transport.pull(SYNC_TABLES.USER_PROFILE, null);
+
+    expect(fake.queries[0].orders).toEqual([
+      { column: 'updated_at', options: { ascending: true } },
+      { column: 'user_id', options: { ascending: true } },
+    ]);
+  });
+
+  it('returns the server-stamped upsert representation without device metadata', async () => {
+    const calls = [];
+    const serverRow = {
+      user_id: USER_ID,
+      id: 'weight-ack',
+      weight_value: 180,
+      updated_at: '2026-07-17T12:00:00.000Z',
+    };
+    const client = {
+      auth: {
+        async getUser() {
+          return { data: { user: { id: USER_ID } }, error: null };
+        },
+      },
+      schema() {
+        return {
+          from(table) {
+            return {
+              upsert(rows, options) {
+                calls.push({ table, rows, options });
+                return {
+                  async select() {
+                    return { data: [serverRow], error: null };
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+    const transport = createSupabaseTransport(() => client);
+
+    await expect(
+      transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [
+        {
+          id: 'weight-ack',
+          weight_value: 180,
+          updated_at: '2099-01-01T00:00:00.000Z',
+          client_id: 'future-device',
+        },
+      ])
+    ).resolves.toEqual([serverRow]);
+    expect(calls[0].rows).toEqual([
+      { user_id: USER_ID, id: 'weight-ack', weight_value: 180 },
+    ]);
+  });
+});
 
 // Full local dataset exercising every mapped AsyncStorage key.
 async function seedLocalData() {

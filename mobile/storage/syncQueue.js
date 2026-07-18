@@ -360,8 +360,9 @@ export async function setCursor(table, cursor) {
   await AsyncStorage.setItem(cursorKey(table), cursor);
 }
 
-// Compute the highest `updated_at` across a set of records; used to advance the
-// cursor only after a successful pull+push so an interrupted sync re-pulls.
+// Compute the highest `updated_at` across a set of records. Sync loops pass only
+// rows returned by the server (pull results and push acknowledgements); local
+// dirty timestamps are device-owned and must never become pull cursors.
 export function maxUpdatedAt(records, current = null) {
   let max = current || '';
   for (const rec of records || []) {
@@ -369,6 +370,59 @@ export function maxUpdatedAt(records, current = null) {
     if (u > max) max = u;
   }
   return max || null;
+}
+
+const SINGLETON_SYNC_TABLES = new Set([
+  SYNC_TABLES.USER_PROFILE,
+  SYNC_TABLES.USER_HEALTH_PROFILE,
+  SYNC_TABLES.FEATURE_TOGGLES,
+  SYNC_TABLES.WEIGHT_GOAL,
+]);
+
+// A real transport push returns the rows Postgres persisted after its
+// `updated_at` trigger ran. Older/injected transports may still return void, so
+// acknowledgement handling is additive. Only timestamped rows can contribute
+// ordering evidence. Singleton acknowledgements have no database `id`; restore
+// their synthetic local merge key here.
+function normalizePushAcknowledgements(table, rows) {
+  if (!Array.isArray(rows)) return [];
+  const singleton = SINGLETON_SYNC_TABLES.has(table);
+  return rows
+    .filter((row) => row && row.updated_at && (row.id != null || singleton))
+    .map((row) => (row.id == null ? { ...row, id: SINGLETON_SYNC_ID } : row));
+}
+
+function applyPushAcknowledgements(merged, rows) {
+  for (const row of rows) {
+    const existing = merged.get(row.id) || {};
+    const localFields = { ...existing };
+    delete localFields.client_id;
+    // Preserve fields that never leave the device, while letting every returned
+    // server column (especially updated_at) replace its local counterpart.
+    merged.set(row.id, { ...localFields, ...row });
+  }
+}
+
+async function recoverPushAcknowledgements(table, transport, cursor, pushed, response) {
+  const direct = normalizePushAcknowledgements(table, response);
+  if (direct.length > 0) return { rows: direct, replacesLocal: true };
+
+  // Compatibility for injected transports that predate push acknowledgements:
+  // re-pull after the successful upsert and retain only the rows just pushed.
+  // If this read is interrupted, the dirty queue is still intact and the
+  // idempotent upsert retries on the next pass.
+  const pushedIds = new Set(pushed.map((row) => row.id));
+  const refreshed = normalizePushAcknowledgements(
+    table,
+    (await transport.pull(table, cursor)) || []
+  );
+  return {
+    rows: refreshed.filter((row) => pushedIds.has(row.id)),
+    // A legacy injected transport did not explicitly promise that its pull
+    // representation is the post-trigger form of this exact upsert. It can
+    // advance the cursor, but must not replace local payload/metadata.
+    replacesLocal: false,
+  };
 }
 
 // ── sync loop ──────────────────────────────────────────────────────────────────
@@ -434,23 +488,41 @@ export async function syncTable({
   const localList = (await readLocal()) || [];
   const contested = remote.filter((r) => !dirtyIds.has(r.id));
   const merged = mergeRecords(localList, contested, { table, recomputeDerived });
-  const mergedList = Array.from(merged.values());
+  let mergedList = Array.from(merged.values());
   await writeLocal(mergedList);
 
   // 4. Push dirty local records (live writes and tombstones together). A delete
   //    rides this same push as a tombstone, so it always reaches the cloud
   //    before any physical deletion happens locally.
+  let acknowledged = [];
   if (dirty.length > 0) {
     const toPush = dirty.map((d) => merged.get(d.id) || d);
-    await transport.push(table, toPush);
+    const recovered = await recoverPushAcknowledgements(
+      table,
+      transport,
+      cursor,
+      toPush,
+      await transport.push(table, toPush)
+    );
+    acknowledged = recovered.rows;
     await clearDirty(table, dirty);
+
+    // The acknowledgement is the persisted form of the pending write, so it
+    // replaces that device-stamped local version unconditionally. Comparing the
+    // two timestamps via LWW would reintroduce device-clock skew here.
+    if (recovered.replacesLocal) applyPushAcknowledgements(merged, acknowledged);
+    if (recovered.replacesLocal && acknowledged.length > 0) {
+      mergedList = Array.from(merged.values());
+      await writeLocal(mergedList);
+    }
   }
 
-  // 5. Advance the cursor only after a successful push, covering both pulled
-  //    and pushed rows so the next pass starts past everything we've reconciled.
-  //    This spans the FULL remote set, including rows excluded from the merge —
-  //    they were still pulled, and the next pass must start past them.
-  const advanced = maxUpdatedAt([...remote, ...dirty], cursor);
+  // 5. Advance only from server-authored rows: the complete pull plus any rows
+  //    returned after Postgres stamped a successful push. This spans the FULL
+  //    remote set, including rows excluded from the merge above. If an injected
+  //    transport does not return acknowledgements, the pushed rows are safely
+  //    picked up by the next inclusive pull instead.
+  const advanced = maxUpdatedAt([...remote, ...acknowledged], cursor);
   if (advanced && advanced !== cursor) {
     await setCursor(table, advanced);
   }
@@ -740,22 +812,36 @@ export async function syncDiffTable({
   //    nothing. Idempotency is unaffected.
   const contested = remote.filter((r) => !pendingIds.has(r.id));
   const merged = mergeRecords(localList, contested, { table });
-  const mergedList = Array.from(merged.values());
+  let mergedList = Array.from(merged.values());
   await applyMerged(mergedList);
   await setSyncSnapshot(table, mergedList);
 
   // 5. Push the pending edits. merged.get() now returns the local record for
   //    these ids, so the user's edit is what actually goes up.
+  let acknowledged = [];
   if (pending.length > 0) {
     const toPush = pending.map((d) => merged.get(d.id) || d);
-    await transport.push(table, toPush);
+    const recovered = await recoverPushAcknowledgements(
+      table,
+      transport,
+      cursor,
+      toPush,
+      await transport.push(table, toPush)
+    );
+    acknowledged = recovered.rows;
     await clearDirty(table, pending);
+
+    if (recovered.replacesLocal) applyPushAcknowledgements(merged, acknowledged);
+    if (recovered.replacesLocal && acknowledged.length > 0) {
+      mergedList = Array.from(merged.values());
+      await applyMerged(mergedList);
+      await setSyncSnapshot(table, mergedList);
+    }
   }
 
-  // 6. Advance the cursor only after a successful push. This spans the FULL
-  //    remote set, including rows excluded from the merge above — they were
-  //    still pulled, and the next pass must start past them.
-  const advanced = maxUpdatedAt([...remote, ...pending], cursor);
+  // 6. Advance only from the full set of server-authored pull rows and
+  //    server-stamped push acknowledgements.
+  const advanced = maxUpdatedAt([...remote, ...acknowledged], cursor);
   if (advanced && advanced !== cursor) {
     await setCursor(table, advanced);
   }

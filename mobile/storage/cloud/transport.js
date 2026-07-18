@@ -1,4 +1,5 @@
 const SCHEMA = 'kilo';
+const PULL_PAGE_SIZE = 1000;
 
 // Per-table upsert column whitelist. The cloud `push` path must NOT spread
 // arbitrary client-supplied fields onto the upsert: a tampered client could
@@ -179,38 +180,83 @@ export function setCloudTransport(transport) {
   injectedTransport = transport;
 }
 
-function makeSupabaseTransport() {
+function getConfiguredSupabaseClient() {
   // eslint-disable-next-line global-require
-  const { getSupabaseClient } = require('../../lib/supabaseClient');
+  return require('../../lib/supabaseClient').getSupabaseClient();
+}
+
+function pullSecondaryOrder(table) {
+  return conflictTargetFor(table) === SINGLETON_CONFLICT_TARGET ? 'user_id' : 'id';
+}
+
+// Exposed for the focused transport contract tests; production callers use
+// getTransport(), which supplies the configured application client.
+export function createSupabaseTransport(getClient = getConfiguredSupabaseClient) {
   return {
     async pull(table, cursor) {
-      const client = getSupabaseClient();
+      const client = getClient();
       if (!client) return [];
-      let query = client.schema(SCHEMA).from(table).select('*');
-      if (cursor) query = query.gte('updated_at', cursor);
-      const { data, error } = await query.order('updated_at', { ascending: true });
-      if (error) throw error;
-      return data || [];
+      const rows = [];
+      const secondary = pullSecondaryOrder(table);
+      let total = null;
+
+      // PostgREST responses are capped, so fetch the complete inclusive cursor
+      // window explicitly. Ordering by the table primary key after updated_at
+      // makes offset pages deterministic even when many rows share a timestamp.
+      while (total == null || rows.length < total) {
+        const from = rows.length;
+        const source = client.schema(SCHEMA).from(table);
+        let query =
+          from === 0 ? source.select('*', { count: 'exact' }) : source.select('*');
+        if (cursor) query = query.gte('updated_at', cursor);
+        const timestampOrdered = query.order('updated_at', { ascending: true });
+
+        // Older injected test clients implemented order() as the terminal call.
+        // Keep that transport seam compatible; real supabase-js builders expose
+        // both chained order() and range(), and always take the paginated path.
+        if (
+          typeof timestampOrdered.order !== 'function' ||
+          typeof timestampOrdered.range !== 'function'
+        ) {
+          const { data, error } = await timestampOrdered;
+          if (error) throw error;
+          return data || [];
+        }
+
+        const { data, error, count } = await timestampOrdered
+          .order(secondary, { ascending: true })
+          .range(from, from + PULL_PAGE_SIZE - 1);
+        if (error) throw error;
+        const page = data || [];
+        if (from === 0 && Number.isInteger(count)) total = count;
+        rows.push(...page);
+        if (page.length === 0) break;
+        if (total == null && page.length < PULL_PAGE_SIZE) break;
+      }
+      return rows;
     },
     async push(table, records) {
-      const client = getSupabaseClient();
+      const client = getClient();
       if (!client) throw new Error('Cloud sync requires a configured Supabase client.');
       const { data: userData, error: userError } = await client.auth.getUser();
       if (userError) throw userError;
       const userId = userData?.user?.id;
       if (!userId) throw new Error('Cloud sync requires an authenticated user.');
       const rows = records.map((rec) => buildUpsertRow(table, rec, userId));
-      const { error } = await client
+      const upserted = client
         .schema(SCHEMA)
         .from(table)
         .upsert(rows, { onConflict: conflictTargetFor(table) });
+      const { data, error } =
+        typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
       if (error) throw error;
+      return data || [];
     },
   };
 }
 
 export function getTransport() {
-  return injectedTransport || makeSupabaseTransport();
+  return injectedTransport || createSupabaseTransport();
 }
 
 let recomputeDerivedFn = (raw_text) => {
