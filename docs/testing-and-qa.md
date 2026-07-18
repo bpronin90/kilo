@@ -632,6 +632,10 @@ retains non-test commands such as `npm run audit`.
   `confirmOwnershipUpload()` entrypoint: prompt, persisted owner marker,
   bootstrap plus sync, fresh-mount restart with no recurring prompt, and
   repeated-launch phantom-note convergence (#501)
+- verify withdrawal and deletion-pending restarts switch to local-only storage,
+  retain the reconciled legacy tombstone only in raw storage, keep legitimate
+  user-authored `Routine 1` notes visible, and perform no health sync on repeated
+  refresh (#544)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 

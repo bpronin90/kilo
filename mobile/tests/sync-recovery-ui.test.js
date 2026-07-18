@@ -510,6 +510,23 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     expect(spy).toHaveBeenCalledWith(USER.id);
     expect(await getLocalDataOwner()).toBe(USER.id);
   });
+
+  test('successful withdrawal switches to local-only mode before requesting the purge', async () => {
+    const { withdrawConsent, requestHealthDataDeletion } = require('../storage/cloud/consent');
+    withdrawConsent.mockClear();
+    requestHealthDataDeletion.mockClear();
+    entries.setStorageMode(entries.STORAGE_MODES.CLOUD);
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Turn Off Cloud Sync');
+    await press(tree, 'Withdraw consent and delete cloud data');
+    await flush();
+
+    expect(withdrawConsent).toHaveBeenCalledTimes(1);
+    expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.LOCAL);
+    expect(requestHealthDataDeletion).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('useCloudExport hook', () => {

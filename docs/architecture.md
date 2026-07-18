@@ -425,7 +425,9 @@ ownership-confirmation bootstrap projection preserves workout-note
 recognizes the bootstrap-only `wn_legacy_` id namespace when legacy provenance
 was stripped by an older upload, but tombstones that row only when a live
 non-legacy note coexists; this keeps cleanup linear and preserves legacy-only
-and user-authored `Routine 1` notes (#501).
+and user-authored `Routine 1` notes (#501). Raw workout-note tombstones remain in
+AsyncStorage for retry and convergence, while both local and cloud public loaders
+filter them from user-visible note lists (#544).
 
 Cloud health authorization is server-owned. Material-versioned grants and
 withdrawals are recorded in an immutable consent catalog/event ledger with a
@@ -433,8 +435,11 @@ keyed current state. RLS checks the active grant before any health-table read or
 write, while protocol and material-version denial codes give the mobile client
 actionable UI states without becoming the security boundary. Withdrawal moves
 `granted -> deletion_pending -> withdrawn`: the first transition blocks access
-and creates a durable job, `health-data-delete` erases the shared gated scope,
-and the final transition occurs only after server-side zero-row verification.
+and creates a durable job; the client immediately switches to local-only storage,
+and any denied preflight does the same so ordinary entry-hook refreshes cannot
+attempt consent-gated reads or writes. `health-data-delete` erases the shared
+gated scope, and the final transition occurs only after server-side zero-row
+verification.
 Supabase Cron dispatches the worker through `pg_net` with Vault-held
 credentials, retries indefinitely with capped backoff, and exposes an operator
 backlog/re-enqueue path. Account export, account deletion, and withdrawal purge

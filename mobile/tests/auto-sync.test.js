@@ -68,6 +68,8 @@ jest.mock('../storage/cloud/consent', () => {
   };
 });
 
+const { DENIAL_CODES, fetchConsentStatus } = require('../storage/cloud/consent');
+
 
 const USER = { id: 'u-auto-1', email: 'auto@test.co' };
 
@@ -118,6 +120,7 @@ beforeEach(async () => {
   resetStampClockForTests();
   Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
   jest.restoreAllMocks();
+  fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
   setCloudTransport(null);
 });
 
@@ -690,7 +693,13 @@ describe('foreign-owner upload lifecycle: no phantom Routine 1 (issue #501)', ()
         };
       },
     };
-    return { transport, client, remoteRow: (t, id) => tables[t].get(id) };
+    return {
+      transport,
+      client,
+      remoteRow: (t, id) => tables[t].get(id),
+      seedRemote: (t, row) => tables[t].set(row.id, { ...row }),
+      clearRemote: (t) => tables[t].clear(),
+    };
   }
 
   async function visibleNotes() {
@@ -810,6 +819,160 @@ describe('foreign-owner upload lifecycle: no phantom Routine 1 (issue #501)', ()
     expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
 
     setCloudTransport(null);
+  });
+
+  test('consent withdrawal lifecycle keeps a reconciled legacy tombstone hidden and fail-closed', async () => {
+    const legitimateRoutine = {
+      id: 'wn_user_routine_1',
+      title: 'Routine 1',
+      raw_text: '-Bench\n- 185 5,5,5',
+      saved_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-15T00:00:00.000Z',
+      isCurrent: true,
+    };
+    const localTombstone = {
+      id: PHANTOM_ID,
+      title: 'Routine 1',
+      raw_text: '-Squat\n- 225 5,5,5',
+      saved_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-03T00:00:00.000Z',
+      deleted_at: '2026-05-03T00:00:00.000Z',
+      source_snapshot: { async_storage_key: 'kilo_workout_note' },
+    };
+    const strippedStaleCloudRow = {
+      ...localTombstone,
+      updated_at: '2026-06-20T00:00:00.000Z',
+      deleted_at: null,
+      source_snapshot: null,
+    };
+
+    await Storage.replaceWorkoutNotesRaw([legitimateRoutine, localTombstone]);
+    await Storage.saveCurrentWorkoutId(legitimateRoutine.id);
+    await setLocalDataOwner(USER.id);
+
+    const shared = makeSharedCloud();
+    shared.seedRemote(SYNC_TABLES.WORKOUT_NOTES, legitimateRoutine);
+    shared.seedRemote(SYNC_TABLES.WORKOUT_NOTES, strippedStaleCloudRow);
+    setCloudTransport(shared.transport);
+    Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+
+    // Ordinary granted sync establishes the row's exact origin and ordering:
+    // the newer, live cloud row wins LWW, then the durable wn_legacy_ identity
+    // makes the adapter re-tombstone it while preserving the real Routine 1.
+    await cloudAdapter.sync();
+    const reconciledLocal = (await Storage.loadWorkoutNotesRaw()).find(
+      (note) => note.id === PHANTOM_ID
+    );
+    expect(isTombstone(reconciledLocal)).toBe(true);
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+    expect((await cloudAdapter.loadWorkoutNotes()).map((note) => note.id)).toEqual([
+      legitimateRoutine.id,
+    ]);
+
+    // The server atomically entered deletion_pending. Model the observed
+    // pre-purge restart: process state resets to local before same-owner startup
+    // checks consent. No raw tombstone may leak through that local read, and no
+    // later refresh may attempt an unauthorized health read/write.
+    fetchConsentStatus.mockResolvedValue({
+      allowed: false,
+      code: DENIAL_CODES.HEALTH_DATA_DELETION_PENDING,
+    });
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    const pullSpy = jest.spyOn(shared.transport, 'pull');
+
+    const { ref, tree } = renderHook(() => ({
+      auto: useAutoSync(makeAuth()),
+      workout: useWorkoutNotes(),
+    }));
+    await flush();
+
+    expect(ref.current.auto.consentDenial).toBe(
+      DENIAL_CODES.HEALTH_DATA_DELETION_PENDING
+    );
+    expect(ref.current.workout.notes.map((note) => note.id)).toEqual([
+      legitimateRoutine.id,
+    ]);
+    expect(ref.current.workout.notes[0]).toMatchObject({ title: 'Routine 1' });
+    expect(ref.current.workout.notes[0]).not.toHaveProperty('source_snapshot');
+    expect(ref.current.workout.notes[0]).not.toHaveProperty('deleted_at');
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+
+    await act(async () => {
+      await ref.current.workout.refresh();
+    });
+    await flush();
+    expect(pullSpy).not.toHaveBeenCalled();
+    expect((await Storage.loadWorkoutNotesRaw()).find((note) => note.id === PHANTOM_ID))
+      .toMatchObject({
+        id: PHANTOM_ID,
+        deleted_at: expect.any(String),
+      });
+
+    // Purge completion changes deletion_pending to withdrawn/consent-required.
+    // A second process start remains local-only and the retained tombstone stays
+    // hidden without touching the consent-gated transport.
+    act(() => tree.unmount());
+    fetchConsentStatus.mockResolvedValue({
+      allowed: false,
+      code: DENIAL_CODES.CONSENT_REQUIRED,
+    });
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    pullSpy.mockClear();
+    const { ref: withdrawnRef, tree: withdrawnTree } = renderHook(() => ({
+      auto: useAutoSync(makeAuth()),
+      workout: useWorkoutNotes(),
+    }));
+    await flush();
+    expect(withdrawnRef.current.auto.consentDenial).toBe(DENIAL_CODES.CONSENT_REQUIRED);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.LOCAL);
+    expect(withdrawnRef.current.workout.notes.map((note) => note.id)).toEqual([
+      legitimateRoutine.id,
+    ]);
+    await act(async () => {
+      await withdrawnRef.current.workout.refresh();
+    });
+    expect(pullSpy).not.toHaveBeenCalled();
+
+    // The server purge removed the cloud rows. After re-consent, model #538's
+    // eventual full reconstruction by running the existing raw bootstrap:
+    // the legitimate note uploads live, while the retained legacy row uploads
+    // only as a tombstone and therefore cannot be rebuilt as a phantom.
+    act(() => withdrawnTree.unmount());
+    shared.clearRemote(SYNC_TABLES.WORKOUT_NOTES);
+    fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    const { ref: reconsentRef, tree: reconsentTree } = renderHook(() => ({
+      auto: useAutoSync(makeAuth()),
+      workout: useWorkoutNotes(),
+    }));
+    await flush();
+    await flush();
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(reconsentRef.current.workout.notes.map((note) => note.id)).toEqual([
+      legitimateRoutine.id,
+    ]);
+
+    await bootstrapFromLocal(USER.id, shared.client);
+    await cloudAdapter.sync();
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, legitimateRoutine.id))).toBe(false);
+
+    act(() => reconsentTree.unmount());
+    __resetSyncQueue();
+    Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
+    const { ref: finalRef } = renderHook(() => ({
+      auto: useAutoSync(makeAuth()),
+      workout: useWorkoutNotes(),
+    }));
+    await flush();
+    await flush();
+    expect(finalRef.current.workout.notes.map((note) => note.id)).toEqual([
+      legitimateRoutine.id,
+    ]);
+    expect(isTombstone(shared.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
   });
 });
 

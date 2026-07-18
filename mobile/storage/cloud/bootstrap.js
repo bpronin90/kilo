@@ -58,7 +58,9 @@ async function readLocalSnapshot() {
     Storage.loadWeightGoal(),
     Storage.loadWorkoutSessions(),
     Storage.loadWorkoutNote(),
-    Storage.loadWorkoutNotes(),
+    // Bootstrap is a sync boundary, so it needs tombstones as well as visible
+    // notes. The public local loader intentionally filters tombstones (#544).
+    Storage.loadWorkoutNotesRaw(),
     Storage.loadCurrentWorkoutId(),
     Storage.loadFatigueMultiplier(),
     Storage.loadWeightDateEditEnabled(),

@@ -81,7 +81,11 @@ export async function clearWorkoutNote() {
 // ── multi-note notebook ────────────────────────────────────────────────────────
 
 export async function loadWorkoutNotes() {
-  return readList(WORKOUT_NOTES_KEY);
+  // Tombstones are sync metadata, never user-visible notes. Cloud mode has
+  // always filtered them in cloudDomainMethods; local mode must apply the same
+  // visibility contract because consent withdrawal deliberately falls back to
+  // local-only reads while retaining tombstones for later convergence.
+  return (await readList(WORKOUT_NOTES_KEY)).filter((note) => !note?.deleted_at);
 }
 
 // Raw cache accessors for the cloud sync engine (Phase 4 / Task 11). Expose the
