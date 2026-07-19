@@ -8,6 +8,7 @@ import { Colors } from './theme/colors';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
+import { TabBarLayoutContext, TAB_BAR_HEIGHT_FALLBACK } from './components/TabBarLayout';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { HomeScreen } from './screens/HomeScreen';
@@ -50,6 +51,7 @@ export async function buildExportPayload(exportFn = buildCloudExport) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
+  const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
   const scrollTimeout = useRef(null);
@@ -370,6 +372,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
+    <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         <SafeAreaView style={styles.topSafeArea} />
@@ -412,6 +415,7 @@ export default function App() {
           activeTab={activeTab}
           onTabPress={handleTabPress}
           addScrollListener={addScrollListener}
+          onHeightChange={(height) => setTabBarHeight((prev) => (prev === height ? prev : height))}
         />
         {ownershipPrompt && !auth.passwordRecovery && !auth.recoveryError ? (
           <View style={styles.ownershipOverlay} testID="ownership-prompt">
@@ -485,6 +489,7 @@ export default function App() {
         ) : null}
       </View>
     </ScrollContext.Provider>
+    </TabBarLayoutContext.Provider>
     </SafeAreaProvider>
   );
 }

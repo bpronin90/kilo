@@ -136,7 +136,7 @@ Source: `mobile/components/ScreenShell.js`
 | Property | Value | Line |
 |---|---|---|
 | Content horizontal padding | `16` | `63` |
-| Content bottom padding | `120 + bottom safe-area inset` (tab bar clearance) | `51`, `128-131` |
+| Content bottom padding | `measured TabBar height + 24 + bottom safe-area inset` (tab bar clearance) | `51-52` |
 | Gap between top-level children | `16` | `65` |
 | Header paddingTop | `8` | `71` |
 | Header paddingBottom | `8` | `72` |
@@ -154,10 +154,14 @@ sticky back-header (`onBack`) uses `paddingHorizontal: 16`, `paddingVertical: 12
 with a 1px `cardBorder` bottom.
 
 The absolute `TabBar` keeps 16px horizontal insets and a 24px visual bottom
-gap, then adds the runtime bottom safe-area inset from
-`react-native-safe-area-context`. `SafeAreaProvider` is owned by
-`mobile/App.js`; `ScreenShell` consumes only the bottom inset so existing top
-spacing is unchanged.
+gap (`TAB_BAR_VISUAL_GAP` in `mobile/components/TabBarLayout.js`), then adds
+the runtime bottom safe-area inset from `react-native-safe-area-context`. The
+bar's own rendered height is never added to that offset. `TabBar` reports its
+rendered height through `onLayout`; `mobile/App.js` owns that measurement in
+state and provides it to every `ScreenShell` via `TabBarLayoutContext`, which
+adds it to the shared 24px gap and the bottom inset for scroll clearance.
+`SafeAreaProvider` is owned by `mobile/App.js`; `ScreenShell` consumes only
+the bottom inset so existing top spacing is unchanged.
 
 ---
 
