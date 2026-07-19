@@ -58,7 +58,7 @@ import {
   loadArchivedWeightGoalsRaw,
   replaceArchivedWeightGoalsRaw,
 } from '../storage/entries/weightGoal';
-import { isGoalMet } from '../lib/data/weightGoal';
+import { isGoalMet, isWeightThresholdMet } from '../lib/data/weightGoal';
 import { getDirtyRecords, SYNC_TABLES, resetStampClockForTests } from '../storage/syncQueue';
 
 const W1 = { id: 'w_2026-05-01_1', entry_type: 'weight', date: '2026-05-01', weight_value: 192.0, weight_unit: 'lb', logged_at: '2026-05-01T08:00:00.000Z', saved_at: '2026-05-01T08:00:00.000Z' };
@@ -1666,6 +1666,67 @@ describe('archived weight goal sync dirty-queue integration', () => {
   });
 });
 
+// ── isWeightThresholdMet ────────────────────────────────────────────────────────
+
+describe('isWeightThresholdMet', () => {
+  test('returns false when goal is null', () => {
+    expect(isWeightThresholdMet(null, 175)).toBe(false);
+  });
+
+  test('returns false when currentWeight is null', () => {
+    expect(isWeightThresholdMet({ target_weight: 175, start_weight: 200 }, null)).toBe(false);
+  });
+
+  test('returns false when target_weight is missing', () => {
+    expect(isWeightThresholdMet({ start_weight: 200 }, 175)).toBe(false);
+  });
+
+  test('loss goal: met when current is at or below target', () => {
+    const goal = { target_weight: 175, start_weight: 200 };
+    expect(isWeightThresholdMet(goal, 175)).toBe(true);
+    expect(isWeightThresholdMet(goal, 173)).toBe(true);
+  });
+
+  test('loss goal: not met when current is above target', () => {
+    const goal = { target_weight: 175, start_weight: 200 };
+    expect(isWeightThresholdMet(goal, 176)).toBe(false);
+    expect(isWeightThresholdMet(goal, 200)).toBe(false);
+  });
+
+  test('gain goal: met when current is at or above target', () => {
+    const goal = { target_weight: 185, start_weight: 160 };
+    expect(isWeightThresholdMet(goal, 185)).toBe(true);
+    expect(isWeightThresholdMet(goal, 187)).toBe(true);
+  });
+
+  test('gain goal: not met when current is below target', () => {
+    const goal = { target_weight: 185, start_weight: 160 };
+    expect(isWeightThresholdMet(goal, 184)).toBe(false);
+    expect(isWeightThresholdMet(goal, 160)).toBe(false);
+  });
+
+  test('maintain goal: met when within 0.5 lb of target', () => {
+    const goal = { target_weight: 175, start_weight: 175 };
+    expect(isWeightThresholdMet(goal, 175)).toBe(true);
+    expect(isWeightThresholdMet(goal, 175.4)).toBe(true);
+    expect(isWeightThresholdMet(goal, 174.6)).toBe(true);
+  });
+
+  test('maintain goal: not met when more than 0.5 lb from target', () => {
+    const goal = { target_weight: 175, start_weight: 175 };
+    expect(isWeightThresholdMet(goal, 175.6)).toBe(false);
+    expect(isWeightThresholdMet(goal, 174.4)).toBe(false);
+  });
+
+  test('no start_weight: exactly at target is met (within 0.5 lb threshold)', () => {
+    // Without start_weight the function cannot determine loss vs gain direction,
+    // but it detects "exactly at target" via the 0.5 lb maintain threshold.
+    const goal = { target_weight: 175 };
+    expect(isWeightThresholdMet(goal, 175)).toBe(true); // exactly at target — within 0.5 threshold
+    expect(isWeightThresholdMet(goal, 175.4)).toBe(true); // within threshold
+  });
+});
+
 // ── isGoalMet ─────────────────────────────────────────────────────────────────
 
 describe('isGoalMet', () => {
@@ -1674,56 +1735,61 @@ describe('isGoalMet', () => {
   });
 
   test('returns false when currentWeight is null', () => {
-    expect(isGoalMet({ target_weight: 175, start_weight: 200 }, null)).toBe(false);
+    expect(isGoalMet({ target_weight: 175, start_weight: 200, target_date: '2020-01-01' }, null)).toBe(false);
   });
 
   test('returns false when target_weight is missing', () => {
-    expect(isGoalMet({ start_weight: 200 }, 175)).toBe(false);
+    expect(isGoalMet({ start_weight: 200, target_date: '2020-01-01' }, 175)).toBe(false);
   });
 
-  test('loss goal: met when current is at or below target', () => {
-    const goal = { target_weight: 175, start_weight: 200 };
+  test('loss goal: met when current is at or below target and target_date has passed', () => {
+    const goal = { target_weight: 175, start_weight: 200, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 175)).toBe(true);
     expect(isGoalMet(goal, 173)).toBe(true);
   });
 
   test('loss goal: not met when current is above target', () => {
-    const goal = { target_weight: 175, start_weight: 200 };
+    const goal = { target_weight: 175, start_weight: 200, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 176)).toBe(false);
     expect(isGoalMet(goal, 200)).toBe(false);
   });
 
-  test('gain goal: met when current is at or above target', () => {
-    const goal = { target_weight: 185, start_weight: 160 };
+  test('gain goal: met when current is at or above target and target_date has passed', () => {
+    const goal = { target_weight: 185, start_weight: 160, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 185)).toBe(true);
     expect(isGoalMet(goal, 187)).toBe(true);
   });
 
   test('gain goal: not met when current is below target', () => {
-    const goal = { target_weight: 185, start_weight: 160 };
+    const goal = { target_weight: 185, start_weight: 160, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 184)).toBe(false);
     expect(isGoalMet(goal, 160)).toBe(false);
   });
 
-  test('maintain goal: met when within 0.5 lb of target', () => {
-    const goal = { target_weight: 175, start_weight: 175 };
+  test('maintain goal: met when within 0.5 lb of target and target_date has passed', () => {
+    const goal = { target_weight: 175, start_weight: 175, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 175)).toBe(true);
     expect(isGoalMet(goal, 175.4)).toBe(true);
     expect(isGoalMet(goal, 174.6)).toBe(true);
   });
 
   test('maintain goal: not met when more than 0.5 lb from target', () => {
-    const goal = { target_weight: 175, start_weight: 175 };
+    const goal = { target_weight: 175, start_weight: 175, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 175.6)).toBe(false);
     expect(isGoalMet(goal, 174.4)).toBe(false);
   });
 
-  test('no start_weight: exactly at target is met (within 0.5 lb threshold)', () => {
+  test('no start_weight: exactly at target is met when target_date has passed (within 0.5 lb threshold)', () => {
     // Without start_weight the function cannot determine loss vs gain direction,
     // but it detects "exactly at target" via the 0.5 lb maintain threshold.
-    const goal = { target_weight: 175 };
+    const goal = { target_weight: 175, target_date: '2020-01-01' };
     expect(isGoalMet(goal, 175)).toBe(true); // exactly at target — within 0.5 threshold
     expect(isGoalMet(goal, 175.4)).toBe(true); // within threshold
+  });
+
+  test('missing target_date does not create a false completed state even when the weight threshold is met', () => {
+    const goal = { target_weight: 175, start_weight: 200 };
+    expect(isGoalMet(goal, 175)).toBe(false);
   });
 
   describe('target_date gating (#549)', () => {
@@ -1774,17 +1840,17 @@ describe('isGoalMet', () => {
       expect(isGoalMet(goal, 185, REF)).toBe(false);
     });
 
-    test('missing target_date falls back to weight-only threshold (no false block)', () => {
+    test('missing target_date does not create a false completed state, even with the weight threshold met', () => {
       const goal = { target_weight: 175, start_weight: 200 };
-      expect(isGoalMet(goal, 175, REF)).toBe(true);
+      expect(isGoalMet(goal, 175, REF)).toBe(false);
     });
 
-    test('invalid target_date does not create a false completed state and falls back to weight-only threshold', () => {
+    test('invalid target_date does not create a false completed state, even with the weight threshold met', () => {
       const invalidCalendarDate = { target_weight: 175, start_weight: 200, target_date: '2026-02-30' };
       const malformedDate = { target_weight: 175, start_weight: 200, target_date: 'not-a-date' };
-      expect(isGoalMet(invalidCalendarDate, 175, REF)).toBe(true);
-      expect(isGoalMet(malformedDate, 175, REF)).toBe(true);
-      // Threshold-unmet still stays false even with an invalid date.
+      expect(isGoalMet(invalidCalendarDate, 175, REF)).toBe(false);
+      expect(isGoalMet(malformedDate, 175, REF)).toBe(false);
+      // Threshold-unmet still stays false with an invalid date.
       expect(isGoalMet(invalidCalendarDate, 185, REF)).toBe(false);
     });
 

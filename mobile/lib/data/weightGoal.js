@@ -304,14 +304,15 @@ export function isWeightThresholdMet(goal, currentWeight) {
 // referenceDate: Date used as "today" for the calendar-date comparison (defaults
 // to now; pass a fixed date for tests, or an archived goal's archived_at so
 // history judgments are stable regardless of when they're later viewed).
-// A missing or malformed target_date does not gate completion, preserving prior
-// behavior for goals recorded without a valid target date.
+// A missing or malformed target_date cannot be proven to have arrived, so it
+// does NOT count as met even when the weight threshold is reached — this avoids
+// a false completed state for goals recorded without a valid target date.
 // Returns false when goal or currentWeight is missing.
 export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
   if (!isWeightThresholdMet(goal, currentWeight)) return false;
 
   const target_date = goal.target_date;
-  if (!target_date) return true;
+  if (!target_date) return false;
 
   // Round-trip component check: JS normalizes impossible dates (e.g. Sep 31 → Oct 1)
   // instead of returning Invalid Date, so isNaN alone is insufficient.
@@ -322,7 +323,7 @@ export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
     targetMidnight.getFullYear() === tYear &&
     targetMidnight.getMonth() === tMonth - 1 &&
     targetMidnight.getDate() === tDay;
-  if (!isValidTargetDate) return true;
+  if (!isValidTargetDate) return false;
 
   const pad = (n) => String(n).padStart(2, '0');
   const today = `${referenceDate.getFullYear()}-${pad(referenceDate.getMonth() + 1)}-${pad(referenceDate.getDate())}`;

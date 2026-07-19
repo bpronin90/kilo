@@ -396,6 +396,31 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'Clear')).toBe(true);
     });
 
+    // #549 review follow-up: a screen left mounted across local midnight must
+    // transition out of "On Track" into "Goal Met!" once target_date arrives,
+    // without requiring a weight change or remount.
+    test('transitions from "On Track" to "Goal Met!" when local midnight crosses into target_date', () => {
+      // Loss goal: target 175, start 200, target date is tomorrow relative to
+      // MOCK_NOW (2026-05-24). Current weight already at target.
+      const goal = { target_weight: 175, target_date: '2026-05-25', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 175, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'On Track')).toBe(true);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
+
+      render.act(() => {
+        // Cross local midnight into 2026-05-25 and let the scheduled refresh fire.
+        jest.setSystemTime(new Date('2026-05-25T12:00:00Z'));
+        jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+      });
+
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(true);
+      expect(hasTextSafe(component.root, 'On Track')).toBe(false);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(true);
+    });
+
     test('does not show "Goal Met!" or "Archive" when goal is in progress', () => {
       // Loss goal: target 175, start 200. Current at 185 — not yet met.
       const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };

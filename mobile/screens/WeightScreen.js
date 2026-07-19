@@ -136,6 +136,25 @@ export function WeightScreen({
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
+  // Local calendar day used to gate goal completion on target_date (#549).
+  // Refreshes itself at the next local midnight (and re-schedules) so a goal
+  // whose weight threshold was already reached becomes "Goal Met!" on its
+  // target_date without requiring a remount or another state change.
+  const [today, setToday] = useState(localDateToday);
+  useEffect(() => {
+    let timeoutId;
+    const scheduleMidnightRefresh = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      timeoutId = setTimeout(() => {
+        setToday(localDateToday());
+        scheduleMidnightRefresh();
+      }, nextMidnight.getTime() - now.getTime());
+    };
+    scheduleMidnightRefresh();
+    return () => clearTimeout(timeoutId);
+  }, []);
+
   // Display-unit bridge for the goal form (#441): the form's text fields hold
   // values in the SELECTED unit, but canonical storage is lb. The form seeds
   // from a display-space goal and saves through a wrapper that converts back
@@ -221,10 +240,10 @@ export function WeightScreen({
 
   const trendSections = useMemo(() => buildTrendSections(trends, paceLevel, unit), [trends, paceLevel, unit]);
 
-  const isGoalMet = useMemo(
-    () => computeIsGoalMet(goal, trends.currentWeight),
-    [goal, trends.currentWeight]
-  );
+  const isGoalMet = useMemo(() => {
+    const [y, m, d] = today.split('-').map(Number);
+    return computeIsGoalMet(goal, trends.currentWeight, new Date(y, m - 1, d));
+  }, [goal, trends.currentWeight, today]);
 
   // Weight threshold reached before target_date: positive progress, not yet
   // completion. Shown as "On Track" instead of "Goal Met!"/Archive.
