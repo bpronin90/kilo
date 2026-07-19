@@ -22,7 +22,8 @@ those issues fixed.
 - Every screen renders inside `ScreenShell` (`mobile/components/ScreenShell.js`).
   Do not build a screen's outer scroll/padding by hand.
 - `ScreenShell` owns the top-of-tab contract: **16px horizontal padding**, a
-  **16px vertical gap between top-level children**, and **120px bottom padding**
+  **16px vertical gap between top-level children**, and bottom padding sized
+  as the measured `TabBar` height + 24px visual gap + bottom safe-area inset,
   for tab-bar clearance. Every tab's content therefore starts at the same left
   edge and the same top offset.
 - The screen title is a single 34/700 line inside the shell header. Do not
@@ -142,8 +143,9 @@ those issues fixed.
   do not defeat that cap with fixed pixel widths on panels.
 - Native bottom navigation uses the runtime bottom safe-area inset without
   device checks. Add that inset once to both the tab bar's 24px visual gap and
-  `ScreenShell`'s 120px content clearance; do not apply it as a second top
-  inset.
+  `ScreenShell`'s content clearance (measured `TabBar` height + 24px gap +
+  inset); do not apply it as a second top inset. The bar's own height is not
+  added to its bottom offset — only `ScreenShell`'s clearance depends on it.
 
 ## 10. Anti-patterns (what caused the fixed problems)
 

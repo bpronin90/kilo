@@ -2,9 +2,14 @@ import React, { useContext, useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
+import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 
-export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
+export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeightChange }) {
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+
+  const handleLayout = (e) => {
+    if (onHeightChange) onHeightChange(e.nativeEvent.layout.height);
+  };
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const timeoutRef = useRef(null);
 
@@ -60,7 +65,8 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener }) {
 
   return (
     <Animated.View
-      style={[styles.container, { opacity: fadeAnim, bottom: 24 + bottomInset }]}
+      style={[styles.container, { opacity: fadeAnim, bottom: TAB_BAR_VISUAL_GAP + bottomInset }]}
+      onLayout={handleLayout}
       onTouchStart={handleInteractionStart}
       onTouchEnd={handleInteractionEnd}
     >

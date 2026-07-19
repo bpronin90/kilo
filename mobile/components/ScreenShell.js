@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, useWindowDimen
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Colors } from '../theme/colors';
 import { Button } from './UI';
+import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import pkg from '../package.json';
 
 export const ScrollContext = createContext({ onScroll: () => {} });
@@ -17,13 +18,17 @@ const DESKTOP_CONTENT_MAX_WIDTH = 640;
  * Shared Shell Contract:
  * - Horizontal padding: 16px (standard boundary for all screen content)
  * - Vertical gap: 16px (consistent spacing between top-level components/cards)
- * - Bottom padding: 120px (ensures content clears the absolute TabBar and bottom safe area)
+ * - Bottom padding: measured TabBar height + 24px visual gap + bottom safe
+ *   area inset (ensures content clears the absolute TabBar, whatever its
+ *   rendered height)
  * - Top safe area: Handled via localized SafeAreaView in the headerWrapper
  */
 export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
+  const { tabBarHeight } = useContext(TabBarLayoutContext);
+  const bottomClearance = tabBarHeight + TAB_BAR_VISUAL_GAP + bottomInset;
   const { width: windowWidth } = useWindowDimensions();
   const isWideWeb = Platform.OS === 'web' && windowWidth > DESKTOP_CONTENT_MAX_WIDTH;
   const wideContentStyle = isWideWeb
@@ -48,7 +53,7 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
       <ScrollView
         ref={ref}
         style={styles.scroll}
-        contentContainerStyle={[styles.container, { paddingBottom: 120 + bottomInset }, wideContentStyle]}
+        contentContainerStyle={[styles.container, { paddingBottom: bottomClearance }, wideContentStyle]}
         keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -127,7 +132,6 @@ const styles = StyleSheet.create({
   },
   container: {
     paddingHorizontal: 16,
-    paddingBottom: 120, // Space for tab bar + safe area
     gap: 16,
   },
   headerWrapper: {
