@@ -15,7 +15,7 @@
 
 begin;
 
-select plan(51);
+select plan(59);
 
 \set user_a '99999999-9999-9999-9999-999999999999'
 \set user_b 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -502,6 +502,146 @@ select is(
   (select count(*) from auth.users where id = :'user_d'::uuid),
   0::bigint,
   'the consented auth user is gone'
+);
+
+-- ---------------------------------------------------------------------------
+-- Health parity report exempts only expected purge absences (issue #542)
+-- ---------------------------------------------------------------------------
+--
+-- kilo.health_parity_report() must suppress 'missing_health_row' ONLY when the
+-- account's consent_state is currently deletion_pending or withdrawn -- the
+-- lifecycle states where an absent health row is the intended outcome of the
+-- withdrawal purge, not a divergence. Every other missing-health state must
+-- keep surfacing, and every divergence that requires both rows to exist must
+-- remain visible regardless of consent state.
+
+\set user_e 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'
+\set user_f 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+\set user_g 'a0000000-0000-0000-0000-000000000001'
+\set user_h 'a0000000-0000-0000-0000-000000000002'
+\set user_i 'a0000000-0000-0000-0000-000000000003'
+\set user_j 'a0000000-0000-0000-0000-000000000004'
+\set user_k 'a0000000-0000-0000-0000-000000000005'
+\set user_l 'a0000000-0000-0000-0000-000000000006'
+
+insert into auth.users (id)
+  values (:'user_e'::uuid), (:'user_f'::uuid), (:'user_g'::uuid), (:'user_h'::uuid),
+         (:'user_i'::uuid), (:'user_j'::uuid), (:'user_k'::uuid), (:'user_l'::uuid)
+  on conflict do nothing;
+
+-- withdrawn: the purge intentionally left the health row absent.
+insert into kilo.user_profile (user_id) values (:'user_e'::uuid);
+delete from kilo.user_health_profile where user_id = :'user_e'::uuid;
+insert into kilo.consent_state (user_id, status) values (:'user_e'::uuid, 'withdrawn')
+  on conflict (user_id) do update set status = 'withdrawn';
+
+select is(
+  (select count(*) from kilo.health_parity_report() where user_id = :'user_e'::uuid),
+  0::bigint,
+  'a withdrawn account with no health row is not reported as missing_health_row'
+);
+
+-- deletion_pending: the purge is mid-flight; still expected to be absent.
+insert into kilo.user_profile (user_id) values (:'user_f'::uuid);
+delete from kilo.user_health_profile where user_id = :'user_f'::uuid;
+insert into kilo.consent_state (user_id, status) values (:'user_f'::uuid, 'deletion_pending')
+  on conflict (user_id) do update set status = 'deletion_pending';
+
+select is(
+  (select count(*) from kilo.health_parity_report() where user_id = :'user_f'::uuid),
+  0::bigint,
+  'a deletion_pending account with no health row is not reported as missing_health_row'
+);
+
+-- granted: a missing health row for a currently-granted account is a genuine,
+-- actionable divergence (the #492 rebuild case) and must never be hidden.
+insert into kilo.user_profile (user_id) values (:'user_g'::uuid);
+delete from kilo.user_health_profile where user_id = :'user_g'::uuid;
+insert into kilo.consent_state (user_id, status) values (:'user_g'::uuid, 'granted')
+  on conflict (user_id) do update set status = 'granted';
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_g'::uuid),
+  'missing_health_row',
+  'a granted account with no health row still reports missing_health_row'
+);
+
+-- needs_reconsent: consent lapsed but the account was never withdrawn or
+-- purged; still actionable.
+insert into kilo.user_profile (user_id) values (:'user_h'::uuid);
+delete from kilo.user_health_profile where user_id = :'user_h'::uuid;
+insert into kilo.consent_state (user_id, status) values (:'user_h'::uuid, 'needs_reconsent')
+  on conflict (user_id) do update set status = 'needs_reconsent';
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_h'::uuid),
+  'missing_health_row',
+  'a needs_reconsent account with no health row still reports missing_health_row'
+);
+
+-- No consent_state row at all (never consented): also actionable.
+insert into kilo.user_profile (user_id) values (:'user_i'::uuid);
+delete from kilo.user_health_profile where user_id = :'user_i'::uuid;
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_i'::uuid),
+  'missing_health_row',
+  'an account with no consent_state row still reports missing_health_row'
+);
+
+-- missing_profile_row is untouched by the consent-state exemption: a health
+-- row with no owning profile always surfaces, regardless of consent state.
+insert into kilo.user_health_profile (user_id) values (:'user_j'::uuid);
+delete from kilo.user_profile where user_id = :'user_j'::uuid;
+insert into kilo.consent_state (user_id, status) values (:'user_j'::uuid, 'withdrawn')
+  on conflict (user_id) do update set status = 'withdrawn';
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_j'::uuid),
+  'missing_profile_row',
+  'a health row with no profile still reports missing_profile_row even when withdrawn'
+);
+
+-- Timestamp divergence remains visible when both rows exist, even for a
+-- withdrawn account: the exemption only ever suppresses the missing-row case.
+insert into kilo.user_profile (user_id, fatigue_multiplier) values (:'user_k'::uuid, 1.0);
+insert into kilo.consent_state (user_id, status) values (:'user_k'::uuid, 'withdrawn')
+  on conflict (user_id) do update set status = 'withdrawn';
+
+set session kilo.suppress_updated_at_stamp = 'on';
+update kilo.user_health_profile set updated_at = updated_at - interval '1 hour'
+  where user_id = :'user_k'::uuid;
+set session kilo.suppress_updated_at_stamp = 'off';
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_k'::uuid),
+  'timestamp_mismatch',
+  'a withdrawn account with a genuine timestamp mismatch still reports it'
+);
+
+-- Value divergence remains visible when both rows exist, even for a withdrawn
+-- account.
+alter table kilo.user_profile disable trigger mirror_profile_to_health;
+alter table kilo.user_health_profile disable trigger mirror_health_to_profile;
+
+insert into kilo.user_profile (user_id, fatigue_multiplier) values (:'user_l'::uuid, 1.0);
+insert into kilo.user_health_profile (user_id, fatigue_multiplier) values (:'user_l'::uuid, 2.0);
+
+set session kilo.suppress_updated_at_stamp = 'on';
+update kilo.user_profile set updated_at = '2026-07-01 00:00:00+00' where user_id = :'user_l'::uuid;
+update kilo.user_health_profile set updated_at = '2026-07-01 00:00:00+00' where user_id = :'user_l'::uuid;
+set session kilo.suppress_updated_at_stamp = 'off';
+
+alter table kilo.user_profile enable trigger mirror_profile_to_health;
+alter table kilo.user_health_profile enable trigger mirror_health_to_profile;
+
+insert into kilo.consent_state (user_id, status) values (:'user_l'::uuid, 'withdrawn')
+  on conflict (user_id) do update set status = 'withdrawn';
+
+select is(
+  (select divergence from kilo.health_parity_report() where user_id = :'user_l'::uuid),
+  'value_mismatch',
+  'a withdrawn account with a genuine value mismatch still reports it'
 );
 
 select * from finish();
