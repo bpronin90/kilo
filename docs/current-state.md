@@ -100,7 +100,7 @@ For physical-device packaging:
      `preview` channel; publish iOS OTA updates with
      `npm --prefix mobile run update:ios:preview`. Live on-device iOS delivery
      is not yet verified end to end (deferred pending an iOS build, issue #63).
-   - The preview runtime boundary is a stable manual string (`preview-3`)
+   - The preview runtime boundary is a stable manual string (`preview-4`)
      set in `mobile/app.config.js` when `APP_ENV=preview`. OTA updates apply
      to any installed preview build sharing that runtime string. App version
      bumps do not create a new OTA boundary. A new native build is required
@@ -1119,11 +1119,12 @@ app under `mobile/` is the only device-packaging path.
 The native Expo app uses plain `expo-updates` for Android preview OTA delivery.
 Preview builds check the `preview` EAS Update channel on launch and can accept
 JavaScript and bundled-asset updates without reinstalling the APK. The preview
-runtime is a stable manual string (`preview-3`) defined in `mobile/app.config.js`
+runtime is a stable manual string (`preview-4`) defined in `mobile/app.config.js`
 and is not tied to `expo.version`; app version bumps do not force a rebuild or
-break OTA delivery. A rebuild is only required when a native module changes, a
-native `app.json` field changes, or `PREVIEW_RUNTIME` in `mobile/app.config.js`
-is deliberately bumped. Production builds continue to use
+break OTA delivery. Native module, Expo SDK/native dependency, and native
+config/plugin changes advance `PREVIEW_RUNTIME` in the same PR; old preview
+binaries then require a fresh APK because an OTA cannot add native code.
+Production builds continue to use
 `runtimeVersion.policy: "appVersion"`.
 
 Signed OTA updates are not in use. `mobile/app.json` no longer configures
