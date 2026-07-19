@@ -359,9 +359,10 @@ describe('WeightScreen', () => {
         return flat.includes(text);
       });
 
-    test('shows "Goal Met!" badge when current weight has reached a loss goal', () => {
-      // Loss goal: target 175, start 200. Current weight entry at 175 → goal met.
-      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+    test('shows "Goal Met!" badge when current weight has reached a loss goal on its target date', () => {
+      // Loss goal: target 175, start 200, target date is today (MOCK_NOW). Current
+      // weight entry at 175 → both the weight threshold and the date are met.
+      const goal = { target_weight: 175, target_date: '2026-05-24', start_weight: 200 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 175, note: '' },
       ];
@@ -369,13 +370,30 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(true);
     });
 
-    test('shows "Archive" action chip when goal is met', () => {
-      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+    test('shows "Archive" action chip when goal is met on its target date', () => {
+      const goal = { target_weight: 175, target_date: '2026-05-24', start_weight: 200 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 174, note: '' },
       ];
       const component = setup(goal, entries);
       expect(hasTextSafe(component.root, 'Archive')).toBe(true);
+    });
+
+    // #549: reaching the target weight before target_date is progress, not
+    // completion — the target date is part of the goal contract.
+    test('shows "Ahead of schedule" instead of "Goal Met!" when the weight threshold is reached before target_date', () => {
+      // Loss goal: target 175, start 200. Current weight entry at 175, but the
+      // target date (2026-09-01) is still months away (today is 2026-05-24).
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 175, note: '' },
+      ];
+      const component = setup(goal, entries);
+      expect(hasTextSafe(component.root, 'Ahead of schedule')).toBe(true);
+      expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
+      expect(hasTextSafe(component.root, 'Archive')).toBe(false);
+      // Normal in-progress guidance (Edit/Clear) remains available.
+      expect(hasTextSafe(component.root, 'Clear')).toBe(true);
     });
 
     test('does not show "Goal Met!" or "Archive" when goal is in progress', () => {
@@ -398,8 +416,8 @@ describe('WeightScreen', () => {
       expect(hasTextSafe(component.root, 'Clear')).toBe(true);
     });
 
-    test('shows "Goal Met!" for a gain goal when current reaches target', () => {
-      const goal = { target_weight: 185, target_date: '2026-09-01', start_weight: 160 };
+    test('shows "Goal Met!" for a gain goal when current reaches target on its target date', () => {
+      const goal = { target_weight: 185, target_date: '2026-05-24', start_weight: 160 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 186, note: '' },
       ];
@@ -1206,7 +1224,7 @@ describe('WeightScreen', () => {
     });
 
     test('Archive chip exposes an enlarged hitSlop when a goal is met', () => {
-      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const goal = { target_weight: 175, target_date: '2026-05-24', start_weight: 200 };
       const entries = [
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 174, note: '' },
       ];

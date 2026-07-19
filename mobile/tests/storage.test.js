@@ -1725,6 +1725,74 @@ describe('isGoalMet', () => {
     expect(isGoalMet(goal, 175)).toBe(true); // exactly at target — within 0.5 threshold
     expect(isGoalMet(goal, 175.4)).toBe(true); // within threshold
   });
+
+  describe('target_date gating (#549)', () => {
+    const REF = new Date(2026, 4, 24); // 2026-05-24
+
+    test('loss goal: threshold met before target_date is not goal-met', () => {
+      const goal = { target_weight: 175, start_weight: 200, target_date: '2026-09-01' };
+      expect(isGoalMet(goal, 175, REF)).toBe(false);
+      expect(isGoalMet(goal, 170, REF)).toBe(false);
+    });
+
+    test('loss goal: threshold met on target_date is goal-met', () => {
+      const goal = { target_weight: 175, start_weight: 200, target_date: '2026-05-24' };
+      expect(isGoalMet(goal, 175, REF)).toBe(true);
+    });
+
+    test('loss goal: threshold met after target_date is goal-met', () => {
+      const goal = { target_weight: 175, start_weight: 200, target_date: '2026-05-20' };
+      expect(isGoalMet(goal, 175, REF)).toBe(true);
+    });
+
+    test('gain goal: threshold met before target_date is not goal-met', () => {
+      const goal = { target_weight: 185, start_weight: 160, target_date: '2026-09-01' };
+      expect(isGoalMet(goal, 186, REF)).toBe(false);
+    });
+
+    test('gain goal: threshold met on or after target_date is goal-met', () => {
+      const onDate = { target_weight: 185, start_weight: 160, target_date: '2026-05-24' };
+      const pastDate = { target_weight: 185, start_weight: 160, target_date: '2026-05-20' };
+      expect(isGoalMet(onDate, 186, REF)).toBe(true);
+      expect(isGoalMet(pastDate, 186, REF)).toBe(true);
+    });
+
+    test('maintain goal: threshold met before target_date is not goal-met', () => {
+      const goal = { target_weight: 175, start_weight: 175, target_date: '2026-09-01' };
+      expect(isGoalMet(goal, 175, REF)).toBe(false);
+    });
+
+    test('maintain goal: threshold met on or after target_date is goal-met', () => {
+      const onDate = { target_weight: 175, start_weight: 175, target_date: '2026-05-24' };
+      const pastDate = { target_weight: 175, start_weight: 175, target_date: '2026-05-01' };
+      expect(isGoalMet(onDate, 175, REF)).toBe(true);
+      expect(isGoalMet(pastDate, 175, REF)).toBe(true);
+    });
+
+    test('threshold not met stays not-met regardless of target_date', () => {
+      const goal = { target_weight: 175, start_weight: 200, target_date: '2026-05-01' };
+      expect(isGoalMet(goal, 185, REF)).toBe(false);
+    });
+
+    test('missing target_date falls back to weight-only threshold (no false block)', () => {
+      const goal = { target_weight: 175, start_weight: 200 };
+      expect(isGoalMet(goal, 175, REF)).toBe(true);
+    });
+
+    test('invalid target_date does not create a false completed state and falls back to weight-only threshold', () => {
+      const invalidCalendarDate = { target_weight: 175, start_weight: 200, target_date: '2026-02-30' };
+      const malformedDate = { target_weight: 175, start_weight: 200, target_date: 'not-a-date' };
+      expect(isGoalMet(invalidCalendarDate, 175, REF)).toBe(true);
+      expect(isGoalMet(malformedDate, 175, REF)).toBe(true);
+      // Threshold-unmet still stays false even with an invalid date.
+      expect(isGoalMet(invalidCalendarDate, 185, REF)).toBe(false);
+    });
+
+    test('defaults referenceDate to now when omitted', () => {
+      const goal = { target_weight: 175, start_weight: 200, target_date: '2000-01-01' };
+      expect(isGoalMet(goal, 175)).toBe(true);
+    });
+  });
 });
 
 // ── computeWeightGoal ─────────────────────────────────────────────────────────

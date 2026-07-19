@@ -412,7 +412,16 @@ The real native app path now has a modular React Native shell:
   goals now render a terminal `Goal ended.` guidance state without negative
   weeks-left or invalid pace output, overdue ended goals expose the same
   archive action as met goals so the archived-history path can clear the active
-  goal and reopen the new-goal form, the no-estimate state keeps the panel
+  goal and reopen the new-goal form. Goal completion (#549) now gates on both
+  the weight threshold and the local calendar date reaching `target_date`:
+  reaching the target weight before its target date renders a distinct
+  `Ahead of schedule` status instead of `Goal Met!` and withholds the
+  completion `Archive` action (`Edit`/`Clear` remain available), while a goal
+  whose threshold is met on or after its target date shows `Goal Met!` and
+  the `Archive` action as before; archived-goal outcome coloring and the Goal
+  History `Success`/`Missed` summary judge each goal against its own
+  `archived_at` date rather than the current date so history stays stable.
+  The no-estimate state keeps the panel
   hierarchy visible with neutral fallback messaging for goals that still need a
   future target date, and when no
   saved weight entries exist the goal form still requires a current-weight

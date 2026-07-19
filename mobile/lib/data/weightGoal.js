@@ -277,12 +277,13 @@ export function computeWeightRollingAverageSeries(entries, limit = 7, windowDays
   }).filter(d => d.value !== null);
 }
 
-// Determine whether the active weight goal has been met.
-// A loss goal is met when currentWeight ≤ target_weight.
-// A gain goal is met when currentWeight ≥ target_weight.
-// A maintain-style goal (delta < 0.5 lb from start) is met when within 0.5 lb of target.
-// Returns false when goal or currentWeight is missing.
-export function isGoalMet(goal, currentWeight) {
+// Determine whether the active weight goal's weight threshold has been reached,
+// independent of the goal's target_date. A loss goal's threshold is reached when
+// currentWeight ≤ target_weight. A gain goal's threshold is reached when
+// currentWeight ≥ target_weight. A maintain-style goal (delta < 0.5 lb from start)
+// is reached when within 0.5 lb of target. Returns false when goal or
+// currentWeight is missing.
+export function isWeightThresholdMet(goal, currentWeight) {
   if (!goal || currentWeight == null || goal.target_weight == null) return false;
   const { target_weight, start_weight } = goal;
   const refWeight = start_weight ?? currentWeight;
@@ -294,6 +295,38 @@ export function isGoalMet(goal, currentWeight) {
     return currentWeight <= target_weight;
   }
   return currentWeight >= target_weight;
+}
+
+// Determine whether the active weight goal has been met: the weight threshold is
+// reached (see isWeightThresholdMet) AND the local calendar date is on or after
+// the goal's target_date. Reaching the threshold before target_date is progress,
+// not completion — a target date is part of the goal contract.
+// referenceDate: Date used as "today" for the calendar-date comparison (defaults
+// to now; pass a fixed date for tests, or an archived goal's archived_at so
+// history judgments are stable regardless of when they're later viewed).
+// A missing or malformed target_date does not gate completion, preserving prior
+// behavior for goals recorded without a valid target date.
+// Returns false when goal or currentWeight is missing.
+export function isGoalMet(goal, currentWeight, referenceDate = new Date()) {
+  if (!isWeightThresholdMet(goal, currentWeight)) return false;
+
+  const target_date = goal.target_date;
+  if (!target_date) return true;
+
+  // Round-trip component check: JS normalizes impossible dates (e.g. Sep 31 → Oct 1)
+  // instead of returning Invalid Date, so isNaN alone is insufficient.
+  const [tYear, tMonth, tDay] = target_date.split('-').map(Number);
+  const targetMidnight = new Date(tYear, tMonth - 1, tDay);
+  const isValidTargetDate =
+    tYear && tMonth && tDay &&
+    targetMidnight.getFullYear() === tYear &&
+    targetMidnight.getMonth() === tMonth - 1 &&
+    targetMidnight.getDate() === tDay;
+  if (!isValidTargetDate) return true;
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = `${referenceDate.getFullYear()}-${pad(referenceDate.getMonth() + 1)}-${pad(referenceDate.getDate())}`;
+  return target_date <= today;
 }
 
 // ── Canonical weight and goal derivation layer ────────────────────────────────

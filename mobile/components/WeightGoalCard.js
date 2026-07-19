@@ -113,6 +113,7 @@ export function WeightGoalCard({
   calorieEstimate,
   currentWeight,
   isGoalMet,
+  aheadOfSchedule,
 }) {
   const unit = useWeightUnit();
   const remainingToGoal =
@@ -250,10 +251,16 @@ export function WeightGoalCard({
             </View>
           </View>
 
-          {remainingToGoal !== null && !isGoalMet && !goalInfo?.isOverdue && (
+          {remainingToGoal !== null && !isGoalMet && !goalInfo?.isOverdue && !aheadOfSchedule && (
             <View style={styles.goalProgressRow}>
               <Text style={styles.goalProgressValue}>{displayWeight(remainingToGoal, unit).toFixed(1)} {unit}</Text>
               <Text style={styles.goalProgressLabel}>to go</Text>
+            </View>
+          )}
+
+          {aheadOfSchedule && (
+            <View style={styles.goalProgressRow}>
+              <Text style={styles.goalAheadText}>Ahead of schedule</Text>
             </View>
           )}
 
@@ -399,6 +406,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.error,
     fontWeight: '600',
+  },
+  goalAheadText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.caution,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   goalDivider: {
     height: 1,
