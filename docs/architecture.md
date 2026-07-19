@@ -72,7 +72,7 @@ both Android and iOS.
 
 - `mobile/app.json` keeps `updates.enabled` and the EAS project `updates.url`.
   `mobile/app.config.js` gives preview builds a stable manual runtime string
-  (`preview-3`) so compatible installed preview builds can fetch JavaScript and
+  (`preview-4`) so compatible installed preview builds can fetch JavaScript and
   bundled-asset updates from the `preview` channel on launch. Production builds
   continue to use `runtimeVersion.policy: "appVersion"`.
 - `mobile/eas.json` binds the `preview` (Android), `ios-simulator`, and
@@ -81,10 +81,10 @@ both Android and iOS.
 - `mobile/package.json` exposes preview and production Android build/update
   scripts. Preview update scripts set `APP_ENV=preview`; production Android
   updates use the default `runtimeVersion.policy: "appVersion"` path.
-- Native/config changes still require a fresh `eas build --profile preview`
-  (Android) or `eas build --profile ios-simulator|ios-device` (iOS). Expo SDK
-  upgrades, including the SDK 56 upgrade in issue #367, are native runtime
-  changes and cannot be delivered to SDK-54 installs by OTA/EAS Update alone.
+- Native/config changes advance the preview runtime in the same PR and require
+  a fresh `eas build --profile preview` (Android) or `eas build --profile
+  ios-simulator|ios-device` (iOS). Native module and Expo SDK/native dependency
+  changes cannot be delivered to older installs by OTA/EAS Update alone.
 - Live on-device iOS OTA delivery has not yet been verified end to end; it is
   deferred pending an iOS build (issue #63).
 - Signed OTA updates are intentionally not configured. There is no checked-in

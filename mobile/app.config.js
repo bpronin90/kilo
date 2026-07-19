@@ -1,11 +1,16 @@
 // Dynamic Expo config. Overrides runtimeVersion so that preview builds use a
 // stable manual string rather than tracking expo.version. Bump PREVIEW_RUNTIME
-// only when a native-affecting change requires a fresh preview build.
+// only when a native-affecting change requires a fresh preview build. Bump in
+// the same PR for new or updated native modules, Expo SDK/native dependency
+// changes, and native config or plugin changes.
 // preview-2: SDK 54 → SDK 56 native runtime change (issue #369).
 // preview-3: reverted SDK 56 → SDK 54 (commit f5558f3, issue #375). This is a
 //   native runtime change, so bump the runtime: old preview-2 (SDK 56) installs
 //   must NOT receive SDK 54 OTA bundles and instead require a fresh build.
-const PREVIEW_RUNTIME = 'preview-3';
+// preview-4: #434 added @sentry/react-native and its Expo config plugin; #484
+//   upgraded react-native-safe-area-context. Old preview-3 binaries lack the
+//   required native code and must be replaced with a fresh preview-4 build.
+const PREVIEW_RUNTIME = 'preview-4';
 
 function appendPlugin(existingPlugins, nextPlugin) {
   const plugins = Array.isArray(existingPlugins) ? existingPlugins : [];

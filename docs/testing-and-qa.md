@@ -37,9 +37,10 @@ iOS preview builds (`ios-simulator`, `ios-device`) are bound to the same
 
 Use OTA publish only for JavaScript and asset changes. Any native-affecting
 change still requires a fresh Android build. Preview builds use a stable manual
-runtime string (`preview-3`) in `mobile/app.config.js`; app version bumps alone
-do not force a rebuild. Only bump `PREVIEW_RUNTIME` in `mobile/app.config.js`
-when a native-incompatible change actually requires it.
+runtime string (`preview-4`) in `mobile/app.config.js`; app version bumps alone
+do not force a rebuild. Bump `PREVIEW_RUNTIME` in the same PR as any new or
+updated native module, Expo SDK/native dependency, or native config/plugin
+change; older preview binaries must then be replaced with a fresh APK.
 
 Production Android builds use the EAS `production` profile and create a Play
 Store AAB. Before Play upload, verify that an actual production build exists in

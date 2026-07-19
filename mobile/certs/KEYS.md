@@ -42,7 +42,7 @@ Or directly:
 eas update --platform android --channel preview
 ```
 
-The installed preview build checks for updates on launch (`checkAutomatically: ON_LOAD`) and applies any published update matching its `runtimeVersion` (tied to `version` in `app.json`).
+The installed preview build checks for updates on launch (`checkAutomatically: ON_LOAD`) and applies any published update matching its manual preview `runtimeVersion`. `PREVIEW_RUNTIME` in `mobile/app.config.js` is independent of `version` in `app.json`; it must advance in the same PR as a native module, Expo SDK/native dependency, or native config/plugin change. A build on an older runtime must be replaced with a fresh preview APK—an OTA cannot add its missing native code.
 
 ## No OTA code signing
 
