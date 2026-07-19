@@ -193,7 +193,8 @@ scripts/
   sync-version.mjs     ← syncs mobile version fields from root package.json
   review-disposition.mjs ← trusted current-PR-head review gate evaluator
   review-disposition.test.mjs ← deterministic evaluator contract tests
-  deploy-kilo-functions.sh ← deploys kilo Edge Functions to the tracked remote project ref
+  deploy-kilo-functions.sh ← deploys and fail-closed verifies Kilo Edge Functions and purge-worker prerequisites
+  deploy-kilo-functions.test.mjs ← offline management-plane/cron verification contract tests
 ```
 
 ---
