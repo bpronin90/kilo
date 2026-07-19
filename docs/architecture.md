@@ -63,7 +63,22 @@ The config's `project_id` is not the remote deployment target. Run
 `scripts/deploy-kilo-functions.sh` from the repository root to deploy the three
 Kilo-owned functions; the script supplies project ref
 `ogzhnscdqcdrhfqcobuv` explicitly and does not deploy the unrelated `anime`
-function hosted in the same Supabase project.
+function hosted in the same Supabase project. It reports success only after the
+Supabase management plane shows `account-export`, `account-delete`, and
+`health-data-delete` as `ACTIVE` with an update timestamp from that deployment.
+
+The production health-deletion worker also requires two **database Vault**
+secrets, verified by name from `vault.secrets` (never decrypted, read, or
+printed) by the deployment procedure:
+`kilo_functions_base_url` and `kilo_service_role_key`. Set the base URL to the
+production project URL. For this new-key project, set `kilo_service_role_key`
+to its `sb_secret_` service-role value, not the legacy `service_role` JWT.
+Before running the script, an authorized operator supplies `KILO_DATABASE_URL`
+for its read-only `health-deletion-drain` cron check; do not put that URL or a
+secret value in shell history or logs. To exercise the worker dispatch boundary,
+the operator may additionally set `HEALTH_DELETION_FIXTURE_USER_ID` to a
+disposable, already-due deletion job. The script dispatches only when that is
+the sole due job, and otherwise fails without enqueuing or changing any user.
 
 ## Preview OTA Update Path
 

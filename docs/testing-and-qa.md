@@ -774,6 +774,10 @@ retains non-test commands such as `npm run audit`.
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified
   deletion
+- `npm run test:deploy-kilo-functions` runs the offline contract tests for
+  `scripts/deploy-kilo-functions.sh`. They mock Supabase management-plane and
+  database responses, including every fail-closed deployment prerequisite; the
+  suite never contacts production or reads secret values.
 - `supabase/functions/_shared/health-data-scope.test.ts` is the Deno contract
   suite preventing `account-export`, `account-delete`, and
   `health-data-delete` from diverging from the shared gated table set
