@@ -658,12 +658,18 @@ retains non-test commands such as `npm run audit`.
   verify a failed rebuild leaves the sync phase failed/retryable without touching
   local data, the owner marker, or the device generation, and a retry
   re-attempts it (#538)
+- exercise the production `CloudSyncRecovery -> HealthDataConsent` wrapper:
+  assert the synchronized app version reaches the grant, no sync starts before
+  the grant succeeds, same-owner success runs ordinary sync or the generation-
+  selected rebuild before reporting activation, failures preserve local data and
+  expose retry, and unclaimed/foreign history stays behind ownership choice (#539)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 
-- pin the exact Cloud Sync consent/withdrawal copy, unchecked affirmation, grant
-  failure behavior, and distinct client handling for update-required, missing,
-  stale, and deletion-pending consent states
+- pin the exact Cloud Sync consent/withdrawal copy, unchecked affirmation,
+  validation-disabled versus genuinely loading button labels, grant failure
+  behavior, and distinct client handling for update-required, missing, stale,
+  and deletion-pending consent states
 - verify bootstrap and automatic sync remain off until preflight confirms the
   required material version and protocol
 
@@ -671,6 +677,8 @@ retains non-test commands such as `npm run audit`.
 
 - rendered hook/UI-adjacent coverage for the signed-in account export/delete
   flow in `mobile/hooks/useAuthSession.js`
+- verify dismissing consent with `Not now` uses the shared `ScreenShell` ref to
+  return the Account screen to the top instead of leaving it mid-scroll (#539)
 - verifies configured Android builds render GitHub sign-in, open the system auth
   browser with `kilo://auth/callback`, exchange only the returned PKCE code, and
   surface cancellation, provider, missing-callback, and exchange failures

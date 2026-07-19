@@ -1045,6 +1045,13 @@ takes precedence: the ownership prompt is suppressed and deferred until recovery
 completes or is exited, then re-presented through the normal flow (#500). Manual
 Sync Now remains available after ownership is resolved, and local mode can no
 longer report its no-op adapter as a completed cloud sync.
+After a same-owner consent grant, the Account surface now records the synchronized
+app version and platform, restores cloud routing, and immediately runs the normal
+sync selector in the same session (#539). That selector performs an ordinary pass
+or #538's server-signalled post-purge rebuild, and the surface reports Cloud Sync
+on only after it succeeds; failures preserve local data and remain retryable.
+Unclaimed or foreign-owned history still requires the existing explicit ownership
+decision, and declining consent returns the Account screen to the top.
 The surface also provides a v3-compatible cloud export (the existing backup shape
 plus a namespaced `cloud` block with profile, feature toggles, and the
 non-sensitive signed-in account identity). Retry/run are non-destructive — a

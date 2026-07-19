@@ -114,6 +114,8 @@ describe('the affirmative act', () => {
 
     const agree = byLabel(tree, CONSENT_COPY.primaryAction);
     expect(agree.props.disabled).toBe(true);
+    expect(JSON.stringify(tree.toJSON())).toContain(CONSENT_COPY.primaryAction);
+    expect(JSON.stringify(tree.toJSON())).not.toContain('Working…');
   });
 
   it('enables the primary action only after the affirmation is checked', async () => {
@@ -125,6 +127,33 @@ describe('the affirmative act', () => {
 
     expect(byLabel(tree, CONSENT_COPY.affirmation).props.accessibilityState.checked).toBe(true);
     expect(byLabel(tree, CONSENT_COPY.primaryAction).props.disabled).toBe(false);
+  });
+
+  it('shows Working… only while an actual grant request is pending', async () => {
+    let resolveGrant;
+    grantConsent.mockReturnValue(new Promise((resolve) => {
+      resolveGrant = resolve;
+    }));
+    const tree = await renderConsent();
+
+    await act(async () => {
+      byLabel(tree, CONSENT_COPY.affirmation).props.onPress();
+    });
+
+    let pendingGrant;
+    act(() => {
+      pendingGrant = byLabel(tree, CONSENT_COPY.primaryAction).props.onPress();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(JSON.stringify(tree.toJSON())).toContain('Working…');
+
+    await act(async () => {
+      resolveGrant({ ok: true, status: 'granted' });
+      await pendingGrant;
+    });
   });
 
   it('records no grant when the user declines', async () => {
