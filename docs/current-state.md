@@ -415,7 +415,7 @@ The real native app path now has a modular React Native shell:
   goal and reopen the new-goal form. Goal completion (#549) now gates on both
   the weight threshold and the local calendar date reaching `target_date`:
   reaching the target weight before its target date renders a distinct
-  `Ahead of schedule` status instead of `Goal Met!` and withholds the
+  `On Track` status instead of `Goal Met!` and withholds the
   completion `Archive` action (`Edit`/`Clear` remain available), while a goal
   whose threshold is met on or after its target date shows `Goal Met!` and
   the `Archive` action as before; archived-goal outcome coloring and the Goal

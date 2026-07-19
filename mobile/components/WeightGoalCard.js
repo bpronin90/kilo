@@ -260,7 +260,7 @@ export function WeightGoalCard({
 
           {aheadOfSchedule && (
             <View style={styles.goalProgressRow}>
-              <Text style={styles.goalAheadText}>Ahead of schedule</Text>
+              <Text style={styles.goalAheadText}>On Track</Text>
             </View>
           )}
 

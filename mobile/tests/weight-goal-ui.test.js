@@ -381,7 +381,7 @@ describe('WeightScreen', () => {
 
     // #549: reaching the target weight before target_date is progress, not
     // completion — the target date is part of the goal contract.
-    test('shows "Ahead of schedule" instead of "Goal Met!" when the weight threshold is reached before target_date', () => {
+    test('shows "On Track" instead of "Goal Met!" when the weight threshold is reached before target_date', () => {
       // Loss goal: target 175, start 200. Current weight entry at 175, but the
       // target date (2026-09-01) is still months away (today is 2026-05-24).
       const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
@@ -389,7 +389,7 @@ describe('WeightScreen', () => {
         { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 175, note: '' },
       ];
       const component = setup(goal, entries);
-      expect(hasTextSafe(component.root, 'Ahead of schedule')).toBe(true);
+      expect(hasTextSafe(component.root, 'On Track')).toBe(true);
       expect(hasTextSafe(component.root, 'Goal Met!')).toBe(false);
       expect(hasTextSafe(component.root, 'Archive')).toBe(false);
       // Normal in-progress guidance (Edit/Clear) remains available.

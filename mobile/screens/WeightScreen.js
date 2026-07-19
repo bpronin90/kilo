@@ -227,7 +227,7 @@ export function WeightScreen({
   );
 
   // Weight threshold reached before target_date: positive progress, not yet
-  // completion. Shown as "Ahead of schedule" instead of "Goal Met!"/Archive.
+  // completion. Shown as "On Track" instead of "Goal Met!"/Archive.
   const aheadOfSchedule = useMemo(
     () => isWeightThresholdMet(goal, trends.currentWeight) && !isGoalMet,
     [goal, trends.currentWeight, isGoalMet]
