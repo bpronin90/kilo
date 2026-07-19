@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.98.2 - 2026-07-19
+
+- Issue #523: Fixed cloud sync so device clocks cannot hide later rows and large equal-timestamp pulls complete deterministically.
+- Issue #524: Prevented a newer offline edit from being dropped when an older snapshot finishes syncing.
+- Issue #528: Fixed routine notes losing your most recent keystrokes when you pressed Done while an autosave was still saving.
+- Issue #538: Fixed a same-owner device's cloud copy staying empty after re-enabling Cloud Sync following a completed withdrawal purge; the app now rebuilds the complete cloud copy from local history automatically.
+- Issue #544: Prevented a deleted legacy workout routine from reappearing during cloud-consent withdrawal and restored cloud mode after same-owner re-consent.
+
 ## 0.98.1 - 2026-07-16
 
 - Issue #519: Fixed account deletion for consented users. The `kilo.consent_events`
