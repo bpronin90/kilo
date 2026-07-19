@@ -11,6 +11,8 @@
 
 import React from 'react';
 
+const mockScreenScrollTo = jest.fn();
+
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
 // covers the denial paths. Without this the hook's grant check would short-circuit
@@ -46,7 +48,15 @@ jest.mock('../components/AboutScreen', () => ({ AboutScreen: () => null }));
 jest.mock('../components/BackupScreen', () => ({ BackupScreen: () => null }));
 jest.mock('../components/SettingsScreen', () => ({ SettingsScreen: () => null }));
 jest.mock('../components/ProfileScreen', () => ({ ProfileScreen: () => null }));
-jest.mock('../components/ScreenShell', () => ({ ScreenShell: ({ children }) => children }));
+jest.mock('../components/ScreenShell', () => {
+  const React = require('react');
+  return {
+    ScreenShell: React.forwardRef(({ children }, ref) => {
+      React.useImperativeHandle(ref, () => ({ scrollTo: mockScreenScrollTo }));
+      return React.createElement(React.Fragment, null, children);
+    }),
+  };
+});
 jest.mock('../components/UI', () => {
   const React = require('react');
   const { View, Text } = require('react-native');
@@ -83,6 +93,7 @@ let resetSupabaseClientForTests;
 let AccountLifecycle;
 let AccountScreen;
 let MoreScreen;
+let CloudSyncRecovery;
 let Platform;
 let Linking;
 let WebBrowser;
@@ -212,6 +223,7 @@ beforeEach(() => {
   mockSession = { ...FAKE_SESSION };
   mockAuth = makeMockAuth(mockSession);
   mockCloudSyncStatus = makeCloudSyncStatus();
+  mockScreenScrollTo.mockClear();
 
   const testRenderer = require('react-test-renderer');
   renderer = testRenderer.default || testRenderer;
@@ -227,6 +239,7 @@ beforeEach(() => {
   AccountLifecycle = moreScreen.AccountLifecycle;
   AccountScreen = moreScreen.AccountScreen;
   MoreScreen = moreScreen.MoreScreen;
+  CloudSyncRecovery = require('../screens/more/CloudSyncRecovery').CloudSyncRecovery;
   WebBrowser = require('expo-web-browser');
 
   resetSupabaseClientForTests();
@@ -888,6 +901,23 @@ describe('CloudSyncRecovery status summary', () => {
 
   afterEach(() => {
     Object.defineProperty(Platform, 'OS', { value: originalPlatformOS, configurable: true });
+  });
+
+  test('AccountScreen returns Not now to the top through the shared ScreenShell ref', async () => {
+    let tree;
+    await act(async () => {
+      tree = renderer.create(React.createElement(AccountScreen, {
+        onBack: jest.fn(),
+        auth: makeResolvedAuthProp(FAKE_SESSION),
+      }));
+    });
+
+    const recovery = tree.root.findByType(CloudSyncRecovery);
+    act(() => {
+      recovery.props.onConsentDismiss();
+    });
+
+    expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
   });
 
   test('shows fully synced and the last successful sync time when clean', async () => {

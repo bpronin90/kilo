@@ -36,6 +36,7 @@ import {
 } from '../storage/entries/localDataOwner';
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { HealthDataConsent } from '../screens/more/HealthDataConsent';
+import { CONSENT_COPY } from '../storage/cloud/consent';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
@@ -49,6 +50,7 @@ jest.mock('../storage/cloud/consent', () => {
     fetchConsentStatus: jest.fn().mockResolvedValue({ allowed: true, code: 'OK' }),
     withdrawConsent: jest.fn().mockResolvedValue({ ok: true, status: 'deletion_pending' }),
     requestHealthDataDeletion: jest.fn().mockResolvedValue({ ok: true }),
+    grantConsent: jest.fn().mockResolvedValue({ ok: true, status: 'granted' }),
     fetchActiveConsentRevision: jest.fn().mockResolvedValue({
       catalog_revision: 1,
       material_version: 1,
@@ -57,13 +59,24 @@ jest.mock('../storage/cloud/consent', () => {
   };
 });
 
-const { DENIAL_CODES, fetchConsentStatus } = require('../storage/cloud/consent');
+jest.mock('../storage/cloud/syncAdapter', () => {
+  const actual = jest.requireActual('../storage/cloud/syncAdapter');
+  return { ...actual, rebuildCloudCopy: jest.fn().mockResolvedValue({ ok: true }) };
+});
+
+const { DENIAL_CODES, fetchConsentStatus, grantConsent } = require('../storage/cloud/consent');
+const { rebuildCloudCopy } = require('../storage/cloud/syncAdapter');
+const SYNCHRONIZED_APP_VERSION = require('../app.json').expo.version;
 
 
 beforeEach(() => {
   AsyncStorage.clear();
   __resetSyncQueue();
   fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
+  grantConsent.mockReset();
+  grantConsent.mockResolvedValue({ ok: true, status: 'granted' });
+  rebuildCloudCopy.mockReset();
+  rebuildCloudCopy.mockResolvedValue({ ok: true });
 });
 
 function flush() {
@@ -452,10 +465,10 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     entries.setStorageMode('local');
   });
 
-  function renderPanel(user = USER) {
+  function renderPanel(user = USER, onConsentDismiss) {
     let tree;
     act(() => {
-      tree = renderer.create(React.createElement(CloudSyncRecovery, { user }));
+      tree = renderer.create(React.createElement(CloudSyncRecovery, { user, onConsentDismiss }));
     });
     return tree;
   }
@@ -464,6 +477,14 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     await act(async () => {
       await tree.root.findByProps({ title }).props.onPress();
     });
+  }
+
+  async function acceptConsent(tree) {
+    await act(async () => {
+      tree.root.findByProps({ accessibilityLabel: CONSENT_COPY.affirmation }).props.onPress();
+    });
+    await press(tree, CONSENT_COPY.primaryAction);
+    await flush();
   }
 
   test('foreign owner: Upload Local History asks for confirmation instead of uploading', async () => {
@@ -532,9 +553,25 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     expect(requestHealthDataDeletion).toHaveBeenCalledTimes(1);
   });
 
-  test('successful same-owner re-grant restores cloud mode in the current session', async () => {
+  test('production consent wrapper passes the synchronized app version and uses established Button typography', async () => {
+    fetchConsentStatus.mockResolvedValue({
+      allowed: false,
+      code: DENIAL_CODES.CONSENT_REQUIRED,
+    });
+
+    const tree = renderPanel();
+    await flush();
+    const reviewButton = tree.root.findByProps({ title: 'Review and enable Cloud Sync' });
+    expect(reviewButton.props.textStyle).toBeUndefined();
+    await press(tree, 'Review and enable Cloud Sync');
+
+    expect(tree.root.findByType(HealthDataConsent).props.appVersion).toBe(SYNCHRONIZED_APP_VERSION);
+  });
+
+  test('successful same-owner grant runs sync in-session before reporting Cloud Sync is on', async () => {
     await setLocalDataOwner(USER.id);
     entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    const sync = jest.spyOn(cloudAdapter, 'sync').mockResolvedValue({ ok: true });
     fetchConsentStatus
       .mockResolvedValueOnce({
         allowed: false,
@@ -545,12 +582,83 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     const tree = renderPanel();
     await flush();
     await press(tree, 'Review and enable Cloud Sync');
-    const consent = tree.root.findByType(HealthDataConsent);
-    await act(async () => {
-      await consent.props.onGranted({ ok: true, status: 'granted' });
-    });
+    await acceptConsent(tree);
 
+    expect(grantConsent).toHaveBeenCalledWith(
+      expect.objectContaining({ appVersion: SYNCHRONIZED_APP_VERSION }),
+    );
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(grantConsent.mock.invocationCallOrder[0]).toBeLessThan(sync.mock.invocationCallOrder[0]);
     expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.CLOUD);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync status' }).props.children)
+      .toBe('Cloud Sync is on.');
+  });
+
+  test('same-owner grant runs the post-purge rebuild branch when the server generation is ahead', async () => {
+    await setLocalDataOwner(USER.id);
+    entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    fetchConsentStatus
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: DENIAL_CODES.CONSENT_VERSION_STALE,
+      })
+      .mockResolvedValue({ allowed: true, code: 'OK', cloud_rebuild_generation: 2 });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    await acceptConsent(tree);
+
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync status' }).props.children)
+      .toBe('Cloud Sync is on.');
+  });
+
+  test('failed in-session sync keeps local data and exposes an honest retryable state', async () => {
+    await setLocalDataOwner(USER.id);
+    await AsyncStorage.setItem('kilo_weight_entries', JSON.stringify([{ id: 'local-safe' }]));
+    entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    jest.spyOn(cloudAdapter, 'sync').mockRejectedValue(new Error('network down'));
+    fetchConsentStatus
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: DENIAL_CODES.CONSENT_REQUIRED,
+      })
+      .mockResolvedValue({ allowed: true, code: 'OK' });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    await acceptConsent(tree);
+
+    expect(await AsyncStorage.getItem('kilo_weight_entries')).toContain('local-safe');
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync status' }).props.children)
+      .toContain('could not finish');
+    expect(tree.root.findAllByProps({ title: 'Retry Sync' })).toHaveLength(1);
+  });
+
+  test('first grant keeps unclaimed history behind the ownership decision', async () => {
+    const bootstrap = jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
+    const sync = jest.spyOn(cloudAdapter, 'sync').mockResolvedValue({ ok: true });
+    entries.setStorageMode(entries.STORAGE_MODES.LOCAL);
+    fetchConsentStatus
+      .mockResolvedValueOnce({
+        allowed: false,
+        code: DENIAL_CODES.CONSENT_REQUIRED,
+      })
+      .mockResolvedValue({ allowed: true, code: 'OK' });
+
+    const tree = renderPanel();
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    await acceptConsent(tree);
+
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+    expect(await getLocalDataOwner()).not.toBe(USER.id);
+    expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.LOCAL);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync status' }).props.children)
+      .toContain('still off');
   });
 
   test('successful re-grant does not bypass a foreign local-data owner', async () => {
@@ -572,6 +680,24 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     });
 
     expect(entries.getStorageMode()).toBe(entries.STORAGE_MODES.LOCAL);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync status' }).props.children)
+      .toContain('still off');
+  });
+
+  test('Not now returns control to the account shell without recording a grant', async () => {
+    const onConsentDismiss = jest.fn();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: false,
+      code: DENIAL_CODES.CONSENT_REQUIRED,
+    });
+
+    const tree = renderPanel(USER, onConsentDismiss);
+    await flush();
+    await press(tree, 'Review and enable Cloud Sync');
+    await press(tree, CONSENT_COPY.secondaryAction);
+
+    expect(grantConsent).not.toHaveBeenCalled();
+    expect(onConsentDismiss).toHaveBeenCalledTimes(1);
   });
 });
 

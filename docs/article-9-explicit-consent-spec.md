@@ -114,11 +114,16 @@ use, or an account/sign-in action as the affirmative act.
 
 ### Success and failure behavior
 
-The app calls the server grant operation before enabling sync. Cloud Sync turns
-on only after that operation returns the current active grant. If the grant
-cannot be recorded, the app stays local-only and explains that Cloud Sync was
-not enabled; it must not queue health data for later upload under an unrecorded
-client-side grant.
+The app calls the server grant operation before enabling sync. After the server
+returns the current active grant, a same-owner device runs its ordinary sync or
+the server-signalled post-purge rebuild in the same session. Cloud Sync reports
+that it is on only after that operation succeeds. A device with unclaimed or
+foreign-owned local history stays local-only behind the explicit ownership
+decision. If the grant cannot be recorded, the app stays local-only and explains
+that Cloud Sync was not enabled; it must not queue health data for later upload
+under an unrecorded client-side grant. If activation fails after a recorded
+grant, local data remains intact and the UI exposes an honest retry state rather
+than claiming that the cloud copy is current.
 
 ## Authoritative health-data boundary
 

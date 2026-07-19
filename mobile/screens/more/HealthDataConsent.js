@@ -64,7 +64,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
         );
         return;
       }
-      onGranted?.(result);
+      await onGranted?.(result);
     } finally {
       setBusy(false);
     }
@@ -108,6 +108,7 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
       <Button
         title={CONSENT_COPY.primaryAction}
         loadingTitle="Working…"
+        loading={busy}
         disabled={!affirmed || busy || !revision}
         onPress={handleAgree}
         accessibilityLabel={CONSENT_COPY.primaryAction}

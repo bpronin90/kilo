@@ -14,13 +14,14 @@ import {
   withdrawConsent,
   requestHealthDataDeletion,
 } from '../../storage/cloud/consent';
+import appConfig from '../../app.json';
 
 // User-facing cloud bootstrap/sync recovery panel (Phase 4 / Task 12).
 //
 // Shows whether each phase is idle/running/failed/complete and offers a
 // non-destructive retry only when a phase has failed. There are deliberately no
 // admin/support controls here — only the signed-in user's own retry/export.
-export function CloudSyncRecovery({ user }) {
+export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
@@ -37,7 +38,9 @@ export function CloudSyncRecovery({ user }) {
   const [confirmingWithdrawal, setConfirmingWithdrawal] = useState(false);
 
   const refreshConsent = useCallback(async () => {
-    setConsent(await fetchConsentStatus());
+    const next = await fetchConsentStatus();
+    setConsent(next);
+    return next;
   }, []);
 
   useEffect(() => {
@@ -146,6 +149,54 @@ export function CloudSyncRecovery({ user }) {
     }
   };
 
+  // The server grant is already durable when this callback begins. Only then
+  // select the operation that safely activates this device:
+  //
+  //   own history                -> ordinary sync (or #538's signalled rebuild)
+  //   unclaimed / foreign history -> keep local mode for the ownership choice
+  //
+  // A failed phase remains retryable in the shared recovery state and never
+  // clears local data. The success copy is deliberately withheld until every
+  // required phase for this device has completed.
+  const handleConsentGranted = async () => {
+    setShowingConsent(false);
+    setBusy(true);
+    setStatus('');
+    try {
+      const owner = await getLocalDataOwner();
+      await refreshConsent();
+
+      if (owner !== user?.id) {
+        setStatus(
+          owner === OWNER_UNCLAIMED
+            ? 'Consent was recorded, but Cloud Sync is still off. Choose whether to upload the history on this device or download your account copy.'
+            : 'Consent was recorded, but Cloud Sync is still off. Choose how to handle the history already on this device.',
+        );
+        return;
+      }
+
+      // A denied preflight deliberately moved the app to local-only mode.
+      // Restore cloud routing for this signed-in owner so runSync can execute;
+      // its own preflight moves back to local mode if the grant cannot be
+      // confirmed. Post-purge re-consent is selected inside runSync from the
+      // server-authenticated cloud rebuild generation.
+      Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+      const result = await runSync();
+
+      setStatus(
+        result?.ok
+          ? 'Cloud Sync is on.'
+          : 'Consent was recorded, but Cloud Sync could not finish. Your data on this device is safe. Try again.',
+      );
+    } catch {
+      setStatus(
+        'Consent was recorded, but Cloud Sync could not finish. Your data on this device is safe. Try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const denialCode = consent && !consent.allowed ? consent.code : null;
   const deletionPending = denialCode === DENIAL_CODES.HEALTH_DATA_DELETION_PENDING;
   const needsConsent =
@@ -187,24 +238,14 @@ export function CloudSyncRecovery({ user }) {
     return (
       <View style={styles.accountBlock}>
         <HealthDataConsent
-          onGranted={async () => {
-            setShowingConsent(false);
-            // A denied preflight deliberately moved the app to local-only mode.
-            // Restore cloud routing only for the signed-in owner after the server
-            // has recorded the new grant; foreign or unclaimed device data must
-            // still pass through the explicit ownership decision first.
-            const owner = await getLocalDataOwner();
-            if (owner === user?.id) {
-              Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
-            }
-            await refreshConsent();
-            setStatus('Cloud Sync is on.');
-          }}
+          appVersion={appConfig.expo.version}
+          onGranted={handleConsentGranted}
           onDecline={() => {
             // Records no grant and leaves Cloud Sync off. Every local feature keeps
             // working; refusal must cost the user nothing.
             setShowingConsent(false);
             setStatus('Cloud Sync stays off. Kilo keeps working on this device.');
+            onConsentDismiss?.();
           }}
         />
       </View>

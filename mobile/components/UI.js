@@ -60,13 +60,19 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-export function Button({ onPress, title, loadingTitle, style, textStyle, disabled = false }) {
+export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false }) {
+  // Disabled and loading are different states. Preserve the existing shorthand
+  // for callers that provide loadingTitle alongside disabled={busy}, while
+  // allowing validation-disabled actions to keep their real label.
+  const showLoading = loading === undefined ? disabled && Boolean(loadingTitle) : loading;
   return (
     <Pressable
       onPress={disabled ? null : onPress}
       style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
     >
-      <Text style={[styles.buttonText, textStyle]}>{disabled ? (loadingTitle || 'Saving…') : title}</Text>
+      <Text style={[styles.buttonText, textStyle]}>
+        {showLoading ? (loadingTitle || 'Saving…') : title}
+      </Text>
     </Pressable>
   );
 }

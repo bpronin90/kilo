@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { ScreenShell } from '../../components/ScreenShell';
@@ -20,6 +20,7 @@ import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 // here) means the session is already resolved when this screen mounts, so the
 // Signed-In view renders immediately with no per-mount re-probe (#366).
 export function AccountScreen({ onBack, auth }) {
+  const scrollRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState('');
@@ -122,6 +123,7 @@ export function AccountScreen({ onBack, auth }) {
 
   return (
     <ScreenShell
+      ref={scrollRef}
       title="Account"
       subtitle="Cloud sign in is optional. Your data works locally without an account."
       onBack={onBack}
@@ -150,7 +152,10 @@ export function AccountScreen({ onBack, auth }) {
             disabled={busy}
             onPress={() => run(() => auth.signOut().then((r) => (r.ok ? { ok: true, message: 'Signed out.' } : r)))}
           />
-          <CloudSyncRecovery user={auth.user} />
+          <CloudSyncRecovery
+            user={auth.user}
+            onConsentDismiss={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          />
           <AccountLifecycle auth={auth} />
         </View>
       ) : auth.loading ? (
