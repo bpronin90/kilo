@@ -16,7 +16,6 @@ set -euo pipefail
 
 readonly PROJECT_REF="ogzhnscdqcdrhfqcobuv"
 readonly FUNCTIONS=(account-export account-delete health-data-delete)
-readonly REQUIRED_SECRETS=(kilo_functions_base_url kilo_service_role_key)
 
 die() {
   echo "ERROR: $*" >&2
@@ -30,7 +29,7 @@ need_cmd() {
 verify_functions_active() {
   local functions_json
 
-  functions_json="$(npx supabase functions list --project-ref "${PROJECT_REF}" --output-format json)" \
+  functions_json="$(npx supabase functions list --project-ref "${PROJECT_REF}" --output json)" \
     || die "Could not read Edge Function status from the Supabase management plane."
 
   node - "${deploy_started_at}" "${functions_json}" "${FUNCTIONS[@]}" <<'NODE' \
@@ -74,36 +73,18 @@ for (const name of requiredNames) {
 NODE
 }
 
-verify_worker_secrets() {
-  local secrets_json
+verify_worker_vault_secrets() {
+  local vault_status
 
-  secrets_json="$(npx supabase secrets list --project-ref "${PROJECT_REF}" --output-format json)" \
-    || die "Could not list Vault secret names from the Supabase management plane."
+  vault_status="$(psql "${KILO_DATABASE_URL}" --no-psqlrc -v ON_ERROR_STOP=1 -Atq <<'SQL'
+select case when count(*) = 2 then 'present' else 'missing' end
+from vault.secrets
+where name in ('kilo_functions_base_url', 'kilo_service_role_key');
+SQL
+)" || die "Could not verify health-deletion worker Vault secret names."
 
-  node - "${secrets_json}" "${REQUIRED_SECRETS[@]}" <<'NODE' \
+  [[ "${vault_status}" == "present" ]] \
     || die "Required health-deletion worker Vault secrets are missing."
-const [secretsJson, ...requiredNames] = process.argv.slice(2);
-let secrets;
-try {
-  secrets = JSON.parse(secretsJson);
-} catch {
-  process.stderr.write('Management-plane secret response was not valid JSON.\n');
-  process.exit(1);
-}
-
-if (!Array.isArray(secrets)) {
-  process.stderr.write('Management-plane secret response was not a list.\n');
-  process.exit(1);
-}
-
-const names = new Set(secrets.map((secret) => typeof secret === 'string' ? secret : secret.name));
-for (const name of requiredNames) {
-  if (!names.has(name)) {
-    process.stderr.write(`Missing required Vault secret: ${name}.\n`);
-    process.exit(1);
-  }
-}
-NODE
 }
 
 verify_health_deletion_cron() {
@@ -162,10 +143,13 @@ main() {
   need_cmd node
 
   [[ -f "supabase/config.toml" ]] || die "supabase/config.toml not found; run from the repo root."
+  [[ -n "${KILO_DATABASE_URL:-}" ]] \
+    || die "KILO_DATABASE_URL is required to verify health-deletion worker prerequisites."
+  need_cmd psql
 
   # Verify external prerequisites before changing any deployed function. The
   # function status check remains after deploy because it must prove this run.
-  verify_worker_secrets
+  verify_worker_vault_secrets
   verify_health_deletion_cron
 
   # This timestamp is compared with the management-plane updated_at values after

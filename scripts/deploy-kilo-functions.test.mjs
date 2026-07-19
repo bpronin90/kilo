@@ -19,7 +19,7 @@ function writeExecutable(path, source) {
   chmodSync(path, 0o755);
 }
 
-function run({ functions = activeFunctions, secrets = ['kilo_functions_base_url', 'kilo_service_role_key'], cron = 'active', dispatch = 'dispatched', fixture, databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
+function run({ functions = activeFunctions, vault = 'present', cron = 'active', dispatch = 'dispatched', fixture, databaseUrl = 'postgres://operator:credential-must-not-appear@example.test/kilo' } = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'kilo-deploy-test-'));
   const binDirectory = join(directory, 'bin');
   mkdirSync(binDirectory);
@@ -46,6 +46,8 @@ input="$(cat)"
 printf '%s\\n' "$input" >> "$PSQL_LOG"
 if [[ "$input" == *'dispatch_health_deletion_worker'* ]]; then
   printf '%s\\n' "$DISPATCH_STATUS"
+elif [[ "$input" == *'from vault.secrets'* ]]; then
+  printf '%s\\n' "$VAULT_STATUS"
 else
   printf '%s\\n' "$CRON_STATUS"
 fi
@@ -62,7 +64,7 @@ fi
         CALL_LOG: callLog,
         PSQL_LOG: psqlLog,
         FUNCTIONS_JSON: JSON.stringify(functions),
-        SECRETS_JSON: JSON.stringify(secrets),
+        VAULT_STATUS: vault,
         CRON_STATUS: cron,
         DISPATCH_STATUS: dispatch,
         KILO_DATABASE_URL: databaseUrl,
@@ -95,14 +97,14 @@ function expectFailure(options, message) {
   for (const fn of requiredFunctions) {
     assert.match(calls, new RegExp(`functions deploy ${fn} --project-ref ${projectRef}`));
   }
-  assert.match(calls, new RegExp(`functions list --project-ref ${projectRef} --output-format json`));
-  assert.match(calls, new RegExp(`secrets list --project-ref ${projectRef} --output-format json`));
+  assert.match(calls, new RegExp(`functions list --project-ref ${projectRef} --output json`));
+  assert.doesNotMatch(calls, /secrets list/);
 }
 
 expectFailure({ functions: activeFunctions.slice(0, 2) }, /Required Edge Function is missing: health-data-delete/);
 expectFailure({ functions: activeFunctions.map((fn) => fn.slug === 'account-delete' ? { ...fn, status: 'FAILED' } : fn) }, /not ACTIVE: account-delete/);
 expectFailure({ functions: activeFunctions.map((fn) => fn.slug === 'account-export' ? { ...fn, updated_at: '2000-01-01T00:00:00Z' } : fn) }, /lacks current deployment evidence: account-export/);
-expectFailure({ secrets: ['kilo_functions_base_url'] }, /Missing required Vault secret: kilo_service_role_key/);
+expectFailure({ vault: 'missing' }, /Required health-deletion worker Vault secrets are missing/);
 expectFailure({ cron: 'missing' }, /health-deletion-drain cron is missing or inactive/);
 expectFailure({ fixture: '11111111-1111-4111-8111-111111111111', dispatch: 'not-dispatched' }, /Disposable fixture did not produce a health-deletion worker dispatch/);
 expectFailure({ fixture: 'not-a-uuid' }, /HEALTH_DELETION_FIXTURE_USER_ID must be a UUID/);

@@ -67,8 +67,9 @@ function hosted in the same Supabase project. It reports success only after the
 Supabase management plane shows `account-export`, `account-delete`, and
 `health-data-delete` as `ACTIVE` with an update timestamp from that deployment.
 
-The production health-deletion worker also requires two Vault secrets, verified
-by name (never read or printed) by the deployment procedure:
+The production health-deletion worker also requires two **database Vault**
+secrets, verified by name from `vault.secrets` (never decrypted, read, or
+printed) by the deployment procedure:
 `kilo_functions_base_url` and `kilo_service_role_key`. Set the base URL to the
 production project URL. For this new-key project, set `kilo_service_role_key`
 to its `sb_secret_` service-role value, not the legacy `service_role` JWT.
