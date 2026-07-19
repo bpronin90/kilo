@@ -30,6 +30,8 @@ import {
   getLocalDataOwner,
   setLocalDataOwner,
   purgeLocalData,
+  getCloudRebuildGeneration,
+  setCloudRebuildGeneration,
 } from '../storage/entries/localDataOwner';
 import * as KEYS from '../storage/entries/keys';
 import { cloudAdapter, bootstrapFromLocal } from '../storage/cloudAdapter';
@@ -70,6 +72,19 @@ jest.mock('../storage/cloud/consent', () => {
 
 const { DENIAL_CODES, fetchConsentStatus } = require('../storage/cloud/consent');
 
+// Issue #538: the automatic sign-in sync path must substitute the full
+// post-purge cloud rebuild for the ordinary adapter.sync() pass whenever the
+// server's cloud_rebuild_generation is ahead of the one this device last
+// rebuilt for. Mocking only rebuildCloudCopy (the engine-level mechanics are
+// covered end-to-end in offline-sync.test.js) lets these tests assert the HOOK
+// actually selects it, and records the per-device generation, without
+// re-driving the whole sync engine here.
+jest.mock('../storage/cloud/syncAdapter', () => {
+  const actual = jest.requireActual('../storage/cloud/syncAdapter');
+  return { ...actual, rebuildCloudCopy: jest.fn() };
+});
+
+const { rebuildCloudCopy } = require('../storage/cloud/syncAdapter');
 
 const USER = { id: 'u-auto-1', email: 'auto@test.co' };
 
@@ -121,6 +136,8 @@ beforeEach(async () => {
   Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
   jest.restoreAllMocks();
   fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
+  rebuildCloudCopy.mockReset();
+  rebuildCloudCopy.mockResolvedValue({ ok: true, results: [] });
   setCloudTransport(null);
 });
 
@@ -1274,5 +1291,186 @@ describe('CloudSyncRecovery handleRun: generic error on failure', () => {
     expect(userFacingStatus).toBe('Could not complete — try again.');
     // The raw error does not appear in what the user sees.
     expect(userFacingStatus).not.toMatch(rawMsg);
+  });
+});
+
+// ── automatic post-purge cloud rebuild (issue #538) ─────────────────────────
+//
+// The production defect: a same-owner device signs in, owner === userId so
+// bootstrap is skipped entirely, and the automatic sync that follows used to
+// always be the ordinary adapter.sync() pass — which has nothing to detect
+// against a cloud copy a completed withdrawal purge just verified empty. This
+// is exactly the path the fix has to intercept, with no user action at all.
+describe('useAutoSync: automatic post-purge cloud rebuild (issue #538)', () => {
+  test('a same-owner sign-in whose server generation is ahead of this device runs rebuildCloudCopy automatically, then records the caught-up generation', async () => {
+    await setLocalDataOwner(USER.id);
+    const syncFn = mockCloudSyncAdapter();
+    // Server has seen one verified-zero purge (generation 1); this device has
+    // never rebuilt (default generation 0), so it is behind and must rebuild.
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    expect(syncFn).not.toHaveBeenCalled();
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    // The device recorded that it has caught up, so it will not rebuild again.
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
+  });
+
+  test('a device already caught up to the server generation uses the ordinary pass, not a rebuild', async () => {
+    await setLocalDataOwner(USER.id);
+    await setCloudRebuildGeneration(USER.id, 1);
+    const syncFn = mockCloudSyncAdapter();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(rebuildCloudCopy).not.toHaveBeenCalled();
+    expect(syncFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a first-ever grant (no cloud_rebuild_generation field at all) is treated as an ordinary sync, never a rebuild', async () => {
+    await setLocalDataOwner(USER.id);
+    const syncFn = mockCloudSyncAdapter();
+    // The server payload shape before this migration ships, or any account
+    // that has never been purged: no cloud_rebuild_generation key at all, which
+    // coalesces to 0 and matches this device's default 0.
+    fetchConsentStatus.mockResolvedValue({ allowed: true, code: 'OK' });
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(rebuildCloudCopy).not.toHaveBeenCalled();
+    expect(syncFn).toHaveBeenCalledTimes(1);
+    // A never-purged account leaves the device generation at its 0 default.
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(0);
+  });
+
+  test('per-device completion: a second same-owner device that has not caught up still rebuilds — there is no single server flag the first device could clear', async () => {
+    await setLocalDataOwner(USER.id);
+    mockCloudSyncAdapter();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+
+    // Device A rebuilds and records that it reached generation 1.
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
+
+    // "Device B": same account, same server generation, but its own local
+    // record shows it has never rebuilt. Because completion is per-device and
+    // not a server-side flag device A cleared, B rebuilds too and converges.
+    await setCloudRebuildGeneration(USER.id, 0);
+    __resetSyncQueue();
+    rebuildCloudCopy.mockClear();
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
+  });
+
+  test('idempotent across launches: once this device has caught up, a later sign-in at the same generation is an ordinary pass', async () => {
+    await setLocalDataOwner(USER.id);
+    const syncFn = mockCloudSyncAdapter();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+
+    // Simulate a fresh launch: reset the in-memory phase state, keep the
+    // persisted device generation. Same server generation → ordinary pass.
+    __resetSyncQueue();
+    rebuildCloudCopy.mockClear();
+    syncFn.mockClear();
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+    expect(rebuildCloudCopy).not.toHaveBeenCalled();
+    expect(syncFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed rebuild leaves the sync phase failed/retryable and does not record the generation, and manual Retry Sync re-attempts the rebuild', async () => {
+    await setLocalDataOwner(USER.id);
+    mockCloudSyncAdapter();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+    rebuildCloudCopy.mockRejectedValueOnce(new Error('push failed'));
+
+    renderHook(() => useAutoSync(makeAuth()));
+    await flush();
+
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    const state = getSyncState();
+    expect(state[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+    expect(state[SYNC_PHASE.SYNC].retryable).toBe(true);
+
+    // Local data must never be touched by the failure — the owner claim and
+    // storage mode already resolved before the rebuild ran and stay intact —
+    // and the device generation must NOT advance, so the next attempt rebuilds.
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    expect(Storage.getStorageMode()).toBe(Storage.STORAGE_MODES.CLOUD);
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(0);
+
+    rebuildCloudCopy.mockResolvedValueOnce({ ok: true, results: [] });
+    const { ref: recoveryRef } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let retryResult;
+    await act(async () => {
+      retryResult = await recoveryRef.current.retrySync();
+    });
+
+    expect(retryResult.ok).toBe(true);
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(2);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    // A successful retry records the caught-up generation.
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
+  });
+
+  test('manual "Sync Now" (useSyncRecovery.runSync) also selects the rebuild when this device is behind the server generation', async () => {
+    await setLocalDataOwner(USER.id);
+    mockCloudSyncAdapter();
+    fetchConsentStatus.mockResolvedValue({
+      allowed: true,
+      code: 'OK',
+      cloud_rebuild_generation: 1,
+    });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runSync();
+    });
+
+    expect(result.ok).toBe(true);
+    expect(rebuildCloudCopy).toHaveBeenCalledTimes(1);
+    expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
   });
 });

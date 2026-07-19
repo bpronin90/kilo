@@ -15,8 +15,11 @@ import {
   getLocalDataOwner,
   setLocalDataOwner,
   purgeLocalData,
+  getCloudRebuildGeneration,
+  setCloudRebuildGeneration,
 } from '../../storage/entries/localDataOwner';
 import { fetchConsentStatus } from '../../storage/cloud/consent';
+import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
 
 // The Cloud Sync authorization seam (#487).
 //
@@ -36,19 +39,32 @@ import { fetchConsentStatus } from '../../storage/cloud/consent';
 // server's RLS gate refuses the same reads and writes whether or not this check
 // runs; a tampered client that skipped it would simply get empty pulls and rejected
 // writes.
-async function assertConsent() {
+// Checks the server's consent status and, on a denial, also moves storage to
+// local-only (a denial is a storage-mode boundary: keeping the cloud adapter
+// active would let ordinary entry-hook refreshes bypass this preflight seam
+// and try consent-gated reads/writes one table at a time). Local data remains
+// usable either way, including retained raw tombstones needed for later
+// convergence.
+//
+// On success returns the full consent payload, not just a boolean: callers
+// that select a sync runner need `consent.cloud_rebuild_generation` (issue
+// #538) — the server-authenticated monotonic counter of how many times a
+// verified-zero purge has emptied this account's cloud copy. A device whose
+// own last-rebuilt generation is behind it must run a full rebuild rather than
+// an ordinary pass. It is a plain field on the same payload fetchConsentStatus
+// already returns, so no extra round trip is needed.
+async function checkConsent() {
   const consent = await fetchConsentStatus();
-  if (consent.allowed) return null;
-  // A denial is also a storage-mode boundary. Keeping the cloud adapter active
-  // would let ordinary entry-hook refreshes bypass this preflight seam and try
-  // consent-gated reads/writes one table at a time. Local data remains usable,
-  // including retained raw tombstones needed for later convergence.
+  if (consent.allowed) return { ok: true, consent };
   Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
   return {
     ok: false,
-    code: consent.code,
-    consentDenied: true,
-    error: 'Cloud Sync needs your consent to store health data.',
+    denial: {
+      ok: false,
+      code: consent.code,
+      consentDenied: true,
+      error: 'Cloud Sync needs your consent to store health data.',
+    },
   };
 }
 
@@ -58,7 +74,19 @@ function makeBootstrapRunner(user) {
   return () => cloudAdapter.bootstrapFromLocal(userId);
 }
 
-function makeSyncRunner() {
+// Select the SYNC_PHASE.SYNC runner for this pass (issue #538). When the
+// server's cloud_rebuild_generation is ahead of the one THIS device last
+// rebuilt for, the ordinary adapter.sync() pass is replaced by a runner that
+// calls rebuildCloudCopy() (rearm every gated table + push + reconcile through
+// the same sync engine) and, only after it succeeds, records the caught-up
+// generation for this device. Both branches run under the identical
+// SYNC_PHASE.SYNC state machine, so the UI and retry behavior are unchanged —
+// only which operation "Sync Now" / automatic sign-in sync actually performs.
+//
+// Per-device on purpose: the generation write is local to this device, so two
+// of an account's devices each rebuild their own complete local copy rather
+// than the first one to sync clearing a single server flag for the rest.
+async function selectSyncRunner(consent, userId) {
   const adapter = Storage.getStorageAdapter();
   // The local adapter also exposes `sync`, but it is a deliberate no-op
   // (localAdapter.js) that resolves successfully without ever contacting the
@@ -69,9 +97,23 @@ function makeSyncRunner() {
   // pull/push, so refuse the explicit local no-op (`mode: 'local'`) — leaving
   // the phase untouched and honest — while a cloud adapter still drives sync.
   // Feature detection on `sync` is kept for the cloud adapter shell.
-  return adapter.mode !== 'local' && typeof adapter.sync === 'function'
-    ? () => adapter.sync()
-    : null;
+  if (adapter.mode === 'local' || typeof adapter.sync !== 'function') return null;
+
+  const serverGeneration = Number(consent?.cloud_rebuild_generation ?? 0);
+  const deviceGeneration = await getCloudRebuildGeneration(userId);
+  if (userId && serverGeneration > deviceGeneration) {
+    return async () => {
+      const result = await rebuildCloudCopy();
+      if (result && result.ok === false) return result;
+      // Advance this device's generation only after the rebuild AND its
+      // reconciliation pass have both succeeded. A failure to persist here is
+      // treated like any other phase failure (a retry re-rebuilds, which is
+      // idempotent), mirroring how the bootstrap runner treats its owner write.
+      await setCloudRebuildGeneration(userId, serverGeneration);
+      return result;
+    };
+  }
+  return () => adapter.sync();
 }
 
 export function useSyncRecovery(user = null) {
@@ -93,8 +135,8 @@ export function useSyncRecovery(user = null) {
     // No grant, no upload. The phase is left untouched (not failed): the user has
     // not hit an error, they simply have not consented yet, and the consent surface
     // is what resolves it.
-    const denied = await assertConsent();
-    if (denied) return denied;
+    const checked = await checkConsent();
+    if (!checked.ok) return checked.denial;
     // The owner write is part of the phase runner: a successful upload whose
     // ownership claim fails to persist is a failed (retryable) bootstrap, not
     // a success — cloud mode must never activate without a durable owner
@@ -113,17 +155,17 @@ export function useSyncRecovery(user = null) {
   }, [userId]);
 
   const runSync = useCallback(async () => {
-    const runner = makeSyncRunner();
+    const checked = await checkConsent();
+    if (!checked.ok) return checked.denial;
+    const runner = await selectSyncRunner(checked.consent, userId);
     if (!runner) {
       return {
         ok: false,
         error: 'Cloud sync is not available in this build yet.',
       };
     }
-    const denied = await assertConsent();
-    if (denied) return denied;
     return runPhase(SYNC_PHASE.SYNC, runner);
-  }, []);
+  }, [userId]);
 
   return {
     bootstrap: snapshot[SYNC_PHASE.BOOTSTRAP],
@@ -194,18 +236,26 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     // it runs on sign-in, with no user watching. A user who has not granted
     // health-data consent must not have their history pushed to the cloud simply
     // because they signed in on a new device.
-    const denied = await assertConsent();
-    if (denied) {
-      setConsentDenial(denied.code);
+    const checked = await checkConsent();
+    if (!checked.ok) {
+      setConsentDenial(checked.denial.code);
       return;
     }
     setConsentDenial(null);
     if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
-      const runner = makeSyncRunner();
+      // This is the primary path issue #538 fixes: a same-owner device skips
+      // bootstrap entirely on sign-in and lands here automatically, with no
+      // user action. selectSyncRunner compares cloud_rebuild_generation from
+      // the SAME preflight response against this device's own last-rebuilt
+      // generation and silently substitutes the full rebuild for the ordinary
+      // sync pass whenever this device has not yet caught up to a completed
+      // withdrawal purge — otherwise a same-owner re-grant after a purge would
+      // report "Fully synced" while the cloud copy stayed empty.
+      const runner = await selectSyncRunner(checked.consent, userId);
       if (runner) await runPhase(SYNC_PHASE.SYNC, runner);
     }
     onSyncCompleteRef.current?.();
-  }, []);
+  }, [userId]);
 
   // The user confirmed the upload (first-sign-in claim of unclaimed data, or a
   // deliberate upload of another account's data into theirs).
@@ -213,10 +263,10 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     if (!userId) return { ok: false, error: 'Not signed in.' };
     // Confirming ownership is not consent. This upload is the largest health-data
     // write the app makes, so it needs its own grant check.
-    const denied = await assertConsent();
-    if (denied) {
-      setConsentDenial(denied.code);
-      return denied;
+    const checked = await checkConsent();
+    if (!checked.ok) {
+      setConsentDenial(checked.denial.code);
+      return checked.denial;
     }
     setOwnershipPrompt(null);
     const runner = makeBootstrapRunner({ id: userId });
@@ -340,9 +390,13 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
         if (state[SYNC_PHASE.BOOTSTRAP].status === SYNC_STATUS.COMPLETE) {
           Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
           if (getSyncState()[SYNC_PHASE.SYNC].status === SYNC_STATUS.IDLE) {
-            const runner = makeSyncRunner();
-            if (runner && !cancelled) await runPhase(SYNC_PHASE.SYNC, runner);
-            if (!cancelled) onSyncCompleteRef.current?.();
+            // Route through runInitialSync rather than duplicating its consent
+            // check and rebuild-aware runner selection inline (issue #538): this
+            // branch (the effect re-running mid-session, e.g. once a password
+            // recovery interruption clears) is exactly as capable of landing on a
+            // same-owner device whose grant still awaits a post-purge rebuild as
+            // the ordinary sign-in path is.
+            if (!cancelled) await runInitialSync();
           }
         }
         return;

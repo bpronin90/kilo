@@ -15,7 +15,7 @@
 
 begin;
 
-select plan(42);
+select plan(51);
 
 \set user_a '99999999-9999-9999-9999-999999999999'
 \set user_b 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -248,6 +248,26 @@ select is(
   'withdrawal preserves the account'
 );
 
+-- ---------------------------------------------------------------------------
+-- Reconsent cloud rebuild signal (#538)
+-- ---------------------------------------------------------------------------
+
+-- The verified-zero purge just above advanced the monotonic rebuild
+-- generation from 0 to 1. It stays at 1 while the user is withdrawn: only a
+-- purge advances the counter, and each device compares it against its own
+-- last-rebuilt generation (stored client-side) to decide whether to rebuild.
+select is(
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  1,
+  'a verified-zero purge advances the rebuild generation to 1'
+);
+
+select isnt(
+  (select cloud_rebuild_armed_at from kilo.consent_state where user_id = :'user_a'::uuid),
+  null,
+  'the arming timestamp is recorded'
+);
+
 -- Re-granting from `withdrawn` is allowed; from deletion_pending it was not.
 select pg_temp.as_user(:'user_a'::uuid);
 
@@ -262,7 +282,57 @@ select is(
   're-grant restores access'
 );
 
+select is(
+  (kilo.consent_grant(1, '1.2.3', 'android') ->> 'cloud_rebuild_generation')::integer,
+  1,
+  'consent_grant reports the current rebuild generation in its own response'
+);
+
+select is(
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  1,
+  'granting again never resets the rebuild generation — only a purge advances it'
+);
+
+select is(
+  (kilo.health_sync_preflight() ->> 'cloud_rebuild_generation')::integer,
+  1,
+  'preflight surfaces the rebuild generation on every check, not only right after granting'
+);
+
 reset role;
+
+-- Monotonic: a SECOND verified-zero purge advances the generation again, so a
+-- device that had already caught up to generation 1 is behind again and
+-- rebuilds afresh. This is the multi-device property a single boolean flag
+-- (cleared by whichever device rebuilt first) could not express.
+select pg_temp.as_user(:'user_a'::uuid);
+select kilo.consent_withdraw();
+reset role;
+
+select is(
+  (select status from kilo.consent_state where user_id = :'user_a'::uuid),
+  'deletion_pending',
+  'a second withdrawal re-enters deletion_pending'
+);
+
+-- user_a holds no health rows (they were purged and never re-added), so the
+-- job verifies zero immediately and reaches withdrawn.
+select is(
+  (kilo.complete_health_deletion_job(
+    (select id from kilo.health_data_deletion_jobs
+       where user_id = :'user_a'::uuid and status in ('pending', 'running')
+       order by created_at desc limit 1)
+  ) ->> 'ok')::boolean,
+  true,
+  'the second purge completes with zero scoped rows'
+);
+
+select is(
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_a'::uuid),
+  2,
+  'a second verified-zero purge advances the rebuild generation to 2 (monotonic)'
+);
 
 -- ---------------------------------------------------------------------------
 -- Per-account quarantine
@@ -395,6 +465,15 @@ insert into auth.users (id) values (:'user_d'::uuid) on conflict do nothing;
 select pg_temp.as_user(:'user_d'::uuid);
 select kilo.consent_grant(1, '1.2.3', 'android');
 reset role;
+
+-- Regression guard: a user granting for the very first time, with no purge
+-- ever having emptied their gated set, must never be told to rebuild data
+-- they never had. The generation only advances on a verified-zero purge.
+select is(
+  (select cloud_rebuild_generation from kilo.consent_state where user_id = :'user_d'::uuid),
+  0,
+  'a fresh first-time grant with no completed purge sits at rebuild generation 0'
+);
 
 select cmp_ok(
   (select count(*) from kilo.consent_events where user_id = :'user_d'::uuid),

@@ -360,7 +360,10 @@ export async function setCursor(table, cursor) {
   await AsyncStorage.setItem(cursorKey(table), cursor);
 }
 
-async function clearCursor(table) {
+// Exported for the reconsent cloud-rebuild rearm (issue #538): a full rebuild
+// discards any cursor left over from before a withdrawal purge, so the next
+// pull cannot be short-circuited by a stale boundary.
+export async function clearCursor(table) {
   await AsyncStorage.removeItem(cursorKey(table));
 }
 
@@ -613,6 +616,19 @@ export async function getSyncSnapshot(table) {
 
 export async function setSyncSnapshot(table, records) {
   await AsyncStorage.setItem(snapshotKey(table), JSON.stringify(records || []));
+}
+
+// Discard the baseline entirely, as opposed to setSyncSnapshot(table, []): the
+// next syncDiffTable pass must see `persisted == null` (a `seeded` pass), not an
+// empty-but-present baseline, so it re-derives the seeded rules — most
+// importantly rule 3 (`isEmptyLocal`) — from scratch rather than from a value
+// this table has never actually agreed with the server on. Used by the
+// reconsent cloud-rebuild rearm (issue #538): a completed purge leaves the
+// server-side row set genuinely empty, and clearing the snapshot is what makes
+// the diff engine treat every local record as new rather than "already
+// reconciled with an empty cloud".
+export async function clearSyncSnapshot(table) {
+  await AsyncStorage.removeItem(snapshotKey(table));
 }
 
 // Key-order-independent structural stringify, so a jsonb column that round-trips

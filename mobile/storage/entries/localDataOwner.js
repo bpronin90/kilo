@@ -24,6 +24,18 @@ export const LOCAL_DATA_OWNER_KEY = 'kilo_local_data_owner';
 export const OWNER_UNCLAIMED = 'unclaimed';
 export const OWNER_UNKNOWN = 'unknown';
 
+// Per-owner record of the cloud-rebuild generation this DEVICE has itself
+// rebuilt for (issue #538). The server advances consent_state.cloud_rebuild_
+// generation on every verified-zero purge; a device rebuilds whenever the
+// server's generation is ahead of the value stored here, then advances this
+// value to match. Keyed by userId so a device that switches accounts never
+// mistakes another owner's progress for its own (purgeLocalData also clears
+// every kilo_ key on an account switch). Completion is deliberately tracked
+// here, per device, rather than by a single server-side flag: that is what
+// lets two of an account's devices each rebuild their own complete local copy
+// instead of the first one to sync clearing the signal for the rest.
+export const CLOUD_REBUILD_GENERATION_PREFIX = 'kilo_cloud_rebuild_generation_';
+
 export const LEGACY_BOOTSTRAP_MARKER_PREFIX = 'kilo_sync_bootstrapped_';
 
 // One-time derivation from the legacy per-user bootstrap markers so existing
@@ -70,6 +82,34 @@ export async function getLocalDataOwner() {
 export async function setLocalDataOwner(owner) {
   if (!owner) return;
   await AsyncStorage.setItem(LOCAL_DATA_OWNER_KEY, owner);
+}
+
+function cloudRebuildGenerationKey(userId) {
+  return `${CLOUD_REBUILD_GENERATION_PREFIX}${userId}`;
+}
+
+// The rebuild generation this device has already reconstructed the cloud for,
+// for the given owner. Defaults to 0 (this device has never rebuilt / the
+// account has never been purged), which also means an unreadable value can only
+// ever cause an extra, idempotent rebuild — never skip a needed one.
+export async function getCloudRebuildGeneration(userId) {
+  if (!userId) return 0;
+  try {
+    const raw = await AsyncStorage.getItem(cloudRebuildGenerationKey(userId));
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Record that this device has rebuilt the cloud up to `generation` for `userId`.
+// Written only after a rebuild AND its reconciliation pass have both succeeded,
+// so a crash before that leaves the device behind the server's generation and it
+// rebuilds again next launch (retryable without ever touching local data).
+export async function setCloudRebuildGeneration(userId, generation) {
+  if (!userId || !Number.isInteger(generation)) return;
+  await AsyncStorage.setItem(cloudRebuildGenerationKey(userId), String(generation));
 }
 
 // Remove every kilo-prefixed key — all entry data from keys.js, the legacy

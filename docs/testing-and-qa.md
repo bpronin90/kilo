@@ -616,6 +616,15 @@ retains non-test commands such as `npm run audit`.
   already-stripped `wn_legacy_` rows converge back to tombstones, repeated sync
   stays idempotent, and legitimate legacy-only/user-authored notes survive
   (#501)
+- verify a verified-zero purge leaves an ordinary sync pass with nothing to
+  detect (the #538 failure mode, pinned directly against the real engine);
+  verify `rearmGatedTablesForRebuild()` plus one ordinary pass fully
+  reconstructs all seven gated tables, including tombstones and the derived
+  `fatigue_checkins` projection, while leaving ungated tables untouched; verify
+  `rebuildCloudCopy()` reconstructs every gated table and runs a reconciliation
+  pass that leaves nothing dirty; verify a push interrupted mid-rebuild does not
+  falsely report success, leaves the dirty queue armed, and a reconnected retry
+  is safe and idempotent (no duplicate rows) (#538)
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
@@ -637,6 +646,17 @@ retains non-test commands such as `npm run audit`.
   user-authored `Routine 1` notes visible, and perform no health sync on repeated
   refresh; verify a successful same-owner re-grant restores cloud routing without
   bypassing the foreign-owner gate (#544)
+- verify a same-owner sign-in whose server `cloud_rebuild_generation` is ahead of
+  this device runs the full post-purge cloud rebuild automatically, in place of
+  the ordinary sync pass, with no user action, then records the caught-up
+  generation; verify a device already caught up (or an absent generation field)
+  falls back to the ordinary pass (never a spurious rebuild) and stays idempotent
+  across launches; verify per-device completion — a second same-owner device that
+  has not caught up still rebuilds, since there is no single server flag the first
+  device could clear; verify manual Sync Now selects the rebuild the same way;
+  verify a failed rebuild leaves the sync phase failed/retryable without touching
+  local data, the owner marker, or the device generation, and a retry
+  re-attempts it (#538)
 
 ### `mobile/tests/health-consent.test.js` and `mobile/tests/consent-gate-client.test.js`
 
@@ -735,7 +755,12 @@ retains non-test commands such as `npm run audit`.
   wording, timestamps, and configuration
 - `supabase/tests/consent-lifecycle.test.sql` covers withdrawal transitions,
   partial-purge retry, operator re-enqueue, re-grant, per-account quarantine,
-  purge arming, and evidence-key lifecycle behavior
+  purge arming, and evidence-key lifecycle behavior; also covers the
+  reconsent cloud-rebuild signal (#538): a verified-zero purge advances the
+  monotonic `cloud_rebuild_generation`, `consent_grant` and
+  `health_sync_preflight` both surface it, re-granting never resets it, a second
+  purge advances it again (the monotonic multi-device property), and a fresh
+  first-time grant with no prior purge sits at generation 0
 - `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified
