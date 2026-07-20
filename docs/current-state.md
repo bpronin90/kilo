@@ -319,7 +319,9 @@ The real native app path now has a modular React Native shell:
   persistence so the raw editor is comfortable to use while the rendered view
   stays parser-compatible. When an active deload note exists the Deload tab now
   shows a `Deload complete` action that archives the note (capturing the current
-  session count) behind a confirm dialog, dual-writes that completion into the
+  session count) behind a confirm dialog, plus a destructive `Delete active
+  deload` action that confirms the irreversible removal and returns to the
+  `Generate deload` empty state. Completion dual-writes the archived note into the
   workout-notes store as a dated `Deload · YYYY-MM-DD` note, and renders a
   `Past deloads` list that now splits behavior by record type: note-backed
   deloads expand inline in place like saved routines, expose inline edit/delete

@@ -13,6 +13,7 @@ export function LogDeloadSection({
   handleDeloadBodyPress,
   deloadMode,
   completeDeload,
+  clearDeloadNote,
   handleGenerateDeload,
   isGenerating,
   workoutNoteText,
@@ -48,6 +49,17 @@ export function LogDeloadSection({
   const handleCompleteDeload = () => {
     setDeloadOrdinalInput(String(logSessionCount));
     setShowDeloadOrdinalPrompt(true);
+  };
+
+  const handleDeleteActiveDeload = () => {
+    Alert.alert(
+      'Delete active deload?',
+      'This will remove the active deload and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: clearDeloadNote },
+      ]
+    );
   };
 
   const handleConfirmDeloadOrdinal = async () => {
@@ -126,10 +138,18 @@ export function LogDeloadSection({
           </View>
           <View style={styles.previousRoutines}>
             {deloadMode === 'read' && (
-              <Button
-                onPress={handleCompleteDeload}
-                title="Deload complete"
-              />
+              <>
+                <Button
+                  onPress={handleCompleteDeload}
+                  title="Deload complete"
+                />
+                <Button
+                  onPress={handleDeleteActiveDeload}
+                  title="Delete active deload"
+                  style={styles.deleteActiveButton}
+                  textStyle={styles.deleteActiveButtonText}
+                />
+              </>
             )}
             <Button
               onPress={handleGenerateDeload}
@@ -370,6 +390,14 @@ const styles = StyleSheet.create({
   },
   generateButtonText: {
     color: Colors.accent,
+  },
+  deleteActiveButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.error,
+  },
+  deleteActiveButtonText: {
+    color: Colors.error,
   },
   deloadEmpty: {
     marginTop: 40,
