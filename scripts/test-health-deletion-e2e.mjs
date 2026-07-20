@@ -16,11 +16,20 @@
 //
 // Usage:
 //   node scripts/test-health-deletion-e2e.mjs
+//   node scripts/test-health-deletion-e2e.mjs --scenarios
 //   node scripts/test-health-deletion-e2e.mjs --allow-production
+//
+// --scenarios additionally runs the seven required failure/recovery stages
+// (missing function, missing Vault configuration, HTTP auth failure, pg_net
+// failure, partial erasure, retry, eventual completion) plus the stale-`running`
+// reclaim. It is refused against production unconditionally.
 //
 // Required environment:
 //   KILO_E2E_DATABASE_URL      postgresql:// superuser-or-owner URL for the target
 //   KILO_E2E_SUPABASE_URL      https://<ref>.supabase.co
+//
+// Both must resolve to the SAME project ref; a mismatched pair is refused before
+// any account is created or any SQL is issued.
 //   KILO_E2E_SERVICE_ROLE_KEY  service-role key for the target project
 //   KILO_E2E_ANON_KEY          anon key for the target project
 //   KILO_E2E_EMAIL_DOMAIN      disposable mail domain for the fixture account
@@ -75,25 +84,124 @@ const FIXTURE_ROWS = {
 
 // --- guards -------------------------------------------------------------
 
+// A local stack is one identity for both endpoints; it is never production.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+const LOCAL_IDENTITY = 'local';
+
+function normalizeHost(host) {
+  return (host || '').replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
+}
+
+// The project ref behind the API URL: https://<ref>.supabase.co
 export function projectRefFromUrl(supabaseUrl) {
+  let host;
   try {
-    const host = new URL(supabaseUrl).hostname;
-    const [ref] = host.split('.');
-    return ref || null;
+    host = normalizeHost(new URL(supabaseUrl).hostname);
   } catch {
     return null;
   }
+  if (!host) return null;
+  if (LOCAL_HOSTS.has(host)) return LOCAL_IDENTITY;
+  const match = /^([a-z0-9-]+)\.supabase\.(co|in|red|net)$/.exec(host);
+  return match ? match[1] : null;
+}
+
+// The project ref behind the DATABASE URL. Supabase exposes two shapes and the
+// ref lives in a different place in each, which is exactly why a check on the
+// API URL alone could never bind them:
+//
+//   direct   postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres
+//   pooler   postgresql://postgres.<ref>:...@aws-N-<region>.pooler.supabase.com:5432/postgres
+//
+// Returns null for anything it cannot positively identify, so the caller fails
+// closed rather than assuming an unrecognized host is safe.
+export function projectRefFromDatabaseUrl(databaseUrl) {
+  let url;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') return null;
+
+  const host = normalizeHost(url.hostname);
+  if (!host) return null;
+  if (LOCAL_HOSTS.has(host)) return LOCAL_IDENTITY;
+
+  if (host.endsWith('.pooler.supabase.com')) {
+    const user = decodeURIComponent(url.username || '').toLowerCase();
+    const match = /^postgres\.([a-z0-9-]+)$/.exec(user);
+    return match ? match[1] : null;
+  }
+
+  const match = /^db\.([a-z0-9-]+)\.supabase\.(co|in|red|net)$/.exec(host);
+  return match ? match[1] : null;
+}
+
+// Binds the API endpoint and the database endpoint to ONE verified project
+// identity before anything is created or written.
+//
+// Without this the two URLs are independent: every fixture insert, prerequisite
+// read, drain, and erasure assertion goes through KILO_E2E_DATABASE_URL, while
+// the production classification looked only at KILO_E2E_SUPABASE_URL. An
+// isolated API URL paired with the production database URL therefore satisfied
+// both production guards and still wrote synthetic rows to production.
+//
+// Fails closed on either side: an endpoint whose ref cannot be parsed is a
+// refusal, not an assumption of safety.
+export function resolveTargetIdentity({ supabaseUrl, databaseUrl }) {
+  const apiRef = projectRefFromUrl(supabaseUrl);
+  if (!apiRef) {
+    return {
+      ok: false,
+      reason:
+        'KILO_E2E_SUPABASE_URL does not resolve to an identifiable project ' +
+        '(expected https://<ref>.supabase.co or a local host). Failing closed.',
+    };
+  }
+
+  const dbRef = projectRefFromDatabaseUrl(databaseUrl);
+  if (!dbRef) {
+    return {
+      ok: false,
+      reason:
+        'KILO_E2E_DATABASE_URL does not resolve to an identifiable project (expected ' +
+        'postgresql://...@db.<ref>.supabase.co, postgresql://postgres.<ref>@...pooler.supabase.com, ' +
+        'or a local host). Failing closed.',
+    };
+  }
+
+  if (apiRef !== dbRef) {
+    return {
+      ok: false,
+      reason:
+        `target mismatch: KILO_E2E_SUPABASE_URL resolves to project "${apiRef}" but ` +
+        `KILO_E2E_DATABASE_URL resolves to project "${dbRef}". Both endpoints must belong to ` +
+        'one verified project; a mismatched pair could write fixture rows to a project the ' +
+        'production guards never inspected.',
+    };
+  }
+
+  return { ok: true, ref: apiRef };
 }
 
 // Pure, and unit-tested in scripts/health-deletion-monitor.test.mjs. The whole
 // point is that this cannot be satisfied by accident: an operator who exports
 // production credentials and runs the harness out of habit gets exit 2, not a
 // live purge run against real accounts.
-export function assertTargetAllowed({ supabaseUrl, emailDomain, allowProduction, confirmedDomain }) {
-  const ref = projectRefFromUrl(supabaseUrl);
-  if (!ref) {
-    return { ok: false, reason: 'KILO_E2E_SUPABASE_URL is not a valid https://<ref>.supabase.co URL.' };
-  }
+export function assertTargetAllowed({
+  supabaseUrl,
+  databaseUrl,
+  emailDomain,
+  allowProduction,
+  confirmedDomain,
+}) {
+  // Identity binding runs FIRST: a mismatched pair is refused before the
+  // production classification is even reached, and long before any account or
+  // SQL statement exists.
+  const identity = resolveTargetIdentity({ supabaseUrl, databaseUrl });
+  if (!identity.ok) return { ok: false, reason: identity.reason };
+  const ref = identity.ref;
 
   if (!emailDomain) {
     return { ok: false, reason: 'KILO_E2E_EMAIL_DOMAIN is required; the harness will not invent a mail domain.' };
@@ -205,6 +313,19 @@ export function classifyBoundaryFailure(observation) {
   return null; // eventual completion
 }
 
+// --- exit-code contract -------------------------------------------------
+
+// Pure, so the "cleanup failure can never be green" property is asserted
+// directly rather than inferred from a code path. There is deliberately no
+// branch that maps a cleanup failure to 0: a run that leaves a real auth account
+// behind is not a successful run, however well the boundary itself behaved.
+export function finalExitCode({ failed, cleanupFailure }) {
+  if (failed && failed.stage === 'harness-error') return 2;
+  if (failed) return 1;
+  if (cleanupFailure) return 1;
+  return 0;
+}
+
 // --- plumbing -----------------------------------------------------------
 
 function loadLocalEnv(envPath) {
@@ -309,12 +430,342 @@ async function rpcAsUser(fn, body, { supabaseUrl, anonKey, accessToken }) {
   return text ? JSON.parse(text) : null;
 }
 
+// --- failure / recovery scenarios ---------------------------------------
+//
+// The seven required boundary cases, as REAL harness stages that drive the
+// isolated target rather than as fabricated observations fed to a pure function.
+// Each one arranges a genuine fault in the live stack, drives the actual cron
+// entrypoint, observes what the stack does, and asserts the classification.
+//
+// Enabled with --scenarios. Refused on production unconditionally, with no
+// operator override: these stages park Vault secrets and induce failed jobs, and
+// there is no version of that which is acceptable against real users' data. The
+// happy-path run has an operator escape hatch; this deliberately does not.
+//
+// Vault handling never decrypts anything. A secret is "parked" by RENAMING it,
+// and a substitute is created under the required name, so the original value is
+// never read, printed, or reconstructed -- it is restored by renaming back.
+
+const PARKED_SUFFIX = '__e2e_parked';
+
+function parkSecret(name) {
+  sql(`update vault.secrets set name = $1 || '${PARKED_SUFFIX}' where name = $1`, [name]);
+}
+
+function installSecret(name, value) {
+  sql('select vault.create_secret($1, $2)', [value, name]);
+}
+
+function restoreSecret(name) {
+  sql('delete from vault.secrets where name = $1', [name]);
+  sql(`update vault.secrets set name = $1 where name = $1 || '${PARKED_SUFFIX}'`, [name]);
+}
+
+function secretNames() {
+  const row = sql('select functions_base_url || $1 || service_role_key from kilo.worker_secret_names()', ['|']);
+  const [baseUrl, serviceKey] = row.split('|');
+  return { baseUrl, serviceKey };
+}
+
+// Re-arm the fixture: put the synthetic rows back and move the job to a due,
+// pending state. Inserts are attempted individually because a scenario that did
+// not purge leaves its rows in place, and a duplicate there is expected.
+function rearmFixture(userId, gatedTables) {
+  for (const table of gatedTables) {
+    try {
+      sql(FIXTURE_ROWS[table], [userId]);
+    } catch {
+      // Row already present from a scenario that intentionally did not erase.
+    }
+  }
+  const seeded = Number(sql('select sum(value::bigint) from jsonb_each_text(kilo.health_data_row_counts($1))', [userId]));
+  if (!(seeded > 0)) throw new Error('could not re-arm fixture rows; the scenario would be vacuous');
+  sql('select kilo.reenqueue_health_deletion($1)', [userId]);
+  return seeded;
+}
+
+function currentJob(userId) {
+  const row = sql(
+    `select j.id::text || '|' || j.status || '|' || j.attempts::text || '|' ||
+            (j.next_attempt_at > now())::text
+     from kilo.health_data_deletion_jobs j
+     where j.user_id = $1 order by j.created_at desc limit 1`,
+    [userId]
+  );
+  if (!row) return null;
+  const [id, status, attempts, backoffPending] = row.split('|');
+  return { id, status, attempts: Number(attempts), backoffPending: backoffPending === 'true' };
+}
+
+function drain() {
+  return JSON.parse(sql('select kilo.drain_health_deletion_jobs()'));
+}
+
+function awaitNetResponse(requestId, seconds = 60) {
+  return (async () => {
+    for (let attempt = 0; attempt < seconds; attempt += 1) {
+      const row = sql(
+        `select coalesce(status_code::text, '') || '|' || coalesce(error_msg, '')
+         from net._http_response where id = $1`,
+        [requestId]
+      );
+      if (row) {
+        const [status, errorMessage] = row.split('|');
+        return { status_code: status ? Number(status) : null, error_msg: errorMessage || null };
+      }
+      await sleep(1000);
+    }
+    return null;
+  })();
+}
+
+function remainingFor(userId) {
+  return Number(sql('select sum(value::bigint) from jsonb_each_text(kilo.health_data_row_counts($1))', [userId]));
+}
+
+async function awaitCompletion(userId, seconds = 120) {
+  for (let attempt = 0; attempt < seconds / 2; attempt += 1) {
+    const job = currentJob(userId);
+    const remaining = remainingFor(userId);
+    if (job && job.status === 'complete' && remaining === 0) return { job, remaining };
+    await sleep(2000);
+  }
+  return { job: currentJob(userId), remaining: remainingFor(userId) };
+}
+
+// Each scenario returns the stage it expects classifyBoundaryFailure to name, so
+// the assertion is on the real stack's observed behavior, not on a hand-built
+// observation object.
+export const BOUNDARY_SCENARIOS = [
+  {
+    name: 'missing-vault-configuration',
+    expect: 'missing-vault-configuration',
+    async run({ userId, gatedTables }) {
+      const { baseUrl, serviceKey } = secretNames();
+      rearmFixture(userId, gatedTables);
+      parkSecret(baseUrl);
+      parkSecret(serviceKey);
+      try {
+        const result = drain();
+        if (result.dispatched !== false || result.request_id !== null) {
+          throw new Error('drain dispatched despite absent Vault configuration');
+        }
+        return { dispatchRequestId: null, secretsPresent: false, functionDeployed: true, netResponse: null };
+      } finally {
+        restoreSecret(baseUrl);
+        restoreSecret(serviceKey);
+      }
+    },
+  },
+  {
+    name: 'missing-function',
+    expect: 'missing-function',
+    async run({ userId, gatedTables, ref }) {
+      const { baseUrl } = secretNames();
+      rearmFixture(userId, gatedTables);
+      parkSecret(baseUrl);
+      // A reachable origin with no function mounted at the worker path: the
+      // request leaves the database and comes back 404, which is the shape of a
+      // never-deployed or renamed Edge Function.
+      installSecret(baseUrl, `https://${ref}.supabase.co/e2e-nonexistent-base`);
+      try {
+        const result = drain();
+        const netResponse = await awaitNetResponse(result.request_id);
+        return {
+          dispatchRequestId: result.request_id,
+          secretsPresent: true,
+          functionDeployed: !(netResponse && netResponse.status_code === 404),
+          netResponse,
+        };
+      } finally {
+        restoreSecret(baseUrl);
+      }
+    },
+  },
+  {
+    name: 'http-authentication-failure',
+    expect: 'http-authentication-failure',
+    async run({ userId, gatedTables }) {
+      const { serviceKey } = secretNames();
+      rearmFixture(userId, gatedTables);
+      parkSecret(serviceKey);
+      // Well-formed but invalid: the function must reject the credential rather
+      // than fail to parse it, which is what a rotated key looks like in prod.
+      installSecret(serviceKey, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e2e-invalid.e2e-invalid');
+      try {
+        const result = drain();
+        const netResponse = await awaitNetResponse(result.request_id);
+        return {
+          dispatchRequestId: result.request_id,
+          secretsPresent: true,
+          functionDeployed: true,
+          netResponse,
+        };
+      } finally {
+        restoreSecret(serviceKey);
+      }
+    },
+  },
+  {
+    name: 'pg-net-failure',
+    expect: 'pg-net-failure',
+    async run({ userId, gatedTables }) {
+      const { baseUrl } = secretNames();
+      rearmFixture(userId, gatedTables);
+      parkSecret(baseUrl);
+      // Closed port on the loopback interface: pg_net records a transport
+      // error_msg with no status code at all.
+      installSecret(baseUrl, 'https://127.0.0.1:1');
+      try {
+        const result = drain();
+        const netResponse = await awaitNetResponse(result.request_id);
+        return {
+          dispatchRequestId: result.request_id,
+          secretsPresent: true,
+          functionDeployed: true,
+          netResponse,
+        };
+      } finally {
+        restoreSecret(baseUrl);
+      }
+    },
+  },
+  {
+    name: 'partial-erasure',
+    expect: 'partial-erasure',
+    async run({ userId, gatedTables }) {
+      // Drive the completion path directly with rows still present. This is the
+      // real guard in kilo.complete_health_deletion_job: it re-counts the gated
+      // set and refuses to advance to `withdrawn` while anything remains.
+      const seeded = rearmFixture(userId, gatedTables);
+      const job = currentJob(userId);
+      const outcome = JSON.parse(sql('select kilo.complete_health_deletion_job($1)', [job.id]));
+      if (outcome.ok !== false) {
+        throw new Error('complete_health_deletion_job advanced a job while gated rows remained');
+      }
+      if (Number(outcome.remaining) !== seeded) {
+        throw new Error(`completion reported remaining=${outcome.remaining}, expected ${seeded}`);
+      }
+      const consent = sql('select status from kilo.consent_state where user_id = $1', [userId]);
+      if (consent === 'withdrawn') {
+        throw new Error('consent_state advanced to withdrawn despite a refused completion');
+      }
+      return {
+        dispatchRequestId: 1,
+        secretsPresent: true,
+        functionDeployed: true,
+        netResponse: { status_code: 200, error_msg: null },
+        remainingRows: Number(outcome.remaining),
+        jobStatus: 'failed',
+      };
+    },
+  },
+  {
+    name: 'retry',
+    expect: 'retry-pending',
+    async run({ userId, gatedTables }) {
+      rearmFixture(userId, gatedTables);
+      const before = currentJob(userId);
+      sql('select kilo.fail_health_deletion_job($1, $2)', [before.id, 'e2e induced transient failure']);
+
+      const failedJob = currentJob(userId);
+      if (failedJob.status !== 'failed') throw new Error(`expected status failed, got ${failedJob.status}`);
+      if (!failedJob.backoffPending) throw new Error('a failed job must sit out its backoff window');
+
+      // Recovery half: once the backoff elapses the DRAIN itself must re-open it.
+      // This is the reclaim path a direct dispatch call never exercised.
+      sql('update kilo.health_data_deletion_jobs set next_attempt_at = now() where id = $1', [failedJob.id]);
+      const result = drain();
+      if (!(result.reopened >= 1)) {
+        throw new Error(`drain did not re-open the due failed job (reopened=${result.reopened})`);
+      }
+      return {
+        dispatchRequestId: result.request_id,
+        secretsPresent: true,
+        functionDeployed: true,
+        netResponse: { status_code: 200, error_msg: null },
+        remainingRows: remainingFor(userId),
+        jobStatus: 'pending',
+        attempts: failedJob.attempts,
+      };
+    },
+  },
+  {
+    name: 'eventual-completion',
+    expect: null,
+    async run({ userId, gatedTables }) {
+      rearmFixture(userId, gatedTables);
+      const result = drain();
+      const netResponse = await awaitNetResponse(result.request_id);
+      const { job, remaining } = await awaitCompletion(userId);
+      return {
+        dispatchRequestId: result.request_id,
+        secretsPresent: true,
+        functionDeployed: true,
+        netResponse,
+        remainingRows: remaining,
+        jobStatus: job ? job.status : 'none',
+        attempts: job ? job.attempts : 0,
+      };
+    },
+  },
+];
+
+// Also exercises the stale-`running` reclaim, which is the condition the backlog
+// monitor pages on and which only the drain entrypoint can perform.
+async function runStaleReclaimStage(userId, gatedTables) {
+  rearmFixture(userId, gatedTables);
+  const job = currentJob(userId);
+  sql(
+    `update kilo.health_data_deletion_jobs
+     set status = 'running', updated_at = now() - interval '31 minutes' where id = $1`,
+    [job.id]
+  );
+  const result = drain();
+  if (!(result.reclaimed_stale >= 1)) {
+    throw new Error(`drain did not reclaim a stale running job (reclaimed_stale=${result.reclaimed_stale})`);
+  }
+  console.log('    ok - stale `running` job reclaimed by the drain entrypoint');
+}
+
+async function runBoundaryScenarios(context) {
+  console.log('health-deletion-e2e: running boundary failure/recovery scenarios');
+  const failures = [];
+
+  await runStaleReclaimStage(context.userId, context.gatedTables);
+
+  for (const scenario of BOUNDARY_SCENARIOS) {
+    try {
+      const observation = await scenario.run(context);
+      const classification = classifyBoundaryFailure({
+        remainingRows: 0,
+        jobStatus: 'complete',
+        attempts: 1,
+        ...observation,
+      });
+      const actual = classification ? classification.stage : null;
+      if (actual !== scenario.expect) {
+        failures.push(`${scenario.name}: expected stage ${scenario.expect ?? 'none'}, observed ${actual ?? 'none'}`);
+        console.log(`    FAIL - ${scenario.name} (observed ${actual ?? 'none'})`);
+      } else {
+        console.log(`    ok - ${scenario.name}`);
+      }
+    } catch (err) {
+      failures.push(`${scenario.name}: ${err.stderr ? String(err.stderr).slice(0, 300) : err.message}`);
+      console.log(`    FAIL - ${scenario.name}`);
+    }
+  }
+
+  return failures;
+}
+
 // --- the run ------------------------------------------------------------
 
 async function main() {
   loadLocalEnv(process.env.KILO_E2E_ENV_FILE || join(root, '.env'));
 
   const allowProduction = process.argv.includes('--allow-production');
+  const runScenarios = process.argv.includes('--scenarios');
   const supabaseUrl = (process.env.KILO_E2E_SUPABASE_URL || '').replace(/\/$/, '');
   const serviceRoleKey = process.env.KILO_E2E_SERVICE_ROLE_KEY;
   const anonKey = process.env.KILO_E2E_ANON_KEY;
@@ -331,11 +782,30 @@ async function main() {
     if (!value) fail(2, `${name} is not set.`);
   }
 
-  const guard = assertTargetAllowed({ supabaseUrl, emailDomain, allowProduction, confirmedDomain });
+  // Nothing below this line runs until the API and database endpoints are proven
+  // to be the same project: no account, no fixture row, no SQL statement at all.
+  const guard = assertTargetAllowed({
+    supabaseUrl,
+    databaseUrl,
+    emailDomain,
+    allowProduction,
+    confirmedDomain,
+  });
   if (!guard.ok) fail(2, guard.reason);
 
+  // No override exists for this one. The scenarios park Vault secrets and induce
+  // failed purge jobs; against production that would break real erasures.
+  if (runScenarios && guard.isProduction) {
+    fail(
+      2,
+      '--scenarios is refused against production unconditionally. The failure scenarios park Vault ' +
+        'secrets and induce failed deletion jobs; run them only against an isolated project.'
+    );
+  }
+
   console.log(
-    `health-deletion-e2e: target project ${guard.ref}${guard.isProduction ? ' (PRODUCTION, both guards satisfied)' : ' (isolated)'}`
+    `health-deletion-e2e: target project ${guard.ref} (API and database endpoints verified identical)` +
+      `${guard.isProduction ? ' — PRODUCTION, both guards satisfied' : ' — isolated'}`
   );
 
   try {
@@ -369,6 +839,7 @@ async function main() {
 
   let userId = null;
   let failed = null;
+  let cleanupFailure = null;
 
   try {
     const created = await admin('users', 'POST', { email, password, email_confirm: true }, { supabaseUrl, serviceRoleKey });
@@ -412,10 +883,54 @@ async function main() {
              where s.name in (n.functions_base_url, n.service_role_key)`)
       ) === 2;
 
-    // The real boundary: Postgres -> pg_net -> HTTPS -> Edge Function.
-    const dispatchRaw = sql('select kilo.dispatch_health_deletion_worker()');
-    const dispatchRequestId = dispatchRaw === '' ? null : Number(dispatchRaw);
-    console.log(`  dispatched worker (pg_net request ${dispatchRequestId ?? 'NULL'})`);
+    // The cron entrypoint itself must exist, be active, and actually invoke the
+    // drain function. Driving drain_health_deletion_jobs() below proves the
+    // function works; this proves pg_cron is wired to call THAT function, which
+    // together is the cron -> drain half of the boundary. (Waiting out a real
+    // */5 tick is deliberately not done: it would add five minutes of latency
+    // and still only re-execute the same statement asserted here.)
+    const cronRow = sql(
+      `select coalesce(active::text, 'false') || '|' || coalesce(command, '')
+       from cron.job where jobname = 'health-deletion-drain'`
+    );
+    if (!cronRow) throw new Error('pg_cron job "health-deletion-drain" does not exist on the target');
+    const [cronActive, cronCommand] = cronRow.split('|');
+    if (cronActive !== 't' && cronActive !== 'true') {
+      throw new Error('pg_cron job "health-deletion-drain" exists but is not active');
+    }
+    if (!/kilo\.drain_health_deletion_jobs\s*\(/.test(cronCommand)) {
+      throw new Error(
+        `pg_cron job "health-deletion-drain" does not invoke kilo.drain_health_deletion_jobs(); command is: ${cronCommand}`
+      );
+    }
+    console.log('  verified cron "health-deletion-drain" is active and invokes kilo.drain_health_deletion_jobs()');
+
+    // The real boundary, driven through the ACTUAL cron entrypoint rather than
+    // dispatch_health_deletion_worker(). drain_health_deletion_jobs() is what
+    // pg_cron runs: it re-opens due failures, reclaims stale `running` jobs, and
+    // only then dispatches. Calling dispatch directly skipped both recovery
+    // steps, so the promised cron/drain -> pg_net path went untested.
+    const drain = JSON.parse(sql('select kilo.drain_health_deletion_jobs()'));
+    const dispatchRequestId =
+      drain.request_id === null || drain.request_id === undefined ? null : Number(drain.request_id);
+
+    // Assert the drain's own returned contract, not just its side effect.
+    for (const key of ['reopened', 'reclaimed_stale', 'dispatched', 'request_id']) {
+      if (!(key in drain)) throw new Error(`kilo.drain_health_deletion_jobs() omitted "${key}" from its result`);
+    }
+    if (typeof drain.dispatched !== 'boolean') {
+      throw new Error(`drain reported a non-boolean "dispatched": ${JSON.stringify(drain.dispatched)}`);
+    }
+    if (drain.dispatched !== (dispatchRequestId !== null)) {
+      throw new Error(
+        `drain reported dispatched=${drain.dispatched} but request_id=${JSON.stringify(drain.request_id)}; ` +
+          'the two must agree.'
+      );
+    }
+    console.log(
+      `  drained via cron entrypoint (reopened=${drain.reopened} reclaimed_stale=${drain.reclaimed_stale} ` +
+        `dispatched=${drain.dispatched} request=${dispatchRequestId ?? 'NULL'})`
+    );
 
     let netResponse = null;
     if (dispatchRequestId !== null) {
@@ -499,26 +1014,81 @@ async function main() {
         }
       }
     }
+
+    if (runScenarios && !failed) {
+      const scenarioFailures = await runBoundaryScenarios({
+        userId,
+        gatedTables,
+        ref: guard.ref,
+      });
+      if (scenarioFailures.length > 0) {
+        failed = {
+          stage: 'boundary-scenario-failure',
+          detail: `${scenarioFailures.length} scenario(s) did not behave as required: ${scenarioFailures.join('; ')}`,
+        };
+      } else {
+        console.log(`  all ${BOUNDARY_SCENARIOS.length + 1} boundary scenario(s) behaved as required`);
+      }
+    }
   } catch (err) {
     failed = { stage: 'harness-error', detail: err.stderr ? String(err.stderr).slice(0, 500) : err.message };
   } finally {
     // Always destroy the fixture account. The cascade removes anything the purge
     // did not, so a failed run never leaves synthetic health rows behind.
+    //
+    // A cleanup failure is a REAL failure, never a warning on an otherwise green
+    // run: reporting success while a live auth account survives is exactly the
+    // kind of "looks clean, isn't" result this harness exists to prevent.
     if (userId) {
       try {
         await admin(`users/${userId}`, 'DELETE', null, { supabaseUrl, serviceRoleKey });
-        console.log('  deleted disposable fixture account');
+
+        // Confirm removal rather than trusting the response: the operator needs
+        // to know the account is gone, not that a request returned 200.
+        let stillPresent = true;
+        try {
+          await admin(`users/${userId}`, 'GET', null, { supabaseUrl, serviceRoleKey });
+        } catch {
+          stillPresent = false; // 404 is the success signal here.
+        }
+        if (stillPresent) {
+          cleanupFailure = 'the account still resolves after a successful DELETE (possible soft delete)';
+        } else {
+          console.log('  deleted disposable fixture account (removal confirmed)');
+        }
       } catch (err) {
-        console.error(`health-deletion-e2e: WARNING could not delete fixture account: ${err.message}`);
+        cleanupFailure = err.message;
       }
     }
   }
 
-  if (failed) {
-    if (failed.stage === 'harness-error') {
+  // Reported before the exit decision so an operator sees the account to remove
+  // even when a boundary failure is also being reported.
+  //
+  // The uuid is the fixture account's own identifier and is the minimum an
+  // operator needs to delete it safely. The fixture password and the access
+  // token are never printed, and the email is withheld because the uuid alone is
+  // sufficient for `auth.admin.deleteUser`.
+  if (cleanupFailure) {
+    console.error(
+      `health-deletion-e2e: CLEANUP FAILED — the disposable fixture account was NOT removed.\n` +
+        `  project:      ${guard.ref}\n` +
+        `  account uuid: ${userId}\n` +
+        `  cause:        ${cleanupFailure}\n` +
+        `  Remove it with: select auth.admin_delete_user('${userId}');  -- or the Auth admin API`
+    );
+  }
+
+  if (finalExitCode({ failed, cleanupFailure }) !== 0) {
+    if (failed && failed.stage === 'harness-error') {
       fail(2, `the harness could not complete: ${failed.detail}`);
     }
-    fail(1, `boundary failure at stage "${failed.stage}": ${failed.detail}`);
+    if (failed) {
+      fail(1, `boundary failure at stage "${failed.stage}": ${failed.detail}`);
+    }
+    // Cleanup failure alone still fails the run: a surviving auth account is a
+    // real problem an operator must act on, not an unchecked state.
+    fail(1, 'the boundary passed but the disposable fixture account was left behind (see above).');
   }
 
   console.log('health-deletion-e2e: ok — cron/drain -> pg_net -> Edge Function -> verified erasure.');

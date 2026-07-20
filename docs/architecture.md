@@ -101,7 +101,8 @@ It alerts when any of these is true:
 - an open deletion job is older than `KILO_DELETION_MAX_AGE_MINUTES` (default 60)
 - a job has reached `KILO_DELETION_MAX_ATTEMPTS` (default 5) without completing
 - a `running` job is older than `KILO_DELETION_RUNNING_STALE_MINUTES` (default
-  30), which is the drain's own stale-job reclaim ceiling
+  30), which is the drain's own stale-job reclaim ceiling (see the known
+  limitation below: this is currently measured from `created_at`)
 - the `health-deletion-drain` cron is missing or inactive
 - either required worker Vault secret name is absent
 
@@ -135,6 +136,46 @@ grant select (name) on vault.secrets to kilo_deletion_monitor;
 Set that role's session-pooler URL as the `SUPABASE_HEALTH_MONITOR_URL`
 repository secret. The role is read-only, cannot decrypt a secret, cannot write
 any table, and reaches no co-tenant schema.
+
+**Known limitation: stale-`running` detection uses the wrong clock.**
+`kilo.drain_health_deletion_jobs()` reclaims a `running` job only when
+`updated_at` is older than 30 minutes, but `kilo.health_deletion_backlog(interval)`
+returns age measured from `created_at`. The two clocks disagree, so a job queued
+more than 30 minutes ago and claimed seconds ago is reported as stale even
+though the worker is fresh — a false page.
+
+This cannot be corrected from the monitor script.
+`kilo.health_data_deletion_jobs` has RLS enabled with **no policies**, making it
+deny-all to every role without `BYPASSRLS`; the `security definer` backlog
+function is the only read path. A column-level `grant select (id, status,
+updated_at)` to the monitor role still returns zero rows — verified against a
+disposable Postgres with all migrations applied. Fixing it therefore requires
+either a new RLS policy or adding `updated_at` to the backlog function's return
+type, both changes to `supabase/migrations/`, which is outside the Allowed Files
+of the issue that introduced this monitor. Tracked for a follow-up issue. Until
+then the monitor errs toward a false page rather than a missed wedged worker.
+
+**Known limitation: the drain-cron check cannot see the cron row.** `cron.job`
+enforces RLS with the policy `username = CURRENT_USER`. The
+`health-deletion-drain` entry is scheduled by the migration running as
+`postgres`, so a distinct `kilo_deletion_monitor` role matches no row even with
+`grant select on cron.job`, and both `drain_cron_active` and
+`drain_cron_present` read as false. The monitor would therefore report
+`drain-cron-inactive` on **every** run and exit 1 permanently — verified on a
+disposable Postgres with all migrations applied.
+
+Granting a read policy on `cron.job` is not available to the operator either:
+`create policy … on cron.job` fails with `must be owner of table job`, because
+the table belongs to the Supabase superuser rather than to `postgres`.
+
+Both limitations have the same correct fix and should be resolved together in a
+follow-up issue that owns `supabase/migrations/`: a `security definer` accessor
+in the `kilo` schema that returns the drain cron's presence/active state and the
+`updated_at` age of `running` jobs, granted to the monitor role. That keeps the
+monitor's least-privilege posture and its drop-by-default redaction while giving
+it a read path RLS does not block. **Until that lands, do not wire this monitor
+to a paging channel** — schedule it, read its output, and treat
+`drain-cron-inactive` as unverified.
 
 **Alert response.** Never clear, delete, or force-complete a job to silence the
 alert: the user was told their erasure had started and is still waiting on it.

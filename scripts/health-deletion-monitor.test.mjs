@@ -12,7 +12,7 @@
 // a key -- reach an alert surface.
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -24,9 +24,13 @@ import {
   thresholdsFromEnv,
 } from './check-health-deletion-backlog.mjs';
 import {
+  BOUNDARY_SCENARIOS,
   assertTargetAllowed,
   classifyBoundaryFailure,
+  finalExitCode,
+  projectRefFromDatabaseUrl,
   projectRefFromUrl,
+  resolveTargetIdentity,
 } from './test-health-deletion-e2e.mjs';
 
 const repoRoot = new URL('..', import.meta.url).pathname;
@@ -170,6 +174,22 @@ test('a running job inside the reclaim ceiling is not a finding', () => {
   assert.equal(alert.healthy, true);
 });
 
+// Finding 3 (stale-`running` measured from created_at rather than updated_at)
+// is deliberately NOT fixed here: correcting it needs an RLS policy or a change
+// to kilo.health_deletion_backlog's return type, both in supabase/migrations/,
+// which is outside this issue's Allowed Files. This test pins the current,
+// documented behavior so the limitation is explicit rather than accidental.
+test('the stale check currently measures from created_at (documented scope-blocked gap)', () => {
+  const alert = buildAlert(
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 3000 })] }),
+    DEFAULT_THRESHOLDS,
+    'test-ref'
+  );
+  const finding = alert.findings.find((f) => f.kind === 'running-job-stale');
+  assert.ok(finding, 'a long-queued running job still pages today');
+  assert.match(finding.detail, /since creation/);
+});
+
 test('an inactive drain cron is a finding even with an empty queue', () => {
   const alert = buildAlert(snapshot({ drain_cron_active: false }), DEFAULT_THRESHOLDS, 'test-ref');
   assert.equal(alert.healthy, false);
@@ -302,14 +322,118 @@ test('the subprocess never prints the user id or the connection password', () =>
 
 // --- e2e harness guards -------------------------------------------------
 
+const PROD_REF = 'ogzhnscdqcdrhfqcobuv';
+const PROD_API = `https://${PROD_REF}.supabase.co`;
+const PROD_DB = `postgresql://postgres.${PROD_REF}:pw@aws-0-us-east-1.pooler.supabase.com:5432/postgres`;
+const ISOLATED_API = 'https://localtestref.supabase.co';
+const ISOLATED_DB = 'postgresql://postgres:pw@db.localtestref.supabase.co:5432/postgres';
+
 test('projectRefFromUrl extracts the ref', () => {
-  assert.equal(projectRefFromUrl('https://ogzhnscdqcdrhfqcobuv.supabase.co'), 'ogzhnscdqcdrhfqcobuv');
+  assert.equal(projectRefFromUrl(PROD_API), PROD_REF);
   assert.equal(projectRefFromUrl('not a url'), null);
 });
 
-test('an isolated project needs no production guards', () => {
+test('projectRefFromUrl fails closed on an unrecognized host', () => {
+  assert.equal(projectRefFromUrl('https://example.com'), null);
+  assert.equal(projectRefFromUrl('https://evil.supabase.co.attacker.test'), null);
+});
+
+test('projectRefFromUrl recognizes a local stack as one identity', () => {
+  assert.equal(projectRefFromUrl('http://127.0.0.1:54321'), 'local');
+  assert.equal(projectRefFromUrl('http://localhost:54321'), 'local');
+});
+
+test('projectRefFromDatabaseUrl extracts the ref from the direct host', () => {
+  assert.equal(projectRefFromDatabaseUrl(`postgresql://postgres:pw@db.${PROD_REF}.supabase.co:5432/postgres`), PROD_REF);
+});
+
+test('projectRefFromDatabaseUrl extracts the ref from the pooler username', () => {
+  assert.equal(projectRefFromDatabaseUrl(PROD_DB), PROD_REF);
+});
+
+test('projectRefFromDatabaseUrl fails closed on hosts it cannot identify', () => {
+  assert.equal(projectRefFromDatabaseUrl('postgresql://postgres:pw@somewhere.example.com:5432/postgres'), null);
+  // Pooler host without the ref-bearing username: unidentifiable, so refused.
+  assert.equal(projectRefFromDatabaseUrl('postgresql://postgres:pw@aws-0-us-east-1.pooler.supabase.com:5432/postgres'), null);
+  assert.equal(projectRefFromDatabaseUrl('https://db.example.supabase.co'), null);
+  assert.equal(projectRefFromDatabaseUrl('not a url'), null);
+});
+
+// --- finding 1 regression: mismatched targets are rejected up front ------
+
+test('a mismatched API/database target pair is REJECTED', () => {
+  // The exact bypass: an isolated API URL paired with the production database
+  // URL. Every write goes through the database URL, so this previously passed
+  // both production guards and wrote fixture rows to production.
+  const identity = resolveTargetIdentity({ supabaseUrl: ISOLATED_API, databaseUrl: PROD_DB });
+  assert.equal(identity.ok, false);
+  assert.match(identity.reason, /target mismatch/);
+  assert.match(identity.reason, new RegExp(PROD_REF));
+});
+
+test('assertTargetAllowed refuses a mismatched pair before any production check', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://localtestref.supabase.co',
+    supabaseUrl: ISOLATED_API,
+    databaseUrl: PROD_DB,
+    emailDomain: 'e2e.invalid',
+    // Both production guards fully satisfied: they must not be able to rescue a
+    // mismatched pair, because they never inspected the database endpoint.
+    allowProduction: true,
+    confirmedDomain: 'e2e.invalid',
+  });
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /target mismatch/);
+});
+
+test('the reverse mismatch is refused too', () => {
+  const guard = assertTargetAllowed({
+    supabaseUrl: PROD_API,
+    databaseUrl: ISOLATED_DB,
+    emailDomain: 'e2e.invalid',
+    allowProduction: true,
+    confirmedDomain: 'e2e.invalid',
+  });
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /target mismatch/);
+});
+
+test('an unparseable database endpoint fails closed rather than being assumed safe', () => {
+  const guard = assertTargetAllowed({
+    supabaseUrl: ISOLATED_API,
+    databaseUrl: 'postgresql://postgres:pw@unknown-host.example:5432/postgres',
+    emailDomain: 'e2e.invalid',
+    allowProduction: false,
+  });
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /KILO_E2E_DATABASE_URL/);
+});
+
+test('an unparseable API endpoint fails closed', () => {
+  const guard = assertTargetAllowed({
+    supabaseUrl: 'https://example.com',
+    databaseUrl: ISOLATED_DB,
+    emailDomain: 'e2e.invalid',
+    allowProduction: false,
+  });
+  assert.equal(guard.ok, false);
+  assert.match(guard.reason, /KILO_E2E_SUPABASE_URL/);
+});
+
+test('a matched isolated pair needs no production guards', () => {
+  const guard = assertTargetAllowed({
+    supabaseUrl: ISOLATED_API,
+    databaseUrl: ISOLATED_DB,
+    emailDomain: 'e2e.invalid',
+    allowProduction: false,
+  });
+  assert.equal(guard.ok, true);
+  assert.equal(guard.isProduction, false);
+});
+
+test('a matched local stack pair is accepted and is never production', () => {
+  const guard = assertTargetAllowed({
+    supabaseUrl: 'http://127.0.0.1:54321',
+    databaseUrl: 'postgresql://postgres:pw@127.0.0.1:54322/postgres',
     emailDomain: 'e2e.invalid',
     allowProduction: false,
   });
@@ -319,7 +443,8 @@ test('an isolated project needs no production guards', () => {
 
 test('production is refused without the operator flag', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://ogzhnscdqcdrhfqcobuv.supabase.co',
+    supabaseUrl: PROD_API,
+    databaseUrl: PROD_DB,
     emailDomain: 'e2e.invalid',
     allowProduction: false,
     confirmedDomain: 'e2e.invalid',
@@ -330,7 +455,8 @@ test('production is refused without the operator flag', () => {
 
 test('production is refused with the flag but no disposable-account guard', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://ogzhnscdqcdrhfqcobuv.supabase.co',
+    supabaseUrl: PROD_API,
+    databaseUrl: PROD_DB,
     emailDomain: 'e2e.invalid',
     allowProduction: true,
   });
@@ -340,7 +466,8 @@ test('production is refused with the flag but no disposable-account guard', () =
 
 test('production is refused when the disposable-account guard names another domain', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://ogzhnscdqcdrhfqcobuv.supabase.co',
+    supabaseUrl: PROD_API,
+    databaseUrl: PROD_DB,
     emailDomain: 'e2e.invalid',
     allowProduction: true,
     confirmedDomain: 'someone-elses-domain.test',
@@ -348,9 +475,10 @@ test('production is refused when the disposable-account guard names another doma
   assert.equal(guard.ok, false);
 });
 
-test('production is allowed only when both guards are present and agree', () => {
+test('production is allowed only when both endpoints match and both guards agree', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://ogzhnscdqcdrhfqcobuv.supabase.co',
+    supabaseUrl: PROD_API,
+    databaseUrl: PROD_DB,
     emailDomain: 'e2e.invalid',
     allowProduction: true,
     confirmedDomain: 'e2e.invalid',
@@ -361,7 +489,8 @@ test('production is allowed only when both guards are present and agree', () => 
 
 test('a missing disposable mail domain is refused even off production', () => {
   const guard = assertTargetAllowed({
-    supabaseUrl: 'https://localtestref.supabase.co',
+    supabaseUrl: ISOLATED_API,
+    databaseUrl: ISOLATED_DB,
     emailDomain: '',
     allowProduction: false,
   });
@@ -434,6 +563,85 @@ test('a retrying job is classified', () => {
 
 test('eventual completion classifies as no failure', () => {
   assert.equal(classifyBoundaryFailure(healthy), null);
+});
+
+// --- finding 2 regression: the drain entrypoint and real scenario stages --
+
+const harnessSource = readFileSync(join(repoRoot, 'scripts/test-health-deletion-e2e.mjs'), 'utf8');
+
+test('the harness drives the cron entrypoint, not dispatch directly', () => {
+  assert.match(harnessSource, /kilo\.drain_health_deletion_jobs\(\)/);
+  assert.equal(
+    harnessSource.includes('select kilo.dispatch_health_deletion_worker()'),
+    false,
+    'the harness must drive kilo.drain_health_deletion_jobs(), the function pg_cron actually invokes'
+  );
+});
+
+test('the harness asserts the drain result contract', () => {
+  for (const key of ['reopened', 'reclaimed_stale', 'dispatched', 'request_id']) {
+    assert.ok(harnessSource.includes(`'${key}'`), `the drain result key ${key} must be asserted`);
+  }
+});
+
+test('the harness verifies the cron job exists, is active, and calls the drain function', () => {
+  assert.match(harnessSource, /from cron\.job where jobname = 'health-deletion-drain'/);
+  assert.match(harnessSource, /is not active/);
+  assert.match(harnessSource, /drain_health_deletion_jobs\\s\*\\\(/);
+});
+
+test('all seven required boundary cases exist as real harness stages', () => {
+  const names = BOUNDARY_SCENARIOS.map((s) => s.name).sort();
+  assert.deepEqual(names, [
+    'eventual-completion',
+    'http-authentication-failure',
+    'missing-function',
+    'missing-vault-configuration',
+    'partial-erasure',
+    'pg-net-failure',
+    'retry',
+  ]);
+  for (const scenario of BOUNDARY_SCENARIOS) {
+    assert.equal(typeof scenario.run, 'function', `${scenario.name} must drive the target`);
+  }
+});
+
+test('the scenario stages are refused against production unconditionally', () => {
+  assert.match(harnessSource, /--scenarios is refused against production unconditionally/);
+});
+
+// --- finding 4 regression: cleanup failure can never be green ------------
+
+test('a cleanup failure alone produces a nonzero exit', () => {
+  assert.equal(finalExitCode({ failed: null, cleanupFailure: 'account still present' }), 1);
+});
+
+test('a clean run with successful cleanup exits 0', () => {
+  assert.equal(finalExitCode({ failed: null, cleanupFailure: null }), 0);
+});
+
+test('no combination involving a cleanup failure can exit 0', () => {
+  for (const failed of [null, { stage: 'partial-erasure' }, { stage: 'harness-error' }]) {
+    assert.notEqual(
+      finalExitCode({ failed, cleanupFailure: 'left behind' }),
+      0,
+      'a surviving fixture account must never report success'
+    );
+  }
+});
+
+test('a boundary failure still outranks nothing and a harness error exits 2', () => {
+  assert.equal(finalExitCode({ failed: { stage: 'partial-erasure' }, cleanupFailure: null }), 1);
+  assert.equal(finalExitCode({ failed: { stage: 'harness-error' }, cleanupFailure: null }), 2);
+});
+
+test('the cleanup failure report identifies the account without leaking a secret', () => {
+  assert.match(harnessSource, /CLEANUP FAILED/);
+  assert.match(harnessSource, /account uuid/);
+  // The fixture password and access token must never reach the report.
+  const report = harnessSource.slice(harnessSource.indexOf('CLEANUP FAILED'), harnessSource.indexOf('CLEANUP FAILED') + 600);
+  assert.equal(report.includes('${password}'), false, 'the fixture password must never be printed');
+  assert.equal(report.includes('${accessToken}'), false, 'the access token must never be printed');
 });
 
 // --- report -------------------------------------------------------------

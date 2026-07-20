@@ -782,19 +782,42 @@ retains non-test commands such as `npm run audit`.
   backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
   email address, Supabase key, or JWT can never reach an alert surface), all
   five finding kinds, the 0/1/2 exit-code discipline including the
-  credentialless exit 2, the harness's two-key production guard, and each of the
-  seven classified boundary failures. It stubs `psql` and never contacts a
+  credentialless exit 2, the harness's two-key production guard, its
+  API/database target binding (a mismatched pair is rejected before any account
+  or SQL), the rule that a failed fixture cleanup can never exit 0, and each of
+  the seven classified boundary failures. It stubs `psql` and never contacts a
   database, a project, or a real secret
 - `scripts/test-health-deletion-e2e.mjs` is the separately identifiable
   full-boundary test: it creates a disposable auth account and synthetic gated
-  rows, records consent, withdraws, dispatches the real pg_net HTTP call to
-  `health-data-delete`, waits for the real response, proves every table in
+  rows, records consent, withdraws, verifies the `health-deletion-drain` cron is
+  active and actually invokes `kilo.drain_health_deletion_jobs()`, drives that
+  **drain entrypoint** (the function `pg_cron` runs, not
+  `dispatch_health_deletion_worker()` directly) and asserts its returned
+  `reopened` / `reclaimed_stale` / `dispatched` / `request_id` contract, waits
+  for the real pg_net response, proves every table in
   `kilo.health_gated_tables()` is empty and `consent_state` is `withdrawn`, then
-  deletes the fixture account in a `finally` block. It refuses to target the
-  production project unless **both** `--allow-production` and
-  `KILO_E2E_DISPOSABLE_ACCOUNT_CONFIRMED` (set to the exact disposable mail
-  domain) are present; ordinary CI points it at a local or isolated project. The
-  fixture password is generated at runtime and never printed or persisted
+  deletes the fixture account in a `finally` block and **confirms** its removal.
+  A failed cleanup fails the run and prints the fixture account's uuid — never
+  its password or token — so an operator can remove it
+- **Target binding.** `KILO_E2E_SUPABASE_URL` and `KILO_E2E_DATABASE_URL` must
+  resolve to the same project ref before any account is created or any SQL is
+  issued. The ref is parsed from the API host, from `db.<ref>.supabase.co`, or
+  from the pooler's `postgres.<ref>` username; an endpoint that cannot be parsed
+  is refused rather than assumed safe. Without this, an isolated API URL paired
+  with the production database URL satisfied both production guards while every
+  write went to production. Production additionally requires **both**
+  `--allow-production` and `KILO_E2E_DISPOSABLE_ACCOUNT_CONFIRMED` (set to the
+  exact disposable mail domain); ordinary CI points it at a local or isolated
+  project. The fixture password is generated at runtime and never printed
+- `--scenarios` adds the seven required failure/recovery stages as real drives
+  against an isolated target — missing Vault configuration and missing function
+  (Vault secrets are *renamed*, never decrypted, and renamed back), HTTP auth
+  failure, pg_net transport failure, partial erasure (via
+  `complete_health_deletion_job` refusing to advance while rows remain), retry
+  with drain-driven recovery, and eventual completion — plus the stale-`running`
+  reclaim. It is refused against production unconditionally, with no operator
+  override, because the stages park Vault secrets and induce failed jobs.
+  **This mode has not yet been executed: no isolated Supabase project exists**
 - `npm run test:deploy-kilo-functions` runs the offline contract tests for
   `scripts/deploy-kilo-functions.sh`. They mock Supabase management-plane and
   database responses, including every fail-closed deployment prerequisite; the

@@ -298,16 +298,32 @@ export function buildAlert(snapshot, thresholds, projectRef) {
       });
     }
 
-    // Age is measured from created_at because kilo.health_deletion_backlog
-    // exposes age only. That is the right signal anyway: the drain reclaims a
-    // `running` job after 30 minutes without an update, so a job that is STILL
-    // `running` past that ceiling means the worker is wedged and the reclaimer
-    // is not rescuing it.
+    // KNOWN LIMITATION (issue #541 review finding 3, scope-blocked).
+    //
+    // This measures staleness from created_at, because
+    // kilo.health_deletion_backlog(interval) exposes age from created_at only.
+    // kilo.drain_health_deletion_jobs() reclaims a `running` job on updated_at,
+    // so the two clocks disagree: a job queued more than 30 minutes ago and
+    // claimed seconds ago pages here while the worker is perfectly fresh.
+    //
+    // It cannot be corrected from this file. kilo.health_data_deletion_jobs has
+    // RLS enabled with NO policies, so it is deny-all to every role without
+    // BYPASSRLS; the security definer backlog function is the only read path,
+    // and a column-level grant of (id, status, updated_at) to the monitor role
+    // still returns zero rows (verified on a disposable Postgres with all
+    // migrations applied). The fix therefore requires either a new RLS policy or
+    // adding updated_at to the backlog function's return type -- both changes to
+    // supabase/migrations/, which is outside this issue's Allowed Files.
+    //
+    // Erring toward a false page rather than a missed wedged worker is the safer
+    // side of that trade while it stands. See docs/architecture.md.
     if (job.status === 'running' && age > runningStaleSeconds) {
       findings.push({
         kind: 'running-job-stale',
         job_id: job.job_id,
-        detail: `running for ${formatAge(age)}, past the ${thresholds.runningStaleMinutes}m reclaim ceiling`,
+        detail:
+          `running for ${formatAge(age)} since creation, past the ` +
+          `${thresholds.runningStaleMinutes}m reclaim ceiling`,
       });
     }
   }
