@@ -496,6 +496,26 @@ device's generation unadvanced, so any retry (a fresh rearm, a re-push of
 already-acknowledged rows) is safe, re-runs on the next launch, and never loses
 or duplicates data.
 
+#493 contracted `kilo.user_profile`'s six legacy health columns and every
+expand-phase compatibility path (`health_parity_report()`,
+`reconcile_user_health()`, `health_values_differ()`), which also removed the
+only detector for health-data loss: those helpers worked by comparing the two
+duplicated copies, and that duplication was itself the Art. 9 problem #487/#493
+exist to remove. Post-contract, `kilo.health_presence_watermark` (#558) is a
+presence/timestamp-only shadow of `kilo.user_health_profile`, kept current by
+a 30-minute `kilo.health_presence_sweep()` cron job; it never stores health
+values, only whether a row exists, whether it currently has any content, and
+when it was last seen either way. `kilo.health_integrity_report()` is the
+operator-facing check: it flags a previously content-bearing, currently
+granted account whose row has disappeared or gone fully empty, unless
+`consent_state.status` is `withdrawn`/`deletion_pending` or a completed purge
+(`cloud_rebuild_armed_at`) explains the absence as a pending #538 rebuild.
+`health_content_cleared` also fires on legitimate user-initiated clearing
+(e.g. deleting a deload note), by design — with a single remaining copy there
+is no way to distinguish that from a bug without storing the values the
+monitor exists to protect, so it is a coarse signal for operator review rather
+than an automated alert.
+
 When `useWorkoutNotes()` loads, the storage layer synthesizes a note from any
 legacy `kilo_workout_sessions` content if no `kilo_workout_note` exists, saving
 the migrated result before returning. Tracked exercise toggles update the global
