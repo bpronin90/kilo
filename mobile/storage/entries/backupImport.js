@@ -7,7 +7,21 @@ import {
   CURRENT_WORKOUT_ID_KEY,
 } from './keys';
 import { readList, writeList } from './jsonStorage';
-import { loadCurrentWorkoutId, saveCurrentWorkoutId } from './workoutNotes';
+import {
+  loadCurrentWorkoutId,
+  saveCurrentWorkoutId,
+  loadWorkoutNotesRaw,
+  replaceWorkoutNotesRaw,
+} from './workoutNotes';
+import { loadWeightEntriesRaw, replaceWeightEntriesRaw } from './weightEntries';
+import {
+  SYNC_TABLES,
+  getClientId,
+  stampWrite,
+  stampTombstone,
+  isTombstone,
+  enqueueDirty,
+} from '../syncQueue';
 import { loadWeightGoal } from './weightGoal';
 import { loadUserProfile, saveUserProfile } from './profileStorage';
 import {
@@ -437,21 +451,183 @@ async function restoreCloudBlock(cloud) {
   }
 }
 
+// ── import modes (issue #526) ────────────────────────────────────────────────
+//
+// Import has TWO contracts, and the caller states which one it wants. Before
+// #526 there was only the local one, and it ran in cloud mode too: the importer
+// wrote domain keys straight into AsyncStorage, queued nothing, tombstoned
+// nothing, and returned `{ ok: true }`. A cloud user's "replace" therefore left
+// the device holding the imported data while the account still held the old
+// data, with the UI reporting a successful restore (confirmed as #522 claim 5).
+//
+//   LOCAL — the device is the only copy. Replace overwrites the domain keys and
+//     that is the whole story. Byte-for-byte the pre-#526 behavior.
+//
+//   CLOUD — the account is the shared copy and the device is one replica. A
+//     replace is a batch of ordinary cloud writes: every imported row is stamped
+//     and enqueued, and every collection row the backup OMITS becomes a
+//     tombstone, because "replace" means those records are gone and a plain
+//     local deletion would simply be re-pulled from the server.
+//
+// The values are deliberately the STORAGE_MODES values, so the app seam can pass
+// `getStorageMode()` straight through instead of restating the mapping.
+export const IMPORT_MODES = Object.freeze({ LOCAL: 'local', CLOUD: 'cloud' });
+
+// Replace one dirty-queue-tracked collection table under the CLOUD contract.
+//
+// Deliberately mirrors cloudDomainMethods' write/delete pair rather than
+// inventing a second mechanism: the same stamping primitives, the same
+// retained-tombstone convention (readers filter `deleted_at`, so the row stays
+// in the list until a synced cleanup removes it), and the same dirty queue. By
+// the time sync() sees these rows they are indistinguishable from rows written
+// by ordinary in-app edits and deletes, so last-write-wins, tombstone ordering,
+// and cursor advancement stay on one code path.
+//
+// Ordering is durability-critical: local storage is written BEFORE the queue.
+// A crash in between leaves the imported state on disk with no queue entries,
+// which is exactly the shape #525's reconcileLocalWrites recovers — it diffs
+// local state against the last-synced baseline on the next pass and re-derives
+// both the writes and the omission tombstones. The reverse order would leave the
+// queue promising rows the device does not have.
+//
+// Incoming `updated_at`/`client_id` are dropped rather than trusted: they
+// describe the EXPORTING device's history (possibly another device, another
+// account, or a hand-edited file) and would otherwise compete in LWW as if this
+// device had made the write then. `deleted_at` is not dropped — a backup taken
+// from raw storage legitimately carries tombstones, and resurrecting deleted
+// records on import would be its own data bug.
+//
+// O(prior + imported) via a single keyed index; no nested scan.
+async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, clientId }) {
+  const prior = (await readRaw()) || [];
+  const priorById = new Map();
+  for (const rec of prior) {
+    if (rec && rec.id != null) priorById.set(rec.id, rec);
+  }
+
+  const nextList = [];
+  const dirty = [];
+  const importedIds = new Set();
+
+  for (const row of imported || []) {
+    if (!row || row.id == null) continue;
+    importedIds.add(row.id);
+    // eslint-disable-next-line no-unused-vars
+    const { updated_at: _updatedAt, client_id: _clientId, ...content } = row;
+    // Build the restored record from the validated backup row ALONE — no merge
+    // with the prior local row. "Replace" means the backup is authoritative, so a
+    // field the backup omits must be CLEARED, not carried over and re-uploaded:
+    // the earlier `{ ...base, ...content }` merge let a dropped weight-entry
+    // `note` or an omitted workout-note derived field survive from the device's
+    // current row and get stamped into the restore (issue #526 review, P2).
+    //
+    // The allowlist of prior-row fields to preserve is deliberately EMPTY. It
+    // could only hold a column the cloud row legitimately has AND the backup
+    // format structurally never carries — and no such column exists for these two
+    // tables. The backup reads WEIGHT_KEY / WORKOUT_NOTES_KEY (see exportBackup),
+    // the exact raw collection storage the uploader reads from, so every cloud
+    // column a row can hold is already in the payload when the exporting device
+    // held it; an absent field is genuinely absent, and replace clears it. This
+    // also matches the LOCAL contract, which writes `payload.weight_entries`
+    // verbatim with no prior-row merge, and cannot widen `record_json`/`goal_json`
+    // (#475): those columns live only on deload_history/weight_goal, and the push
+    // whitelist for weight_entries/workout_notes never serializes them regardless.
+    const next = { ...content };
+    const stamped = isTombstone(row)
+      ? stampTombstone(next, clientId)
+      : stampWrite(next, clientId);
+    nextList.push(stamped);
+    dirty.push(stamped);
+  }
+
+  for (const [id, base] of priorById) {
+    if (importedIds.has(id)) continue;
+    if (isTombstone(base)) {
+      // Already a tombstone. The delete has been recorded once; restating it
+      // would only move `updated_at` forward for no reason.
+      nextList.push(base);
+      continue;
+    }
+    // Present locally, absent from the backup. Under replace semantics the
+    // record is gone — but the account still has it, so only a tombstone can
+    // express that. Dropping the row instead would let the next pull resurrect
+    // it, which is the silent divergence #526 exists to fix.
+    const tombstone = stampTombstone({ ...base }, clientId);
+    nextList.push(tombstone);
+    dirty.push(tombstone);
+  }
+
+  await writeRaw(nextList);
+  for (const record of dirty) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueDirty(table, record);
+  }
+  return dirty.length;
+}
+
 // Restores a backup. strategy 'replace' overwrites all local data atomically.
-// Returns { ok: true } or { ok: false, error: string }.
+// Returns { ok: true, mode, queued } or { ok: false, error: string }.
 // Validation runs before any write; storage is not mutated on failure.
 // v1 backups restore weight entries only; workout notes state is left untouched.
-export async function importBackup(payload, strategy = 'replace') {
+//
+// `mode` selects the contract described at IMPORT_MODES. It defaults to LOCAL,
+// which is the historical behavior and the correct one for a device with no
+// account; the cloud contract is opted into explicitly by the app seam, which is
+// the layer that knows the active storage mode.
+//
+// Everything outside the two collection tables is left to the DIFF-TRACKED sync
+// path and needs no import-time queueing: the weight goal, deload history,
+// profile, health profile, and feature toggles all detect local change by
+// diffing live local state against a persisted snapshot, and that diff does not
+// care which writer produced the change. Their `allowDelete` configs already
+// turn a cleared local value into a cloud tombstone. This is the "explicitly
+// confirmed alternative" the contract allows, not an omission.
+//
+// `archived_weight_goals` is a collection table that the backup FORMAT does not
+// carry at all. A replace therefore leaves it untouched: the payload contains no
+// evidence that those records were dropped, and tombstoning them on that
+// non-evidence would destroy data the user never asked to remove.
+export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
 
-  if (strategy === 'replace') {
-    // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
-    const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
+  const cloudMode = mode === IMPORT_MODES.CLOUD;
+  const resolvedMode = cloudMode ? IMPORT_MODES.CLOUD : IMPORT_MODES.LOCAL;
+  let queued = 0;
 
-    if (payload.version === '2' || payload.version === BACKUP_VERSION) {
-      pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
+  if (strategy === 'replace') {
+    const isNotebookVersion = payload.version === '2' || payload.version === BACKUP_VERSION;
+
+    if (cloudMode) {
+      const clientId = await getClientId();
+      queued += await replaceCollectionForCloud({
+        table: SYNC_TABLES.WEIGHT_ENTRIES,
+        readRaw: loadWeightEntriesRaw,
+        writeRaw: replaceWeightEntriesRaw,
+        imported: payload.weight_entries,
+        clientId,
+      });
+      // v1 predates the notebook model, so it says nothing about workout notes.
+      // Silence is not an instruction to delete them.
+      if (isNotebookVersion) {
+        queued += await replaceCollectionForCloud({
+          table: SYNC_TABLES.WORKOUT_NOTES,
+          readRaw: loadWorkoutNotesRaw,
+          writeRaw: replaceWorkoutNotesRaw,
+          imported: payload.workout_notes,
+          clientId,
+        });
+      }
+    } else {
+      // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
+      const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
+      if (isNotebookVersion) {
+        pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
+      }
       await AsyncStorage.multiSet(pairs);
+    }
+
+    if (isNotebookVersion) {
       if (payload.current_workout_id != null) {
         await AsyncStorage.setItem(CURRENT_WORKOUT_ID_KEY, JSON.stringify(payload.current_workout_id));
       } else {
@@ -470,9 +646,6 @@ export async function importBackup(payload, strategy = 'replace') {
       if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
         await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history);
       }
-    } else {
-      // v1: restore weight entries only; workout notes model was not part of the v1 contract
-      await AsyncStorage.multiSet(pairs);
     }
 
     if ('cloud' in payload && payload.cloud != null) {
@@ -480,5 +653,5 @@ export async function importBackup(payload, strategy = 'replace') {
     }
   }
 
-  return { ok: true };
+  return { ok: true, mode: resolvedMode, queued };
 }
