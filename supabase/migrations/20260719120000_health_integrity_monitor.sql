@@ -173,11 +173,17 @@ as $$
   left join kilo.user_health_profile h on h.user_id = w.user_id
   left join kilo.consent_state cs on cs.user_id = w.user_id
   where
-    -- Only accounts the watermark has actually seen with content are candidates.
-    -- Never-written health state (no watermark row, or a watermark row that has
-    -- never had content) is excluded here and never reaches the exemption logic
-    -- below at all.
-    w.last_had_content
+    -- Only accounts the watermark has EVER seen with content are candidates.
+    -- last_content_at, unlike last_had_content, is durable: the sweep only ever
+    -- advances it, never clears it back to null (see the upsert below). Gating
+    -- on last_had_content instead would be a self-defeating check -- the very
+    -- sweep that observes a row go from content to empty also flips
+    -- last_had_content to false in that same upsert, which would silently drop
+    -- the divergence from every report run from that point on, including a
+    -- later full deletion of the same row. Never-written health state (no
+    -- watermark row, or a watermark row that has never had content) is excluded
+    -- here and never reaches the exemption logic below at all.
+    w.last_content_at is not null
     and (
       h.user_id is null
       or not kilo.health_profile_has_content(h)

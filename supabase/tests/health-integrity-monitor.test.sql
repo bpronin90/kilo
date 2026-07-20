@@ -13,7 +13,7 @@
 
 begin;
 
-select plan(14);
+select plan(16);
 
 \set user_new 'b0000000-0000-0000-0000-000000000001'
 \set user_lost 'b0000000-0000-0000-0000-000000000002'
@@ -252,6 +252,17 @@ select is(
   'the sweep preserves last_content_at rather than clearing it when content disappears'
 );
 
+-- Regression (review feedback on PR #562): the report must still catch the
+-- divergence AFTER the sweep that observed the clearing has already run and
+-- flipped last_had_content to false. Gating candidacy on last_had_content
+-- instead of the durable last_content_at made the sweep itself erase the
+-- signal it had just recorded -- this is the exact sequence that bug missed.
+select is(
+  (select divergence from kilo.health_integrity_report() where user_id = :'user_sweep'::uuid),
+  'health_content_cleared',
+  'the report still flags a cleared row after the sweep that observed the clearing has run'
+);
+
 -- Delete the row entirely and re-sweep: the watermark row is left untouched
 -- (last_present_at does not advance), which is what lets the report tell
 -- "gone since the last sweep" apart from "never seen".
@@ -273,6 +284,14 @@ select is(
   (select count(*) from kilo.health_presence_watermark where user_id = :'user_new'::uuid),
   0::bigint,
   'the sweep never creates a watermark row for a user with no health row at all'
+);
+
+-- Same regression, other direction: the report must also catch a full row
+-- deletion after the sweep that observed it has already run.
+select is(
+  (select divergence from kilo.health_integrity_report() where user_id = :'user_sweep'::uuid),
+  'health_row_lost',
+  'the report still flags a lost row after the sweep that observed the deletion has run'
 );
 
 select * from finish();
