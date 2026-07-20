@@ -24,7 +24,7 @@
 
 begin;
 
-select plan(18);
+select plan(24);
 
 \set user_a 'cccccccc-cccc-cccc-cccc-cccccccccccc'
 \set user_b 'dddddddd-dddd-dddd-dddd-dddddddddddd'
@@ -221,6 +221,81 @@ select is(
   (select count(*) from kilo.health_deletion_backlog(interval '0 seconds')),
   0::bigint,
   'the backlog is empty once the queue has drained'
+);
+
+-- ---------------------------------------------------------------------------
+-- What the operator backlog monitor reads (issue #541)
+-- ---------------------------------------------------------------------------
+--
+-- scripts/check-health-deletion-backlog.mjs alerts off exactly these columns.
+-- The properties below are the ones it depends on, asserted here so a schema
+-- change breaks the SQL suite rather than silently degrading the monitor into
+-- a green light. The monitor's own redaction and exit-code contract is covered
+-- offline by scripts/health-deletion-monitor.test.mjs.
+
+-- Partial erasure: the worker believed it finished, but rows remain. The job
+-- must NOT advance, and it must become visible to the monitor with a bounded
+-- error and an incremented attempt count.
+insert into kilo.weight_entries (user_id, id, weight_value)
+  values (:'user_b'::uuid, 'w-partial', 90);
+
+insert into kilo.consent_state (user_id, status, current_catalog_revision,
+  current_material_version, granted_at)
+values (:'user_b'::uuid, 'deletion_pending', 1, 1, now())
+on conflict (user_id) do update set status = 'deletion_pending';
+
+insert into kilo.health_data_deletion_jobs (user_id, reason, attempts)
+values (:'user_b'::uuid, 'withdrawal', 2);
+
+select is(
+  (kilo.complete_health_deletion_job(
+    (select id from kilo.health_data_deletion_jobs where user_id = :'user_b'::uuid limit 1)
+  ) ->> 'ok')::boolean,
+  false,
+  'partial erasure does not complete the job'
+);
+
+select is(
+  (select status from kilo.consent_state where user_id = :'user_b'::uuid),
+  'deletion_pending',
+  'partial erasure never advances the user to withdrawn'
+);
+
+select is(
+  (select status from kilo.health_deletion_backlog(interval '0 seconds')
+   where user_id = :'user_b'::uuid),
+  'failed',
+  'a partially erased job is visible to the operator monitor as failed'
+);
+
+select ok(
+  (select attempts >= 2 and last_error is not null
+   from kilo.health_deletion_backlog(interval '0 seconds')
+   where user_id = :'user_b'::uuid),
+  'the monitor can see attempts increasing without completion, with an error message'
+);
+
+-- last_error is bounded in the database. The monitor bounds and scrubs it again
+-- before it reaches an alert, but the first bound belongs here: an unbounded
+-- operational string is how a health value would escape into a log in the first
+-- place.
+select kilo.fail_health_deletion_job(
+  (select id from kilo.health_data_deletion_jobs where user_id = :'user_b'::uuid limit 1),
+  repeat('x', 4000)
+);
+
+select ok(
+  (select length(last_error) <= 500
+   from kilo.health_data_deletion_jobs where user_id = :'user_b'::uuid),
+  'a worker error is bounded before it can reach an operational log'
+);
+
+-- A pg_net/HTTP failure reaches the database as a recorded job failure, not a
+-- lost job: the row stays in the backlog for the monitor to alert on.
+select is(
+  (select count(*) from kilo.health_deletion_backlog(interval '0 seconds')),
+  1::bigint,
+  'a transport-level worker failure leaves the job visible in the backlog'
 );
 
 select * from finish();

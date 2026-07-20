@@ -80,6 +80,76 @@ the operator may additionally set `HEALTH_DELETION_FIXTURE_USER_ID` to a
 disposable, already-due deletion job. The script dispatches only when that is
 the sole due job, and otherwise fails without enqueuing or changing any user.
 
+## Health-Deletion Queue Monitor
+
+Deploy-time verification proves the purge worker's prerequisites existed once.
+`.github/workflows/health-deletion-monitor.yml` proves they exist now. It runs
+`scripts/check-health-deletion-backlog.mjs` every 30 minutes and on manual
+dispatch, and reads the same prerequisites the deployment script checks: the
+`health-deletion-drain` cron and the two Vault secret **names** returned by
+`kilo.worker_secret_names()`.
+
+The monitor exists because `kilo.dispatch_health_deletion_worker()` fails safe,
+not loud: with the Edge Function or the Vault secrets absent it returns `NULL`
+and only raises a warning, so `pg_cron` keeps succeeding while no row is ever
+deleted and the withdrawing user sits in `deletion_pending` indefinitely.
+Raising instead would abort the shared cron transaction and still delete
+nothing, so operator visibility — not a louder database error — is the fix.
+
+It alerts when any of these is true:
+
+- an open deletion job is older than `KILO_DELETION_MAX_AGE_MINUTES` (default 60)
+- a job has reached `KILO_DELETION_MAX_ATTEMPTS` (default 5) without completing
+- a `running` job is older than `KILO_DELETION_RUNNING_STALE_MINUTES` (default
+  30), which is the drain's own stale-job reclaim ceiling
+- the `health-deletion-drain` cron is missing or inactive
+- either required worker Vault secret name is absent
+
+Exit codes are `0` healthy, `1` a real production problem, and `2` the check
+could not run. Missing credentials or an unreachable database are exit 2 and a
+**failed** monitor, never a green one; the `credentialless run exits 2, never
+green` job asserts that property on every change to the monitor.
+
+**Redaction.** `kilo.health_deletion_backlog(interval)` returns `user_id`. The
+monitor drops it: alerts carry project, job id, reason, status, attempts, age,
+and a bounded, scrubbed `last_error` only, built from an explicit allowlist so a
+column added later is dropped by default rather than leaked by default. No user
+ids, health values, email addresses, tokens, or secret values can reach an alert
+surface. `npm run check:health-deletion:dry-run` renders the exact operator-
+facing format against a synthetic snapshot without touching a database.
+
+**Out-of-band configuration** (never committed; an authorized operator runs this
+against production and sets the password themselves):
+
+```sql
+create role kilo_deletion_monitor with login noinherit;
+grant usage on schema kilo, cron, vault to kilo_deletion_monitor;
+grant execute on function kilo.health_deletion_backlog(interval) to kilo_deletion_monitor;
+grant execute on function kilo.worker_secret_names() to kilo_deletion_monitor;
+grant select on cron.job to kilo_deletion_monitor;
+-- Column-level: the monitor reads secret NAMES and must never be able to read
+-- stored secret material.
+grant select (name) on vault.secrets to kilo_deletion_monitor;
+```
+
+Set that role's session-pooler URL as the `SUPABASE_HEALTH_MONITOR_URL`
+repository secret. The role is read-only, cannot decrypt a secret, cannot write
+any table, and reaches no co-tenant schema.
+
+**Alert response.** Never clear, delete, or force-complete a job to silence the
+alert: the user was told their erasure had started and is still waiting on it.
+
+1. Inspect the backlog and the `net._http_response` metadata for the dispatched
+   request to see whether the call left the database and what came back.
+2. Restore the prerequisites: `health-data-delete` deployed and `ACTIVE`, both
+   Vault secret names present, `health-deletion-drain` cron active.
+3. Dispatch safely with `kilo.dispatch_health_deletion_worker()` once the
+   prerequisites are back, or `kilo.reenqueue_health_deletion(user_id)` for a
+   single wedged account.
+4. Verify `kilo.health_data_row_counts(user_id)` is zero on every gated table.
+   `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
+   any scoped row remains, so a `complete` job is itself the erasure proof.
+
 ## Preview OTA Update Path
 
 The native Expo app uses unsigned `expo-updates` for the preview workflow on

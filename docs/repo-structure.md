@@ -30,7 +30,7 @@ AGENTS.md              ← shared repo protocol (local-only, gitignored — not 
 CLAUDE.md / CODEX.md / GEMINI.md  ← per-agent instructions (local-only, gitignored — not tracked)
 .gitignore             ← root ignore policy for generated output, local-only runtime state, and agent instruction files
 package.json
-.github/workflows/     ← required CI, review-disposition, audit, and version gates
+.github/workflows/     ← required CI, review-disposition, audit, version gates, and scheduled production monitors
 mobile/                ← active Expo / React Native app path
 scripts/               ← repository maintenance and deployment entrypoints
 supabase/              ← tracked Supabase config, Edge Functions, and DB tests
@@ -195,6 +195,9 @@ scripts/
   review-disposition.test.mjs ← deterministic evaluator contract tests
   deploy-kilo-functions.sh ← deploys and fail-closed verifies Kilo Edge Functions and purge-worker prerequisites
   deploy-kilo-functions.test.mjs ← offline management-plane/cron verification contract tests
+  check-health-deletion-backlog.mjs ← scheduled production monitor for the consent-withdrawal purge queue (redacted alerts, 0/1/2 exit codes)
+  test-health-deletion-e2e.mjs ← disposable-account cron/pg_net/Edge Function boundary harness, guarded against production
+  health-deletion-monitor.test.mjs ← offline redaction, exit-code, guard, and boundary-failure contract tests
 ```
 
 ---

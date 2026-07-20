@@ -12,7 +12,11 @@
     "web:smoke": "npm --prefix mobile run smoke:web",
     "audit": "npm audit --audit-level=high",
     "test:deploy-kilo-functions": "node scripts/deploy-kilo-functions.test.mjs",
+    "test:health-deletion-monitor": "node scripts/health-deletion-monitor.test.mjs",
+    "test:health-deletion-e2e": "node scripts/test-health-deletion-e2e.mjs",
     "check:changes": "node scripts/changelog-fragments.mjs check",
+    "check:health-deletion": "node scripts/check-health-deletion-backlog.mjs",
+    "check:health-deletion:dry-run": "node scripts/check-health-deletion-backlog.mjs --dry-run",
     "check:migrations": "node scripts/check-migration-drift.mjs",
     "check:migrations:selftest": "node scripts/check-migration-drift.mjs --self-test",
     "release:prepare": "node scripts/changelog-fragments.mjs prepare"

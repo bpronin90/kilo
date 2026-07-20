@@ -773,7 +773,28 @@ retains non-test commands such as `npm run audit`.
 - `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified
-  deletion
+  deletion. Its final section covers what the operator backlog monitor reads:
+  partial erasure never advances the user to `withdrawn`, a partially erased job
+  is visible as `failed` with a rising attempt count, worker errors are bounded
+  before they can reach a log, and a transport-level failure leaves the job in
+  the backlog rather than losing it
+- `npm run test:health-deletion-monitor` runs the offline contract suite for the
+  backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
+  email address, Supabase key, or JWT can never reach an alert surface), all
+  five finding kinds, the 0/1/2 exit-code discipline including the
+  credentialless exit 2, the harness's two-key production guard, and each of the
+  seven classified boundary failures. It stubs `psql` and never contacts a
+  database, a project, or a real secret
+- `scripts/test-health-deletion-e2e.mjs` is the separately identifiable
+  full-boundary test: it creates a disposable auth account and synthetic gated
+  rows, records consent, withdraws, dispatches the real pg_net HTTP call to
+  `health-data-delete`, waits for the real response, proves every table in
+  `kilo.health_gated_tables()` is empty and `consent_state` is `withdrawn`, then
+  deletes the fixture account in a `finally` block. It refuses to target the
+  production project unless **both** `--allow-production` and
+  `KILO_E2E_DISPOSABLE_ACCOUNT_CONFIRMED` (set to the exact disposable mail
+  domain) are present; ordinary CI points it at a local or isolated project. The
+  fixture password is generated at runtime and never printed or persisted
 - `npm run test:deploy-kilo-functions` runs the offline contract tests for
   `scripts/deploy-kilo-functions.sh`. They mock Supabase management-plane and
   database responses, including every fail-closed deployment prerequisite; the
