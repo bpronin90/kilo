@@ -1,0 +1,140 @@
+name: Health Deletion Monitor
+
+# Production monitor for the consent-withdrawal purge queue.
+#
+# #492's failure mode was silent by construction: kilo.dispatch_health_deletion_worker()
+# returns NULL and only `raise warning`s when the Edge Function or its Vault
+# credentials are absent, so cron kept succeeding while nothing was ever deleted.
+# Nothing outside the database could see it. This workflow is what sees it.
+#
+# It checks the SAME prerequisites scripts/deploy-kilo-functions.sh (#540)
+# verifies at deploy time -- the `health-deletion-drain` cron and the two Vault
+# secret NAMES from kilo.worker_secret_names() -- plus the live backlog. Deploy
+# proves they existed once; this proves they exist now.
+#
+# The schedule is the real monitor. The pull_request jobs exist so a change to
+# the monitor itself cannot silently break it: `health-deletion-monitor-tests`
+# runs the offline contract suite, and `health-deletion-monitor-credentialless`
+# proves that a run without credentials exits 2 ("could not check") rather than
+# 0 ("queue is healthy"). A monitor that goes green when it cannot see the
+# database is worse than no monitor.
+on:
+  schedule:
+    # Every 30 minutes. The drain itself runs every 5 minutes, so this is ~6
+    # missed cycles of detection latency against a 60-minute age threshold.
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      max_age_minutes:
+        description: 'Override the open-job age threshold (minutes)'
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - 'scripts/check-health-deletion-backlog.mjs'
+      - 'scripts/test-health-deletion-e2e.mjs'
+      - 'scripts/health-deletion-monitor.test.mjs'
+      - '.github/workflows/health-deletion-monitor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-deletion-monitor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  health-deletion-backlog:
+    # The actual production monitor. Scheduled and manually runnable.
+    name: consent-withdrawal purge queue is draining
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      # The monitor shells out to psql. Fail here with a clear message rather
+      # than inside the script if the runner image ever drops the client.
+      - name: Verify psql is available
+        run: psql --version
+
+      - name: Check the health-deletion backlog
+        env:
+          # Least privilege: a dedicated read-only role that can execute
+          # kilo.health_deletion_backlog and read cron.job plus the NAME column
+          # of vault.secrets. It cannot read a decrypted secret, cannot write,
+          # and cannot reach any co-tenant schema. See docs/architecture.md,
+          # "Health-Deletion Queue Monitor", for the out-of-band role setup.
+          SUPABASE_HEALTH_MONITOR_URL: ${{ secrets.SUPABASE_HEALTH_MONITOR_URL }}
+          KILO_DELETION_MAX_AGE_MINUTES: ${{ inputs.max_age_minutes }}
+        run: node scripts/check-health-deletion-backlog.mjs
+
+  health-deletion-monitor-tests:
+    # Offline contract suite: redaction, the 0/1/2 exit-code discipline, the
+    # e2e harness production guards, and every classified boundary failure.
+    # Never contacts a database or a real project.
+    name: monitor and harness contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Run the monitor contract tests
+        run: npm run test:health-deletion-monitor
+
+      # Proves the redacted alert format an operator will actually receive,
+      # against a synthetic snapshot that deliberately contains a user id, an
+      # email address, and a key. Exits 0 because it is exercising the format,
+      # not the queue.
+      - name: Redacted dry run
+        run: node scripts/check-health-deletion-backlog.mjs --dry-run
+
+  health-deletion-monitor-credentialless:
+    # The regression guard for the property that matters most: with no
+    # credentials the monitor must exit 2, never 0. If this job ever sees a 0,
+    # the monitor has learned to report a healthy purge queue without looking at
+    # one -- exactly the silent success #492 was.
+    name: credentialless run exits 2, never green
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: "Attempt the check without credentials (expected: exit 2, not a pass)"
+        env:
+          # Explicitly empty. Fork pull requests never receive repository
+          # secrets anyway; this makes the same condition deterministic for
+          # same-repository pull requests too.
+          SUPABASE_HEALTH_MONITOR_URL: ''
+        run: |
+          if node scripts/check-health-deletion-backlog.mjs; then
+            echo "::error::Credentialless health-deletion monitor unexpectedly reported success"
+            exit 1
+          else
+            status=$?
+          fi
+
+          if [ "$status" -eq 2 ]; then
+            echo "::notice::Credentialless health-deletion monitor correctly exited 2 (could not check)"
+            exit 0
+          fi
+
+          echo "::error::Credentialless health-deletion monitor failed unexpectedly with exit code $status"
+          exit "$status"

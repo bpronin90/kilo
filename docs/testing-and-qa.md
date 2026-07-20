@@ -773,7 +773,73 @@ retains non-test commands such as `npm run audit`.
 - `supabase/tests/health-deletion-worker.test.sql` proves Cron dispatches the
   Vault-authenticated Edge Function worker, honors capped backoff without an
   abandonment limit, reclaims stale jobs, and completes only after verified
-  deletion
+  deletion. Its final section covers what the operator backlog monitor reads:
+  partial erasure never advances the user to `withdrawn`, a partially erased job
+  is visible as `failed` with a rising attempt count, worker errors are bounded
+  before they can reach a log, and a transport-level failure leaves the job in
+  the backlog rather than losing it
+- `npm run test:health-deletion-monitor` runs the offline contract suite for the
+  backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
+  email address, Supabase key, or JWT can never reach an alert surface), all
+  five finding kinds, the 0/1/2 exit-code discipline including the
+  credentialless exit 2, the harness's two-key production guard, its
+  API/database target binding (a mismatched pair is rejected before any account
+  or SQL), the rule that a failed fixture cleanup can never exit 0, and each of
+  the seven classified boundary failures. It stubs `psql` and never contacts a
+  database, a project, or a real secret
+- `scripts/test-health-deletion-e2e.mjs` is the separately identifiable
+  full-boundary test: it creates a disposable auth account and synthetic gated
+  rows, records consent, withdraws, verifies the `health-deletion-drain` cron is
+  active and actually invokes `kilo.drain_health_deletion_jobs()`, drives that
+  **drain entrypoint** (the function `pg_cron` runs, not
+  `dispatch_health_deletion_worker()` directly) and asserts its returned
+  `reopened` / `reclaimed_stale` / `dispatched` / `request_id` contract, waits
+  for the real pg_net response, proves every table in
+  `kilo.health_gated_tables()` is empty and `consent_state` is `withdrawn`, then
+  deletes the fixture account in a `finally` block and **confirms** its removal.
+  A failed cleanup fails the run and prints the fixture account's uuid — never
+  its password or token — so an operator can remove it
+- **Target binding.** `KILO_E2E_SUPABASE_URL` and `KILO_E2E_DATABASE_URL` must
+  resolve to the same project ref before any account is created or any SQL is
+  issued. The ref is parsed from the API host, from `db.<ref>.supabase.co`, or
+  from the pooler's `postgres.<ref>` username; an endpoint that cannot be parsed
+  is refused rather than assumed safe. Without this, an isolated API URL paired
+  with the production database URL satisfied both production guards while every
+  write went to production. Production additionally requires **both**
+  `--allow-production` and `KILO_E2E_DISPOSABLE_ACCOUNT_CONFIRMED` (set to the
+  exact disposable mail domain); ordinary CI points it at a local or isolated
+  project. The fixture password is generated at runtime and never printed
+- `--scenarios` adds the seven required failure/recovery stages as real drives
+  against an isolated target — missing Vault configuration and missing function
+  (Vault secrets are *renamed*, never decrypted, and renamed back), HTTP auth
+  failure, pg_net transport failure, partial erasure (via
+  `complete_health_deletion_job` refusing to advance while rows remain), retry
+  with drain-driven recovery, and eventual completion — plus the stale-`running`
+  reclaim. It is refused against production unconditionally, with no operator
+  override, because the stages park Vault secrets and induce failed jobs.
+  Both the happy path and `--scenarios` have been executed end to end against a
+  local `supabase start` stack: the happy path drove cron -> drain -> pg_net
+  (real HTTP, `status=200`) -> Edge Function -> verified erasure of all 7 gated
+  tables, and all 8 scenarios behaved as required
+- **Running it locally.** Point `KILO_E2E_SUPABASE_URL` at `http://127.0.0.1:54321`
+  and `KILO_E2E_DATABASE_URL` at the local database, set
+  `KILO_E2E_ANON_KEY`/`KILO_E2E_SERVICE_ROLE_KEY` from `supabase status`, and set
+  `KILO_E2E_EMAIL_DOMAIN`. The worker Vault secrets must name an origin the
+  **database container** can reach (`http://kong:8000`), not the host-side
+  `127.0.0.1:54321`. Two local-stack caveats: `supabase start` fails to load the
+  PostgREST schema cache because `supabase/config.toml` exposes the co-tenant
+  `canonical`/`raw`/`serving`/`ops` schemas, which no Kilo migration creates; and
+  the harness requires `sslmode=require`, which the local database does not enable
+  by default
+- **Local and production share a project ref.** `supabase start` names the local
+  stack from `config.toml`'s `project_id`, which is the production ref, so local
+  containers are literally `supabase_db_ogzhnscdqcdrhfqcobuv`. The target guard is
+  not fooled, because it classifies by **endpoint host first**: a loopback
+  endpoint resolves to the `local` identity and never reaches the ref comparison,
+  and the production ref only ever matches a real `*.supabase.co` host. That
+  precedence is pinned by regression tests. It is nonetheless a genuine blind spot
+  in identifying a target by ref alone — anything added here must keep host
+  classification ahead of ref matching
 - `npm run test:deploy-kilo-functions` runs the offline contract tests for
   `scripts/deploy-kilo-functions.sh`. They mock Supabase management-plane and
   database responses, including every fail-closed deployment prerequisite; the
