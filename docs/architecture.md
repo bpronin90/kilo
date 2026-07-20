@@ -522,16 +522,26 @@ reconciliation only enqueues; the ordinary pull/merge/push loop performs the
 upload, so last-write-wins, tombstone ordering, and cursor advancement are
 unchanged. It runs inside the sync phase runner, so a reconciliation that cannot
 complete fails the phase and stays retryable rather than reporting a successful
-sync. With no baseline recorded yet, only rows carrying no `updated_at` are
-adopted: that is direct evidence of a local-adapter write, whereas re-stamping
-every row would let one device claim authorship of the table and overwrite
-another device's newer cloud copy. Repeated sign-in and sync are idempotent —
-unchanged rows match the refreshed baseline and enqueue nothing. Diff-tracked
-tables never had this gap, because their snapshot diff is indifferent to which
-adapter performed the write. A
+sync. Repeated sign-in and sync are idempotent — unchanged rows match the
+refreshed baseline and enqueue nothing. Diff-tracked tables never had this gap,
+because their snapshot diff is indifferent to which adapter performed the write.
 
+A device upgrading into that build has no collection baseline yet, and the
+presence of `updated_at` is not evidence that a row was ever synced — the
+workout-note factory stamps one on every note the user creates. That first pass
+therefore reconciles against the server instead of against local state: it
+ignores the stored cursor so the pull returns the complete remote row set, then
+enqueues every local row the merge will keep that the server does not already
+hold in the same form. New rows and edits are detected; a physically absent local
+row is deliberately not read as a delete, because a row present remotely and
+absent locally is equally consistent with one this device never downloaded, and
+inventing a tombstone would destroy another device's cloud data. That single
+upgrade pass records the baseline, after which deletes are detected
+unambiguously. The governing invariant is that a baseline is never recorded over
+a row that has not reached the server: a failed push throws before the baseline
+is written, so an uncertain pass fails retryably instead of completing green.
 
-pending local row always reaches Supabase before conflict ordering is settled,
+A pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.

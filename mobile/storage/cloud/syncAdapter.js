@@ -167,6 +167,13 @@ const COLLECTION_SYNC_TABLES = Object.freeze([
 // letting the UI show "Fully synced" over unreconciled local data. On a device
 // with nothing to reconcile it is a keyed O(rows) comparison that enqueues
 // nothing, so repeated passes stay idempotent.
+//
+// This is the STEADY-STATE half only. A table with no baseline yet returns
+// `deferred: true` and enqueues nothing here, because local state alone cannot
+// distinguish a signed-out write from an untouched row — syncTable handles that
+// table against a full pull instead (see reconcileAgainstRemote). Both halves
+// run inside the same sync phase, so neither can be skipped on the way to a
+// successful SYNC.
 export async function reconcileSignedOutWrites() {
   const tableIo = createTableIo(() => {});
   const results = [];
@@ -185,6 +192,11 @@ async function syncOne(table, tableIo) {
     readLocal: io.read,
     writeLocal: io.write,
     recomputeDerived: getRecomputeDerived(),
+    // These three are the tables whose signed-out writes the dirty queue misses,
+    // so they opt into the unbaselined (upgrade-window) reconciliation described
+    // in syncQueue: on the one pass where no baseline exists yet, reconcile
+    // against a full pull instead of against local state (#525).
+    reconcileUnbaselined: true,
   });
 }
 

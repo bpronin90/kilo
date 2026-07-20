@@ -41,13 +41,17 @@ import * as Storage from '../storage/entries';
 import { setCloudTransport } from '../storage/cloudAdapter';
 import { sync, reconcileSignedOutWrites } from '../storage/cloud/syncAdapter';
 import { loadWeightGoal, saveWeightGoal } from '../storage/entries/weightGoal';
+import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
 import {
   SYNC_TABLES,
   SINGLETON_SYNC_ID,
+  clearSyncSnapshot,
+  getCursor,
   getDirtyRecords,
   getSyncSnapshot,
   isTombstone,
   reconcileAgainstBaseline,
+  reconcileAgainstRemote,
   resetClientIdCacheForTests,
   resetStampClockForTests,
 } from '../storage/syncQueue';
@@ -180,6 +184,23 @@ async function seedSyncedDevice() {
     saved_at: '2026-07-01T08:00:00.000Z',
   });
   await sync();
+}
+
+// The upgrade window. A device that synced on a build BEFORE syncTable recorded
+// collection baselines has real data, a real pull cursor, and NO baseline. That
+// is the state in which local `updated_at` carries no information about whether
+// a row was ever synced, so reconciliation has to reach for the server instead.
+const COLLECTION_TABLES = [
+  SYNC_TABLES.WEIGHT_ENTRIES,
+  SYNC_TABLES.WORKOUT_NOTES,
+  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+];
+
+async function simulatePreUpgradeDevice() {
+  for (const table of COLLECTION_TABLES) {
+    // eslint-disable-next-line no-await-in-loop
+    await clearSyncSnapshot(table);
+  }
 }
 
 describe('collection tables: sign out -> local write -> same-owner sign in', () => {
@@ -447,27 +468,22 @@ describe('reconciliation cannot be skipped or inferred without evidence', () => 
     expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-offline')).toBeUndefined();
   });
 
-  it('with no baseline, adopts unstamped local rows but never re-stamps synced ones', async () => {
-    // A device whose last sync predates the baseline being recorded. It cannot
-    // tell an edit from an untouched row, so re-stamping everything would let it
-    // claim authorship of the whole table and beat another device's newer cloud
-    // copy. Only a row with NO sync metadata is unambiguously a local-adapter
-    // write.
-    const synced = {
-      id: 'w-synced',
-      weight_value: 180,
-      updated_at: '2026-07-01T08:00:00.000Z',
-      client_id: 'other-device',
-    };
-    const localOnly = { id: 'w-local', weight_value: 178 };
+  it('defers rather than guessing when the table has no baseline', async () => {
+    // `updated_at` is NOT evidence that a row was ever synced — makeWorkoutNoteItem
+    // stamps one on every note the user creates. Treating it as evidence is what
+    // stranded signed-out notes, so the baseline diff now concludes nothing at
+    // all without a baseline and hands the table to the remote-grounded pass.
+    const stamped = { id: 'w-stamped', weight_value: 180, updated_at: '2026-07-01T08:00:00.000Z' };
+    const unstamped = { id: 'w-unstamped', weight_value: 178 };
 
-    const { dirty } = reconcileAgainstBaseline({
-      current: [synced, localOnly],
+    const { dirty, deferred } = reconcileAgainstBaseline({
+      current: [stamped, unstamped],
       baseline: null,
       clientId: 'this-device',
     });
 
-    expect(dirty.map((r) => r.id)).toEqual(['w-local']);
+    expect(deferred).toBe(true);
+    expect(dirty).toEqual([]);
   });
 
   it('reconciles each collection table exactly once per pass', async () => {
@@ -479,5 +495,219 @@ describe('reconciliation cannot be skipped or inferred without evidence', () => 
       SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
     ]);
     expect(results.every((r) => r.reconciled === 0)).toBe(true);
+  });
+});
+
+// ── the upgrade window: signed-out writes on a device with NO baseline ────────
+//
+// A device that last synced on a build before syncTable recorded collection
+// baselines has data, a cursor, and no baseline. The first version of this fix
+// assumed a row without `updated_at` was the only trustworthy sign of a
+// local-adapter write; `makeWorkoutNoteItem` stamps `updated_at` on every note
+// the user creates, so that assumption stranded exactly the rows it was meant to
+// rescue — and then `syncTable` recorded them as the baseline, which made every
+// later pass consider them reconciled. These tests pin the replacement:
+// reconcile against the SERVER's row set, which needs no prior local state.
+describe('upgrade window: no baseline recorded yet', () => {
+  it('uploads a signed-out workout note that carries its own updated_at', async () => {
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    // The exact object useWorkoutNotes.add persists through the local adapter.
+    const note = makeWorkoutNoteItem({ title: 'Routine B', raw_text: 'Bench 80x5' });
+    expect(note.updated_at).toBeTruthy();
+    await localAdapter().saveWorkoutNoteItem(note);
+
+    expect(await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).toHaveLength(0);
+    expect(await getSyncSnapshot(SYNC_TABLES.WORKOUT_NOTES)).toBeNull();
+
+    signInAsSameOwner();
+    await sync();
+
+    // It actually reached the cloud...
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, note.id)).toMatchObject({
+      id: note.id,
+      raw_text: 'Bench 80x5',
+    });
+    // ...and only then was it allowed into the baseline.
+    const baseline = await getSyncSnapshot(SYNC_TABLES.WORKOUT_NOTES);
+    expect(baseline.map((n) => n.id)).toContain(note.id);
+  });
+
+  it('never records a baseline containing a row the push did not deliver', async () => {
+    // The precise laundering the reviewer traced: skip a row, push nothing,
+    // record the local table as the baseline, and it looks reconciled forever.
+    // A failing push must leave the table baseline-less so the next pass runs
+    // the same remote-grounded reconciliation again.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    const note = makeWorkoutNoteItem({ title: 'Routine C', raw_text: 'Row 60x8' });
+    await localAdapter().saveWorkoutNoteItem(note);
+    signInAsSameOwner();
+
+    const realPush = cloud.transport.push;
+    cloud.transport.push = async (table, records) => {
+      if (table === SYNC_TABLES.WORKOUT_NOTES) throw new Error('network down');
+      return realPush(table, records);
+    };
+    await expect(sync()).rejects.toThrow('network down');
+    cloud.transport.push = realPush;
+
+    expect(await getSyncSnapshot(SYNC_TABLES.WORKOUT_NOTES)).toBeNull();
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, note.id)).toBeUndefined();
+
+    // The retry succeeds and the row lands.
+    await sync();
+    expect(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, note.id)).toMatchObject({
+      raw_text: 'Row 60x8',
+    });
+  });
+
+  it('uploads a row EDITED while signed out', async () => {
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    await localAdapter().updateWeightEntry('w-existing', 176, 'edited offline');
+
+    signInAsSameOwner();
+    await sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing')).toMatchObject({
+      weight_value: 176,
+      note: 'edited offline',
+    });
+  });
+
+  it('does not re-push rows the server already holds unchanged', async () => {
+    // The hazard on the other side: re-stamping every local row would let this
+    // device claim authorship of the whole table and beat another device's
+    // newer cloud copy. Nothing changed locally, so nothing may be pushed.
+    await seedSyncedDevice();
+    const before = cloud.pushedIds(SYNC_TABLES.WEIGHT_ENTRIES).length;
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    signInAsSameOwner();
+    await sync();
+
+    expect(cloud.pushedIds(SYNC_TABLES.WEIGHT_ENTRIES).length).toBe(before);
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
+  });
+
+  it('ignores the stale cursor so an unchanged row is still recognised as synced', async () => {
+    // The reason the unbaselined pull must be FULL. With a delta pull, a row
+    // synced long before the stored cursor is simply absent from the response
+    // and is therefore indistinguishable from a row the server has never seen —
+    // so the pass would re-push the entire table.
+    await seedSyncedDevice();
+    const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(cursor).toBeTruthy();
+
+    const pulls = [];
+    const realPull = cloud.transport.pull;
+    cloud.transport.pull = async (table, c) => {
+      pulls.push({ table, cursor: c });
+      return realPull(table, c);
+    };
+    await simulatePreUpgradeDevice();
+    await sync();
+    cloud.transport.pull = realPull;
+
+    const weightPull = pulls.find((p) => p.table === SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(weightPull.cursor).toBeNull();
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
+  });
+
+  it('lets a newer remote row win instead of clobbering it with local state', async () => {
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    // Another device edits the row AFTER this device's copy was written, while
+    // this device is signed out and cannot know about it.
+    await cloud.transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [
+      {
+        id: 'w-existing',
+        weight_value: 171,
+        logged_at: '2026-07-01T08:00:00.000Z',
+        date: '2026-07-01',
+        note: 'other device',
+      },
+    ]);
+    const pushesBefore = cloud.pushedIds(SYNC_TABLES.WEIGHT_ENTRIES).length;
+
+    signInAsSameOwner();
+    await sync();
+
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing')).toMatchObject({
+      weight_value: 171,
+      note: 'other device',
+    });
+    expect(cloud.pushedIds(SYNC_TABLES.WEIGHT_ENTRIES).length).toBe(pushesBefore);
+    const local = (await Storage.loadWeightEntriesRaw()).find((e) => e.id === 'w-existing');
+    expect(local.weight_value).toBe(171);
+  });
+
+  // ── documented limit ───────────────────────────────────────────────────────
+  it('does NOT infer a delete without a baseline, and says so honestly', async () => {
+    // A row present on the server and absent locally is genuinely ambiguous: a
+    // signed-out delete, or a row this device never downloaded. Fabricating a
+    // tombstone would delete another device's cloud data — a worse failure than
+    // the one #525 fixes — so the row is restored by the ordinary merge instead.
+    // This is a ONE-PASS limit: the pass records a baseline, and from then on
+    // reconcileAgainstBaseline detects deletes unambiguously.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    expect(await Storage.loadWeightEntriesRaw()).toHaveLength(0);
+
+    signInAsSameOwner();
+    await sync();
+
+    // The cloud copy survives — no tombstone was invented.
+    const remote = cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing');
+    expect(isTombstone(remote)).toBe(false);
+    // And the row comes back locally rather than vanishing silently.
+    const visible = await Storage.getStorageAdapter().loadWeightEntries();
+    expect(visible.map((e) => e.id)).toContain('w-existing');
+
+    // From here the baseline exists, so a delete IS detected.
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    signInAsSameOwner();
+    await sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(true);
+  });
+
+  it('reconcileAgainstRemote enqueues exactly the rows the merge would keep', async () => {
+    // The invariant, unit-level: enqueue every local row the merge will KEEP and
+    // that the server does not already hold in that form. Anything less strands
+    // data; anything more clobbers another device.
+    const serverRow = { id: 'a', v: 1, updated_at: '2026-07-02T00:00:00.000Z' };
+    const unchanged = { id: 'a', v: 1, updated_at: '2026-07-02T00:00:00.000Z' };
+    const localOnlyStamped = { id: 'b', v: 2, updated_at: '2026-07-03T00:00:00.000Z' };
+    const localNewerEdit = { id: 'c', v: 9, updated_at: '2026-07-09T00:00:00.000Z' };
+    const localStaleEdit = { id: 'd', v: 8, updated_at: '2026-07-01T00:00:00.000Z' };
+
+    const { dirty } = reconcileAgainstRemote({
+      current: [unchanged, localOnlyStamped, localNewerEdit, localStaleEdit],
+      remote: [
+        serverRow,
+        { id: 'c', v: 3, updated_at: '2026-07-04T00:00:00.000Z' },
+        { id: 'd', v: 4, updated_at: '2026-07-05T00:00:00.000Z' },
+        // Present remotely, absent locally: never inferred as a delete.
+        { id: 'e', v: 5, updated_at: '2026-07-06T00:00:00.000Z' },
+      ],
+      clientId: 'this-device',
+    });
+
+    expect(dirty.map((r) => r.id).sort()).toEqual(['b', 'c']);
   });
 });

@@ -645,8 +645,19 @@ retains non-test commands such as `npm run audit`.
   rows, leave the dirty queue empty, and record a baseline for every collection
 - verifies a reconciliation that cannot complete leaves the sync phase failed and
   retryable with the unsynced row still absent from the cloud, never "synced"
-- verifies that with no recorded baseline only unstamped local rows are adopted,
-  so a device cannot re-stamp already-synced rows over another device's copy
+- covers the upgrade window, where no baseline is recorded yet: a signed-out
+  workout note created through the real `makeWorkoutNoteItem` factory (so it
+  carries its own `updated_at`) is uploaded and only then admitted to the
+  baseline; a signed-out edit is uploaded; a failed push leaves the table
+  baseline-less so the retry reconciles again rather than treating the skipped
+  row as synced; the pull ignores the stored cursor so an already-synced row is
+  still recognised and not re-pushed; and a newer remote row wins instead of
+  being clobbered
+- pins the one scoped-out case: with no baseline, a physically absent local row
+  is NOT inferred as a delete, because it is indistinguishable from a row this
+  device never downloaded. The cloud copy survives, the row is restored locally,
+  and the same test shows deletes being detected normally once the baseline
+  exists
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 

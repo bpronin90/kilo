@@ -467,18 +467,59 @@ async function recoverPushAcknowledgements(table, transport, cursor, pushed, res
 // push succeeds. Tombstones are pushed alongside live records so a delete syncs
 // before any physical deletion. If the push throws, the cursor is NOT advanced
 // and the dirty queue is left intact so the next pass retries.
+//
+// `reconcileUnbaselined` opts the table into the first-pass reconciliation
+// described under "signed-out write reconciliation" below. It is a parameter
+// rather than unconditional behaviour because it makes the pass pull the FULL
+// remote table, which is only worth doing for the collection tables whose local
+// writes the dirty queue can miss.
 export async function syncTable({
   table,
   transport,
   readLocal,
   writeLocal,
   recomputeDerived,
+  reconcileUnbaselined = false,
 }) {
   const clientId = await getClientId();
-  const cursor = await getCursor(table);
+  const storedCursor = await getCursor(table);
+
+  // Issue #525. `reconcileAgainstBaseline` (below) can only detect a signed-out
+  // write by diffing against a recorded baseline. A device upgrading into this
+  // build has no baseline for this table yet, so that diff has nothing to say —
+  // and if the pass below simply recorded the current local table as the new
+  // baseline, any signed-out write sitting in it would be laundered into looking
+  // synced forever. This pass therefore reconciles against the SERVER's row set
+  // instead, which needs no prior local state.
+  const unbaselined = reconcileUnbaselined && (await getSyncSnapshot(table)) == null;
 
   // 1. Pull changed rows since the last cursor.
+  //
+  //    On an unbaselined pass the stored cursor is deliberately IGNORED so the
+  //    pull returns the complete server row set. A delta pull cannot ground this
+  //    reconciliation: an already-synced row that simply predates the cursor
+  //    would be absent from the delta and therefore indistinguishable from a row
+  //    the server has never seen, so every local row would be re-pushed and this
+  //    device would claim authorship of the whole table. This costs one full
+  //    pull, once per table, on the upgrade pass only.
+  const cursor = unbaselined ? null : storedCursor;
   const remote = (await transport.pull(table, cursor)) || [];
+
+  // 1b. Adopt local rows the server does not already hold in the same form (see
+  //     reconcileAgainstRemote). Enqueued before the dirty queue is read below,
+  //     so the ordinary push in step 4 uploads them; nothing local is written
+  //     here, so an interrupted pass simply retries.
+  if (unbaselined) {
+    const { dirty: adopted } = reconcileAgainstRemote({
+      current: (await readLocal()) || [],
+      remote,
+      clientId,
+    });
+    for (const rec of adopted) {
+      // eslint-disable-next-line no-await-in-loop
+      await enqueueDirty(table, rec);
+    }
+  }
 
   // 2. Collect what is awaiting upload BEFORE merging. These are local writes
   //    and tombstones that have never reached the server.
@@ -566,6 +607,16 @@ export async function syncTable({
   //    Reached only after a successful push, because the push either throws
   //    (leaving the previous baseline and the dirty queue intact for a retry) or
   //    completes.
+  //
+  //    THE INVARIANT: a baseline must never launder an un-uploaded local row
+  //    into looking synced. Every row that reaches this line either (a) matched
+  //    the baseline this pass diffed against, (b) was enqueued by
+  //    reconcileAgainstBaseline / reconcileAgainstRemote / a write-time hook and
+  //    has just been pushed, or (c) is still in the dirty queue because the
+  //    write deferred it (see syncAdapter.createTableIo), in which case the queue
+  //    — not the baseline — is what carries it forward. A push failure throws
+  //    before this point, so an uncertain pass fails retryably rather than
+  //    completing green.
   await setSyncSnapshot(table, (await readLocal()) || []);
 
   return {
@@ -931,6 +982,21 @@ export async function syncDiffTable({
 // Deliberately NOT a separate upload path: reconciliation only ENQUEUES, then
 // the ordinary pull/merge/push loop does the work. LWW, tombstone ordering,
 // cursor advancement, and idempotency stay identical to every other pass.
+//
+// There are TWO reconciliations, because there are two situations:
+//
+//   * `reconcileAgainstBaseline` — the steady state. A baseline exists, so a
+//     local row that differs from it is unambiguous evidence of a local write,
+//     and a baseline row that is physically absent locally is unambiguous
+//     evidence of a local DELETE. New rows, edits, and tombstones are all
+//     detected.
+//
+//   * `reconcileAgainstRemote` — the upgrade window, run inside syncTable. A
+//     device upgrading into this build has no baseline yet, and the presence of
+//     `updated_at` is NOT evidence that a row was ever synced (makeWorkoutNoteItem
+//     stamps one on every locally created note), so there is nothing local to
+//     diff against. The server's row set is used as the ground truth instead.
+//     New rows and edits are detected; deletes are NOT — see below.
 
 // Sync bookkeeping that describes WHEN a row was written rather than WHAT it
 // says. Two rows that differ only here hold the same user data.
@@ -951,26 +1017,23 @@ function payloadFingerprint(record) {
 // baseline and return the rows that must be pushed. Pure; the caller persists.
 //
 // `baseline == null` means this device has no record of a completed sync for the
-// table — it has never synced, or its last sync predates the snapshot written by
-// syncTable. That case is treated conservatively, exactly as diffAgainstBaseline
-// treats its `seeded` pass: with no evidence of what changed, re-stamping every
-// local row would let this device claim authorship of the whole table and win
-// LWW against another device's newer cloud copy. So only rows carrying NO
-// `updated_at` are enqueued. That is unambiguous evidence rather than an
-// inference: every path that puts a row through the sync engine stamps it (a
-// local write via stampWrite/stampTombstone, a pulled row via the server's
-// column), so an unstamped row can only have come from the local adapter.
-// Deletes and edits are not inferred without a baseline, because they cannot be.
+// table — it has never synced, or its last sync predates the snapshot syncTable
+// records. Nothing can be concluded from local state alone in that case, and in
+// particular the presence of `updated_at` must NOT be read as "already synced":
+// `makeWorkoutNoteItem` (mobile/lib/data/exerciseCatalog.js) stamps one on every
+// note the user creates, so a note written through the local adapter while
+// signed out carries one too. Treating it as synced is exactly how a signed-out
+// note got skipped, then recorded as a baseline, and stranded on the device
+// permanently.
+//
+// So this returns `deferred` and enqueues NOTHING. The unbaselined case belongs
+// to `reconcileAgainstRemote`, which syncTable runs against the server's row set
+// once the pull has completed; that is real evidence rather than an inference,
+// and it is available before any baseline is recorded.
 export function reconcileAgainstBaseline({ current, baseline, clientId }) {
   const dirty = [];
 
-  if (baseline == null) {
-    for (const rec of current || []) {
-      if (!rec || rec.id == null || rec.updated_at) continue;
-      dirty.push(isTombstone(rec) ? stampTombstone(rec, clientId) : stampWrite(rec, clientId));
-    }
-    return { dirty };
-  }
+  if (baseline == null) return { dirty, deferred: true };
 
   const baselineById = new Map();
   for (const rec of baseline) {
@@ -1007,6 +1070,66 @@ export function reconcileAgainstBaseline({ current, baseline, clientId }) {
     dirty.push(stampTombstone({ ...base }, clientId));
   }
 
+  return { dirty, deferred: false };
+}
+
+// The unbaselined (upgrade-window) reconciliation, run inside syncTable against
+// the rows a FULL pull returned. Pure; the caller enqueues.
+//
+// The rule is a single invariant, and it is deliberately phrased in terms of the
+// merge that is about to run rather than in terms of guessed intent:
+//
+//     enqueue every local row that the merge will KEEP and that the server does
+//     not already hold in exactly that form.
+//
+// That is what makes the baseline syncTable records at the end of the pass
+// honest. After the push, every row local state keeps is a row the server also
+// has, so "the last state this device and the server agreed on" is true by
+// construction. Anything weaker re-creates the stranding bug; anything stronger
+// (enqueueing on any difference) would make this device win LWW unconditionally
+// and clobber an edit another device made while this one was signed out.
+//
+// `pickWinner` is used rather than a hand-rolled comparison precisely because it
+// is what `mergeRecords` uses. If local loses, the merge overwrites local with
+// the remote row and nothing diverges, so there is nothing to push. If local
+// wins, the merge keeps local, and NOT pushing it is what would strand it.
+//
+// KNOWN LIMIT — deletes are not detected here, by design. A row present on the
+// server and absent locally is genuinely ambiguous: it may be a delete made
+// while signed out, or simply a row this device has never downloaded (a fresh
+// install has an empty local table and a full remote one). Fabricating a
+// tombstone from that ambiguity would delete another device's cloud data, which
+// is a far worse failure than the one #525 fixes. The row is therefore left to
+// the ordinary merge, which restores it locally. This applies ONLY to the single
+// upgrade-window pass: once that pass records a baseline, `reconcileAgainstBaseline`
+// detects deletes unambiguously from then on. `diffAgainstBaseline` makes the
+// same call for the diff-tracked tables (its seeded rule 1).
+export function reconcileAgainstRemote({ current, remote, clientId }) {
+  const remoteById = new Map();
+  for (const rec of remote || []) {
+    if (rec && rec.id != null) remoteById.set(rec.id, rec);
+  }
+
+  const dirty = [];
+  for (const rec of current || []) {
+    if (!rec || rec.id == null) continue;
+    const server = remoteById.get(rec.id);
+    if (server) {
+      // The server already holds this row in the same form. Nothing to say.
+      if (payloadFingerprint(server) === payloadFingerprint(rec)) continue;
+      // The remote row wins the merge, so it is about to replace local state.
+      if (pickWinner(rec, server) !== rec) continue;
+    }
+    // Either the server has never seen this row (a signed-out create, whether or
+    // not it carries an `updated_at`), or local wins the merge (a signed-out
+    // edit or delete-then-recreate). Merge over the server's copy so columns the
+    // local writer never touched still ride along.
+    const merged = { ...(server || {}), ...rec };
+    dirty.push(
+      isTombstone(rec) ? stampTombstone(merged, clientId) : stampWrite(merged, clientId)
+    );
+  }
+
   return { dirty };
 }
 
@@ -1021,10 +1144,15 @@ export function reconcileAgainstBaseline({ current, baseline, clientId }) {
 // Idempotent: re-running before a successful push overwrites the same queue
 // entries under the same ids, and re-running after one finds local state equal
 // to the refreshed baseline and enqueues nothing.
+//
+// Returns `deferred: true` when the table has no baseline yet. That is not a
+// failure and not "nothing to do": it means the reconciliation for this table
+// belongs to syncTable's unbaselined pass, which has the server's row set to
+// work from. Callers that need the work to have happened must run a sync pass.
 export async function reconcileLocalWrites({ table, readLocal }) {
   const clientId = await getClientId();
   const [current, baseline] = await Promise.all([readLocal(), getSyncSnapshot(table)]);
-  const { dirty } = reconcileAgainstBaseline({
+  const { dirty, deferred } = reconcileAgainstBaseline({
     current: current || [],
     baseline,
     clientId,
@@ -1033,5 +1161,5 @@ export async function reconcileLocalWrites({ table, readLocal }) {
     // eslint-disable-next-line no-await-in-loop
     await enqueueDirty(table, record);
   }
-  return { table, reconciled: dirty.length };
+  return { table, reconciled: dirty.length, deferred: Boolean(deferred) };
 }
