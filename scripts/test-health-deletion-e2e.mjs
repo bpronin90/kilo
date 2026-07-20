@@ -296,6 +296,26 @@ export function classifyBoundaryFailure(observation) {
     };
   }
 
+  // An actively-retrying job outranks the remaining-row count.
+  //
+  // A job that is back in `pending` after at least one attempt is, by
+  // definition, queued for another try -- and gated rows still remaining is the
+  // REASON it is retrying, not an independent finding. Reporting that as
+  // `partial-erasure` tells an operator "the worker ran and could not finish",
+  // which prompts intervention on a queue that is already recovering on its own.
+  // `retry-pending` tells them to wait and watch the attempt count, which is the
+  // correct action.
+  //
+  // `partial-erasure` keeps everything else, including a `failed` job and a job
+  // whose completion was refused outright -- those are not queued for a further
+  // attempt and do need a human.
+  if (jobStatus === 'pending' && (attempts ?? 0) >= 1) {
+    return {
+      stage: 'retry-pending',
+      detail: `the job is ${jobStatus} after ${attempts} attempt(s); it is retrying rather than completing.`,
+    };
+  }
+
   if (remainingRows > 0) {
     return {
       stage: 'partial-erasure',
@@ -368,6 +388,14 @@ let PG_ENV = null;
 
 // Parameters go through psql -v bindings rather than string interpolation, and
 // the connection password stays in libpq env vars, never argv.
+//
+// The statement is fed on STDIN, not via `-c`. psql performs `:'var'` variable
+// interpolation only for input it reads from a file or standard input; with
+// `-c` the string is passed through untouched, so every parameterised statement
+// here reached the server with a literal `:'p1'` and died on
+// `syntax error at or near ":"`. That made the whole harness unrunnable, which
+// is precisely the class of defect that only an actual end-to-end execution can
+// surface -- the offline source-shape tests were all green against it.
 function sql(statement, params = []) {
   const args = ['--no-psqlrc', '--tuples-only', '--no-align', '-v', 'ON_ERROR_STOP=1'];
   let text = statement;
@@ -376,12 +404,12 @@ function sql(statement, params = []) {
     args.push('-v', `${name}=${value}`);
     text = text.replaceAll(`$${index + 1}`, `:'${name}'`);
   });
-  args.push('-c', text);
 
   return execFileSync('psql', args, {
+    input: text,
     env: { ...process.env, ...PG_ENV },
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   }).trim();
 }
 
@@ -393,22 +421,91 @@ function fail(code, message, detail) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Throwing helper: the normal call shape, where any non-2xx is fatal.
 async function admin(path, method, body, { supabaseUrl, serviceRoleKey }) {
-  const response = await fetch(`${supabaseUrl}/auth/v1/admin/${path}`, {
-    method,
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await response.text();
-  if (!response.ok) {
+  const result = await adminRaw(path, method, body, { supabaseUrl, serviceRoleKey });
+  if (!result.ok) {
     // Never echo the request body: it carries the fixture password.
-    throw new Error(`admin ${method} ${path} failed with HTTP ${response.status}: ${text.slice(0, 300)}`);
+    throw new Error(
+      `admin ${method} ${path} failed with HTTP ${result.status}: ${String(result.text).slice(0, 300)}`
+    );
   }
-  return text ? JSON.parse(text) : null;
+  return result.json;
+}
+
+// Status-exposing helper. Deletion confirmation needs to tell "the account is
+// genuinely gone" (404) apart from "I could not find out" (401, 500, a network
+// timeout, an unparseable body). The throwing wrapper above collapses all of
+// those into one exception, and the cleanup path used to read ANY exception as
+// proof of absence -- so an expired service-role key or a 500 printed "removal
+// confirmed" and the run could still exit 0 with a live account behind it.
+//
+// `ok` here means "the HTTP round trip completed and was parsed", NOT "2xx".
+// `status` is null only when no response was obtained at all (transport error),
+// which is precisely the case a caller must never read as a not-found.
+async function adminRaw(path, method, body, { supabaseUrl, serviceRoleKey }) {
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl}/auth/v1/admin/${path}`, {
+      method,
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    return { ok: false, status: null, text: '', json: null, transportError: err.message };
+  }
+
+  const text = await response.text();
+  let json = null;
+  let parseError = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      parseError = err.message;
+    }
+  }
+
+  return {
+    ok: response.ok && parseError === null,
+    status: response.status,
+    text,
+    json,
+    parseError,
+    transportError: null,
+  };
+}
+
+// The ONLY response that proves a fixture account is gone.
+//
+// GoTrue answers a admin GET for an unknown user with 404. Anything else -- a
+// 2xx (it is still there), a 401/403 (the key stopped working, so this probe
+// never actually checked), a 5xx, a timeout, an unparseable body -- means the
+// account's fate is unknown, and unknown must never render as confirmed.
+export function classifyDeletionProbe(result) {
+  if (result.transportError) {
+    return { confirmed: false, reason: `the confirmation request did not complete: ${result.transportError}` };
+  }
+  if (result.status === 404) {
+    return { confirmed: true, reason: null };
+  }
+  if (result.status === 200 || result.status === 201) {
+    return { confirmed: false, reason: 'the account still resolves after a successful DELETE (possible soft delete)' };
+  }
+  if (result.parseError) {
+    return {
+      confirmed: false,
+      reason: `the confirmation request returned HTTP ${result.status} with an unparseable body, so deletion is unverified`,
+    };
+  }
+  return {
+    confirmed: false,
+    reason: `the confirmation request returned HTTP ${result.status}, so deletion is unverified (only 404 proves removal)`,
+  };
 }
 
 async function rpcAsUser(fn, body, { supabaseUrl, anonKey, accessToken }) {
@@ -448,6 +545,13 @@ async function rpcAsUser(fn, body, { supabaseUrl, anonKey, accessToken }) {
 
 const PARKED_SUFFIX = '__e2e_parked';
 
+// Reads a Vault secret's VALUE. Used only to derive a deliberately-dead variant
+// of a working URL for the missing-function scenario. The value is never
+// printed, never returned to an alert surface, and never leaves this process.
+function currentSecretValue(name) {
+  return sql('select decrypted_secret from vault.decrypted_secrets where name = $1', [name]).trim();
+}
+
 function parkSecret(name) {
   sql(`update vault.secrets set name = $1 || '${PARKED_SUFFIX}' where name = $1`, [name]);
 }
@@ -481,6 +585,21 @@ function rearmFixture(userId, gatedTables) {
   const seeded = Number(sql('select sum(value::bigint) from jsonb_each_text(kilo.health_data_row_counts($1))', [userId]));
   if (!(seeded > 0)) throw new Error('could not re-arm fixture rows; the scenario would be vacuous');
   sql('select kilo.reenqueue_health_deletion($1)', [userId]);
+
+  // Return consent to the state a genuinely pending purge is in.
+  //
+  // The happy path that runs before these scenarios completes the purge and
+  // legitimately advances consent_state to `withdrawn`, and
+  // kilo.reenqueue_health_deletion() deliberately does not touch consent_state
+  // (an operator retry is about the job, not the grant). Without this reset the
+  // partial-erasure scenario asserts "consent must not be withdrawn" against a
+  // row that the previous stage had already withdrawn for a legitimate reason,
+  // so it could never pass -- and the retry scenario then inherited the same
+  // false failure.
+  sql(
+    "update kilo.consent_state set status = 'deletion_pending' where user_id = $1 and status = 'withdrawn'",
+    [userId]
+  );
   return seeded;
 }
 
@@ -501,7 +620,15 @@ function drain() {
   return JSON.parse(sql('select kilo.drain_health_deletion_jobs()'));
 }
 
+// Returns null for a null request id rather than querying for it.
+//
+// kilo.dispatch_health_deletion_worker() returns NULL whenever there is nothing
+// due -- including the ordinary case where a previous scenario's dispatch is
+// still in flight and the job is already `running`. Passing that straight into
+// the lookup produced `invalid input syntax for type bigint: "null"` and failed
+// the scenario for a condition that is not an error.
 function awaitNetResponse(requestId, seconds = 60) {
+  if (requestId === null || requestId === undefined) return Promise.resolve(null);
   return (async () => {
     for (let attempt = 0; attempt < seconds; attempt += 1) {
       const row = sql(
@@ -560,14 +687,27 @@ export const BOUNDARY_SCENARIOS = [
   {
     name: 'missing-function',
     expect: 'missing-function',
-    async run({ userId, gatedTables, ref }) {
+    async run({ userId, gatedTables }) {
       const { baseUrl } = secretNames();
       rearmFixture(userId, gatedTables);
-      parkSecret(baseUrl);
+
       // A reachable origin with no function mounted at the worker path: the
       // request leaves the database and comes back 404, which is the shape of a
       // never-deployed or renamed Edge Function.
-      installSecret(baseUrl, `https://${ref}.supabase.co/e2e-nonexistent-base`);
+      //
+      // Derived from the target's OWN working base URL rather than a synthesised
+      // `https://<ref>.supabase.co` host. That construction was wrong twice: on a
+      // local target `ref` is the string "local", so it produced
+      // `https://local.supabase.co`, which does not resolve -- pg_net returned a
+      // transport error and the scenario observed `pg-net-failure` instead of
+      // `missing-function`. And on any non-local target it would have sent a real
+      // request to a real Supabase origin the harness never verified. Appending a
+      // dead path segment to the configured origin keeps the host reachable,
+      // which is exactly what distinguishes "function missing" from "network
+      // broken".
+      const workingBaseUrl = currentSecretValue(baseUrl);
+      parkSecret(baseUrl);
+      installSecret(baseUrl, `${workingBaseUrl.replace(/\/$/, '')}/e2e-nonexistent-base`);
       try {
         const result = drain();
         const netResponse = await awaitNetResponse(result.request_id);
@@ -665,10 +805,21 @@ export const BOUNDARY_SCENARIOS = [
     expect: 'retry-pending',
     async run({ userId, gatedTables }) {
       rearmFixture(userId, gatedTables);
+
+      // Claim before failing, because that is the real order of events: the
+      // worker claims a job (which is what increments `attempts` --
+      // kilo.fail_health_deletion_job deliberately does not), then the attempt
+      // fails. Failing an unclaimed job left attempts at 0, so the scenario was
+      // simulating a "retry" that had never actually been tried, and the
+      // observation was indistinguishable from a job that had merely stalled.
+      sql('select kilo.claim_health_deletion_job()');
       const before = currentJob(userId);
       sql('select kilo.fail_health_deletion_job($1, $2)', [before.id, 'e2e induced transient failure']);
 
       const failedJob = currentJob(userId);
+      if (!(failedJob.attempts >= 1)) {
+        throw new Error(`a claimed-then-failed job must record an attempt, got attempts=${failedJob.attempts}`);
+      }
       if (failedJob.status !== 'failed') throw new Error(`expected status failed, got ${failedJob.status}`);
       if (!failedJob.backoffPending) throw new Error('a failed job must sit out its backoff window');
 
@@ -695,7 +846,18 @@ export const BOUNDARY_SCENARIOS = [
     expect: null,
     async run({ userId, gatedTables }) {
       rearmFixture(userId, gatedTables);
-      const result = drain();
+
+      // Drain until it actually dispatches. The preceding retry scenario leaves a
+      // dispatch in flight, so the first drain here can legitimately find the job
+      // already `running` and return request_id = null -- which is "nothing due",
+      // not "the worker was never invoked". Retrying briefly distinguishes the
+      // two instead of failing the run on a scheduling race.
+      let result = drain();
+      for (let attempt = 0; attempt < 30 && result.request_id === null; attempt += 1) {
+        await sleep(2000);
+        result = drain();
+      }
+
       const netResponse = await awaitNetResponse(result.request_id);
       const { job, remaining } = await awaitCompletion(userId);
       return {
@@ -1045,16 +1207,17 @@ async function main() {
 
         // Confirm removal rather than trusting the response: the operator needs
         // to know the account is gone, not that a request returned 200.
-        let stillPresent = true;
-        try {
-          await admin(`users/${userId}`, 'GET', null, { supabaseUrl, serviceRoleKey });
-        } catch {
-          stillPresent = false; // 404 is the success signal here.
-        }
-        if (stillPresent) {
-          cleanupFailure = 'the account still resolves after a successful DELETE (possible soft delete)';
+        //
+        // Only HTTP 404 counts. See classifyDeletionProbe: every other outcome,
+        // including one that throws at the transport layer, leaves the account's
+        // fate unknown and must be reported as a cleanup failure rather than
+        // printed as confirmed.
+        const probe = await adminRaw(`users/${userId}`, 'GET', null, { supabaseUrl, serviceRoleKey });
+        const verdict = classifyDeletionProbe(probe);
+        if (verdict.confirmed) {
+          console.log('  deleted disposable fixture account (removal confirmed by HTTP 404)');
         } else {
-          console.log('  deleted disposable fixture account (removal confirmed)');
+          cleanupFailure = verdict.reason;
         }
       } catch (err) {
         cleanupFailure = err.message;

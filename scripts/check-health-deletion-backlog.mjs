@@ -81,38 +81,24 @@ const DEFAULTS = {
 
 const CONNECTION_ENV = 'SUPABASE_HEALTH_MONITOR_URL';
 
-// One round trip. Everything the monitor needs, as a single JSON document, so
-// there is no per-job query loop against production.
+// One round trip, and exactly one database object: the `security definer`
+// accessor added by supabase/migrations/20260720120000_health_deletion_monitor_accessor.sql.
 //
-// Scope note: this reads the `kilo` schema plus `cron.job` and the NAME column
-// of `vault.secrets`. It never selects decrypted_secret and never touches the
-// co-tenant `canonical`/`raw`/`serving`/`ops`/`legacy` schemas.
-const MONITOR_QUERY = `
-select jsonb_build_object(
-  'checked_at', now(),
-  'drain_cron_active', exists (
-    select 1 from cron.job where jobname = '${DRAIN_CRON_JOB}' and active
-  ),
-  'drain_cron_present', exists (
-    select 1 from cron.job where jobname = '${DRAIN_CRON_JOB}'
-  ),
-  'required_secret_names', (
-    select jsonb_build_array(n.functions_base_url, n.service_role_key)
-    from kilo.worker_secret_names() n
-  ),
-  'present_secret_names', coalesce((
-    select jsonb_agg(s.name)
-    from vault.secrets s, kilo.worker_secret_names() n
-    where s.name in (n.functions_base_url, n.service_role_key)
-  ), '[]'::jsonb),
-  'jobs', coalesce((
-    select jsonb_agg(
-      to_jsonb(b) || jsonb_build_object('age_seconds', extract(epoch from b.age))
-    )
-    from kilo.health_deletion_backlog(interval '0 seconds') b
-  ), '[]'::jsonb)
-)
-`;
+// This used to be an inline query that read `cron.job`, `vault.secrets`, and
+// kilo.health_deletion_backlog() directly. That could not work in production.
+// `cron.job` enforces RLS as `username = CURRENT_USER` and the drain entry is
+// owned by `postgres`, so the least-privilege monitor role matched zero rows and
+// this monitor reported `drain-cron-inactive` on EVERY run; and the jobs table
+// is RLS-deny-all, so `updated_at` -- the clock the drain's own stale-job
+// reclaim uses -- was unreadable. The accessor runs as its owner and returns
+// both, so the monitor role needs no table access at all.
+//
+// Scope note: the monitor role's ONLY privilege is `execute` on this function
+// (plus `usage` on schema kilo). It cannot read a table, cannot decrypt a Vault
+// secret, cannot write anything, and reaches no co-tenant schema. The function
+// itself returns cron status, secret NAMES, and job timing metadata only -- no
+// user_id, no health values, no secret material.
+const MONITOR_QUERY = 'select kilo.health_deletion_monitor_snapshot()';
 
 function abort(code, message, detail) {
   emit('error', `health-deletion-backlog: ${message}`);
@@ -221,6 +207,15 @@ export function redactJob(raw) {
     status: raw.status ?? null,
     attempts: Number.isFinite(Number(raw.attempts)) ? Number(raw.attempts) : null,
     age_seconds: Number.isFinite(Number(raw.age_seconds)) ? Math.round(Number(raw.age_seconds)) : null,
+    // now() - updated_at, and null for anything not `running`. Timing metadata
+    // only; see the stale-running finding in buildAlert() for why it is separate
+    // from age_seconds.
+    running_seconds:
+      raw.running_seconds === null || raw.running_seconds === undefined
+        ? null
+        : Number.isFinite(Number(raw.running_seconds))
+          ? Math.round(Number(raw.running_seconds))
+          : null,
     last_error: scrubError(raw.last_error),
   };
 }
@@ -298,31 +293,25 @@ export function buildAlert(snapshot, thresholds, projectRef) {
       });
     }
 
-    // KNOWN LIMITATION (issue #541 review finding 3, scope-blocked).
+    // Stale `running` detection measures the CLAIM, not the job.
     //
-    // This measures staleness from created_at, because
-    // kilo.health_deletion_backlog(interval) exposes age from created_at only.
-    // kilo.drain_health_deletion_jobs() reclaims a `running` job on updated_at,
-    // so the two clocks disagree: a job queued more than 30 minutes ago and
-    // claimed seconds ago pages here while the worker is perfectly fresh.
+    // kilo.drain_health_deletion_jobs() reclaims a `running` job when its
+    // `updated_at` is older than 30 minutes. Measuring from `created_at` instead
+    // disagrees with that reclaimer in a way that always errs loud: a job queued
+    // an hour ago and claimed two seconds ago would page while its worker is
+    // perfectly fresh. `running_seconds` is now() - updated_at, straight from
+    // kilo.health_deletion_monitor_snapshot(), so this condition and the
+    // reclaimer are reading the same clock.
     //
-    // It cannot be corrected from this file. kilo.health_data_deletion_jobs has
-    // RLS enabled with NO policies, so it is deny-all to every role without
-    // BYPASSRLS; the security definer backlog function is the only read path,
-    // and a column-level grant of (id, status, updated_at) to the monitor role
-    // still returns zero rows (verified on a disposable Postgres with all
-    // migrations applied). The fix therefore requires either a new RLS policy or
-    // adding updated_at to the backlog function's return type -- both changes to
-    // supabase/migrations/, which is outside this issue's Allowed Files.
-    //
-    // Erring toward a false page rather than a missed wedged worker is the safer
-    // side of that trade while it stands. See docs/architecture.md.
-    if (job.status === 'running' && age > runningStaleSeconds) {
+    // A `running` job with a null running_seconds is a snapshot the accessor
+    // could not produce, so it is not treated as evidence of freshness; the
+    // job-age and attempts findings above still cover it.
+    if (job.status === 'running' && job.running_seconds !== null && job.running_seconds > runningStaleSeconds) {
       findings.push({
         kind: 'running-job-stale',
         job_id: job.job_id,
         detail:
-          `running for ${formatAge(age)} since creation, past the ` +
+          `claimed ${formatAge(job.running_seconds)} ago without progress, past the ` +
           `${thresholds.runningStaleMinutes}m reclaim ceiling`,
       });
     }
@@ -434,9 +423,13 @@ const DRY_RUN_SNAPSHOT = {
       attempts: 9,
       age: '03:20:00',
       age_seconds: 12000,
+      running_seconds: null,
       last_error: 'dispatch rejected for person@example.com with sb_secret_examplekeymaterial',
     },
     {
+      // Deliberately the false-positive case the old created_at clock got wrong:
+      // queued 50 minutes ago (past the 30m ceiling) but claimed only 12 seconds
+      // ago. It must NOT produce a running-job-stale finding.
       job_id: '22222222-2222-4222-8222-222222222222',
       user_id: '88888888-8888-4888-8888-888888888888',
       reason: 'quarantine_expiry',
@@ -444,6 +437,19 @@ const DRY_RUN_SNAPSHOT = {
       attempts: 1,
       age: '00:50:00',
       age_seconds: 3000,
+      running_seconds: 12,
+      last_error: null,
+    },
+    {
+      // A genuinely wedged claim: held for 45 minutes, past the reclaim ceiling.
+      job_id: '33333333-3333-4333-8333-333333333333',
+      user_id: '77777777-7777-4777-8777-777777777777',
+      reason: 'withdrawal',
+      status: 'running',
+      attempts: 2,
+      age: '01:10:00',
+      age_seconds: 4200,
+      running_seconds: 2700,
       last_error: null,
     },
   ],
@@ -454,6 +460,23 @@ function main() {
   const asJson = args.includes('--json');
   const dryRun = args.includes('--dry-run');
 
+  // Load the local env file FIRST, before anything reads process.env.
+  //
+  // This used to happen inside the non-dry-run branch below, after projectRef
+  // and thresholds had already been derived. The connection URL from `.env` was
+  // therefore honoured while KILO_MONITOR_PROJECT_REF and every threshold
+  // override in the same file were silently ignored -- so an incident-time
+  // threshold change written to the documented location did nothing unless the
+  // operator happened to export it in the shell instead. Module-load ordering is
+  // the whole defect, so the regression test for it runs this script as a
+  // subprocess rather than importing it.
+  //
+  // Unconditional, including under --dry-run, so the dry run renders with the
+  // same thresholds and project ref a real run would use. loadLocalEnv() never
+  // overwrites an already-exported variable, so an explicit shell export still
+  // wins, and a missing file is a no-op.
+  loadLocalEnv(process.env.KILO_MONITOR_ENV_FILE || join(root, '.env'));
+
   const projectRef = process.env.KILO_MONITOR_PROJECT_REF || DEFAULT_PROJECT_REF;
   const thresholds = thresholdsFromEnv();
 
@@ -462,7 +485,6 @@ function main() {
     console.log('health-deletion-backlog: --dry-run, synthetic snapshot, no database connection.\n');
     snapshot = DRY_RUN_SNAPSHOT;
   } else {
-    loadLocalEnv(process.env.KILO_MONITOR_ENV_FILE || join(root, '.env'));
     const connectionUrl = process.env[CONNECTION_ENV];
     if (!connectionUrl) {
       abort(2, `${CONNECTION_ENV} is not set. Refusing to report a healthy purge queue without reading the database.`);

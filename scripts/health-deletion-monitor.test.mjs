@@ -27,6 +27,7 @@ import {
   BOUNDARY_SCENARIOS,
   assertTargetAllowed,
   classifyBoundaryFailure,
+  classifyDeletionProbe,
   finalExitCode,
   projectRefFromDatabaseUrl,
   projectRefFromUrl,
@@ -74,6 +75,9 @@ function job(overrides = {}) {
     attempts: 0,
     age: '00:05:00',
     age_seconds: 300,
+    // now() - updated_at, null unless the job is `running`. Distinct from
+    // age_seconds (now() - created_at) on purpose; see the stale-running tests.
+    running_seconds: null,
     last_error: null,
     ...overrides,
   };
@@ -95,6 +99,7 @@ test('redactJob is an allowlist: an unknown future column is dropped', () => {
     'job_id',
     'last_error',
     'reason',
+    'running_seconds',
     'status',
   ]);
   assert.equal(JSON.stringify(redacted).includes('81.4'), false);
@@ -156,38 +161,72 @@ test('attempts at the threshold without completion is a finding', () => {
   assert.ok(alert.findings.some((f) => f.kind === 'attempts-without-completion'));
 });
 
-test('a running job past the reclaim ceiling is a finding', () => {
+test('a claim held past the reclaim ceiling is a finding', () => {
   const alert = buildAlert(
-    snapshot({ jobs: [job({ status: 'running', age_seconds: 2400 })] }),
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 2400, running_seconds: 2400 })] }),
     DEFAULT_THRESHOLDS,
     'test-ref'
   );
   assert.ok(alert.findings.some((f) => f.kind === 'running-job-stale'));
 });
 
-test('a running job inside the reclaim ceiling is not a finding', () => {
+test('a claim held inside the reclaim ceiling is not a finding', () => {
   const alert = buildAlert(
-    snapshot({ jobs: [job({ status: 'running', age_seconds: 600 })] }),
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 600, running_seconds: 600 })] }),
     DEFAULT_THRESHOLDS,
     'test-ref'
   );
   assert.equal(alert.healthy, true);
 });
 
-// Finding 3 (stale-`running` measured from created_at rather than updated_at)
-// is deliberately NOT fixed here: correcting it needs an RLS policy or a change
-// to kilo.health_deletion_backlog's return type, both in supabase/migrations/,
-// which is outside this issue's Allowed Files. This test pins the current,
-// documented behavior so the limitation is explicit rather than accidental.
-test('the stale check currently measures from created_at (documented scope-blocked gap)', () => {
+// THE regression test for review finding 2. This is the exact false positive the
+// created_at clock produced: a job queued 50 minutes ago (well past the 30m
+// ceiling) but claimed 12 seconds ago. kilo.drain_health_deletion_jobs()
+// reclaims on updated_at, so this worker is fresh and must not page.
+//
+// Negative control: revert buildAlert's condition to `age > runningStaleSeconds`
+// and this test fails while the two above still pass -- which is precisely why
+// the previous round's tests did not catch the defect.
+test('a long-queued but freshly claimed job is NOT stale (finding 2 regression)', () => {
   const alert = buildAlert(
-    snapshot({ jobs: [job({ status: 'running', age_seconds: 3000 })] }),
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 3000, running_seconds: 12 })] }),
+    DEFAULT_THRESHOLDS,
+    'test-ref'
+  );
+  assert.equal(
+    alert.findings.some((f) => f.kind === 'running-job-stale'),
+    false,
+    'a job claimed seconds ago must not be reported as a stale claim'
+  );
+});
+
+test('stale-running detail describes the claim, not the job age', () => {
+  const alert = buildAlert(
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 9000, running_seconds: 2700 })] }),
     DEFAULT_THRESHOLDS,
     'test-ref'
   );
   const finding = alert.findings.find((f) => f.kind === 'running-job-stale');
-  assert.ok(finding, 'a long-queued running job still pages today');
-  assert.match(finding.detail, /since creation/);
+  assert.ok(finding);
+  assert.match(finding.detail, /claimed .* ago without progress/);
+});
+
+// A `running` job whose claim clock is absent is not evidence of freshness. It
+// must not silently suppress the finding, but it also must not fabricate one --
+// the job-age and attempts findings still cover it.
+test('a running job with no claim clock does not fabricate a stale finding', () => {
+  const alert = buildAlert(
+    snapshot({ jobs: [job({ status: 'running', age_seconds: 600, running_seconds: null })] }),
+    DEFAULT_THRESHOLDS,
+    'test-ref'
+  );
+  assert.equal(alert.findings.some((f) => f.kind === 'running-job-stale'), false);
+});
+
+test('redactJob carries running_seconds through and rounds it', () => {
+  const redacted = redactJob({ ...job({ status: 'running', running_seconds: 12.7 }) });
+  assert.equal(redacted.running_seconds, 13);
+  assert.equal(redacted.user_id, undefined, 'user_id must still be dropped');
 });
 
 test('an inactive drain cron is a finding even with an empty queue', () => {
@@ -262,6 +301,104 @@ function runMonitor({ payload = snapshot(), mode = 'ok', env = {}, credentials =
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+// --- .env override ordering (finding 3) ---------------------------------
+//
+// SUBPROCESS, deliberately. The defect was module-load ordering inside main():
+// KILO_MONITOR_PROJECT_REF and every threshold override were read from
+// process.env BEFORE loadLocalEnv() populated it, so a value written to the
+// documented `.env` was silently ignored while the connection URL from the very
+// same file was honoured. An in-process import cannot observe that ordering --
+// only a real run of the script can.
+
+// --json prints the pretty-printed alert followed by the human summary line, so
+// the document is the leading top-level object, not the whole of stdout.
+function parseAlertJson(stdout) {
+  const match = /^\{[\s\S]*?^\}/m.exec(stdout);
+  assert.ok(match, `expected a JSON alert document in stdout:\n${stdout}`);
+  return JSON.parse(match[0]);
+}
+
+function runMonitorWithEnvFile({ fileContents, env = {}, payload = snapshot(), args = [] }) {
+  const directory = mkdtempSync(join(tmpdir(), 'kilo-deletion-monitor-envfile-'));
+  try {
+    const { binDirectory } = writeStubPsql(directory, payload, 'ok');
+    const envFile = join(directory, 'fixture.env');
+    writeFileSync(envFile, fileContents);
+    const result = spawnSync(process.execPath, [monitorPath, '--json', ...args], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        PATH: `${binDirectory}:${process.env.PATH}`,
+        STUB_MODE: 'ok',
+        STUB_PAYLOAD: JSON.stringify(payload),
+        KILO_MONITOR_ENV_FILE: envFile,
+        ...env,
+      },
+    });
+    return { status: result.status, output: `${result.stdout}${result.stderr}`, stdout: result.stdout };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test('KILO_MONITOR_PROJECT_REF in the .env file is honoured (finding 3 regression)', () => {
+  const { stdout, output } = runMonitorWithEnvFile({
+    fileContents:
+      'SUPABASE_HEALTH_MONITOR_URL=postgresql://monitor:stub-credential-not-real@example.invalid:5432/postgres\n' +
+      'KILO_MONITOR_PROJECT_REF=isolated-test-project\n',
+  });
+  const alert = parseAlertJson(stdout);
+  assert.equal(alert.project, 'isolated-test-project', output);
+});
+
+test('threshold overrides in the .env file are honoured (finding 3 regression)', () => {
+  const { stdout, output } = runMonitorWithEnvFile({
+    fileContents:
+      'SUPABASE_HEALTH_MONITOR_URL=postgresql://monitor:stub-credential-not-real@example.invalid:5432/postgres\n' +
+      'KILO_DELETION_MAX_AGE_MINUTES=5\n' +
+      'KILO_DELETION_MAX_ATTEMPTS=2\n' +
+      'KILO_DELETION_RUNNING_STALE_MINUTES=7\n',
+  });
+  const alert = parseAlertJson(stdout);
+  assert.deepEqual(
+    alert.thresholds,
+    { maxAgeMinutes: 5, maxAttempts: 2, runningStaleMinutes: 7 },
+    output
+  );
+});
+
+// The whole point of an incident-time override: a widened threshold must
+// actually change the verdict, not just the printed numbers.
+test('a threshold widened in the .env file actually suppresses the finding', () => {
+  const payload = snapshot({ jobs: [job({ age_seconds: 4800 })] });
+
+  const withDefaults = runMonitorWithEnvFile({
+    payload,
+    fileContents:
+      'SUPABASE_HEALTH_MONITOR_URL=postgresql://monitor:stub-credential-not-real@example.invalid:5432/postgres\n',
+  });
+  assert.equal(withDefaults.status, 1, 'an 80-minute-old job pages at the 60m default');
+
+  const widened = runMonitorWithEnvFile({
+    payload,
+    fileContents:
+      'SUPABASE_HEALTH_MONITOR_URL=postgresql://monitor:stub-credential-not-real@example.invalid:5432/postgres\n' +
+      'KILO_DELETION_MAX_AGE_MINUTES=180\n',
+  });
+  assert.equal(widened.status, 0, `widening the threshold in .env must clear it: ${widened.output}`);
+});
+
+test('an explicit shell export still wins over the .env file', () => {
+  const { stdout } = runMonitorWithEnvFile({
+    fileContents:
+      'SUPABASE_HEALTH_MONITOR_URL=postgresql://monitor:stub-credential-not-real@example.invalid:5432/postgres\n' +
+      'KILO_MONITOR_PROJECT_REF=from-the-file\n',
+    env: { KILO_MONITOR_PROJECT_REF: 'from-the-shell' },
+  });
+  const alert = parseAlertJson(stdout);
+  assert.equal(alert.project, 'from-the-shell');
+});
 
 test('exit 0 when the queue is draining', () => {
   const { status, output } = runMonitor({ payload: snapshot({ jobs: [job()] }) });
@@ -554,6 +691,32 @@ test('partial erasure is classified', () => {
   );
 });
 
+// An actively-retrying job outranks the remaining-row count: rows remaining is
+// WHY it is retrying, and telling an operator "partial erasure" prompts
+// intervention on a queue that is recovering by itself. A `failed` job with rows
+// remaining is still partial-erasure -- it is not queued for another attempt.
+test('a job retrying with rows still present is retry-pending, not partial erasure', () => {
+  assert.equal(
+    classifyBoundaryFailure({ ...healthy, jobStatus: 'pending', attempts: 2, remainingRows: 8 }).stage,
+    'retry-pending'
+  );
+});
+
+test('a failed job with rows still present remains partial-erasure', () => {
+  assert.equal(
+    classifyBoundaryFailure({ ...healthy, jobStatus: 'failed', attempts: 2, remainingRows: 8 }).stage,
+    'partial-erasure'
+  );
+});
+
+// A never-attempted job is not a retry, so the row count still wins.
+test('a pending job with no attempts yet is not classified as a retry', () => {
+  assert.equal(
+    classifyBoundaryFailure({ ...healthy, jobStatus: 'pending', attempts: 0, remainingRows: 8 }).stage,
+    'partial-erasure'
+  );
+});
+
 test('a retrying job is classified', () => {
   assert.equal(
     classifyBoundaryFailure({ ...healthy, jobStatus: 'pending', attempts: 2 }).stage,
@@ -642,6 +805,102 @@ test('the cleanup failure report identifies the account without leaking a secret
   const report = harnessSource.slice(harnessSource.indexOf('CLEANUP FAILED'), harnessSource.indexOf('CLEANUP FAILED') + 600);
   assert.equal(report.includes('${password}'), false, 'the fixture password must never be printed');
   assert.equal(report.includes('${accessToken}'), false, 'the access token must never be printed');
+});
+
+// --- cleanup confirmation (finding 4) -----------------------------------
+//
+// The defect: the post-delete GET was wrapped in a bare try/catch and ANY
+// exception was read as "the account is gone". A 401 from an expired key, a
+// 500, a timeout, or an unparseable body all printed "removal confirmed" and
+// the run could still exit 0 with a live fixture account behind it.
+//
+// Only HTTP 404 proves removal. Everything else is "unknown", and unknown is a
+// cleanup failure.
+
+test('only HTTP 404 confirms the fixture account was deleted', () => {
+  assert.equal(classifyDeletionProbe({ status: 404, transportError: null }).confirmed, true);
+});
+
+test('a 2xx means the account still resolves, not that it is gone', () => {
+  const verdict = classifyDeletionProbe({ status: 200, transportError: null });
+  assert.equal(verdict.confirmed, false);
+  assert.match(verdict.reason, /still resolves/);
+});
+
+test('an auth or server error is never read as deletion proof (finding 4 regression)', () => {
+  for (const status of [401, 403, 429, 500, 502, 503]) {
+    const verdict = classifyDeletionProbe({ status, transportError: null });
+    assert.equal(verdict.confirmed, false, `HTTP ${status} must not confirm deletion`);
+    assert.match(verdict.reason, /unverified/);
+  }
+});
+
+test('a transport failure is never read as deletion proof', () => {
+  const verdict = classifyDeletionProbe({ status: null, transportError: 'socket hang up' });
+  assert.equal(verdict.confirmed, false);
+  assert.match(verdict.reason, /did not complete/);
+});
+
+test('an unparseable body is never read as deletion proof', () => {
+  const verdict = classifyDeletionProbe({ status: 200, parseError: 'Unexpected token', transportError: null });
+  assert.equal(verdict.confirmed, false);
+});
+
+// An unconfirmed cleanup must actually fail the run, not just print.
+test('an unconfirmed cleanup fails the run even when the boundary passed', () => {
+  const verdict = classifyDeletionProbe({ status: 500, transportError: null });
+  assert.equal(finalExitCode({ failed: null, cleanupFailure: verdict.reason }), 1);
+});
+
+// --- local/production identity collision --------------------------------
+//
+// `supabase start` names the local stack from config.toml's `project_id`, which
+// is the PRODUCTION ref. So local containers are literally called
+// supabase_db_ogzhnscdqcdrhfqcobuv, and local and production share a ref string.
+//
+// The guard is not fooled, because it classifies by ENDPOINT HOST first and only
+// falls through to ref matching for a genuine *.supabase.co host -- and the
+// production ref never appears in a loopback URL. These tests pin that
+// precedence so a future refactor cannot reorder it into a real hazard.
+
+test('a loopback endpoint resolves local even though the ref matches production', () => {
+  const identity = resolveTargetIdentity({
+    supabaseUrl: 'http://127.0.0.1:54321',
+    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+  });
+  assert.equal(identity.ok, true);
+  assert.equal(identity.ref, 'local', 'a local stack must never classify as production');
+
+  const allowed = assertTargetAllowed({
+    supabaseUrl: 'http://127.0.0.1:54321',
+    databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    emailDomain: 'e2e.invalid',
+    allowProduction: false,
+    confirmedDomain: null,
+  });
+  assert.equal(allowed.ok, true, 'a local stack needs no production flags');
+  assert.equal(allowed.isProduction, false);
+});
+
+test('a production host is never rescued by a local-looking ref', () => {
+  const allowed = assertTargetAllowed({
+    supabaseUrl: 'https://ogzhnscdqcdrhfqcobuv.supabase.co',
+    databaseUrl: 'postgresql://postgres:p@db.ogzhnscdqcdrhfqcobuv.supabase.co:5432/postgres',
+    emailDomain: 'e2e.invalid',
+    allowProduction: false,
+    confirmedDomain: null,
+  });
+  assert.equal(allowed.ok, false, 'production must be refused without both guards');
+  assert.match(allowed.reason, /refusing to run against production/);
+});
+
+test('a loopback API paired with a production database is refused as a mismatch', () => {
+  const identity = resolveTargetIdentity({
+    supabaseUrl: 'http://127.0.0.1:54321',
+    databaseUrl: 'postgresql://postgres:p@db.ogzhnscdqcdrhfqcobuv.supabase.co:5432/postgres',
+  });
+  assert.equal(identity.ok, false, 'a split local/production pair must fail closed');
+  assert.match(identity.reason, /target mismatch/);
 });
 
 // --- report -------------------------------------------------------------

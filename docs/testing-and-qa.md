@@ -817,7 +817,29 @@ retains non-test commands such as `npm run audit`.
   with drain-driven recovery, and eventual completion — plus the stale-`running`
   reclaim. It is refused against production unconditionally, with no operator
   override, because the stages park Vault secrets and induce failed jobs.
-  **This mode has not yet been executed: no isolated Supabase project exists**
+  Both the happy path and `--scenarios` have been executed end to end against a
+  local `supabase start` stack: the happy path drove cron -> drain -> pg_net
+  (real HTTP, `status=200`) -> Edge Function -> verified erasure of all 7 gated
+  tables, and all 8 scenarios behaved as required
+- **Running it locally.** Point `KILO_E2E_SUPABASE_URL` at `http://127.0.0.1:54321`
+  and `KILO_E2E_DATABASE_URL` at the local database, set
+  `KILO_E2E_ANON_KEY`/`KILO_E2E_SERVICE_ROLE_KEY` from `supabase status`, and set
+  `KILO_E2E_EMAIL_DOMAIN`. The worker Vault secrets must name an origin the
+  **database container** can reach (`http://kong:8000`), not the host-side
+  `127.0.0.1:54321`. Two local-stack caveats: `supabase start` fails to load the
+  PostgREST schema cache because `supabase/config.toml` exposes the co-tenant
+  `canonical`/`raw`/`serving`/`ops` schemas, which no Kilo migration creates; and
+  the harness requires `sslmode=require`, which the local database does not enable
+  by default
+- **Local and production share a project ref.** `supabase start` names the local
+  stack from `config.toml`'s `project_id`, which is the production ref, so local
+  containers are literally `supabase_db_ogzhnscdqcdrhfqcobuv`. The target guard is
+  not fooled, because it classifies by **endpoint host first**: a loopback
+  endpoint resolves to the `local` identity and never reaches the ref comparison,
+  and the production ref only ever matches a real `*.supabase.co` host. That
+  precedence is pinned by regression tests. It is nonetheless a genuine blind spot
+  in identifying a target by ref alone — anything added here must keep host
+  classification ahead of ref matching
 - `npm run test:deploy-kilo-functions` runs the offline contract tests for
   `scripts/deploy-kilo-functions.sh`. They mock Supabase management-plane and
   database responses, including every fail-closed deployment prerequisite; the

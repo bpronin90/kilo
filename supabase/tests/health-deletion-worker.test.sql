@@ -24,7 +24,7 @@
 
 begin;
 
-select plan(24);
+select plan(37);
 
 \set user_a 'cccccccc-cccc-cccc-cccc-cccccccccccc'
 \set user_b 'dddddddd-dddd-dddd-dddd-dddddddddddd'
@@ -296,6 +296,129 @@ select is(
   (select count(*) from kilo.health_deletion_backlog(interval '0 seconds')),
   1::bigint,
   'a transport-level worker failure leaves the job visible in the backlog'
+);
+
+-- ---------------------------------------------------------------------------
+-- kilo.health_deletion_monitor_snapshot() -- #541 review findings 1 and 2
+-- ---------------------------------------------------------------------------
+--
+-- The monitor that consumes this accessor could not work before it existed.
+-- `cron.job` enforces RLS as `username = CURRENT_USER`, so a least-privilege
+-- monitor role saw zero cron rows and reported `drain-cron-inactive` on every
+-- run; and kilo.health_data_deletion_jobs is RLS-deny-all, so `updated_at` --
+-- the clock the drain's own stale reclaim uses -- was unreadable, leaving the
+-- monitor comparing against `created_at` and false-paging on freshly claimed
+-- old jobs.
+--
+-- These assertions pin the three properties that make it a usable monitor read
+-- path: it sees the cron row, it exposes the claim clock separately from the
+-- job clock, and it cannot leak identity.
+
+-- The cron row is visible through the accessor. Read directly, this is false
+-- for any role that did not schedule the job.
+select ok(
+  (kilo.health_deletion_monitor_snapshot() -> 'drain_cron_present')::boolean,
+  'the accessor sees the health-deletion-drain cron row that cron.job RLS hides'
+);
+
+select ok(
+  (kilo.health_deletion_monitor_snapshot() -> 'drain_cron_active')::boolean,
+  'the accessor reports the drain cron as active'
+);
+
+-- REDACTION. The accessor is machine-read and its output reaches alert
+-- surfaces, so user_id must be absent from every job object. This is the
+-- assertion that fails loudly if someone "simplifies" the explicit column list
+-- into to_jsonb(j).
+select ok(
+  not exists (
+    select 1
+    from jsonb_array_elements(kilo.health_deletion_monitor_snapshot() -> 'jobs') j
+    where j ? 'user_id'
+  ),
+  'the accessor never returns user_id'
+);
+
+select ok(
+  not (kilo.health_deletion_monitor_snapshot()::text ilike '%' || :'user_b' || '%'),
+  'no user uuid appears anywhere in the accessor payload'
+);
+
+-- Secret NAMES only, never secret material.
+select ok(
+  (kilo.health_deletion_monitor_snapshot() -> 'required_secret_names')
+    @> '["kilo_functions_base_url", "kilo_service_role_key"]'::jsonb,
+  'the accessor reports the required Vault secret names'
+);
+
+-- The two clocks are genuinely distinct. Force the exact false-positive shape
+-- the old monitor got wrong: a job created well past the 30-minute reclaim
+-- ceiling but claimed just now. age_seconds must be large; running_seconds must
+-- be near zero, because that is what the reclaimer actually compares.
+update kilo.health_data_deletion_jobs
+  set status = 'running', created_at = now() - interval '90 minutes', updated_at = now()
+  where user_id = :'user_b'::uuid;
+
+select ok(
+  (select (j ->> 'age_seconds')::numeric > 3600
+   from jsonb_array_elements(kilo.health_deletion_monitor_snapshot() -> 'jobs') j
+   limit 1),
+  'age_seconds still measures the wait since the user requested erasure'
+);
+
+select ok(
+  (select (j ->> 'running_seconds')::numeric < 60
+   from jsonb_array_elements(kilo.health_deletion_monitor_snapshot() -> 'jobs') j
+   limit 1),
+  'running_seconds measures the claim, so a freshly claimed old job is not stale'
+);
+
+-- And the genuinely wedged case still reads as stale.
+update kilo.health_data_deletion_jobs
+  set updated_at = now() - interval '45 minutes'
+  where user_id = :'user_b'::uuid;
+
+select ok(
+  (select (j ->> 'running_seconds')::numeric > 1800
+   from jsonb_array_elements(kilo.health_deletion_monitor_snapshot() -> 'jobs') j
+   limit 1),
+  'a claim held past the reclaim ceiling reads as stale through running_seconds'
+);
+
+-- running_seconds is meaningful only for a held claim.
+update kilo.health_data_deletion_jobs
+  set status = 'pending' where user_id = :'user_b'::uuid;
+
+select ok(
+  (select (j -> 'running_seconds') = 'null'::jsonb
+   from jsonb_array_elements(kilo.health_deletion_monitor_snapshot() -> 'jobs') j
+   limit 1),
+  'running_seconds is null for a job that is not running'
+);
+
+-- Least privilege: the monitor role exists, can execute the accessor, and holds
+-- nothing else. This is the check that caught the original RLS blockers.
+select ok(
+  exists (select 1 from pg_catalog.pg_roles where rolname = 'kilo_deletion_monitor'),
+  'the least-privilege monitor role exists'
+);
+
+select ok(
+  has_function_privilege('kilo_deletion_monitor', 'kilo.health_deletion_monitor_snapshot()', 'execute'),
+  'the monitor role can execute the accessor'
+);
+
+-- It must NOT be able to read the jobs table directly, or the accessor's
+-- redaction boundary would be bypassable.
+select ok(
+  not has_table_privilege('kilo_deletion_monitor', 'kilo.health_data_deletion_jobs', 'select'),
+  'the monitor role has no direct read on the deletion jobs table'
+);
+
+-- And it must never reach the backlog function, which does return user_id.
+select ok(
+  not has_function_privilege('kilo_deletion_monitor', 'kilo.health_deletion_backlog(interval)', 'execute'),
+  'the monitor role cannot call the backlog function that exposes user_id'
 );
 
 select * from finish();
