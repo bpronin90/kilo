@@ -2179,7 +2179,7 @@ describe('fatigue-checkin projection + active-deload sync (issue #498)', () => {
     expect(cloud.pushes.filter((p) => p.table === HEALTH)).toEqual([]);
   });
 
-  it('clearing the active deload converges across devices without resurrection', async () => {
+  it('clearing the active deload persists null fields and converges across devices without resurrection (#560)', async () => {
     await Storage.saveDeloadNote('to be cleared');
     await cloudAdapter.sync();
     const deviceA = await captureDevice();
@@ -2192,12 +2192,46 @@ describe('fatigue-checkin projection + active-deload sync (issue #498)', () => {
     await restoreDevice(deviceA);
     await Storage.clearDeloadNote();
     await cloudAdapter.sync();
-    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBeNull();
+    expect(cloud.remoteRow(HEALTH, SELF)).toMatchObject({
+      current_deload_note_raw_text: null,
+      current_deload_note_saved_at: null,
+      current_deload_note_updated_at: null,
+    });
 
     await restoreDevice(deviceB);
     await cloudAdapter.sync();
     expect(await Storage.loadDeloadNote()).toBeNull();
     await cloudAdapter.sync();
+    expect(await Storage.loadDeloadNote()).toBeNull();
+  });
+
+  it('a failed cleared-active-deload push is retried as null fields (#560)', async () => {
+    await Storage.saveDeloadNote('clear after retry');
+    await cloudAdapter.sync();
+
+    await Storage.clearDeloadNote();
+    let failHealth = true;
+    setCloudTransport({
+      pull: (t, c) => cloud.transport.pull(t, c),
+      push: async (t, records) => {
+        if (t === HEALTH && failHealth) {
+          failHealth = false;
+          throw new Error('boom cleared deload');
+        }
+        return cloud.transport.push(t, records);
+      },
+    });
+
+    await expect(cloudAdapter.sync()).rejects.toThrow('boom cleared deload');
+    expect(cloud.remoteRow(HEALTH, SELF).current_deload_note_raw_text).toBe('clear after retry');
+    expect((await getDirtyRecords(HEALTH)).length).toBeGreaterThan(0);
+
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(HEALTH, SELF)).toMatchObject({
+      current_deload_note_raw_text: null,
+      current_deload_note_saved_at: null,
+      current_deload_note_updated_at: null,
+    });
     expect(await Storage.loadDeloadNote()).toBeNull();
   });
 
