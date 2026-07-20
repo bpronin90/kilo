@@ -558,10 +558,19 @@ last-write-to-reach-the-server-wins requires, since any unrecorded local delete
 never reached the server. With an untrustworthy cursor the row cannot be
 classified: no tombstone is invented and no baseline is recorded, and the pass
 raises a reconciliation conflict that fails the sync phase with an actionable
-message rather than reporting success. A missing cursor is not a conflict — it is
-the ordinary first-download state, and also what an intentional cursor clear
-(#538 rebuild rearm, #523 healing) leaves behind — so it infers nothing and
-blocks nothing. The conflict is reported once: it is raised after the merge has
+message rather than reporting success. A missing cursor is handled by the
+transition context the app layer threads down (`ownedDevice`), because it is
+reachable from two states that local data alone cannot always separate — an owned
+device that deleted every local row looks exactly like a clean download. On a
+genuine clean device (first download, or the #538 post-purge rebuild) it is the
+ordinary first-download state, so it infers nothing and blocks nothing;
+restoring the full remote set is the download. On an owned device with real prior
+sync history whose cursor was intentionally cleared (#523 healing, #538 rearm) the
+absent-local row can be neither classified as a signed-out delete nor safely
+restored as success, so it takes the same honest conflict as an untrustworthy
+cursor — never a fabricated tombstone. The clean-device download, upload-claim,
+start-fresh, and rebuild flows pass `ownedDevice` false; the ordinary same-owner
+sign-in sync and manual "Sync Now" pass it true. The conflict is reported once: it is raised after the merge has
 restored the rows, after the real dirty queue has been pushed, and after cursor
 advancement has replaced the untrustworthy value with a server-authored one, so
 the retry has nothing ambiguous left and completes. The governing invariant is

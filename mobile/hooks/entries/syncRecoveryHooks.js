@@ -86,7 +86,12 @@ function makeBootstrapRunner(user) {
 // Per-device on purpose: the generation write is local to this device, so two
 // of an account's devices each rebuild their own complete local copy rather
 // than the first one to sync clearing a single server flag for the rest.
-async function selectSyncRunner(consent, userId) {
+// `ownedDevice` (issue #525, round 4) is forwarded to adapter.sync() so the
+// unbaselined reconciliation can tell a genuine clean-device first download from
+// an owned device whose pull cursor was cleared (see reconcileAgainstRemote). It
+// is true only on the ordinary owned-device sync paths; the #538 rebuild branch
+// below is a first-download-shaped rebuild and deliberately leaves it false.
+async function selectSyncRunner(consent, userId, { ownedDevice = false } = {}) {
   const adapter = Storage.getStorageAdapter();
   // The local adapter also exposes `sync`, but it is a deliberate no-op
   // (localAdapter.js) that resolves successfully without ever contacting the
@@ -113,7 +118,7 @@ async function selectSyncRunner(consent, userId) {
       return result;
     };
   }
-  return () => adapter.sync();
+  return () => adapter.sync({ ownedDevice });
 }
 
 export function useSyncRecovery(user = null) {
@@ -157,7 +162,9 @@ export function useSyncRecovery(user = null) {
   const runSync = useCallback(async () => {
     const checked = await checkConsent();
     if (!checked.ok) return checked.denial;
-    const runner = await selectSyncRunner(checked.consent, userId);
+    // Manual "Sync Now" only reaches a cloud adapter, which means ownership is
+    // already established — an owned device (#525, round 4).
+    const runner = await selectSyncRunner(checked.consent, userId, { ownedDevice: true });
     if (!runner) {
       return {
         ok: false,
@@ -231,7 +238,7 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
   // must take precedence over any local-data ownership decision (#500).
   const recoveryActive = Boolean(auth?.passwordRecovery || auth?.recoveryError);
 
-  const runInitialSync = useCallback(async () => {
+  const runInitialSync = useCallback(async ({ ownedDevice = false } = {}) => {
     // The automatic path is exactly where an ungated upload would be most damaging:
     // it runs on sign-in, with no user watching. A user who has not granted
     // health-data consent must not have their history pushed to the cloud simply
@@ -251,7 +258,7 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
       // sync pass whenever this device has not yet caught up to a completed
       // withdrawal purge — otherwise a same-owner re-grant after a purge would
       // report "Fully synced" while the cloud copy stayed empty.
-      const runner = await selectSyncRunner(checked.consent, userId);
+      const runner = await selectSyncRunner(checked.consent, userId, { ownedDevice });
       if (runner) await runPhase(SYNC_PHASE.SYNC, runner);
     }
     onSyncCompleteRef.current?.();
@@ -282,6 +289,10 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     });
     if (!result.ok) return result;
     Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    // Establishing ownership, not an owned-device resync: bootstrap just pushed
+    // the full local set, so absent-local remote rows are legitimately
+    // never-downloaded and must be pulled, not conflicted (#525, round 4). Leave
+    // ownedDevice at its safe false default.
     await runInitialSync();
     return result;
   }, [userId, runInitialSync]);
@@ -303,6 +314,9 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     // doesn't appear.
     markComplete(SYNC_PHASE.BOOTSTRAP);
     Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    // A just-purged device is a first download, not an owned resync: leave
+    // ownedDevice false so the full remote set downloads without a conflict
+    // (#525, round 4).
     await runInitialSync();
     return { ok: true };
   }, [userId, runInitialSync]);
@@ -343,6 +357,9 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
     // upload button doesn't reappear.
     markComplete(SYNC_PHASE.BOOTSTRAP);
     Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
+    // A verified-empty device explicitly downloading its account: this is the
+    // canonical clean first download, so ownedDevice stays false and the full
+    // remote set arrives without a conflict (#525, round 4).
     await runInitialSync();
     return { ok: true };
   }, [userId, runInitialSync]);
@@ -396,7 +413,11 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
             // recovery interruption clears) is exactly as capable of landing on a
             // same-owner device whose grant still awaits a post-purge rebuild as
             // the ordinary sign-in path is.
-            if (!cancelled) await runInitialSync();
+            //
+            // Bootstrap is already COMPLETE, so this device owns its data — pass
+            // ownedDevice so a cleared cursor cannot silently restore a signed-out
+            // delete as success (#525, round 4).
+            if (!cancelled) await runInitialSync({ ownedDevice: true });
           }
         }
         return;
@@ -407,10 +428,12 @@ export function useAutoSync(auth, { onSyncComplete } = {}) {
 
       if (owner === userId) {
         // Local data is already theirs — nothing to bootstrap. Activate cloud
-        // mode and sync normally (this keeps #432's purpose intact).
+        // mode and sync normally (this keeps #432's purpose intact). This is the
+        // owned-device path #525 (round 4) protects: a cleared cursor here must
+        // surface a signed-out delete as a conflict, not restore it as success.
         Storage.setStorageMode(Storage.STORAGE_MODES.CLOUD);
         markComplete(SYNC_PHASE.BOOTSTRAP);
-        if (!cancelled) await runInitialSync();
+        if (!cancelled) await runInitialSync({ ownedDevice: true });
       } else if (owner === OWNER_UNCLAIMED) {
         // Offer the pull-only restore only on a verifiably empty device, so
         // "Download my account's data" can never push local state up (#499).

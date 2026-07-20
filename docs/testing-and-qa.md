@@ -658,12 +658,17 @@ retains non-test commands such as `npm run audit`.
   the next pull does not resurrect; a remote row written after the cursor is
   preserved rather than tombstoned; a #523-poisoned future-clock cursor produces
   no tombstone, records no baseline, and fails the sync phase with an actionable
-  message that the retry then clears; and a missing or intentionally cleared
-  cursor neither infers a delete nor blocks a first download
+  message that the retry then clears; and a missing cursor is resolved by the
+  `ownedDevice` transition context — an owned device whose cleared cursor cannot
+  classify a signed-out delete surfaces an honest conflict (no tombstone, no
+  baseline, retry converges) while a clean first download of the exact same
+  local shape still downloads without a conflict, and the #538 post-purge rebuild
+  still converges on an unbaselined device
 - unit-covers `assessCursorTrust` (corroborated, ahead-of-server, uncorroborated,
   absent, malformed, empty remote) and `reconcileAgainstRemote`'s absent-local
   classification, including that an already-tombstoned remote row is never
-  re-tombstoned
+  re-tombstoned and that a missing cursor is a conflict on an owned device but not
+  on a clean one
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 

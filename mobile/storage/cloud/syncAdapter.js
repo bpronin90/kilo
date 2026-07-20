@@ -184,7 +184,7 @@ export async function reconcileSignedOutWrites() {
   return results;
 }
 
-async function syncOne(table, tableIo) {
+async function syncOne(table, tableIo, ownedDevice = false) {
   const io = tableIo[table];
   return syncTable({
     table,
@@ -201,6 +201,13 @@ async function syncOne(table, tableIo) {
     // this device already observed — which fails the SYNC phase with an
     // actionable message instead of reporting success over an unreconciled table.
     reconcileUnbaselined: true,
+    // Transition context for the missing-cursor case (#525, round 4). Only the app
+    // layer knows whether this pass is a clean-device first download / #538
+    // rebuild (false) or an owned device whose cursor was cleared (true); see
+    // reconcileAgainstRemote. Defaults false so every unthreaded caller (the
+    // background maybeSyncCloud refresh, #538 rebuildCloudCopy, tests) keeps the
+    // safe non-blocking first-download behaviour.
+    ownedDevice,
   });
 }
 
@@ -718,7 +725,18 @@ const DIFF_TABLES = Object.freeze([
 // (hooks/entries/syncRecoveryHooks.js), which is where a denial becomes a screen
 // the user can act on, and the real boundary is the server's RLS, which refuses
 // these reads and writes whether or not any client ever asks.
-export async function sync() {
+// `ownedDevice` (issue #525, round 4) is the ONLY behavioural input this function
+// takes, and it matters solely on the one upgrade-window pass where a collection
+// table has no baseline yet AND its stored cursor is missing. It is false by
+// default so a clean-device first download, the #538 post-purge rebuild, the
+// background maybeSyncCloud refresh, and every test that calls sync() bare all get
+// the safe non-blocking behaviour (restore the remote set, never conflict). The
+// app layer passes true only from the ordinary owned-device sync paths — automatic
+// same-owner sign-in sync and manual "Sync Now" — where an absent-local remote row
+// under a cleared cursor is an unclassifiable signed-out delete that must surface
+// an honest conflict instead of being silently restored as success. See
+// reconcileAgainstRemote for why local data alone cannot make this call.
+export async function sync({ ownedDevice = false } = {}) {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
   // Before anything else: adopt writes made while signed out (#525). A failure
@@ -729,7 +747,7 @@ export async function sync() {
   const results = [];
   for (const table of COLLECTION_SYNC_TABLES) {
     // eslint-disable-next-line no-await-in-loop
-    results.push(await syncOne(table, tableIo));
+    results.push(await syncOne(table, tableIo, ownedDevice));
   }
   if (pendingWorkoutNoteTombstones.length > 0) {
     const tombstones = pendingWorkoutNoteTombstones.splice(0);
@@ -737,7 +755,7 @@ export async function sync() {
       // eslint-disable-next-line no-await-in-loop
       await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
     }
-    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo));
+    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo, ownedDevice));
   }
 
   // The tables bootstrap used to push once and abandon (issue #489). Run them

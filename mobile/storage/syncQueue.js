@@ -432,12 +432,19 @@ export function maxUpdatedAt(records, current = null) {
 // the device and cannot be reconstructed from anything it holds. It is why the
 // unresolved case below fails the pass rather than guessing.
 //
-// `absent` is deliberately NOT a conflict. A device with no cursor for this table
-// has no completed pull to contradict — the ordinary state of a first download
-// (empty local table, full remote one) and of a table whose cursor was
-// intentionally cleared (#538 rebuild rearm, #523 healing). Treating it as a
-// conflict would block every fresh install; treating it as observation evidence
-// would be the destructive error. It infers nothing and blocks nothing.
+// `absent` reports a MISSING cursor, which — unlike the other reasons — is not on
+// its own trustworthy or untrustworthy: a device with no cursor for this table
+// simply has no completed pull to contradict. What that means depends on WHICH
+// device it is, and only the caller knows that (see reconcileAgainstRemote's
+// `ownedDevice`). On a genuine clean device it is the ordinary first-download
+// state (empty local table, full remote one) and must infer nothing and block
+// nothing, or every fresh install and every #538 post-purge rebuild would wedge.
+// On an OWNED device with real prior sync history whose cursor was intentionally
+// cleared (#523 healing, #538 rearm) it is instead the one state in which an
+// absent-local remote row can neither be classified as a signed-out delete nor
+// explained as never-downloaded — so it must surface an honest conflict rather
+// than silently restore the row and report success. assessCursorTrust reports the
+// fact; reconcileAgainstRemote applies the device-specific policy.
 export function assessCursorTrust({ cursor, remote }) {
   if (!cursor) return { trusted: false, reason: 'absent' };
   if (Number.isNaN(Date.parse(cursor))) return { trusted: false, reason: 'malformed' };
@@ -564,6 +571,15 @@ async function recoverPushAcknowledgements(table, transport, cursor, pushed, res
 // rather than unconditional behaviour because it makes the pass pull the FULL
 // remote table, which is only worth doing for the collection tables whose local
 // writes the dirty queue can miss.
+//
+// `ownedDevice` is the transition context reconcileAgainstRemote needs when the
+// stored cursor is MISSING (issue #525, round 4). It is threaded from the app
+// layer (hooks/entries/syncRecoveryHooks.js), which is the only place that knows
+// whether this pass is a genuine clean-device first download / #538 rebuild
+// (false) or an owned device with real prior sync history whose cursor was
+// cleared (true). It defaults to false so the safe first-download behaviour is
+// what every unthreaded caller gets. It only changes the missing-cursor case;
+// every other cursor outcome is identical.
 export async function syncTable({
   table,
   transport,
@@ -571,6 +587,7 @@ export async function syncTable({
   writeLocal,
   recomputeDerived,
   reconcileUnbaselined = false,
+  ownedDevice = false,
 }) {
   const clientId = await getClientId();
   const storedCursor = await getCursor(table);
@@ -617,6 +634,7 @@ export async function syncTable({
       remote,
       clientId,
       cursor: storedCursor,
+      ownedDevice,
     });
     for (const rec of adopted) {
       // eslint-disable-next-line no-await-in-loop
@@ -1242,16 +1260,38 @@ export function reconcileAgainstBaseline({ current, baseline, clientId }) {
 //      the remote row is the later write and legitimately survives. The ordinary
 //      merge restores it locally.
 //
-//   3. Cursor MISSING → nothing to contradict, so nothing is inferred and nothing
-//      is blocked (see assessCursorTrust: this is the first-download state).
-//      Cursor INVALID or UNTRUSTWORTHY, with at least one such row → genuinely
-//      unresolved. Reported to the caller, which stops the pass before recording
-//      a baseline. No tombstone is fabricated and no success is claimed.
+//   3. Cursor MISSING → the decision depends on `ownedDevice`, the transition
+//      context threaded from the app layer, because a missing cursor is reachable
+//      from two genuinely different states that local data alone cannot always
+//      tell apart (an owned device that deleted every row locally looks exactly
+//      like a clean download):
+//        - clean device first download / #538 rebuild (`ownedDevice === false`):
+//          there is nothing to contradict, so nothing is inferred and nothing is
+//          blocked. Restoring the full remote set IS the download. Blocking here
+//          would break every fresh install and the post-purge rebuild.
+//        - owned device with real prior sync history whose cursor was cleared by
+//          #523 healing or #538 rearm (`ownedDevice === true`): this absent-local
+//          row can be neither classified as a signed-out delete (no cursor proves
+//          it was observed) nor safely restored-as-success (that is the exact
+//          contract failure #525 exists to close), so it is genuinely unresolved.
+//      Cursor INVALID or UNTRUSTWORTHY (malformed / ahead-of-server /
+//      uncorroborated), with at least one such row → genuinely unresolved
+//      regardless of `ownedDevice`. Every unresolved id is reported to the caller,
+//      which stops the pass before recording a baseline. No tombstone is
+//      fabricated and no success is claimed; the merge still restores the rows and
+//      the retry converges. Deliberately NOT a destructive inference: an owned
+//      device never tombstones from a missing cursor, it only refuses to lie.
 //
 // A remote row that is ALREADY a tombstone needs no inference in any case: the
 // delete has already propagated, and the row is absent locally because it was
 // cleaned up.
-export function reconcileAgainstRemote({ current, remote, clientId, cursor = null }) {
+export function reconcileAgainstRemote({
+  current,
+  remote,
+  clientId,
+  cursor = null,
+  ownedDevice = false,
+}) {
   const remoteById = new Map();
   for (const rec of remote || []) {
     if (rec && rec.id != null) remoteById.set(rec.id, rec);
@@ -1291,8 +1331,12 @@ export function reconcileAgainstRemote({ current, remote, clientId, cursor = nul
       // Case 2: after the window. Preserve; the merge restores it.
       continue;
     }
-    // Case 3. A missing cursor is the first-download state, not a conflict.
-    if (trust.reason === 'absent') continue;
+    // Case 3. A missing cursor is the first-download state on a clean device, so
+    // it is not a conflict there; on an owned device it is unclassifiable and must
+    // surface honestly rather than restore-as-success. Every other untrusted
+    // reason (malformed / ahead-of-server / uncorroborated) is unresolved either
+    // way.
+    if (trust.reason === 'absent' && !ownedDevice) continue;
     unresolved.push(id);
   }
 
