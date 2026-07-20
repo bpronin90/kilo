@@ -506,7 +506,31 @@ consent-gated `user_health_profile`. The ninth contract, `fatigue_checkins`, is
 derived deterministically from converged `workout_notes.session_checkins` and
 never applies pulled projection rows back to canonical notes. The first three enqueue
 dirty rows at write time; the profile, toggles, active goal, and deload history
-diff their allowlisted local projections against persisted sync snapshots. A
+diff their allowlisted local projections against persisted sync snapshots.
+
+Write-time dirty tracking only sees writes made through the cloud adapter, so it
+misses everything written while signed out. Sign-out reverts storage to
+local-only but deliberately keeps the local-data owner marker, and the local
+adapter neither stamps sync metadata nor enqueues anything; its delete removes
+the row instead of leaving a tombstone. A later same-owner sign-in skips
+bootstrap, so before #525 the resulting sync pass pushed zero rows and still
+reported success. Every sync pass now begins by reconciling the three
+dirty-queue-tracked collections against a last-synced baseline that `syncTable`
+persists alongside the diff-tracked snapshots, enqueueing new rows, edits, and
+tombstones for rows present at the last sync and physically absent now. The
+reconciliation only enqueues; the ordinary pull/merge/push loop performs the
+upload, so last-write-wins, tombstone ordering, and cursor advancement are
+unchanged. It runs inside the sync phase runner, so a reconciliation that cannot
+complete fails the phase and stays retryable rather than reporting a successful
+sync. With no baseline recorded yet, only rows carrying no `updated_at` are
+adopted: that is direct evidence of a local-adapter write, whereas re-stamping
+every row would let one device claim authorship of the table and overwrite
+another device's newer cloud copy. Repeated sign-in and sync are idempotent —
+unchanged rows match the refreshed baseline and enqueue nothing. Diff-tracked
+tables never had this gap, because their snapshot diff is indifferent to which
+adapter performed the write. A
+
+
 pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;

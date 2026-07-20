@@ -24,6 +24,7 @@ import {
   enqueueDirty,
   clearCursor,
   clearSyncSnapshot,
+  reconcileLocalWrites,
 } from '../syncQueue';
 import {
   WEIGHT_GOAL_SYNC_FIELDS,
@@ -139,6 +140,41 @@ function createTableIo(deferWorkoutNoteTombstone) {
     write: (list) => replaceArchivedWeightGoalsRaw(list),
   },
   };
+}
+
+// The tables whose local changes are tracked by the dirty queue at write time.
+// Every other synced table is diff-tracked (see DIFF_TABLES below), which
+// detects local change by comparing live state against a snapshot instead.
+const COLLECTION_SYNC_TABLES = Object.freeze([
+  SYNC_TABLES.WEIGHT_ENTRIES,
+  SYNC_TABLES.WORKOUT_NOTES,
+  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+]);
+
+// Reconcile writes made while signed out (issue #525).
+//
+// Only the CLOUD adapter enqueues dirty records at write time, so anything the
+// user created, edited, or deleted while signed out is invisible to the sync
+// loop: the pass pushes nothing and still reports success. This diffs each
+// collection table against the baseline syncTable persists and enqueues whatever
+// diverged, so the ordinary loop below uploads it.
+//
+// Runs at the START of every sync pass rather than only on the sign-in
+// transition. Sync is the single funnel every path goes through — automatic
+// sign-in sync, "Sync Now", and the #538 post-purge rebuild — so putting the
+// reconciliation here means no caller can reach a successful SYNC phase without
+// it, and a reconciliation that fails throws out of the phase runner instead of
+// letting the UI show "Fully synced" over unreconciled local data. On a device
+// with nothing to reconcile it is a keyed O(rows) comparison that enqueues
+// nothing, so repeated passes stay idempotent.
+export async function reconcileSignedOutWrites() {
+  const tableIo = createTableIo(() => {});
+  const results = [];
+  for (const table of COLLECTION_SYNC_TABLES) {
+    // eslint-disable-next-line no-await-in-loop
+    results.push(await reconcileLocalWrites({ table, readLocal: tableIo[table].read }));
+  }
+  return results;
 }
 
 async function syncOne(table, tableIo) {
@@ -669,13 +705,13 @@ const DIFF_TABLES = Object.freeze([
 export async function sync() {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
+  // Before anything else: adopt writes made while signed out (#525). A failure
+  // here propagates, so the SYNC phase fails and the user sees a retryable state
+  // rather than a success that silently left local data behind.
+  await reconcileSignedOutWrites();
   await tombstoneLocalPhantoms();
   const results = [];
-  for (const table of [
-    SYNC_TABLES.WEIGHT_ENTRIES,
-    SYNC_TABLES.WORKOUT_NOTES,
-    SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
-  ]) {
+  for (const table of COLLECTION_SYNC_TABLES) {
     // eslint-disable-next-line no-await-in-loop
     results.push(await syncOne(table, tableIo));
   }
@@ -725,11 +761,9 @@ export async function sync() {
 // (intentionally empty) post-purge cloud snapshot over local state first: the
 // merge step unions local-only records straight into the push set exactly as
 // it does for any other unsynced local write.
-const REBUILD_COLLECTION_TABLES = Object.freeze([
-  SYNC_TABLES.WEIGHT_ENTRIES,
-  SYNC_TABLES.WORKOUT_NOTES,
-  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
-]);
+// The same three dirty-queue-tracked collections defined above; every one of
+// them is consent-gated and therefore emptied by a withdrawal purge.
+const REBUILD_COLLECTION_TABLES = COLLECTION_SYNC_TABLES;
 
 // The diff-tracked tables among the seven gated ones. FEATURE_TOGGLES and
 // USER_PROFILE are diff-tracked too but are NOT gated/purged — a withdrawal

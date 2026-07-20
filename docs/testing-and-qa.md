@@ -627,6 +627,27 @@ retains non-test commands such as `npm run audit`.
   falsely report success, leaves the dirty queue armed, and a reconnected retry
   is safe and idempotent (no duplicate rows) (#538)
 
+### `mobile/tests/sync-recovery.test.js`
+
+- drives the confirmed #522 claim-4 lifecycle end to end against the real
+  storage layer and sync engine: signed-in and synced, sign out, write through
+  the local adapter, then sign back in as the same owner
+- verifies a row created, a row edited, and a row deleted while signed out all
+  reach the cloud, with the signed-out delete arriving as a tombstone that the
+  next pull does not resurrect; the five collection cases fail on the
+  pre-#525 engine
+- verifies a concurrent edit made on another device converges instead of being
+  overwritten by the reconciled local state
+- verifies the singleton/diff-tracked contracts (weight goal set, tracked lifts
+  changed, goal cleared) still upload signed-out changes, pinning the snapshot
+  diff's adapter-independence that keeps them outside the defect
+- verifies repeated sign-in and repeated sync push nothing further, duplicate no
+  rows, leave the dirty queue empty, and record a baseline for every collection
+- verifies a reconciliation that cannot complete leaves the sync phase failed and
+  retryable with the unsynced row still absent from the cloud, never "synced"
+- verifies that with no recorded baseline only unstamped local rows are adopted,
+  so a device cannot re-stamp already-synced rows over another device's copy
+
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
 - verify a truly empty unclaimed device can explicitly download the signed-in

@@ -549,6 +549,25 @@ export async function syncTable({
   //    picked up by the next inclusive pull instead.
   await advanceCursorFromServerEvidence(table, cursor, remote, acknowledged);
 
+  // 6. Record the last-synced baseline for this table (issue #525). The dirty
+  //    queue only knows about writes made through the CLOUD adapter; writes made
+  //    while signed out go through the local adapter, which neither stamps nor
+  //    enqueues them, and whose delete removes the row outright instead of
+  //    leaving a tombstone. Without a durable record of what this device and the
+  //    server last agreed on there is no way to tell such a write from an
+  //    untouched row, so reconcileLocalWrites below diffs against this snapshot.
+  //
+  //    Read the table back rather than reusing `mergedList`: writeLocal may
+  //    legitimately transform the list before persisting it (see
+  //    syncAdapter.createTableIo, which tombstones phantom legacy notes during
+  //    the write), and a baseline that does not match what is actually on disk
+  //    would read as a local edit on the very next pass.
+  //
+  //    Reached only after a successful push, because the push either throws
+  //    (leaving the previous baseline and the dirty queue intact for a retry) or
+  //    completes.
+  await setSyncSnapshot(table, (await readLocal()) || []);
+
   return {
     table,
     clientId,
@@ -885,4 +904,134 @@ export async function syncDiffTable({
     pushed: pending.length,
     records: mergedList,
   };
+}
+
+// ── signed-out write reconciliation (issue #525) ──────────────────────────────
+//
+// Sign-out switches storage to LOCAL but deliberately keeps the local-data owner
+// marker: the history still belongs to that account. Everything written in that
+// window goes through the LOCAL adapter, which is a plain AsyncStorage store —
+// it does not stamp sync metadata, does not enqueue anything dirty, and deletes
+// by removing the row outright rather than leaving a tombstone.
+//
+// When the SAME owner signs back in, the owner marker matches, so bootstrap is
+// skipped and the app switches straight to CLOUD and runs an ordinary sync pass.
+// That pass consults the dirty queue, finds nothing, pushes zero rows, and still
+// reports success — the signed-out writes stay on the device while the UI says
+// "synced". This is the defect #522 confirmed as claim 4.
+//
+// The diff-tracked tables (syncDiffTable above) are already immune: they detect
+// local change by diffing live local state against a persisted snapshot, and
+// that diff does not care which adapter performed the write. Reconciliation
+// therefore gives the dirty-queue-tracked COLLECTION tables the same property,
+// using the same baseline mechanism (`kilo_sync_snapshot_<table>`, now written
+// by syncTable) and the same stamping primitives, so a reconciled write is
+// indistinguishable from an ordinary one by the time the sync loop sees it.
+//
+// Deliberately NOT a separate upload path: reconciliation only ENQUEUES, then
+// the ordinary pull/merge/push loop does the work. LWW, tombstone ordering,
+// cursor advancement, and idempotency stay identical to every other pass.
+
+// Sync bookkeeping that describes WHEN a row was written rather than WHAT it
+// says. Two rows that differ only here hold the same user data.
+const SYNC_METADATA_FIELDS = Object.freeze(['updated_at', 'client_id']);
+
+// Structural identity of a record's user-visible content. `deleted_at` is
+// deliberately retained: live and tombstoned are different states of the row.
+function payloadFingerprint(record) {
+  const payload = {};
+  for (const key of Object.keys(record)) {
+    if (SYNC_METADATA_FIELDS.includes(key)) continue;
+    payload[key] = record[key];
+  }
+  return stableStringify(payload);
+}
+
+// Compare the live local rows of a collection table against the last-synced
+// baseline and return the rows that must be pushed. Pure; the caller persists.
+//
+// `baseline == null` means this device has no record of a completed sync for the
+// table — it has never synced, or its last sync predates the snapshot written by
+// syncTable. That case is treated conservatively, exactly as diffAgainstBaseline
+// treats its `seeded` pass: with no evidence of what changed, re-stamping every
+// local row would let this device claim authorship of the whole table and win
+// LWW against another device's newer cloud copy. So only rows carrying NO
+// `updated_at` are enqueued. That is unambiguous evidence rather than an
+// inference: every path that puts a row through the sync engine stamps it (a
+// local write via stampWrite/stampTombstone, a pulled row via the server's
+// column), so an unstamped row can only have come from the local adapter.
+// Deletes and edits are not inferred without a baseline, because they cannot be.
+export function reconcileAgainstBaseline({ current, baseline, clientId }) {
+  const dirty = [];
+
+  if (baseline == null) {
+    for (const rec of current || []) {
+      if (!rec || rec.id == null || rec.updated_at) continue;
+      dirty.push(isTombstone(rec) ? stampTombstone(rec, clientId) : stampWrite(rec, clientId));
+    }
+    return { dirty };
+  }
+
+  const baselineById = new Map();
+  for (const rec of baseline) {
+    if (rec && rec.id != null) baselineById.set(rec.id, rec);
+  }
+
+  const seen = new Set();
+  for (const rec of current || []) {
+    if (!rec || rec.id == null) continue;
+    seen.add(rec.id);
+    const base = baselineById.get(rec.id);
+    // Unchanged since the state the server and this device last agreed on. Leave
+    // it alone: re-stamping would move updated_at forward for no reason and let
+    // this device beat another device's genuine edit on the next merge.
+    if (base && payloadFingerprint(base) === payloadFingerprint(rec)) continue;
+    // A new row, an edit, or a tombstone that never made it into the queue.
+    // Merge over the baseline so columns the local writer never touched (and a
+    // local-adapter write touches only the domain fields) still ride along.
+    const merged = { ...(base || {}), ...rec };
+    dirty.push(
+      isTombstone(rec) ? stampTombstone(merged, clientId) : stampWrite(merged, clientId)
+    );
+  }
+
+  for (const [id, base] of baselineById) {
+    if (seen.has(id)) continue;
+    // Already a synced tombstone: the row is gone locally because it was
+    // deleted, pushed, and cleaned up. Nothing new to say about it.
+    if (isTombstone(base)) continue;
+    // Present at the last sync and physically absent now. The local adapter's
+    // delete removes the row instead of tombstoning it, so this is the only
+    // trace a signed-out delete leaves — and without it the next pull would
+    // simply resurrect the row from the cloud.
+    dirty.push(stampTombstone({ ...base }, clientId));
+  }
+
+  return { dirty };
+}
+
+// Reconcile one dirty-queue-tracked collection table against its baseline and
+// enqueue whatever diverged, so the sync pass that follows pushes it.
+//
+// Does not write local domain storage. The enqueued rows are what the push
+// sends, and the server's acknowledgement is what lands back in local storage
+// through the ordinary loop — so a reconciliation that is interrupted after
+// enqueueing but before pushing leaves local data untouched and simply retries.
+//
+// Idempotent: re-running before a successful push overwrites the same queue
+// entries under the same ids, and re-running after one finds local state equal
+// to the refreshed baseline and enqueues nothing.
+export async function reconcileLocalWrites({ table, readLocal }) {
+  const clientId = await getClientId();
+  const [current, baseline] = await Promise.all([readLocal(), getSyncSnapshot(table)]);
+  const { dirty } = reconcileAgainstBaseline({
+    current: current || [],
+    baseline,
+    clientId,
+  });
+  for (const record of dirty) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueDirty(table, record);
+  }
+  return { table, reconciled: dirty.length };
 }
