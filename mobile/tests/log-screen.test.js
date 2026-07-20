@@ -812,6 +812,100 @@ function ControlledLogScreen(props) {
   );
 }
 
+describe('active deload deletion (#560)', () => {
+  let alertSpy;
+  let clearDeloadNote;
+  let setActiveDeload;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    clearDeloadNote = jest.fn(() => setActiveDeload(null));
+
+    const currentNote = {
+      id: 'note1',
+      title: 'Routine A',
+      raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote],
+      currentId: 'note1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn(),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockImplementation(() => {
+      const [note, setNote] = React.useState({
+        raw_text: 'deload note text',
+        saved_at: '2026-06-01T12:00:00.000Z',
+      });
+      setActiveDeload = setNote;
+      return { note, loading: false, save: jest.fn(), clear: clearDeloadNote };
+    });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: true });
+  });
+
+  afterEach(() => alertSpy.mockRestore());
+
+  const openDeloadTab = (root) => {
+    render.act(() => { findPressableByText(root, 'Deload').props.onPress(); });
+  };
+
+  test('cancel leaves the active deload unchanged', () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    openDeloadTab(root);
+
+    render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete active deload?',
+      'This will remove the active deload and cannot be undone.',
+      expect.any(Array),
+    );
+    const cancel = alertSpy.mock.calls[0][2].find(button => button.text === 'Cancel');
+    expect(cancel.onPress).toBeUndefined();
+    expect(clearDeloadNote).not.toHaveBeenCalled();
+    expect(findPressableByText(root, 'Delete active deload')).toBeTruthy();
+  });
+
+  test('confirm clears the active deload and returns to Generate deload', async () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    openDeloadTab(root);
+    render.act(() => { findPressableByText(root, 'Delete active deload').props.onPress(); });
+
+    const remove = alertSpy.mock.calls[0][2].find(button => button.text === 'Delete');
+    await render.act(async () => { await remove.onPress(); });
+
+    expect(clearDeloadNote).toHaveBeenCalledTimes(1);
+    expect(findPressableByText(root, 'Generate deload')).toBeTruthy();
+    expect(findPressableByText(root, 'Delete active deload')).toBeNull();
+  });
+
+  test('delete is unavailable while editing the active deload', () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    openDeloadTab(root);
+    render.act(() => { findPressableByText(root, 'Edit').props.onPress({ stopPropagation: jest.fn() }); });
+
+    expect(findPressableByText(root, 'Delete active deload')).toBeNull();
+  });
+});
+
 describe('Undo escape hatch: integration tests', () => {
   let mockUpdateNote;
   let mockUpdateDeload;
@@ -857,6 +951,7 @@ describe('Undo escape hatch: integration tests', () => {
       note: { raw_text: 'deload note text' },
       loading: false,
       save: jest.fn(),
+      clear: jest.fn(),
     });
 
     useEntries.useDeloadHistory.mockReturnValue({

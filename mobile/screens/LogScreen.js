@@ -39,7 +39,7 @@ export function LogScreen({
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
-  const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote } = useDeloadNote();
+  const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
   const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote, updateDeload } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
 
@@ -209,6 +209,7 @@ export function LogScreen({
                 handleDeloadBodyPress={deloadEditor.handleDeloadBodyPress}
                 deloadMode={deloadEditor.deloadMode}
                 completeDeload={completeDeload}
+                clearDeloadNote={clearDeloadNote}
                 handleGenerateDeload={deloadEditor.handleGenerateDeload}
                 isGenerating={deloadEditor.isGenerating}
                 workoutNoteText={workoutNoteText}
