@@ -506,8 +506,79 @@ consent-gated `user_health_profile`. The ninth contract, `fatigue_checkins`, is
 derived deterministically from converged `workout_notes.session_checkins` and
 never applies pulled projection rows back to canonical notes. The first three enqueue
 dirty rows at write time; the profile, toggles, active goal, and deload history
-diff their allowlisted local projections against persisted sync snapshots. A
-pending local row always reaches Supabase before conflict ordering is settled,
+diff their allowlisted local projections against persisted sync snapshots.
+
+Write-time dirty tracking only sees writes made through the cloud adapter, so it
+misses everything written while signed out. Sign-out reverts storage to
+local-only but deliberately keeps the local-data owner marker, and the local
+adapter neither stamps sync metadata nor enqueues anything; its delete removes
+the row instead of leaving a tombstone. A later same-owner sign-in skips
+bootstrap, so before #525 the resulting sync pass pushed zero rows and still
+reported success. Every sync pass now begins by reconciling the three
+dirty-queue-tracked collections against a last-synced baseline that `syncTable`
+persists alongside the diff-tracked snapshots, enqueueing new rows, edits, and
+tombstones for rows present at the last sync and physically absent now. The
+reconciliation only enqueues; the ordinary pull/merge/push loop performs the
+upload, so last-write-wins, tombstone ordering, and cursor advancement are
+unchanged. It runs inside the sync phase runner, so a reconciliation that cannot
+complete fails the phase and stays retryable rather than reporting a successful
+sync. Repeated sign-in and sync are idempotent — unchanged rows match the
+refreshed baseline and enqueue nothing. Diff-tracked tables never had this gap,
+because their snapshot diff is indifferent to which adapter performed the write.
+
+A device upgrading into that build has no collection baseline yet, and the
+presence of `updated_at` is not evidence that a row was ever synced — the
+workout-note factory stamps one on every note the user creates. That first pass
+therefore reconciles against the server instead of against local state: it
+ignores the stored cursor so the pull returns the complete remote row set, then
+enqueues every local row the merge will keep that the server does not already
+hold in the same form.
+
+Signed-out deletes on that pass are classified against the stored pull cursor,
+which is the one piece of server-authored evidence such a device carries about
+what it has already observed: a completed, inclusive, paginated pull at cursor
+`C` delivered every server row with `updated_at <= C`. The cursor is validated
+before it is used, because #523 established that earlier builds computed it from
+`[...remote, ...dirty]` and could store a device-clock value in the future,
+silently filtering later server rows out of every subsequent pull; the reactive
+repair added afterwards only fires on a push acknowledgement and runs after the
+pull, too late for this decision. Validation uses the full remote set the pass
+already holds: a cursor past the newest row the server holds is #523's
+future-clock signature, and a cursor that no remote row's `updated_at` matches
+exactly did not come from a real completed pull, since cursor advancement only
+ever copies a server row's timestamp. A cursor that was poisoned and later
+re-anchored by an honest pull is not detectable and is the accepted residual.
+
+Three outcomes follow for a row present remotely and absent locally. At or before
+a trustworthy cursor the row was demonstrably delivered, so its absence is a
+signed-out delete and the tombstone propagates. After a trustworthy cursor this
+version of the row postdates the device's last pull window, so it was never
+observed; it is preserved and restored by the merge, which is also what
+last-write-to-reach-the-server-wins requires, since any unrecorded local delete
+never reached the server. With an untrustworthy cursor the row cannot be
+classified: no tombstone is invented and no baseline is recorded, and the pass
+raises a reconciliation conflict that fails the sync phase with an actionable
+message rather than reporting success. A missing cursor is handled by the
+transition context the app layer threads down (`ownedDevice`), because it is
+reachable from two states that local data alone cannot always separate — an owned
+device that deleted every local row looks exactly like a clean download. On a
+genuine clean device (first download, or the #538 post-purge rebuild) it is the
+ordinary first-download state, so it infers nothing and blocks nothing;
+restoring the full remote set is the download. On an owned device with real prior
+sync history whose cursor was intentionally cleared (#523 healing, #538 rearm) the
+absent-local row can be neither classified as a signed-out delete nor safely
+restored as success, so it takes the same honest conflict as an untrustworthy
+cursor — never a fabricated tombstone. The clean-device download, upload-claim,
+start-fresh, and rebuild flows pass `ownedDevice` false; the ordinary same-owner
+sign-in sync and manual "Sync Now" pass it true. The conflict is reported once: it is raised after the merge has
+restored the rows, after the real dirty queue has been pushed, and after cursor
+advancement has replaced the untrustworthy value with a server-authored one, so
+the retry has nothing ambiguous left and completes. The governing invariant is
+that a baseline is never recorded over a row that has not reached the server: a
+failed push throws before the baseline is written, so an uncertain pass fails
+retryably instead of completing green.
+
+A pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without
 trusting the device clock. Exact timestamp ties prefer the shared server row;
 ties between two local candidates use the stable per-install `client_id`.

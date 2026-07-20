@@ -627,6 +627,49 @@ retains non-test commands such as `npm run audit`.
   falsely report success, leaves the dirty queue armed, and a reconnected retry
   is safe and idempotent (no duplicate rows) (#538)
 
+### `mobile/tests/sync-recovery.test.js`
+
+- drives the confirmed #522 claim-4 lifecycle end to end against the real
+  storage layer and sync engine: signed-in and synced, sign out, write through
+  the local adapter, then sign back in as the same owner
+- verifies a row created, a row edited, and a row deleted while signed out all
+  reach the cloud, with the signed-out delete arriving as a tombstone that the
+  next pull does not resurrect; the five collection cases fail on the
+  pre-#525 engine
+- verifies a concurrent edit made on another device converges instead of being
+  overwritten by the reconciled local state
+- verifies the singleton/diff-tracked contracts (weight goal set, tracked lifts
+  changed, goal cleared) still upload signed-out changes, pinning the snapshot
+  diff's adapter-independence that keeps them outside the defect
+- verifies repeated sign-in and repeated sync push nothing further, duplicate no
+  rows, leave the dirty queue empty, and record a baseline for every collection
+- verifies a reconciliation that cannot complete leaves the sync phase failed and
+  retryable with the unsynced row still absent from the cloud, never "synced"
+- covers the upgrade window, where no baseline is recorded yet: a signed-out
+  workout note created through the real `makeWorkoutNoteItem` factory (so it
+  carries its own `updated_at`) is uploaded and only then admitted to the
+  baseline; a signed-out edit is uploaded; a failed push leaves the table
+  baseline-less so the retry reconciles again rather than treating the skipped
+  row as synced; the pull ignores the stored cursor so an already-synced row is
+  still recognised and not re-pushed; and a newer remote row wins instead of
+  being clobbered
+- covers signed-out deletes on the upgrade path, bounded by the stored pull
+  cursor: a delete at or before a trustworthy cursor propagates as a tombstone
+  the next pull does not resurrect; a remote row written after the cursor is
+  preserved rather than tombstoned; a #523-poisoned future-clock cursor produces
+  no tombstone, records no baseline, and fails the sync phase with an actionable
+  message that the retry then clears; and a missing cursor is resolved by the
+  `ownedDevice` transition context — an owned device whose cleared cursor cannot
+  classify a signed-out delete surfaces an honest conflict (no tombstone, no
+  baseline, retry converges) while a clean first download of the exact same
+  local shape still downloads without a conflict, and the #538 post-purge rebuild
+  still converges on an unbaselined device
+- unit-covers `assessCursorTrust` (corroborated, ahead-of-server, uncorroborated,
+  absent, malformed, empty remote) and `reconcileAgainstRemote`'s absent-local
+  classification, including that an already-tombstoned remote row is never
+  re-tombstoned and that a missing cursor is a conflict on an owned device but not
+  on a clean one
+
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
 - verify a truly empty unclaimed device can explicitly download the signed-in

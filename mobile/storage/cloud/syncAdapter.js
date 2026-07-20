@@ -24,6 +24,7 @@ import {
   enqueueDirty,
   clearCursor,
   clearSyncSnapshot,
+  reconcileLocalWrites,
 } from '../syncQueue';
 import {
   WEIGHT_GOAL_SYNC_FIELDS,
@@ -141,7 +142,49 @@ function createTableIo(deferWorkoutNoteTombstone) {
   };
 }
 
-async function syncOne(table, tableIo) {
+// The tables whose local changes are tracked by the dirty queue at write time.
+// Every other synced table is diff-tracked (see DIFF_TABLES below), which
+// detects local change by comparing live state against a snapshot instead.
+const COLLECTION_SYNC_TABLES = Object.freeze([
+  SYNC_TABLES.WEIGHT_ENTRIES,
+  SYNC_TABLES.WORKOUT_NOTES,
+  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+]);
+
+// Reconcile writes made while signed out (issue #525).
+//
+// Only the CLOUD adapter enqueues dirty records at write time, so anything the
+// user created, edited, or deleted while signed out is invisible to the sync
+// loop: the pass pushes nothing and still reports success. This diffs each
+// collection table against the baseline syncTable persists and enqueues whatever
+// diverged, so the ordinary loop below uploads it.
+//
+// Runs at the START of every sync pass rather than only on the sign-in
+// transition. Sync is the single funnel every path goes through — automatic
+// sign-in sync, "Sync Now", and the #538 post-purge rebuild — so putting the
+// reconciliation here means no caller can reach a successful SYNC phase without
+// it, and a reconciliation that fails throws out of the phase runner instead of
+// letting the UI show "Fully synced" over unreconciled local data. On a device
+// with nothing to reconcile it is a keyed O(rows) comparison that enqueues
+// nothing, so repeated passes stay idempotent.
+//
+// This is the STEADY-STATE half only. A table with no baseline yet returns
+// `deferred: true` and enqueues nothing here, because local state alone cannot
+// distinguish a signed-out write from an untouched row — syncTable handles that
+// table against a full pull instead (see reconcileAgainstRemote). Both halves
+// run inside the same sync phase, so neither can be skipped on the way to a
+// successful SYNC.
+export async function reconcileSignedOutWrites() {
+  const tableIo = createTableIo(() => {});
+  const results = [];
+  for (const table of COLLECTION_SYNC_TABLES) {
+    // eslint-disable-next-line no-await-in-loop
+    results.push(await reconcileLocalWrites({ table, readLocal: tableIo[table].read }));
+  }
+  return results;
+}
+
+async function syncOne(table, tableIo, ownedDevice = false) {
   const io = tableIo[table];
   return syncTable({
     table,
@@ -149,6 +192,22 @@ async function syncOne(table, tableIo) {
     readLocal: io.read,
     writeLocal: io.write,
     recomputeDerived: getRecomputeDerived(),
+    // These three are the tables whose signed-out writes the dirty queue misses,
+    // so they opt into the unbaselined (upgrade-window) reconciliation described
+    // in syncQueue: on the one pass where no baseline exists yet, reconcile
+    // against a full pull instead of against local state (#525). That pass also
+    // classifies signed-out deletes against the validated pull cursor, and can
+    // throw SyncReconciliationConflictError when the cursor cannot establish what
+    // this device already observed — which fails the SYNC phase with an
+    // actionable message instead of reporting success over an unreconciled table.
+    reconcileUnbaselined: true,
+    // Transition context for the missing-cursor case (#525, round 4). Only the app
+    // layer knows whether this pass is a clean-device first download / #538
+    // rebuild (false) or an owned device whose cursor was cleared (true); see
+    // reconcileAgainstRemote. Defaults false so every unthreaded caller (the
+    // background maybeSyncCloud refresh, #538 rebuildCloudCopy, tests) keeps the
+    // safe non-blocking first-download behaviour.
+    ownedDevice,
   });
 }
 
@@ -666,18 +725,29 @@ const DIFF_TABLES = Object.freeze([
 // (hooks/entries/syncRecoveryHooks.js), which is where a denial becomes a screen
 // the user can act on, and the real boundary is the server's RLS, which refuses
 // these reads and writes whether or not any client ever asks.
-export async function sync() {
+// `ownedDevice` (issue #525, round 4) is the ONLY behavioural input this function
+// takes, and it matters solely on the one upgrade-window pass where a collection
+// table has no baseline yet AND its stored cursor is missing. It is false by
+// default so a clean-device first download, the #538 post-purge rebuild, the
+// background maybeSyncCloud refresh, and every test that calls sync() bare all get
+// the safe non-blocking behaviour (restore the remote set, never conflict). The
+// app layer passes true only from the ordinary owned-device sync paths — automatic
+// same-owner sign-in sync and manual "Sync Now" — where an absent-local remote row
+// under a cleared cursor is an unclassifiable signed-out delete that must surface
+// an honest conflict instead of being silently restored as success. See
+// reconcileAgainstRemote for why local data alone cannot make this call.
+export async function sync({ ownedDevice = false } = {}) {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
+  // Before anything else: adopt writes made while signed out (#525). A failure
+  // here propagates, so the SYNC phase fails and the user sees a retryable state
+  // rather than a success that silently left local data behind.
+  await reconcileSignedOutWrites();
   await tombstoneLocalPhantoms();
   const results = [];
-  for (const table of [
-    SYNC_TABLES.WEIGHT_ENTRIES,
-    SYNC_TABLES.WORKOUT_NOTES,
-    SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
-  ]) {
+  for (const table of COLLECTION_SYNC_TABLES) {
     // eslint-disable-next-line no-await-in-loop
-    results.push(await syncOne(table, tableIo));
+    results.push(await syncOne(table, tableIo, ownedDevice));
   }
   if (pendingWorkoutNoteTombstones.length > 0) {
     const tombstones = pendingWorkoutNoteTombstones.splice(0);
@@ -685,7 +755,7 @@ export async function sync() {
       // eslint-disable-next-line no-await-in-loop
       await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
     }
-    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo));
+    results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo, ownedDevice));
   }
 
   // The tables bootstrap used to push once and abandon (issue #489). Run them
@@ -725,11 +795,9 @@ export async function sync() {
 // (intentionally empty) post-purge cloud snapshot over local state first: the
 // merge step unions local-only records straight into the push set exactly as
 // it does for any other unsynced local write.
-const REBUILD_COLLECTION_TABLES = Object.freeze([
-  SYNC_TABLES.WEIGHT_ENTRIES,
-  SYNC_TABLES.WORKOUT_NOTES,
-  SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
-]);
+// The same three dirty-queue-tracked collections defined above; every one of
+// them is consent-gated and therefore emptied by a withdrawal purge.
+const REBUILD_COLLECTION_TABLES = COLLECTION_SYNC_TABLES;
 
 // The diff-tracked tables among the seven gated ones. FEATURE_TOGGLES and
 // USER_PROFILE are diff-tracked too but are NOT gated/purged — a withdrawal
