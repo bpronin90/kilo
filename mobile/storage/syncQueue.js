@@ -379,6 +379,97 @@ export function maxUpdatedAt(records, current = null) {
   return max || null;
 }
 
+// ── cursor trust (issue #525, grounded in #523) ────────────────────────────────
+//
+// The stored pull cursor is the only server-authored evidence a pre-upgrade
+// device carries about WHAT IT HAS ALREADY OBSERVED. `transport.pull` is a
+// complete, inclusive, paginated `gte('updated_at', cursor)` scan, so under
+// honest operation a completed pull at cursor C means every server row with
+// `updated_at <= C` was delivered to this device. That is what makes "present
+// remotely, absent locally, `updated_at <= C`" readable as a local delete rather
+// than as a row that was never downloaded.
+//
+// The cursor CANNOT be trusted unconditionally, and this repo has the receipts.
+// Issue #523 ("Keep pull cursors server-authoritative after local pushes")
+// validated that `syncTable`/`syncDiffTable` used to compute the next cursor
+// from `[...remote, ...dirty]`. Dirty rows carry DEVICE-clock `updated_at`,
+// while `transport.push` strips the column so Postgres stamps the authoritative
+// time — so a device whose clock ran ahead stored a FUTURE cursor, and every
+// later server row was filtered out by `gte('updated_at', cursor)` and never
+// downloaded. On such a device `updated_at <= cursor` does NOT imply "was
+// delivered", and synthesising a tombstone from it would delete cloud rows this
+// device never saw. That fix shipped in 0.98.2 (2026-07-19); a device upgrading
+// into THIS build from any earlier release can still carry a poisoned cursor.
+//
+// The existing repair (`advanceCursorFromServerEvidence`, commit e05d15c) is
+// REACTIVE and runs too late to help here: it clears the cursor only when a push
+// acknowledgement's max `updated_at` is older than the stored cursor, which
+// requires a push to have happened AND the transport to have returned
+// acknowledgements, and it runs at step 5 of the pass — after the pull, and so
+// after the reconciliation at step 1b that needs the answer.
+//
+// The cursor is therefore VALIDATED here, before any inference, against the full
+// remote row set the unbaselined pass already holds. Two independent tests:
+//
+//   1. `cursor > max(remote.updated_at)` — provably poisoned. Cursor advancement
+//      only ever takes the max `updated_at` of SERVER-AUTHORED rows, so an honest
+//      cursor is always <= the newest row the server holds. This is exactly
+//      #523's future-clock signature.
+//   2. no remote row has `updated_at === cursor` — uncorroborated. An honest
+//      cursor is never synthesised: it is always literally some server row's
+//      `updated_at`. A device-clock value colliding with a server timestamp at
+//      millisecond resolution is not a realistic outcome, so an exact match is
+//      strong positive evidence that the value came from a real completed pull
+//      rather than from a local write. (Test 2 subsumes test 1; both are kept so
+//      the reported reason distinguishes #523's signature from the general case.)
+//      Honest cursors DO fail this when the anchor row was changed elsewhere
+//      afterwards. That is safe by design: a false "untrusted" costs one conflict
+//      pass, a false "trusted" costs cloud data.
+//
+// KNOWN RESIDUAL, stated plainly: a cursor that was poisoned and then
+// RE-ANCHORED by a later honest pull passes both tests while still hiding the
+// rows skipped inside the poison window. That information was never written to
+// the device and cannot be reconstructed from anything it holds. It is why the
+// unresolved case below fails the pass rather than guessing.
+//
+// `absent` is deliberately NOT a conflict. A device with no cursor for this table
+// has no completed pull to contradict — the ordinary state of a first download
+// (empty local table, full remote one) and of a table whose cursor was
+// intentionally cleared (#538 rebuild rearm, #523 healing). Treating it as a
+// conflict would block every fresh install; treating it as observation evidence
+// would be the destructive error. It infers nothing and blocks nothing.
+export function assessCursorTrust({ cursor, remote }) {
+  if (!cursor) return { trusted: false, reason: 'absent' };
+  if (Number.isNaN(Date.parse(cursor))) return { trusted: false, reason: 'malformed' };
+  const rows = remote || [];
+  const max = maxUpdatedAt(rows);
+  if (!max || cursor > max) return { trusted: false, reason: 'ahead-of-server' };
+  for (const rec of rows) {
+    if (rec && rec.updated_at === cursor) return { trusted: true, reason: 'corroborated' };
+  }
+  return { trusted: false, reason: 'uncorroborated' };
+}
+
+// Raised when an unbaselined pass finds remote rows it can neither classify as
+// signed-out deletes nor explain as never-downloaded. Thrown BEFORE the baseline
+// is recorded, so the pass invents no tombstone, records no baseline, and makes
+// no successful reconciliation claim. See reconcileAgainstRemote.
+export class SyncReconciliationConflictError extends Error {
+  constructor({ table, reason, ids }) {
+    super(
+      `Sync paused for ${table}: this device's saved sync position is not trustworthy ` +
+        `(${reason}), so ${ids.length} cloud row(s) missing from this device could not be ` +
+        `classified as deletions or as rows that were never downloaded. Nothing was deleted ` +
+        `and the rows were restored from the cloud; sync again to continue.`
+    );
+    this.name = 'SyncReconciliationConflictError';
+    this.table = table;
+    this.reason = reason;
+    this.ids = ids;
+    this.reconciliationConflict = true;
+  }
+}
+
 async function advanceCursorFromServerEvidence(table, cursor, remote, acknowledged) {
   const acknowledgementMax = maxUpdatedAt(acknowledged);
 
@@ -509,15 +600,30 @@ export async function syncTable({
   //     reconcileAgainstRemote). Enqueued before the dirty queue is read below,
   //     so the ordinary push in step 4 uploads them; nothing local is written
   //     here, so an interrupted pass simply retries.
+  //
+  //     Signed-out DELETES are classified here too, against the stored cursor
+  //     (which the pull above deliberately ignored, but which is still the
+  //     server-authored record of what this device has already observed). See
+  //     reconcileAgainstRemote for the three cases and assessCursorTrust for why
+  //     the cursor is validated rather than trusted.
+  let unresolvedConflict = null;
   if (unbaselined) {
-    const { dirty: adopted } = reconcileAgainstRemote({
+    const {
+      dirty: adopted,
+      unresolved,
+      cursorTrust,
+    } = reconcileAgainstRemote({
       current: (await readLocal()) || [],
       remote,
       clientId,
+      cursor: storedCursor,
     });
     for (const rec of adopted) {
       // eslint-disable-next-line no-await-in-loop
       await enqueueDirty(table, rec);
+    }
+    if (unresolved.length > 0) {
+      unresolvedConflict = { table, reason: cursorTrust.reason, ids: unresolved };
     }
   }
 
@@ -617,6 +723,24 @@ export async function syncTable({
   //    — not the baseline — is what carries it forward. A push failure throws
   //    before this point, so an uncertain pass fails retryably rather than
   //    completing green.
+  //
+  //    An UNRESOLVED absent-local remote row (case 3 in reconcileAgainstRemote)
+  //    stops the pass right here, before the baseline is written. The issue
+  //    objective explicitly permits surfacing an honest actionable state instead
+  //    of reporting successful sync, and that is strictly better than either
+  //    guess: fabricating a tombstone would destroy cloud data this device may
+  //    never have seen, and silently restoring the row while recording a baseline
+  //    and reporting success is the contract failure this replaces.
+  //
+  //    Everything before this line has already happened and is what makes the
+  //    state converge rather than wedge: the merge restored the rows into local
+  //    storage (step 3), the genuine dirty queue was pushed (step 4), and step 5
+  //    replaced the untrustworthy cursor with a server-authored one. So the retry
+  //    finds those rows present locally, has no ambiguous row left to classify,
+  //    and completes normally. The user sees exactly one honest, actionable
+  //    failure and nothing is lost.
+  if (unresolvedConflict) throw new SyncReconciliationConflictError(unresolvedConflict);
+
   await setSyncSnapshot(table, (await readLocal()) || []);
 
   return {
@@ -995,8 +1119,12 @@ export async function syncDiffTable({
 //     device upgrading into this build has no baseline yet, and the presence of
 //     `updated_at` is NOT evidence that a row was ever synced (makeWorkoutNoteItem
 //     stamps one on every locally created note), so there is nothing local to
-//     diff against. The server's row set is used as the ground truth instead.
-//     New rows and edits are detected; deletes are NOT — see below.
+//     diff against. The server's row set is used as the ground truth instead, and
+//     signed-out DELETES are classified against the stored pull cursor — the one
+//     piece of server-authored evidence such a device already carries about what
+//     it has observed. The cursor is validated first (assessCursorTrust); when it
+//     cannot be trusted the pass reports an honest actionable conflict rather
+//     than inferring in either direction.
 
 // Sync bookkeeping that describes WHEN a row was written rather than WHAT it
 // says. Two rows that differ only here hold the same user data.
@@ -1094,25 +1222,46 @@ export function reconcileAgainstBaseline({ current, baseline, clientId }) {
 // the remote row and nothing diverges, so there is nothing to push. If local
 // wins, the merge keeps local, and NOT pushing it is what would strand it.
 //
-// KNOWN LIMIT — deletes are not detected here, by design. A row present on the
-// server and absent locally is genuinely ambiguous: it may be a delete made
-// while signed out, or simply a row this device has never downloaded (a fresh
-// install has an empty local table and a full remote one). Fabricating a
-// tombstone from that ambiguity would delete another device's cloud data, which
-// is a far worse failure than the one #525 fixes. The row is therefore left to
-// the ordinary merge, which restores it locally. This applies ONLY to the single
-// upgrade-window pass: once that pass records a baseline, `reconcileAgainstBaseline`
-// detects deletes unambiguously from then on. `diffAgainstBaseline` makes the
-// same call for the diff-tracked tables (its seeded rule 1).
-export function reconcileAgainstRemote({ current, remote, clientId }) {
+// DELETES — a row present on the server and absent locally. Local state alone
+// cannot classify it, but the stored pull CURSOR can, because it is
+// server-authored evidence of what a completed, inclusive, paginated pull had
+// already delivered to this device (see assessCursorTrust). Three cases, and the
+// safety ordering is absolute: never tombstone a row that may not have been
+// observed.
+//
+//   1. TRUSTWORTHY cursor, `server.updated_at <= cursor` → the engine's pull
+//      already delivered this row to this device, so its absence now is evidence
+//      of a local delete performed while signed out. Propagate the tombstone.
+//
+//   2. TRUSTWORTHY cursor, `server.updated_at > cursor` → this VERSION of the row
+//      postdates the last pull window this device completed, so this device never
+//      observed it. Explicit policy: preserve the remote row, no tombstone, no
+//      conflict. This is not a guess — it is the engine's own convergence rule.
+//      Any signed-out delete here went unrecorded and never reached the server,
+//      while the remote write did; under "last write to REACH THE SERVER wins"
+//      the remote row is the later write and legitimately survives. The ordinary
+//      merge restores it locally.
+//
+//   3. Cursor MISSING → nothing to contradict, so nothing is inferred and nothing
+//      is blocked (see assessCursorTrust: this is the first-download state).
+//      Cursor INVALID or UNTRUSTWORTHY, with at least one such row → genuinely
+//      unresolved. Reported to the caller, which stops the pass before recording
+//      a baseline. No tombstone is fabricated and no success is claimed.
+//
+// A remote row that is ALREADY a tombstone needs no inference in any case: the
+// delete has already propagated, and the row is absent locally because it was
+// cleaned up.
+export function reconcileAgainstRemote({ current, remote, clientId, cursor = null }) {
   const remoteById = new Map();
   for (const rec of remote || []) {
     if (rec && rec.id != null) remoteById.set(rec.id, rec);
   }
 
   const dirty = [];
+  const seen = new Set();
   for (const rec of current || []) {
     if (!rec || rec.id == null) continue;
+    seen.add(rec.id);
     const server = remoteById.get(rec.id);
     if (server) {
       // The server already holds this row in the same form. Nothing to say.
@@ -1130,7 +1279,24 @@ export function reconcileAgainstRemote({ current, remote, clientId }) {
     );
   }
 
-  return { dirty };
+  const trust = assessCursorTrust({ cursor, remote });
+  const unresolved = [];
+  for (const [id, server] of remoteById) {
+    if (seen.has(id) || isTombstone(server)) continue;
+    if (trust.trusted) {
+      // Case 1: inside the window a completed pull already delivered.
+      if ((server.updated_at || '') <= cursor) {
+        dirty.push(stampTombstone({ ...server }, clientId));
+      }
+      // Case 2: after the window. Preserve; the merge restores it.
+      continue;
+    }
+    // Case 3. A missing cursor is the first-download state, not a conflict.
+    if (trust.reason === 'absent') continue;
+    unresolved.push(id);
+  }
+
+  return { dirty, unresolved, cursorTrust: trust };
 }
 
 // Reconcile one dirty-queue-tracked collection table against its baseline and

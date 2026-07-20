@@ -653,11 +653,17 @@ retains non-test commands such as `npm run audit`.
   row as synced; the pull ignores the stored cursor so an already-synced row is
   still recognised and not re-pushed; and a newer remote row wins instead of
   being clobbered
-- pins the one scoped-out case: with no baseline, a physically absent local row
-  is NOT inferred as a delete, because it is indistinguishable from a row this
-  device never downloaded. The cloud copy survives, the row is restored locally,
-  and the same test shows deletes being detected normally once the baseline
-  exists
+- covers signed-out deletes on the upgrade path, bounded by the stored pull
+  cursor: a delete at or before a trustworthy cursor propagates as a tombstone
+  the next pull does not resurrect; a remote row written after the cursor is
+  preserved rather than tombstoned; a #523-poisoned future-clock cursor produces
+  no tombstone, records no baseline, and fails the sync phase with an actionable
+  message that the retry then clears; and a missing or intentionally cleared
+  cursor neither infers a delete nor blocks a first download
+- unit-covers `assessCursorTrust` (corroborated, ahead-of-server, uncorroborated,
+  absent, malformed, empty remote) and `reconcileAgainstRemote`'s absent-local
+  classification, including that an already-tombstoned remote row is never
+  re-tombstoned
 
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 

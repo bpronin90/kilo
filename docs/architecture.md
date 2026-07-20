@@ -532,14 +532,42 @@ workout-note factory stamps one on every note the user creates. That first pass
 therefore reconciles against the server instead of against local state: it
 ignores the stored cursor so the pull returns the complete remote row set, then
 enqueues every local row the merge will keep that the server does not already
-hold in the same form. New rows and edits are detected; a physically absent local
-row is deliberately not read as a delete, because a row present remotely and
-absent locally is equally consistent with one this device never downloaded, and
-inventing a tombstone would destroy another device's cloud data. That single
-upgrade pass records the baseline, after which deletes are detected
-unambiguously. The governing invariant is that a baseline is never recorded over
-a row that has not reached the server: a failed push throws before the baseline
-is written, so an uncertain pass fails retryably instead of completing green.
+hold in the same form.
+
+Signed-out deletes on that pass are classified against the stored pull cursor,
+which is the one piece of server-authored evidence such a device carries about
+what it has already observed: a completed, inclusive, paginated pull at cursor
+`C` delivered every server row with `updated_at <= C`. The cursor is validated
+before it is used, because #523 established that earlier builds computed it from
+`[...remote, ...dirty]` and could store a device-clock value in the future,
+silently filtering later server rows out of every subsequent pull; the reactive
+repair added afterwards only fires on a push acknowledgement and runs after the
+pull, too late for this decision. Validation uses the full remote set the pass
+already holds: a cursor past the newest row the server holds is #523's
+future-clock signature, and a cursor that no remote row's `updated_at` matches
+exactly did not come from a real completed pull, since cursor advancement only
+ever copies a server row's timestamp. A cursor that was poisoned and later
+re-anchored by an honest pull is not detectable and is the accepted residual.
+
+Three outcomes follow for a row present remotely and absent locally. At or before
+a trustworthy cursor the row was demonstrably delivered, so its absence is a
+signed-out delete and the tombstone propagates. After a trustworthy cursor this
+version of the row postdates the device's last pull window, so it was never
+observed; it is preserved and restored by the merge, which is also what
+last-write-to-reach-the-server-wins requires, since any unrecorded local delete
+never reached the server. With an untrustworthy cursor the row cannot be
+classified: no tombstone is invented and no baseline is recorded, and the pass
+raises a reconciliation conflict that fails the sync phase with an actionable
+message rather than reporting success. A missing cursor is not a conflict — it is
+the ordinary first-download state, and also what an intentional cursor clear
+(#538 rebuild rearm, #523 healing) leaves behind — so it infers nothing and
+blocks nothing. The conflict is reported once: it is raised after the merge has
+restored the rows, after the real dirty queue has been pushed, and after cursor
+advancement has replaced the untrustworthy value with a server-authored one, so
+the retry has nothing ambiguous left and completes. The governing invariant is
+that a baseline is never recorded over a row that has not reached the server: a
+failed push throws before the baseline is written, so an uncertain pass fails
+retryably instead of completing green.
 
 A pending local row always reaches Supabase before conflict ordering is settled,
 so the database's server-authored `updated_at` establishes arrival order without

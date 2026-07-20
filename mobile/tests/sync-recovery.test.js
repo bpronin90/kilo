@@ -45,8 +45,11 @@ import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
 import {
   SYNC_TABLES,
   SINGLETON_SYNC_ID,
+  assessCursorTrust,
+  clearCursor,
   clearSyncSnapshot,
   getCursor,
+  setCursor,
   getDirtyRecords,
   getSyncSnapshot,
   isTombstone,
@@ -652,40 +655,6 @@ describe('upgrade window: no baseline recorded yet', () => {
     expect(local.weight_value).toBe(171);
   });
 
-  // ── documented limit ───────────────────────────────────────────────────────
-  it('does NOT infer a delete without a baseline, and says so honestly', async () => {
-    // A row present on the server and absent locally is genuinely ambiguous: a
-    // signed-out delete, or a row this device never downloaded. Fabricating a
-    // tombstone would delete another device's cloud data — a worse failure than
-    // the one #525 fixes — so the row is restored by the ordinary merge instead.
-    // This is a ONE-PASS limit: the pass records a baseline, and from then on
-    // reconcileAgainstBaseline detects deletes unambiguously.
-    await seedSyncedDevice();
-    await simulatePreUpgradeDevice();
-
-    signOut();
-    await localAdapter().deleteWeightEntry('w-existing');
-    expect(await Storage.loadWeightEntriesRaw()).toHaveLength(0);
-
-    signInAsSameOwner();
-    await sync();
-
-    // The cloud copy survives — no tombstone was invented.
-    const remote = cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing');
-    expect(isTombstone(remote)).toBe(false);
-    // And the row comes back locally rather than vanishing silently.
-    const visible = await Storage.getStorageAdapter().loadWeightEntries();
-    expect(visible.map((e) => e.id)).toContain('w-existing');
-
-    // From here the baseline exists, so a delete IS detected.
-    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
-    signOut();
-    await localAdapter().deleteWeightEntry('w-existing');
-    signInAsSameOwner();
-    await sync();
-    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(true);
-  });
-
   it('reconcileAgainstRemote enqueues exactly the rows the merge would keep', async () => {
     // The invariant, unit-level: enqueue every local row the merge will KEEP and
     // that the server does not already hold in that form. Anything less strands
@@ -709,5 +678,310 @@ describe('upgrade window: no baseline recorded yet', () => {
     });
 
     expect(dirty.map((r) => r.id).sort()).toEqual(['b', 'c']);
+  });
+});
+
+// ── signed-out deletes on the upgrade path, bounded by the pull cursor ────────
+//
+// The mechanism is the reviewer's, from the #525 STATUS=REVIEW_RESPONSE: a
+// pre-upgrade device has no baseline but DOES have a persisted per-table cursor,
+// and that cursor is server-authored evidence of what a completed, inclusive,
+// paginated pull already delivered. A remote row absent locally whose
+// `updated_at` sits at or before a TRUSTWORTHY cursor was therefore observed by
+// this device, so its absence is a signed-out delete.
+//
+// The cursor is validated rather than trusted, because issue #523 proved this
+// repo shipped cursors computed from `[...remote, ...dirty]` — device-clock
+// values that could sit in the future and silently hide later server rows. On
+// such a device `updated_at <= cursor` does NOT mean "was delivered".
+describe('upgrade window: signed-out DELETES against the stored cursor', () => {
+  // Case 1 ────────────────────────────────────────────────────────────────────
+  it('propagates a signed-out delete when the cursor is trustworthy', async () => {
+    await seedSyncedDevice();
+    const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
+    // Trustworthy: the cursor is literally the `updated_at` of a row the server
+    // still holds, so it is a real completed-pull boundary and not a device clock.
+    expect(cloud.remoteRows(SYNC_TABLES.WEIGHT_ENTRIES).some((r) => r.updated_at === cursor))
+      .toBe(true);
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    // The local adapter removes the row outright: no tombstone, no dirty entry.
+    await localAdapter().deleteWeightEntry('w-existing');
+    expect(await Storage.loadWeightEntriesRaw()).toHaveLength(0);
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toHaveLength(0);
+
+    signInAsSameOwner();
+    await sync();
+
+    // The delete reached the cloud as a tombstone...
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(true);
+    // ...and a second pass does not resurrect the row locally.
+    await sync();
+    const visible = await Storage.getStorageAdapter().loadWeightEntries();
+    expect(visible.map((e) => e.id)).not.toContain('w-existing');
+  });
+
+  // Case 2 ────────────────────────────────────────────────────────────────────
+  it('preserves a remote row written AFTER the cursor instead of tombstoning it', async () => {
+    // Another device wrote this row after our last completed pull window, so we
+    // never observed it. Its absence locally is not evidence of anything, and
+    // under "last write to REACH THE SERVER wins" the remote write is the later
+    // one regardless. Preserve it, and do not call it a conflict.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    await cloud.transport.push(SYNC_TABLES.WEIGHT_ENTRIES, [
+      {
+        id: 'w-other-device',
+        weight_value: 165,
+        logged_at: '2026-07-09T08:00:00.000Z',
+        date: '2026-07-09',
+      },
+    ]);
+    const cursor = await getCursor(SYNC_TABLES.WEIGHT_ENTRIES);
+    expect(
+      cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-other-device').updated_at > cursor
+    ).toBe(true);
+
+    signInAsSameOwner();
+    await sync();
+
+    // No tombstone invented, and the row arrived on this device.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-other-device'))).toBe(false);
+    const localIds = (await Storage.loadWeightEntriesRaw()).map((e) => e.id).sort();
+    expect(localIds).toEqual(['w-existing', 'w-other-device']);
+    // Not a conflict: the pass completed and recorded its baseline.
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
+  });
+
+  // Case 3, poisoned cursor ───────────────────────────────────────────────────
+  it('does NOT tombstone against a #523-poisoned cursor, and refuses to claim success', async () => {
+    // The unrecoverable failure this guards. Pre-#523 builds advanced the cursor
+    // from `[...remote, ...dirty]`; a device whose clock ran ahead stored a
+    // FUTURE cursor and then filtered every later server row out of its own
+    // pulls. Those rows are remote, absent locally, and `updated_at <= cursor` —
+    // exactly the shape of a signed-out delete. Inferring one would destroy cloud
+    // data this device never downloaded.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    // The device clock was an hour ahead of the server when the old build wrote
+    // this cursor, so it sits past everything the server holds.
+    const poisoned = new Date(Date.now() + 3600_000).toISOString();
+    await setCursor(SYNC_TABLES.WEIGHT_ENTRIES, poisoned);
+    expect(
+      poisoned > cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing').updated_at
+    ).toBe(true);
+
+    signInAsSameOwner();
+    await expect(sync()).rejects.toThrow(/not trustworthy/);
+
+    // Nothing was deleted in the cloud.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(false);
+    // No successful reconciliation was claimed: no baseline was recorded.
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).toBeNull();
+  });
+
+  it('surfaces the poisoned-cursor conflict as a FAILED sync phase, not a completed one', async () => {
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    await setCursor(SYNC_TABLES.WEIGHT_ENTRIES, new Date(Date.now() + 3600_000).toISOString());
+    signInAsSameOwner();
+
+    const result = await runPhase(SYNC_PHASE.SYNC, () => sync());
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/not trustworthy/);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.FAILED);
+  });
+
+  it('converges on the retry: the conflict is reported once, not forever', async () => {
+    // The conflict throws AFTER the merge restored the rows, after the real dirty
+    // queue was pushed, and after step 5 replaced the poisoned cursor with a
+    // server-authored one. So the retry has nothing ambiguous left and completes.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    await setCursor(SYNC_TABLES.WEIGHT_ENTRIES, new Date(Date.now() + 3600_000).toISOString());
+    signInAsSameOwner();
+
+    await expect(sync()).rejects.toThrow(/not trustworthy/);
+    // The row was restored locally rather than left in limbo.
+    expect((await Storage.loadWeightEntriesRaw()).map((e) => e.id)).toContain('w-existing');
+
+    await expect(sync()).resolves.toBeDefined();
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
+    // Still no fabricated tombstone.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(false);
+  });
+
+  // Case 3, missing cursor ────────────────────────────────────────────────────
+  it('never blocks a first download, where every remote row is legitimately absent locally', async () => {
+    // A device with no cursor has no completed pull to contradict. This is the
+    // ordinary first-download state — empty local table, full remote one — so
+    // "absent locally" carries no information and must neither be tombstoned nor
+    // treated as a conflict. Blocking here would break every fresh install.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+    for (const table of COLLECTION_TABLES) {
+      // eslint-disable-next-line no-await-in-loop
+      await clearCursor(table);
+    }
+    await Storage.replaceWeightEntriesRaw([]);
+    await Storage.replaceWorkoutNotesRaw([]);
+
+    await sync();
+
+    // Nothing was destroyed and the account's data arrived.
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(false);
+    expect((await Storage.loadWeightEntriesRaw()).map((e) => e.id)).toContain('w-existing');
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
+  });
+
+  it('does not infer a delete when the cursor was intentionally cleared', async () => {
+    // #523 healing and the #538 rebuild rearm both clear cursors deliberately.
+    // Such a device is indistinguishable from a first download, so it gets the
+    // same non-destructive, non-blocking treatment: the row comes back and the
+    // NEXT delete propagates, because this pass records a baseline.
+    await seedSyncedDevice();
+    await simulatePreUpgradeDevice();
+    await clearCursor(SYNC_TABLES.WEIGHT_ENTRIES);
+
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    signInAsSameOwner();
+    await sync();
+
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(false);
+    expect((await Storage.loadWeightEntriesRaw()).map((e) => e.id)).toContain('w-existing');
+
+    // From here the baseline exists, so a delete IS detected unambiguously.
+    expect(await getSyncSnapshot(SYNC_TABLES.WEIGHT_ENTRIES)).not.toBeNull();
+    signOut();
+    await localAdapter().deleteWeightEntry('w-existing');
+    signInAsSameOwner();
+    await sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w-existing'))).toBe(true);
+  });
+});
+
+// ── cursor trust, unit level ─────────────────────────────────────────────────
+describe('assessCursorTrust', () => {
+  const rows = [
+    { id: 'a', updated_at: '2026-07-01T00:00:00.000Z' },
+    { id: 'b', updated_at: '2026-07-05T00:00:00.000Z' },
+  ];
+
+  it('trusts a cursor that a server row still corroborates exactly', () => {
+    expect(assessCursorTrust({ cursor: '2026-07-05T00:00:00.000Z', remote: rows })).toEqual({
+      trusted: true,
+      reason: 'corroborated',
+    });
+  });
+
+  it('rejects a cursor ahead of every row the server holds (#523 future clock)', () => {
+    // Cursor advancement only ever takes the max updated_at of SERVER-AUTHORED
+    // rows, so an honest cursor can never sit past the newest row on the server.
+    expect(assessCursorTrust({ cursor: '2099-01-01T00:00:00.000Z', remote: rows })).toEqual({
+      trusted: false,
+      reason: 'ahead-of-server',
+    });
+  });
+
+  it('rejects a cursor no server row corroborates, even when it is not ahead', () => {
+    // The subtler #523 shape: a device clock skewed forward by LESS than the
+    // newest server row. `ahead-of-server` misses it; exact corroboration does
+    // not, because a real cursor is always literally some server row's timestamp.
+    expect(assessCursorTrust({ cursor: '2026-07-03T12:34:56.789Z', remote: rows })).toEqual({
+      trusted: false,
+      reason: 'uncorroborated',
+    });
+  });
+
+  it('reports a missing cursor separately, because it is not a conflict', () => {
+    expect(assessCursorTrust({ cursor: null, remote: rows }).reason).toBe('absent');
+  });
+
+  it('rejects a malformed cursor', () => {
+    expect(assessCursorTrust({ cursor: 'not-a-timestamp', remote: rows })).toEqual({
+      trusted: false,
+      reason: 'malformed',
+    });
+  });
+
+  it('rejects any cursor when the server holds nothing to corroborate it', () => {
+    expect(assessCursorTrust({ cursor: '2026-07-05T00:00:00.000Z', remote: [] }).trusted)
+      .toBe(false);
+  });
+});
+
+describe('reconcileAgainstRemote: absent-local remote rows', () => {
+  const clientId = 'this-device';
+  const cursor = '2026-07-05T00:00:00.000Z';
+  // Corroborates the cursor, so the classification below is allowed to run.
+  const anchor = { id: 'anchor', updated_at: cursor };
+
+  it('tombstones only the rows at or before a trustworthy cursor', () => {
+    const { dirty, unresolved } = reconcileAgainstRemote({
+      current: [anchor],
+      remote: [
+        anchor,
+        { id: 'observed', v: 1, updated_at: '2026-07-02T00:00:00.000Z' },
+        { id: 'unseen', v: 2, updated_at: '2026-07-09T00:00:00.000Z' },
+      ],
+      clientId,
+      cursor,
+    });
+
+    expect(dirty.map((r) => r.id)).toEqual(['observed']);
+    expect(isTombstone(dirty[0])).toBe(true);
+    expect(unresolved).toEqual([]);
+  });
+
+  it('never tombstones an already-tombstoned remote row', () => {
+    const { dirty, unresolved } = reconcileAgainstRemote({
+      current: [anchor],
+      remote: [
+        anchor,
+        { id: 'gone', updated_at: '2026-07-02T00:00:00.000Z', deleted_at: '2026-07-02T00:00:00.000Z' },
+      ],
+      clientId,
+      cursor,
+    });
+
+    expect(dirty).toEqual([]);
+    expect(unresolved).toEqual([]);
+  });
+
+  it('reports rows as unresolved rather than tombstoning them on an untrusted cursor', () => {
+    const { dirty, unresolved, cursorTrust } = reconcileAgainstRemote({
+      current: [],
+      remote: [{ id: 'observed', updated_at: '2026-07-02T00:00:00.000Z' }],
+      clientId,
+      cursor: '2099-01-01T00:00:00.000Z',
+    });
+
+    expect(dirty).toEqual([]);
+    expect(unresolved).toEqual(['observed']);
+    expect(cursorTrust.reason).toBe('ahead-of-server');
+  });
+
+  it('neither tombstones nor reports a conflict with no cursor at all', () => {
+    const { dirty, unresolved } = reconcileAgainstRemote({
+      current: [],
+      remote: [{ id: 'never-downloaded', updated_at: '2026-07-02T00:00:00.000Z' }],
+      clientId,
+      cursor: null,
+    });
+
+    expect(dirty).toEqual([]);
+    expect(unresolved).toEqual([]);
   });
 });

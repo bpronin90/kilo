@@ -195,7 +195,11 @@ async function syncOne(table, tableIo) {
     // These three are the tables whose signed-out writes the dirty queue misses,
     // so they opt into the unbaselined (upgrade-window) reconciliation described
     // in syncQueue: on the one pass where no baseline exists yet, reconcile
-    // against a full pull instead of against local state (#525).
+    // against a full pull instead of against local state (#525). That pass also
+    // classifies signed-out deletes against the validated pull cursor, and can
+    // throw SyncReconciliationConflictError when the cursor cannot establish what
+    // this device already observed — which fails the SYNC phase with an
+    // actionable message instead of reporting success over an unreconciled table.
     reconcileUnbaselined: true,
   });
 }
