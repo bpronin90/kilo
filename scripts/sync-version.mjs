@@ -9,23 +9,26 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const defaultRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const versionRe = /("version"\s*:\s*")([^"]*)(")/;
 
 export function syncVersions({ root = defaultRoot, check = false, logger = console } = {}) {
   const canonical = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
   const drift = [];
-  const textTargets = [
+  const jsonTargets = [
     { path: join(root, 'mobile', 'package.json'), label: 'mobile/package.json' },
     { path: join(root, 'mobile', 'app.json'), label: 'mobile/app.json' },
   ];
 
-  for (const target of textTargets) {
-    const source = readFileSync(target.path, 'utf8');
-    const match = source.match(versionRe);
-    if (!match) throw new Error(`No "version" field found in ${target.label}`);
-    if (match[2] === canonical) continue;
-    drift.push({ label: target.label, from: match[2], to: canonical });
-    if (!check) writeFileSync(target.path, source.replace(versionRe, `$1${canonical}$3`));
+  for (const target of jsonTargets) {
+    const json = JSON.parse(readFileSync(target.path, 'utf8'));
+    const current = target.label === 'mobile/package.json' ? json.version : json.expo?.version;
+    if (typeof current !== 'string') throw new Error(`No target version field found in ${target.label}`);
+    if (current === canonical) continue;
+    drift.push({ label: target.label, from: current, to: canonical });
+    if (!check) {
+      if (target.label === 'mobile/package.json') json.version = canonical;
+      else json.expo.version = canonical;
+      writeFileSync(target.path, `${JSON.stringify(json, null, 2)}\n`);
+    }
   }
 
   const lockTargets = [
