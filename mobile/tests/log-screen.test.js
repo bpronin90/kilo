@@ -2688,3 +2688,119 @@ describe('Undo skip: fatigue-reason check-in cleanup', () => {
     expect(getLatest().hook.skipWeekStatus).toBe('Skip removed');
   });
 });
+
+// ── Android Back ownership (#527): the shell holds one back-consumer slot;
+// LogScreen must claim it through registerBackConsumer (not BackHandler
+// directly) and only while it is the active tab, so a hidden Log editor
+// cannot outrace the visible tab after a tab switch.
+describe('Android Back routes through registerBackConsumer, gated by isActive (#527)', () => {
+  let mockUpdateNote;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUpdateNote = jest.fn().mockResolvedValue({});
+    const currentNote = {
+      id: 'note1',
+      title: 'Routine A',
+      raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote],
+      currentId: 'note1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: mockUpdateNote,
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  test('registers a back consumer while the Log tab is active and unregisters when it becomes inactive', () => {
+    let unregister;
+    const registerBackConsumer = jest.fn(() => {
+      unregister = jest.fn();
+      return unregister;
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledLogScreen isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    expect(registerBackConsumer).toHaveBeenCalledTimes(1);
+
+    render.act(() => {
+      component.update(
+        <ControlledLogScreen isActive={false} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not register a back consumer while the Log tab is inactive', () => {
+    const registerBackConsumer = jest.fn(() => jest.fn());
+    render.act(() => {
+      render.create(
+        <ControlledLogScreen isActive={false} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    expect(registerBackConsumer).not.toHaveBeenCalled();
+  });
+
+  test('the registered consumer finishes the current-routine editor through its Done path and consumes Back', async () => {
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => {
+      capturedConsumer = consumer;
+      return jest.fn();
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledLogScreen isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Edit').props.onPress({ stopPropagation: jest.fn() }); });
+    // The editor's ScreenShell mounts unconditionally (toggled via display:none), so
+    // its own "Done" control stays in the tree; the read view's inline "Edit" control
+    // is the one that is conditionally rendered on mode, so its absence/return is the
+    // reliable edit/read-mode signal here.
+    expect(findPressableByText(root, 'Edit')).toBeNull();
+
+    let handled;
+    await render.act(async () => { handled = capturedConsumer(); });
+
+    expect(handled).toBe(true);
+    expect(findPressableByText(root, 'Edit')).toBeTruthy();
+  });
+
+  test('the registered consumer returns false with no active editor state, letting the shell fall back to Home', () => {
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => {
+      capturedConsumer = consumer;
+      return jest.fn();
+    });
+
+    render.act(() => {
+      render.create(
+        <ControlledLogScreen isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+
+    expect(capturedConsumer()).toBe(false);
+  });
+});

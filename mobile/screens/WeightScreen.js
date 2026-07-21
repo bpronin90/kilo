@@ -123,6 +123,8 @@ export function WeightScreen({
   errorMessage,
   saving,
   weightDateEditEnabled,
+  isActive,
+  registerBackConsumer,
 }) {
   const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
@@ -176,7 +178,7 @@ export function WeightScreen({
     })
   ), [saveGoal, unit]);
 
-  const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal);
+  const goalForm = useWeightGoalForm(displayGoal, saveGoalCanonical, clearGoal, archiveGoal, isActive, registerBackConsumer);
 
   // Draft goal fields are typed in the selected unit; convert them to lb-space
   // strings before the lb-domain analytics derivation (identity in lb mode).

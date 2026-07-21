@@ -7,7 +7,7 @@
 // asks for that specific change.
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';
@@ -36,6 +36,7 @@ export function LogScreen({
   deloadDateEditEnabled,
   onCheckInPrompt,
   isActive,
+  registerBackConsumer,
 }) {
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
@@ -115,14 +116,15 @@ export function LogScreen({
   const handleAndroidBackRef = useRef(handleAndroidBack);
   handleAndroidBackRef.current = handleAndroidBack;
 
+  // Register with the app shell instead of BackHandler directly (#527): all tab
+  // screens stay mounted under display:none, so a direct BackHandler listener here
+  // would keep consuming Back even while another tab is active. Gating on isActive
+  // ensures only the visible tab's editor/viewer state can intercept Back, and the
+  // shell falls back to Home when handleAndroidBack finds nothing to consume.
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => handleAndroidBackRef.current(),
-    );
-    return () => backHandler.remove();
-  }, [otherEditor.editingNoteId, otherEditor.viewingNoteId, currentEditor.mode, deloadEditor.deloadMode]);
+    if (!isActive) return undefined;
+    return registerBackConsumer?.(() => handleAndroidBackRef.current());
+  }, [isActive, otherEditor.editingNoteId, otherEditor.viewingNoteId, currentEditor.mode, deloadEditor.deloadMode, registerBackConsumer]);
 
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith('Deload · '));
 
