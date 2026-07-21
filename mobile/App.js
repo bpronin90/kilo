@@ -335,6 +335,7 @@ export default function App() {
             onSaveWorkout={saveWorkout}
             deloadDateEditEnabled={deloadDateEditEnabled}
             isActive={activeTab === 'Log'}
+            registerBackConsumer={registerBackConsumer}
           />
         </View>
         <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
@@ -347,6 +348,8 @@ export default function App() {
             errorMessage={saveError}
             saving={weightSaving}
             weightDateEditEnabled={weightDateEditEnabled}
+            isActive={activeTab === 'Weight'}
+            registerBackConsumer={registerBackConsumer}
           />
         </View>
         <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>

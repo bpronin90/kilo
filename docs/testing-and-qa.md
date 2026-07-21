@@ -573,6 +573,24 @@ retains non-test commands such as `npm run audit`.
   (`type: 'dismissed'`) change so the sentinel `01-01-2000` value is never
   committed, while confirmed selections still update the chip
 
+### `mobile/tests/app-navigation.test.js`
+
+- rendered `App` coverage (Android platform, real `LogScreen` and
+  `WeightScreen`, not stubs) for the single-slot `registerBackConsumer`
+  back-handler-ownership mechanism (#527)
+- verifies a hardware back press on the Log tab finishes the active
+  current-routine editor instead of falling through to Home
+- verifies switching away from an editing Log tab and back preserves handler
+  precedence for the visible tab (the shell's own listener re-registers on
+  every `activeTab` change, which is the scenario the underlying #522 bug
+  exploited)
+- verifies a hidden Log editor left mid-edit cannot consume a back press
+  while another tab is active; the shell falls back to Home instead
+- verifies editing the Weight tab's goal form, then switching to Log, leaves
+  the hidden goal-edit state untouched by a Log back press
+- verifies that with no active in-tab state on any tab, back still returns a
+  non-Home tab to Home
+
 ### `mobile/tests/sync-queue.test.js`
 
 - deterministically defers the first transport push, enqueues a newer snapshot

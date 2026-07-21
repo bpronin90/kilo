@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Alert, BackHandler } from 'react-native';
+import { Alert } from 'react-native';
 
-export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal) {
+export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer) {
   const [goalEditing, setGoalEditing] = useState(false);
   const [goalTargetWeight, setGoalTargetWeight] = useState('');
   const [goalTargetDate, setGoalTargetDate] = useState('');
@@ -17,14 +17,17 @@ export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal) {
     }
   }, [goal, goalEditing]);
 
+  // Register with the app shell instead of BackHandler directly (#527): all tab
+  // screens stay mounted under display:none, so a direct BackHandler listener here
+  // would keep cancelling the goal edit even while another tab is active. Gating on
+  // isActive ensures only the visible Weight tab can intercept Back while editing.
   useEffect(() => {
-    if (!goalEditing) return;
-    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+    if (!isActive || !goalEditing) return undefined;
+    return registerBackConsumer?.(() => {
       cancelEditGoal();
       return true;
     });
-    return () => handler.remove();
-  }, [goalEditing]);
+  }, [isActive, goalEditing, registerBackConsumer]);
 
   const handleSaveGoal = async (currentWeight) => {
     setGoalError('');

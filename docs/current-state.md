@@ -494,7 +494,14 @@ The real native app path now has a modular React Native shell:
   `account-export` Edge Function, and deletion calls `account-delete` before
   signing out and clearing local session state. Those More subviews
   intercept Android back presses and return to the More menu before falling
-  through to tab-level navigation. The parent More menu groups six destinations
+  through to tab-level navigation. This uses the same single-slot
+  `registerBackConsumer` mechanism (owned by `App.js`) that the Log tab's
+  current/other/deload routine editors and the Weight tab's goal-edit form
+  also register with, each gated on being the active tab, so exactly one
+  screen's in-tab state can intercept a hardware back press even though every
+  tab stays mounted (`display: none`) in the background; switching tabs mid-edit
+  leaves the hidden editor's state untouched and does not let it consume a
+  later back press on another tab (#527). The parent More menu groups six destinations
   into three balanced sections: `Profile & Account` (`User Profile`, `Account`),
   `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
   (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions

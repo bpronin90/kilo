@@ -1136,3 +1136,104 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   });
 });
 
+// ── Android Back ownership (#527): the shell holds one back-consumer slot;
+// the weight-goal form must claim it through registerBackConsumer (not
+// BackHandler directly) and only while the Weight tab is active, so a
+// hidden goal edit cannot outrace the visible tab after a tab switch.
+describe('Android Back routes weight-goal edit through registerBackConsumer, gated by isActive (#527)', () => {
+  const GOAL = { target_weight: 170, target_date: '2026-07-01', start_weight: 190 };
+
+  const findPressableByText = (root, text) => {
+    const matches = root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const children = n.props.children;
+      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+      return flat.includes(text);
+    });
+    for (const match of matches) {
+      let node = match.parent;
+      while (node) {
+        if (node.props && typeof node.props.onPress === 'function') return node;
+        node = node.parent;
+      }
+    }
+    return null;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({ entries: [{ ...ENTRY }], remove: jest.fn(), update: jest.fn() });
+    useEntries.useWeightGoal.mockReturnValue({ goal: GOAL, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+  });
+
+  test('registers a back consumer while editing on the active Weight tab and unregisters when it becomes inactive', () => {
+    let unregister;
+    const registerBackConsumer = jest.fn(() => {
+      unregister = jest.fn();
+      return unregister;
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    render.act(() => { findPressableByText(component.root, 'Edit').props.onPress(); });
+    expect(registerBackConsumer).toHaveBeenCalledTimes(1);
+
+    render.act(() => {
+      component.update(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive={false} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not register a back consumer while editing on an inactive Weight tab', () => {
+    const registerBackConsumer = jest.fn(() => jest.fn());
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive={false} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    render.act(() => { findPressableByText(component.root, 'Edit').props.onPress(); });
+    expect(registerBackConsumer).not.toHaveBeenCalled();
+  });
+
+  test('does not register a back consumer with no active goal edit, letting the shell fall back to Home', () => {
+    const registerBackConsumer = jest.fn(() => jest.fn());
+    render.act(() => {
+      render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    expect(registerBackConsumer).not.toHaveBeenCalled();
+  });
+
+  test('the registered consumer cancels the goal edit and consumes Back', () => {
+    let capturedConsumer;
+    const registerBackConsumer = jest.fn((consumer) => {
+      capturedConsumer = consumer;
+      return jest.fn();
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} isActive={true} registerBackConsumer={registerBackConsumer} />
+      );
+    });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Edit').props.onPress(); });
+    expect(findPressableByText(root, 'Save goal')).toBeTruthy();
+
+    let handled;
+    render.act(() => { handled = capturedConsumer(); });
+
+    expect(handled).toBe(true);
+    expect(findPressableByText(root, 'Save goal')).toBeNull();
+  });
+});
+
