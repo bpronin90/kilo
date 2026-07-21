@@ -244,9 +244,12 @@ project`): it runs credentialed on every push to `main` and on every pull
 request from this same repository, not only after merge. #490 reached
 production because the only credentialed run used to happen after merge; the
 pre-merge run is the fix. The check uses the least-privilege
-`SUPABASE_MIGRATION_CHECK_URL` repository secret to compare the names of
-migrations in `supabase/migrations/` with the live
-`supabase_migrations.schema_migrations` ledger.
+`SUPABASE_MIGRATION_CHECK_URL` repository secret to compare migrations in
+`supabase/migrations/` with the live `supabase_migrations.schema_migrations`
+ledger. A live row must prove Kilo identity through an exact `(version, name)`
+pair or prove ownership through same-name SQL qualified to Kilo's owned `kilo`
+schema. Bare name membership is insufficient, so a same-name co-tenant row
+cannot hide a missing Kilo migration.
 
 Fork pull requests cannot receive that secret (GitHub withholds repository
 secrets from a `pull_request` run whose head repo differs from this one), so a
@@ -274,9 +277,10 @@ because the Supabase project is shared with another app. Missing credentials or
 database connection failures also fail rather than reporting a false pass.
 
 `scripts/check-migration-drift.mjs` has a deterministic self-test harness that
-exercises env-loading precedence and the exit-code contract (0/1/2) against a
-stubbed `psql` and disposable temp-dir fixtures only — it never connects to a
-real database or touches a real secret:
+exercises env-loading precedence, ownership-aware exact-collision/unrelated-
+extra/missing/complete ledger fixtures, and the exit-code contract (0/1/2)
+against a stubbed `psql` and disposable temp-dir fixtures only — it never
+connects to a real database or touches a real secret:
 
 ```sh
 npm run check:migrations:selftest
