@@ -85,6 +85,29 @@ test('prepares one deterministic release and synchronizes every version field', 
   }
 });
 
+test('synchronizes only the structural mobile version fields', () => {
+  const root = fixture();
+  try {
+    writeJson(join(root, 'mobile', 'package.json'), {
+      nested: { version: 'decoy-package' }, name: 'mobile', version: '0.97.0',
+    });
+    writeJson(join(root, 'mobile', 'app.json'), {
+      metadata: { version: 'decoy-app' }, expo: { name: 'Kilo', version: '0.96.0' },
+    });
+    const result = syncVersions({ root, logger: { log() {} } });
+    assert.deepEqual(result.drift, [
+      { label: 'mobile/package.json', from: '0.97.0', to: '0.98.1' },
+      { label: 'mobile/app.json', from: '0.96.0', to: '0.98.1' },
+    ]);
+    assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'package.json'))).nested.version, 'decoy-package');
+    assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'package.json'))).version, '0.98.1');
+    assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'app.json'))).metadata.version, 'decoy-app');
+    assert.equal(JSON.parse(readFileSync(join(root, 'mobile', 'app.json'))).expo.version, '0.98.1');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('leaves fragments created after the release snapshot for the next release', () => {
   const root = fixture();
   try {
