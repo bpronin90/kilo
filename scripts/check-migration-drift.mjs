@@ -49,10 +49,18 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const MIGRATIONS_DIR = join(root, 'supabase', 'migrations');
 
-// The ledger Supabase writes on every applied migration. `name` is nullable, so
-// unnamed rows are excluded rather than compared as empty strings.
+// The ledger Supabase writes on every applied migration. Return one JSON object
+// per row so statement arrays remain unambiguous even when the SQL contains
+// newlines. `name` is nullable, so unnamed rows cannot identify a repo
+// migration and are excluded.
 const LEDGER_QUERY =
-  'select name from supabase_migrations.schema_migrations where name is not null';
+  `select json_build_object(
+     'version', version,
+     'name', name,
+     'statements', statements
+   )::text
+   from supabase_migrations.schema_migrations
+   where name is not null`;
 
 function abort(code, message, detail) {
   console.error(`migration-drift: ${message}`);
@@ -60,12 +68,12 @@ function abort(code, message, detail) {
   process.exit(code);
 }
 
-// Migration files are named <version>_<name>.sql and the ledger stores <name>.
+// Migration files are named <version>_<name>.sql and the ledger stores both.
 //
-// Compare by name, never by version. The versions in this project's ledger were
-// re-stamped on the way in — supabase/migrations/20260615120000_note_first_schema.sql
-// is recorded as version 20260615180805 — so comparing versions reports every
-// migration as drifted.
+// Name is the candidate key, but never sufficient identity by itself. Some
+// versions in this project's ledger were re-stamped on the way in —
+// supabase/migrations/20260615120000_note_first_schema.sql is recorded as
+// version 20260615180805 — so version is one proof path, not a universal key.
 function repoMigrations() {
   let files;
   try {
@@ -81,7 +89,11 @@ function repoMigrations() {
       if (separator === -1) {
         abort(2, `migration filename is not <version>_<name>.sql: ${file}`);
       }
-      return { file, name: file.slice(separator + 1, -'.sql'.length) };
+      return {
+        file,
+        version: file.slice(0, separator),
+        name: file.slice(separator + 1, -'.sql'.length),
+      };
     })
     .sort((a, b) => a.file.localeCompare(b.file));
 }
@@ -161,7 +173,7 @@ function libpqEnv(rawUrl) {
   };
 }
 
-function appliedMigrationNames(rawUrl) {
+function appliedMigrationRows(rawUrl) {
   let stdout;
   try {
     stdout = execFileSync('psql', ['--no-psqlrc', '--tuples-only', '--no-align', '-c', LEDGER_QUERY], {
@@ -175,19 +187,57 @@ function appliedMigrationNames(rawUrl) {
     abort(2, 'could not read the migration ledger from the live project.', err.stderr || err.stdout);
   }
 
-  const names = stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  let rows;
+  try {
+    rows = stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    abort(2, 'the migration ledger returned an unexpected row format. Refusing to report "no drift".');
+  }
 
   // A reachable project always has migrations applied. An empty ledger means we
   // queried something other than what we think we did — treat it as a failure to
   // run, never as "nothing is missing".
-  if (names.length === 0) {
+  if (rows.length === 0) {
     abort(2, 'the migration ledger came back empty, which should be impossible. Refusing to report "no drift".');
   }
 
-  return names;
+  return rows;
+}
+
+// Kilo owns only the `kilo` schema in this shared project. Re-stamped ledger
+// rows therefore prove ownership by carrying SQL qualified to that namespace.
+// Older rows written without statement capture retain their original version,
+// so an exact (version, name) pair proves identity instead.
+//
+// A same-name row from a co-tenant satisfies neither condition: its version is
+// unrelated and its statements target one of the co-tenant schemas. Keeping the
+// two lookup sets separate makes the comparison O(repo + ledger).
+function migrationIdentity(rows) {
+  const exact = new Set();
+  const kiloOwnedNames = new Set();
+  const kiloSchemaReference = /(?:^|[^a-z0-9_$])(?:"kilo"|kilo)\s*\./i;
+
+  for (const row of rows) {
+    if (!row || typeof row.version !== 'string' || typeof row.name !== 'string') {
+      abort(2, 'the migration ledger returned an unexpected row shape. Refusing to report "no drift".');
+    }
+
+    exact.add(`${row.version}\0${row.name}`);
+    if (
+      Array.isArray(row.statements) &&
+      row.statements.some(
+        (statement) => typeof statement === 'string' && kiloSchemaReference.test(statement)
+      )
+    ) {
+      kiloOwnedNames.add(row.name);
+    }
+  }
+
+  return { exact, kiloOwnedNames };
 }
 
 function runCheck() {
@@ -199,14 +249,19 @@ function runCheck() {
   }
 
   const repo = repoMigrations();
-  const applied = new Set(appliedMigrationNames(connectionUrl));
+  const appliedRows = appliedMigrationRows(connectionUrl);
+  const applied = migrationIdentity(appliedRows);
 
   // Keyed lookup, so this stays O(repo + applied) rather than a nested scan.
   //
   // One-directional by design: a migration applied to the project but absent from
   // this repo is NOT drift. The Supabase project is intentionally shared with
   // another app, whose migrations land in the same ledger.
-  const missing = repo.filter((migration) => !applied.has(migration.name));
+  const missing = repo.filter(
+    (migration) =>
+      !applied.exact.has(`${migration.version}\0${migration.name}`) &&
+      !applied.kiloOwnedNames.has(migration.name)
+  );
 
   if (missing.length > 0) {
     console.error(
@@ -221,7 +276,7 @@ function runCheck() {
 
   console.log(
     `migration-drift: ok — all ${repo.length} merged migration(s) are applied ` +
-      `(${applied.size} migrations in the ledger; extras belong to the co-tenant app and are not drift).`
+      `(${appliedRows.length} migrations in the ledger; extras belong to the co-tenant app and are not drift).`
   );
 }
 
@@ -247,8 +302,8 @@ if (process.env.STUB_PSQL_MODE === 'fail') {
   process.stderr.write('stub psql: simulated connection failure\\n');
   process.exit(1);
 }
-const names = (process.env.STUB_PSQL_NAMES || '').split('\\n').filter(Boolean);
-process.stdout.write(names.map((n) => ' ' + n).join('\\n') + (names.length ? '\\n' : ''));
+const rows = JSON.parse(process.env.STUB_PSQL_ROWS || '[]');
+process.stdout.write(rows.map((row) => JSON.stringify(row)).join('\\n') + (rows.length ? '\\n' : ''));
 process.exit(0);
 `
   );
@@ -296,8 +351,21 @@ function runSelfTest() {
 
   try {
     writeStubPsql(stubDir);
-    const repoNames = repoMigrations().map((m) => m.name);
-    assert.ok(repoNames.length > 0, 'expected at least one real migration to test against');
+    const repo = repoMigrations();
+    assert.ok(repo.length > 0, 'expected at least one real migration to test against');
+
+    // Exercise both supported identity paths: exact version/name rows model the
+    // older no-statement ledger entries, while re-stamped rows prove ownership
+    // through SQL qualified to the `kilo` schema.
+    const completeLedger = repo.map((migration, index) =>
+      index % 2 === 0
+        ? { version: migration.version, name: migration.name, statements: null }
+        : {
+            version: `209901010000${String(index).padStart(2, '0')}`,
+            name: migration.name,
+            statements: [`create table kilo.self_test_${index} (id bigint);`],
+          }
+    );
 
     const FAKE_FILE_SECRET = 'file-secret-do-not-connect';
     const FAKE_SHELL_SECRET = 'shell-secret-do-not-connect';
@@ -321,7 +389,7 @@ function runSelfTest() {
           STUB_DIR: stubDir,
           SUPABASE_MIGRATION_CHECK_ENV_FILE: join(workDir, 'does-not-exist.env'),
           STUB_PSQL_MODE: 'ok',
-          STUB_PSQL_NAMES: repoNames.join('\n'),
+          STUB_PSQL_ROWS: JSON.stringify(completeLedger),
           STUB_PSQL_CAPTURE_FILE: captureFile,
         },
         captureFile
@@ -337,7 +405,7 @@ function runSelfTest() {
         {
           ...baseEnv(),
           STUB_PSQL_MODE: 'ok',
-          STUB_PSQL_NAMES: repoNames.join('\n'),
+          STUB_PSQL_ROWS: JSON.stringify(completeLedger),
           STUB_PSQL_CAPTURE_FILE: captureFile,
         },
         captureFile
@@ -357,7 +425,7 @@ function runSelfTest() {
           ...baseEnv(),
           SUPABASE_MIGRATION_CHECK_URL: `postgresql://shelluser:${FAKE_SHELL_SECRET}@example.invalid:5432/db_shell`,
           STUB_PSQL_MODE: 'ok',
-          STUB_PSQL_NAMES: repoNames.join('\n'),
+          STUB_PSQL_ROWS: JSON.stringify(completeLedger),
           STUB_PSQL_CAPTURE_FILE: captureFile,
         },
         captureFile
@@ -368,24 +436,82 @@ function runSelfTest() {
       assertNoSecretLeak(result, [FAKE_SHELL_SECRET, FAKE_FILE_SECRET]);
     });
 
-    // 4. Drift detected -> exit 1.
-    record('exit 1 when a merged migration is missing from the ledger', () => {
-      const captureFile = join(workDir, 'capture-drift.json');
-      const missingOne = repoNames.slice(1); // drop the first repo migration from the "ledger"
+    // 4. An exact name collision from a co-tenant cannot satisfy the missing
+    //    Kilo row because neither its version nor its schema ownership matches.
+    record('exact co-tenant name collision cannot false-pass a missing Kilo migration', () => {
+      const captureFile = join(workDir, 'capture-collision.json');
+      const collision = {
+        version: '19990101000000',
+        name: repo[0].name,
+        statements: ['create table serving.same_name_fixture (id bigint);'],
+      };
       const result = runScript(
         {
           ...baseEnv(),
           STUB_PSQL_MODE: 'ok',
-          STUB_PSQL_NAMES: missingOne.join('\n'),
+          STUB_PSQL_ROWS: JSON.stringify([...completeLedger.slice(1), collision]),
           STUB_PSQL_CAPTURE_FILE: captureFile,
         },
         captureFile
       );
       assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
-      assert.ok(result.stderr.includes(repoNames[0]), 'expected the missing migration to be named in stderr');
+      assert.ok(result.stderr.includes(repo[0].name), 'expected the missing Kilo migration in stderr');
     });
 
-    // 5. Connection failure -> exit 2, not a false pass.
+    // 5. An unrelated co-tenant row is still allowed.
+    record('unrelated co-tenant migration remains ignored', () => {
+      const captureFile = join(workDir, 'capture-extra.json');
+      const result = runScript(
+        {
+          ...baseEnv(),
+          STUB_PSQL_MODE: 'ok',
+          STUB_PSQL_ROWS: JSON.stringify([
+            ...completeLedger,
+            {
+              version: '19990101000001',
+              name: 'co_tenant_only_fixture',
+              statements: ['create table canonical.extra_fixture (id bigint);'],
+            },
+          ]),
+          STUB_PSQL_CAPTURE_FILE: captureFile,
+        },
+        captureFile
+      );
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+    });
+
+    // 6. Ordinary missing Kilo migration -> exit 1.
+    record('exit 1 when a Kilo migration is missing from the ledger', () => {
+      const captureFile = join(workDir, 'capture-drift.json');
+      const result = runScript(
+        {
+          ...baseEnv(),
+          STUB_PSQL_MODE: 'ok',
+          STUB_PSQL_ROWS: JSON.stringify(completeLedger.slice(1)),
+          STUB_PSQL_CAPTURE_FILE: captureFile,
+        },
+        captureFile
+      );
+      assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+      assert.ok(result.stderr.includes(repo[0].name), 'expected the missing migration to be named in stderr');
+    });
+
+    // 7. Complete Kilo ledger -> exit 0.
+    record('complete ownership-aware ledger exits 0', () => {
+      const captureFile = join(workDir, 'capture-complete.json');
+      const result = runScript(
+        {
+          ...baseEnv(),
+          STUB_PSQL_MODE: 'ok',
+          STUB_PSQL_ROWS: JSON.stringify(completeLedger),
+          STUB_PSQL_CAPTURE_FILE: captureFile,
+        },
+        captureFile
+      );
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+    });
+
+    // 8. Connection failure -> exit 2, not a false pass.
     record('exit 2 when psql fails (unreachable/misconfigured)', () => {
       const captureFile = join(workDir, 'capture-fail.json');
       const result = runScript(
