@@ -25,6 +25,19 @@ jobs:
     # Only ever run for Dependabot-authored PRs.
     if: ${{ github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
+      # A prior eligible head may have enabled native auto-merge. Revoke it before
+      # checking this head so any guard failure leaves the PR safely disabled.
+      - name: Disable existing GitHub auto-merge before evaluating current head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = 'true' ]; then
+            gh pr merge --disable-auto "$PR_URL"
+          else
+            echo 'Auto-merge is not enabled for this PR.'
+          fi
+
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a
@@ -65,4 +78,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        # Do not enable auto-merge from an outdated workflow run if the PR head
+        # changes while its guards are being evaluated.
+        run: gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_URL"
