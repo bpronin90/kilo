@@ -375,7 +375,7 @@ User types in native Weight or Log form
   → Home / Analytics re-derive recent activity and analytics from the selected current workout note
 ```
 
-`mobile/storage/entries.js` also exposes a local-only recovery path:
+`mobile/storage/entries.js` also exposes a backup/restore recovery path:
 `exportBackup()` serializes a versioned v3 snapshot (weight entries, titled
 workout notes with `isCurrent` / `currentSince` metadata, the current workout
 id, an optional weight goal, an optional fatigue multiplier, and the completed
@@ -390,7 +390,44 @@ clearing the newer workout-note state. The same storage module also performs a
 one-time forward migration from the legacy single-note key by seeding a
 `Routine 1` notebook entry with `isCurrent: true` and `currentSince: null`,
 and normalizes pre-existing notebook rows that predate the new metadata fields.
-No remote sync is involved.
+
+Import has two contracts and the caller states which one applies, because a
+device with no account and a device that is one replica of an account need
+different behavior from the same button. `importBackup(payload, 'replace',
+{ mode })` takes the local contract by default: it overwrites the domain keys and
+nothing else, which is the whole story when the device is the only copy. The app
+shell passes the active storage mode through, so a signed-in user gets the cloud
+contract instead. Before #526 there was only the local path and it ran in cloud
+mode too, so a cloud restore wrote local keys, enqueued nothing, tombstoned
+nothing, reported success, and left the account holding the pre-import data until
+the next pull put it back (#522 claim 5).
+
+Under the cloud contract a replace is a batch of ordinary cloud writes rather
+than a special upload path. Every imported collection row is stamped and enqueued
+with the same primitives an in-app edit uses, and every `weight_entries` or
+`workout_notes` record the backup OMITS becomes a tombstone, because "replace"
+means those records are gone and a plain local deletion would simply be re-pulled
+from the server. Local storage is written before the queue, so an interruption
+between them leaves the imported state on disk for the signed-out-write
+reconciliation above to re-derive; the reverse order would promise rows the
+device does not have. The importer never uploads anything itself, so
+last-write-wins, tombstone ordering, cursor advancement, and the consent gate at
+the sync seam are all unchanged, and a failed push retries with both the imported
+state and the deletion intent intact. Incoming `updated_at` and `client_id` are
+dropped rather than trusted, since they describe the exporting device's history
+and would otherwise compete in LWW as if this device had made the write;
+`deleted_at` is preserved, because a backup taken from raw storage legitimately
+carries tombstones.
+
+Everything outside those two collections is left to the diff-tracked sync path
+and needs no import-time queueing: the weight goal, deload history, profile,
+health profile, and feature toggles detect local change by diffing live state
+against a persisted snapshot, and that diff is indifferent to which writer
+produced the change. `archived_weight_goals` is a collection table the backup
+format does not carry at all, so a replace leaves it untouched — the payload is
+not evidence that those records were dropped, and tombstoning them on that
+non-evidence would destroy data the user never asked to remove. A v1 backup
+predates the notebook model and likewise does not delete workout notes.
 
 ## Launch Abuse Boundary
 

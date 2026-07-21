@@ -688,6 +688,41 @@ retains non-test commands such as `npm run audit`.
   re-tombstoned and that a missing cursor is a conflict on an owned device but not
   on a clean one
 
+### `mobile/tests/backup-import.test.js`
+
+- drives the confirmed #522 claim-5 restore lifecycle against the real storage
+  layer and sync engine with an in-memory transport: a signed-in, fully synced
+  device imports a backup that edits one row, drops another, and introduces a
+  third
+- verifies the cloud contract establishes durable local and sync intent before
+  reporting success — every imported row stamped and enqueued, every omitted
+  collection record retained as a tombstone rather than removed
+- verifies imported creates and edits reach the account, omitted records arrive
+  as tombstones, and a second pass does not resurrect them
+- verifies an optional field the backup OMITS (a weight-entry `note`, a
+  workout-note derived `session_checkins`) is cleared on the restored row and
+  absent from the queued upload rather than carried over from the device's
+  current row — the restored record is built from the validated backup row alone,
+  matching replace semantics and the local contract
+- verifies a REMOTE-ONLY row this device merely pulled is tombstoned by a replace
+- verifies an import performed before the device has any sync baseline still
+  uploads, which the signed-out-write reconciliation alone cannot do because it
+  conservatively adopts only unstamped rows when no baseline exists
+- verifies a failed push leaves the imported state, the tombstones, and the dirty
+  queue intact, the account unmodified, and a retry completing the restore
+- verifies idempotency across repeated syncs and repeated imports of the same
+  backup: no duplicate rows, no further pushes, and no restated tombstones
+- verifies the preserved invariants — the local-data owner marker untouched, an
+  invalid payload writing and queueing nothing, a v1 backup not deleting workout
+  notes, and archived weight goals not tombstoned by a format that omits them
+- verifies the local contract is byte-for-byte unchanged: domain keys
+  overwritten, no stamping, no tombstones, and nothing enqueued
+- negative control: with the cloud branch forced back to the local path, the
+  cloud-contract cases fail because no stamping, queueing, or tombstoning happens;
+  and restoring the prior `{ ...base, ...content }` whole-row merge fails exactly
+  the two omitted-optional-field cases while the rest stay green, pinning that
+  narrow field-preservation defect and nothing broader
+
 ### `mobile/tests/auto-sync.test.js` and `mobile/tests/sync-recovery-ui.test.js`
 
 - verify a truly empty unclaimed device can explicitly download the signed-in
