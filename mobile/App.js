@@ -21,7 +21,7 @@ import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, re
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
-import { buildCloudExport, importBackup, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
+import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 const ZERO_SAFE_AREA_METRICS = {
@@ -269,7 +269,19 @@ export default function App() {
   const handleExport = useCallback(() => buildExportPayload(buildCloudExport), []);
 
   const handleImport = useCallback(async (payload) => {
-    const result = await importBackup(payload, 'replace');
+    // Import has a local contract and a cloud contract (#526), and this is the
+    // seam that knows which one applies. Passing the active storage mode through
+    // is what makes a signed-in user's "replace" stamp and queue the imported
+    // rows and tombstone the records the backup dropped; before #526 every
+    // import silently took the local path, so a cloud restore reported success
+    // while the account kept the old data (#522 claim 5).
+    //
+    // Resolved defensively for the same reason useAutoSync is destructured with
+    // `|| {}` above: app-shell tests mock './storage/entries' with a partial
+    // object. An unresolvable mode falls back to the local contract, which never
+    // fabricates sync intent.
+    const mode = typeof getStorageMode === 'function' ? getStorageMode() : undefined;
+    const result = await importBackup(payload, 'replace', { mode });
     if (result.ok) {
       weightHook.refresh();
       noteHook.refresh();
