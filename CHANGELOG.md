@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.98.3 - 2026-07-21
+
+- Issue #525: Fixed workouts, weigh-ins, and deletions made while signed out being left on the device after signing back in, while Cloud Sync reported success.
+- Issue #526: Fixed restoring a backup while signed in leaving the imported data on the device only: the restore reported success, the account kept its old data, and the next sync put it back.
+- Issue #527: Fixed Android hardware Back sometimes returning to Home instead of closing the active Log editor or cancelling the active weight-goal form after a tab switch.
+- Issue #539: Completed Cloud Sync activation in-session after consent and recorded the installed app version in consent evidence.
+- Issue #540: Hardened Kilo Edge Function deployment verification and documented the health-deletion worker setup.
+- Issue #541: Added a scheduled production monitor for the consent-withdrawal deletion queue so a purge that stops draining is visible to operators instead of leaving an account in "deletion pending" indefinitely. Alerts carry job metadata only and never user ids, health values, or secrets. The monitor reads through a new least-privilege database accessor, so it reports the drain cron's real state and measures a stuck worker from the same clock the queue's own reclaim uses.
+- Issue #542: Fixed the health parity report to stop flagging expected missing health rows for accounts that are withdrawn or mid-deletion-purge, while still surfacing that divergence for granted, needs-reconsent, or never-consented accounts.
+- Issue #549: Weight goals no longer show Goal Met and offer Archive when a target weight is reached before the goal's target date; they now render an On Track status until the target date arrives.
+- Issue #551: The floating tab bar's bottom clearance now tracks its actual rendered height instead of a fixed 120px guess, so a taller bar (larger text, changed labels) no longer overlaps the last scroll item or leaves an oversized gap.
+- Issue #552: Prevented incompatible preview OTA updates after native runtime changes by advancing the preview runtime boundary.
+- Issue #560: Added a confirmed delete action for active deload notes.
+
 ## 0.98.2 - 2026-07-19
 
 - Issue #523: Fixed cloud sync so device clocks cannot hide later rows and large equal-timestamp pulls complete deterministically.
