@@ -1552,9 +1552,17 @@ describe('rollingWindowStart', () => {
 // runtime, making these deterministic across representative timezones.
 describe('weight trend windows — calendar-day semantics across DST', () => {
   const withTZ = (tz, fn) => {
+    const had = Object.prototype.hasOwnProperty.call(process.env, 'TZ');
     const prev = process.env.TZ;
     process.env.TZ = tz;
-    try { return fn(); } finally { process.env.TZ = prev; }
+    try {
+      return fn();
+    } finally {
+      // Restore true absence rather than the string "undefined" when TZ was
+      // originally unset, so later tests don't inherit a changed timezone.
+      if (had) process.env.TZ = prev;
+      else delete process.env.TZ;
+    }
   };
 
   // Early-morning reference the day after Northern-hemisphere spring-forward.
