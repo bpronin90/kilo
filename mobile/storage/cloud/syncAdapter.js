@@ -22,6 +22,9 @@ import {
   stableStringify,
   getClientId,
   enqueueDirty,
+  getDirtyRecords,
+  getSyncSnapshot,
+  diffAgainstBaseline,
   clearCursor,
   clearSyncSnapshot,
   reconcileLocalWrites,
@@ -717,6 +720,63 @@ const DIFF_TABLES = Object.freeze([
     isEmptyLocal: isEmptyUserHealthProfile,
   },
 ]);
+
+// A status read must not run a sync pass just to learn whether a save still
+// needs upload. Collection writes are already present in the persisted dirty
+// queue; the settings/history tables below intentionally have no write-time
+// queue hooks, so compare their live projection to the last server-confirmed
+// snapshot using the same diff as syncDiffTable. This function never stamps,
+// enqueues, pulls, pushes, or changes a snapshot.
+//
+// fatigue_checkins is deliberately excluded. It is a deterministic projection
+// of workout_notes, not a user-authored intent in its own right; any source
+// note change is already represented by the collection queue or health profile.
+const STATUS_DIFF_TABLES = Object.freeze(
+  DIFF_TABLES.filter(({ table }) => table !== SYNC_TABLES.FATIGUE_CHECKINS)
+);
+
+export async function getPendingSyncIntent() {
+  const dirtyByTable = await Promise.all(
+    Object.values(SYNC_TABLES).map(async (table) => ({
+      table,
+      records: await getDirtyRecords(table),
+    }))
+  );
+  const dirtyCount = dirtyByTable.reduce((count, { records }) => count + records.length, 0);
+
+  const diffed = await Promise.all(
+    STATUS_DIFF_TABLES.map(async (config) => {
+      const baseline = await getSyncSnapshot(config.table);
+      // No snapshot means this device has no server-confirmed baseline to
+      // compare against. Treat that as local cache rather than inventing an
+      // upload claim; the first real pass establishes the baseline safely.
+      if (baseline == null) return { table: config.table, count: 0 };
+      const current = (await config.buildLocal()) || [];
+      const { dirty } = diffAgainstBaseline({
+        current,
+        baseline,
+        // The value is never persisted: diffing needs an id only to construct
+        // hypothetical records, and we retain only the count.
+        clientId: 'pending-intent-read',
+        payloadFields: config.payloadFields,
+        fieldKinds: config.fieldKinds,
+        allowDelete: config.allowDelete,
+        isEmptyLocal: config.isEmptyLocal,
+      });
+      return { table: config.table, count: dirty.length };
+    })
+  );
+  const diffCount = diffed.reduce((count, result) => count + result.count, 0);
+
+  return {
+    hasPending: dirtyCount + diffCount > 0,
+    dirtyCount,
+    diffCount,
+    tables: [...dirtyByTable, ...diffed]
+      .filter(({ records, count }) => (records ? records.length : count) > 0)
+      .map(({ table }) => table),
+  };
+}
 
 // Consent (#487) is deliberately NOT checked here. This module is transport-
 // agnostic by contract — the transport is injected, and the tests drive it with no

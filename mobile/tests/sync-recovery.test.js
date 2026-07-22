@@ -39,7 +39,12 @@ jest.mock('../storage/entries/weightEntries', () => {
 
 import * as Storage from '../storage/entries';
 import { setCloudTransport } from '../storage/cloudAdapter';
-import { sync, reconcileSignedOutWrites, rebuildCloudCopy } from '../storage/cloud/syncAdapter';
+import {
+  sync,
+  reconcileSignedOutWrites,
+  rebuildCloudCopy,
+  getPendingSyncIntent,
+} from '../storage/cloud/syncAdapter';
 import { loadWeightGoal, saveWeightGoal } from '../storage/entries/weightGoal';
 import { makeWorkoutNoteItem } from '../lib/data/exerciseCatalog';
 import {
@@ -436,6 +441,72 @@ describe('idempotency and non-interference', () => {
       // eslint-disable-next-line no-await-in-loop
       expect(await getSyncSnapshot(table)).not.toBeNull();
     }
+  });
+});
+
+describe('read-only pending sync intent', () => {
+  it('finds a diff-tracked weight-goal change even when the dirty queue is empty', async () => {
+    await seedSyncedDevice();
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_GOAL)).toEqual([]);
+
+    await saveWeightGoal({
+      target_weight: 170,
+      start_weight: 180,
+      target_date: '2026-12-01',
+      saved_at: '2026-07-05T08:00:00.000Z',
+    });
+
+    const pending = await getPendingSyncIntent();
+    expect(pending.hasPending).toBe(true);
+    expect(pending.dirtyCount).toBe(0);
+    expect(pending.diffCount).toBeGreaterThan(0);
+    expect(pending.tables).toContain(SYNC_TABLES.WEIGHT_GOAL);
+    // Status inspection must not turn a diff into a real queue entry or run a pass.
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_GOAL)).toEqual([]);
+  });
+
+  it('keeps a collection write made during a pass queued for the next server acknowledgement', async () => {
+    const adapter = Storage.getStorageAdapter();
+    await adapter.saveWeightEntry({
+      id: 'w-first',
+      weight_value: 180,
+      logged_at: '2026-07-01T08:00:00.000Z',
+      date: '2026-07-01',
+    });
+
+    const originalPush = cloud.transport.push;
+    let releasePush;
+    const pushGate = new Promise((resolve) => {
+      releasePush = resolve;
+    });
+    let pushStarted;
+    const pushStartedGate = new Promise((resolve) => {
+      pushStarted = resolve;
+    });
+    cloud.transport.push = async (table, records) => {
+      if (table === SYNC_TABLES.WEIGHT_ENTRIES && records.some((record) => record.id === 'w-first')) {
+        pushStarted();
+        await pushGate;
+      }
+      return originalPush(table, records);
+    };
+
+    const pass = sync();
+    await pushStartedGate;
+    await adapter.saveWeightEntry({
+      id: 'w-during-pass',
+      weight_value: 179,
+      logged_at: '2026-07-02T08:00:00.000Z',
+      date: '2026-07-02',
+    });
+    releasePush();
+    await pass;
+
+    const pending = await getPendingSyncIntent();
+    expect(pending.hasPending).toBe(true);
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_ENTRIES)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'w-during-pass' })])
+    );
   });
 });
 

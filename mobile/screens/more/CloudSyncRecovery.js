@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
-import { useSyncRecovery, useCloudExport, useCloudSyncStatus } from '../../hooks/useEntries';
+import { useSyncRecovery, useCloudExport } from '../../hooks/useEntries';
 import * as Storage from '../../storage/entries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
+import { subscribeDirtyQueue } from '../../storage/syncQueue';
+import { getPendingSyncIntent } from '../../storage/cloud/syncAdapter';
 import { OWNER_UNCLAIMED, getLocalDataOwner } from '../../storage/entries/localDataOwner';
 import { HealthDataConsent } from './HealthDataConsent';
 import {
@@ -25,10 +27,32 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
-  const cloudSyncStatus = useCloudSyncStatus();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
+  const [pendingIntent, setPendingIntent] = useState({ known: false, hasPending: false });
+  const pendingIntentMounted = useRef(true);
+
+  const refreshPendingIntent = useCallback(async () => {
+    try {
+      const next = await getPendingSyncIntent();
+      if (pendingIntentMounted.current) setPendingIntent({ known: true, ...next });
+    } catch {
+      // A status read must never turn an unknown local cache into a cloud
+      // claim. Leave the display in its conservative local-cache state.
+      if (pendingIntentMounted.current) setPendingIntent({ known: false, hasPending: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    pendingIntentMounted.current = true;
+    refreshPendingIntent();
+    const unsubscribe = subscribeDirtyQueue(refreshPendingIntent);
+    return () => {
+      pendingIntentMounted.current = false;
+      unsubscribe();
+    };
+  }, [refreshPendingIntent]);
 
   // Health-data consent (#487). `consent` is the server's answer, never a local
   // preference: the backend is the authorization boundary and this state only
@@ -47,17 +71,30 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
     refreshConsent();
   }, [refreshConsent]);
 
-  const phaseLabel = (s) => {
+  const phaseLabel = (s, phase) => {
     switch (s.status) {
       case SYNC_STATUS.RUNNING:
         return 'Running…';
       case SYNC_STATUS.FAILED:
         return 'Failed';
       case SYNC_STATUS.COMPLETE:
-        return 'Complete';
+        return phase === 'bootstrap' ? 'Recovery complete' : 'Server-confirmed pass complete';
       default:
         return 'Idle';
     }
+  };
+
+  const cloudStatusLabel = () => {
+    if (sync.status === SYNC_STATUS.RUNNING) return 'Syncing with server';
+    if (sync.status === SYNC_STATUS.FAILED) return 'Sync failed — retry needed';
+    if (pendingIntent.hasPending) return 'Changes queued for cloud sync';
+    if (sync.status === SYNC_STATUS.COMPLETE && pendingIntent.known) {
+      return 'Server acknowledged — up to date';
+    }
+    if (bootstrap.status === SYNC_STATUS.COMPLETE) {
+      return 'Recovery upload complete — sync still needs to run';
+    }
+    return 'Saved on this device';
   };
 
   // Run a phase against its bound runner. Used both for the initial action
@@ -253,7 +290,14 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   }
 
   return (
-    <View style={styles.accountBlock}>
+    <View
+      style={styles.accountBlock}
+      testID="cloud-sync-recovery-panel"
+      // App.js keeps inactive tabs mounted with display:none. Layout runs again
+      // when this panel becomes visible, catching settings/history writes that
+      // are intentionally diff-tracked rather than dirty-queue writes.
+      onLayout={refreshPendingIntent}
+    >
       <SectionTitle>Cloud Sync</SectionTitle>
 
       <Text style={styles.accountNote}>
@@ -300,23 +344,18 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
         <View style={styles.syncRow}>
           <Text style={styles.syncLabel}>Cloud status</Text>
           <Text style={styles.syncValue} accessibilityLabel="Cloud sync summary">
-            {cloudSyncStatus.statusLabel}
+            {cloudStatusLabel()}
           </Text>
         </View>
         <Text style={styles.phaseDesc}>
           Local data stays saved on this device while cloud sync is pending or failed.
         </Text>
-        {cloudSyncStatus.lastSuccessfulLabel ? (
-          <Text style={styles.phaseDesc}>
-            Last synced {cloudSyncStatus.lastSuccessfulLabel}.
-          </Text>
-        ) : null}
       </View>
 
       <View style={styles.syncRow}>
         <Text style={styles.syncLabel}>Upload your local history</Text>
         <Text style={styles.syncValue} accessibilityLabel={`Bootstrap status ${bootstrap.status}`}>
-          {phaseLabel(bootstrap)}
+          {phaseLabel(bootstrap, 'bootstrap')}
         </Text>
       </View>
       <Text style={styles.phaseDesc}>
@@ -366,7 +405,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
       <View style={styles.syncRow}>
         <Text style={styles.syncLabel}>Keep device and account in sync</Text>
         <Text style={styles.syncValue} accessibilityLabel={`Sync status ${sync.status}`}>
-          {phaseLabel(sync)}
+          {phaseLabel(sync, 'sync')}
         </Text>
       </View>
       <Text style={styles.phaseDesc}>
