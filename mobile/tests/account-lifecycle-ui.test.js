@@ -67,9 +67,12 @@ jest.mock('../components/UI', () => {
   };
 });
 jest.mock('../hooks/useEntries', () => ({
-  useSyncRecovery: () => ({ bootstrap: { status: 'idle', retryable: false }, sync: { status: 'idle', retryable: false }, runBootstrap: jest.fn(), runSync: jest.fn(), retryBootstrap: jest.fn(), retrySync: jest.fn() }),
+  useSyncRecovery: () => mockSyncRecovery,
   useCloudExport: () => ({ exportCloud: jest.fn() }),
-  useCloudSyncStatus: () => mockCloudSyncStatus,
+}));
+
+jest.mock('../storage/cloud/syncAdapter', () => ({
+  getPendingSyncIntent: () => mockPendingSyncIntent(),
 }));
 
 // --- fetch mock -----------------------------------------------------------
@@ -79,7 +82,8 @@ global.fetch = (...args) => mockFetch(...args);
 // --- Supabase client mock -------------------------------------------------
 let mockSession;
 let mockAuth;
-let mockCloudSyncStatus;
+let mockSyncRecovery;
+let mockPendingSyncIntent;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: mockAuth }),
@@ -184,17 +188,14 @@ function makeResolvedAuthProp(session = null, overrides = {}) {
   };
 }
 
-function makeCloudSyncStatus(overrides = {}) {
+function makeSyncRecovery({ bootstrapStatus = 'idle', syncStatus = 'idle' } = {}) {
   return {
-    statusLabel: 'Fully synced',
-    dirtyCount: 0,
-    lastSuccessfulAt: '2026-07-06T15:20:00.000Z',
-    lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
-    isRunning: false,
-    hasFailed: false,
-    hasDirty: false,
-    hasLastSuccess: true,
-    ...overrides,
+    bootstrap: { status: bootstrapStatus, retryable: false },
+    sync: { status: syncStatus, retryable: false },
+    runBootstrap: jest.fn(),
+    runSync: jest.fn(),
+    retryBootstrap: jest.fn(),
+    retrySync: jest.fn(),
   };
 }
 
@@ -222,7 +223,8 @@ beforeEach(() => {
 
   mockSession = { ...FAKE_SESSION };
   mockAuth = makeMockAuth(mockSession);
-  mockCloudSyncStatus = makeCloudSyncStatus();
+  mockSyncRecovery = makeSyncRecovery();
+  mockPendingSyncIntent = jest.fn().mockResolvedValue({ hasPending: false });
   mockScreenScrollTo.mockClear();
 
   const testRenderer = require('react-test-renderer');
@@ -896,7 +898,6 @@ describe('CloudSyncRecovery status summary', () => {
   beforeEach(() => {
     originalPlatformOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
-    mockCloudSyncStatus = makeCloudSyncStatus();
   });
 
   afterEach(() => {
@@ -920,65 +921,45 @@ describe('CloudSyncRecovery status summary', () => {
     expect(mockScreenScrollTo).toHaveBeenCalledWith({ y: 0, animated: true });
   });
 
-  test('shows fully synced and the last successful sync time when clean', async () => {
-    mockCloudSyncStatus = makeCloudSyncStatus({
-      statusLabel: 'Fully synced',
-      dirtyCount: 0,
-      lastSuccessfulAt: '2026-07-06T15:20:00.000Z',
-      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
-    });
+  test('shows server acknowledgement only for a confirmed clean pass', async () => {
+    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'complete' });
 
     let tree;
-    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
-    // (#487) and renders no sync controls until the server confirms one, so a
-    // synchronous act() would assert against the pre-consent render.
     await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
+    await flush();
 
     const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('Fully synced');
-    expect(JSON.stringify(tree.toJSON())).toMatch(/Last synced[^]*Jul 6, 2026, 3:20 PM/);
+    expect(summary.props.children).toBe('Server acknowledged — up to date');
   });
 
-  test('shows pending local changes when the dirty queue is not empty', async () => {
-    mockCloudSyncStatus = makeCloudSyncStatus({
-      statusLabel: '2 pending local changes',
-      dirtyCount: 2,
-      hasDirty: true,
-      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
-    });
+  test('shows queued intent even after a prior confirmed pass', async () => {
+    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'complete' });
+    mockPendingSyncIntent.mockResolvedValue({ hasPending: true });
 
     let tree;
-    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
-    // (#487) and renders no sync controls until the server confirms one, so a
-    // synchronous act() would assert against the pre-consent render.
     await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
+    await flush();
 
     const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('2 pending local changes');
+    expect(summary.props.children).toBe('Changes queued for cloud sync');
     expect(JSON.stringify(tree.toJSON())).toMatch(/Local data stays saved on this device while cloud sync is pending or failed\./);
   });
 
-  test('shows last sync failed when the sync phase failed', async () => {
-    mockCloudSyncStatus = makeCloudSyncStatus({
-      statusLabel: 'Last sync failed',
-      hasFailed: true,
-      lastSuccessfulLabel: 'Jul 6, 2026, 3:20 PM',
-    });
+  test('shows a retryable failure instead of a stale cloud claim', async () => {
+    mockSyncRecovery = makeSyncRecovery({ syncStatus: 'failed' });
 
     let tree;
-    // Awaited: CloudSyncRecovery resolves the health-data consent grant in an effect
-    // (#487) and renders no sync controls until the server confirms one, so a
-    // synchronous act() would assert against the pre-consent render.
     await act(async () => {
       tree = renderer.create(React.createElement(AccountScreen, { onBack: jest.fn(), auth: makeResolvedAuthProp(FAKE_SESSION) }));
     });
+    await flush();
 
     const summary = tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' });
-    expect(summary.props.children).toBe('Last sync failed');
+    expect(summary.props.children).toBe('Sync failed — retry needed');
   });
 
   test('does not show cloud sync status for signed-out local-only users', () => {
