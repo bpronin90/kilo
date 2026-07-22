@@ -101,9 +101,19 @@ describe('getWeightDeltaSeverity', () => {
     expect(getWeightDeltaSeverity(0)).toBe('normal');
   });
 
+  test('returns notable for delta exactly at 1.5 lb boundary', () => {
+    expect(getWeightDeltaSeverity(1.5)).toBe('notable');
+    expect(getWeightDeltaSeverity(-1.5)).toBe('notable');
+  });
+
   test('returns notable for delta slightly above 1.5', () => {
     expect(getWeightDeltaSeverity(1.6)).toBe('notable');
     expect(getWeightDeltaSeverity(-1.6)).toBe('notable');
+  });
+
+  test('returns spike for delta exactly at 2.3 lb boundary', () => {
+    expect(getWeightDeltaSeverity(2.3)).toBe('spike');
+    expect(getWeightDeltaSeverity(-2.3)).toBe('spike');
   });
 
   test('returns spike for delta slightly above 2.3', () => {
