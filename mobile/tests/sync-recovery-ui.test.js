@@ -27,6 +27,7 @@ import {
   __resetSyncQueue,
 } from '../storage/syncRecovery';
 import { useSyncRecovery, useCloudExport } from '../hooks/useEntries';
+import { maybeSyncCloud } from '../hooks/entries/storageMode';
 import * as entries from '../storage/entries';
 import { saveWeightEntry } from '../storage/entries';
 import { cloudAdapter } from '../storage/cloudAdapter';
@@ -37,6 +38,7 @@ import {
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { HealthDataConsent } from '../screens/more/HealthDataConsent';
 import { CONSENT_COPY } from '../storage/cloud/consent';
+import { enqueueDirty, SYNC_TABLES } from '../storage/syncQueue';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
@@ -191,6 +193,24 @@ describe('runPhase / retryPhase', () => {
   test('unknown phase or missing runner returns ok:false without throwing', async () => {
     expect((await runPhase('bogus', async () => 1)).ok).toBe(false);
     expect((await runPhase(SYNC_PHASE.SYNC, null)).ok).toBe(false);
+  });
+});
+
+describe('background cloud sync status', () => {
+  test('a swallowed background sync failure invalidates a stale complete state', async () => {
+    entries.setStorageMode(entries.STORAGE_MODES.CLOUD);
+    markComplete(SYNC_PHASE.SYNC);
+    const adapterSpy = jest
+      .spyOn(entries, 'getStorageAdapter')
+      .mockReturnValue({ mode: 'cloud', sync: jest.fn().mockRejectedValue(new Error('offline')) });
+
+    await maybeSyncCloud();
+    adapterSpy.mockRestore();
+
+    const state = getSyncState()[SYNC_PHASE.SYNC];
+    expect(state.status).toBe(SYNC_STATUS.FAILED);
+    expect(state.retryable).toBe(true);
+    expect(state.error).toBe('offline');
   });
 });
 
@@ -506,6 +526,32 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     await flush();
     expect(spy).toHaveBeenCalledWith(USER.id);
     expect(await getLocalDataOwner()).toBe(USER.id);
+  });
+
+  test('cloud summary keeps local cache, queued intent, server acknowledgement, and recovery distinct', async () => {
+    const tree = renderPanel();
+    await flush();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Saved on this device');
+
+    await act(async () => {
+      markComplete(SYNC_PHASE.SYNC);
+    });
+    await flush();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Server acknowledged — up to date');
+
+    await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'queued-save' });
+    await flush();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Changes queued for cloud sync');
+
+    await act(async () => {
+      markFailed(SYNC_PHASE.SYNC, 'offline');
+    });
+    await flush();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Sync failed — retry needed');
   });
 
   test('foreign owner: Cancel dismisses the confirmation without uploading', async () => {
