@@ -388,7 +388,7 @@ export function useLogCurrentRoutineEditor({
         if (contentUnchanged && identityUnchanged) {
           setWorkoutNoteTitle(result.title || '');
           setWorkoutNoteText(result.raw_text || '');
-          if (!autosave) setSaveSuccess('Saved!');
+          if (!autosave) setSaveSuccess('Saved on device');
         }
         return true;
       } else {
