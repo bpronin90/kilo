@@ -170,7 +170,11 @@ alert: the user was told their erasure had started and is still waiting on it.
    Vault secret names present, `health-deletion-drain` cron active.
 3. Dispatch safely with `kilo.dispatch_health_deletion_worker()` once the
    prerequisites are back, or `kilo.reenqueue_health_deletion(user_id)` for a
-   single wedged account.
+   single wedged account. That re-enqueue is fail-closed: it acts only on an
+   account whose consent state authorizes deletion (`deletion_pending` or
+   `withdrawn`) and refuses a `granted`, `needs_reconsent`, or stateless account
+   with an explicit reason, so it can never originate a purge against data the
+   user still consents to keep.
 4. Verify `kilo.health_data_row_counts(user_id)` is zero on every gated table.
    `kilo.complete_health_deletion_job` refuses to advance to `withdrawn` while
    any scoped row remains, so a `complete` job is itself the erasure proof.
