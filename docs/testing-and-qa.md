@@ -878,6 +878,12 @@ retains non-test commands such as `npm run audit`.
   is visible as `failed` with a rising attempt count, worker errors are bounded
   before they can reach a log, and a transport-level failure leaves the job in
   the backlog rather than losing it
+- `supabase/tests/reenqueue-health-deletion-consent-gate.test.sql` proves the
+  operator re-enqueue RPC is fail-closed on consent state (#598): a `granted`,
+  `needs_reconsent`, or stateless account (and a null target) is refused with an
+  explicit reason and no job is created, while a `deletion_pending` account's
+  failed job is rearmed in place (not duplicated) and a `withdrawn` account
+  stays authorized
 - `npm run test:health-deletion-monitor` runs the offline contract suite for the
   backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
   email address, Supabase key, or JWT can never reach an alert surface), all
