@@ -10,7 +10,7 @@
 
 begin;
 
-select plan(18);
+select plan(20);
 
 -- ---------------------------------------------------------------------------
 -- rate_limit_check: requests within limit are admitted
@@ -153,6 +153,28 @@ select is(
   (select count(*)::int from kilo.rate_limit_hits
    where bucket = 'healthdelete:user:uuid-boundary'),
   1, 'global prune keeps healthdelete rows just inside the 1-hour boundary'
+);
+
+-- ---------------------------------------------------------------------------
+-- rate_limit_global_prune: consent_grant-prefix rows use a 1-minute window
+-- ---------------------------------------------------------------------------
+
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values
+  ('consent_grant:uuid-expired', now() - interval '61 seconds'),
+  ('consent_grant:uuid-live', now() - interval '59 seconds');
+
+select kilo.rate_limit_global_prune();
+
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket = 'consent_grant:uuid-expired'),
+  0, 'global prune removes expired consent_grant rows (past 1-minute window)'
+);
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket = 'consent_grant:uuid-live'),
+  1, 'global prune keeps live consent_grant rows (within 1-minute window)'
 );
 
 -- ---------------------------------------------------------------------------
