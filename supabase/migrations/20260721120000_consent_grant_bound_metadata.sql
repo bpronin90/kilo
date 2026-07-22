@@ -39,6 +39,20 @@
 -- value in use is the server default 'cloud_sync_enablement', and the slug form
 -- both matches it and bounds any future surface without another unbounded text
 -- field. NULLs remain allowed for the two optional columns exactly as before.
+--
+-- Each constraint is added NOT VALID on purpose. kilo.consent_events was an
+-- unbounded, append-only ledger before this migration, so an immediately
+-- validated constraint would scan every historical row and abort the whole
+-- migration -- and therefore never install the protected consent_grant below --
+-- if any single legacy row (an over-length app_version, an unsupported platform,
+-- a non-slug surface recorded during the unbounded period) fell outside the new
+-- contract. NOT VALID skips that historical scan but still enforces the bound on
+-- every INSERT and UPDATE from now on, which is exactly what this fix requires:
+-- new writes are bounded, and deployment does not depend on the contents of an
+-- append-only table that predates the contract. The ledger is append-only (no
+-- UPDATEs, no deletes), so leaving old rows unvalidated changes nothing about
+-- future safety; a later maintenance issue can VALIDATE CONSTRAINT after any
+-- historical rows are reconciled, without blocking this security fix.
 do $$
 begin
   if not exists (
@@ -52,7 +66,8 @@ begin
         app_version is null
         or (char_length(app_version) between 1 and 32
             and app_version ~ '^[0-9A-Za-z][0-9A-Za-z.+_-]*$')
-      );
+      )
+      not valid;
   end if;
 
   if not exists (
@@ -65,7 +80,8 @@ begin
       check (
         platform is null
         or platform in ('ios', 'android', 'web', 'macos', 'windows')
-      );
+      )
+      not valid;
   end if;
 
   if not exists (
@@ -78,7 +94,8 @@ begin
       check (
         char_length(surface) between 1 and 64
         and surface ~ '^[a-z][a-z0-9_]*$'
-      );
+      )
+      not valid;
   end if;
 end;
 $$;
@@ -119,6 +136,25 @@ begin
   if v_uid is null then
     raise exception 'not authenticated' using errcode = 'insufficient_privilege';
   end if;
+
+  -- Serialize this user's concurrent consent_grant calls BEFORE we read and
+  -- classify state. The consent_state FOR UPDATE lock below only serializes
+  -- callers once a state row already exists; on a user's very FIRST grant there
+  -- is no row to lock, so concurrent first-grant transactions would each observe
+  -- no state, each classify as a genuine transition, each bypass the throttle,
+  -- and each append a ledger row -- serializing only later at the state UPSERT
+  -- and thereby leaving repeated concurrent first grants unbounded. A
+  -- transaction-scoped advisory lock keyed by user closes that window: the first
+  -- transaction to acquire it appends its transition row and commits the granted
+  -- state, and every other concurrent caller then serializes here, observes the
+  -- now-granted state, and is classified as a redundant re-affirmation subject to
+  -- the throttle. The two-key form uses a fixed namespace tag as the first key so
+  -- this lock lives in a separate advisory space from rate_limit_check's
+  -- single-key lock and cannot cross-collide with it; hashtext of the user id is
+  -- the second key so distinct users never contend. Lock order is always this
+  -- lock, then (optionally) rate_limit_check's lock, then the state row FOR
+  -- UPDATE, so no consent_grant caller can deadlock against another.
+  perform pg_advisory_xact_lock(hashtext('kilo.consent_grant'), hashtext(v_uid::text));
 
   select * into v_rev
   from kilo.consent_revision
