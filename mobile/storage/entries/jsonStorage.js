@@ -24,17 +24,18 @@ export function localDateToday() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Read a persisted list. A missing key returns the documented empty default.
-// Anything else that fails to yield an array — malformed JSON or a non-array
-// payload — fails closed with CorruptStorageError instead of masquerading as an
-// empty dataset. This matters because every mutation path reads before it
-// writes: returning [] for corrupt bytes would let the next write silently
-// overwrite salvageable data as though it were empty (#607). A raw storage read
-// failure is likewise propagated rather than swallowed, so the same fail-closed
-// guarantee holds when the backing store is unavailable.
+// Read a persisted list. Only a genuinely absent key (null) returns the
+// documented empty default. Any present payload that fails to yield an array —
+// malformed JSON (including an empty string, which JSON.parse rejects), or a
+// non-array value — fails closed with CorruptStorageError instead of
+// masquerading as an empty dataset. This matters because every mutation path
+// reads before it writes: returning [] for corrupt bytes would let the next
+// write silently overwrite salvageable data as though it were empty (#607). A
+// raw storage read failure is likewise propagated rather than swallowed, so the
+// same fail-closed guarantee holds when the backing store is unavailable.
 export async function readList(key) {
   const raw = await AsyncStorage.getItem(key);
-  if (raw == null || raw === '') return [];
+  if (raw == null) return [];
   let parsed;
   try {
     parsed = JSON.parse(raw);

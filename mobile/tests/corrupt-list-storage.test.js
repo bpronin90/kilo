@@ -34,9 +34,16 @@ describe('readList fail-closed contract', () => {
     await expect(readList(WEIGHT_KEY)).resolves.toEqual([]);
   });
 
-  test('empty-string payload returns the documented empty default', async () => {
-    await AsyncStorage.setItem(WEIGHT_KEY, '');
-    await expect(readList(WEIGHT_KEY)).resolves.toEqual([]);
+  test('present empty-string payload fails closed, not []', async () => {
+    // An empty string is a present-but-unreadable payload (JSON.parse rejects
+    // it), not an absent key, so it must throw rather than masquerade as empty.
+    // The in-memory jest mock coerces a stored '' to null via `value || null`,
+    // so simulate the real device getItem contract returning a present '' to
+    // exercise the production branch faithfully.
+    AsyncStorage.getItem.mockResolvedValueOnce('');
+    const err = await readList(WEIGHT_KEY).catch((e) => e);
+    expect(isCorruptStorageError(err)).toBe(true);
+    expect(err.key).toBe(WEIGHT_KEY);
   });
 
   test('valid array payload is returned unchanged', async () => {
@@ -111,6 +118,16 @@ describe('mutations cannot overwrite corrupt data as empty', () => {
     await AsyncStorage.setItem(WORKOUT_NOTES_KEY, CORRUPT);
     await expect(deleteWorkoutNoteItem('wn_x')).rejects.toThrow(CorruptStorageError);
     expect(await AsyncStorage.getItem(WORKOUT_NOTES_KEY)).toBe(CORRUPT);
+  });
+
+  test('saveWeightEntry rejects on a present empty-string payload without writing', async () => {
+    // Simulate the device returning a present '' (see readList note above). The
+    // read-before-write throws, so writeList never runs and the bytes cannot be
+    // overwritten as though storage were empty.
+    AsyncStorage.getItem.mockResolvedValueOnce('');
+    AsyncStorage.setItem.mockClear();
+    await expect(saveWeightEntry({ id: 'new' })).rejects.toThrow(CorruptStorageError);
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
   });
 });
 
