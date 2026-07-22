@@ -899,22 +899,22 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
     expect(isTombstone(cloud.remoteRow(SYNC_TABLES.WORKOUT_NOTES, PHANTOM_ID))).toBe(true);
   });
 
-  it('overlapping sync calls cannot lose a deferred cloud-only phantom tombstone', async () => {
+  it('coalesces overlapping ordinary sync calls into one pass and preserves a deferred cloud-only phantom tombstone', async () => {
     await Storage.replaceWorkoutNotesRaw([realNote()]);
     cloud.seedRemote(SYNC_TABLES.WORKOUT_NOTES, phantomRow());
 
     const baseTransport = cloud.transport;
     let workoutPulls = 0;
     let releasePulls;
-    let bothPullsStarted;
     const pullGate = new Promise((resolve) => { releasePulls = resolve; });
-    const bothStarted = new Promise((resolve) => { bothPullsStarted = resolve; });
+    let firstPullStarted;
+    const firstStarted = new Promise((resolve) => { firstPullStarted = resolve; });
     setCloudTransport({
       ...baseTransport,
       async pull(table, cursor) {
-        if (table === SYNC_TABLES.WORKOUT_NOTES && workoutPulls < 2) {
+        if (table === SYNC_TABLES.WORKOUT_NOTES && workoutPulls === 0) {
           workoutPulls += 1;
-          if (workoutPulls === 2) bothPullsStarted();
+          firstPullStarted();
           await pullGate;
         }
         return baseTransport.pull(table, cursor);
@@ -923,7 +923,9 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
 
     const first = cloudAdapter.sync();
     const second = cloudAdapter.sync();
-    await bothStarted;
+    expect(second).toBe(first);
+    await firstStarted;
+    expect(workoutPulls).toBe(1);
     releasePulls();
     await Promise.all([first, second]);
 
@@ -962,6 +964,97 @@ describe('phantom Routine 1 regression via sync pull (issue #458)', () => {
 
     const notes = await cloudAdapter.loadWorkoutNotes();
     expect(notes.find((n) => n.id === 'wn_user_routine_1')).toMatchObject(userNote);
+  });
+});
+
+// ── process-local single-flight sync boundary (issue #589) ──────────────────
+describe('process-local cloud sync single-flight (issue #589)', () => {
+  it('clears a failed shared pass so a later sync retries', async () => {
+    const baseTransport = cloud.transport;
+    let fail = true;
+    let weightPulls = 0;
+    setCloudTransport({
+      ...baseTransport,
+      async pull(table, cursor) {
+        if (table === SYNC_TABLES.WEIGHT_ENTRIES) {
+          weightPulls += 1;
+          if (fail) throw new Error('gated failure');
+        }
+        return baseTransport.pull(table, cursor);
+      },
+    });
+
+    const first = cloudAdapter.sync();
+    const second = cloudAdapter.sync();
+    expect(second).toBe(first);
+    await expect(first).rejects.toThrow('gated failure');
+
+    fail = false;
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+    expect(weightPulls).toBe(2);
+  });
+
+  it('serializes a distinct owned-device context rather than silently sharing its pass', async () => {
+    const baseTransport = cloud.transport;
+    let weightPulls = 0;
+    let releaseFirstPull;
+    let firstPullStarted;
+    const pullGate = new Promise((resolve) => { releaseFirstPull = resolve; });
+    const firstStarted = new Promise((resolve) => { firstPullStarted = resolve; });
+    setCloudTransport({
+      ...baseTransport,
+      async pull(table, cursor) {
+        if (table === SYNC_TABLES.WEIGHT_ENTRIES) {
+          weightPulls += 1;
+          if (weightPulls === 1) {
+            firstPullStarted();
+            await pullGate;
+          }
+        }
+        return baseTransport.pull(table, cursor);
+      },
+    });
+
+    const firstDownload = cloudAdapter.sync({ ownedDevice: false });
+    const ownedDevice = cloudAdapter.sync({ ownedDevice: true });
+    expect(ownedDevice).not.toBe(firstDownload);
+    await firstStarted;
+    expect(weightPulls).toBe(1);
+    releaseFirstPull();
+    await Promise.all([firstDownload, ownedDevice]);
+    expect(weightPulls).toBe(2);
+  });
+
+  it('queues a rebuild behind an ordinary sync, then runs its two exclusive passes', async () => {
+    const baseTransport = cloud.transport;
+    let weightPulls = 0;
+    let releaseFirstPull;
+    let firstPullStarted;
+    const pullGate = new Promise((resolve) => { releaseFirstPull = resolve; });
+    const firstStarted = new Promise((resolve) => { firstPullStarted = resolve; });
+    setCloudTransport({
+      ...baseTransport,
+      async pull(table, cursor) {
+        if (table === SYNC_TABLES.WEIGHT_ENTRIES) {
+          weightPulls += 1;
+          if (weightPulls === 1) {
+            firstPullStarted();
+            await pullGate;
+          }
+        }
+        return baseTransport.pull(table, cursor);
+      },
+    });
+
+    const ordinary = cloudAdapter.sync();
+    const rebuild = rebuildCloudCopy();
+    await firstStarted;
+    // The rebuild has been announced to the queue but has not rearmed or run a
+    // table loop against the ordinary pass's shared local bookkeeping.
+    expect(weightPulls).toBe(1);
+    releaseFirstPull();
+    await Promise.all([ordinary, rebuild]);
+    expect(weightPulls).toBe(3);
   });
 });
 

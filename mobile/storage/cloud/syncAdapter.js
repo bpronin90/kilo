@@ -736,7 +736,28 @@ const DIFF_TABLES = Object.freeze([
 // under a cleared cursor is an unclassifiable signed-out delete that must surface
 // an honest conflict instead of being silently restored as success. See
 // reconcileAgainstRemote for why local data alone cannot make this call.
-export async function sync({ ownedDevice = false } = {}) {
+//
+// Sync mutates a shared collection of local records, cursors, dirty queues, and
+// diff snapshots. It therefore cannot safely be re-entrant: two passes can both
+// snapshot the same dirty batch, then each clear bookkeeping the other still
+// needs. Keep every cloud operation in one process-local queue. Calls with the
+// same transition context share the exact promise/pass; callers with different
+// `ownedDevice` meaning are deliberately serialized as separate passes so a
+// first-download caller can never inherit an owned-device conflict decision (or
+// vice versa).
+let cloudOperationTail = Promise.resolve();
+const inFlightSyncs = new Map();
+let inFlightRebuild = null;
+
+function enqueueCloudOperation(operation) {
+  const scheduled = cloudOperationTail.then(operation, operation);
+  // Keep the queue available after a failed pass while returning the original
+  // rejecting promise to its caller.
+  cloudOperationTail = scheduled.catch(() => {});
+  return scheduled;
+}
+
+async function runSyncPass({ ownedDevice = false } = {}) {
   const pendingWorkoutNoteTombstones = [];
   const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
   // Before anything else: adopt writes made while signed out (#525). A failure
@@ -768,6 +789,22 @@ export async function sync({ ownedDevice = false } = {}) {
     results.push(await syncDiffTable({ ...config, transport: singletonAware }));
   }
   return results;
+}
+
+export function sync({ ownedDevice = false } = {}) {
+  const key = ownedDevice ? 'owned-device' : 'first-download';
+  const inFlight = inFlightSyncs.get(key);
+  if (inFlight) return inFlight;
+
+  const pass = enqueueCloudOperation(() => runSyncPass({ ownedDevice }));
+  inFlightSyncs.set(key, pass);
+  const clearInFlight = () => {
+    if (inFlightSyncs.get(key) === pass) inFlightSyncs.delete(key);
+  };
+  // Handle both paths rather than `finally`, whose returned rejection would be
+  // detached from callers and can become an unhandled rejection in React Native.
+  pass.then(clearInFlight, clearInFlight);
+  return pass;
 }
 
 // ── reconsent cloud rebuild (issue #538) ─────────────────────────────────────
@@ -827,7 +864,7 @@ async function reseedCollectionTable(table, readLocal) {
 }
 
 // Rearm every consent-gated table for a full reupload.
-export async function rearmGatedTablesForRebuild() {
+async function runRearmGatedTablesForRebuild() {
   const tableIo = createTableIo(() => {});
   for (const table of REBUILD_COLLECTION_TABLES) {
     // eslint-disable-next-line no-await-in-loop
@@ -839,6 +876,10 @@ export async function rearmGatedTablesForRebuild() {
     // eslint-disable-next-line no-await-in-loop
     await clearCursor(table);
   }
+}
+
+export function rearmGatedTablesForRebuild() {
+  return enqueueCloudOperation(runRearmGatedTablesForRebuild);
 }
 
 // The full post-purge cloud rebuild: rearm every gated table, push everything
@@ -857,9 +898,22 @@ export async function rearmGatedTablesForRebuild() {
 // sees the server generation still ahead and rebuilds again. Every retry — a
 // fresh rearm, a re-push of already-acknowledged rows — is idempotent: it can
 // duplicate network traffic but never duplicate rows or lose data.
-export async function rebuildCloudCopy() {
-  await rearmGatedTablesForRebuild();
-  const rebuildResults = await sync();
-  const reconciliationResults = await sync();
-  return { ok: true, results: [...rebuildResults, ...reconciliationResults] };
+export function rebuildCloudCopy() {
+  if (inFlightRebuild) return inFlightRebuild;
+
+  const rebuild = enqueueCloudOperation(async () => {
+    // Do not call the public queued functions from inside this operation: that
+    // would enqueue work behind this rebuild and deadlock. The enclosing queue
+    // already gives these three steps exclusive access.
+    await runRearmGatedTablesForRebuild();
+    const rebuildResults = await runSyncPass();
+    const reconciliationResults = await runSyncPass();
+    return { ok: true, results: [...rebuildResults, ...reconciliationResults] };
+  });
+  inFlightRebuild = rebuild;
+  const clearInFlight = () => {
+    if (inFlightRebuild === rebuild) inFlightRebuild = null;
+  };
+  rebuild.then(clearInFlight, clearInFlight);
+  return rebuild;
 }
