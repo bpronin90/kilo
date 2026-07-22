@@ -38,7 +38,8 @@ import {
 import { CloudSyncRecovery } from '../screens/more/CloudSyncRecovery';
 import { HealthDataConsent } from '../screens/more/HealthDataConsent';
 import { CONSENT_COPY } from '../storage/cloud/consent';
-import { enqueueDirty, SYNC_TABLES } from '../storage/syncQueue';
+import { enqueueDirty, getDirtyRecords, setSyncSnapshot, SYNC_TABLES } from '../storage/syncQueue';
+import { saveWeightGoal } from '../storage/entries/weightGoal';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
@@ -552,6 +553,27 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
     await flush();
     expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
       .toBe('Sync failed — retry needed');
+  });
+
+  test('refreshes diff-tracked intent when the mounted panel becomes visible again', async () => {
+    const tree = renderPanel();
+    await flush();
+    await setSyncSnapshot(SYNC_TABLES.WEIGHT_GOAL, []);
+    await act(async () => {
+      markComplete(SYNC_PHASE.SYNC);
+    });
+    await flush();
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Server acknowledged — up to date');
+
+    await saveWeightGoal({ target_weight: 170, start_weight: 180 });
+    expect(await getDirtyRecords(SYNC_TABLES.WEIGHT_GOAL)).toEqual([]);
+
+    await act(async () => {
+      await tree.root.findByProps({ testID: 'cloud-sync-recovery-panel' }).props.onLayout();
+    });
+    expect(tree.root.findByProps({ accessibilityLabel: 'Cloud sync summary' }).props.children)
+      .toBe('Changes queued for cloud sync');
   });
 
   test('foreign owner: Cancel dismisses the confirmation without uploading', async () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
 import { Colors } from '../../theme/colors';
@@ -31,26 +31,28 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   const [status, setStatus] = useState('');
   const [confirmingForeignUpload, setConfirmingForeignUpload] = useState(false);
   const [pendingIntent, setPendingIntent] = useState({ known: false, hasPending: false });
+  const pendingIntentMounted = useRef(true);
+
+  const refreshPendingIntent = useCallback(async () => {
+    try {
+      const next = await getPendingSyncIntent();
+      if (pendingIntentMounted.current) setPendingIntent({ known: true, ...next });
+    } catch {
+      // A status read must never turn an unknown local cache into a cloud
+      // claim. Leave the display in its conservative local-cache state.
+      if (pendingIntentMounted.current) setPendingIntent({ known: false, hasPending: false });
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshPendingIntent = async () => {
-      try {
-        const next = await getPendingSyncIntent();
-        if (!cancelled) setPendingIntent({ known: true, ...next });
-      } catch {
-        // A status read must never turn an unknown local cache into a cloud
-        // claim. Leave the display in its conservative local-cache state.
-        if (!cancelled) setPendingIntent({ known: false, hasPending: false });
-      }
-    };
+    pendingIntentMounted.current = true;
     refreshPendingIntent();
     const unsubscribe = subscribeDirtyQueue(refreshPendingIntent);
     return () => {
-      cancelled = true;
+      pendingIntentMounted.current = false;
       unsubscribe();
     };
-  }, [bootstrap.status, sync.status]);
+  }, [refreshPendingIntent]);
 
   // Health-data consent (#487). `consent` is the server's answer, never a local
   // preference: the backend is the authorization boundary and this state only
@@ -288,7 +290,14 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   }
 
   return (
-    <View style={styles.accountBlock}>
+    <View
+      style={styles.accountBlock}
+      testID="cloud-sync-recovery-panel"
+      // App.js keeps inactive tabs mounted with display:none. Layout runs again
+      // when this panel becomes visible, catching settings/history writes that
+      // are intentionally diff-tracked rather than dirty-queue writes.
+      onLayout={refreshPendingIntent}
+    >
       <SectionTitle>Cloud Sync</SectionTitle>
 
       <Text style={styles.accountNote}>
