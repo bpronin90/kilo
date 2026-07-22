@@ -1545,6 +1545,103 @@ describe('rollingWindowStart', () => {
   });
 });
 
+// ── trend windows use calendar-day arithmetic across DST ──────────────────────
+// Regression coverage for issue #604: windows are defined by local calendar
+// date, so a DST transition inside a window must not shift a boundary onto an
+// adjacent day. TZ is toggled per test because Node re-reads process.env.TZ at
+// runtime, making these deterministic across representative timezones.
+describe('weight trend windows — calendar-day semantics across DST', () => {
+  const withTZ = (tz, fn) => {
+    const prev = process.env.TZ;
+    process.env.TZ = tz;
+    try { return fn(); } finally { process.env.TZ = prev; }
+  };
+
+  // Early-morning reference the day after Northern-hemisphere spring-forward.
+  // Fixed 86,400,000ms subtraction lands the 7-day start on 03-02 (an extra
+  // day); calendar arithmetic keeps it on 03-03.
+  test('7-day window contains exactly 7 calendar dates through spring-forward', () => {
+    withTZ('America/New_York', () => {
+      const ref = new Date('2026-03-09T00:30:00');
+      const entries = [
+        { date: '2026-03-02', weight_value: 1000 }, // day before start — must be excluded
+        { date: '2026-03-03', weight_value: 10 },   // inclusive start
+        { date: '2026-03-09', weight_value: 10 },   // reference day
+      ];
+      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
+    });
+  });
+
+  test('7-day window is stable through fall-back', () => {
+    withTZ('America/New_York', () => {
+      const ref = new Date('2026-11-02T00:30:00'); // morning after fall-back (11-01)
+      const entries = [
+        { date: '2026-10-26', weight_value: 1000 }, // day before start — must be excluded
+        { date: '2026-10-27', weight_value: 10 },   // inclusive start
+        { date: '2026-11-02', weight_value: 10 },   // reference day
+      ];
+      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
+    });
+  });
+
+  test('30-day window contains exactly 30 calendar dates through spring-forward', () => {
+    withTZ('America/New_York', () => {
+      const ref = new Date('2026-03-09T00:30:00');
+      const entries = [
+        { date: '2026-02-07', weight_value: 1000 }, // day before start — must be excluded
+        { date: '2026-02-08', weight_value: 10 },   // inclusive start (30 days back)
+        { date: '2026-03-09', weight_value: 10 },   // reference day
+      ];
+      expect(computeWeightTrends(entries, ref).avg30).toBe(10);
+    });
+  });
+
+  // Southern-hemisphere transition runs the opposite direction (spring-forward
+  // in October) and must be equally deterministic.
+  test('window is deterministic in a Southern-hemisphere timezone', () => {
+    withTZ('Australia/Sydney', () => {
+      const ref = new Date('2026-10-05T00:30:00'); // morning after AU spring-forward (10-04)
+      const entries = [
+        { date: '2026-09-28', weight_value: 1000 }, // day before start — must be excluded
+        { date: '2026-09-29', weight_value: 10 },   // inclusive start
+        { date: '2026-10-05', weight_value: 10 },   // reference day
+      ];
+      expect(computeWeightTrends(entries, ref).avg7).toBe(10);
+    });
+  });
+
+  test('prior windows stay adjacent and non-overlapping across DST', () => {
+    withTZ('America/New_York', () => {
+      const ref = new Date('2026-03-09T00:30:00');
+      // current 7-day window: 03-03..03-09; prior 7-day window: 02-24..03-02.
+      const entries = [
+        { date: '2026-02-23', weight_value: 1000 }, // before prior7 start — excluded
+        { date: '2026-02-24', weight_value: 20 },   // prior7 inclusive start
+        { date: '2026-03-02', weight_value: 20 },   // prior7 inclusive end (day before current start)
+        { date: '2026-03-03', weight_value: 10 },   // current start — not in prior window
+        { date: '2026-03-09', weight_value: 10 },
+      ];
+      const summary = computeWeightTrendSummary(entries, ref);
+      expect(summary.priorAvg7).toBe(20); // excludes 02-23 and the current-window entries
+      expect(summary.avg7).toBe(10);
+    });
+  });
+
+  test('goal days remaining uses calendar days across DST', () => {
+    withTZ('America/New_York', () => {
+      const ref = new Date('2026-03-06T12:00:00'); // spring-forward (03-08) falls inside the span
+      const goal = computeWeightGoal({
+        currentWeight: 200,
+        targetWeight: 193,
+        targetDate: '2026-03-20',
+        referenceDate: ref,
+      });
+      expect(goal.weeks_remaining).toBe(2); // exactly 14 calendar days, unaffected by the lost hour
+      expect(goal.required_weekly_pace).toBeCloseTo(-3.5, 5);
+    });
+  });
+});
+
 // ── computeWeeksIn session semantics ──────────────────────────────────────────
 // Regression coverage for the session/routine-depth distinction.
 // computeWeeksIn uses max(session_entries.length, rows.length + skippedCount) per

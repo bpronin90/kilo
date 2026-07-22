@@ -3,6 +3,30 @@
 export const WEIGHT_PACE_NOTABLE_THRESHOLD = 1.5; // lb — delta at or above this triggers a notable flag
 export const WEIGHT_PACE_SPIKE_THRESHOLD   = 2.3; // lb — delta at or above this upgrades to spike
 
+// Calendar-date helpers shared by the trend-window calculations.
+// Windows are defined by local calendar date, not by fixed 86,400,000 ms
+// offsets, so a DST transition inside a window never shifts a boundary onto
+// an adjacent day.
+const _pad = (n) => String(n).padStart(2, '0');
+// Format a Date as its local 'YYYY-MM-DD' calendar date.
+export function localDateStr(d) {
+  return `${d.getFullYear()}-${_pad(d.getMonth() + 1)}-${_pad(d.getDate())}`;
+}
+// Shift a 'YYYY-MM-DD' string by delta calendar days. Constructing the Date
+// from local date components lands on local midnight regardless of DST, and
+// reading the components back is exact.
+export function shiftCalendarDate(dateStr, delta) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return localDateStr(new Date(y, m - 1, d + delta));
+}
+// Inclusive count of calendar days from startStr to endStr. Uses UTC epoch of
+// the date components, which has no DST offset, so the difference is exact.
+export function calendarDaysBetween(startStr, endStr) {
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+  return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000);
+}
+
 function _classifyWeightPaceDelta(delta) {
   if (delta === null || delta === undefined) return null;
   const abs = Math.abs(delta);
@@ -14,15 +38,11 @@ function _classifyWeightPaceDelta(delta) {
 // entries must be sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }.
 // referenceDate defaults to today; pass a fixed date for tests.
 export function computeWeightTrends(entries, referenceDate = new Date()) {
-  const MS_DAY = 86400000;
-  // Use local calendar date to avoid UTC-offset mismatches for non-UTC users.
-  const pad = (n) => String(n).padStart(2, '0');
-  const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-  const refStr = localStr(referenceDate);
-  // Subtract 6 / 29 days so the inclusive range spans exactly 7 / 30 calendar days.
-  const cut7  = localStr(new Date(referenceDate - 6  * MS_DAY));
-  const cut30 = localStr(new Date(referenceDate - 29 * MS_DAY));
+  const refStr = localDateStr(referenceDate);
+  // Step back 6 / 29 calendar days so the inclusive range spans exactly 7 / 30
+  // calendar dates regardless of any DST transition inside the window.
+  const cut7  = shiftCalendarDate(refStr, -6);
+  const cut30 = shiftCalendarDate(refStr, -29);
 
   const w7  = entries.filter(e => e.date >= cut7  && e.date <= refStr);
   const w30 = entries.filter(e => e.date >= cut30 && e.date <= refStr);
@@ -61,14 +81,14 @@ export function computeWeightPaceLevel(entries) {
 // entries must be sorted newest-first with { date: 'YYYY-MM-DD', weight_value: number }.
 export function computeWeightTrendSummary(entries, referenceDate = new Date()) {
   const base = computeWeightTrends(entries, referenceDate);
-  const MS_DAY = 86400000;
-  const pad = n => String(n).padStart(2, '0');
-  const localStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const refStr = localDateStr(referenceDate);
 
-  const prior7Start  = localStr(new Date(referenceDate - 13 * MS_DAY));
-  const prior7End    = localStr(new Date(referenceDate -  7 * MS_DAY));
-  const prior30Start = localStr(new Date(referenceDate - 59 * MS_DAY));
-  const prior30End   = localStr(new Date(referenceDate - 30 * MS_DAY));
+  // Prior windows stay adjacent to and non-overlapping with the current 7 / 30
+  // day windows: they end the day before each current window starts.
+  const prior7Start  = shiftCalendarDate(refStr, -13);
+  const prior7End    = shiftCalendarDate(refStr,  -7);
+  const prior30Start = shiftCalendarDate(refStr, -59);
+  const prior30End   = shiftCalendarDate(refStr, -30);
 
   const mean = arr =>
     arr.length === 0 ? null : arr.reduce((s, e) => s + e.weight_value, 0) / arr.length;
@@ -94,11 +114,7 @@ export function computeWeightTrendSummary(entries, referenceDate = new Date()) {
 //   required_weekly_pace: lb/week (null if targetDate is not in the future)
 //   warnings: array of 'unrealistic' | 'unhealthy' (advisory only, never block save)
 export function computeWeightGoal({ currentWeight, targetWeight, targetDate, referenceDate = new Date() }) {
-  const MS_DAY = 86400000;
-  const pad = (n) => String(n).padStart(2, '0');
-  const localStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-  const refStr = localStr(referenceDate);
+  const refStr = localDateStr(referenceDate);
 
   if (!targetDate || targetDate <= refStr) {
     return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
@@ -113,7 +129,6 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
     direction = delta > 0 ? 'gain' : 'loss';
   }
 
-  const refMidnight = new Date(refStr + 'T00:00:00');
   // Round-trip component check: JS normalizes impossible dates (e.g. Sep 31 → Oct 1)
   // instead of returning Invalid Date, so isNaN alone is insufficient.
   const [tYear, tMonth, tDay] = targetDate.split('-').map(Number);
@@ -125,7 +140,9 @@ export function computeWeightGoal({ currentWeight, targetWeight, targetDate, ref
   ) {
     return { direction: null, weeks_remaining: 0, required_weekly_pace: null, warnings: ['unrealistic'] };
   }
-  const days_remaining = Math.round((targetMidnight - refMidnight) / MS_DAY);
+  // Count whole calendar days between the two dates, so a DST transition in the
+  // span never adds or drops a day.
+  const days_remaining = calendarDaysBetween(refStr, targetDate);
   const weeks_remaining = days_remaining / 7;
   const required_weekly_pace = delta / weeks_remaining;
 
