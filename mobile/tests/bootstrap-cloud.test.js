@@ -36,47 +36,51 @@ import { createSupabaseTransport } from '../storage/cloud/transport';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 
-function makePagedPullClient(seedRows) {
+function makePagedPullClient(seedRows, { afterFirstPage } = {}) {
   const queries = [];
+  const workingRows = seedRows.map((row) => ({
+    __kilo_sync_xid: '100',
+    ...row,
+  }));
   const client = {
     schema(schema) {
       return {
-        from(table) {
+        async rpc(name, params) {
+          queries.push({ schema, name, params: { ...params } });
+          const secondary = ['user_profile', 'user_health_profile', 'feature_toggles', 'weight_goal']
+            .includes(params.p_table)
+            ? 'user_id'
+            : 'id';
+          const boundary = params.p_boundary || 'xid:500';
+          const lower = /^xid:(\d+)$/.test(params.p_cursor || '')
+            ? BigInt(params.p_cursor.slice(4))
+            : 0n;
+          const upper = BigInt(boundary.slice(4));
+          const eligible = workingRows
+            .filter((row) => {
+              const xid = BigInt(row.__kilo_sync_xid);
+              if (xid < lower || xid >= upper) return false;
+              if (!params.p_after_updated_at) return true;
+              return (
+                row.updated_at > params.p_after_updated_at ||
+                (row.updated_at === params.p_after_updated_at &&
+                  String(row[secondary]) > String(params.p_after_id))
+              );
+            })
+            .sort(
+              (a, b) =>
+                a.updated_at.localeCompare(b.updated_at) ||
+                String(a[secondary]).localeCompare(String(b[secondary]))
+            );
+          const page = eligible.slice(0, params.p_limit);
+          if (queries.length === 1 && afterFirstPage) afterFirstPage(workingRows);
           return {
-            select(_columns, options = {}) {
-              const state = { schema, table, options, filters: [], orders: [], range: null };
-              return {
-                gte(column, value) {
-                  state.filters.push({ column, value });
-                  return this;
-                },
-                order(column, optionsForOrder) {
-                  state.orders.push({ column, options: optionsForOrder });
-                  return this;
-                },
-                async range(from, to) {
-                  state.range = [from, to];
-                  queries.push(state);
-                  let rows = seedRows.filter((row) =>
-                    state.filters.every(({ column, value }) => row[column] >= value)
-                  );
-                  rows = [...rows].sort((a, b) => {
-                    for (const { column } of state.orders) {
-                      const compared = String(a[column] ?? '').localeCompare(
-                        String(b[column] ?? '')
-                      );
-                      if (compared) return compared;
-                    }
-                    return 0;
-                  });
-                  return {
-                    data: rows.slice(from, to + 1),
-                    error: null,
-                    count: options.count === 'exact' ? rows.length : null,
-                  };
-                },
-              };
+            data: {
+              rows: page.map((row) => ({ ...row })),
+              cursor: boundary,
+              has_more: eligible.length > params.p_limit,
             },
+            error: null,
           };
         },
       };
@@ -149,7 +153,7 @@ function makeFakeClient({ failTable = null, remoteRows = {}, selectFailTable = n
 }
 
 describe('Supabase sync transport cursor contract', () => {
-  it('pulls every equal-timestamp collection row in deterministic pages', async () => {
+  it('pulls every equal-timestamp collection row with commit-safe keyset pages', async () => {
     const at = '2026-07-17T12:00:00.000Z';
     const rows = Array.from({ length: 1005 }, (_unused, index) => ({
       id: `row-${String(1004 - index).padStart(4, '0')}`,
@@ -159,36 +163,75 @@ describe('Supabase sync transport cursor contract', () => {
     const transport = createSupabaseTransport(() => fake.client);
 
     const pulled = await transport.pull(SYNC_TABLES.WEIGHT_ENTRIES, at);
+    const meta = pulled.pop().__kilo_pull_meta;
 
     expect(pulled).toHaveLength(1005);
     expect(pulled.map((row) => row.id)).toEqual(
       [...pulled.map((row) => row.id)].sort()
     );
-    expect(fake.queries.map((query) => query.range)).toEqual([
-      [0, 999],
-      [1000, 1999],
-    ]);
-    expect(fake.queries[0].filters).toEqual([{ column: 'updated_at', value: at }]);
-    for (const query of fake.queries) {
-      expect(query.orders).toEqual([
-        { column: 'updated_at', options: { ascending: true } },
-        { column: 'id', options: { ascending: true } },
-      ]);
-    }
+    expect(meta.cursor).toBe('xid:500');
+    expect(fake.queries).toHaveLength(2);
+    expect(fake.queries[0]).toMatchObject({
+      schema: 'kilo',
+      name: 'pull_sync_changes',
+      params: {
+        p_table: SYNC_TABLES.WEIGHT_ENTRIES,
+        p_cursor: at,
+        p_boundary: null,
+        p_after_updated_at: null,
+        p_after_id: null,
+        p_limit: 1000,
+      },
+    });
+    expect(fake.queries[1].params).toMatchObject({
+      p_boundary: 'xid:500',
+      p_after_updated_at: at,
+      p_after_id: 'row-0999',
+    });
   });
 
-  it('uses the singleton primary key as the stable secondary order', async () => {
+  it('uses the singleton primary key as the stable keyset continuation', async () => {
     const fake = makePagedPullClient([
       { user_id: USER_ID, updated_at: '2026-07-17T12:00:00.000Z' },
     ]);
     const transport = createSupabaseTransport(() => fake.client);
 
-    await transport.pull(SYNC_TABLES.USER_PROFILE, null);
+    const pulled = await transport.pull(SYNC_TABLES.USER_PROFILE, null);
 
-    expect(fake.queries[0].orders).toEqual([
-      { column: 'updated_at', options: { ascending: true } },
-      { column: 'user_id', options: { ascending: true } },
-    ]);
+    expect(pulled[0]).toEqual({
+      user_id: USER_ID,
+      updated_at: '2026-07-17T12:00:00.000Z',
+    });
+    expect(pulled[1].__kilo_pull_meta.row_xids).toEqual({ [USER_ID]: '100' });
+  });
+
+  it('does not skip an unvisited row when a prior page row is deleted', async () => {
+    const at = '2026-07-17T12:00:00.000Z';
+    const rows = Array.from({ length: 1001 }, (_unused, index) => ({
+      id: `row-${String(index).padStart(4, '0')}`,
+      updated_at: at,
+    }));
+    const fake = makePagedPullClient(rows, {
+      afterFirstPage(workingRows) {
+        workingRows.splice(
+          workingRows.findIndex((row) => row.id === 'row-0000'),
+          1
+        );
+        workingRows.push({
+          id: 'row-concurrent',
+          updated_at: at,
+          __kilo_sync_xid: '600',
+        });
+      },
+    });
+    const transport = createSupabaseTransport(() => fake.client);
+
+    const pulled = await transport.pull(SYNC_TABLES.WEIGHT_ENTRIES, null);
+    pulled.pop();
+
+    expect(pulled).toHaveLength(1001);
+    expect(pulled.some((row) => row.id === 'row-1000')).toBe(true);
+    expect(pulled.some((row) => row.id === 'row-concurrent')).toBe(false);
   });
 
   it('returns the server-stamped upsert representation without device metadata', async () => {
