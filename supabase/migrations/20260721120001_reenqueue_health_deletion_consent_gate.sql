@@ -32,6 +32,14 @@
 -- the idempotent operator job is safe -- the worker still verifies zero rows
 -- before recording completion.
 --
+-- Re-arming a `withdrawn` account also moves it back to `deletion_pending` in the
+-- same transaction. `kilo.consent_grant` refuses a re-grant only while the state
+-- is `deletion_pending`, so leaving a re-enqueued account `withdrawn` would let the
+-- user re-grant (state -> granted) and race the worker -- which claims by job
+-- status and deletes by user_id without re-checking consent -- into erasing the
+-- newly consented rows. Pinning the state to deletion_pending while a job is queued
+-- closes that window; job completion moves it back to withdrawn.
+--
 -- This migration only tightens the guard; the recovery mechanics (rearm existing
 -- open/failed job, else insert `operator_reenqueue`) are unchanged, so legitimate
 -- failed/pending withdrawal jobs remain recoverable.
@@ -75,8 +83,24 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- Authorized. Recover an existing open/failed job; otherwise re-create the
-  -- idempotent operator job. This block is unchanged from the pre-gate function.
+  -- Authorized, and a purge is now (re)queued. Move the consent state back to
+  -- deletion_pending in this same transaction so the account cannot be re-granted
+  -- while the job sits in the queue. Without this, a `withdrawn` account stays
+  -- re-grantable: kilo.consent_grant only refuses a re-grant while the state is
+  -- deletion_pending (20260718120000_reconsent_rebuild_signal.sql), so the user
+  -- could transition to `granted` and the worker -- which claims by job status and
+  -- deletes by user_id without re-checking consent -- would erase the newly
+  -- consented health rows. A no-op when already deletion_pending; the append-only
+  -- withdrawal ledger and withdrawn_at record are untouched, and job completion
+  -- moves deletion_pending back to withdrawn.
+  update kilo.consent_state set
+    status = 'deletion_pending',
+    updated_at = now()
+  where user_id = p_user_id
+    and status <> 'deletion_pending';
+
+  -- Recover an existing open/failed job; otherwise re-create the idempotent
+  -- operator job. This block is unchanged from the pre-gate function.
   select id into v_job_id
   from kilo.health_data_deletion_jobs
   where user_id = p_user_id and status in ('pending', 'running', 'failed')

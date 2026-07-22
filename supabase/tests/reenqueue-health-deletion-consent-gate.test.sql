@@ -16,14 +16,18 @@
 --     the existing job is rearmed, not duplicated;
 --   * a `deletion_pending` account whose job row is gone gets an idempotent
 --     operator job re-created (the authorizing state IS the evidence);
---   * a `withdrawn` account is authorized (re-purge if rows reappear).
+--   * a `withdrawn` account is authorized (re-purge if rows reappear), and the
+--     re-enqueue pins the account to `deletion_pending` so it cannot be re-granted
+--     while a purge job is queued -- closing the withdrawn -> re-enqueue -> re-grant
+--     race flagged in the #598 review (worker claims by job status and deletes by
+--     user_id without re-checking consent).
 --
 -- Harness: pgTAP.
 --   psql "$DATABASE_URL" -f supabase/tests/reenqueue-health-deletion-consent-gate.test.sql
 
 begin;
 
-select plan(18);
+select plan(21);
 
 \set granted   '11111111-1111-1111-1111-111111111111'
 \set reconsent '22222222-2222-2222-2222-222222222222'
@@ -62,6 +66,20 @@ insert into kilo.health_data_deletion_jobs (user_id, reason, status, attempts,
   last_error, next_attempt_at)
 values (:'pending'::uuid, 'withdrawal', 'failed', 3, '2 scoped rows remain',
   now() + interval '1 hour');
+
+-- Impersonation helper for the re-grant leg of the race test. Both claim GUCs are
+-- set because auth.uid() reads the JSON `request.jwt.claims` in some Postgres image
+-- versions and the scalar `request.jwt.claim.sub` in others; setting only one
+-- yields a NULL uid and a vacuously "authenticated" call.
+create or replace function pg_temp.as_user(p_user uuid)
+  returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claim.sub', p_user::text, true);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', p_user::text, 'role', 'authenticated')::text, true);
+  perform set_config('request.headers', '{}', true);
+  execute 'set local role authenticated';
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Granted: refused, fail closed, with an explicit reason
@@ -184,18 +202,49 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- withdrawn: authorized (re-purge if scoped rows ever reappear)
+-- withdrawn: authorized (re-purge if scoped rows ever reappear), and the
+-- re-enqueue pins the account to deletion_pending so it cannot be re-granted
+-- while a purge job is queued (#598 review regression).
 -- ---------------------------------------------------------------------------
 
-select lives_ok(
-  format('select kilo.reenqueue_health_deletion(%L)', :'withdrawn'),
-  'a withdrawn account is authorized for a re-enqueue'
-);
-
+-- A single call: accepted, and it echoes the deletion-authorizing status read
+-- before the in-transaction state transition.
 select is(
   (select (kilo.reenqueue_health_deletion(:'withdrawn'::uuid)) ->> 'consent_status'),
   'withdrawn',
-  'the accepted result echoes the deletion-authorizing consent status'
+  'a withdrawn account is authorized and the result echoes its consent status'
+);
+
+-- The re-enqueue moved the state to deletion_pending in the same transaction.
+select is(
+  (select status from kilo.consent_state where user_id = :'withdrawn'::uuid),
+  'deletion_pending',
+  'the re-enqueue pinned the withdrawn account to deletion_pending'
+);
+
+select is(
+  (select count(*) from kilo.health_data_deletion_jobs
+     where user_id = :'withdrawn'::uuid and status in ('pending', 'running')),
+  1::bigint,
+  'a purge job is queued for the re-enqueued account'
+);
+
+-- The race, closed: with the state now deletion_pending, the user re-granting is
+-- refused. Without the state transition the account would move withdrawn -> granted
+-- while the job sits queued, and the worker would erase the freshly consented rows.
+select pg_temp.as_user(:'withdrawn'::uuid);
+select throws_ok(
+  $$ select kilo.consent_grant(1, '1.2.3', 'android') $$,
+  '23514',
+  'health data deletion is pending',
+  'the re-enqueued account cannot be re-granted while its purge job is queued'
+);
+reset role;
+
+select is(
+  (select status from kilo.consent_state where user_id = :'withdrawn'::uuid),
+  'deletion_pending',
+  'the blocked re-grant left the account deletion_pending, never granted'
 );
 
 select * from finish();
