@@ -1511,6 +1511,61 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
   });
 });
 
+describe('deriveProgressionSignals — within-row skipped sets excluded from weight analytics', () => {
+  test('leading skip in latest occurrence does not raise latest_top_weight', () => {
+    // "200 -, 100 5" — leading skipped 200 lb member must not become the top weight
+    const note = 'Monday\n-Bench\n100 5\nWednesday\n-Bench\n200 -,100 5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(100);
+  });
+
+  test('trailing skip in latest occurrence does not raise latest_top_weight, repeatability, or overload_trend', () => {
+    // "100 5, 200 -" — performed 100x5 comes first, trailing skipped 200 must not
+    // become the top weight, count toward repeatability, or push overload_trend up.
+    const note = 'Monday\n-Bench\n80 5\nWednesday\n-Bench\n100 5, 200 -';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(100);
+    expect(sig.repeatability_score).toBe(1);
+    expect(sig.overload_trend).toBe('up');
+  });
+
+  test('performed set in the same row still participates in latest_top_weight', () => {
+    const note = 'Monday\n-Bench\n80 5\nWednesday\n-Bench\n100 -, 120 6';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(120);
+  });
+
+  test('all-skipped row yields no performed top-weight or PR signal, falls back to prior occurrence', () => {
+    const note = 'Monday\n-Bench\n100 5\nWednesday\n-Bench\n200 -';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(100);
+    expect(sig.latest_pr).toBeCloseTo(epleyPR(100, 5));
+    expect(sig.overload_trend).toBe('first_session');
+  });
+
+  test('skipped set does not inflate repeatability_score at a phantom max weight', () => {
+    // Two real sets at 100 (matching), plus a skipped set at a heavier 200 that must be excluded
+    const note = 'Monday\n-Bench\n200 -, 100 5, 100 5';
+    const { sections } = parseWorkoutNote(note);
+    const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
+    expect(sig.latest_top_weight).toBe(100);
+    expect(sig.repeatability_score).toBe(2);
+  });
+
+  test('rendering and ordinal alignment: skipped set keeps its set_index and row position', () => {
+    const { sections } = parseWorkoutNote('-Bench\n200 -, 100 5');
+    const ex = sections[0].exercises[0];
+    expect(ex.sets.map(s => ({ set_index: s.set_index, weight_value: s.weight_value, skipped: !!s.skipped }))).toEqual([
+      { set_index: 1, weight_value: 200, skipped: true },
+      { set_index: 2, weight_value: 100, skipped: false },
+    ]);
+  });
+});
+
 // ── deriveProgressionSignals — single-block multi-session ─────────────────────
 
 describe('deriveProgressionSignals — single-block multi-session entries', () => {

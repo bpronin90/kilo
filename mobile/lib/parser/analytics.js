@@ -78,14 +78,14 @@ function _occurrencePR(occurrence) {
 }
 
 function _occurrenceRepeatabilityScore(occurrence) {
-  const weighted = occurrence.sets.filter(s => s.weight_value !== null && s.weight_value > 0);
+  const weighted = occurrence.sets.filter(s => !s.skipped && s.weight_value !== null && s.weight_value > 0);
   if (weighted.length === 0) return null;
   const maxWeight = Math.max(...weighted.map(s => s.weight_value));
   return weighted.filter(s => s.weight_value === maxWeight).length;
 }
 
 function _occurrenceTopWeight(occurrence) {
-  const weighted = occurrence.sets.filter(s => s.weight_value !== null && s.weight_value > 0);
+  const weighted = occurrence.sets.filter(s => !s.skipped && s.weight_value !== null && s.weight_value > 0);
   if (weighted.length === 0) return null;
   return Math.max(...weighted.map(s => s.weight_value));
 }
