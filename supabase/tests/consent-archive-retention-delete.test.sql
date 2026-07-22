@@ -6,12 +6,18 @@
 -- BEFORE UPDATE only, so a service-role DELETE could destroy retention evidence
 -- years early. These assertions defend the closed DELETE path:
 --
---   * a direct service-role delete of an unexpired row is rejected;
---   * a blanket service-role delete is rejected;
---   * a direct service-role delete of an already-expired row is STILL rejected,
---     because deletion is gated to the designated prune path, not row age alone;
+--   * service_role holds no DELETE or TRUNCATE privilege, so a direct delete of an
+--     unexpired row, a blanket delete, a TRUNCATE, and a direct delete of an
+--     already-expired row are all rejected at the privilege layer
+--     (insufficient_privilege) before any trigger runs;
+--   * forging the prune GUC does not help: an EXPIRED row deleted directly by
+--     service_role with kilo.evidence_prune forced on is still rejected, because
+--     the missing DELETE grant refuses it before the trigger runs (the review
+--     regression this suite now covers);
 --   * UPDATE stays rejected (the pre-existing immutability trigger);
---   * even on the designated path, an unexpired row cannot be pruned;
+--   * in the privileged owner context -- where DELETE is retained and the definer
+--     sweep runs -- the trigger's per-row expiry check still rejects an unexpired
+--     row even with the prune flag forged;
 --   * the retention sweep deletes exactly the expired rows in a mixed batch and
 --     leaves the unexpired rows;
 --   * key-retirement coherence: a retired key with no surviving archive is marked
@@ -23,7 +29,7 @@
 
 begin;
 
-select plan(15);
+select plan(17);
 
 -- ---------------------------------------------------------------------------
 -- Seed: two key versions and a mixed batch of expired / unexpired archive rows.
@@ -70,35 +76,65 @@ select has_trigger(
 
 set local role service_role;
 
--- Premature direct delete: an unexpired row cannot be removed by hand.
+-- service_role holds no DELETE privilege on the archive (revoked in this
+-- migration), so a direct delete of an unexpired row fails at the privilege layer
+-- before any trigger runs.
 select throws_ok(
   $$ delete from kilo.consent_evidence_archive
        where id = '00000000-0000-0000-0000-0000000000f1' $$,
-  '23514',
+  '42501',
   null,
-  'service-role cannot directly delete an unexpired archive row'
+  'service-role has no DELETE privilege on an unexpired archive row'
 );
 
--- Blanket delete: rejected because the batch includes unexpired rows and is not
--- the designated prune path.
+-- A blanket delete is likewise refused at the privilege layer.
 select throws_ok(
   $$ delete from kilo.consent_evidence_archive $$,
-  '23514',
+  '42501',
   null,
   'service-role cannot blanket-delete the evidence archive'
 );
 
--- Even an already-expired row cannot be hand-deleted: deletion is gated to the
--- retention sweep, not to row age. This is the "reject everything else" half.
+-- TRUNCATE is revoked alongside DELETE: a BEFORE DELETE trigger never fires on
+-- TRUNCATE, so without the revoke a caller could wipe the whole archive around the
+-- guard. service_role now lacks the privilege entirely.
+select throws_ok(
+  $$ truncate kilo.consent_evidence_archive $$,
+  '42501',
+  null,
+  'service-role cannot truncate the evidence archive'
+);
+
+-- The real bypass the trigger alone could not stop: an already-EXPIRED row.
+-- Without the privilege revoke the trigger's expiry check would pass and the row
+-- would be destroyed outside the sweep. Now the missing DELETE grant refuses it.
 select throws_ok(
   $$ delete from kilo.consent_evidence_archive
        where id = '00000000-0000-0000-0000-0000000000e1' $$,
-  '23514',
+  '42501',
   null,
-  'service-role cannot delete even an expired row outside the retention sweep'
+  'service-role cannot delete even an expired row directly'
 );
 
--- UPDATE remains rejected by the pre-existing immutability trigger.
+-- Regression (review feedback, PR #629 thread PRRT_kwDOSVb7qM6SwNIV): forging the
+-- prune flag no longer helps. An EXPIRED row + SET LOCAL kilo.evidence_prune = on,
+-- issued directly by service_role, previously satisfied BOTH trigger checks and
+-- slipped through; the privilege revoke now rejects it before the trigger sees it.
+select throws_ok(
+  $$ do $guard$
+     begin
+       perform set_config('kilo.evidence_prune', 'on', true);
+       delete from kilo.consent_evidence_archive
+         where id = '00000000-0000-0000-0000-0000000000e2';
+     end
+     $guard$; $$,
+  '42501',
+  null,
+  'a forged prune flag cannot let service_role delete an expired row'
+);
+
+-- UPDATE remains rejected by the pre-existing immutability trigger (service_role
+-- keeps its UPDATE grant; the trigger, not a privilege, is what blocks it).
 select throws_ok(
   $$ update kilo.consent_evidence_archive set material_version = 99
        where id = '00000000-0000-0000-0000-0000000000e1' $$,
@@ -107,8 +143,12 @@ select throws_ok(
   'the evidence archive is still immutable to UPDATE'
 );
 
--- Defense in depth: even after forging the prune flag, an unexpired row is
--- rejected by the per-row expiry check, so a sweep bug cannot leak a live row.
+reset role;
+
+-- Defense in depth on the one privileged path. In the table-owner context -- which
+-- retains DELETE and is where the SECURITY DEFINER sweep runs -- forge the prune
+-- flag and aim at an UNEXPIRED row: the per-row expiry check in the trigger still
+-- rejects it, so a sweep bug cannot leak a live row independent of any grant.
 select throws_ok(
   $$ do $guard$
      begin
@@ -119,10 +159,8 @@ select throws_ok(
      $guard$; $$,
   '23514',
   null,
-  'even on the designated prune path an unexpired row cannot be deleted'
+  'even with delete privilege and a forged prune flag, an unexpired row is protected'
 );
-
-reset role;
 
 -- ---------------------------------------------------------------------------
 -- The designated prune path deletes exactly the expired rows

@@ -12,22 +12,33 @@
 -- was ever supposed to remove a row is the scheduled retention sweep.
 --
 -- This migration closes DELETE, fail-closed, without breaking the one authorized
--- path:
+-- path. It layers a non-forgeable privilege gate under the trigger:
 --
---   * kilo.evidence_retention_sweep() is the ONLY designated prune path. It marks
---     the current transaction with a local flag before its delete and clears it
---     immediately after, so nothing outside that narrow window is trusted.
---   * A BEFORE DELETE row trigger rejects every delete unless (a) that flag is
---     set AND (b) the specific row's own retention has actually expired
---     (expires_at <= now()). Both conditions are required; either one missing
---     rejects the row.
+--   * PRIMARY GATE (privilege): direct DELETE is revoked from service_role, the
+--     only application role that held it (via `grant all` in 20260714120001).
+--     `authenticated` never had it (RLS with no delete policy). After the revoke,
+--     no caller reaching the database over PostgREST or an Edge Function can issue
+--     a DELETE at all -- the attempt fails with insufficient_privilege before any
+--     trigger runs. kilo.evidence_retention_sweep() is SECURITY DEFINER and runs
+--     as its owner, which owns the table and therefore keeps DELETE regardless of
+--     the revoke, so the one authorized path is unaffected.
+--   * DEFENSE IN DEPTH (trigger): a BEFORE DELETE row trigger rejects every delete
+--     unless (a) it originates from the retention sweep, which raises a
+--     transaction-local flag around its statement, AND (b) the specific row's own
+--     retention has actually expired (expires_at <= now()). Both are required.
 --
--- The two conditions are deliberately redundant. The flag proves the delete came
--- from the retention sweep and nowhere else; the per-row expires_at check means
--- that even the sweep cannot remove a row before its retention elapses, so a
--- future bug in the sweep's WHERE clause still cannot leak an unexpired row. The
--- existing BEFORE UPDATE immutability trigger is left untouched, so UPDATE stays
--- rejected as before.
+-- The privilege revoke -- not the flag -- is what defeats a hostile service-role
+-- SQL caller. A custom GUC like kilo.evidence_prune is caller-settable, so a flag
+-- ALONE could be forged (`BEGIN; SET LOCAL kilo.evidence_prune = on; DELETE ...`);
+-- once direct DELETE is gone, that forgery has nothing left to act on. The flag is
+-- retained anyway because it still forces the remaining privileged deleters (the
+-- table owner and the definer sweep) through kilo.evidence_retention_sweep(),
+-- preserving the sweep's key-lifecycle bookkeeping; a stray owner-level
+-- `delete ... where expires_at <= now()` outside the sweep is still rejected. The
+-- per-row expires_at check means even the sweep cannot remove a row before its
+-- retention elapses, so a future bug in the sweep's WHERE clause still cannot leak
+-- an unexpired row. The existing BEFORE UPDATE immutability trigger is left
+-- untouched, so UPDATE stays rejected as before.
 
 -- ---------------------------------------------------------------------------
 -- 1. Delete guard
@@ -39,8 +50,10 @@ create or replace function kilo.consent_evidence_archive_delete_guard()
   set search_path = ''
 as $$
 begin
-  -- Fail closed. A delete is authorized only from the designated retention-prune
-  -- path, which sets this transaction-local flag around its statement. current_
+  -- Fail closed. This is defense in depth behind the DELETE revoke below, not the
+  -- security boundary: the flag is caller-settable, so it cannot by itself stop a
+  -- role that holds DELETE. Its job now is to force the remaining privileged
+  -- deleters (the table owner and the definer sweep) through the sweep. current_
   -- setting(..., true) returns NULL when the flag was never set, and `is distinct
   -- from` treats that NULL as "not the prune path".
   if current_setting('kilo.evidence_prune', true) is distinct from 'on' then
@@ -67,6 +80,23 @@ drop trigger if exists consent_evidence_archive_no_delete on kilo.consent_eviden
 create trigger consent_evidence_archive_no_delete
   before delete on kilo.consent_evidence_archive
   for each row execute function kilo.consent_evidence_archive_delete_guard();
+
+-- ---------------------------------------------------------------------------
+-- 1b. Remove the forgeable path entirely: revoke direct DELETE
+-- ---------------------------------------------------------------------------
+
+-- The primary, non-forgeable gate. service_role held `grant all` (see
+-- 20260714120001), which includes both DELETE and TRUNCATE; strip both so no
+-- application role can remove a row, and a forged prune flag has nothing to act
+-- on. TRUNCATE must go with DELETE: a BEFORE DELETE row trigger never fires on
+-- TRUNCATE, so leaving it would let a caller wipe the whole archive around the
+-- guard. INSERT/SELECT/UPDATE are retained: account-delete still writes evidence
+-- rows, and the immutability trigger still rejects UPDATE. `authenticated` and
+-- `public` never held these here, but revoke defensively so the privilege cannot
+-- reappear through a future blanket grant. kilo.evidence_retention_sweep() below
+-- is SECURITY DEFINER and runs as the table owner, which keeps DELETE, so the one
+-- authorized path works.
+revoke delete, truncate on kilo.consent_evidence_archive from service_role, authenticated, public;
 
 -- ---------------------------------------------------------------------------
 -- 2. Designate the prune path
