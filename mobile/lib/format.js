@@ -1,4 +1,5 @@
 import { formatLiftWeightValue } from './units';
+import { WEIGHT_PACE_NOTABLE_THRESHOLD, WEIGHT_PACE_SPIKE_THRESHOLD } from './data/weightGoal';
 
 export function formatDate(isoString) {
   if (!isoString) return '';
@@ -47,8 +48,8 @@ export function getWeightDeltaSeverity(delta) {
   if (delta === null || delta === undefined) return 'normal';
   const abs = Math.abs(delta);
   if (abs > 3.5) return 'outlier';
-  if (abs > 2.3) return 'spike';
-  if (abs > 1.5) return 'notable';
+  if (abs >= WEIGHT_PACE_SPIKE_THRESHOLD) return 'spike';
+  if (abs >= WEIGHT_PACE_NOTABLE_THRESHOLD) return 'notable';
   return 'normal';
 }
 
@@ -70,8 +71,8 @@ export function formatSessionClassification(label) {
 export function classifyWeightPace(delta) {
   if (delta === null || delta === undefined) return null;
   const abs = Math.abs(delta);
-  if (abs < 1.5) return null;
-  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= 2.3 ? 'spike' : 'notable' };
+  if (abs < WEIGHT_PACE_NOTABLE_THRESHOLD) return null;
+  return { direction: delta > 0 ? 'gain' : 'loss', level: abs >= WEIGHT_PACE_SPIKE_THRESHOLD ? 'spike' : 'notable' };
 }
 
 export function formatDuration(seconds) {
