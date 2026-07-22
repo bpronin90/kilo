@@ -497,3 +497,100 @@ describe('server-authoritative cursor advancement', () => {
     }
   );
 });
+
+describe('commit-safe pull boundary advancement', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+  });
+
+  it.each(['syncTable', 'syncDiffTable'])(
+    '%s advances only to the completed server boundary and recovers a later commit',
+    async (syncKind) => {
+      const table =
+        syncKind === 'syncTable'
+          ? SYNC_TABLES.WEIGHT_ENTRIES
+          : SYNC_TABLES.DELOAD_HISTORY;
+      const pullCursors = [];
+      let pullNumber = 0;
+      let visible = [];
+      const transport = {
+        async pull(_table, cursor) {
+          pullCursors.push(cursor);
+          pullNumber += 1;
+          if (pullNumber === 1) {
+            return [
+              {
+                id: 'visible-before-boundary',
+                value: 'first',
+                updated_at: '2026-07-22T12:00:00.000Z',
+              },
+              {
+                __kilo_pull_meta: {
+                  cursor: 'xid:200',
+                  row_xids: { 'visible-before-boundary': '150' },
+                },
+              },
+            ];
+          }
+          return [
+            {
+              id: 'writer-committed-later',
+              value: 'recovered',
+              updated_at: '2026-07-22T11:59:00.000Z',
+            },
+            {
+              __kilo_pull_meta: {
+                cursor: 'xid:300',
+                row_xids: { 'writer-committed-later': '200' },
+              },
+            },
+          ];
+        },
+        async push() {
+          throw new Error('no push expected');
+        },
+      };
+
+      const runPass =
+        syncKind === 'syncTable'
+          ? () =>
+              syncTable({
+                table,
+                transport,
+                async readLocal() {
+                  return visible;
+                },
+                async writeLocal(records) {
+                  visible = records;
+                },
+              })
+          : () =>
+              syncDiffTable({
+                table,
+                transport,
+                async buildLocal() {
+                  return visible.map(({ id, value }) => ({ id, value }));
+                },
+                async applyMerged(records) {
+                  visible = records;
+                },
+                payloadFields: ['value'],
+                allowDelete: true,
+              });
+
+      await runPass();
+      expect(await getCursor(table)).toBe('xid:200');
+
+      await runPass();
+      expect(pullCursors).toEqual([null, 'xid:200']);
+      expect(await getCursor(table)).toBe('xid:300');
+      expect(visible).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'writer-committed-later', value: 'recovered' }),
+        ])
+      );
+    }
+  );
+});

@@ -6,7 +6,7 @@
 //   - sync metadata stamping (`client_id`, `updated_at`, `deleted_at`)
 //   - the per-table dirty queue, persisted in AsyncStorage so edits made while
 //     offline survive an app restart and still push after reconnect
-//   - per-table pull cursors (last seen `updated_at`)
+//   - per-table pull cursors (server snapshot-xmin transaction boundaries)
 //   - the deterministic LWW merge: newer `updated_at` wins; exact ties break by
 //     `client_id` lexicographic order
 //   - tombstone-first deletes: a delete writes a `deleted_at` tombstone that is
@@ -29,6 +29,8 @@ const CLIENT_ID_KEY = 'kilo_sync_client_id';
 const DIRTY_KEY_PREFIX = 'kilo_sync_dirty_';
 const CURSOR_KEY_PREFIX = 'kilo_sync_cursor_';
 const SNAPSHOT_KEY_PREFIX = 'kilo_sync_snapshot_';
+const PULL_META_FIELD = '__kilo_pull_meta';
+const ROW_XID_FIELD = '__kilo_sync_xid';
 
 // The roadmap tables this engine syncs. Weight entries and workout notes are the
 // Task 11 acceptance targets; archived_weight_goals was added in issue #372.
@@ -379,15 +381,53 @@ export function maxUpdatedAt(records, current = null) {
   return max || null;
 }
 
+function parseCommitSafeCursor(cursor) {
+  const match = typeof cursor === 'string' ? /^xid:([0-9]+)$/.exec(cursor) : null;
+  if (!match) return null;
+  try {
+    return BigInt(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePullResult(result) {
+  const input = Array.isArray(result) ? result : [];
+  let meta = null;
+  const rows = [];
+
+  for (const row of input) {
+    if (row && row[PULL_META_FIELD]) {
+      meta = row[PULL_META_FIELD];
+      continue;
+    }
+    rows.push(row);
+  }
+
+  const rowXids = meta?.row_xids || {};
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const key = row.id ?? row.user_id;
+    const xid = key == null ? null : rowXids[String(key)];
+    if (xid != null) {
+      Object.defineProperty(row, ROW_XID_FIELD, {
+        configurable: true,
+        enumerable: false,
+        value: String(xid),
+      });
+    }
+  }
+
+  return { rows, cursor: meta?.cursor || null };
+}
+
 // ── cursor trust (issue #525, grounded in #523) ────────────────────────────────
 //
-// The stored pull cursor is the only server-authored evidence a pre-upgrade
-// device carries about WHAT IT HAS ALREADY OBSERVED. `transport.pull` is a
-// complete, inclusive, paginated `gte('updated_at', cursor)` scan, so under
-// honest operation a completed pull at cursor C means every server row with
-// `updated_at <= C` was delivered to this device. That is what makes "present
-// remotely, absent locally, `updated_at <= C`" readable as a local delete rather
-// than as a row that was never downloaded.
+// Current `xid:<n>` cursors are server-verified snapshot-xmin boundaries. A
+// completed pull at C delivered every row version whose internal sync_xid is
+// below C; the RPC supplies that per-row evidence for first-pass reconciliation.
+// The timestamp rules below apply only to pre-#620 devices during their one-time
+// full replay onto the commit-safe cursor format.
 //
 // The cursor CANNOT be trusted unconditionally, and this repo has the receipts.
 // Issue #523 ("Keep pull cursors server-authoritative after local pushes")
@@ -447,6 +487,9 @@ export function maxUpdatedAt(records, current = null) {
 // fact; reconcileAgainstRemote applies the device-specific policy.
 export function assessCursorTrust({ cursor, remote }) {
   if (!cursor) return { trusted: false, reason: 'absent' };
+  if (parseCommitSafeCursor(cursor) != null) {
+    return { trusted: true, reason: 'commit-safe-boundary' };
+  }
   if (Number.isNaN(Date.parse(cursor))) return { trusted: false, reason: 'malformed' };
   const rows = remote || [];
   const max = maxUpdatedAt(rows);
@@ -477,7 +520,21 @@ export class SyncReconciliationConflictError extends Error {
   }
 }
 
-async function advanceCursorFromServerEvidence(table, cursor, remote, acknowledged) {
+async function advanceCursorFromServerEvidence(
+  table,
+  cursor,
+  remote,
+  acknowledged,
+  pullCursor = null
+) {
+  // A commit-safe boundary is produced by the server snapshot that bounded the
+  // complete keyset pull. It is authoritative even when the page is empty and
+  // must never be replaced by a row timestamp or a client wall clock.
+  if (parseCommitSafeCursor(pullCursor) != null) {
+    if (pullCursor !== cursor) await setCursor(table, pullCursor);
+    return pullCursor;
+  }
+
   const acknowledgementMax = maxUpdatedAt(acknowledged);
 
   // A successful write is stamped at the server's current time. If that
@@ -537,7 +594,7 @@ async function recoverPushAcknowledgements(table, transport, cursor, pushed, res
   const pushedIds = new Set(pushed.map((row) => row.id));
   const refreshed = normalizePushAcknowledgements(
     table,
-    (await transport.pull(table, cursor)) || []
+    normalizePullResult((await transport.pull(table, cursor)) || []).rows
   );
   return {
     rows: refreshed.filter((row) => pushedIds.has(row.id)),
@@ -611,7 +668,8 @@ export async function syncTable({
   //    device would claim authorship of the whole table. This costs one full
   //    pull, once per table, on the upgrade pass only.
   const cursor = unbaselined ? null : storedCursor;
-  const remote = (await transport.pull(table, cursor)) || [];
+  const pulled = normalizePullResult((await transport.pull(table, cursor)) || []);
+  const remote = pulled.rows;
 
   // 1b. Adopt local rows the server does not already hold in the same form (see
   //     reconcileAgainstRemote). Enqueued before the dirty queue is read below,
@@ -712,7 +770,13 @@ export async function syncTable({
   //    remote set, including rows excluded from the merge above. If an injected
   //    transport does not return acknowledgements, the pushed rows are safely
   //    picked up by the next inclusive pull instead.
-  await advanceCursorFromServerEvidence(table, cursor, remote, acknowledged);
+  await advanceCursorFromServerEvidence(
+    table,
+    cursor,
+    remote,
+    acknowledged,
+    pulled.cursor
+  );
 
   // 6. Record the last-synced baseline for this table (issue #525). The dirty
   //    queue only knows about writes made through the CLOUD adapter; writes made
@@ -1004,7 +1068,8 @@ export async function syncDiffTable({
   const cursor = await getCursor(table);
 
   // 1. Pull changed rows since the last cursor.
-  const remote = (await transport.pull(table, cursor)) || [];
+  const pulled = normalizePullResult((await transport.pull(table, cursor)) || []);
+  const remote = pulled.rows;
 
   // 2. Diff live local state against the last-synced snapshot. With no snapshot
   //    (first pass on this device) seed the baseline from the remote rows, so
@@ -1088,7 +1153,13 @@ export async function syncDiffTable({
 
   // 6. Advance only from the full set of server-authored pull rows and
   //    server-stamped push acknowledgements.
-  await advanceCursorFromServerEvidence(table, cursor, remote, acknowledged);
+  await advanceCursorFromServerEvidence(
+    table,
+    cursor,
+    remote,
+    acknowledged,
+    pulled.cursor
+  );
 
   return {
     table,
@@ -1320,12 +1391,18 @@ export function reconcileAgainstRemote({
   }
 
   const trust = assessCursorTrust({ cursor, remote });
+  const commitBoundary = parseCommitSafeCursor(cursor);
   const unresolved = [];
   for (const [id, server] of remoteById) {
     if (seen.has(id) || isTombstone(server)) continue;
     if (trust.trusted) {
       // Case 1: inside the window a completed pull already delivered.
-      if ((server.updated_at || '') <= cursor) {
+      const rowXid = server[ROW_XID_FIELD];
+      const deliveredByCommitBoundary =
+        commitBoundary != null && rowXid != null && BigInt(rowXid) < commitBoundary;
+      const deliveredByLegacyTimestamp =
+        commitBoundary == null && (server.updated_at || '') <= cursor;
+      if (deliveredByCommitBoundary || deliveredByLegacyTimestamp) {
         dirty.push(stampTombstone({ ...server }, clientId));
       }
       // Case 2: after the window. Preserve; the merge restores it.

@@ -311,6 +311,7 @@ These files define the current real native app path.
 | `mobile/tests/app-shell-back.test.js` | App shell back-button routing tests (tab ownership slot, Android Home/exit fallback). |
 | `mobile/tests/app-update-banner.test.js` | OTA update banner behavior tests. |
 | `supabase/tests/account-lifecycle.test.sql` | pgTAP requester-isolation checks for account export/delete table access. |
+| `supabase/tests/commit-safe-change-feed.test.sql` | Two-session pgTAP regression for commit-safe xid cursor advancement and concurrent-writer recovery. |
 | `supabase/tests/rate-limit.test.sql` | pgTAP rate-limiter checks for `kilo.rate_limit_check` and `kilo.rate_limit_hits`. |
 | `supabase/tests/rls_note_first_test.sql` | pgTAP RLS checks for the note-first cloud schema. |
 | `supabase/tests/rls_note_first_manual_check.sql` | Harness-free manual RLS isolation check (plain SQL + `RAISE EXCEPTION`, no pgTAP required). Runs on any Supabase Postgres that has the schema applied. |

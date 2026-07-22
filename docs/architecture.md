@@ -577,18 +577,27 @@ hold in the same form.
 
 Signed-out deletes on that pass are classified against the stored pull cursor,
 which is the one piece of server-authored evidence such a device carries about
-what it has already observed: a completed, inclusive, paginated pull at cursor
-`C` delivered every server row with `updated_at <= C`. The cursor is validated
-before it is used, because #523 established that earlier builds computed it from
-`[...remote, ...dirty]` and could store a device-clock value in the future,
-silently filtering later server rows out of every subsequent pull; the reactive
-repair added afterwards only fires on a push acknowledgement and runs after the
-pull, too late for this decision. Validation uses the full remote set the pass
-already holds: a cursor past the newest row the server holds is #523's
-future-clock signature, and a cursor that no remote row's `updated_at` matches
-exactly did not come from a real completed pull, since cursor advancement only
-ever copies a server row's timestamp. A cursor that was poisoned and later
-re-anchored by an honest pull is not detectable and is the accepted residual.
+what it has already observed. Current cursors are PostgreSQL transaction-ID
+boundaries (`xid:<n>`), not timestamps. Every synced row records the xid of the
+transaction that wrote it. The pull RPC captures
+`pg_snapshot_xmin(pg_current_snapshot())`, restricts every page to
+`previous_boundary <= sync_xid < new_boundary`, and seeks after the last
+`(updated_at, id)` pair. A completed pull at boundary `C` therefore delivered
+every row version with `sync_xid < C`. A writer still invisible when the pull
+starts has xid at or above `C`; after it commits, the next pass starting at `C`
+recovers it. Concurrent inserts and deletes cannot shift an unvisited row across
+an offset because the feed has no offset pagination. Duplicates across adjacent
+boundaries remain harmless under the existing owner/id upserts.
+
+This transaction boundary is required because `updated_at` is stamped with
+PostgreSQL `now()`, which is the writer transaction's start time. A writer may
+receive an old timestamp, remain open for an unbounded duration, and commit only
+after another session finishes pulling. No fixed wall-clock lag can prove that
+writer safe to skip. Devices carrying a legacy timestamp cursor perform one
+complete replay, then replace it with the server-returned xid boundary only
+after the full pull and any push complete. The legacy timestamp trust checks
+remain solely for the first unbaselined signed-out-delete classification during
+that upgrade replay.
 
 Three outcomes follow for a row present remotely and absent locally. At or before
 a trustworthy cursor the row was demonstrably delivered, so its absence is a

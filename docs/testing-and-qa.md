@@ -610,6 +610,9 @@ retains non-test commands such as `npm run audit`.
 - verifies both sync engines clear an already-poisoned future cursor after a
   normal server acknowledgement, then recover all previously hidden rows on the
   next full pull without re-pushing the acknowledged local edit
+- verifies both sync engines advance to the server's completed xid boundary and
+  recover a writer that commits after the prior read, even when its
+  `updated_at` sorts before that read
 
 ### `mobile/tests/bootstrap-cloud.test.js` and `mobile/tests/offline-sync.test.js`
 
@@ -617,9 +620,10 @@ retains non-test commands such as `npm run audit`.
   `archived_weight_goals` records are pushed, remote archived goals are pulled
   into local storage, and the sync result set includes the table alongside
   weight entries and workout notes
-- cover the real Supabase transport's server-stamped upsert response, stable
-  collection/singleton secondary ordering, inclusive cursor filter, and complete
-  pagination when equal-timestamp rows exceed one PostgREST response page
+- cover the real Supabase transport's server-stamped upsert response,
+  collection/singleton keyset continuation, fixed transaction boundary, and
+  complete pagination when equal-timestamp rows exceed one page; deleting a row
+  from an already-consumed page cannot shift and strand the next unvisited row
 - keep the fake offline-sync cloud table map aligned with all tables processed
   by the sync adapter, preventing new sync tables from regressing existing
   offline create/edit/delete tests
@@ -855,6 +859,12 @@ retains non-test commands such as `npm run audit`.
   SQL suite cannot observe platform forwarding-header behavior
 
 ### Consent, migration, and purge suites
+
+- `supabase/tests/commit-safe-change-feed.test.sql` uses independent reader and
+  writer sessions on disposable local Postgres: the writer is stamped before
+  the reader snapshot, stays uncommitted until after the reader returns its
+  cursor, then is recovered by the later pull from that exact cursor; it also
+  verifies owner-scoped RLS and exact xid evidence
 
 - `supabase/tests/health-mirror.test.sql` covers expand/backfill parity,
   depth-guarded dual writes, timestamp preservation, later-origin conflict

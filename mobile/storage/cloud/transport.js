@@ -1,12 +1,14 @@
 const SCHEMA = 'kilo';
 const PULL_PAGE_SIZE = 1000;
+const PULL_META_FIELD = '__kilo_pull_meta';
+const ROW_XID_FIELD = '__kilo_sync_xid';
 
 // Per-table upsert column whitelist. The cloud `push` path must NOT spread
 // arbitrary client-supplied fields onto the upsert: a tampered client could
 // otherwise write columns the app never intended, or forge sync-ordering
 // metadata. We send only the columns each table legitimately accepts.
 //
-// Two columns are intentionally OMITTED from every whitelist:
+// Three columns are intentionally OMITTED from every whitelist:
 //   - `updated_at`: server-authoritative. A DB default plus a BEFORE
 //     INSERT/UPDATE trigger (see the `kilo` schema migration) forces `now()`,
 //     so a client-supplied `updated_at` can no longer manipulate last-write-wins
@@ -14,6 +16,8 @@ const PULL_PAGE_SIZE = 1000;
 //   - `client_id`: not a stored column in the `kilo` tables; it lives only in
 //     the local sync engine as an LWW tie-break. Whitelisting columns drops it
 //     from the write entirely.
+//   - `sync_xid`: internal server transaction-ordering evidence. The same
+//     BEFORE trigger that owns updated_at stamps it; clients never propose it.
 //
 // `user_id` is added server-bound from the authenticated session, never taken
 // from the client record (RLS would reject a mismatch regardless).
@@ -189,6 +193,12 @@ function pullSecondaryOrder(table) {
   return conflictTargetFor(table) === SINGLETON_CONFLICT_TARGET ? 'user_id' : 'id';
 }
 
+function stripSyncXid(row) {
+  if (!row || typeof row !== 'object') return row;
+  const { [ROW_XID_FIELD]: _syncXid, sync_xid: _rawSyncXid, ...clean } = row;
+  return clean;
+}
+
 // Exposed for the focused transport contract tests; production callers use
 // getTransport(), which supplies the configured application client.
 export function createSupabaseTransport(getClient = getConfiguredSupabaseClient) {
@@ -197,42 +207,58 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
       const client = getClient();
       if (!client) return [];
       const rows = [];
+      const rowXids = {};
       const secondary = pullSecondaryOrder(table);
-      let total = null;
+      let boundary = null;
+      let afterUpdatedAt = null;
+      let afterId = null;
+      const schemaClient = client.schema(SCHEMA);
 
-      // PostgREST responses are capped, so fetch the complete inclusive cursor
-      // window explicitly. Ordering by the table primary key after updated_at
-      // makes offset pages deterministic even when many rows share a timestamp.
-      while (total == null || rows.length < total) {
-        const from = rows.length;
-        const source = client.schema(SCHEMA).from(table);
-        let query =
-          from === 0 ? source.select('*', { count: 'exact' }) : source.select('*');
-        if (cursor) query = query.gte('updated_at', cursor);
-        const timestampOrdered = query.order('updated_at', { ascending: true });
+      // Reduced injected clients used by push-focused tests predate the RPC
+      // pull seam. They cannot emulate commit visibility, so represent that
+      // capability honestly as no pull rather than falling back to the unsafe
+      // live-table offset query this RPC replaced.
+      if (typeof schemaClient.rpc !== 'function') return [];
 
-        // Older injected test clients implemented order() as the terminal call.
-        // Keep that transport seam compatible; real supabase-js builders expose
-        // both chained order() and range(), and always take the paginated path.
-        if (
-          typeof timestampOrdered.order !== 'function' ||
-          typeof timestampOrdered.range !== 'function'
-        ) {
-          const { data, error } = await timestampOrdered;
-          if (error) throw error;
-          return data || [];
+      // Each RPC page is restricted to one server-captured transaction boundary.
+      // Continuation seeks strictly after the final (updated_at, primary-key)
+      // pair instead of using offsets, so concurrent inserts/deletes cannot move
+      // an unvisited row across a page boundary.
+      for (;;) {
+        const { data, error } = await schemaClient.rpc('pull_sync_changes', {
+          p_table: table,
+          p_cursor: cursor,
+          p_boundary: boundary,
+          p_after_updated_at: afterUpdatedAt,
+          p_after_id: afterId,
+          p_limit: PULL_PAGE_SIZE,
+        });
+        if (error) throw error;
+        const page = Array.isArray(data?.rows) ? data.rows : [];
+        boundary = data?.cursor || boundary;
+
+        for (const row of page) {
+          const key = row?.[secondary];
+          const xid = row?.[ROW_XID_FIELD];
+          if (key != null && xid != null) rowXids[String(key)] = String(xid);
+          rows.push(stripSyncXid(row));
         }
 
-        const { data, error, count } = await timestampOrdered
-          .order(secondary, { ascending: true })
-          .range(from, from + PULL_PAGE_SIZE - 1);
-        if (error) throw error;
-        const page = data || [];
-        if (from === 0 && Number.isInteger(count)) total = count;
-        rows.push(...page);
-        if (page.length === 0) break;
-        if (total == null && page.length < PULL_PAGE_SIZE) break;
+        if (!data?.has_more || page.length === 0) break;
+        const last = page[page.length - 1];
+        afterUpdatedAt = last.updated_at;
+        afterId = String(last[secondary]);
       }
+
+      // Keep the public pull value array-compatible for injected transports and
+      // the singleton adapter. syncQueue consumes and removes this internal
+      // sentinel before any row reaches merge or local storage.
+      rows.push({
+        [PULL_META_FIELD]: {
+          cursor: boundary,
+          row_xids: rowXids,
+        },
+      });
       return rows;
     },
     async push(table, records) {
@@ -250,7 +276,7 @@ export function createSupabaseTransport(getClient = getConfiguredSupabaseClient)
       const { data, error } =
         typeof upserted.select === 'function' ? await upserted.select('*') : await upserted;
       if (error) throw error;
-      return data || [];
+      return (data || []).map(stripSyncXid);
     },
   };
 }
