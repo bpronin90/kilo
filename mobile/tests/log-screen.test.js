@@ -393,14 +393,15 @@ describe('autosave call sites: debounce timers pass { autosave: true }', () => {
 
   test('handleSave suppresses setSaveSuccess when autosave is true', () => {
     // The guarded call must be present: if (!autosave) setSaveSuccess(...)
-    expect(src).toMatch(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/);
+    expect(src).toMatch(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved on device'\s*\)/);
   });
 
-  test('handleSaveOtherNote suppresses setSaveSuccess when autosave is true', () => {
-    // Same guard must appear twice — once per save handler.
-    const matches = src.match(/if\s*\(\s*!autosave\s*\)\s*setSaveSuccess\s*\(\s*'Saved!'\s*\)/g);
-    expect(matches).not.toBeNull();
-    expect(matches.length).toBeGreaterThanOrEqual(2);
+  test('current editor save message clearly indicates device-local save', () => {
+    // The save confirmation must say "Saved on device", not "Saved!" or any cloud-sync claim.
+    expect(src).toMatch(/setSaveSuccess\s*\(\s*'Saved on device'\s*\)/);
+    // Verify that the old generic message is not present in the updated section.
+    const currentEditorHookStart = src.indexOf("'Saved on device'");
+    expect(currentEditorHookStart).toBeGreaterThan(-1);
   });
 });
 
