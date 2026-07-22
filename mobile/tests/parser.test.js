@@ -1512,19 +1512,23 @@ describe('deriveProgressionSignals — kilo_max, latest_top_weight, overload_tre
 });
 
 describe('deriveProgressionSignals — within-row skipped sets excluded from weight analytics', () => {
-  test('trailing skip in latest occurrence does not raise latest_top_weight', () => {
-    // "200 -, 100 5" — skipped 200 lb member must not become the top weight
+  test('leading skip in latest occurrence does not raise latest_top_weight', () => {
+    // "200 -, 100 5" — leading skipped 200 lb member must not become the top weight
     const note = 'Monday\n-Bench\n100 5\nWednesday\n-Bench\n200 -,100 5';
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.latest_top_weight).toBe(100);
   });
 
-  test('leading skip in latest occurrence does not raise latest_top_weight', () => {
-    const note = 'Monday\n-Bench\n100 5\nWednesday\n-Bench\n200 -\n100 5';
+  test('trailing skip in latest occurrence does not raise latest_top_weight, repeatability, or overload_trend', () => {
+    // "100 5, 200 -" — performed 100x5 comes first, trailing skipped 200 must not
+    // become the top weight, count toward repeatability, or push overload_trend up.
+    const note = 'Monday\n-Bench\n80 5\nWednesday\n-Bench\n100 5, 200 -';
     const { sections } = parseWorkoutNote(note);
     const sig = deriveProgressionSignals(sections, ['Bench']).exercises[0];
     expect(sig.latest_top_weight).toBe(100);
+    expect(sig.repeatability_score).toBe(1);
+    expect(sig.overload_trend).toBe('up');
   });
 
   test('performed set in the same row still participates in latest_top_weight', () => {
