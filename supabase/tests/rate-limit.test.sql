@@ -10,7 +10,7 @@
 
 begin;
 
-select plan(14);
+select plan(18);
 
 -- ---------------------------------------------------------------------------
 -- rate_limit_check: requests within limit are admitted
@@ -108,6 +108,51 @@ select is(
 select is(
   (select count(*)::int from kilo.rate_limit_hits where bucket = 'delete:ip:10.0.0.4'),
   1, 'global prune kept live delete row (within 1-hour window)'
+);
+
+-- ---------------------------------------------------------------------------
+-- rate_limit_global_prune: healthdelete-prefix rows use a 1-hour window
+-- ---------------------------------------------------------------------------
+
+-- Expired/live rows cover both production health-deletion bucket families.
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values
+  ('healthdelete:ip:10.0.0.5', now() - interval '61 minutes'),
+  ('healthdelete:ip:10.0.0.6', now() - interval '59 minutes'),
+  ('healthdelete:user:uuid-expired', now() - interval '61 minutes'),
+  ('healthdelete:user:uuid-live', now() - interval '59 minutes');
+
+select kilo.rate_limit_global_prune();
+
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket in ('healthdelete:ip:10.0.0.5', 'healthdelete:user:uuid-expired')),
+  0, 'global prune removed expired healthdelete IP and user rows (past 1-hour window)'
+);
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket in ('healthdelete:ip:10.0.0.6', 'healthdelete:user:uuid-live')),
+  2, 'global prune kept live healthdelete IP and user rows (within 1-hour window)'
+);
+
+-- Rows on either side of the one-hour boundary exercise the strict cutoff
+-- with enough margin for the prune call to advance its transaction timestamp.
+insert into kilo.rate_limit_hits (bucket, occurred_at)
+values
+  ('healthdelete:ip:10.0.0.7', now() - interval '1 hour 1 second'),
+  ('healthdelete:user:uuid-boundary', now() - interval '59 minutes 59 seconds');
+
+select kilo.rate_limit_global_prune();
+
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket = 'healthdelete:ip:10.0.0.7'),
+  0, 'global prune removes healthdelete rows just past the 1-hour boundary'
+);
+select is(
+  (select count(*)::int from kilo.rate_limit_hits
+   where bucket = 'healthdelete:user:uuid-boundary'),
+  1, 'global prune keeps healthdelete rows just inside the 1-hour boundary'
 );
 
 -- ---------------------------------------------------------------------------
