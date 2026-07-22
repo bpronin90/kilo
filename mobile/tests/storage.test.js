@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadWeightEntries,
+  loadWeightEntriesRaw,
+  replaceWeightEntriesRaw,
   saveWeightEntry,
   deleteWeightEntry,
   updateWeightEntry,
@@ -141,6 +143,18 @@ describe('weight entry storage', () => {
     const entries = await loadWeightEntries();
     expect(entries[0].id).toBe(W2.id);
     expect(entries[1].id).toBe(W1.id);
+  });
+
+  test('hides tombstones from public reads while preserving raw access', async () => {
+    const tombstone = {
+      ...W1,
+      deleted_at: '2026-05-03T08:00:00.000Z',
+      updated_at: '2026-05-03T08:00:00.000Z',
+    };
+    await replaceWeightEntriesRaw([W1, tombstone]);
+
+    expect((await loadWeightEntries()).map(entry => entry.id)).toEqual([W1.id]);
+    expect(await loadWeightEntriesRaw()).toEqual([W1, tombstone]);
   });
 
   test('deletes a weight entry by id', async () => {

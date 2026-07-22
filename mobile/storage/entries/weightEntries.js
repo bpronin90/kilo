@@ -3,7 +3,9 @@ import { readList, writeList, localDateToday } from './jsonStorage';
 
 export async function loadWeightEntries() {
   const list = await readList(WEIGHT_KEY);
-  return list.sort((a, b) => b.logged_at.localeCompare(a.logged_at));
+  return list
+    .filter(entry => !entry.deleted_at)
+    .sort((a, b) => b.logged_at.localeCompare(a.logged_at));
 }
 
 // Raw cache accessors for the cloud sync engine (Phase 4 / Task 11). Unlike
