@@ -87,6 +87,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   const [selectedReasons, setSelectedReasons] = useState(new Set());
   const [freeText, setFreeText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   useEffect(() => {
     if (!visible) {
@@ -94,6 +95,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
       setSelectedReasons(new Set());
       setFreeText('');
       setIsSaving(false);
+      setSaveError(null);
     } else if (isEdit && checkInData) {
       setTier(checkInData.status ?? null);
       setSelectedReasons(new Set(checkInData.reasons ?? []));
@@ -112,6 +114,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   const handleSubmit = async () => {
     if (!checkInData || !currentId || isSaving) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       const record = {
         status: tier,
@@ -124,10 +127,16 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         responded_at: (isEdit && checkInData.responded_at) ? checkInData.responded_at : new Date().toISOString(),
       };
       const prevCheckins = currentNote?.session_checkins || {};
-      await update(currentId, {
+      const result = await update(currentId, {
         session_checkins: { ...prevCheckins, [checkInData.sessionIndex]: record },
       });
+      if (result === false) {
+        setSaveError('Could not save — please try again.');
+        return;
+      }
       onClose();
+    } catch (e) {
+      setSaveError('Could not save — please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -135,22 +144,35 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
 
   const handleDismiss = async () => {
     if (isEdit || !checkInData || !currentId) { onClose(); return; }
-    const prevCheckins = currentNote?.session_checkins || {};
-    await update(currentId, {
-      session_checkins: {
-        ...prevCheckins,
-        [checkInData.sessionIndex]: {
-          status: null,
-          reasons: [],
-          flagged: checkInData.flagged,
-          detectors: checkInData.detectors,
-          exercises_skipped: checkInData.metrics.exercises_skipped,
-          volume_decline_pct: checkInData.metrics.volume_decline_pct,
-          responded_at: new Date().toISOString(),
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const prevCheckins = currentNote?.session_checkins || {};
+      const result = await update(currentId, {
+        session_checkins: {
+          ...prevCheckins,
+          [checkInData.sessionIndex]: {
+            status: null,
+            reasons: [],
+            flagged: checkInData.flagged,
+            detectors: checkInData.detectors,
+            exercises_skipped: checkInData.metrics.exercises_skipped,
+            volume_decline_pct: checkInData.metrics.volume_decline_pct,
+            responded_at: new Date().toISOString(),
+          },
         },
-      },
-    });
-    onClose();
+      });
+      if (result === false) {
+        setSaveError('Could not dismiss — please try again.');
+        return;
+      }
+      onClose();
+    } catch (e) {
+      setSaveError('Could not dismiss — please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!checkInData) return null;
@@ -176,10 +198,16 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               </Pressable>
             ) : null}
             <Text style={styles.title}>{title}</Text>
-            <Pressable onPress={handleDismiss} hitSlop={12} style={styles.closeBtn}>
+            <Pressable onPress={handleDismiss} hitSlop={12} style={styles.closeBtn} disabled={isSaving}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
           </View>
+
+          {saveError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{saveError}</Text>
+            </View>
+          ) : null}
 
           {tier === null && (
             <View style={styles.tierRow}>
@@ -346,6 +374,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textMuted,
     fontWeight: '600',
+  },
+  errorBanner: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.roughBackground,
+    borderWidth: 1,
+    borderColor: Colors.roughBorder,
+  },
+  errorBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.roughBorder,
   },
   tierRow: {
     flexDirection: 'row',
