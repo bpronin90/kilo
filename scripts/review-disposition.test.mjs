@@ -411,6 +411,21 @@ test('carry record preserves disposition identity and deduplicates only immutabl
     updated_at: '2026-07-16T12:00:00Z',
   };
   assert.equal(hasImmutableCarryForwardRecord([immutable], body), true);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'github-actions[bot]', type: 'Bot' },
+  }], body), true);
   assert.equal(hasImmutableCarryForwardRecord([{ ...immutable, updated_at: '2026-07-16T12:01:00Z' }], body), false);
   assert.equal(hasImmutableCarryForwardRecord([{ ...immutable, author_association: 'MEMBER' }], body), false);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'untrusted-bot[bot]', type: 'Bot' },
+  }], body), false);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'github-actions[bot]', type: 'User' },
+  }], body), false);
 });

@@ -399,7 +399,10 @@ export function hasImmutableCarryForwardRecord(comments, marker) {
   return comments.some((comment) => (
     comment.body === marker
     && comment.created_at === comment.updated_at
-    && comment.author_association === 'OWNER'
+    && (
+      comment.author_association === 'OWNER'
+      || (comment.user?.login === 'github-actions[bot]' && comment.user?.type === 'Bot')
+    )
   ));
 }
 
