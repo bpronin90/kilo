@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, SET_ROW_FONT_SIZE } from './UI';
+import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, SET_ROW_FONT_SIZE } from './UI';
 import { Colors } from '../theme/colors';
 import { normalizeLiftName } from '../lib/data';
 
@@ -80,7 +80,28 @@ export function WorkoutContentRenderer({
                             renderedUnparsed.add(entry.raw);
                           } else {
                             const row = ex.rows[loggedIdx++];
-                            if (row) items.push(<SetLine key={`row-${gi}-${si}-${ei}-${eni}`} sets={row.sets} selectable={true} />);
+                            const annotation = entry.annotation;
+                            if (row) {
+                              items.push(
+                                <SetLine
+                                  key={`row-${gi}-${si}-${ei}-${eni}`}
+                                  sets={row.sets}
+                                  selectable={true}
+                                  mark={annotation ? annotation.mark : null}
+                                />
+                              );
+                            }
+                            if (annotation && annotation.comments) {
+                              annotation.comments.forEach((comment, ci) => {
+                                items.push(
+                                  <AnnotationNote
+                                    key={`note-${gi}-${si}-${ei}-${eni}-${ci}`}
+                                    text={comment}
+                                    selectable={true}
+                                  />
+                                );
+                              });
+                            }
                           }
                         });
                         while (posIdx < positions.length) {

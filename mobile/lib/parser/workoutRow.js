@@ -23,6 +23,16 @@ function _preprocessWorkoutRow(trimmed) {
   return parseable.length > 0 ? parseable.join(' ') : noAnnotation;
 }
 
+// Extract a trailing "*..." annotation (e.g. "*PR", "*top set") from a raw
+// row string, mirroring the suffix `_preprocessWorkoutRow` strips before
+// tokenizing. Returns the trimmed mark text, or null if no annotation is
+// present. This is the sole source of the canonical `mark` field so the
+// star text survives parsing for display instead of being silently dropped.
+function _extractMark(trimmed) {
+  const m = /\s+\*(.*)$/.exec(trimmed);
+  return m ? (m[1].trim() || null) : null;
+}
+
 // Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
 // Standalone rep-group requires at least one comma to be unambiguous.
 export function parseWorkoutRow(raw) {
@@ -30,6 +40,7 @@ export function parseWorkoutRow(raw) {
   const trimmed = raw.trim();
   if (trimmed === '-') return { ok: true, skipped: true };
 
+  const mark = _extractMark(trimmed);
   const preprocessed = _preprocessWorkoutRow(trimmed);
   // ", " can be a pair separator ("90 10, 70 10,10") or a spaced rep-group
   // separator ("135 8, 8, 8"). Disambiguate: split on ", " and check whether
@@ -56,7 +67,7 @@ export function parseWorkoutRow(raw) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     return {
-      ok: true, skipped: false,
+      ok: true, skipped: false, mark,
       sets: reps.map((rep_count, i) => ({
         set_index: i + 1, rep_count,
         weight_value: null, weight_unit: null,
@@ -110,5 +121,5 @@ export function parseWorkoutRow(raw) {
       });
     }
   }
-  return { ok: true, skipped: false, sets };
+  return { ok: true, skipped: false, mark, sets };
 }

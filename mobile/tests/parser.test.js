@@ -1090,9 +1090,15 @@ describe('parseWorkoutNote — graceful degradation', () => {
     expect(r.sections[0].exercises[0].unparsed_rows).toContain('as55 8,8,8');
   });
 
-  test('double-dash lines go to unparsed_rows', () => {
+  // #615: a `--` line after a valid logged row (bare or dash-prefixed) is a
+  // captured comment, not raw unparsed text — it attaches to that row's
+  // annotation.comments instead of unparsed_rows. See the dedicated #615
+  // annotation-shape describe block below for the full comment-capture contract.
+  test('double-dash line after a valid logged row is captured as a comment, not left in unparsed_rows', () => {
     const r = parseWorkoutNote('-Core: Plank\n30,30\n-- crunch machine 50 12');
-    expect(r.sections[0].exercises[0].unparsed_rows).toContain('-- crunch machine 50 12');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows).not.toContain('-- crunch machine 50 12');
+    expect(ex.session_entries[0].annotation.comments).toEqual(['crunch machine 50 12']);
   });
 
   test('prose note in exercise context goes to unparsed_rows', () => {
@@ -1779,6 +1785,109 @@ describe('parseWorkoutNote — session_entries', () => {
     expect(ex.session_entries[1].unparsed).toBeFalsy();
     expect(ex.session_entries[1].sets).toHaveLength(3);
     expect(ex.session_entries[1].sets[0].weight_value).toBe(235);
+  });
+});
+
+// ── #615: canonical annotation shape { mark, comments } ──────────────────────
+describe('#615: annotation shape { mark, comments } on session_entries', () => {
+  test('star mark is counted in sets and exposed as annotation.mark', () => {
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.sets).toHaveLength(3);
+    expect(entry.annotation.mark).toBe('PR');
+  });
+
+  test('entry with no star mark has annotation.mark === null', () => {
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries[0].annotation.mark).toBeNull();
+    expect(ex.session_entries[0].annotation.comments).toEqual([]);
+  });
+
+  test('bare (no leading dash) logged row also exposes annotation.mark', () => {
+    const r = parseWorkoutNote('-Squat\n225 5,5,5 *top set');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries[0].annotation.mark).toBe('top set');
+  });
+
+  test('a `--` comment after a dash-prefixed logged row lands in annotation.comments', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5,5,5\n-- felt strong');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.annotation.comments).toEqual(['felt strong']);
+    expect(entry.sets).toHaveLength(3);
+  });
+
+  // Regression: a `--` comment after a *bare* (no leading "- ") valid logged
+  // row must also attach to that row's annotation.comments, not fall through
+  // to unparsed_rows. Reviewer finding on #615/PR#651.
+  test('a `--` comment after a bare (no leading dash) logged row lands in annotation.comments only', () => {
+    const r = parseWorkoutNote('-Bench\n225 5\n-- felt strong');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.bare).toBe(true);
+    expect(entry.sets).toHaveLength(1);
+    expect(entry.annotation.comments).toEqual(['felt strong']);
+    // must not be duplicated anywhere else
+    expect(ex.unparsed_rows).toEqual([]);
+    expect(ex.unparsed_positions).toEqual([]);
+  });
+
+  test('multiple `--` comments after the same row accumulate in order', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5,5,5\n-- felt strong\n-- knee ached');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.session_entries[0].annotation.comments).toEqual(['felt strong', 'knee ached']);
+  });
+
+  test('a row with both a star mark and a trailing comment keeps both, independently', () => {
+    const r = parseWorkoutNote('-Squat\n- 225 5,5,5 *PR\n-- easiest triple yet');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.annotation.mark).toBe('PR');
+    expect(entry.annotation.comments).toEqual(['easiest triple yet']);
+  });
+
+  test('exercise-name normalization still strips star text; annotation never enters the exercise key', () => {
+    const r = parseWorkoutNote('-Bench * new grip\n- 135 5,5,5 *PR');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.name).toBe('Bench');
+    expect(ex.name).not.toMatch(/\*/);
+    expect(ex.session_entries[0].annotation.mark).toBe('PR');
+  });
+
+  test('annotation and comment lines are not duplicated via unparsed_rows/unparsed_positions', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5,5,5 *PR\n-- felt strong');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows).toEqual([]);
+    expect(ex.unparsed_positions).toEqual([]);
+  });
+
+  test('#574 invariant corpus: skip, week separator, deload, and ordinary set rows are unchanged', () => {
+    const note = [
+      '-Bench',
+      '- 125 4,4,4',
+      '-',
+      '---',
+      '-Squat',
+      '- 225 5,5,5 *PR',
+      'Deadlift: 155 lbs 3x5',
+    ].join('\n');
+    const r = parseWorkoutNote(note);
+    expect(r.weekBStartIndex).toBe(1);
+    const weekA = r.sections[0];
+    const bench = weekA.exercises.find(e => e.name === 'Bench');
+    expect(bench.session_entries).toHaveLength(2);
+    expect(bench.session_entries[1].skipped).toBe(true);
+
+    const weekB = r.sections[1];
+    const squat = weekB.exercises.find(e => e.name === 'Squat');
+    expect(squat.session_entries[0].sets).toHaveLength(3);
+    expect(squat.session_entries[0].annotation.mark).toBe('PR');
+
+    const deadlift = weekB.exercises.find(e => e.name === 'Deadlift');
+    expect(deadlift.sets).toHaveLength(3);
+    expect(deadlift.session_entries).toEqual([]);
   });
 });
 

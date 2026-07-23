@@ -29,6 +29,14 @@ function _normalizeExerciseName(raw) {
   return name || raw.trim();
 }
 
+// Canonical annotation shape carried on logged session_entries: a star `mark`
+// (e.g. "PR") preserved from parseWorkoutRow, plus any `--` comment lines
+// attributed to this entry. Consumed by WorkoutContentRenderer for display;
+// never enters exercise-name normalization or the analytics set/rep data.
+function _makeAnnotation(mark) {
+  return { mark: mark || null, comments: [] };
+}
+
 function _makeSet(setIndex, repCount, weightValue, weightUnit) {
   return {
     set_index: setIndex,
@@ -135,9 +143,15 @@ export function parseWorkoutNote(noteText) {
       if (currentExercise) {
         const entries = currentExercise.session_entries;
         const last = entries[entries.length - 1];
-        if (last && !last.skipped && !last.bare) {
+        if (last && !last.skipped && !last.unparsed) {
+          if (!last.annotation) last.annotation = _makeAnnotation(null);
+          const commentText = trimmed.slice(2).trim();
+          last.annotation.comments.push(commentText);
+          // Legacy alias kept for existing consumers (e.g. the storage
+          // migration contract) that read entry.comments directly; the
+          // canonical shape going forward is entry.annotation.comments.
           if (!last.comments) last.comments = [];
-          last.comments.push(trimmed.slice(2).trim());
+          last.comments.push(commentText);
         } else {
           currentExercise.unparsed_rows.push(trimmed);
         }
@@ -201,7 +215,7 @@ export function parseWorkoutNote(noteText) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: entryRaw, sets: reindexed });
-          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed });
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed, annotation: _makeAnnotation(rowResult.mark) });
         } else if (rowResult.skipped) {
           currentExercise.session_entries.push({ skipped: true, raw: entryRaw, sets: [] });
         } else if (!rowResult.blank) {
@@ -214,8 +228,10 @@ export function parseWorkoutNote(noteText) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: trimmed, sets: reindexed });
-          // bare: true marks this as a plain row so -- comment lines still fall through to unparsed_rows
-          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true });
+          // bare: true marks this as a plain row (no leading '- '); a following
+          // '--' comment still attaches to it via annotation.comments since it
+          // is a valid logged entry (not skipped, not unparsed).
+          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true, annotation: _makeAnnotation(rowResult.mark) });
         } else if (!rowResult.blank && !rowResult.skipped) {
           currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed });
           currentExercise.unparsed_rows.push(trimmed);
