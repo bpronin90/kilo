@@ -1,5 +1,5 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, Alert, StatusBar } from 'react-native';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
@@ -40,6 +40,7 @@ import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
+import { installForegroundHandler } from './lib/reminderScheduler';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 const ZERO_SAFE_AREA_METRICS = {
@@ -110,6 +111,16 @@ export default function App() {
     return () => {
       if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
     };
+  }, []);
+
+  // Install the foreground notification handler once on app startup. This ensures
+  // the handler is in place before any persisted OS notification can arrive in
+  // the foreground, independent of whether reminders are scheduled or permissions
+  // are granted.
+  useEffect(() => {
+    installForegroundHandler().catch((e) => {
+      console.error('[App] Failed to install foreground handler:', e);
+    });
   }, []);
 
   const { isUpdatePending } = useUpdates();
