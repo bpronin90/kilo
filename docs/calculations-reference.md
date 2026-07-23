@@ -135,15 +135,17 @@ Shapes workout data for the Home assessment panel. It mostly reads persisted wor
 
 Computes rolling averages from weight entries (sorted newest-first):
 
-- **7-day average:** mean of all entries within the last 7 calendar days.
-- **30-day average:** mean of all entries within the last 30 calendar days.
+- **7-day average:** mean of all entries within the last 7 calendar days (days 0–6 ago, inclusive).
+- **30-day average:** mean of all entries within the last 30 calendar days (days 0–29 ago, inclusive).
 - **Pace flag:** compares the two most recent entries by date. Classifies the absolute difference.
 
 **Trend summary** extends this with prior-window comparisons:
-- **Prior 7-day average:** mean of entries from days 8–14 ago (for week-over-week comparison).
-- **Prior 30-day average:** mean of entries from days 31–60 ago.
+- **Prior 7-day average:** mean of entries from days 7–13 ago (for week-over-week comparison).
+- **Prior 30-day average:** mean of entries from days 30–59 ago.
 - **Current weight:** most recent entry value.
 - **Prior day weight:** second most recent entry value.
+
+The current and prior windows are adjacent, inclusive, and non-overlapping: current 7-day (0–6) is followed by prior 7-day (7–13), and current 30-day (0–29) is followed by prior 30-day (30–59).
 
 ### Weight Pace
 
