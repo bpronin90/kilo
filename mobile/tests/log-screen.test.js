@@ -1955,6 +1955,33 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
     );
     expect(rawCommentNodes.length).toBe(0);
   });
+
+  // #618: an inline prose tail ("225 5 - RPE 9") renders as a muted, a11y-labeled
+  // note beneath the set, while the set itself still counts and never becomes a
+  // phantom load row.
+  test('a captured inline prose tail renders as a muted note and the set still counts', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 225 5 - RPE 9');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const noteNode = component.root.find(
+      n => n.type === 'Text' && n.props.accessibilityLabel === 'Note: RPE 9'
+    );
+    expect(noteNode).toBeTruthy();
+    expect(noteNode.props.children).toBe('RPE 9');
+    expect(noteNode.props.style.color).toBe(Colors.textMuted);
+
+    // The set row still renders (225 lb), and the prose never appears as raw text.
+    const weightNodes = component.root.findAll(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('225')
+    );
+    expect(weightNodes.length).toBeGreaterThan(0);
+    const rawTailNodes = component.root.findAll(
+      n => n.type === 'Text' && n.props.children === '225 5 - RPE 9'
+    );
+    expect(rawTailNodes.length).toBe(0);
+  });
 });
 
 // Walk up from a matching Text node to its nearest Pressable (onPress) ancestor.

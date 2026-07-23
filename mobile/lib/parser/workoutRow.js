@@ -5,26 +5,8 @@ function _stripLeadingFlag(s) {
   return (m && /^\d/.test(m[2])) ? m[2] : s;
 }
 
-// Normalize a workout row string before tokenization.
-// Strips trailing *annotation suffixes (PR marks, tempo notes, etc.), then
-// splits on " - " to separate parseable set segments from inline prose notes.
-// Each segment is flag-stripped and validated (must consist only of digits,
-// commas, dots, and spaces). Valid segments are joined; prose is dropped.
-// Falls back to the original trimmed string if no segments are parseable.
-function _preprocessWorkoutRow(trimmed) {
-  const noAnnotation = trimmed.replace(/\s+\*.*$/, '').trim();
-  if (!noAnnotation.includes(' - ')) return _stripLeadingFlag(noAnnotation);
-
-  const parseable = [];
-  for (const seg of noAnnotation.split(' - ')) {
-    const stripped = _stripLeadingFlag(seg.trim());
-    if (/^[\d.,\s]+$/.test(stripped)) parseable.push(stripped.trim());
-  }
-  return parseable.length > 0 ? parseable.join(' ') : noAnnotation;
-}
-
 // Extract a trailing "*..." annotation (e.g. "*PR", "*top set") from a raw
-// row string, mirroring the suffix `_preprocessWorkoutRow` strips before
+// row string, mirroring the suffix `_segmentWorkoutRow` strips before
 // tokenizing. Returns the trimmed mark text, or null if no annotation is
 // present. This is the sole source of the canonical `mark` field so the
 // star text survives parsing for display instead of being silently dropped.
@@ -33,26 +15,28 @@ function _extractMark(trimmed) {
   return m ? (m[1].trim() || null) : null;
 }
 
-// Accepted forms: '-' | <rep-group> | (<load> <rep-group>)+
-// Standalone rep-group requires at least one comma to be unambiguous.
-export function parseWorkoutRow(raw) {
-  if (!raw || raw.trim() === '') return { ok: true, blank: true };
-  const trimmed = raw.trim();
-  if (trimmed === '-') return { ok: true, skipped: true };
-
-  const mark = _extractMark(trimmed);
-  const preprocessed = _preprocessWorkoutRow(trimmed);
+// Complete row-grammar classifier. Takes an already-cleaned set string (leading
+// flag resolved, no ` - ` prose tail, no trailing `*` mark) and validates it
+// against the row grammar, returning parsed sets or a structured error. This is
+// the single grammar authority: the primary parser (`parseWorkoutRow`) and the
+// continuation-segment classifier (`_isSetSegment`) both route through it, so a
+// trailing segment is treated as a continuation set iff the primary parser
+// would accept it as one.
+//
+// Accepted forms: <rep-group> | (<load> <rep-group>)+
+// A standalone rep-group requires at least one comma to be unambiguous.
+function _parseSetTokens(setStr, raw) {
   // ", " can be a pair separator ("90 10, 70 10,10") or a spaced rep-group
   // separator ("135 8, 8, 8"). Disambiguate: split on ", " and check whether
   // every subsequent chunk contains a space (weight+reps pair shape). If so,
   // join with " " (pair separator). Otherwise collapse the ", " to "," (rep group).
-  let pairNormalized = preprocessed;
-  if (preprocessed.includes(', ')) {
-    const chunks = preprocessed.split(', ');
+  let pairNormalized = setStr;
+  if (setStr.includes(', ')) {
+    const chunks = setStr.split(', ');
     const allSubsequentArePairs = chunks.slice(1).every(c => c.includes(' '));
     pairNormalized = allSubsequentArePairs ? chunks.join(' ') : chunks.join(',');
   }
-  const normalized = pairNormalized.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+  const normalized = pairNormalized.replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ').trim();
   const tokens = normalized.split(' ');
 
   if (tokens[0].includes(',')) {
@@ -67,7 +51,7 @@ export function parseWorkoutRow(raw) {
       return { ok: false, raw, error: 'Rep counts must be positive integers', category: 'invalid_field_value' };
     }
     return {
-      ok: true, skipped: false, mark,
+      ok: true, skipped: false,
       sets: reps.map((rep_count, i) => ({
         set_index: i + 1, rep_count,
         weight_value: null, weight_unit: null,
@@ -121,5 +105,60 @@ export function parseWorkoutRow(raw) {
       });
     }
   }
-  return { ok: true, skipped: false, mark, sets };
+  return { ok: true, skipped: false, sets };
+}
+
+// Classify a raw ` - `-separated continuation segment. No leading-flag stripping
+// (only the primary segment gets that), so prose like "RPE 9" can never be
+// promoted to a phantom load `9`; a segment counts as a continuation set iff it
+// parses cleanly under the shared grammar above.
+function _isSetSegment(seg) {
+  const t = seg.trim();
+  if (!t) return false;
+  return _parseSetTokens(t, t).ok === true;
+}
+
+// Split a trimmed row into its tokenizable set string and an optional captured
+// prose `tail`. The remainder after `*mark` removal is split on ` - `. Segment 0
+// is the primary set segment: leading-flag stripped and tokenized as the set
+// head (preserving forms like "Flat 225 5"). Each later segment is kept as a
+// continuation set only while it classifies as a set segment; the first segment
+// that does not (and every segment after it) is rejoined verbatim with ` - ` and
+// captured as the prose `tail` — displayed de-emphasized, never re-tokenized as
+// a load. Sets before the first prose segment are always preserved.
+function _segmentWorkoutRow(trimmed) {
+  const noAnnotation = trimmed.replace(/\s+\*.*$/, '').trim();
+  if (!noAnnotation.includes(' - ')) {
+    return { setString: _stripLeadingFlag(noAnnotation), tail: null };
+  }
+
+  const segments = noAnnotation.split(' - ');
+  const setParts = [_stripLeadingFlag(segments[0].trim())];
+  let tailStart = -1;
+  for (let k = 1; k < segments.length; k++) {
+    if (_isSetSegment(segments[k])) {
+      setParts.push(segments[k].trim());
+    } else {
+      tailStart = k;
+      break;
+    }
+  }
+  const tail = tailStart >= 0 ? (segments.slice(tailStart).join(' - ').trim() || null) : null;
+  return { setString: setParts.join(' '), tail };
+}
+
+// Parse a single logged set row. Returns `{ ok, blank }` for empty input,
+// `{ ok, skipped }` for a bare "-", or `{ ok, skipped: false, mark, tail, sets }`
+// on success. `mark` is the trailing `*...` star text; `tail` is any captured
+// inline prose (e.g. "RPE 9") that follows a valid set segment.
+export function parseWorkoutRow(raw) {
+  if (!raw || raw.trim() === '') return { ok: true, blank: true };
+  const trimmed = raw.trim();
+  if (trimmed === '-') return { ok: true, skipped: true };
+
+  const mark = _extractMark(trimmed);
+  const { setString, tail } = _segmentWorkoutRow(trimmed);
+  const result = _parseSetTokens(setString, raw);
+  if (!result.ok) return result;
+  return { ...result, mark, tail };
 }

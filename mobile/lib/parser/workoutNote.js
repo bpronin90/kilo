@@ -30,11 +30,12 @@ function _normalizeExerciseName(raw) {
 }
 
 // Canonical annotation shape carried on logged session_entries: a star `mark`
-// (e.g. "PR") preserved from parseWorkoutRow, plus any `--` comment lines
-// attributed to this entry. Consumed by WorkoutContentRenderer for display;
+// (e.g. "PR") preserved from parseWorkoutRow, any `--` comment lines attributed
+// to this entry, and a captured inline prose `tail` (e.g. "RPE 9") that followed
+// the row's valid set segments. Consumed by WorkoutContentRenderer for display;
 // never enters exercise-name normalization or the analytics set/rep data.
-function _makeAnnotation(mark) {
-  return { mark: mark || null, comments: [] };
+function _makeAnnotation(mark, tail) {
+  return { mark: mark || null, comments: [], tail: tail || null };
 }
 
 function _makeSet(setIndex, repCount, weightValue, weightUnit) {
@@ -215,7 +216,7 @@ export function parseWorkoutNote(noteText) {
           const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
           const reindexed = rowResult.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
           currentExercise.rows.push({ raw: entryRaw, sets: reindexed });
-          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed, annotation: _makeAnnotation(rowResult.mark) });
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: reindexed, annotation: _makeAnnotation(rowResult.mark, rowResult.tail) });
         } else if (rowResult.skipped) {
           currentExercise.session_entries.push({ skipped: true, raw: entryRaw, sets: [] });
         } else if (!rowResult.blank) {
@@ -231,7 +232,7 @@ export function parseWorkoutNote(noteText) {
           // bare: true marks this as a plain row (no leading '- '); a following
           // '--' comment still attaches to it via annotation.comments since it
           // is a valid logged entry (not skipped, not unparsed).
-          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true, annotation: _makeAnnotation(rowResult.mark) });
+          currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true, annotation: _makeAnnotation(rowResult.mark, rowResult.tail) });
         } else if (!rowResult.blank && !rowResult.skipped) {
           currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed });
           currentExercise.unparsed_rows.push(trimmed);
