@@ -91,6 +91,15 @@ export function WorkoutContentRenderer({
                                 />
                               );
                             }
+                            if (annotation && annotation.tail) {
+                              items.push(
+                                <AnnotationNote
+                                  key={`tail-${gi}-${si}-${ei}-${eni}`}
+                                  text={annotation.tail}
+                                  selectable={true}
+                                />
+                              );
+                            }
                             if (annotation && annotation.comments) {
                               annotation.comments.forEach((comment, ci) => {
                                 items.push(
