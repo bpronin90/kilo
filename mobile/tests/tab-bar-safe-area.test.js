@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Animated } from 'react-native';
+import { Animated, Pressable } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
@@ -9,6 +9,74 @@ import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP, TAB_BAR_HEIGHT_FALLBACK } from
 const metrics = (bottom, top = 0) => ({
   frame: { x: 0, y: 0, width: 800, height: 600 },
   insets: { top, right: 0, bottom, left: 0 },
+});
+
+describe('accessibility', () => {
+  test('TabBar container has tablist role', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const surface = component.root.findByType(Animated.View);
+    expect(surface.props.accessibilityRole).toBe('tablist');
+    expect(surface.props.accessible).toBe(true);
+    act(() => component.unmount());
+  });
+
+  test('Each tab has tab role and stable accessible name', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const pressables = component.root.findAllByType(Pressable);
+    expect(pressables).toHaveLength(tabs.length);
+    pressables.forEach((pressable, index) => {
+      expect(pressable.props.accessibilityRole).toBe('tab');
+      expect(pressable.props.accessibilityLabel).toBe(tabs[index]);
+      expect(pressable.props.accessible).toBe(true);
+    });
+    act(() => component.unmount());
+  });
+
+  test('Active tab exposes selected state', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Log" onTabPress={() => {}} />,
+      0
+    );
+    const pressables = component.root.findAllByType(Pressable);
+    pressables.forEach((pressable, index) => {
+      const isSelected = tabs[index] === 'Log';
+      expect(pressable.props.accessibilityState.selected).toBe(isSelected);
+    });
+    act(() => component.unmount());
+  });
+
+  test('Accessibility state updates when active tab changes', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    let pressables = component.root.findAllByType(Pressable);
+    expect(pressables[0].props.accessibilityState.selected).toBe(true);
+    expect(pressables[1].props.accessibilityState.selected).toBe(false);
+
+    act(() => {
+      component.update(
+        <SafeAreaProvider initialMetrics={metrics(0)}>
+          <TabBar tabs={tabs} activeTab="Log" onTabPress={() => {}} />
+        </SafeAreaProvider>
+      );
+    });
+
+    pressables = component.root.findAllByType(Pressable);
+    expect(pressables[0].props.accessibilityState.selected).toBe(false);
+    expect(pressables[1].props.accessibilityState.selected).toBe(true);
+
+    act(() => component.unmount());
+  });
 });
 
 const renderWithInsets = (child, bottom, top = 0) => {
