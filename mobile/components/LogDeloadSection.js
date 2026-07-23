@@ -286,6 +286,9 @@ export function LogDeloadSection({
               keyboardType="number-pad"
               selectTextOnFocus
               autoFocus
+              autoCorrect={false}
+              autoCapitalize="none"
+              spellCheck={false}
             />
             <View style={styles.ordinalButtons}>
               <Pressable
