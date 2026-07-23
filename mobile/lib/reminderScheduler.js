@@ -137,11 +137,20 @@ export async function reconcileWorkoutReminder() {
 
   const key = `${workout.enabled ? '1' : '0'}:${inferredWeekdays.join(',')}`;
   if (key !== lastReconciledKey) {
+    // Always go through applyWorkoutReminder, even when disabled: it cancels
+    // any existing workout notification unconditionally and only rebuilds a
+    // schedule when enabled (buildWorkoutNotificationRequests returns [] for
+    // a disabled reminder). Reconciling straight to "disabled" without this
+    // left a stale native notification from a previous enabled state
+    // uncancelled — e.g. at app startup, before any explicit user toggle.
+    const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
+    await applyWorkoutReminder(workout, resolved);
+    // Only cache the key once applyWorkoutReminder actually succeeded. Caching
+    // it beforehand meant one transient cancel/schedule failure would
+    // permanently poison every later identical call for the rest of the
+    // process — the dedup cache would believe that state was already applied
+    // and skip retrying it forever.
     lastReconciledKey = key;
-    if (workout.enabled) {
-      const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
-      await applyWorkoutReminder(workout, resolved);
-    }
   }
   return { workout, inferredWeekdays };
 }

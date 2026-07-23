@@ -211,6 +211,7 @@ describe('reconcileWorkoutReminder (#590)', () => {
     await reconcileWorkoutReminder();
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     jest.clearAllMocks();
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([]);
 
     setActiveNote(MONDAY_WEDNESDAY_NOTE);
     const result = await reconcileWorkoutReminder();
@@ -218,5 +219,43 @@ describe('reconcileWorkoutReminder (#590)', () => {
     expect(result.inferredWeekdays).toEqual([2, 4]);
     expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  test('reconciling a disabled workout reminder still cancels a stale persisted notification (review finding #2)', async () => {
+    // A workout notification left scheduled from a previous enabled state —
+    // e.g. the app is restarted after the reminder was disabled elsewhere, or
+    // Storage was mutated directly without going through applyWorkoutReminder.
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([
+      { identifier: 'stale-workout-1', content: { data: { kind: REMINDER_KIND.WORKOUT } } },
+      { identifier: 'stale-workout-2', content: { data: { kind: REMINDER_KIND.WORKOUT } } },
+    ]);
+    setActiveNote(MONDAY_NOTE);
+    Storage.loadWorkoutReminder.mockResolvedValue({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] });
+
+    const result = await reconcileWorkoutReminder();
+
+    expect(result.inferredWeekdays).toEqual([2]);
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledTimes(2);
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('stale-workout-1');
+    expect(mockNotifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('stale-workout-2');
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  test('a failed apply does not poison the dedup cache; an identical retry attempts apply again (review finding #1)', async () => {
+    setActiveNote(MONDAY_NOTE);
+    Storage.loadWorkoutReminder.mockResolvedValue(ENABLED_INFERRED_WORKOUT);
+    mockNotifications.scheduleNotificationAsync.mockRejectedValueOnce(new Error('transient schedule failure'));
+
+    await expect(reconcileWorkoutReminder()).rejects.toThrow('transient schedule failure');
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+
+    // Same routine, same settings — nothing about the schedule actually
+    // changed. If the cache had been written before the failed apply, this
+    // identical retry would be silently skipped forever.
+    const result = await reconcileWorkoutReminder();
+
+    expect(result.inferredWeekdays).toEqual([2]);
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(2);
   });
 });
