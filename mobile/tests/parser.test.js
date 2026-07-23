@@ -1090,9 +1090,15 @@ describe('parseWorkoutNote — graceful degradation', () => {
     expect(r.sections[0].exercises[0].unparsed_rows).toContain('as55 8,8,8');
   });
 
-  test('double-dash lines go to unparsed_rows', () => {
+  // #615: a `--` line after a valid logged row (bare or dash-prefixed) is a
+  // captured comment, not raw unparsed text — it attaches to that row's
+  // annotation.comments instead of unparsed_rows. See the dedicated #615
+  // annotation-shape describe block below for the full comment-capture contract.
+  test('double-dash line after a valid logged row is captured as a comment, not left in unparsed_rows', () => {
     const r = parseWorkoutNote('-Core: Plank\n30,30\n-- crunch machine 50 12');
-    expect(r.sections[0].exercises[0].unparsed_rows).toContain('-- crunch machine 50 12');
+    const ex = r.sections[0].exercises[0];
+    expect(ex.unparsed_rows).not.toContain('-- crunch machine 50 12');
+    expect(ex.session_entries[0].annotation.comments).toEqual(['crunch machine 50 12']);
   });
 
   test('prose note in exercise context goes to unparsed_rows', () => {
@@ -1811,6 +1817,21 @@ describe('#615: annotation shape { mark, comments } on session_entries', () => {
     const entry = ex.session_entries[0];
     expect(entry.annotation.comments).toEqual(['felt strong']);
     expect(entry.sets).toHaveLength(3);
+  });
+
+  // Regression: a `--` comment after a *bare* (no leading "- ") valid logged
+  // row must also attach to that row's annotation.comments, not fall through
+  // to unparsed_rows. Reviewer finding on #615/PR#651.
+  test('a `--` comment after a bare (no leading dash) logged row lands in annotation.comments only', () => {
+    const r = parseWorkoutNote('-Bench\n225 5\n-- felt strong');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.bare).toBe(true);
+    expect(entry.sets).toHaveLength(1);
+    expect(entry.annotation.comments).toEqual(['felt strong']);
+    // must not be duplicated anywhere else
+    expect(ex.unparsed_rows).toEqual([]);
+    expect(ex.unparsed_positions).toEqual([]);
   });
 
   test('multiple `--` comments after the same row accumulate in order', () => {

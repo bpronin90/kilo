@@ -1934,6 +1934,27 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
     );
     expect(rawTextNodes.length).toBe(0);
   });
+
+  // Regression: a `--` comment after a bare (no leading "- ") logged row must
+  // render as a "Note: ..." line beneath that row, not as raw unparsed text.
+  // Reviewer finding on #615/PR#651.
+  test('a `--` comment after a bare logged row renders as a note, only once, with no raw fallback duplication', () => {
+    const dayGroups = dayGroupsFor('-Bench\n225 5\n-- felt strong');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const noteNodes = component.root.findAll(
+      n => n.type === 'Text' && n.props.accessibilityLabel === 'Note: felt strong'
+    );
+    expect(noteNodes.length).toBe(1);
+    expect(noteNodes[0].props.children).toBe('felt strong');
+
+    const rawCommentNodes = component.root.findAll(
+      n => n.type === 'Text' && n.props.children === '-- felt strong'
+    );
+    expect(rawCommentNodes.length).toBe(0);
+  });
 });
 
 // Walk up from a matching Text node to its nearest Pressable (onPress) ancestor.
