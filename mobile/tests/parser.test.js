@@ -773,6 +773,28 @@ describe('#618: inline-tail segmentation captures prose without dropping sets', 
     expect(spread.sets).toHaveLength(2);
     expect(spread.sets.map(s => s.weight_value)).toEqual([90, 70]);
   });
+
+  // #574 S4 inline continuation fixtures: a dashed continuation segment that
+  // itself carries a comma rep-group ("185 8, 8") or a spaced weight/rep spread
+  // ("90 10, 70 10") must flow through the shared grammar classifier and keep
+  // every set counted with no prose tail.
+  test('"225 5 - 185 8, 8" counts all three sets with null tail', () => {
+    const r = parseWorkoutRow('225 5 - 185 8, 8');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(3);
+    expect(r.sets.map(s => s.weight_value)).toEqual([225, 185, 185]);
+    expect(r.sets.map(s => s.rep_count)).toEqual([5, 8, 8]);
+    expect(r.tail).toBeNull();
+  });
+
+  test('"225 5 - 90 10, 70 10" counts all three sets with null tail', () => {
+    const r = parseWorkoutRow('225 5 - 90 10, 70 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(3);
+    expect(r.sets.map(s => s.weight_value)).toEqual([225, 90, 70]);
+    expect(r.sets.map(s => s.rep_count)).toEqual([5, 10, 10]);
+    expect(r.tail).toBeNull();
+  });
 });
 
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
