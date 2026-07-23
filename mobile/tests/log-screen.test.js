@@ -1869,6 +1869,73 @@ describe('WorkoutContentRenderer: per-mode parity with main', () => {
   });
 });
 
+// #615: render read-view marks and comments from the canonical { mark, comments }
+// annotation shape, using real parser output so parser <-> renderer stay in sync.
+describe('#615: WorkoutContentRenderer renders marks and comments', () => {
+  const { WorkoutContentRenderer } = require('../components/WorkoutContentRenderer');
+  const { parseWorkoutNote } = require('../lib/parser/workoutNote');
+
+  function dayGroupsFor(note) {
+    const { sections } = parseWorkoutNote(note);
+    return [{ heading: null, sections }];
+  }
+
+  test('a star mark renders as a labeled, muted marker beside the set row', () => {
+    const dayGroups = dayGroupsFor('-Squat\n- 225 5,5,5 *PR');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const markNode = component.root.find(
+      n => n.type === 'Text' && n.props.accessibilityLabel === 'Marked: PR'
+    );
+    expect(markNode).toBeTruthy();
+    expect(markNode.props.children).toBe('★ PR');
+  });
+
+  test('a stored `--` comment renders as a muted, accessibility-labeled note line beneath the set', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 225 5,5,5\n-- felt strong');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const noteNode = component.root.find(
+      n => n.type === 'Text' && n.props.accessibilityLabel === 'Note: felt strong'
+    );
+    expect(noteNode).toBeTruthy();
+    expect(noteNode.props.children).toBe('felt strong');
+    expect(noteNode.props.style.color).toBe(Colors.textMuted);
+  });
+
+  test('a row with no annotation renders no mark or note text', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 225 5,5,5');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const markNodes = component.root.findAll(
+      n => n.type === 'Text' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Marked:')
+    );
+    const noteNodes = component.root.findAll(
+      n => n.type === 'Text' && typeof n.props.accessibilityLabel === 'string' && n.props.accessibilityLabel.startsWith('Note:')
+    );
+    expect(markNodes.length).toBe(0);
+    expect(noteNodes.length).toBe(0);
+  });
+
+  test('mark and comment do not duplicate the row as raw unparsed text', () => {
+    const dayGroups = dayGroupsFor('-Squat\n- 225 5,5,5 *PR\n-- easiest triple yet');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const rawTextNodes = component.root.findAll(
+      n => n.type === 'Text' && n.props.children === '225 5,5,5 *PR'
+    );
+    expect(rawTextNodes.length).toBe(0);
+  });
+});
+
 // Walk up from a matching Text node to its nearest Pressable (onPress) ancestor.
 function pressableAround(root, predicate) {
   const matches = root.findAll(

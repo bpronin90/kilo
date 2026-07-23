@@ -226,7 +226,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
   );
 }
 
-export function SetLine({ sets, selectable }) {
+export function SetLine({ sets, selectable, mark }) {
   const [plateWeight, setPlateWeight] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
@@ -261,12 +261,36 @@ export function SetLine({ sets, selectable }) {
           <Text selectable={selectable} style={styles.setReps}>{group.reps.join(', ')}</Text>
         </View>
       ))}
+      {mark ? (
+        <Text
+          selectable={selectable}
+          style={styles.setMark}
+          accessibilityLabel={`Marked: ${mark}`}
+        >
+          {`★ ${mark}`}
+        </Text>
+      ) : null}
       <PlateCalculatorModal
         visible={plateWeight != null}
         weight={plateWeight}
         onClose={() => setPlateWeight(null)}
       />
     </View>
+  );
+}
+
+// Muted, accessibility-labeled note line for a `--` comment stored beneath a
+// logged set row. Never affects parsed sets or exercise names — display only.
+export function AnnotationNote({ text, selectable }) {
+  if (!text) return null;
+  return (
+    <Text
+      selectable={selectable}
+      style={styles.annotationNote}
+      accessibilityLabel={`Note: ${text}`}
+    >
+      {text}
+    </Text>
   );
 }
 
@@ -621,5 +645,17 @@ const styles = StyleSheet.create({
     fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '400',
     color: Colors.text,
+  },
+  setMark: {
+    fontSize: SET_ROW_FONT_SIZE,
+    fontWeight: '400',
+    color: Colors.textMuted,
+    marginLeft: 6,
+  },
+  annotationNote: {
+    fontSize: SET_ROW_FONT_SIZE - 1,
+    fontStyle: 'italic',
+    color: Colors.textMuted,
+    paddingLeft: 0,
   },
 });
