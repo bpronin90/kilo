@@ -314,31 +314,45 @@ export function WeightScreen({
     );
   };
 
+  // Synchronous in-flight lock (#596 review follow-up): a rapid double-press —
+  // including a retry tapped again before the failed attempt's error/re-render
+  // lands — must not fire a second add()/update() write. This is a plain ref
+  // rather than React state so the guard is checked and set on the very first
+  // synchronous line, before any `await`, closing the window a state-based
+  // check (which only takes effect after a re-render) would leave open.
+  const submittingRef = useRef(false);
+
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLocalError('');
-    if (editingId) {
-      const parsed = parseWeightEntry(weightValue);
-      if (!parsed.ok) {
-        setLocalError(parsed.error);
-        return;
-      }
-      let ok;
-      try {
-        ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
-      } catch {
-        ok = false;
-      }
-      if (ok) {
-        cancelEdit();
+    try {
+      if (editingId) {
+        const parsed = parseWeightEntry(weightValue);
+        if (!parsed.ok) {
+          setLocalError(parsed.error);
+          return;
+        }
+        let ok;
+        try {
+          ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
+        } catch {
+          ok = false;
+        }
+        if (ok) {
+          cancelEdit();
+        } else {
+          // Rejected update (false return or thrown rejection): keep the edit
+          // open with the entered values so the user can retry (#596).
+          setLocalError('Could not update weight entry. Please try again.');
+        }
       } else {
-        // Rejected update (false return or thrown rejection): keep the edit
-        // open with the entered values so the user can retry (#596).
-        setLocalError('Could not update weight entry. Please try again.');
+        const date = weightDateEditEnabled ? newEntryDate : undefined;
+        const ok = await onSaveWeight(date);
+        if (ok && weightDateEditEnabled) setNewEntryDate(localDateToday());
       }
-    } else {
-      const date = weightDateEditEnabled ? newEntryDate : undefined;
-      const ok = await onSaveWeight(date);
-      if (ok && weightDateEditEnabled) setNewEntryDate(localDateToday());
+    } finally {
+      submittingRef.current = false;
     }
   };
 

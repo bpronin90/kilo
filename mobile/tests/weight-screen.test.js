@@ -278,6 +278,49 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'Editing entry')).toBe(false);
   });
 
+  // Issue #596 (review follow-up): a rapid double-press on "Save weigh-in"
+  // while the first onSaveWeight() call is still in flight must not fire a
+  // second write. Exercises the same submit handler / in-flight ref guard as
+  // the edit-path duplicate-press test above, for the add path.
+  test('rapid double-press on Save weigh-in during an in-flight save fires only one write', async () => {
+    let resolveSave;
+    const mockOnSaveWeight = jest.fn(() => new Promise((resolve) => {
+      resolveSave = () => resolve(true);
+    }));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={mockOnSaveWeight} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const saveBtn = findPressableByText(root, 'Save weigh-in');
+    expect(saveBtn).toBeTruthy();
+    // First press starts the in-flight save; a synchronous second press
+    // (before the pending promise resolves) simulates a rapid double-tap.
+    render.act(() => {
+      saveBtn.props.onPress();
+      saveBtn.props.onPress();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => {
+      resolveSave();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledTimes(1);
+  });
+
   test('edit submit shows validation error and does not call update for invalid weight', async () => {
     let component;
     render.act(() => {
@@ -378,6 +421,55 @@ describe('WeightScreen edit and delete correction flows', () => {
     const inputsAfter = root.findAll(n => n.type === 'TextInput');
     expect(inputsAfter[0].props.value).toBe('190');
     expect(hasText(root, 'Could not update weight entry. Please try again.')).toBe(true);
+  });
+
+  // Issue #596 (review follow-up): a rapid double-press on "Update entry"
+  // while the first update() call is still in flight must not fire a second
+  // write. The submit handler's synchronous in-flight ref should swallow the
+  // second press until the first attempt settles.
+  test('rapid double-press on Update entry during an in-flight update() fires only one write', async () => {
+    let resolveUpdate;
+    mockUpdate.mockImplementation(() => new Promise((resolve) => {
+      resolveUpdate = () => resolve(true);
+    }));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    // First press starts the in-flight update; a synchronous second press
+    // (before the pending promise resolves) simulates a rapid double-tap.
+    render.act(() => {
+      updateBtn.props.onPress();
+      updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+
+    // Let the in-flight update settle and confirm the guard released so a
+    // subsequent, distinct submit still works normally.
+    await render.act(async () => {
+      resolveUpdate();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 
   test('tapping the delete affordance shows a confirm prompt, calls remove, and removes the row', async () => {
