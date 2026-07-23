@@ -18,6 +18,7 @@ const {
   cancelReminders,
   applyWeighInReminder,
   applyWorkoutReminder,
+  installForegroundHandler,
 } = require('../lib/reminderScheduler');
 
 beforeEach(() => {
@@ -99,5 +100,17 @@ describe('enable scheduling', () => {
   test('cancelReminders is a no-op when nothing matching is scheduled', async () => {
     await cancelReminders(REMINDER_KIND.WEIGH_IN);
     expect(mockNotifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('installForegroundHandler', () => {
+  test('is exported and callable', async () => {
+    expect(typeof installForegroundHandler).toBe('function');
+  });
+
+  test('does not throw when called', async () => {
+    // Function should complete without error, whether or not handler
+    // is re-installed (prepared flag may already be true from other tests)
+    await expect(installForegroundHandler()).resolves.toBeUndefined();
   });
 });

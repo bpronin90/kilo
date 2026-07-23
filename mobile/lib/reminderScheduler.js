@@ -49,6 +49,17 @@ async function prepareNotifications(Notifications) {
   prepared = true;
 }
 
+// Install the foreground notification handler on app startup. This handler
+// runs when a notification arrives while the app is in the foreground, and should
+// be installed once during app initialization, independent of whether reminders
+// are scheduled or permissions are granted. The handler always displays the banner
+// and list, but does not play sound or set badge.
+export async function installForegroundHandler() {
+  if (!remindersSupported()) return;
+  const Notifications = getNotificationsModule();
+  await prepareNotifications(Notifications);
+}
+
 // Ask for the OS notification permission. Called only when a reminder toggle
 // is first enabled — never at startup. Returns true when granted.
 export async function requestReminderPermission() {
