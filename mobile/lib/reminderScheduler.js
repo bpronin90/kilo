@@ -53,6 +53,17 @@ async function prepareNotifications(Notifications) {
   prepared = true;
 }
 
+// Install the foreground notification handler on app startup. This handler
+// runs when a notification arrives while the app is in the foreground, and should
+// be installed once during app initialization, independent of whether reminders
+// are scheduled or permissions are granted. The handler always displays the banner
+// and list, but does not play sound or set badge.
+export async function installForegroundHandler() {
+  if (!remindersSupported()) return;
+  const Notifications = getNotificationsModule();
+  await prepareNotifications(Notifications);
+}
+
 // Ask for the OS notification permission. Called only when a reminder toggle
 // is first enabled — never at startup. Returns true when granted.
 export async function requestReminderPermission() {
@@ -119,29 +130,7 @@ export async function applyWorkoutReminder(settings, weekdays) {
 // only applyWorkoutReminder's existing cancel-then-reschedule.
 let lastReconciledKey = null;
 
-// Concurrency guard: the always-on subscriber (workoutNoteHooks.js) and a
-// mounted ReminderSettingsCard's own display refresh can both react to the
-// same notifyWorkoutNotes() broadcast and call reconcileWorkoutReminder()
-// around the same time. Since lastReconciledKey is only committed after
-// applyWorkoutReminder resolves (so a failure doesn't poison the cache —
-// see below), two concurrent callers that both read the old key before
-// either finishes would otherwise both run applyWorkoutReminder for the
-// same resolved key, racing duplicate cancel/reschedule calls against each
-// other. inFlightKey/inFlightPromise track a single in-progress apply so a
-// second caller for the *same* key awaits the first caller's promise
-// instead of starting its own. Cleared in `finally` regardless of outcome,
-// so a rejection still allows the next call — concurrent or not — to
-// re-attempt rather than leaving the guard permanently stuck.
-let inFlightKey = null;
-let inFlightPromise = null;
-
-export function __resetWorkoutReminderReconciliationForTests() {
-  lastReconciledKey = null;
-  inFlightKey = null;
-  inFlightPromise = null;
-}
-
-export async function reconcileWorkoutReminder() {
+async function readActiveRoutine() {
   const [workout, notes, currentId] = await Promise.all([
     Storage.loadWorkoutReminder(),
     Storage.loadWorkoutNotes(),
@@ -152,43 +141,98 @@ export async function reconcileWorkoutReminder() {
   );
   const { sections } = activeNote?.raw_text ? parseWorkoutNote(activeNote.raw_text) : { sections: [] };
   const inferredWeekdays = inferWorkoutWeekdays(sections);
+  return { workout, inferredWeekdays };
+}
 
+// One reconciliation pass: read persisted state fresh, and only touch the
+// native schedule when the resolved key changed since the last successful
+// apply.
+async function reconcileOnce() {
+  const { workout, inferredWeekdays } = await readActiveRoutine();
   const key = `${workout.enabled ? '1' : '0'}:${inferredWeekdays.join(',')}`;
   if (key !== lastReconciledKey) {
-    if (inFlightKey === key) {
-      // Another concurrent call is already applying this exact resolved
-      // state — coalesce onto it rather than racing a duplicate
-      // cancel/reschedule. Everything from this check through the `else`
-      // branch's assignment below runs synchronously (no await in between),
-      // so this read can never race the write.
-      await inFlightPromise;
-    } else {
-      // Always go through applyWorkoutReminder, even when disabled: it
-      // cancels any existing workout notification unconditionally and only
-      // rebuilds a schedule when enabled (buildWorkoutNotificationRequests
-      // returns [] for a disabled reminder). Reconciling straight to
-      // "disabled" without this left a stale native notification from a
-      // previous enabled state uncancelled — e.g. at app startup, before
-      // any explicit user toggle.
-      const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
-      inFlightKey = key;
-      inFlightPromise = applyWorkoutReminder(workout, resolved)
-        .then(() => {
-          // Only cache the key once applyWorkoutReminder actually succeeded.
-          // Caching it beforehand meant one transient cancel/schedule
-          // failure would permanently poison every later identical call for
-          // the rest of the process — the dedup cache would believe that
-          // state was already applied and skip retrying it forever.
-          lastReconciledKey = key;
-        })
-        .finally(() => {
-          if (inFlightKey === key) {
-            inFlightKey = null;
-            inFlightPromise = null;
-          }
-        });
-      await inFlightPromise;
-    }
+    // Always go through applyWorkoutReminder, even when disabled: it cancels
+    // any existing workout notification unconditionally and only rebuilds a
+    // schedule when enabled (buildWorkoutNotificationRequests returns [] for
+    // a disabled reminder). Reconciling straight to "disabled" without this
+    // left a stale native notification from a previous enabled state
+    // uncancelled — e.g. at app startup, before any explicit user toggle.
+    const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
+    await applyWorkoutReminder(workout, resolved);
+    // Only cache the key once applyWorkoutReminder actually succeeded.
+    // Caching it beforehand meant one transient cancel/schedule failure
+    // would permanently poison every later identical call for the rest of
+    // the process — the dedup cache would believe that state was already
+    // applied and skip retrying it forever.
+    lastReconciledKey = key;
   }
   return { workout, inferredWeekdays };
+}
+
+// Serialized reconciliation queue (issue #590 review). The always-on
+// subscriber (workoutNoteHooks.js), the App-startup call, and a mounted
+// ReminderSettingsCard's own display refresh can all call
+// reconcileWorkoutReminder() around the same time. A per-key in-flight guard
+// (an earlier version of this fix) only coalesced callers that happened to
+// resolve to the *same* key; two callers for *different* keys — e.g. the
+// routine changes again while the first apply is still cancelling/
+// rescheduling — could still run applyWorkoutReminder concurrently, and
+// nothing then guaranteed the newer one settled last: a slower older apply
+// could resolve after a faster newer one and leave the native schedule (and
+// lastReconciledKey) on stale state.
+//
+// This replaces that guard with a single serialized queue: at most one
+// reconcileOnce() ever runs at a time (`runningPromise`), and at most one
+// more is coalesced to run immediately after it (`pendingPromise`). Every
+// additional caller that arrives while something is already queued just
+// awaits that same pending run rather than adding a third slot. Crucially,
+// the queued run does not carry over any state captured at its own call
+// time — it re-reads persisted state fresh from readActiveRoutine() only
+// once its turn actually arrives, at which point it is, by construction,
+// the newest read possible. Combined with reconcileOnce() never starting a
+// second apply while one is in flight, an older apply can never resolve
+// last and clobber a newer one.
+let runningPromise = null;
+let pendingPromise = null;
+
+export function __resetWorkoutReminderReconciliationForTests() {
+  lastReconciledKey = null;
+  runningPromise = null;
+  pendingPromise = null;
+}
+
+export function reconcileWorkoutReminder() {
+  if (runningPromise) {
+    if (!pendingPromise) {
+      // `current` captures the in-flight promise by value here, not a live
+      // reference to the `runningPromise` binding, so this chain still
+      // fires correctly for the right run even after `runningPromise` is
+      // later reassigned. `.catch(() => {})` swallows a failed in-flight
+      // run so the queued run behind it still starts — a failed apply must
+      // never strand whatever was coalesced behind it.
+      const current = runningPromise;
+      pendingPromise = current.catch(() => {}).then(() => {
+        const next = reconcileOnce();
+        runningPromise = next;
+        pendingPromise = null;
+        // Detached cleanup: `.finally()` returns a new promise that would
+        // otherwise be an unobserved rejection when `next` fails, since
+        // nothing else consumes it (the function already returns `next`
+        // itself below). The trailing `.catch(() => {})` sinks that
+        // specific derived promise only — it does not affect `next`, which
+        // callers still see reject normally.
+        next.finally(() => {
+          if (runningPromise === next) runningPromise = null;
+        }).catch(() => {});
+        return next;
+      });
+    }
+    return pendingPromise;
+  }
+  const current = reconcileOnce();
+  runningPromise = current;
+  current.finally(() => {
+    if (runningPromise === current) runningPromise = null;
+  }).catch(() => {});
+  return current;
 }
