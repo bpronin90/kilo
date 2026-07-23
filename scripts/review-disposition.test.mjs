@@ -5,9 +5,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  carryForwardRecordBody,
   controllingDisposition,
   evaluateDisposition,
   exactApprovalDescription,
+  exactOverrideDescription,
+  hasImmutableCarryForwardRecord,
   implicitDependabotHandoff,
   issueNumbersForPullEvent,
   isMatchingExactApprovalStatus,
@@ -15,10 +18,9 @@ import {
   parseDisposition,
   parseHandoff,
   parseIssueReference,
-  pathsOverlap,
   pullsForIssue,
   selectAuthoritativeEvidence,
-  validateParentApproval,
+  validateParentDisposition,
   verifyRefreshObjects,
 } from './review-disposition.mjs';
 
@@ -105,6 +107,9 @@ test('accepts only immutable owner-authored verdicts and overrides', () => {
   assert.equal(parseDisposition(verdict({ association: 'COLLABORATOR' })), null);
   assert.equal(parseDisposition(verdict({ ownerOverride: true, association: 'COLLABORATOR' })), null);
   assert.equal(parseDisposition(verdict({ updated: '2026-07-16T12:02:00Z' })), null);
+  const malformedOverride = verdict({ ownerOverride: true });
+  malformedOverride.body = `STATUS=OWNER_OVERRIDE\nPR: #42\nCommit: ${HEAD}`;
+  assert.equal(parseDisposition(malformedOverride), null);
 });
 
 test('requires a current-head implementation handoff before review', () => {
@@ -239,35 +244,70 @@ test('accepts a verified carry-forward only when no exact-head disposition super
   assert.equal(evaluateDisposition({ pr: pr({ head: NEXT }), comments: [feedback], carryForward }).state, 'failure');
 });
 
-test('matches an accepted parent approval to its immutable comment id', () => {
+test('matches an accepted parent disposition to its immutable comment id and exact status', () => {
   const approved = verdict({ id: 77 });
-  const status = {
+  const approvalStatus = {
     context: 'review disposition accepted',
     state: 'success',
     description: exactApprovalDescription(77),
   };
-  assert.equal(isMatchingExactApprovalStatus(status, 77), true);
-  assert.equal(isMatchingExactApprovalStatus(status, 78), false);
-  assert.deepEqual(validateParentApproval({
-    comments: [approved], prNumber: 42, reviewedHead: HEAD, handoff: parseHandoff(handoff()), exactStatus: status,
-  }), { state: 'success', reviewCommentId: 77 });
-  assert.equal(validateParentApproval({
+  assert.equal(isMatchingExactApprovalStatus(approvalStatus, 77), true);
+  assert.equal(isMatchingExactApprovalStatus(approvalStatus, 78), false);
+  assert.deepEqual(validateParentDisposition({
+    comments: [approved], prNumber: 42, reviewedHead: HEAD, handoff: parseHandoff(handoff()), exactStatus: approvalStatus,
+  }), {
+    state: 'success',
+    dispositionCommentId: 77,
+    disposition: 'APPROVED',
+    reason: null,
+  });
+
+  const override = verdict({ id: 78, ownerOverride: true });
+  const overrideStatus = {
+    context: 'review disposition accepted',
+    state: 'success',
+    description: exactOverrideDescription(78),
+  };
+  assert.deepEqual(validateParentDisposition({
+    comments: [override],
+    prNumber: 42,
+    reviewedHead: HEAD,
+    handoff: parseHandoff(handoff()),
+    exactStatus: overrideStatus,
+  }), {
+    state: 'success',
+    dispositionCommentId: 78,
+    disposition: 'OWNER_OVERRIDE',
+    reason: 'owner accepts the risk',
+  });
+  assert.equal(validateParentDisposition({
+    comments: [override],
+    prNumber: 42,
+    reviewedHead: HEAD,
+    handoff: parseHandoff(handoff()),
+    exactStatus: {
+      context: 'review disposition accepted',
+      state: 'success',
+      description: 'carried OWNER_OVERRIDE; comment=78; patch unchanged',
+    },
+  }).state, 'success');
+  assert.equal(validateParentDisposition({
     comments: [verdict({ id: 77, updated: '2026-07-16T12:02:00Z' })],
     prNumber: 42,
     reviewedHead: HEAD,
     handoff: parseHandoff(handoff()),
-    exactStatus: status,
+    exactStatus: approvalStatus,
+  }).state, 'failure');
+  assert.equal(validateParentDisposition({
+    comments: [verdict({ id: 79, disposition: 'FEEDBACK' })],
+    prNumber: 42,
+    reviewedHead: HEAD,
+    handoff: parseHandoff(handoff()),
+    exactStatus: approvalStatus,
   }).state, 'failure');
 });
 
-test('detects exact and namespace path overlap without blocking siblings', () => {
-  assert.equal(pathsOverlap(['config'], ['config']), 'config ↔ config');
-  assert.equal(pathsOverlap(['config'], ['config/app.json']), 'config ↔ config/app.json');
-  assert.equal(pathsOverlap(['config/app.json'], ['config']), 'config/app.json ↔ config');
-  assert.equal(pathsOverlap(['config/a.json'], ['config/b.json']), null);
-});
-
-test('proves only a reproducible object-identical merge refresh', () => {
+test('proves different-file and same-file disjoint-hunk refreshes by exact patch application', () => {
   const originalCwd = process.cwd();
   const repo = mkdtempSync(join(tmpdir(), 'review-refresh-'));
   const run = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
@@ -305,18 +345,87 @@ test('proves only a reproducible object-identical merge refresh', () => {
     assert.equal(verifyRefreshObjects({ head: refresh, base }).description, 'refresh does not merge the current PR base');
 
     run('switch', '--quiet', '--detach', base);
-    writeFileSync(join(repo, 'base.txt'), 'reviewed overlap\n');
-    run('commit', '--quiet', '-am', 'reviewed overlap');
-    const reviewedOverlap = run('rev-parse', 'HEAD');
-    run('switch', '--quiet', '--detach', base);
-    writeFileSync(join(repo, 'base.txt'), 'base overlap\n');
-    run('commit', '--quiet', '-am', 'base overlap');
-    const baseOverlap = run('rev-parse', 'HEAD');
-    const overlapTree = run('rev-parse', `${reviewedOverlap}^{tree}`);
-    const overlapHead = run('commit-tree', overlapTree, '-p', reviewedOverlap, '-p', baseOverlap, '-m', 'overlap');
-    assert.match(verifyRefreshObjects({ head: overlapHead, base: baseOverlap }).description, /^refresh path overlap:/);
+    writeFileSync(join(repo, 'shared.test.js'), Array.from({ length: 30 }, (_, index) => `test ${index + 1}\n`).join(''));
+    run('add', 'shared.test.js');
+    run('commit', '--quiet', '-m', 'shared fixture');
+    const sharedBase = run('rev-parse', 'HEAD');
+    writeFileSync(join(repo, 'shared.test.js'), `${readFileSync(join(repo, 'shared.test.js'), 'utf8')}reviewed test\n`);
+    run('commit', '--quiet', '-am', 'append reviewed test');
+    const reviewedShared = run('rev-parse', 'HEAD');
+
+    run('switch', '--quiet', '--detach', sharedBase);
+    const lines = readFileSync(join(repo, 'shared.test.js'), 'utf8').split('\n');
+    lines[0] = 'base-only test';
+    writeFileSync(join(repo, 'shared.test.js'), lines.join('\n'));
+    run('commit', '--quiet', '-am', 'edit disjoint base hunk');
+    const baseShared = run('rev-parse', 'HEAD');
+    const sharedTree = run('merge-tree', '--write-tree', reviewedShared, baseShared).split(/\s+/)[0];
+    const sharedRefresh = run('commit-tree', sharedTree, '-p', reviewedShared, '-p', baseShared, '-m', 'same-file refresh');
+    assert.deepEqual(verifyRefreshObjects({ head: sharedRefresh, base: baseShared }), {
+      state: 'success', reviewedHead: reviewedShared,
+    });
+
+    const unreproducedTree = run('rev-parse', `${reviewedShared}^{tree}`);
+    const unreproduced = run('commit-tree', unreproducedTree, '-p', reviewedShared, '-p', baseShared, '-m', 'wrong tree');
+    assert.equal(verifyRefreshObjects({ head: unreproduced, base: baseShared }).state, 'failure');
+
+    run('switch', '--quiet', '--detach', sharedBase);
+    const reviewedConflictLines = readFileSync(join(repo, 'shared.test.js'), 'utf8').split('\n');
+    reviewedConflictLines[10] = 'reviewed conflicting test';
+    writeFileSync(join(repo, 'shared.test.js'), reviewedConflictLines.join('\n'));
+    run('commit', '--quiet', '-am', 'reviewed conflict');
+    const reviewedConflict = run('rev-parse', 'HEAD');
+
+    run('switch', '--quiet', '--detach', sharedBase);
+    const baseConflictLines = readFileSync(join(repo, 'shared.test.js'), 'utf8').split('\n');
+    baseConflictLines[10] = 'base conflicting test';
+    writeFileSync(join(repo, 'shared.test.js'), baseConflictLines.join('\n'));
+    run('commit', '--quiet', '-am', 'base conflict');
+    const baseConflict = run('rev-parse', 'HEAD');
+    const resolvedTree = run('rev-parse', `${reviewedConflict}^{tree}`);
+    const resolvedHead = run('commit-tree', resolvedTree, '-p', reviewedConflict, '-p', baseConflict, '-m', 'edited resolution');
+    assert.equal(verifyRefreshObjects({ head: resolvedHead, base: baseConflict }).state, 'failure');
   } finally {
     process.chdir(originalCwd);
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test('carry record preserves disposition identity and deduplicates only immutable owner records', () => {
+  const body = carryForwardRecordBody(
+    { number: 42, head: { sha: NEXT } },
+    {
+      reviewedHead: HEAD,
+      disposition: 'OWNER_OVERRIDE',
+      dispositionCommentId: 78,
+      reason: 'owner accepts the risk',
+    },
+  );
+  assert.match(body, /Disposition: OWNER_OVERRIDE/);
+  assert.match(body, /Disposition-Comment: 78/);
+  assert.match(body, /Reason: owner accepts the risk/);
+  const immutable = {
+    body,
+    author_association: 'OWNER',
+    created_at: '2026-07-16T12:00:00Z',
+    updated_at: '2026-07-16T12:00:00Z',
+  };
+  assert.equal(hasImmutableCarryForwardRecord([immutable], body), true);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'github-actions[bot]', type: 'Bot' },
+  }], body), true);
+  assert.equal(hasImmutableCarryForwardRecord([{ ...immutable, updated_at: '2026-07-16T12:01:00Z' }], body), false);
+  assert.equal(hasImmutableCarryForwardRecord([{ ...immutable, author_association: 'MEMBER' }], body), false);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'untrusted-bot[bot]', type: 'Bot' },
+  }], body), false);
+  assert.equal(hasImmutableCarryForwardRecord([{
+    ...immutable,
+    author_association: 'NONE',
+    user: { login: 'github-actions[bot]', type: 'User' },
+  }], body), false);
 });

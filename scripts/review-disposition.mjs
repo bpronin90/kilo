@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const REVIEW_CONTEXT = 'review disposition accepted';
 const SHA_RE = /^[0-9a-f]{40}$/;
@@ -204,51 +207,9 @@ function ensureCommit(sha) {
   }
 }
 
-function changedPaths(from, to) {
-  const output = git([
-    'diff-tree', '-r', '-z', '--name-only', '--no-renames', '--no-commit-id',
-    '--no-ext-diff', '--no-textconv', '--ignore-submodules=none', from, to,
-  ]);
-  const paths = [];
-  let start = 0;
-  for (let index = 0; index < output.length; index += 1) {
-    if (output[index] !== 0) continue;
-    if (index > start) paths.push(output.subarray(start, index));
-    start = index + 1;
-  }
-  return paths;
-}
-
-export function pathsOverlap(left, right) {
-  const asBuffer = (path) => Buffer.isBuffer(path) ? path : Buffer.from(path);
-  const key = (path) => path.toString('hex');
-  const display = (path) => path.toString('utf8');
-  const rightPaths = right.map(asBuffer);
-  const rightSet = new Map(rightPaths.map((path) => [key(path), path]));
-  const rightDescendant = new Map();
-  for (const path of rightPaths) {
-    for (let index = path.indexOf(0x2f); index !== -1; index = path.indexOf(0x2f, index + 1)) {
-      const ancestor = path.subarray(0, index);
-      if (!rightDescendant.has(key(ancestor))) rightDescendant.set(key(ancestor), path);
-    }
-  }
-  for (const value of left) {
-    const path = asBuffer(value);
-    const exact = rightSet.get(key(path));
-    if (exact) return `${display(path)} ↔ ${display(exact)}`;
-    const descendant = rightDescendant.get(key(path));
-    if (descendant) return `${display(path)} ↔ ${display(descendant)}`;
-    for (let index = path.indexOf(0x2f); index !== -1; index = path.indexOf(0x2f, index + 1)) {
-      const ancestor = rightSet.get(key(path.subarray(0, index)));
-      if (ancestor) return `${display(path)} ↔ ${display(ancestor)}`;
-    }
-  }
-  return null;
-}
-
-function rawDelta(from, to) {
+function exactPatch(from, to) {
   return git([
-    'diff-tree', '-r', '-z', '--raw', '--no-renames', '--no-commit-id', '--no-abbrev',
+    'diff', '--full-index', '--binary', '--no-renames',
     '--no-ext-diff', '--no-textconv', '--ignore-submodules=none', from, to,
   ]);
 }
@@ -257,21 +218,42 @@ export function exactApprovalDescription(commentId) {
   return `approved for current PR head; review=${commentId}`;
 }
 
+export function exactOverrideDescription(commentId) {
+  return `owner override for current PR head; comment=${commentId}`;
+}
+
 export function isMatchingExactApprovalStatus(status, commentId) {
   return status?.context === REVIEW_CONTEXT
     && status.state === 'success'
     && status.description === exactApprovalDescription(commentId);
 }
 
-export function validateParentApproval({ comments, prNumber, reviewedHead, handoff, exactStatus }) {
+function isMatchingExactDispositionStatus(status, disposition) {
+  const description = disposition.record === 'OWNER_OVERRIDE'
+    ? exactOverrideDescription(disposition.id)
+    : exactApprovalDescription(disposition.id);
+  return status?.context === REVIEW_CONTEXT
+    && status.state === 'success'
+    && (
+      status.description === description
+      || status.description?.startsWith(`carried ${disposition.disposition}; comment=${disposition.id};`)
+    );
+}
+
+export function validateParentDisposition({ comments, prNumber, reviewedHead, handoff, exactStatus }) {
   const reviewed = controllingDisposition(comments, prNumber, reviewedHead, handoff);
-  if (!reviewed || reviewed.record !== 'REVIEW' || reviewed.disposition !== 'APPROVED') {
-    return { state: 'failure', description: 'parent head lacks a controlling unedited approval' };
+  if (!reviewed || !new Set(['APPROVED', 'OWNER_OVERRIDE']).has(reviewed.disposition)) {
+    return { state: 'failure', description: 'parent head lacks a controlling unedited approval or owner override' };
   }
-  if (!isMatchingExactApprovalStatus(exactStatus, reviewed.id)) {
-    return { state: 'failure', description: 'parent approval is not the latest accepted review status' };
+  if (!isMatchingExactDispositionStatus(exactStatus, reviewed)) {
+    return { state: 'failure', description: 'parent disposition is not the latest accepted review status' };
   }
-  return { state: 'success', reviewCommentId: reviewed.id };
+  return {
+    state: 'success',
+    dispositionCommentId: reviewed.id,
+    disposition: reviewed.disposition,
+    reason: reviewed.reason ?? null,
+  };
 }
 
 export function verifyRefreshObjects({ head, base }) {
@@ -284,10 +266,28 @@ export function verifyRefreshObjects({ head, base }) {
 
   ensureCommit(reviewedHead);
   const mergeBase = git(['merge-base', reviewedHead, base], { encoding: 'utf8' }).trim();
-  const overlap = pathsOverlap(changedPaths(mergeBase, reviewedHead), changedPaths(mergeBase, base));
-  if (overlap) return { state: 'failure', description: `refresh path overlap: ${overlap}` };
-  if (!rawDelta(mergeBase, reviewedHead).equals(rawDelta(base, head))) {
-    return { state: 'failure', description: 'refresh changes the reviewed object-level delta' };
+  const isolated = mkdtempSync(join(tmpdir(), 'review-carry-forward-'));
+  const indexPath = join(isolated, 'index');
+  let appliedTree;
+  try {
+    const indexEnv = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_NO_REPLACE_OBJECTS: '1',
+      GIT_INDEX_FILE: indexPath,
+    };
+    git(['read-tree', base], { env: indexEnv });
+    git(['apply', '--cached', '--whitespace=nowarn', '-'], {
+      env: indexEnv,
+      input: exactPatch(mergeBase, reviewedHead),
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    appliedTree = git(['write-tree'], { env: indexEnv, encoding: 'utf8' }).trim();
+  } catch {
+    return { state: 'failure', description: 'reviewed patch does not apply exactly to the current PR base' };
+  } finally {
+    rmSync(isolated, { recursive: true, force: true });
   }
 
   let expectedTree;
@@ -299,6 +299,9 @@ export function verifyRefreshObjects({ head, base }) {
     return { state: 'failure', description: 'refresh cannot be reproduced as a conflict-free Git merge' };
   }
   const actualTree = git(['rev-parse', `${head}^{tree}`], { encoding: 'utf8' }).trim();
+  if (appliedTree !== actualTree) {
+    return { state: 'failure', description: 'refresh tree does not reproduce the exact reviewed patch on the current base' };
+  }
   if (expectedTree !== actualTree) {
     return { state: 'failure', description: 'refresh tree is not the reproducible Git merge result' };
   }
@@ -355,15 +358,17 @@ async function proveCarryForward({ repository, pr, comments }) {
     : latestHandoff(comments, pr.number, reviewedHead);
   if (!parentHandoff) return { state: 'failure', description: 'reviewed parent lacks a valid implementation handoff' };
   const exactStatus = await latestReviewStatus(repository, reviewedHead);
-  const approvalProof = validateParentApproval({
+  const dispositionProof = validateParentDisposition({
     comments, prNumber: pr.number, reviewedHead, handoff: parentHandoff, exactStatus,
   });
-  if (approvalProof.state !== 'success') return approvalProof;
+  if (dispositionProof.state !== 'success') return dispositionProof;
   return {
     state: 'success',
-    description: `carried approval from ${reviewedHead.slice(0, 12)}; patch unchanged`,
+    description: `carried ${dispositionProof.disposition}; comment=${dispositionProof.dispositionCommentId}; patch unchanged`,
     reviewedHead,
-    reviewCommentId: approvalProof.reviewCommentId,
+    dispositionCommentId: dispositionProof.dispositionCommentId,
+    disposition: dispositionProof.disposition,
+    reason: dispositionProof.reason,
     handoff: parentHandoff,
   };
 }
@@ -377,17 +382,34 @@ async function publishStatus(repository, pr, state, description) {
   });
 }
 
-async function postCarryForwardRecord(repository, issueNumber, pr, carry, comments) {
-  if (!issueNumber) return;
-  const marker = [
+export function carryForwardRecordBody(pr, carry) {
+  return [
     'STATUS=REVIEW_CARRIED_FORWARD',
     `PR: #${pr.number}`,
     `Reviewed-Commit: ${carry.reviewedHead}`,
     `Commit: ${pr.head.sha.toLowerCase()}`,
-    `Review-Comment: ${carry.reviewCommentId}`,
-    'Verification: conflict-free base refresh with identical object-level patch',
+    `Disposition: ${carry.disposition}`,
+    `Disposition-Comment: ${carry.dispositionCommentId}`,
+    ...(carry.disposition === 'OWNER_OVERRIDE' ? [`Reason: ${carry.reason}`] : []),
+    'Verification: conflict-free base refresh with exact reviewed patch and reproduced tree',
   ].join('\n');
-  if (comments.some((comment) => comment.body === marker && comment.created_at === comment.updated_at)) return;
+}
+
+export function hasImmutableCarryForwardRecord(comments, marker) {
+  return comments.some((comment) => (
+    comment.body === marker
+    && comment.created_at === comment.updated_at
+    && (
+      comment.author_association === 'OWNER'
+      || (comment.user?.login === 'github-actions[bot]' && comment.user?.type === 'Bot')
+    )
+  ));
+}
+
+async function postCarryForwardRecord(repository, issueNumber, pr, carry, comments) {
+  if (!issueNumber) return;
+  const marker = carryForwardRecordBody(pr, carry);
+  if (hasImmutableCarryForwardRecord(comments, marker)) return;
   await githubRequest(`/repos/${repository}/issues/${issueNumber}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -450,6 +472,9 @@ async function evaluatePullConversation(repository, pr) {
   await publishStatus(repository, pr, 'pending', 'evaluating current PR head review disposition');
   const result = evaluateDisposition({ pr, comments, handoff, carryForward });
   await publishStatus(repository, pr, result.state, result.description);
+  if (result.state === 'success' && carryForward?.state === 'success') {
+    await postCarryForwardRecord(repository, pr.number, pr, carryForward, comments);
+  }
   console.log(`PR #${pr.number}: ${result.state} — ${result.description}`);
 }
 
