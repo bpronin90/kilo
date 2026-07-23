@@ -165,15 +165,35 @@ export default function App() {
     await saveWorkoutCollapsed(next);
   }, [isWorkoutCollapsed]);
 
+  // Hydration authority (#614, follow-up to #572 claim 30): whether the editor
+  // has ever loaded stored text for the *current* note id is tracked explicitly
+  // via hydratedNoteIdRef, never inferred from `!workoutNoteText`. Emptiness is
+  // ambiguous — it's indistinguishable from a deliberate clear-to-empty edit —
+  // so it cannot be trusted as an "unhydrated" signal. A routine switch (id
+  // change) or the initial async load of currentNote for the still-current id
+  // hydrates from storage; any later refresh of currentNote for an id already
+  // marked hydrated (e.g. a background/remote note-list reload) leaves local
+  // text/title untouched, so a deliberate clear stays empty.
+  //
+  // id and note resolution are not atomic: a routine switch can update
+  // currentId a render before the matching currentNote resolves (#644
+  // review). hydratedNoteIdRef is therefore only stamped with the new id once
+  // a non-null currentNote for it has actually been applied — an id change
+  // that arrives with currentNote still null clears the editor but leaves the
+  // new id eligible for hydration so the real text/title load in once the
+  // note resolves, instead of being permanently skipped.
   const prevCurrentId = useRef(noteHook.currentId);
+  const hydratedNoteIdRef = useRef(null);
   React.useEffect(() => {
-    if (noteHook.currentId !== prevCurrentId.current) {
+    const idChanged = noteHook.currentId !== prevCurrentId.current;
+    const needsInitialHydration = hydratedNoteIdRef.current !== noteHook.currentId;
+    if (idChanged || (needsInitialHydration && noteHook.currentNote)) {
       setWorkoutNoteText(noteHook.currentNote?.raw_text || '');
       setWorkoutNoteTitle(noteHook.currentNote?.title || '');
       prevCurrentId.current = noteHook.currentId;
-    } else if (noteHook.currentNote && !workoutNoteText) {
-      setWorkoutNoteText(noteHook.currentNote.raw_text);
-      setWorkoutNoteTitle(noteHook.currentNote.title || '');
+      if (noteHook.currentNote) {
+        hydratedNoteIdRef.current = noteHook.currentId;
+      }
     }
   }, [noteHook.currentId, noteHook.currentNote]);
 
