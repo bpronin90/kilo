@@ -666,7 +666,11 @@ The real native app path now has a modular React Native shell:
   same-day section headings so warmup and lifting blocks can render under one
   calendar-day heading in the Log view, and normalization for the recurring
   mixed-load shorthand, leading flag prefixes, and parseable inline-tail row
-  segments evidenced in the archived workout-note samples. Progression and
+  segments evidenced in the archived workout-note samples. Inline prose that
+  follows the last parseable set segment on a row (e.g. `225 5 - RPE 9`) is now
+  captured verbatim as a display-only `annotation.tail` and rendered as a muted
+  note beneath the set instead of being dropped or misread as a phantom load,
+  while every leading parseable set segment still counts. Progression and
   per-day signal derivation now share one comparable-building helper, and the
   module also exports `normalizeExerciseKey()` so alias resolution and
   lowercased key matching follow the same canonical chain everywhere

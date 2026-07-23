@@ -692,6 +692,112 @@ describe('parseWorkoutRow', () => {
   });
 });
 
+// ── #618: preserve inline set segments while capturing prose tail ─────────────
+// Splitting a row on " - " must keep every leading parseable set segment while
+// capturing the first prose segment (and everything after it) verbatim as
+// `annotation.tail`, never re-tokenizing prose as a phantom load.
+describe('#618: inline-tail segmentation captures prose without dropping sets', () => {
+  test('inline-tail invariant: "225 5 - 185 8" stays two sets, no tail', () => {
+    const r = parseWorkoutRow('225 5 - 185 8');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    expect(r.sets[1]).toMatchObject({ weight_value: 185, rep_count: 8 });
+    expect(r.tail).toBeNull();
+  });
+
+  test('"225 5 - RPE 9" is one counted set plus captured tail "RPE 9"', () => {
+    const r = parseWorkoutRow('225 5 - RPE 9');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    expect(r.tail).toBe('RPE 9');
+    // The "9" must never become a phantom load.
+    expect(r.sets.some(s => s.weight_value === 9)).toBe(false);
+  });
+
+  test('"225 5 - felt heavy" is one counted set plus captured tail "felt heavy"', () => {
+    const r = parseWorkoutRow('225 5 - felt heavy');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    expect(r.tail).toBe('felt heavy');
+  });
+
+  test('leading set segments before the first prose segment are all preserved', () => {
+    const r = parseWorkoutRow('225 5 - 185 8 - RPE 9');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(2);
+    expect(r.sets[1]).toMatchObject({ weight_value: 185, rep_count: 8 });
+    expect(r.tail).toBe('RPE 9');
+  });
+
+  test('first prose segment and every later segment are captured verbatim', () => {
+    const r = parseWorkoutRow('225 5 - felt heavy - 185 8');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    // Once prose starts, the rest is tail even if a later segment looks like a set.
+    expect(r.tail).toBe('felt heavy - 185 8');
+  });
+
+  test('segment-zero leading flag support: "Flat 225 5" stays one set', () => {
+    const r = parseWorkoutRow('Flat 225 5');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    expect(r.tail).toBeNull();
+  });
+
+  test('star mark still captured alongside sets: "225 5,5,5 *PR"', () => {
+    const r = parseWorkoutRow('225 5,5,5 *PR');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(3);
+    expect(r.mark).toBe('PR');
+    expect(r.tail).toBeNull();
+  });
+
+  // Inline tails that use " - " for a leading-flag prose head still surface a set
+  // only when segment 0 parses; a lone numeric later segment is not a set.
+  test('lone-number later segment ("225 5 - 9") is captured as prose, not a set', () => {
+    const r = parseWorkoutRow('225 5 - 9');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(1);
+    expect(r.tail).toBe('9');
+  });
+
+  // Rows without " - " are unaffected: the following are ordinary set rows.
+  test('non-dash inline tails preserve all sets', () => {
+    expect(parseWorkoutRow('185 8').sets).toHaveLength(1);
+    expect(parseWorkoutRow('185 8, 8').sets).toHaveLength(2);
+    const spread = parseWorkoutRow('90 10, 70 10');
+    expect(spread.sets).toHaveLength(2);
+    expect(spread.sets.map(s => s.weight_value)).toEqual([90, 70]);
+  });
+
+  // #574 S4 inline continuation fixtures: a dashed continuation segment that
+  // itself carries a comma rep-group ("185 8, 8") or a spaced weight/rep spread
+  // ("90 10, 70 10") must flow through the shared grammar classifier and keep
+  // every set counted with no prose tail.
+  test('"225 5 - 185 8, 8" counts all three sets with null tail', () => {
+    const r = parseWorkoutRow('225 5 - 185 8, 8');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(3);
+    expect(r.sets.map(s => s.weight_value)).toEqual([225, 185, 185]);
+    expect(r.sets.map(s => s.rep_count)).toEqual([5, 8, 8]);
+    expect(r.tail).toBeNull();
+  });
+
+  test('"225 5 - 90 10, 70 10" counts all three sets with null tail', () => {
+    const r = parseWorkoutRow('225 5 - 90 10, 70 10');
+    expect(r.ok).toBe(true);
+    expect(r.sets).toHaveLength(3);
+    expect(r.sets.map(s => s.weight_value)).toEqual([225, 90, 70]);
+    expect(r.sets.map(s => s.rep_count)).toEqual([5, 10, 10]);
+    expect(r.tail).toBeNull();
+  });
+});
+
 // ── parseWorkoutEntry ─────────────────────────────────────────────────────────
 
 describe('parseWorkoutEntry', () => {
@@ -1889,6 +1995,41 @@ describe('#615: annotation shape { mark, comments } on session_entries', () => {
     const deadlift = weekB.exercises.find(e => e.name === 'Deadlift');
     expect(deadlift.sets).toHaveLength(3);
     expect(deadlift.session_entries).toEqual([]);
+  });
+});
+
+// ── #618: inline prose tail captured on the session entry annotation ──────────
+describe('#618: annotation.tail on logged session entries', () => {
+  test('dash-prefixed row "225 5 - RPE 9" logs one counted set and captures the tail', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5 - RPE 9');
+    const ex = r.sections[0].exercises[0];
+    const entry = ex.session_entries[0];
+    expect(entry.sets).toHaveLength(1);
+    expect(entry.sets[0]).toMatchObject({ weight_value: 225, rep_count: 5 });
+    expect(entry.annotation.tail).toBe('RPE 9');
+    // The set still participates in analytics data (flattened onto the exercise).
+    expect(ex.sets).toHaveLength(1);
+    expect(ex.unparsed_rows).toEqual([]);
+  });
+
+  test('bare (no leading dash) row also captures the prose tail', () => {
+    const r = parseWorkoutNote('-Bench\n225 5 - felt heavy');
+    const entry = r.sections[0].exercises[0].session_entries[0];
+    expect(entry.bare).toBe(true);
+    expect(entry.sets).toHaveLength(1);
+    expect(entry.annotation.tail).toBe('felt heavy');
+  });
+
+  test('a plain logged row carries a null tail', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5,5,5');
+    expect(r.sections[0].exercises[0].session_entries[0].annotation.tail).toBeNull();
+  });
+
+  test('valid inline-tail continuation set is preserved with no prose tail', () => {
+    const r = parseWorkoutNote('-Bench\n- 225 5 - 185 8');
+    const entry = r.sections[0].exercises[0].session_entries[0];
+    expect(entry.sets).toHaveLength(2);
+    expect(entry.annotation.tail).toBeNull();
   });
 });
 
