@@ -89,6 +89,9 @@ export function LogScreenEditorCard({
             placeholder="Deload note…"
             placeholderTextColor={Colors.textMuted}
             multiline
+            autoCorrect={false}
+            autoCapitalize="none"
+            spellCheck={false}
             style={[styles.input, styles.editorInput]}
           />
           <Button
@@ -107,6 +110,9 @@ export function LogScreenEditorCard({
                 onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
                 placeholder="Routine Name (e.g. Push Day)"
                 placeholderTextColor={Colors.textMuted}
+                autoCorrect={false}
+                autoCapitalize="none"
+                spellCheck={false}
                 style={[styles.input, styles.titleInput]}
               />
             )}
@@ -144,6 +150,9 @@ export function LogScreenEditorCard({
                       keyboardType="number-pad"
                       placeholder="Session number"
                       placeholderTextColor={Colors.textMuted}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      spellCheck={false}
                       accessibilityLabel="Deload session number"
                     />
                   </>
@@ -182,6 +191,9 @@ export function LogScreenEditorCard({
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
               placeholderTextColor={Colors.textMuted}
               multiline
+              autoCorrect={false}
+              autoCapitalize="none"
+              spellCheck={false}
               style={[styles.input, styles.editorInput]}
             />
             {(editingNoteId === 'new' || (!editingNoteId && !currentId)) ? (
