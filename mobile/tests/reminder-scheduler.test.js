@@ -258,4 +258,58 @@ describe('reconcileWorkoutReminder (#590)', () => {
     expect(result.inferredWeekdays).toEqual([2]);
     expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(2);
   });
+
+  test('coalesces concurrent calls for the same resolved key onto a single apply (review finding: concurrency)', async () => {
+    // Mirrors the production race: the always-on workoutNoteHooks.js
+    // subscriber and a mounted ReminderSettingsCard's own display refresh
+    // both reacting to the same notifyWorkoutNotes() broadcast, both calling
+    // reconcileWorkoutReminder() around the same time for the same routine.
+    setActiveNote(MONDAY_NOTE);
+    Storage.loadWorkoutReminder.mockResolvedValue(ENABLED_INFERRED_WORKOUT);
+
+    const [first, second] = await Promise.all([
+      reconcileWorkoutReminder(),
+      reconcileWorkoutReminder(),
+    ]);
+
+    expect(first.inferredWeekdays).toEqual([2]);
+    expect(second.inferredWeekdays).toEqual([2]);
+    // Two concurrent callers for the identical resolved state must coalesce
+    // onto one apply, not race duplicate cancel/reschedule calls against
+    // each other.
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    expect(mockNotifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+
+    // A third, later call for the same unchanged state is still a pure
+    // dedup no-op — coalescing must not have left anything scheduled twice
+    // or bypassed the ordinary lastReconciledKey short-circuit.
+    jest.clearAllMocks();
+    mockNotifications.getAllScheduledNotificationsAsync.mockResolvedValue([]);
+    await reconcileWorkoutReminder();
+    expect(mockNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(mockNotifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  test('a rejected concurrent apply does not leave the in-flight guard stuck; a later call still retries', async () => {
+    setActiveNote(MONDAY_NOTE);
+    Storage.loadWorkoutReminder.mockResolvedValue(ENABLED_INFERRED_WORKOUT);
+    mockNotifications.scheduleNotificationAsync.mockRejectedValueOnce(new Error('concurrent transient failure'));
+
+    const results = await Promise.allSettled([
+      reconcileWorkoutReminder(),
+      reconcileWorkoutReminder(),
+    ]);
+
+    // Both concurrent callers coalesced onto the single (failing) apply, so
+    // both see the rejection, and only one real apply attempt was made.
+    expect(results.every((r) => r.status === 'rejected')).toBe(true);
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+
+    // The in-flight guard must have been cleared on failure — an unrelated
+    // later call for the identical resolved state retries rather than being
+    // silently skipped or stuck waiting on a dead in-flight promise.
+    const result = await reconcileWorkoutReminder();
+    expect(result.inferredWeekdays).toEqual([2]);
+    expect(mockNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(2);
+  });
 });

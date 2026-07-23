@@ -119,8 +119,26 @@ export async function applyWorkoutReminder(settings, weekdays) {
 // only applyWorkoutReminder's existing cancel-then-reschedule.
 let lastReconciledKey = null;
 
+// Concurrency guard: the always-on subscriber (workoutNoteHooks.js) and a
+// mounted ReminderSettingsCard's own display refresh can both react to the
+// same notifyWorkoutNotes() broadcast and call reconcileWorkoutReminder()
+// around the same time. Since lastReconciledKey is only committed after
+// applyWorkoutReminder resolves (so a failure doesn't poison the cache —
+// see below), two concurrent callers that both read the old key before
+// either finishes would otherwise both run applyWorkoutReminder for the
+// same resolved key, racing duplicate cancel/reschedule calls against each
+// other. inFlightKey/inFlightPromise track a single in-progress apply so a
+// second caller for the *same* key awaits the first caller's promise
+// instead of starting its own. Cleared in `finally` regardless of outcome,
+// so a rejection still allows the next call — concurrent or not — to
+// re-attempt rather than leaving the guard permanently stuck.
+let inFlightKey = null;
+let inFlightPromise = null;
+
 export function __resetWorkoutReminderReconciliationForTests() {
   lastReconciledKey = null;
+  inFlightKey = null;
+  inFlightPromise = null;
 }
 
 export async function reconcileWorkoutReminder() {
@@ -137,20 +155,40 @@ export async function reconcileWorkoutReminder() {
 
   const key = `${workout.enabled ? '1' : '0'}:${inferredWeekdays.join(',')}`;
   if (key !== lastReconciledKey) {
-    // Always go through applyWorkoutReminder, even when disabled: it cancels
-    // any existing workout notification unconditionally and only rebuilds a
-    // schedule when enabled (buildWorkoutNotificationRequests returns [] for
-    // a disabled reminder). Reconciling straight to "disabled" without this
-    // left a stale native notification from a previous enabled state
-    // uncancelled — e.g. at app startup, before any explicit user toggle.
-    const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
-    await applyWorkoutReminder(workout, resolved);
-    // Only cache the key once applyWorkoutReminder actually succeeded. Caching
-    // it beforehand meant one transient cancel/schedule failure would
-    // permanently poison every later identical call for the rest of the
-    // process — the dedup cache would believe that state was already applied
-    // and skip retrying it forever.
-    lastReconciledKey = key;
+    if (inFlightKey === key) {
+      // Another concurrent call is already applying this exact resolved
+      // state — coalesce onto it rather than racing a duplicate
+      // cancel/reschedule. Everything from this check through the `else`
+      // branch's assignment below runs synchronously (no await in between),
+      // so this read can never race the write.
+      await inFlightPromise;
+    } else {
+      // Always go through applyWorkoutReminder, even when disabled: it
+      // cancels any existing workout notification unconditionally and only
+      // rebuilds a schedule when enabled (buildWorkoutNotificationRequests
+      // returns [] for a disabled reminder). Reconciling straight to
+      // "disabled" without this left a stale native notification from a
+      // previous enabled state uncancelled — e.g. at app startup, before
+      // any explicit user toggle.
+      const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
+      inFlightKey = key;
+      inFlightPromise = applyWorkoutReminder(workout, resolved)
+        .then(() => {
+          // Only cache the key once applyWorkoutReminder actually succeeded.
+          // Caching it beforehand meant one transient cancel/schedule
+          // failure would permanently poison every later identical call for
+          // the rest of the process — the dedup cache would believe that
+          // state was already applied and skip retrying it forever.
+          lastReconciledKey = key;
+        })
+        .finally(() => {
+          if (inFlightKey === key) {
+            inFlightKey = null;
+            inFlightPromise = null;
+          }
+        });
+      await inFlightPromise;
+    }
   }
   return { workout, inferredWeekdays };
 }
