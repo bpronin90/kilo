@@ -1,9 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card } from './UI';
 import { Colors } from '../theme/colors';
 import * as Storage from '../storage/entries';
+// Imported directly from the hook module (not the `hooks/useEntries` barrel)
+// so this card's reconciliation subscribes to the same add/update/remove/
+// selectCurrent broadcast every `useWorkoutNotes()` screen already relies on,
+// without depending on that barrel's public hook contract or its mocks.
+import { workoutNotesListeners } from '../hooks/entries/workoutNoteHooks';
 import { parseWorkoutNote } from '../lib/parser';
 import {
   WEEKDAYS,
@@ -32,6 +37,18 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // toggles. The OS notification permission is requested only when a toggle is
 // first enabled; on denial the toggle stays off and an inline message explains
 // why. Disabling a toggle cancels its scheduled notifications.
+async function loadInferredWeekdays() {
+  const [notes, currentId] = await Promise.all([
+    Storage.loadWorkoutNotes(),
+    Storage.loadCurrentWorkoutId(),
+  ]);
+  const activeNote = (Array.isArray(notes) ? notes : []).find(
+    (n) => n.id === currentId || n.isCurrent === true
+  );
+  const { sections } = activeNote?.raw_text ? parseWorkoutNote(activeNote.raw_text) : { sections: [] };
+  return inferWorkoutWeekdays(sections);
+}
+
 export function ReminderSettingsCard() {
   const [weighIn, setWeighIn] = useState({ ...DEFAULT_WEIGH_IN_REMINDER });
   const [workout, setWorkout] = useState({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
@@ -44,23 +61,57 @@ export function ReminderSettingsCard() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [weighInSettings, workoutSettings, notes, currentId] = await Promise.all([
+      const [weighInSettings, workoutSettings, inferred] = await Promise.all([
         Storage.loadWeighInReminder(),
         Storage.loadWorkoutReminder(),
-        Storage.loadWorkoutNotes(),
-        Storage.loadCurrentWorkoutId(),
+        loadInferredWeekdays(),
       ]);
       if (cancelled) return;
       setWeighIn(weighInSettings);
       setWorkout(workoutSettings);
-      const activeNote = (Array.isArray(notes) ? notes : []).find(
-        (n) => n.id === currentId || n.isCurrent === true
-      );
-      const { sections } = activeNote?.raw_text ? parseWorkoutNote(activeNote.raw_text) : { sections: [] };
-      setInferredWeekdays(inferWorkoutWeekdays(sections));
+      setInferredWeekdays(inferred);
     })().catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Reconcile the enabled workout reminder when the active routine changes
+  // while this card stays mounted (#590): the routine's text is edited, or a
+  // different routine becomes current. Both paths call `notifyWorkoutNotes()`
+  // (add/update/remove/selectCurrent), so re-reading here after that broadcast
+  // catches both. Reschedules silently — no permission prompt — and only when
+  // the inferred weekdays actually changed; explicit fallback weekdays are
+  // untouched here, they are already persisted through handleToggleWeekday.
+  const workoutRef = useRef(workout);
+  useEffect(() => {
+    workoutRef.current = workout;
+  }, [workout]);
+
+  const inferredRef = useRef(inferredWeekdays);
+  useEffect(() => {
+    inferredRef.current = inferredWeekdays;
+  }, [inferredWeekdays]);
+
+  useEffect(() => {
+    const onNoteChange = () => {
+      loadInferredWeekdays()
+        .then((inferred) => {
+          const prevKey = inferredRef.current.join(',');
+          const nextKey = inferred.join(',');
+          setInferredWeekdays(inferred);
+          if (nextKey === prevKey) return;
+          const current = workoutRef.current;
+          if (!current.enabled) return;
+          const resolved = resolveWorkoutWeekdays(inferred, current.fallbackWeekdays);
+          applyWorkoutReminder(current, resolved).catch(() => {});
+        })
+        .catch(() => {});
+    };
+    workoutNotesListeners.push(onNoteChange);
+    return () => {
+      const index = workoutNotesListeners.indexOf(onNoteChange);
+      if (index !== -1) workoutNotesListeners.splice(index, 1);
     };
   }, []);
 
