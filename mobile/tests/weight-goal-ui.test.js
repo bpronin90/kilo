@@ -84,16 +84,13 @@ describe('WeightScreen', () => {
 
   const findText = (root, text) => {
     const allText = root.findAllByType('Text');
-    const match = allText.find(t => {
+    return allText.find(t => {
       const children = t.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children);
+      // Safely traverse React children without JSON.stringify on renderer objects.
+      // Handle arrays (nested fragments), strings, and null/undefined.
+      const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
       return flat.includes(text);
     });
-    if (!match) {
-        // Fallback for deeply nested children or complex fragments
-        return allText.find(t => JSON.stringify(t.props.children).includes(text));
-    }
-    return match;
   };
 
   test('renders today target date as completed/overdue state (weeks_remaining <= 0)', () => {
