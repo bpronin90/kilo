@@ -201,6 +201,54 @@ describe('App workout-editor hydration authority (#614)', () => {
     expect(latestLogProps.workoutNoteTitle).toBe(NOTE_B.title);
   });
 
+  test('a routine switch where currentId updates a render before its currentNote resolves still hydrates once the note arrives (#644 review)', () => {
+    useEntries.useWorkoutNotes.mockReturnValue(baseNoteHookMock({
+      notes: [NOTE_A], currentId: 'note-a', currentNote: NOTE_A,
+    }));
+    renderer.act(() => {
+      component = renderer.create(<App />);
+    });
+    expect(latestLogProps.workoutNoteText).toBe(NOTE_A.raw_text);
+
+    // currentId flips to the new routine, but noteHook.currentNote has not
+    // resolved yet (id and note resolution are not atomic) — the editor
+    // clears in the interim.
+    useEntries.useWorkoutNotes.mockReturnValue(baseNoteHookMock({
+      notes: [NOTE_A], currentId: 'note-b', currentNote: null,
+    }));
+    renderer.act(() => {
+      component.update(<App />);
+    });
+    expect(latestLogProps.workoutNoteText).toBe('');
+    expect(latestLogProps.workoutNoteTitle).toBe('');
+
+    // The matching note object resolves on a later render with the same id.
+    useEntries.useWorkoutNotes.mockReturnValue(baseNoteHookMock({
+      notes: [NOTE_A, NOTE_B], currentId: 'note-b', currentNote: NOTE_B,
+    }));
+    renderer.act(() => {
+      component.update(<App />);
+    });
+    expect(latestLogProps.workoutNoteText).toBe(NOTE_B.raw_text);
+    expect(latestLogProps.workoutNoteTitle).toBe(NOTE_B.title);
+
+    // Once resolved, a deliberate clear on note-b is still respected across an
+    // unrelated refresh of the same id.
+    renderer.act(() => {
+      latestLogProps.setWorkoutNoteText('');
+      latestLogProps.setWorkoutNoteTitle('');
+    });
+    const refreshedNoteB = { ...NOTE_B, saved_at: '2026-06-04T00:00:00.000Z' };
+    useEntries.useWorkoutNotes.mockReturnValue(baseNoteHookMock({
+      notes: [NOTE_A, refreshedNoteB], currentId: 'note-b', currentNote: refreshedNoteB,
+    }));
+    renderer.act(() => {
+      component.update(<App />);
+    });
+    expect(latestLogProps.workoutNoteText).toBe('');
+    expect(latestLogProps.workoutNoteTitle).toBe('');
+  });
+
   test('a deliberate clear stays empty across an unrelated currentNote object refresh for the same id', () => {
     useEntries.useWorkoutNotes.mockReturnValue(baseNoteHookMock({
       notes: [NOTE_A], currentId: 'note-a', currentNote: NOTE_A,

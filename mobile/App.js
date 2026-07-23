@@ -174,6 +174,14 @@ export default function App() {
   // hydrates from storage; any later refresh of currentNote for an id already
   // marked hydrated (e.g. a background/remote note-list reload) leaves local
   // text/title untouched, so a deliberate clear stays empty.
+  //
+  // id and note resolution are not atomic: a routine switch can update
+  // currentId a render before the matching currentNote resolves (#644
+  // review). hydratedNoteIdRef is therefore only stamped with the new id once
+  // a non-null currentNote for it has actually been applied — an id change
+  // that arrives with currentNote still null clears the editor but leaves the
+  // new id eligible for hydration so the real text/title load in once the
+  // note resolves, instead of being permanently skipped.
   const prevCurrentId = useRef(noteHook.currentId);
   const hydratedNoteIdRef = useRef(null);
   React.useEffect(() => {
@@ -183,7 +191,9 @@ export default function App() {
       setWorkoutNoteText(noteHook.currentNote?.raw_text || '');
       setWorkoutNoteTitle(noteHook.currentNote?.title || '');
       prevCurrentId.current = noteHook.currentId;
-      hydratedNoteIdRef.current = noteHook.currentId;
+      if (noteHook.currentNote) {
+        hydratedNoteIdRef.current = noteHook.currentId;
+      }
     }
   }, [noteHook.currentId, noteHook.currentNote]);
 
