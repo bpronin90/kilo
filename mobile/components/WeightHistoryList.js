@@ -220,7 +220,7 @@ function filterByDateRange(entries, fromDate, toDate) {
   });
 }
 
-export function WeightHistoryList({
+function WeightHistoryListImpl({
   entries,
   editingId,
   handleEditEntry,
@@ -510,6 +510,17 @@ export function WeightHistoryList({
     </View>
   );
 }
+
+// Memoized (#592): WeightScreen re-renders on every Weight/Note field
+// keystroke because it owns that input state, but its own local UI state
+// (collapsed, date filter, etc.) lives inside this component, not in
+// WeightScreen's props to it. Without memoization, a large expanded history
+// (up to ~1,000 entries) gets fully remapped on every keystroke even though
+// none of this component's own props changed. React.memo bails out unless
+// entries/editingId/handleEditEntry/handleDelete/getWeightDeltaSeverity/goalInfo
+// actually change; WeightScreen keeps those referentially stable across
+// unrelated keystrokes (see its useCallback/useMemo usage).
+export const WeightHistoryList = React.memo(WeightHistoryListImpl);
 
 const styles = StyleSheet.create({
   historyRowPressed: {
