@@ -17,6 +17,24 @@ import { LogScreen } from './screens/LogScreen';
 import { WeightScreen } from './screens/WeightScreen';
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
 
+// Memoized per-tab wrappers (#592): all five tabs stay mounted under
+// display:none (#527), and App owns shell-level input state (weightValue,
+// weightNote, workoutNoteText, workoutNoteTitle, etc.) at the top level. Every
+// keystroke in one tab's field re-runs App's render and renderContent(), which
+// previously re-created every tab's element and re-rendered every mounted
+// screen — including the four tabs that keystroke had nothing to do with.
+// React.memo shallow-compares each screen's own props and bails out of
+// re-rendering (and reconciling that screen's subtree) when they are
+// unchanged, so a Weight/Log keystroke only re-renders the tab that owns it.
+// This relies on the callbacks/values passed to the OTHER tabs staying
+// referentially stable across that keystroke (useCallback/useState already
+// guarantee this below), not on any change to the child screens themselves.
+const MemoHomeScreen = React.memo(HomeScreen);
+const MemoMoreScreen = React.memo(MoreScreen);
+const MemoLogScreen = React.memo(LogScreen);
+const MemoWeightScreen = React.memo(WeightScreen);
+const MemoAnalyticsScreen = React.memo(AnalyticsScreen);
+
 import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
@@ -110,6 +128,35 @@ export default function App() {
   const weightHook = useWeightEntries();
   const noteHook = useWorkoutNotes();
   const auth = useAuthSession();
+
+  // Stable auth object for MemoMoreScreen (#592 review follow-up):
+  // useAuthSession() returns a fresh object literal on every App render, so
+  // `auth={auth}` gave MemoMoreScreen a changed prop on every keystroke
+  // anywhere in the shell, defeating its memoization. Every field
+  // useAuthSession returns is either a primitive/session value that only
+  // changes when the auth state itself changes, or a function already
+  // useCallback-memoized inside the hook — so rebuilding the object with
+  // useMemo keyed on those fields yields a reference that only changes when
+  // auth actually changes, not on every render.
+  const stableAuth = React.useMemo(() => auth, [
+    auth.configured,
+    auth.loading,
+    auth.session,
+    auth.user,
+    auth.signedIn,
+    auth.passwordRecovery,
+    auth.recoveryError,
+    auth.clearPasswordRecovery,
+    auth.signInWithPassword,
+    auth.signUpWithPassword,
+    auth.signOut,
+    auth.resetPasswordForEmail,
+    auth.signInWithOAuth,
+    auth.handleAuthCallbackUrl,
+    auth.updatePassword,
+    auth.serverExport,
+    auth.deleteAccount,
+  ]);
   const {
     ownershipPrompt,
     canRestore,
@@ -327,7 +374,15 @@ export default function App() {
     } finally {
       setWeightSaving(false);
     }
-  }, [weightSaving, weightValue, weightNote, weightHook]);
+  // Depend on weightHook.add itself, not the whole weightHook object (#592
+  // review follow-up): useWeightEntries() returns a fresh object literal on
+  // every App render, but its add/remove/update/refresh functions are each
+  // useCallback-memoized inside the hook and stay referentially stable across
+  // renders that don't change their own internals. Depending on the whole
+  // object recreated saveWeight (and, through it, MemoWeightScreen's onSaveWeight
+  // prop) on every keystroke anywhere in App, defeating the tab-memoization
+  // above for the very tab it was meant to isolate.
+  }, [weightSaving, weightValue, weightNote, weightHook.add]);
 
   const handleExport = useCallback(() => buildExportPayload(buildCloudExport), []);
 
@@ -350,7 +405,9 @@ export default function App() {
       noteHook.refresh();
     }
     return result;
-  }, [weightHook, noteHook]);
+  // weightHook.refresh/noteHook.refresh, not the whole hook objects (#592
+  // review follow-up) — see the comment on saveWeight's dependency list.
+  }, [weightHook.refresh, noteHook.refresh]);
 
   const saveWorkout = useCallback(async () => {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
@@ -372,13 +429,38 @@ export default function App() {
     } finally {
       setWorkoutSaving(false);
     }
-  }, [workoutSaving, workoutNoteText, noteHook]);
+  // noteHook.currentId/update/add/selectCurrent individually, not the whole
+  // noteHook object (#592 review follow-up) — see the comment on saveWeight's
+  // dependency list. currentId is a plain value (fine to depend on directly);
+  // update/add/selectCurrent are each useCallback-memoized inside the hook.
+  }, [workoutSaving, workoutNoteText, noteHook.currentId, noteHook.update, noteHook.add, noteHook.selectCurrent]);
+
+  // Stable callbacks for MoreScreen's toggle props (#592): these were
+  // previously passed as fresh inline arrow functions on every App render, so
+  // MemoMoreScreen's shallow prop comparison never matched — defeating the
+  // memoization above for any keystroke on any tab, not just the intended
+  // unrelated ones. useCallback keeps their identity stable across renders
+  // that do not change the values each closes over.
+  const handleUpdateFatigueMultiplier = useCallback(async (val) => {
+    setFatigueMultiplier(val);
+    await saveFatigueMultiplier(val);
+  }, []);
+
+  const handleUpdateWeightDateEditEnabled = useCallback(async (val) => {
+    setWeightDateEditEnabled(val);
+    await saveWeightDateEditEnabled(val);
+  }, []);
+
+  const handleUpdateDeloadDateEditEnabled = useCallback(async (val) => {
+    setDeloadDateEditEnabled(val);
+    await saveDeloadDateEditEnabled(val);
+  }, []);
 
   const renderContent = () => {
     return (
       <>
         <View testID="tab-content-Home" style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}>
-          <HomeScreen
+          <MemoHomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
             notes={noteHook.notes}
@@ -388,7 +470,7 @@ export default function App() {
           />
         </View>
         <View testID="tab-content-Log" style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
-          <LogScreen
+          <MemoLogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
             workoutNoteTitle={workoutNoteTitle}
@@ -402,7 +484,7 @@ export default function App() {
           />
         </View>
         <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
-          <WeightScreen
+          <MemoWeightScreen
             weightValue={weightValue}
             setWeightValue={setWeightValue}
             weightNote={weightNote}
@@ -416,32 +498,23 @@ export default function App() {
           />
         </View>
         <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
-          <AnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
+          <MemoAnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
         </View>
         <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
-          <MoreScreen
+          <MemoMoreScreen
             isActive={activeTab === 'More'}
-            auth={auth}
+            auth={stableAuth}
             registerBackConsumer={registerBackConsumer}
             onOwnsBackChange={setTabOwnsBack}
             onNavigate={handleTabPress}
             onExport={handleExport}
             onImport={handleImport}
             fatigueMultiplier={fatigueMultiplier}
-            onUpdateFatigueMultiplier={async (val) => {
-              setFatigueMultiplier(val);
-              await saveFatigueMultiplier(val);
-            }}
+            onUpdateFatigueMultiplier={handleUpdateFatigueMultiplier}
             weightDateEditEnabled={weightDateEditEnabled}
-            onUpdateWeightDateEditEnabled={async (val) => {
-              setWeightDateEditEnabled(val);
-              await saveWeightDateEditEnabled(val);
-            }}
+            onUpdateWeightDateEditEnabled={handleUpdateWeightDateEditEnabled}
             deloadDateEditEnabled={deloadDateEditEnabled}
-            onUpdateDeloadDateEditEnabled={async (val) => {
-              setDeloadDateEditEnabled(val);
-              await saveDeloadDateEditEnabled(val);
-            }}
+            onUpdateDeloadDateEditEnabled={handleUpdateDeloadDateEditEnabled}
           />
         </View>
       </>
