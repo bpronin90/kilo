@@ -10,11 +10,29 @@
 // props (including the shell setters) so the test can drive a "keystroke" by
 // calling the captured setter directly, exactly like a TextInput's
 // onChangeText would, and then assert which screens' render counts moved.
+//
+// Realistic (unstable) hook mocks (#592 review follow-up): useWeightEntries,
+// useWorkoutNotes, and useAuthSession each return a *fresh object literal* on
+// every real call, even though the individual functions/values inside that
+// object are themselves referentially stable (each hook's own add/update/
+// refresh/etc. is useCallback-memoized with stable deps, and entries/session/
+// etc. only change when the underlying data actually changes). An earlier
+// version of this test mocked those hooks to return one single fixed object
+// forever, which hid exactly the App.js bug this now guards against: App
+// depended on the *whole* hook-return object in some useCallback dep arrays
+// (weightHook, noteHook) and passed `auth` straight through to MemoMoreScreen,
+// so a hook returning a new container every render broke memoization even
+// though this test's stable-object mock couldn't see it. These mocks now
+// return a new container object on every invocation, matching real hook
+// behavior, while keeping the individual fields/functions stable — proving
+// isolation holds against the actual instability, not a mocked-away version
+// of it.
 
 import React from 'react';
 import renderer from 'react-test-renderer';
 import App from '../App';
 import * as useEntries from '../hooks/useEntries';
+import * as useAuthSessionModule from '../hooks/useAuthSession';
 
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 
@@ -115,17 +133,7 @@ jest.mock('../screens/MoreScreen', () => {
 });
 
 jest.mock('../hooks/useEntries');
-
-// A stable object identity is required for MemoMoreScreen's shallow prop
-// comparison to hold across unrelated renders; the real useAuthSession hook
-// returns a fresh object literal on every call (a pre-existing property of
-// that hook, outside this issue's Allowed Files). Stubbing it to return the
-// same reference every time isolates exactly the shell-state behavior #592
-// changed, rather than conflating it with that unrelated hook's own churn.
-const STABLE_AUTH = { configured: false };
-jest.mock('../hooks/useAuthSession', () => ({
-  useAuthSession: () => STABLE_AUTH,
-}));
+jest.mock('../hooks/useAuthSession');
 
 const CURRENT_NOTE = {
   id: 'note1',
@@ -151,28 +159,67 @@ describe('App shell keystroke isolation (#592)', () => {
     capturedWeightSetters = null;
     capturedLogSetters = null;
 
-    useEntries.useWeightEntries.mockReturnValue({
-      entries: [{ ...WEIGHT_ENTRY }],
-      loading: false,
+    // Each hook's individual functions/values are created once per test (like
+    // the real hook's useCallback([]) / useState internals would keep them
+    // stable), but mockImplementation returns a brand-new *container* object
+    // on every call — matching a real hook returning a fresh object literal
+    // on every render.
+    const weightEntriesArray = [{ ...WEIGHT_ENTRY }];
+    const weightFns = {
       refresh: jest.fn(),
       remove: jest.fn(),
       update: jest.fn(),
       add: jest.fn(),
-    });
-    useEntries.useWorkoutNotes.mockReturnValue({
-      notes: [CURRENT_NOTE],
-      currentId: 'note1',
-      currentNote: CURRENT_NOTE,
-      deloadNotes: [],
+    };
+    useEntries.useWeightEntries.mockImplementation(() => ({
+      entries: weightEntriesArray,
       loading: false,
       error: null,
+      ...weightFns,
+    }));
+
+    const noteFns = {
       refresh: jest.fn(),
       selectCurrent: jest.fn(),
       update: jest.fn(),
       add: jest.fn(),
       remove: jest.fn(),
-    });
+    };
+    const notesArray = [CURRENT_NOTE];
+    useEntries.useWorkoutNotes.mockImplementation(() => ({
+      notes: notesArray,
+      currentId: 'note1',
+      currentNote: CURRENT_NOTE,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      ...noteFns,
+    }));
+
     useEntries.useAutoSync.mockReturnValue({});
+
+    const authFns = {
+      clearPasswordRecovery: jest.fn(),
+      signInWithPassword: jest.fn(),
+      signUpWithPassword: jest.fn(),
+      signOut: jest.fn(),
+      resetPasswordForEmail: jest.fn(),
+      signInWithOAuth: jest.fn(),
+      handleAuthCallbackUrl: jest.fn(),
+      updatePassword: jest.fn(),
+      serverExport: jest.fn(),
+      deleteAccount: jest.fn(),
+    };
+    useAuthSessionModule.useAuthSession.mockImplementation(() => ({
+      configured: false,
+      loading: false,
+      session: null,
+      user: null,
+      signedIn: false,
+      passwordRecovery: false,
+      recoveryError: '',
+      ...authFns,
+    }));
 
     renderer.act(() => {
       component = renderer.create(<App />);
