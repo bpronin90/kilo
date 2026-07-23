@@ -857,6 +857,38 @@ describe('App weight saving local-date handling', () => {
     expect(weightScreen.props.weightValue).toBe('185');
     expect(weightScreen.props.weightNote).toBe('morning');
   });
+
+  // Issue #596 (review follow-up): a false-returning add() (e.g. a rejected
+  // mutation that resolves rather than throws) must be treated as failure too,
+  // not silently reported as success — surface retryable copy and preserve the
+  // entered value/note.
+  test('shows retryable error and preserves entered value when add() resolves false', async () => {
+    mockAdd.mockImplementation(async () => false);
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+      weightScreen.props.setWeightNote('morning');
+    });
+
+    let result;
+    await render.act(async () => {
+      result = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(result).toBe(false);
+    expect(mockAdd).toHaveBeenCalled();
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.errorMessage).toBe('Could not save weight entry. Please try again.');
+    expect(weightScreen.props.weightValue).toBe('185');
+    expect(weightScreen.props.weightNote).toBe('morning');
+  });
 });
 
 // ── Web date input fallback (#314) ────────────────────────────────────────────

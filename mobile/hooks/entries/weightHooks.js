@@ -137,8 +137,15 @@ export function useWeightEntries() {
   }, [refresh, reload]);
 
   const add = useCallback(async (entry) => {
-    await writeVia('saveWeightEntry', Storage.saveWeightEntry, entry);
-    notifyWeight();
+    // Propagate the write result (#596): the local/cloud saveWeightEntry
+    // implementations resolve `undefined` on success, so callers must treat
+    // anything other than an explicit `false` as success — a mocked or future
+    // implementation that resolves `false` must still be caught as a failure.
+    const result = await writeVia('saveWeightEntry', Storage.saveWeightEntry, entry);
+    if (result !== false) {
+      notifyWeight();
+    }
+    return result;
   }, []);
 
   const remove = useCallback(async (id) => {

@@ -256,7 +256,13 @@ export default function App() {
     });
     setWeightSaving(true);
     try {
-      await weightHook.add(entry);
+      const result = await weightHook.add(entry);
+      if (result === false) {
+        // False-returning write (e.g. a rejected mutation): keep the entered
+        // values so the user can retry instead of silently losing the entry.
+        setSaveError('Could not save weight entry. Please try again.');
+        return false;
+      }
       setWeightValue('');
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
