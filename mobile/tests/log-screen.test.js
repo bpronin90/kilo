@@ -3135,3 +3135,79 @@ describe('LogDeloadSection deload ordinal input has autocorrect disabled', () =>
     expect(ordinalInput.props.spellCheck).toBe(false);
   });
 });
+
+// #616: the read view surfaces parser rejection. Per-row unparsed records show
+// a non-color-only affordance (glyph + message + a11y label); a note-level
+// rejection renders a visible banner instead of a blank read view.
+describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
+  const { WorkoutContentRenderer } = require('../components/WorkoutContentRenderer');
+
+  function dayGroupsFor(note) {
+    const { sections } = parseWorkoutNote(note);
+    return [{ heading: null, sections }];
+  }
+
+  test('an unparsed row shows a ⚠ glyph, the parser message, and a recovery a11y label naming the raw line', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 100 x');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const root = component.root;
+    // Non-color-only: a warning glyph accompanies the row.
+    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    expect(glyphNodes.length).toBeGreaterThan(0);
+    // The actionable parser message is rendered.
+    const hintNode = root.find(
+      n => n.type === 'Text' && n.props.children === 'Invalid reps "x" — use: 8 or 8,8,8'
+    );
+    expect(hintNode).toBeTruthy();
+    // An accessibility label names the raw line and the recovery message.
+    const labeled = root.find(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Unrecognized set row: 100 x.')
+    );
+    expect(labeled).toBeTruthy();
+    expect(labeled.props.accessibilityLabel).toContain('Invalid reps "x"');
+    // Raw text is preserved unchanged (not swallowed into the glyph string).
+    expect(root.find(n => n.type === 'Text' && n.props.children === '100 x')).toBeTruthy();
+  });
+
+  test('a note-level rejection renders a labeled parse-failure banner instead of a blank read view', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={[]} noteError="Note text is too large to parse (200001 characters; limit 200000)." />
+      );
+    });
+    const root = component.root;
+    // The empty-state copy is suppressed in favor of the error banner.
+    const emptyNodes = root.findAll(
+      n => n.type === 'Text' && n.props.children === 'Add some exercises to see the formatted view.'
+    );
+    expect(emptyNodes.length).toBe(0);
+    const banner = root.find(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Note could not be parsed.')
+    );
+    expect(banner).toBeTruthy();
+    const bannerText = root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
+    );
+    expect(bannerText).toBeTruthy();
+    expect(bannerText.props.style.color).toBe(Colors.error);
+  });
+
+  test('a non-weight unparsed row gets no error glyph (it is not a syntax error)', () => {
+    const dayGroups = dayGroupsFor('-Treadmill\n- 5 min easy');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const root = component.root;
+    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    expect(glyphNodes.length).toBe(0);
+    // The raw non-weight line is still rendered.
+    expect(root.find(n => n.type === 'Text' && n.props.children === '5 min easy')).toBeTruthy();
+  });
+});

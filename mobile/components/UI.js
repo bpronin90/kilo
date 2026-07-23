@@ -294,6 +294,54 @@ export function AnnotationNote({ text, selectable }) {
   );
 }
 
+// A single unrecognized set-row line in the read view. Without a parser
+// `error` this preserves the prior bare-raw rendering (non-weight rows and
+// fallback duplicates), muted or error-red per the section mode. With an
+// `error` it adds a non-color-only affordance: a ⚠ glyph, the actionable
+// parser message beneath the raw line, and an `accessibilityLabel` naming the
+// raw line and its recovery hint so screen-reader users get the same guidance
+// as the red text conveys visually (WCAG 1.4.1).
+export function UnparsedRow({ raw, error, muted, selectable }) {
+  const rawStyle = muted ? styles.unparsedRowMuted : styles.unparsedRow;
+  if (!error) {
+    return (
+      <Text selectable={selectable} style={rawStyle}>
+        {raw}
+      </Text>
+    );
+  }
+  return (
+    <View
+      style={styles.unparsedGroup}
+      accessible={true}
+      accessibilityLabel={`Unrecognized set row: ${raw}. ${error}`}
+    >
+      <View style={styles.unparsedRawLine}>
+        <Text style={muted ? styles.unparsedGlyphMuted : styles.unparsedGlyph}>⚠</Text>
+        <Text selectable={selectable} style={rawStyle}>{raw}</Text>
+      </View>
+      <Text selectable={selectable} style={styles.unparsedHint}>{error}</Text>
+    </View>
+  );
+}
+
+// Note-level parse-failure affordance for a whole note the parser refuses
+// (e.g. an oversize note returning `ok: false`). Replaces the blank read view
+// with a visible, accessibility-labeled message so the failure is never
+// silent. No synthetic exercise/section is invented.
+export function NoteParseError({ message }) {
+  const text = message || 'This note could not be parsed.';
+  return (
+    <View
+      style={styles.noteParseError}
+      accessible={true}
+      accessibilityLabel={`Note could not be parsed. ${text}`}
+    >
+      <Text style={styles.noteParseErrorText}>{`⚠ ${text}`}</Text>
+    </View>
+  );
+}
+
 export function ArtisanalPanel({ children, style }) {
   return <View style={[styles.artisanalPanel, style]}>{children}</View>;
 }
@@ -657,5 +705,54 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: Colors.textMuted,
     paddingLeft: 0,
+  },
+  // Unparsed-row styles. unparsedRow/unparsedRowMuted keep the exact single
+  // color tokens the read view relied on before (Colors.error for unresolved
+  // lifting fallbacks, Colors.text otherwise) so per-mode color parity holds.
+  unparsedRow: {
+    fontSize: SET_ROW_FONT_SIZE,
+    color: Colors.error,
+    paddingLeft: 0,
+  },
+  unparsedRowMuted: {
+    fontSize: SET_ROW_FONT_SIZE,
+    color: Colors.text,
+    paddingLeft: 0,
+  },
+  unparsedGroup: {
+    paddingLeft: 0,
+    gap: 1,
+  },
+  unparsedRawLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  unparsedGlyph: {
+    fontSize: SET_ROW_FONT_SIZE,
+    color: Colors.error,
+  },
+  unparsedGlyphMuted: {
+    fontSize: SET_ROW_FONT_SIZE,
+    color: Colors.textMuted,
+  },
+  unparsedHint: {
+    fontSize: SET_ROW_FONT_SIZE - 1,
+    color: Colors.textMuted,
+    paddingLeft: 18,
+  },
+  noteParseError: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    backgroundColor: Colors.panelBackground,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  noteParseErrorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.error,
   },
 });

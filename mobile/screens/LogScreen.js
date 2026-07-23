@@ -244,6 +244,7 @@ export function LogScreen({
                 toggleCollapsed={toggleCollapsed}
                 isCollapsed={isCollapsed}
                 dayGroups={currentEditor.dayGroups}
+                noteError={currentEditor.noteError}
                 trackedLifts={trackedLifts}
                 handleToggleTrack={handleToggleTrack}
                 roughNoteId={currentEditor.roughNoteId}

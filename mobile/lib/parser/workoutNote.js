@@ -220,7 +220,10 @@ export function parseWorkoutNote(noteText) {
           currentExercise.session_entries.push({ skipped: true, raw: entryRaw, sets: [] });
         } else if (!rowResult.blank) {
           currentExercise.unparsed_rows.push(entryRaw);
-          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true });
+          // Carry the parser's error/category onto the unparsed entry so the
+          // read view can surface a labeled, actionable message instead of a
+          // bare red line. The raw text is preserved unchanged.
+          currentExercise.session_entries.push({ skipped: false, raw: entryRaw, sets: [], unparsed: true, error: rowResult.error ?? null, category: rowResult.category ?? null });
         }
       } else {
         const rowResult = parseWorkoutRow(trimmed);
@@ -233,7 +236,9 @@ export function parseWorkoutNote(noteText) {
           // is a valid logged entry (not skipped, not unparsed).
           currentExercise.session_entries.push({ skipped: false, raw: trimmed, sets: reindexed, bare: true, annotation: _makeAnnotation(rowResult.mark) });
         } else if (!rowResult.blank && !rowResult.skipped) {
-          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed });
+          // Preserve the parser error/category alongside the positional raw so
+          // a bare-int/garbage row can render its recovery hint in place.
+          currentExercise.unparsed_positions.push({ pos: currentExercise.session_entries.length, raw: trimmed, error: rowResult.error ?? null, category: rowResult.category ?? null });
           currentExercise.unparsed_rows.push(trimmed);
         }
       }

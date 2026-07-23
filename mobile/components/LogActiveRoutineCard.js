@@ -18,6 +18,7 @@ export function LogActiveRoutineCard({
   toggleCollapsed,
   isCollapsed,
   dayGroups,
+  noteError,
   trackedLifts,
   handleToggleTrack,
   roughNoteId,
@@ -101,6 +102,7 @@ export function LogActiveRoutineCard({
           ) : null}
           <WorkoutContentRenderer
             dayGroups={dayGroups}
+            noteError={noteError}
             trackedLifts={trackedLifts}
             onToggleTrack={handleToggleTrack}
             roughNoteId={roughNoteId}
