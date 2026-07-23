@@ -1,6 +1,6 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
-import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote.js';
+import { MAX_RAW_TEXT_LENGTH, applyWeekSkipToText, removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -3154,5 +3154,144 @@ describe('#616: parseWorkoutNote preserves parser errors on unparsed records', (
     expect(ex.unparsed_positions).toHaveLength(0);
     expect(ex.sets.map(s => s.set_index)).toEqual([1, 2, 3]);
     expect(ex.session_entries.every(e => !e.unparsed)).toBe(true);
+  });
+});
+
+// #617: a missing dash-space set row (e.g. "-230 5", meant as "- 230 5") used
+// to match `_EXERCISE_DASH_RE` and mint a phantom numeric-named exercise
+// "230 5" with 0 sets, silently misrouting any following rows under it. Derived
+// output for existing affected notes now changes: such a line never starts a
+// new exercise. Under a current (weighted) exercise it recovers as a normal
+// logged set row (flagged `recovered: true`); under a current non-weight
+// exercise it is kept as visible unparsed content; with no current exercise it
+// becomes a note-level Tier-A parser error (`ok:false`) instead of inventing a
+// section/exercise to hold it. `_isExerciseHeaderLine` (shared by
+// `applyWeekSkipToText`/`removeWeekSkipFromText`) is updated in lockstep so all
+// three functions agree on whether such a line is a header.
+describe('#617: missing dash-space set rows recover or error instead of becoming phantom exercises', () => {
+  test('"-230 5" under a current exercise recovers as a set row, not a new exercise', () => {
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n-230 5');
+    expect(sections).toHaveLength(1);
+    const exercises = sections[0].exercises;
+    expect(exercises).toHaveLength(1);
+    expect(exercises[0].name).toBe('Bench');
+    expect(exercises.some(e => e.name === '230 5')).toBe(false);
+    expect(exercises[0].sets.map(s => s.weight_value)).toEqual([225, 230]);
+    expect(exercises[0].sets.map(s => s.rep_count)).toEqual([5, 5]);
+  });
+
+  test('the recovered entry is flagged recovered:true with raw stripped of the missing space', () => {
+    const { sections } = parseWorkoutNote('-Bench\n-230 5');
+    const entry = sections[0].exercises[0].session_entries[0];
+    expect(entry.recovered).toBe(true);
+    expect(entry.raw).toBe('230 5');
+    expect(entry.skipped).toBe(false);
+    expect(entry.sets).toHaveLength(1);
+    expect(entry.sets[0].weight_value).toBe(230);
+    expect(entry.sets[0].rep_count).toBe(5);
+  });
+
+  test('recovery also counts in rows for backwards compat and preserves a trailing * mark', () => {
+    const { sections } = parseWorkoutNote('-Squat\n-230 5 *PR');
+    const ex = sections[0].exercises[0];
+    expect(ex.rows).toHaveLength(1);
+    expect(ex.session_entries[0].annotation.mark).toBe('PR');
+  });
+
+  test('"-230 5" with no current exercise becomes a visible Tier-A note error, not a phantom exercise', () => {
+    const r = parseWorkoutNote('-230 5');
+    expect(r.ok).toBe(false);
+    expect(typeof r.error).toBe('string');
+    expect(r.error).toMatch(/no exercise/i);
+    expect(r.error).toContain('-230 5');
+    expect(r.sections).toHaveLength(0);
+  });
+
+  test('"-230 5" with no current exercise after a day heading still errors instead of inventing a section', () => {
+    const r = parseWorkoutNote('Monday\n-230 5');
+    expect(r.ok).toBe(false);
+    expect(r.sections).toHaveLength(0);
+  });
+
+  // Reviewer finding on PR #655: `parseWorkoutRow` strips a leading alphabetic
+  // flag when it is followed by a digit (e.g. "Row 135 10" -> "135 10"), so
+  // recovery must require the dashed content to literally start with a digit
+  // before attempting that parse — otherwise a genuine alphabetic exercise
+  // header whose trailing text happens to parse as a row (e.g. "-Row 135 10")
+  // would be wrongly treated as a missing-space set row instead of a header.
+  test('an alphabetic dash header whose trailing text parses as a row is still a normal header as the FIRST exercise (not a whole-note error)', () => {
+    const r = parseWorkoutNote('-Row 135 10');
+    expect(r.ok).toBe(true);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0].exercises).toHaveLength(1);
+    expect(r.sections[0].exercises[0].name).toBe('Row 135 10');
+    expect(r.sections[0].exercises[0].sets).toEqual([]);
+  });
+
+  test('an alphabetic dash header whose trailing text parses as a row is still a normal header in a LATER position (not recorded under the preceding exercise)', () => {
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n-Row 135 10');
+    expect(sections[0].exercises).toHaveLength(2);
+    const bench = sections[0].exercises[0];
+    const row = sections[0].exercises[1];
+    expect(bench.name).toBe('Bench');
+    expect(bench.sets.map(s => s.weight_value)).toEqual([225]);
+    expect(row.name).toBe('Row 135 10');
+    expect(row.sets).toEqual([]);
+  });
+
+  test('an alphabetic dash header with a comma rep-group tail is also unaffected (e.g. "-Lat 90 10,10")', () => {
+    const { sections } = parseWorkoutNote('-Lat 90 10,10');
+    expect(sections[0].exercises[0].name).toBe('Lat 90 10,10');
+    expect(sections[0].exercises[0].sets).toEqual([]);
+  });
+
+  test('under a non-weight (cardio) current exercise, a missing-space numeric row is kept as visible unparsed content, not a weighted set or a new header', () => {
+    const { sections } = parseWorkoutNote('-Treadmill\n-230 5');
+    expect(sections[0].exercises).toHaveLength(1);
+    const ex = sections[0].exercises[0];
+    expect(ex.name).toBe('Treadmill');
+    const entry = ex.session_entries.find(e => e.unparsed);
+    expect(entry).toBeDefined();
+    expect(entry.raw).toBe('230 5');
+    expect(entry.sets).toHaveLength(0);
+  });
+
+  test('a dash header whose content does not parse as a set row is still a normal exercise header (no regression)', () => {
+    const { sections } = parseWorkoutNote('-Bench Press\n225 5');
+    expect(sections[0].exercises[0].name).toBe('Bench Press');
+  });
+
+  test('a dash header whose numeric content fails the row grammar (e.g. zero weight) keeps prior header behavior', () => {
+    // "0 5" fails _parseSetTokens (weight must be > 0), so it is not treated
+    // as a recoverable set row; this is an out-of-scope edge case and prior
+    // (pre-#617) header behavior is intentionally unchanged here.
+    const { sections } = parseWorkoutNote('-0 5');
+    expect(sections[0].exercises[0].raw_header).toBe('-0 5');
+  });
+
+  test('three-way classifier parity: parseWorkoutNote, applyWeekSkipToText, and removeWeekSkipFromText all agree "-230 5" is not a header', () => {
+    const note = '-Bench\n225 5\n-230 5';
+    const { sections } = parseWorkoutNote(note);
+    // Exactly one exercise (Bench); the recovered row must not introduce a
+    // second occurrence for the week-skip transforms to align against.
+    expect(sections[0].exercises).toHaveLength(1);
+
+    const skipped = applyWeekSkipToText(note, sections);
+    // The skip marker lands once, after Bench's whole block (which now
+    // includes the recovered "-230 5" row) — not as a separate phantom block.
+    expect(skipped).toBe('-Bench\n225 5\n-230 5\n-');
+    const skippedSections = parseWorkoutNote(skipped).sections;
+    expect(skippedSections[0].exercises).toHaveLength(1);
+
+    const unskipped = removeWeekSkipFromText(skipped, skippedSections);
+    expect(unskipped).toBe(note);
+  });
+
+  test('unrelated header/skip classification (numbered, Core:, deload, week separator) is unchanged alongside the recovery fix', () => {
+    const note = '-Bench\n225 5\n-230 5\n1. Row\n135 8\nCore: Plank\n30 sec\nHinge: 135 lbs 3x5\n---\n-Bench\n-230 5';
+    const { sections, weekBStartIndex } = parseWorkoutNote(note);
+    const names = sections.flatMap(s => s.exercises.map(e => e.name));
+    expect(names).toEqual(['Bench', 'Row', 'Core: Plank', 'Hinge', 'Bench']);
+    expect(weekBStartIndex).not.toBeNull();
   });
 });

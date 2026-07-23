@@ -16,6 +16,23 @@ const _EXERCISE_CORE_RE = /^Core:\s+(.+)/i;
 const _DELOAD_RE = /^([^:+\d-][^:]*?):\s+(\d+(?:\.\d+)?)\s+lbs?\s+(\d+)x(\d+)\s*$/i;
 const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|swim|cardio|rowing machine|ski erg)\b/i;
 
+// Shared by parseWorkoutNote and `_isExerciseHeaderLine` below (single source
+// of truth for the "is this a header or a missing-space set row" decision, so
+// the two never disagree — see #617). A dash immediately followed by digits
+// with no space (e.g. "-230 5") is never a valid exercise-name header once its
+// content parses as an actual set row: the user meant "- 230 5" (a logged set)
+// and just missed the space. Requires the content to literally start with a
+// digit before even attempting the parse — otherwise `parseWorkoutRow`'s
+// leading-alphabetic-flag stripping (e.g. "Row 135 10" -> "135 10") would
+// reclassify a genuine alphabetic exercise header (e.g. "-Row 135 10") as a
+// missing-space set row, which is not what this recovery is for. Returns the
+// parsed row on match, else null.
+function _dashContentAsSetRow(content) {
+  if (!/^\d/.test(content)) return null;
+  const r = parseWorkoutRow(content);
+  return (r.ok && !r.blank && !r.skipped) ? r : null;
+}
+
 function _normalizeExerciseName(raw) {
   let name = raw
     .replace(/\s*\|.*$/, '')
@@ -162,7 +179,48 @@ export function parseWorkoutNote(noteText) {
 
     const dashMatch = _EXERCISE_DASH_RE.exec(trimmed);
     if (dashMatch) {
-      startExercise(_normalizeExerciseName(dashMatch[1].trim()), trimmed);
+      const dashContent = dashMatch[1].trim();
+      const recovery = _dashContentAsSetRow(dashContent);
+      if (recovery) {
+        // Missing dash-space (#617): "-230 5" was meant as "- 230 5", a
+        // logged set, not an exercise-name header. Never mint a numeric-named
+        // phantom exercise for it.
+        if (currentExercise && !currentExerciseNonWeight) {
+          // Recover it as a set under the current exercise, same shape as a
+          // normal dash-space session entry.
+          const offset = currentExercise.rows.reduce((sum, r) => sum + r.sets.length, 0);
+          const reindexed = recovery.sets.map(s => ({ ...s, set_index: offset + s.set_index }));
+          currentExercise.rows.push({ raw: dashContent, sets: reindexed });
+          currentExercise.session_entries.push({
+            skipped: false,
+            raw: dashContent,
+            sets: reindexed,
+            recovered: true,
+            annotation: _makeAnnotation(recovery.mark, recovery.tail),
+          });
+        } else if (currentExercise) {
+          // Non-weight (e.g. cardio) exercise: don't misread a numeric row as
+          // a weighted set. Keep it visible as unparsed content instead of
+          // inventing sets or a header, consistent with how other stray rows
+          // under a non-weight exercise are handled.
+          currentExercise.unparsed_rows.push(dashContent);
+          currentExercise.session_entries.push({ skipped: false, raw: dashContent, sets: [], unparsed: true });
+        } else {
+          // No current exercise to attach the recovered set to: never invent
+          // one just to hold it. Surface a visible Tier-A parser error instead
+          // (mirrors the existing note-level `ok:false` rejection path — no
+          // synthetic section/exercise is invented).
+          return {
+            ok: false,
+            error: `Set row with no exercise — start the exercise with "- " (a dash and a space): "${trimmed}"`,
+            sections: [],
+            weekBStartIndex: null,
+          };
+        }
+        continue;
+      }
+
+      startExercise(_normalizeExerciseName(dashContent), trimmed);
       continue;
     }
 
@@ -257,8 +315,14 @@ export function parseWorkoutNote(noteText) {
 // exercise, so omitting them here would shift every later exercise onto the
 // wrong eligibility flag.
 function _isExerciseHeaderLine(t) {
+  const dashMatch = _EXERCISE_DASH_RE.exec(t);
+  // A missing-space set row (#617, e.g. "-230 5") is never a header here
+  // either — parseWorkoutNote never starts a new exercise for it (it either
+  // recovers into the current exercise or becomes a Tier-A note error), so
+  // this classifier must not count it as one either.
+  const isDashHeader = !!dashMatch && !_dashContentAsSetRow(dashMatch[1].trim());
   return (
-    /^-([^-\s].*)/.test(t) ||
+    isDashHeader ||
     /^(\d+[a-z]?)\.\s+.+/i.test(t) ||
     /^Core:\s+.+/i.test(t) ||
     _DELOAD_RE.test(t)

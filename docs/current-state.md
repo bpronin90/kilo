@@ -345,7 +345,12 @@ The real native app path now has a modular React Native shell:
   the read view, which renders a `⚠` glyph, the actionable parser hint, and an
   accessibility label naming the raw line and its recovery (never color alone),
   and a whole-note rejection (e.g. an oversize note the parser refuses) shows a
-  visible parse-failure banner instead of a blank read view. Bare
+  visible parse-failure banner instead of a blank read view. A dash immediately
+  followed by digits with no space (e.g. `-230 5`, meant as `- 230 5`) no
+  longer matches the exercise-header rule and mints a phantom numeric-named
+  exercise; it now recovers as a normal logged set under the current exercise,
+  or — with no current exercise to attach it to — becomes that same whole-note
+  parse-failure banner instead of an invented section. Bare
   `-` skipped-week markers now stay interleaved with logged rows in their
   original chronological slots across all clean note views (current routine,
   expanded more-routines notes, and deload notes) instead of drifting into a
