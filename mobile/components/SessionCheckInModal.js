@@ -381,14 +381,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: Colors.roughBackground,
+    backgroundColor: Colors.error,
     borderWidth: 1,
-    borderColor: Colors.roughBorder,
+    borderColor: Colors.error,
   },
   errorBannerText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.roughBorder,
+    // Filled `error` tone background paired with `textLight`, matching the
+    // cardAccentBg/cardSuccessBg/cardCautionBg convention for WCAG AA 4.5:1
+    // contrast on filled tone surfaces (see docs/design-system-map.md).
+    color: Colors.textLight,
   },
   tierRow: {
     flexDirection: 'row',
