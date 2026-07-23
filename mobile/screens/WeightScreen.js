@@ -322,8 +322,19 @@ export function WeightScreen({
         setLocalError(parsed.error);
         return;
       }
-      await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
-      cancelEdit();
+      let ok;
+      try {
+        ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        cancelEdit();
+      } else {
+        // Rejected update (false return or thrown rejection): keep the edit
+        // open with the entered values so the user can retry (#596).
+        setLocalError('Could not update weight entry. Please try again.');
+      }
     } else {
       const date = weightDateEditEnabled ? newEntryDate : undefined;
       const ok = await onSaveWeight(date);

@@ -140,6 +140,7 @@ describe('WeightScreen edit and delete correction flows', () => {
           : e
       );
       useEntries.useWeightEntries.mockReturnValue(makeMockReturn());
+      return true;
     });
 
     mockRemove = jest.fn().mockImplementation(async (id) => {
@@ -304,6 +305,79 @@ describe('WeightScreen edit and delete correction flows', () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(hasText(root, 'Enter a number only')).toBe(true);
+  });
+
+  // Issue #596: a false return from update() (e.g. the record was not found)
+  // must not silently close the edit — it should surface retryable copy and
+  // keep the entered values in the form.
+  test('edit submit shows retryable error and stays open when update() resolves false', async () => {
+    mockUpdate.mockImplementation(async () => false);
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    await render.act(async () => {
+      await updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(hasText(root, 'Editing entry')).toBe(true);
+    const inputsAfter = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfter[0].props.value).toBe('190');
+    expect(hasText(root, 'Could not update weight entry. Please try again.')).toBe(true);
+  });
+
+  // Issue #596: a thrown rejection from update() (e.g. a storage failure) must
+  // be caught, surfaced as retryable copy, and must not close the edit either.
+  test('edit submit shows retryable error and stays open when update() rejects', async () => {
+    mockUpdate.mockImplementation(async () => {
+      throw new Error('storage write failed');
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    await render.act(async () => {
+      await updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(hasText(root, 'Editing entry')).toBe(true);
+    const inputsAfter = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfter[0].props.value).toBe('190');
+    expect(hasText(root, 'Could not update weight entry. Please try again.')).toBe(true);
   });
 
   test('tapping the delete affordance shows a confirm prompt, calls remove, and removes the row', async () => {
@@ -749,6 +823,39 @@ describe('App weight saving local-date handling', () => {
     expect(mockAdd).toHaveBeenCalled();
     const savedEntry = mockAdd.mock.calls[0][0];
     expect(savedEntry.logged_at).toBe('2026-06-11T03:30:00.000Z');
+  });
+
+  // Issue #596: a thrown rejection from add() (e.g. a storage failure) must be
+  // caught, surface retryable copy via errorMessage, and preserve the entered
+  // value/note so the user does not lose their input.
+  test('shows retryable error and preserves entered value when add() rejects', async () => {
+    mockAdd.mockImplementation(async () => {
+      throw new Error('storage write failed');
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+      weightScreen.props.setWeightNote('morning');
+    });
+
+    let result;
+    await render.act(async () => {
+      result = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(result).toBe(false);
+    expect(mockAdd).toHaveBeenCalled();
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.errorMessage).toBe('Could not save weight entry. Please try again.');
+    expect(weightScreen.props.weightValue).toBe('185');
+    expect(weightScreen.props.weightNote).toBe('morning');
   });
 });
 

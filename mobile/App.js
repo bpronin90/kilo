@@ -261,6 +261,11 @@ export default function App() {
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
       return true;
+    } catch {
+      // Rejected write (e.g. a thrown storage failure): keep the entered
+      // values so the user can retry instead of silently losing the entry.
+      setSaveError('Could not save weight entry. Please try again.');
+      return false;
     } finally {
       setWeightSaving(false);
     }
