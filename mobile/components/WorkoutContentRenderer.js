@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, SET_ROW_FONT_SIZE } from './UI';
+import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
 import { Colors } from '../theme/colors';
 import { normalizeLiftName } from '../lib/data';
 
@@ -13,11 +13,13 @@ export function WorkoutContentRenderer({
   roughFlaggedNames = new Set(),
   isDeload = false,
   mutedUnparsed = false,
+  noteError = null,
   emptyText = "Add some exercises to see the formatted view.",
   altWeekText = ""
 }) {
   return (
     <>
+      {noteError ? <NoteParseError message={noteError} /> : null}
       {dayGroups.map((group, gi) => (
         <View key={`day-${gi}`}>
           {group.heading && (
@@ -55,13 +57,13 @@ export function WorkoutContentRenderer({
                         ex.session_entries.forEach((entry, eni) => {
                           while (posIdx < positions.length && positions[posIdx].pos === eni) {
                             items.push(
-                              <Text 
-                                selectable={true} 
-                                key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} 
-                                style={(!mutedUnparsed && section.kind === 'lifting') ? styles.unparsedRow : styles.unparsedRowMuted}
-                              >
-                                {positions[posIdx].raw}
-                              </Text>
+                              <UnparsedRow
+                                selectable={true}
+                                key={`u-pos-${gi}-${si}-${ei}-${posIdx}`}
+                                raw={positions[posIdx].raw}
+                                error={positions[posIdx].error}
+                                muted={mutedUnparsed || section.kind !== 'lifting'}
+                              />
                             );
                             posIdx++;
                           }
@@ -69,13 +71,13 @@ export function WorkoutContentRenderer({
                             items.push(<Text selectable={true} key={`skip-${gi}-${si}-${ei}-${eni}`} style={styles.skipMarker}>—</Text>);
                           } else if (entry.unparsed) {
                             items.push(
-                              <Text 
-                                selectable={true} 
-                                key={`u-inline-${gi}-${si}-${ei}-${eni}`} 
-                                style={(!mutedUnparsed && section.kind === 'lifting') ? styles.unparsedRow : styles.unparsedRowMuted}
-                              >
-                                {entry.raw}
-                              </Text>
+                              <UnparsedRow
+                                selectable={true}
+                                key={`u-inline-${gi}-${si}-${ei}-${eni}`}
+                                raw={entry.raw}
+                                error={entry.error}
+                                muted={mutedUnparsed || section.kind !== 'lifting'}
+                              />
                             );
                             renderedUnparsed.add(entry.raw);
                           } else {
@@ -115,13 +117,13 @@ export function WorkoutContentRenderer({
                         });
                         while (posIdx < positions.length) {
                           items.push(
-                            <Text 
-                              selectable={true} 
-                              key={`u-pos-${gi}-${si}-${ei}-${posIdx}`} 
-                              style={(!mutedUnparsed && section.kind === 'lifting') ? styles.unparsedRow : styles.unparsedRowMuted}
-                            >
-                              {positions[posIdx].raw}
-                            </Text>
+                            <UnparsedRow
+                              selectable={true}
+                              key={`u-pos-${gi}-${si}-${ei}-${posIdx}`}
+                              raw={positions[posIdx].raw}
+                              error={positions[posIdx].error}
+                              muted={mutedUnparsed || section.kind !== 'lifting'}
+                            />
                           );
                           posIdx++;
                         }
@@ -133,13 +135,12 @@ export function WorkoutContentRenderer({
                         ex.unparsed_rows.forEach((u, ui) => {
                           if (!positionalRaws.has(u) && !renderedUnparsed.has(u) && !renderedUnparsed.has(u.replace(/^-\s+/, ''))) {
                             items.push(
-                              <Text 
-                                selectable={true} 
-                                key={`u-${gi}-${si}-${ei}-${ui}`} 
-                                style={(!mutedUnparsed && section.kind === 'lifting') ? styles.unparsedRow : styles.unparsedRowMuted}
-                              >
-                                {u}
-                              </Text>
+                              <UnparsedRow
+                                selectable={true}
+                                key={`u-${gi}-${si}-${ei}-${ui}`}
+                                raw={u}
+                                muted={mutedUnparsed || section.kind !== 'lifting'}
+                              />
                             );
                           }
                         });
@@ -153,7 +154,7 @@ export function WorkoutContentRenderer({
           ))}
         </View>
       ))}
-      {!dayGroups.length && (
+      {!dayGroups.length && !noteError && (
         altWeekText ? (
           <Text selectable={true} style={styles.unparsedRowMuted}>{altWeekText}</Text>
         ) : (
@@ -165,11 +166,9 @@ export function WorkoutContentRenderer({
 }
 
 const styles = StyleSheet.create({
-  unparsedRow: {
-    fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.error,
-    paddingLeft: 0,
-  },
+  // Retained for the alt-week raw-text preview shown when the inactive A/B
+  // week has no parsed content; unparsed set rows themselves now render via
+  // the shared `UnparsedRow` component.
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
     color: Colors.text,

@@ -340,7 +340,12 @@ The real native app path now has a modular React Native shell:
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
-  in error red and warmup/non-lifting fallbacks stay standard text, and bare
+  in error red and warmup/non-lifting fallbacks stay standard text. Rows the
+  parser rejects with a message now also carry that error/category through to
+  the read view, which renders a `⚠` glyph, the actionable parser hint, and an
+  accessibility label naming the raw line and its recovery (never color alone),
+  and a whole-note rejection (e.g. an oversize note the parser refuses) shows a
+  visible parse-failure banner instead of a blank read view. Bare
   `-` skipped-week markers now stay interleaved with logged rows in their
   original chronological slots across all clean note views (current routine,
   expanded more-routines notes, and deload notes) instead of drifting into a

@@ -12,7 +12,7 @@ jest.mock('expo-updates', () => ({
   reloadAsync: jest.fn(),
 }));
 import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSinceLastDeload } from '../lib/parser';
-import { removeWeekSkipFromText } from '../lib/parser/workoutNote.js';
+import { removeWeekSkipFromText, MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote.js';
 import { deriveRoutineStatus } from '../lib/data';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -3160,5 +3160,149 @@ describe('LogDeloadSection deload ordinal input has autocorrect disabled', () =>
     expect(ordinalInput.props.autoCorrect).toBe(false);
     expect(ordinalInput.props.autoCapitalize).toBe('none');
     expect(ordinalInput.props.spellCheck).toBe(false);
+  });
+});
+
+// #616: the read view surfaces parser rejection. Per-row unparsed records show
+// a non-color-only affordance (glyph + message + a11y label); a note-level
+// rejection renders a visible banner instead of a blank read view.
+describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
+  const { WorkoutContentRenderer } = require('../components/WorkoutContentRenderer');
+
+  function dayGroupsFor(note) {
+    const { sections } = parseWorkoutNote(note);
+    return [{ heading: null, sections }];
+  }
+
+  test('an unparsed row shows a ⚠ glyph, the parser message, and a recovery a11y label naming the raw line', () => {
+    const dayGroups = dayGroupsFor('-Bench\n- 100 x');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const root = component.root;
+    // Non-color-only: a warning glyph accompanies the row.
+    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    expect(glyphNodes.length).toBeGreaterThan(0);
+    // The actionable parser message is rendered.
+    const hintNode = root.find(
+      n => n.type === 'Text' && n.props.children === 'Invalid reps "x" — use: 8 or 8,8,8'
+    );
+    expect(hintNode).toBeTruthy();
+    // An accessibility label names the raw line and the recovery message.
+    const labeled = root.find(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Unrecognized set row: 100 x.')
+    );
+    expect(labeled).toBeTruthy();
+    expect(labeled.props.accessibilityLabel).toContain('Invalid reps "x"');
+    // Raw text is preserved unchanged (not swallowed into the glyph string).
+    expect(root.find(n => n.type === 'Text' && n.props.children === '100 x')).toBeTruthy();
+  });
+
+  test('a note-level rejection renders a labeled parse-failure banner instead of a blank read view', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <WorkoutContentRenderer dayGroups={[]} noteError="Note text is too large to parse (200001 characters; limit 200000)." />
+      );
+    });
+    const root = component.root;
+    // The empty-state copy is suppressed in favor of the error banner.
+    const emptyNodes = root.findAll(
+      n => n.type === 'Text' && n.props.children === 'Add some exercises to see the formatted view.'
+    );
+    expect(emptyNodes.length).toBe(0);
+    const banner = root.find(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Note could not be parsed.')
+    );
+    expect(banner).toBeTruthy();
+    const bannerText = root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
+    );
+    expect(bannerText).toBeTruthy();
+    expect(bannerText.props.style.color).toBe(Colors.error);
+  });
+
+  test('a non-weight unparsed row gets no error glyph (it is not a syntax error)', () => {
+    const dayGroups = dayGroupsFor('-Treadmill\n- 5 min easy');
+    let component;
+    render.act(() => {
+      component = render.create(<WorkoutContentRenderer dayGroups={dayGroups} />);
+    });
+    const root = component.root;
+    const glyphNodes = root.findAll(n => n.type === 'Text' && n.props.children === '⚠');
+    expect(glyphNodes.length).toBe(0);
+    // The raw non-weight line is still rendered.
+    expect(root.find(n => n.type === 'Text' && n.props.children === '5 min easy')).toBeTruthy();
+  });
+});
+
+// #616: end-to-end note-error transport. This drives a real oversize note from
+// the store through useLogCurrentRoutineEditor → LogScreen → LogActiveRoutineCard
+// → WorkoutContentRenderer and asserts the rendered parse-failure banner. Unlike
+// the direct-render test above, it injects NO noteError prop, so it fails if the
+// hook stops deriving noteError, LogScreen drops it, or the card fails to forward
+// it — closing the transport gap flagged in review.
+describe('#616: oversize note reaches the read-view failure affordance through the full path', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const oversizeText = 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1);
+    const currentNote = {
+      id: 'note1',
+      title: 'Routine A',
+      raw_text: oversizeText,
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote],
+      currentId: 'note1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn(),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: true });
+  });
+
+  test('an oversize stored note renders the parse-failure banner in the current-routine read view', () => {
+    const oversizeText = 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1);
+    // Sanity: the note really is rejected at the parser boundary.
+    expect(parseWorkoutNote(oversizeText).ok).toBe(false);
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen initialText={oversizeText} />);
+    });
+    const root = component.root;
+
+    // The banner is reached only via hook-derived noteError threaded through the
+    // real component tree — no noteError prop is injected anywhere here.
+    const banner = root.find(
+      n => typeof n.props.accessibilityLabel === 'string' &&
+           n.props.accessibilityLabel.startsWith('Note could not be parsed.')
+    );
+    expect(banner).toBeTruthy();
+    const bannerText = root.find(
+      n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
+    );
+    expect(bannerText).toBeTruthy();
+
+    // The blank-read-view empty state must not appear in its place.
+    const emptyNodes = root.findAll(
+      n => n.type === 'Text' && n.props.children === 'Add some exercises to see the formatted view.'
+    );
+    expect(emptyNodes.length).toBe(0);
   });
 });

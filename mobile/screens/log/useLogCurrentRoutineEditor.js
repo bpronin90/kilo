@@ -210,6 +210,16 @@ export function useLogCurrentRoutineEditor({
     [activeWeekParsed]
   );
 
+  // Note-level parser rejection (e.g. an oversize note that `parseWorkoutNote`
+  // refuses with `ok: false`). Surfaced as a sibling to `dayGroups` so the read
+  // view can show a parse-failure affordance instead of a blank empty state; no
+  // synthetic section is invented. Checks both the full-note parse and the
+  // active-week slice so an A/B note that fails on either side is not silent.
+  const noteError = useMemo(
+    () => (!parsed.ok && parsed.error) || (!activeWeekParsed.ok && activeWeekParsed.error) || null,
+    [parsed, activeWeekParsed]
+  );
+
   // Whether there is a trailing skip marker on at least one exercise in the
   // active week, i.e. whether 'Undo skip' has anything to remove. Used to
   // disable/no-op the undo action instead of silently doing nothing.
@@ -720,6 +730,7 @@ export function useLogCurrentRoutineEditor({
     activeEditText,
     activeWeekParsed,
     dayGroups,
+    noteError,
     parsed,
     logSessionCount,
   };

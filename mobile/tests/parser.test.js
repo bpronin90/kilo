@@ -1,5 +1,6 @@
 import { parseWeightEntry, parseWorkoutRow, parseWorkoutEntry, parseWorkoutNote, buildSessionsFromNote, countWorkoutSessions, countWorkoutSessionsFromSections, epleyPR, deriveWorkoutAnalytics, deriveTrackedPRs, deriveProgressionSignals, derivePerDaySignals, parseExerciseHeader, generateDeloadNote, sessionsSinceLastDeload, weeksSinceLastDeload } from '../lib/parser';
 import { getDefaultTrackedNames, derive1kTotal, derive1kTotalSeries, DEFAULT_1K_EXERCISES } from '../lib/data';
+import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote.js';
 
 // ── getDefaultTrackedNames ────────────────────────────────────────────────────
 
@@ -3107,5 +3108,51 @@ Monday
     const { sections } = parseWorkoutNote(sharedNote);
     const allSquatSections = sections.flatMap(s => s.exercises.filter(e => e.name === 'Squat'));
     expect(allSquatSections.length).toBeGreaterThan(0);
+  });
+});
+
+// #616: per-row unparsed records must carry the parser error/category so the
+// Log read view can surface an actionable message; note-level rejection stays
+// visible via ok:false. Set order and valid parsing are unchanged.
+describe('#616: parseWorkoutNote preserves parser errors on unparsed records', () => {
+  test('dash-prefixed unparsed session row carries error and category with its raw', () => {
+    const { sections } = parseWorkoutNote('-Bench\n- 100 x');
+    const entry = sections[0].exercises[0].session_entries.find(e => e.unparsed);
+    expect(entry).toBeDefined();
+    expect(entry.raw).toBe('100 x');
+    expect(entry.error).toBe('Invalid reps "x" — use: 8 or 8,8,8');
+    expect(entry.category).toBe('invalid_field_value');
+  });
+
+  test('bare unparsed row records error and category in unparsed_positions with its raw', () => {
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n140');
+    const pos = sections[0].exercises[0].unparsed_positions.find(p => p.raw === '140');
+    expect(pos).toBeDefined();
+    expect(pos.error).toBe('Enter reps as reps,reps or weight reps,reps');
+    expect(pos.category).toBe('invalid_field_value');
+  });
+
+  test('non-weight unparsed row carries no parser error (not a syntax error)', () => {
+    const { sections } = parseWorkoutNote('-Treadmill\n- 5 min easy');
+    const entry = sections[0].exercises[0].session_entries.find(e => e.unparsed);
+    expect(entry).toBeDefined();
+    expect(entry.error == null).toBe(true);
+  });
+
+  test('oversize note is rejected with ok:false, an error message, and no synthetic sections', () => {
+    const r = parseWorkoutNote('x'.repeat(MAX_RAW_TEXT_LENGTH + 1));
+    expect(r.ok).toBe(false);
+    expect(typeof r.error).toBe('string');
+    expect(r.error).toMatch(/too large/i);
+    expect(r.sections).toHaveLength(0);
+  });
+
+  test('valid rows remain unparsed-error-free and keep their set order', () => {
+    const { sections } = parseWorkoutNote('-Bench\n- 135 5,5,5');
+    const ex = sections[0].exercises[0];
+    expect(ex.unparsed_rows).toHaveLength(0);
+    expect(ex.unparsed_positions).toHaveLength(0);
+    expect(ex.sets.map(s => s.set_index)).toEqual([1, 2, 3]);
+    expect(ex.session_entries.every(e => !e.unparsed)).toBe(true);
   });
 });
