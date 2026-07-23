@@ -3213,6 +3213,38 @@ describe('#617: missing dash-space set rows recover or error instead of becoming
     expect(r.sections).toHaveLength(0);
   });
 
+  // Reviewer finding on PR #655: `parseWorkoutRow` strips a leading alphabetic
+  // flag when it is followed by a digit (e.g. "Row 135 10" -> "135 10"), so
+  // recovery must require the dashed content to literally start with a digit
+  // before attempting that parse — otherwise a genuine alphabetic exercise
+  // header whose trailing text happens to parse as a row (e.g. "-Row 135 10")
+  // would be wrongly treated as a missing-space set row instead of a header.
+  test('an alphabetic dash header whose trailing text parses as a row is still a normal header as the FIRST exercise (not a whole-note error)', () => {
+    const r = parseWorkoutNote('-Row 135 10');
+    expect(r.ok).toBe(true);
+    expect(r.sections).toHaveLength(1);
+    expect(r.sections[0].exercises).toHaveLength(1);
+    expect(r.sections[0].exercises[0].name).toBe('Row 135 10');
+    expect(r.sections[0].exercises[0].sets).toEqual([]);
+  });
+
+  test('an alphabetic dash header whose trailing text parses as a row is still a normal header in a LATER position (not recorded under the preceding exercise)', () => {
+    const { sections } = parseWorkoutNote('-Bench\n225 5\n-Row 135 10');
+    expect(sections[0].exercises).toHaveLength(2);
+    const bench = sections[0].exercises[0];
+    const row = sections[0].exercises[1];
+    expect(bench.name).toBe('Bench');
+    expect(bench.sets.map(s => s.weight_value)).toEqual([225]);
+    expect(row.name).toBe('Row 135 10');
+    expect(row.sets).toEqual([]);
+  });
+
+  test('an alphabetic dash header with a comma rep-group tail is also unaffected (e.g. "-Lat 90 10,10")', () => {
+    const { sections } = parseWorkoutNote('-Lat 90 10,10');
+    expect(sections[0].exercises[0].name).toBe('Lat 90 10,10');
+    expect(sections[0].exercises[0].sets).toEqual([]);
+  });
+
   test('under a non-weight (cardio) current exercise, a missing-space numeric row is kept as visible unparsed content, not a weighted set or a new header', () => {
     const { sections } = parseWorkoutNote('-Treadmill\n-230 5');
     expect(sections[0].exercises).toHaveLength(1);

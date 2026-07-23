@@ -21,8 +21,14 @@ const _NON_WEIGHT_RE = /\b(treadmill|bike|bicycle|cycling|elliptical|run|walk|sw
 // the two never disagree — see #617). A dash immediately followed by digits
 // with no space (e.g. "-230 5") is never a valid exercise-name header once its
 // content parses as an actual set row: the user meant "- 230 5" (a logged set)
-// and just missed the space. Returns the parsed row on match, else null.
+// and just missed the space. Requires the content to literally start with a
+// digit before even attempting the parse — otherwise `parseWorkoutRow`'s
+// leading-alphabetic-flag stripping (e.g. "Row 135 10" -> "135 10") would
+// reclassify a genuine alphabetic exercise header (e.g. "-Row 135 10") as a
+// missing-space set row, which is not what this recovery is for. Returns the
+// parsed row on match, else null.
 function _dashContentAsSetRow(content) {
+  if (!/^\d/.test(content)) return null;
   const r = parseWorkoutRow(content);
   return (r.ok && !r.blank && !r.skipped) ? r : null;
 }
