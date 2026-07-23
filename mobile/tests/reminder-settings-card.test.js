@@ -7,6 +7,7 @@ import { notifyWorkoutNotes } from '../hooks/entries/workoutNoteHooks';
 import {
   requestReminderPermission,
   applyWorkoutReminder,
+  reconcileWorkoutReminder,
 } from '../lib/reminderScheduler';
 
 jest.mock('@react-native-community/datetimepicker', () => {
@@ -20,28 +21,31 @@ jest.mock('@react-native-community/datetimepicker', () => {
 jest.mock('../storage/entries', () => ({
   loadWeighInReminder: jest.fn(),
   loadWorkoutReminder: jest.fn(),
-  loadWorkoutNotes: jest.fn(),
-  loadCurrentWorkoutId: jest.fn(),
   saveWeighInReminder: jest.fn(async () => {}),
   saveWorkoutReminder: jest.fn(async () => {}),
 }));
 
+// reconcileWorkoutReminder itself (routine text/identity resolution,
+// idempotent dedup, disabled-stays-unscheduled) is covered directly against
+// reminderScheduler.js in reminder-scheduler.test.js, and against the
+// always-on broadcast (no Settings screen mounted at all) in
+// reminder-always-on-reconciliation.test.js. This suite only proves
+// ReminderSettingsCard's own wiring: it displays whatever
+// reconcileWorkoutReminder reports, refreshes that display on the
+// workout-note broadcast, and — per the PR #649 review finding — does NOT
+// also call applyWorkoutReminder itself for routine changes, since that
+// would double-schedule alongside the always-on subscriber in
+// workoutNoteHooks.js.
 jest.mock('../lib/reminderScheduler', () => ({
   remindersSupported: jest.fn(() => true),
   requestReminderPermission: jest.fn(async () => true),
   applyWeighInReminder: jest.fn(async () => {}),
   applyWorkoutReminder: jest.fn(async () => {}),
+  reconcileWorkoutReminder: jest.fn(),
 }));
 
-const PUSH_DAY_NOTE = {
-  id: 'note-1',
-  isCurrent: true,
-  raw_text: ['Push day', '-Bench press', '185 5x5'].join('\n'),
-};
-
-function setActiveNote(note) {
-  Storage.loadWorkoutNotes.mockResolvedValue(note ? [note] : []);
-  Storage.loadCurrentWorkoutId.mockResolvedValue(note?.id ?? null);
+function setReconciled(workout, inferredWeekdays) {
+  reconcileWorkoutReminder.mockResolvedValue({ workout, inferredWeekdays });
 }
 
 let trees = [];
@@ -54,14 +58,13 @@ function createCard() {
 beforeEach(() => {
   jest.clearAllMocks();
   Storage.loadWeighInReminder.mockResolvedValue({ enabled: false, hour: 8, minute: 0 });
-  Storage.loadWorkoutReminder.mockResolvedValue({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] });
-  setActiveNote(PUSH_DAY_NOTE);
+  setReconciled({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] }, []);
 });
 
 afterEach(async () => {
   // Each card subscribes to the shared workoutNotesListeners broadcast for
   // the lifetime of the test; unmount so later tests' notifyWorkoutNotes()
-  // calls don't also reschedule stale instances from earlier tests.
+  // calls don't also touch stale instances from earlier tests.
   await act(async () => {
     trees.forEach((tree) => tree.unmount());
   });
@@ -115,6 +118,7 @@ describe('ReminderSettingsCard', () => {
     });
 
     jest.clearAllMocks();
+    setReconciled({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [2] }, []);
 
     const workoutSwitch = tree.root.findByProps({ accessibilityLabel: 'Workout day nudge' });
     await act(async () => {
@@ -136,114 +140,79 @@ describe('ReminderSettingsCard', () => {
     }, [2]);
   });
 
-  describe('reconciliation with the active routine (#590)', () => {
-    const MONDAY_NOTE = {
-      id: 'note-1',
-      isCurrent: true,
-      raw_text: ['Monday', '-Bench press', '185 5x5'].join('\n'),
-    };
-    const MONDAY_WEDNESDAY_NOTE = {
-      id: 'note-1',
-      isCurrent: true,
-      raw_text: ['Monday', '-Bench press', '185 5x5', '', 'Wednesday', '-Squat', '225 5x5'].join('\n'),
-    };
-    const OTHER_ROUTINE_FRIDAY_NOTE = {
-      id: 'note-2',
-      isCurrent: true,
-      raw_text: ['Friday', '-Deadlift', '315 3x5'].join('\n'),
-    };
-    const ENABLED_INFERRED_WORKOUT = { enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] };
-
-    test('reschedules an enabled inferred-weekday reminder after the routine text changes', async () => {
-      setActiveNote(MONDAY_NOTE);
-      Storage.loadWorkoutReminder.mockResolvedValue(ENABLED_INFERRED_WORKOUT);
-
-      await act(async () => {
-        createCard();
-      });
-
-      expect(applyWorkoutReminder).not.toHaveBeenCalled();
-
-      // Simulate the note's text being edited elsewhere in the app: the
-      // reminder card re-reads storage in response to the same broadcast
-      // useWorkoutNotes() screens use, then reschedules idempotently.
-      setActiveNote(MONDAY_WEDNESDAY_NOTE);
-      await act(async () => {
-        notifyWorkoutNotes();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(applyWorkoutReminder).toHaveBeenCalledWith(ENABLED_INFERRED_WORKOUT, [2, 4]);
-      expect(requestReminderPermission).not.toHaveBeenCalled();
-    });
-
-    test('reschedules an enabled inferred-weekday reminder after the active routine switches', async () => {
-      setActiveNote(MONDAY_NOTE);
-      Storage.loadWorkoutReminder.mockResolvedValue(ENABLED_INFERRED_WORKOUT);
-
-      await act(async () => {
-        createCard();
-      });
-
-      setActiveNote(OTHER_ROUTINE_FRIDAY_NOTE);
-      await act(async () => {
-        notifyWorkoutNotes();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(applyWorkoutReminder).toHaveBeenCalledWith(ENABLED_INFERRED_WORKOUT, [6]);
-      expect(requestReminderPermission).not.toHaveBeenCalled();
-    });
-
-    test('keeps explicit fallback weekdays authoritative when the routine has no inferred days', async () => {
-      const FALLBACK_WORKOUT = { enabled: true, hour: 17, minute: 0, fallbackWeekdays: [2] };
-      setActiveNote(PUSH_DAY_NOTE);
-      Storage.loadWorkoutReminder.mockResolvedValue(FALLBACK_WORKOUT);
+  describe('reconciliation wiring (#590 / PR #649 review)', () => {
+    test('displays the inferred weekdays reconcileWorkoutReminder reports on mount', async () => {
+      setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2, 4]);
 
       let tree;
       await act(async () => {
         tree = createCard();
       });
 
-      expect(applyWorkoutReminder).not.toHaveBeenCalled();
-
-      // A different note with no weekday headings still resolves via the
-      // untouched fallback selection, not the (empty) inference.
-      setActiveNote({ id: 'note-3', isCurrent: true, raw_text: 'Legs and arms' });
-      await act(async () => {
-        notifyWorkoutNotes();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(applyWorkoutReminder).not.toHaveBeenCalled();
-
+      expect(reconcileWorkoutReminder).toHaveBeenCalledTimes(1);
       const workoutSwitch = tree.root.findByProps({ accessibilityLabel: 'Workout day nudge' });
       expect(workoutSwitch.props.value).toBe(true);
+      expect(tree.root.findAllByType(Text).map(textContent)).toContain(
+        'On your routine’s training days: Mon, Wed'
+      );
+      // Mounting the card must not itself reschedule — reconciliation is
+      // owned by reminderScheduler.js/workoutNoteHooks.js, not the card.
+      expect(applyWorkoutReminder).not.toHaveBeenCalled();
     });
 
-    test('does not reschedule or reapply while the workout reminder is disabled', async () => {
-      setActiveNote(MONDAY_NOTE);
-      Storage.loadWorkoutReminder.mockResolvedValue({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] });
+    test('refreshes the displayed weekdays on the workout-note broadcast without calling applyWorkoutReminder itself', async () => {
+      setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2]);
 
       let tree;
       await act(async () => {
         tree = createCard();
       });
 
-      setActiveNote(MONDAY_WEDNESDAY_NOTE);
+      // The always-on subscriber in workoutNoteHooks.js is what actually
+      // reschedules in the real app; this card only needs to reflect the
+      // latest reconciled state it reports. Simulate that here by changing
+      // what the next reconcileWorkoutReminder() call resolves to.
+      setReconciled({ enabled: true, hour: 17, minute: 0, fallbackWeekdays: [] }, [2, 4]);
       await act(async () => {
         notifyWorkoutNotes();
         await Promise.resolve();
         await Promise.resolve();
       });
 
+      // reconcileWorkoutReminder is mocked, so both the card's own display
+      // listener AND the always-on subscriber registered by
+      // hooks/entries/workoutNoteHooks.js (imported transitively by the card)
+      // call it in response to the same broadcast: 1 mount + 2 on notify.
+      expect(reconcileWorkoutReminder).toHaveBeenCalledTimes(3);
+      expect(tree.root.findAllByType(Text).map(textContent)).toContain(
+        'On your routine’s training days: Mon, Wed'
+      );
+      // The card itself never calls applyWorkoutReminder in response to a
+      // routine change — only in response to a direct user toggle/edit,
+      // which this test never triggers. Double-scheduling alongside the
+      // always-on subscriber would violate idempotency.
       expect(applyWorkoutReminder).not.toHaveBeenCalled();
-      expect(requestReminderPermission).not.toHaveBeenCalled();
+    });
+
+    test('a disabled reminder stays displayed as off across a routine broadcast', async () => {
+      setReconciled({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] }, [2]);
+
+      let tree;
+      await act(async () => {
+        tree = createCard();
+      });
+
+      setReconciled({ enabled: false, hour: 17, minute: 0, fallbackWeekdays: [] }, [2, 4]);
+      await act(async () => {
+        notifyWorkoutNotes();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
       const workoutSwitch = tree.root.findByProps({ accessibilityLabel: 'Workout day nudge' });
       expect(workoutSwitch.props.value).toBe(false);
+      expect(applyWorkoutReminder).not.toHaveBeenCalled();
+      expect(requestReminderPermission).not.toHaveBeenCalled();
     });
   });
 });

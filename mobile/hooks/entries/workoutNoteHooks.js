@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { makeWorkoutNoteItem } from '../../lib/data';
+import { reconcileWorkoutReminder } from '../../lib/reminderScheduler';
 import { maybeSyncCloud, readVia, writeVia } from './storageMode';
 import { safeNotify } from './shared';
 
@@ -8,6 +9,19 @@ export const DELOAD_NOTE_PREFIX = 'Deload · ';
 
 export let workoutNotesListeners = [];
 export const notifyWorkoutNotes = () => safeNotify(workoutNotesListeners);
+
+// Always-on workout-reminder reconciliation (issue #590, follow-up to the
+// PR #649 review finding). Registered once at module load — not inside a
+// component's useEffect — so it stays active for the lifetime of the app
+// regardless of which screen is mounted: a card-local listener only existed
+// while the Settings screen happened to be rendered, so routine edits/
+// switches made from Log (or any other screen) left the workout reminder
+// pinned to stale inferred days. This fires on every add/update/remove/
+// selectCurrent, and reconcileWorkoutReminder's own dedup cache keeps it a
+// no-op unless the resolved schedule actually changed.
+workoutNotesListeners.push(() => {
+  reconcileWorkoutReminder().catch(() => {});
+});
 
 // Reload fan-out, separate from the notify fan-out above.
 //

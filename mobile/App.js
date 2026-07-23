@@ -21,6 +21,7 @@ import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, re
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry } from './lib/parser';
 import { makeWeightEntry } from './lib/data';
+import { reconcileWorkoutReminder } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
@@ -157,6 +158,17 @@ export default function App() {
     loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
     loadWeightDateEditEnabled().then(setWeightDateEditEnabled);
     loadDeloadDateEditEnabled().then(setDeloadDateEditEnabled);
+  }, []);
+
+  // Reconcile the workout reminder once at app startup (#590): the active
+  // routine can change while the app is closed (e.g. restored from a cloud
+  // sync, or edited on another device), which would otherwise leave a
+  // previously-scheduled native reminder pinned to whatever routine was
+  // current when the app last closed. Idempotent — reconcileWorkoutReminder's
+  // own dedup cache skips this if the workout-note broadcast listener in
+  // workoutNoteHooks.js already reconciled the same schedule first.
+  React.useEffect(() => {
+    reconcileWorkoutReminder().catch(() => {});
   }, []);
 
   const toggleWorkoutCollapsed = useCallback(async () => {

@@ -7,10 +7,14 @@
 // Local scheduling only: no push tokens, no server, no Supabase.
 
 import { Platform } from 'react-native';
+import * as Storage from '../storage/entries';
+import { parseWorkoutNote } from './parser';
 import {
   REMINDER_KIND,
   buildWeighInNotificationRequests,
   buildWorkoutNotificationRequests,
+  inferWorkoutWeekdays,
+  resolveWorkoutWeekdays,
   selectReminderIdsToCancel,
 } from './reminders';
 
@@ -99,4 +103,45 @@ export async function applyWorkoutReminder(settings, weekdays) {
   if (!remindersSupported()) return;
   await cancelReminders(REMINDER_KIND.WORKOUT);
   await scheduleRequests(buildWorkoutNotificationRequests(settings, weekdays));
+}
+
+// Read the active routine and reschedule the workout reminder when its
+// inferred weekdays changed (issue #590). This is the single reconciliation
+// entry point, safe to call from several places without double-scheduling:
+// an always-mounted subscriber on the workout-note change broadcast (so it
+// fires for routine edits/switches made from any screen, not only while
+// Settings is mounted), once at app startup (so a stale native schedule from
+// before the last app close/restart still gets corrected), and
+// ReminderSettingsCard's own display refresh. A module-level cache, keyed on
+// both the enabled flag and the inferred weekdays, dedupes repeated calls so
+// only the first caller to observe a real change actually reschedules;
+// later calls with the same key are no-ops. Never touches OS permission —
+// only applyWorkoutReminder's existing cancel-then-reschedule.
+let lastReconciledKey = null;
+
+export function __resetWorkoutReminderReconciliationForTests() {
+  lastReconciledKey = null;
+}
+
+export async function reconcileWorkoutReminder() {
+  const [workout, notes, currentId] = await Promise.all([
+    Storage.loadWorkoutReminder(),
+    Storage.loadWorkoutNotes(),
+    Storage.loadCurrentWorkoutId(),
+  ]);
+  const activeNote = (Array.isArray(notes) ? notes : []).find(
+    (n) => n.id === currentId || n.isCurrent === true
+  );
+  const { sections } = activeNote?.raw_text ? parseWorkoutNote(activeNote.raw_text) : { sections: [] };
+  const inferredWeekdays = inferWorkoutWeekdays(sections);
+
+  const key = `${workout.enabled ? '1' : '0'}:${inferredWeekdays.join(',')}`;
+  if (key !== lastReconciledKey) {
+    lastReconciledKey = key;
+    if (workout.enabled) {
+      const resolved = resolveWorkoutWeekdays(inferredWeekdays, workout.fallbackWeekdays);
+      await applyWorkoutReminder(workout, resolved);
+    }
+  }
+  return { workout, inferredWeekdays };
 }
