@@ -10,6 +10,10 @@ jest.mock('../lib/reminderScheduler', () => {
   return {
     installForegroundHandler: mockFn,
     __mockFn: mockFn,  // expose for testing
+    // App.js also reconciles the workout reminder once on startup (#590);
+    // this suite only exercises the foreground-handler install path, so a
+    // no-op stub is enough to keep that unrelated effect from throwing.
+    reconcileWorkoutReminder: jest.fn(async () => ({ workout: { enabled: false }, inferredWeekdays: [] })),
   };
 });
 

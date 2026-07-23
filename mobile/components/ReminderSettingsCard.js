@@ -4,12 +4,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card } from './UI';
 import { Colors } from '../theme/colors';
 import * as Storage from '../storage/entries';
-import { parseWorkoutNote } from '../lib/parser';
+// Imported directly from the hook module (not the `hooks/useEntries` barrel)
+// so this card's display refresh subscribes to the same add/update/remove/
+// selectCurrent broadcast every `useWorkoutNotes()` screen already relies on,
+// without depending on that barrel's public hook contract or its mocks.
+import { workoutNotesListeners } from '../hooks/entries/workoutNoteHooks';
 import {
   WEEKDAYS,
   DEFAULT_WEIGH_IN_REMINDER,
   DEFAULT_WORKOUT_REMINDER,
-  inferWorkoutWeekdays,
   resolveWorkoutWeekdays,
   formatReminderTime,
 } from '../lib/reminders';
@@ -18,6 +21,7 @@ import {
   requestReminderPermission,
   applyWeighInReminder,
   applyWorkoutReminder,
+  reconcileWorkoutReminder,
 } from '../lib/reminderScheduler';
 
 const WEEKDAY_NAMES = { 1: 'Sun', 2: 'Mon', 3: 'Tue', 4: 'Wed', 5: 'Thu', 6: 'Fri', 7: 'Sat' };
@@ -32,6 +36,16 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // toggles. The OS notification permission is requested only when a toggle is
 // first enabled; on denial the toggle stays off and an inline message explains
 // why. Disabling a toggle cancels its scheduled notifications.
+//
+// Reconciling the schedule against the active routine (#590) is NOT this
+// card's job: an always-on subscriber in hooks/entries/workoutNoteHooks.js
+// (plus one call at app startup in App.js) already keeps the workout
+// reminder aligned regardless of whether this card is mounted — a card-local
+// listener only existed while Settings happened to be rendered. This card
+// still displays inferredWeekdays, so it calls the same
+// reconcileWorkoutReminder() for its own read of the active routine; its
+// dedup cache means that call is a no-op for scheduling whenever the
+// always-on subscriber already reconciled the same change.
 export function ReminderSettingsCard() {
   const [weighIn, setWeighIn] = useState({ ...DEFAULT_WEIGH_IN_REMINDER });
   const [workout, setWorkout] = useState({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
@@ -44,23 +58,37 @@ export function ReminderSettingsCard() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [weighInSettings, workoutSettings, notes, currentId] = await Promise.all([
+      const [weighInSettings, reconciled] = await Promise.all([
         Storage.loadWeighInReminder(),
-        Storage.loadWorkoutReminder(),
-        Storage.loadWorkoutNotes(),
-        Storage.loadCurrentWorkoutId(),
+        reconcileWorkoutReminder(),
       ]);
       if (cancelled) return;
       setWeighIn(weighInSettings);
-      setWorkout(workoutSettings);
-      const activeNote = (Array.isArray(notes) ? notes : []).find(
-        (n) => n.id === currentId || n.isCurrent === true
-      );
-      const { sections } = activeNote?.raw_text ? parseWorkoutNote(activeNote.raw_text) : { sections: [] };
-      setInferredWeekdays(inferWorkoutWeekdays(sections));
+      setWorkout(reconciled.workout);
+      setInferredWeekdays(reconciled.inferredWeekdays);
     })().catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Keep the displayed inferred weekdays live while this card stays mounted
+  // (#590): re-reads after the same notifyWorkoutNotes() broadcast the
+  // always-on reconciliation subscriber responds to. Scheduling itself
+  // already happened (or was a no-op) via that subscriber; this only updates
+  // what the card shows.
+  useEffect(() => {
+    const onNoteChange = () => {
+      reconcileWorkoutReminder()
+        .then((reconciled) => {
+          setInferredWeekdays(reconciled.inferredWeekdays);
+        })
+        .catch(() => {});
+    };
+    workoutNotesListeners.push(onNoteChange);
+    return () => {
+      const index = workoutNotesListeners.indexOf(onNoteChange);
+      if (index !== -1) workoutNotesListeners.splice(index, 1);
     };
   }, []);
 
