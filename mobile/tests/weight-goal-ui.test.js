@@ -83,18 +83,28 @@ describe('WeightScreen', () => {
     return component;
   };
 
+  // Recursively flatten React children without JSON.stringify to avoid circular crashes.
+  // Extracts text from nested fragments and React elements.
+  const flattenChildren = (children) => {
+    if (children == null) return '';
+    if (typeof children === 'string' || typeof children === 'number') return String(children);
+    if (Array.isArray(children)) {
+      return children.map(flattenChildren).join('');
+    }
+    // For React elements/objects with children prop, recursively flatten
+    if (typeof children === 'object' && children.props && children.props.children !== undefined) {
+      return flattenChildren(children.props.children);
+    }
+    // For other objects, return empty string (avoids [object Object] strings)
+    return '';
+  };
+
   const findText = (root, text) => {
     const allText = root.findAllByType('Text');
-    const match = allText.find(t => {
-      const children = t.props.children;
-      const flat = Array.isArray(children) ? children.join('') : String(children);
+    return allText.find(t => {
+      const flat = flattenChildren(t.props.children);
       return flat.includes(text);
     });
-    if (!match) {
-        // Fallback for deeply nested children or complex fragments
-        return allText.find(t => JSON.stringify(t.props.children).includes(text));
-    }
-    return match;
   };
 
   test('renders today target date as completed/overdue state (weeks_remaining <= 0)', () => {
@@ -1258,6 +1268,38 @@ describe('WeightScreen', () => {
       const archiveChip = findPressableByText(component.root, 'Archive');
       expect(archiveChip).toBeTruthy();
       expect(archiveChip.props.hitSlop).toBe(12);
+    });
+  });
+
+  describe('text lookup with nested fragments and React elements', () => {
+    test('discovers text buried inside nested React elements/fragments without JSON.stringify', () => {
+      // Render an overdue goal to trigger nested component rendering.
+      // Target date is in the past (before MOCK_NOW 2026-05-24) so "Goal ended." appears.
+      const goal = { target_weight: 180, target_date: '2026-05-20', start_weight: 200 };
+      const entries = [
+        { id: '1', date: '2026-05-24', logged_at: '2026-05-24T08:00:00Z', weight_value: 185, note: '' },
+      ];
+      const component = setup(goal, entries);
+      const root = component.root;
+
+      // These strings are rendered inside nested fragments and components; findText
+      // must recursively flatten to discover them, not crash on circular refs or
+      // convert nested React elements to [object Object] strings.
+      expect(findText(root, 'Goal ended.')).toBeTruthy();
+      expect(findText(root, '185.0 lb')).toBeTruthy();
+      expect(findText(root, 'Weight')).toBeTruthy();
+    });
+
+    test('deliberately missing text returns undefined and preserves assertion failure', () => {
+      const goal = { target_weight: 175, target_date: '2026-09-01', start_weight: 200 };
+      const component = setup(goal);
+      const root = component.root;
+
+      // Text that does not exist in the component tree should return undefined
+      // so the assertion `expect(findText(...)).toBeFalsy()` naturally fails with
+      // the intended message, not a JSON.stringify circular crash.
+      const result = findText(root, 'This text does not exist anywhere');
+      expect(result).toBeUndefined();
     });
   });
 });
