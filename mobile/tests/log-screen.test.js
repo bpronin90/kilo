@@ -2936,10 +2936,15 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
     const root = component.root;
     const textInputs = root.findAllByType('TextInput');
 
-    // Find the main note editor input (multiline, not title)
+    // Should find title and main note TextInputs
+    expect(textInputs.length).toBeGreaterThanOrEqual(2);
+
+    // Find the main note editor: the multiline TextInput that's not the title
+    // Title has placeholder "Routine Name", main note has the example placeholder
     const noteInput = textInputs.find(ti =>
-      ti.props.value === 'Monday\n+Lifting\n-Bench\n135 5,5,5' && ti.props.multiline
+      ti.props.multiline && (!ti.props.placeholder || !ti.props.placeholder.includes('Routine Name'))
     );
+
     expect(noteInput).toBeTruthy();
     expect(noteInput.props.autoCorrect).toBe(false);
     expect(noteInput.props.autoCapitalize).toBe('none');
@@ -2989,6 +2994,8 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
 describe('LogDeloadSection deload ordinal input has autocorrect disabled', () => {
   test('deload ordinal modal TextInput has autoCorrect={false}, autoCapitalize="none", spellCheck={false}', () => {
     let component;
+    const completeDeloadMock = jest.fn();
+
     render.act(() => {
       component = render.create(
         <LogDeloadSection
@@ -2998,7 +3005,7 @@ describe('LogDeloadSection deload ordinal input has autocorrect disabled', () =>
           enterDeloadEditor={jest.fn()}
           handleDeloadBodyPress={jest.fn()}
           deloadMode="read"
-          completeDeload={jest.fn()}
+          completeDeload={completeDeloadMock}
           clearDeloadNote={jest.fn()}
           handleGenerateDeload={jest.fn()}
           isGenerating={false}
@@ -3017,8 +3024,26 @@ describe('LogDeloadSection deload ordinal input has autocorrect disabled', () =>
         />
       );
     });
-    // Note: The ordinal input is inside a Modal which may not render in test mode,
-    // so we check the props are defined on the component rather than querying the tree.
-    // This is an acceptable assertion that the props exist on the source component.
+
+    const root = component.root;
+
+    // Find and click the "Deload complete" button to trigger the ordinal modal
+    const deloadCompleteButton = root.findByProps({ title: 'Deload complete' });
+    expect(deloadCompleteButton).toBeTruthy();
+
+    render.act(() => {
+      deloadCompleteButton.props.onPress();
+    });
+
+    // Find the ordinal TextInput in the modal (number-pad keyboard, ordinal input)
+    const textInputs = root.findAllByType('TextInput');
+    const ordinalInput = textInputs.find(ti =>
+      ti.props.keyboardType === 'number-pad' && ti.props.selectTextOnFocus
+    );
+
+    expect(ordinalInput).toBeTruthy();
+    expect(ordinalInput.props.autoCorrect).toBe(false);
+    expect(ordinalInput.props.autoCapitalize).toBe('none');
+    expect(ordinalInput.props.spellCheck).toBe(false);
   });
 });
