@@ -378,7 +378,7 @@ export function AnalyticsScreen({ multiplier, section }) {
       </View>
     ) : (
       <Text key="empty-tracked" style={styles.emptyText}>
-        Tap the bookmark on any exercise in your note to track it here.
+        Tap Track on any exercise in your note to track it here.
       </Text>
     )
   ]);
