@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -279,40 +279,46 @@ export function WeightScreen({
     return { label: met ? 'Success' : 'Missed', met };
   }, [sortedArchivedGoals]);
 
-  const handleEditEntry = (entry) => {
+  // Stable callback identities (#592): WeightHistoryList is wrapped in
+  // React.memo so it does not remap a large expanded history when WeightScreen
+  // re-renders for an unrelated reason (e.g. a Weight/Note field keystroke).
+  // That bail-out only works if the callbacks passed to it keep the same
+  // reference across those renders, so handleEditEntry and handleDelete are
+  // useCallback rather than freshly defined functions every render.
+  const handleEditEntry = useCallback((entry) => {
     setLocalError('');
     setEditingId(entry.id);
     setWeightValue(formatBodyweightValue(entry.weight_value, unit));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
-  };
+  }, [unit, setWeightValue, setWeightNote]);
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
     setLocalError('');
     setEditingId(null);
     setWeightValue('');
     setWeightNote('');
     setEditDate('');
-  };
+  }, [setWeightValue, setWeightNote]);
 
-  const handleDelete = (id) => {
+  const handleDelete = useCallback((id) => {
     Alert.alert(
       'Delete Entry',
       'Are you sure you want to delete this weight entry?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive', 
+        {
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             await remove(id);
             if (id === editingId) cancelEdit();
-          } 
+          }
         },
       ]
     );
-  };
+  }, [remove, editingId, cancelEdit]);
 
   // Synchronous in-flight lock (#596 review follow-up): a rapid double-press —
   // including a retry tapped again before the failed attempt's error/re-render
