@@ -981,6 +981,71 @@ describe('App weight saving local-date handling', () => {
     expect(weightScreen.props.weightValue).toBe('185');
     expect(weightScreen.props.weightNote).toBe('morning');
   });
+
+  // Issue #596 (review follow-up): the cloud adapter's saveWeightEntry writes
+  // the raw row BEFORE enqueueDirty(), so a thrown/false result can follow a
+  // write that already partially landed. A naive retry that calls
+  // makeWeightEntry() again would mint a new id and duplicate the row. This
+  // models that exact sequence — first attempt persists a raw row then
+  // rejects, a distinct later retry follows — and proves the retry reuses the
+  // same id (upserting, per cloudDomainMethods.saveWeightEntry's
+  // findIndex-based overwrite) so only one logical row results.
+  test('retry after a partial-write rejection reuses the failed id instead of duplicating the row', async () => {
+    let store = [];
+    let callCount = 0;
+    mockAdd.mockImplementation(async (entry) => {
+      callCount += 1;
+      if (callCount === 1) {
+        // Simulate the cloud partial write: the raw row persists before the
+        // (mocked) enqueueDirty() rejects.
+        store.push(entry);
+        throw new Error('enqueue failed');
+      }
+      // Retry: upsert by id, mirroring the real adapter's findIndex-based
+      // overwrite instead of blindly pushing a second row.
+      const idx = store.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) store[idx] = entry;
+      else store.push(entry);
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+    });
+
+    let firstResult;
+    await render.act(async () => {
+      firstResult = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(firstResult).toBe(false);
+    expect(mockAdd).toHaveBeenCalledTimes(1);
+    const firstEntryId = mockAdd.mock.calls[0][0].id;
+    expect(store).toHaveLength(1);
+    expect(store[0].id).toBe(firstEntryId);
+
+    // Distinct later retry (not a same-flight double-press): the user sees
+    // the error, the value/note are still intact, and presses save again.
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.weightValue).toBe('185');
+
+    let secondResult;
+    await render.act(async () => {
+      secondResult = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(secondResult).toBe(true);
+    expect(mockAdd).toHaveBeenCalledTimes(2);
+    const secondEntryId = mockAdd.mock.calls[1][0].id;
+    expect(secondEntryId).toBe(firstEntryId);
+    expect(store).toHaveLength(1);
+  });
 });
 
 // ── Web date input fallback (#314) ────────────────────────────────────────────
