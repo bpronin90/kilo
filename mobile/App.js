@@ -236,6 +236,16 @@ export default function App() {
   const [weightSaving, setWeightSaving] = useState(false);
   const [workoutSaving, setWorkoutSaving] = useState(false);
 
+  // Pending-entry identity for a failed add (#596 review follow-up): the cloud
+  // adapter writes the raw row before enqueueDirty(), so a thrown/false result
+  // can follow a write that already partially landed. A naive retry that calls
+  // makeWeightEntry() again mints a new id/logged_at/saved_at, so the retry
+  // adds a second, duplicate row instead of completing the first. Stashing the
+  // failed attempt's id here and reusing it on the next attempt keeps the
+  // retry idempotent — same logical row, still reflecting any value/note the
+  // user corrected before retrying. Cleared only on success.
+  const pendingWeightEntryIdRef = useRef(null);
+
   const handleTabPress = useCallback((tab, section = null) => {
     Keyboard.dismiss();
     setSaveError('');
@@ -274,13 +284,35 @@ export default function App() {
       logged_at: loggedAt,
       note: weightNote.trim() || undefined,
     });
+    // Reuse the id from a prior failed attempt instead of the freshly minted
+    // one, so a retry after a partial write (raw row persisted, enqueue
+    // rejected) targets the same logical row rather than creating a second.
+    if (pendingWeightEntryIdRef.current) {
+      entry.id = pendingWeightEntryIdRef.current;
+    }
+    pendingWeightEntryIdRef.current = entry.id;
     setWeightSaving(true);
     try {
-      await weightHook.add(entry);
+      const result = await weightHook.add(entry);
+      if (result === false) {
+        // False-returning write (e.g. a rejected mutation): keep the entered
+        // values so the user can retry instead of silently losing the entry.
+        // pendingWeightEntryIdRef stays set so the retry reuses this id.
+        setSaveError('Could not save weight entry. Please try again.');
+        return false;
+      }
+      pendingWeightEntryIdRef.current = null;
       setWeightValue('');
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
       return true;
+    } catch {
+      // Rejected write (e.g. a thrown storage failure, possibly after a
+      // partial persist): keep the entered values and the pending id so the
+      // user can retry instead of silently losing the entry or duplicating
+      // the partially-written row.
+      setSaveError('Could not save weight entry. Please try again.');
+      return false;
     } finally {
       setWeightSaving(false);
     }

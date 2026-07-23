@@ -140,6 +140,7 @@ describe('WeightScreen edit and delete correction flows', () => {
           : e
       );
       useEntries.useWeightEntries.mockReturnValue(makeMockReturn());
+      return true;
     });
 
     mockRemove = jest.fn().mockImplementation(async (id) => {
@@ -277,6 +278,49 @@ describe('WeightScreen edit and delete correction flows', () => {
     expect(hasText(root, 'Editing entry')).toBe(false);
   });
 
+  // Issue #596 (review follow-up): a rapid double-press on "Save weigh-in"
+  // while the first onSaveWeight() call is still in flight must not fire a
+  // second write. Exercises the same submit handler / in-flight ref guard as
+  // the edit-path duplicate-press test above, for the add path.
+  test('rapid double-press on Save weigh-in during an in-flight save fires only one write', async () => {
+    let resolveSave;
+    const mockOnSaveWeight = jest.fn(() => new Promise((resolve) => {
+      resolveSave = () => resolve(true);
+    }));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={mockOnSaveWeight} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const saveBtn = findPressableByText(root, 'Save weigh-in');
+    expect(saveBtn).toBeTruthy();
+    // First press starts the in-flight save; a synchronous second press
+    // (before the pending promise resolves) simulates a rapid double-tap.
+    render.act(() => {
+      saveBtn.props.onPress();
+      saveBtn.props.onPress();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => {
+      resolveSave();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockOnSaveWeight).toHaveBeenCalledTimes(1);
+  });
+
   test('edit submit shows validation error and does not call update for invalid weight', async () => {
     let component;
     render.act(() => {
@@ -304,6 +348,128 @@ describe('WeightScreen edit and delete correction flows', () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(hasText(root, 'Enter a number only')).toBe(true);
+  });
+
+  // Issue #596: a false return from update() (e.g. the record was not found)
+  // must not silently close the edit — it should surface retryable copy and
+  // keep the entered values in the form.
+  test('edit submit shows retryable error and stays open when update() resolves false', async () => {
+    mockUpdate.mockImplementation(async () => false);
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    await render.act(async () => {
+      await updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(hasText(root, 'Editing entry')).toBe(true);
+    const inputsAfter = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfter[0].props.value).toBe('190');
+    expect(hasText(root, 'Could not update weight entry. Please try again.')).toBe(true);
+  });
+
+  // Issue #596: a thrown rejection from update() (e.g. a storage failure) must
+  // be caught, surfaced as retryable copy, and must not close the edit either.
+  test('edit submit shows retryable error and stays open when update() rejects', async () => {
+    mockUpdate.mockImplementation(async () => {
+      throw new Error('storage write failed');
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    await render.act(async () => {
+      await updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(hasText(root, 'Editing entry')).toBe(true);
+    const inputsAfter = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfter[0].props.value).toBe('190');
+    expect(hasText(root, 'Could not update weight entry. Please try again.')).toBe(true);
+  });
+
+  // Issue #596 (review follow-up): a rapid double-press on "Update entry"
+  // while the first update() call is still in flight must not fire a second
+  // write. The submit handler's synchronous in-flight ref should swallow the
+  // second press until the first attempt settles.
+  test('rapid double-press on Update entry during an in-flight update() fires only one write', async () => {
+    let resolveUpdate;
+    mockUpdate.mockImplementation(() => new Promise((resolve) => {
+      resolveUpdate = () => resolve(true);
+    }));
+
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const updateBtn = findPressableByText(root, 'Update entry');
+    // First press starts the in-flight update; a synchronous second press
+    // (before the pending promise resolves) simulates a rapid double-tap.
+    render.act(() => {
+      updateBtn.props.onPress();
+      updateBtn.props.onPress();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+
+    // Let the in-flight update settle and confirm the guard released so a
+    // subsequent, distinct submit still works normally.
+    await render.act(async () => {
+      resolveUpdate();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
   });
 
   test('tapping the delete affordance shows a confirm prompt, calls remove, and removes the row', async () => {
@@ -749,6 +915,136 @@ describe('App weight saving local-date handling', () => {
     expect(mockAdd).toHaveBeenCalled();
     const savedEntry = mockAdd.mock.calls[0][0];
     expect(savedEntry.logged_at).toBe('2026-06-11T03:30:00.000Z');
+  });
+
+  // Issue #596: a thrown rejection from add() (e.g. a storage failure) must be
+  // caught, surface retryable copy via errorMessage, and preserve the entered
+  // value/note so the user does not lose their input.
+  test('shows retryable error and preserves entered value when add() rejects', async () => {
+    mockAdd.mockImplementation(async () => {
+      throw new Error('storage write failed');
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+      weightScreen.props.setWeightNote('morning');
+    });
+
+    let result;
+    await render.act(async () => {
+      result = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(result).toBe(false);
+    expect(mockAdd).toHaveBeenCalled();
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.errorMessage).toBe('Could not save weight entry. Please try again.');
+    expect(weightScreen.props.weightValue).toBe('185');
+    expect(weightScreen.props.weightNote).toBe('morning');
+  });
+
+  // Issue #596 (review follow-up): a false-returning add() (e.g. a rejected
+  // mutation that resolves rather than throws) must be treated as failure too,
+  // not silently reported as success — surface retryable copy and preserve the
+  // entered value/note.
+  test('shows retryable error and preserves entered value when add() resolves false', async () => {
+    mockAdd.mockImplementation(async () => false);
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+      weightScreen.props.setWeightNote('morning');
+    });
+
+    let result;
+    await render.act(async () => {
+      result = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(result).toBe(false);
+    expect(mockAdd).toHaveBeenCalled();
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.errorMessage).toBe('Could not save weight entry. Please try again.');
+    expect(weightScreen.props.weightValue).toBe('185');
+    expect(weightScreen.props.weightNote).toBe('morning');
+  });
+
+  // Issue #596 (review follow-up): the cloud adapter's saveWeightEntry writes
+  // the raw row BEFORE enqueueDirty(), so a thrown/false result can follow a
+  // write that already partially landed. A naive retry that calls
+  // makeWeightEntry() again would mint a new id and duplicate the row. This
+  // models that exact sequence — first attempt persists a raw row then
+  // rejects, a distinct later retry follows — and proves the retry reuses the
+  // same id (upserting, per cloudDomainMethods.saveWeightEntry's
+  // findIndex-based overwrite) so only one logical row results.
+  test('retry after a partial-write rejection reuses the failed id instead of duplicating the row', async () => {
+    let store = [];
+    let callCount = 0;
+    mockAdd.mockImplementation(async (entry) => {
+      callCount += 1;
+      if (callCount === 1) {
+        // Simulate the cloud partial write: the raw row persists before the
+        // (mocked) enqueueDirty() rejects.
+        store.push(entry);
+        throw new Error('enqueue failed');
+      }
+      // Retry: upsert by id, mirroring the real adapter's findIndex-based
+      // overwrite instead of blindly pushing a second row.
+      const idx = store.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) store[idx] = entry;
+      else store.push(entry);
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<App />);
+    });
+    const root = component.root;
+    let weightScreen = root.findByType(WeightScreen);
+
+    render.act(() => {
+      weightScreen.props.setWeightValue('185');
+    });
+
+    let firstResult;
+    await render.act(async () => {
+      firstResult = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(firstResult).toBe(false);
+    expect(mockAdd).toHaveBeenCalledTimes(1);
+    const firstEntryId = mockAdd.mock.calls[0][0].id;
+    expect(store).toHaveLength(1);
+    expect(store[0].id).toBe(firstEntryId);
+
+    // Distinct later retry (not a same-flight double-press): the user sees
+    // the error, the value/note are still intact, and presses save again.
+    weightScreen = root.findByType(WeightScreen);
+    expect(weightScreen.props.weightValue).toBe('185');
+
+    let secondResult;
+    await render.act(async () => {
+      secondResult = await weightScreen.props.onSaveWeight();
+    });
+
+    expect(secondResult).toBe(true);
+    expect(mockAdd).toHaveBeenCalledTimes(2);
+    const secondEntryId = mockAdd.mock.calls[1][0].id;
+    expect(secondEntryId).toBe(firstEntryId);
+    expect(store).toHaveLength(1);
   });
 });
 
