@@ -29,9 +29,10 @@ jest.mock('../hooks/useEntries');
 jest.mock('../hooks/entries/weightHooks');
 
 // Mock current date for consistent testing
-// May 24, 2026 is a Sunday.
+// May 24, 2026 is a Sunday at noon local time (timezone-invariant).
 // Aug 2, 2026 is exactly 10 weeks later.
-const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
+// Use local time construction to ensure the date is the same across all timezones.
+const MOCK_NOW = new Date(2026, 4, 24, 12, 0, 0);
 jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
 import { deriveWeightGoalAnalytics } from '../lib/data';
@@ -412,7 +413,7 @@ describe('WeightScreen', () => {
 
       render.act(() => {
         // Cross local midnight into 2026-05-25 and let the scheduled refresh fire.
-        jest.setSystemTime(new Date('2026-05-25T12:00:00Z'));
+        jest.setSystemTime(new Date(2026, 4, 25, 12, 0, 0));
         jest.advanceTimersByTime(24 * 60 * 60 * 1000);
       });
 
