@@ -3342,7 +3342,15 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
     // Corrected descriptions are present.
     expect(joined).toContain('Weight trend charts');
     expect(joined).toContain('combined Big 3');
+    // Big 3 chart prerequisites: mapped lifts and enough complete cycles.
+    expect(joined).toContain('mapped squat, bench, and deadlift');
+    expect(joined).toContain('enough complete logged cycles');
+    // Progressive Overload rows expose all four current metrics.
     expect(joined).toContain('Progressive Overload');
+    expect(joined).toContain('Est. Max');
+    expect(joined).toContain('Kilo Max');
+    expect(joined).toContain('best set');
+    expect(joined).toContain('progress trend');
     expect(joined).toContain('when fatigue tracking is enabled');
 
     // Removed promises of features Kilo does not ship.
