@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.99.0 - 2026-07-24
+
+- Issue #582: Fixed Analytics empty state to name the real Track control instead of the nonexistent bookmark.
+- Issue #583: Fixed App Guide analytics descriptions to match shipped surfaces and removed promises of per-exercise charts and Est. Max history.
+- Issue #584: Added a "Workout syntax help" button in the Log tab editor that opens the workout syntax reference in a modal, without leaving the tab or losing unsaved text.
+- Issue #585: Teach literal, typable workout syntax in the Log empty state instead of showing only a parsed preview. The example text is shared with regression tests to prevent drift between displayed guidance and parser expectations.
+- Issue #588: Fixed local weight history displaying entries that had been deleted.
+- Issue #589: Fixed overlapping cloud sync calls so they share a safe in-flight pass and cannot race a cloud rebuild.
+- Issue #590: Fixed the workout day reminder so it reschedules automatically after the active routine's days, contents, or selection change — from any screen, and after an app restart — instead of staying pinned to whatever routine was active when the Settings screen was last opened.
+- Issue #591: Install foreground notification handler on app startup, independent of reminder scheduling or permission state.
+- Issue #592: Fixed shell keystrokes in Weight/Log fields re-rendering every mounted tab and remapping a large expanded weight history on every keystroke.
+- Issue #593: Exposed tab roles, labels, and selected state in TabBar for complete screen-reader semantics.
+- Issue #594: Shared buttons now announce their control role and truthful disabled/loading state to assistive technology.
+- Issue #595: Completed accessibility semantics for the session check-in modal: back and close controls now have distinct labels, tier and reason chips expose button/checkbox roles with selected state, the free-text field has a descriptive label, and decorative icon/text glyphs are excluded from screen reader announcements.
+- Issue #596: Fixed weight-entry add and edit so a rejected save or update (a false return or a thrown rejection) shows a retryable error instead of silently failing; a failed edit now stays open with the entered values intact instead of closing.
+- Issue #597: Bounded and throttled the client metadata recorded with a cloud-consent grant so the consent record cannot be flooded with oversized or repeated entries.
+- Issue #600: Prevented co-tenant migration name collisions from hiding a missing Kilo deployment.
+- Issue #603: Aligned weight severity boundaries so that getWeightDeltaSeverity and the canonical classifier now agree on inclusive 1.5 and 2.3 lb thresholds.
+- Issue #604: Fixed weight trend windows so 7-day, 30-day, prior, and goal-day ranges count local calendar dates instead of fixed 24-hour offsets, keeping them accurate across daylight-saving transitions.
+- Issue #605: Fixed skipped within-row sets (e.g. the skipped 200 lb member of `200 -, 100 5`) incorrectly raising latest top weight and repeatability score in progression analytics.
+- Issue #606: Corrected prior weight-window range descriptions in the calculations reference to match shipped behavior: prior 7-day is days 7–13 ago, prior 30-day is days 30–59 ago.
+- Issue #607: Fixed corrupt on-device list storage (malformed or non-array JSON) being treated as an empty dataset, which let the next save silently overwrite the salvageable data; corrupt reads now surface the recoverable load-error banner instead.
+- Issue #608: Enforced that consent evidence archive rows can only be removed by the authorized retention sweep once their six-year retention has expired, so the compliance record can no longer be deleted early.
+- Issue #609: Fixed health-deletion rate-limit buckets being retained longer than their one-hour window.
+- Issue #613: Fixed the session check-in modal to keep the modal open and show a retryable error when a submit or dismiss write fails or returns a false update result, instead of silently closing or leaving an unhandled promise rejection.
+- Issue #614: Fixed the workout log editor silently refilling text a user deliberately cleared: a background/remote refresh of the current routine no longer overwrites a deliberate clear, while initial loads and actual routine switches still hydrate stored text and title as before.
+- Issue #615: Render workout star marks (e.g. `*PR`) and stored `--` comments in the Log read view as accessible, muted annotations beneath their set row, without affecting counted sets or canonical exercise names.
+- Issue #616: Surface workout-note parser errors in the Log read view: unrecognized set rows now show a warning glyph, the actionable parser message, and a screen-reader label naming the raw line and its recovery (no longer red text alone), and a whole-note rejection such as an oversize note renders a visible parse-failure banner instead of a blank read view.
+- Issue #617: Fixed a missing dash-space set row (e.g. "-230 5", meant as "- 230 5") from being misread as a header and minting a phantom numeric-named exercise. It now recovers as a normal logged set under the current exercise, or — when there is no current exercise to attach it to — surfaces a visible parse error instead of inventing one.
+- Issue #618: Inline notes after a logged set (e.g. `225 5 - RPE 9`) now keep the set counted and show the note as a muted line beneath it, instead of dropping the note or breaking the row.
+- Issue #619: Disable autocorrect, autocapitalization, and spellcheck on syntax-sensitive workout and deload text inputs to prevent platform keyboard from rewriting exercise names and row syntax.
+- Issue #620: Made cloud sync pulls safe against concurrent writers and pagination shifts.
+- Issue #621: Made Cloud Sync status distinguish device-only saves, queued changes, server-confirmed passes, and retryable failures.
+- Issue #622: Clarified Log editor's save confirmation to say "Saved on device" instead of "Saved!" to communicate device-local save and not imply cloud synchronization.
+
 ## 0.98.3 - 2026-07-21
 
 - Issue #525: Fixed workouts, weigh-ins, and deletions made while signed out being left on the device after signing back in, while Cloud Sync reported success.
