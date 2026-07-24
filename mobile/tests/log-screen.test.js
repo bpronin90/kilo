@@ -3309,7 +3309,26 @@ describe('#616: oversize note reaches the read-view failure affordance through t
 
 // ── LogEmptyState: shared syntax example regression tests (#585)
 describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
-  const { WORKOUT_SYNTAX_EXAMPLE } = require('../components/WorkoutSyntaxReference.js');
+  // LogEmptyState is mocked at the top of this file for LogScreen tests; pull
+  // the real module here so we validate the shipped component and its exports.
+  const { LogEmptyState, WORKOUT_SYNTAX_EXAMPLE, WORKOUT_SYNTAX_ROWS } = jest.requireActual('../components/LogEmptyState');
+
+  test('rendered rows are derived from the exact tested example string', () => {
+    // Single source of truth: displayed rows must be the tested string split.
+    expect(WORKOUT_SYNTAX_ROWS).toEqual(WORKOUT_SYNTAX_EXAMPLE.split('\n'));
+
+    let component;
+    render.act(() => {
+      component = render.create(<LogEmptyState onCreateRoutine={jest.fn()} />);
+    });
+    const rendered = component.root.findAllByType('Text').map(t => {
+      const child = t.props.children;
+      return Array.isArray(child) ? child.join('') : String(child ?? '');
+    });
+    for (const row of WORKOUT_SYNTAX_EXAMPLE.split('\n')) {
+      expect(rendered).toContain(row);
+    }
+  });
 
   test('example syntax parses without errors', () => {
     const result = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);

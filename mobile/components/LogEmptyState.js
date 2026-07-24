@@ -2,7 +2,16 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card, Button } from './UI';
 import { Colors } from '../theme/colors';
-import { WORKOUT_SYNTAX_EXAMPLE, WORKOUT_SYNTAX_ROWS } from './WorkoutSyntaxReference';
+
+// Shared workout syntax example used by the empty state and its regression
+// tests. Exporting a single source keeps the displayed guidance and the
+// parser-tested string from drifting apart. The example must parse into the
+// expected section, exercise, and sets structure.
+export const WORKOUT_SYNTAX_EXAMPLE = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n140 5,5\n-\n145 5';
+
+// Rendered rows are derived from the exact tested string so the on-screen copy
+// cannot diverge from what the parser tests validate.
+export const WORKOUT_SYNTAX_ROWS = WORKOUT_SYNTAX_EXAMPLE.split('\n');
 
 export function LogEmptyState({ onCreateRoutine }) {
   return (
