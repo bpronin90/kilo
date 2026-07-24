@@ -11,6 +11,86 @@ const metrics = (bottom, top = 0) => ({
   insets: { top, right: 0, bottom, left: 0 },
 });
 
+// A Pressable renders its accessibility props onto several nodes in its host
+// subtree, so match the single host element per tab to get one entry each.
+const findTabs = (component) =>
+  component.root.findAll(
+    (node) => typeof node.type === 'string' && node.props.accessibilityRole === 'tab'
+  );
+
+describe('accessibility', () => {
+  test('TabBar container has tablist role', () => {
+    const component = renderWithInsets(
+      <TabBar tabs={['Home', 'Log']} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const surface = component.root.findByType(Animated.View);
+    expect(surface.props.accessibilityRole).toBe('tablist');
+    // The container must not be an accessibility element itself; on iOS
+    // accessible={true} on the parent collapses the tabs into one element.
+    expect(surface.props.accessible).not.toBe(true);
+    act(() => component.unmount());
+  });
+
+  test('Each tab has tab role and stable accessible name', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    const controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    controls.forEach((control, index) => {
+      expect(control.props.accessibilityRole).toBe('tab');
+      expect(control.props.accessibilityLabel).toBe(tabs[index]);
+      expect(control.props.accessible).toBe(true);
+    });
+    act(() => component.unmount());
+  });
+
+  test('Active tab exposes selected state', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Log" onTabPress={() => {}} />,
+      0
+    );
+    const controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    controls.forEach((control, index) => {
+      const isSelected = tabs[index] === 'Log';
+      expect(control.props.accessibilityState.selected).toBe(isSelected);
+    });
+    act(() => component.unmount());
+  });
+
+  test('Accessibility state updates when active tab changes', () => {
+    const tabs = ['Home', 'Log', 'Settings'];
+    const component = renderWithInsets(
+      <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
+      0
+    );
+    let controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    expect(controls[0].props.accessibilityState.selected).toBe(true);
+    expect(controls[1].props.accessibilityState.selected).toBe(false);
+
+    act(() => {
+      component.update(
+        <SafeAreaProvider initialMetrics={metrics(0)}>
+          <TabBar tabs={tabs} activeTab="Log" onTabPress={() => {}} />
+        </SafeAreaProvider>
+      );
+    });
+
+    controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    expect(controls[0].props.accessibilityState.selected).toBe(false);
+    expect(controls[1].props.accessibilityState.selected).toBe(true);
+
+    act(() => component.unmount());
+  });
+});
+
 const renderWithInsets = (child, bottom, top = 0) => {
   let component;
   act(() => {
