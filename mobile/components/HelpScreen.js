@@ -44,7 +44,7 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={styles.tabRow}>
           <Text style={styles.tabName}>Analytics</Text>
-          <Text style={styles.tabDesc}>Progress charts for exercises you've marked as tracked. Shows estimated 1-rep max and Kilo Max over time, session volume, and fatigue check-in data if fatigue tracking is enabled.</Text>
+          <Text style={styles.tabDesc}>Weight trend charts (7-day and 30-day rolling averages) and a combined Big 3 progress total for mapped squat, bench, and deadlift exercises with enough complete logged cycles. Progressive Overload metric rows for tracked exercises show current Est. Max, Kilo Max, best set, and progress trend. Optional fatigue check-in data is included when fatigue tracking is enabled.</Text>
         </View>
         <View style={[styles.tabRow, { marginBottom: 0 }]}>
           <Text style={styles.tabName}>More</Text>
@@ -151,11 +151,11 @@ export function HelpScreen({ onBack }) {
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Tracked</Text>
-          <Text style={styles.termDesc}>An exercise you've marked for Analytics monitoring. Tracked exercises show progress charts, Est. Max history, and overload trends.</Text>
+          <Text style={styles.termDesc}>An exercise you've marked for Analytics monitoring. Tracked exercises appear in the Progressive Overload section showing current Est. Max, Kilo Max, best set, and progress trend.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Fatigue</Text>
-          <Text style={styles.termDesc}>An optional session check-in that records how tired or recovered you feel. Used in Analytics to correlate training load with performance.</Text>
+          <Text style={styles.termDesc}>An optional session check-in that records how tired or recovered you feel. When fatigue tracking is enabled in Settings, Analytics includes volume decline data to correlate training load with performance.</Text>
         </View>
         <View style={styles.termRow}>
           <Text style={styles.termLabel}>Pace Flag</Text>

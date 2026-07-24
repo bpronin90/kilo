@@ -187,6 +187,43 @@ These are process rules, enforced today in `AGENTS.md` / `CLAUDE.md` /
   relevant sections of this doc (once adopted) and `docs/design-system-map.md`
   for the concrete token values, rather than restating pixel values inline.
 
+## 12. Truthful UI control and prerequisite copy
+
+Copy in empty states, help screens, and onboarding materials must be accurate to
+the shipped UI and feature state. This rule prevents misleading guidance and
+reduces friction when a user follows documented instructions but encounters
+different or unavailable surfaces.
+
+- **Copy referencing a UI control must match the control's actual accessible
+  name or visible label exactly.** If your copy says "tap the bookmark," the
+  screen must have a button or icon labeled "Bookmark" or with
+  `accessibilityLabel="Bookmark"`. If the real control reads "Track," your copy
+  must use that word, not a synonym or prior name. This matters for screen-reader
+  users who search by label, and for sighted users who hunt for a named affordance
+  in an unfamiliar interface. At review time, a reviewer can catch this mismatch by
+  searching the codebase for the exact control label — if it does not appear, the
+  copy is inaccurate. (§4/§9 already govern label size, color, and placement; this
+  rule covers semantic accuracy only.)
+
+- **Feature descriptions must state material prerequisites, not describe only
+  the populated end-state.** If a chart appears only after a user has marked
+  exercises as tracked *and* logged multiple sessions, your copy must say so,
+  not describe the chart as available to "tracked exercises" alone. Onboarding
+  copy that describes only a feature's final, full state will misguide a
+  first-time user who follows the instructions but still sees an empty state or
+  placeholder. Differentiate between preconditions (what the user must do) and
+  gated data (what the app requires internally). If a feature is truly unavailable
+  (a chart or history view promised in old copy but never shipped), do not qualify
+  its preconditions — remove the feature from the description entirely and
+  describe what actually appears instead.
+
+- **Empty-state guidance, help copy, and feature summaries are not locations
+  to promise unavailable functionality.** Onboarding copy should teach the
+  current app; it should not reference future features or suggest workarounds
+  for limitations. If a user needs a feature that does not exist yet, that is a
+  product roadmap question, not a UX-writing question. Keep empty-state and help
+  copy narrowly scoped to what is actually shipped and reachable today.
+
 ### Ownership pause (active policy)
 
 Do not assign new UI implementation issues to `agent:gemini` until the repo

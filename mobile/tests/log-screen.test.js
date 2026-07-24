@@ -3365,3 +3365,57 @@ describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
     expect(unparsedEntries).toHaveLength(0);
   });
 });
+
+describe('#583: App Guide analytics copy matches shipped surfaces', () => {
+  const renderGuideTexts = () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <MoreScreen
+          onNavigate={jest.fn()}
+          onExport={jest.fn()}
+          onImport={jest.fn()}
+          fatigueMultiplier={1}
+          onUpdateFatigueMultiplier={jest.fn()}
+          weightDateEditEnabled={true}
+          onUpdateWeightDateEditEnabled={jest.fn()}
+          deloadDateEditEnabled={true}
+          onUpdateDeloadDateEditEnabled={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+    render.act(() => {
+      findPressableByText(root, 'App Guide').props.onPress();
+    });
+    return root.findAllByType('Text').map(t => {
+      const child = t.props.children;
+      return Array.isArray(child) ? child.join('') : String(child ?? '');
+    });
+  };
+
+  test('describes real Analytics surfaces and drops unavailable-feature promises', () => {
+    const texts = renderGuideTexts();
+    const joined = texts.join('\n');
+
+    // Corrected descriptions are present.
+    expect(joined).toContain('Weight trend charts');
+    expect(joined).toContain('combined Big 3');
+    // Big 3 chart prerequisites: mapped lifts and enough complete cycles.
+    expect(joined).toContain('mapped squat, bench, and deadlift');
+    expect(joined).toContain('enough complete logged cycles');
+    // Progressive Overload rows expose all four current metrics.
+    expect(joined).toContain('Progressive Overload');
+    expect(joined).toContain('Est. Max');
+    expect(joined).toContain('Kilo Max');
+    expect(joined).toContain('best set');
+    expect(joined).toContain('progress trend');
+    expect(joined).toContain('when fatigue tracking is enabled');
+
+    // Removed promises of features Kilo does not ship.
+    expect(joined).not.toContain('Est. Max history');
+    expect(joined).not.toContain(
+      "Tracked exercises show progress charts, Est. Max history, and overload trends."
+    );
+  });
+});
