@@ -400,6 +400,15 @@ describe('SessionCheckInModal — accessibility semantics', () => {
     expect(backBtn).toBeTruthy();
     expectNoRedundantGlyphAnnouncement(backBtn);
 
+    // The back arrow is a MaterialIcons glyph, not a Text node, so it must be
+    // checked directly: importantForAccessibility="no" alone only suppresses
+    // Android, so accessible={false} is also required to hide it from iOS
+    // VoiceOver and avoid double-announcing alongside the parent's "Back" label.
+    const backIcon = backBtn.findAll(n => n.type === 'MaterialIcons', { deep: true })[0];
+    expect(backIcon).toBeTruthy();
+    expect(backIcon.props.accessible).toBe(false);
+    expect(backIcon.props.importantForAccessibility).toBe('no');
+
     const closeBtn = findCloseButton(instance.root);
     expect(closeBtn.props.accessibilityLabel).toBe('Close');
     expect(closeBtn.props.accessibilityLabel).not.toBe(backBtn.props.accessibilityLabel);

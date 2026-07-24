@@ -204,6 +204,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                   name="arrow-back"
                   size={20}
                   color={Colors.textMuted}
+                  accessible={false}
                   importantForAccessibility="no"
                 />
               </Pressable>
