@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { Colors } from '../theme/colors';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
+import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 
 function localDateToday() {
   const now = new Date();
@@ -79,8 +80,14 @@ export function LogScreenEditorCard({
   handleDeleteRoutine,
   currentId,
 }) {
+  const [syntaxHelpVisible, setSyntaxHelpVisible] = useState(false);
+
   return (
     <View style={styles.editContainer}>
+      <WorkoutSyntaxModal
+        visible={syntaxHelpVisible}
+        onClose={() => setSyntaxHelpVisible(false)}
+      />
       {deloadMode === 'edit' ? (
         <Card>
           <TextInput
@@ -185,6 +192,14 @@ export function LogScreenEditorCard({
                 )}
               </>
             )}
+            <Pressable
+              onPress={() => setSyntaxHelpVisible(true)}
+              style={styles.syntaxHelpButton}
+              accessibilityRole="button"
+              accessibilityLabel="Workout syntax help"
+            >
+              <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
+            </Pressable>
             <TextInput
               value={editingNoteId ? editingText : activeEditText}
               onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
@@ -261,6 +276,15 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 12,
+  },
+  syntaxHelpButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  syntaxHelpButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.accent,
   },
   switchButton: {
     backgroundColor: 'transparent',
