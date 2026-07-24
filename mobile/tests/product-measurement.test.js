@@ -3,6 +3,8 @@ import {
   PRODUCT_MEASUREMENT_EVENTS,
   clearBufferedProductMeasurements,
   getProductMeasurementConsent,
+  getProductMeasurementDeletionToken,
+  getProductMeasurementInstallId,
   readBufferedProductMeasurements,
   recordProductMeasurement,
   sanitizeMeasurementEvent,
@@ -88,5 +90,56 @@ describe('product measurement', () => {
 
     expect(await getProductMeasurementConsent()).toBe(true);
     expect(await readBufferedProductMeasurements()).toEqual([]);
+  });
+
+  test('install id and deletion token are random, distinct, and persisted', async () => {
+    const installId = await getProductMeasurementInstallId();
+    const deletionToken = await getProductMeasurementDeletionToken();
+
+    expect(installId).toMatch(/^[0-9a-f]{32}$/);
+    expect(deletionToken).toMatch(/^[0-9a-f]{32}$/);
+    expect(installId).not.toBe(deletionToken);
+
+    // Stable across reads (persisted, not regenerated per call).
+    expect(await getProductMeasurementInstallId()).toBe(installId);
+    expect(await getProductMeasurementDeletionToken()).toBe(deletionToken);
+  });
+
+  test('identifiers never appear in buffered event payloads', async () => {
+    await setProductMeasurementConsent(true);
+    const installId = await getProductMeasurementInstallId();
+    const deletionToken = await getProductMeasurementDeletionToken();
+
+    await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, {
+      tab: 'Home',
+      install_id: installId,
+      deletion_token: deletionToken,
+    });
+
+    const buffered = await readBufferedProductMeasurements();
+    const serialized = JSON.stringify(buffered);
+    expect(serialized).not.toContain(installId);
+    expect(serialized).not.toContain(deletionToken);
+    expect(buffered).toEqual([{
+      name: PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED,
+      properties: { tab: 'Home' },
+      recorded_at_ms: expect.any(Number),
+    }]);
+  });
+
+  test('revoking consent clears and regenerates both identifiers', async () => {
+    await setProductMeasurementConsent(true);
+    const installId = await getProductMeasurementInstallId();
+    const deletionToken = await getProductMeasurementDeletionToken();
+
+    await setProductMeasurementConsent(false);
+
+    expect(await AsyncStorage.getItem('kilo.productMeasurement.installId.v1')).toBeNull();
+    expect(await AsyncStorage.getItem('kilo.productMeasurement.deletionToken.v1')).toBeNull();
+
+    const nextInstallId = await getProductMeasurementInstallId();
+    const nextDeletionToken = await getProductMeasurementDeletionToken();
+    expect(nextInstallId).not.toBe(installId);
+    expect(nextDeletionToken).not.toBe(deletionToken);
   });
 });
