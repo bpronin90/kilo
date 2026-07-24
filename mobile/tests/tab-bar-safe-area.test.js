@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Animated, Pressable } from 'react-native';
+import { Animated } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TabBar } from '../components/TabBar';
 import { ScreenShell } from '../components/ScreenShell';
@@ -11,6 +11,13 @@ const metrics = (bottom, top = 0) => ({
   insets: { top, right: 0, bottom, left: 0 },
 });
 
+// A Pressable renders its accessibility props onto several nodes in its host
+// subtree, so match the single host element per tab to get one entry each.
+const findTabs = (component) =>
+  component.root.findAll(
+    (node) => typeof node.type === 'string' && node.props.accessibilityRole === 'tab'
+  );
+
 describe('accessibility', () => {
   test('TabBar container has tablist role', () => {
     const component = renderWithInsets(
@@ -19,7 +26,9 @@ describe('accessibility', () => {
     );
     const surface = component.root.findByType(Animated.View);
     expect(surface.props.accessibilityRole).toBe('tablist');
-    expect(surface.props.accessible).toBe(true);
+    // The container must not be an accessibility element itself; on iOS
+    // accessible={true} on the parent collapses the tabs into one element.
+    expect(surface.props.accessible).not.toBe(true);
     act(() => component.unmount());
   });
 
@@ -29,12 +38,12 @@ describe('accessibility', () => {
       <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
       0
     );
-    const pressables = component.root.findAllByType(Pressable);
-    expect(pressables).toHaveLength(tabs.length);
-    pressables.forEach((pressable, index) => {
-      expect(pressable.props.accessibilityRole).toBe('tab');
-      expect(pressable.props.accessibilityLabel).toBe(tabs[index]);
-      expect(pressable.props.accessible).toBe(true);
+    const controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    controls.forEach((control, index) => {
+      expect(control.props.accessibilityRole).toBe('tab');
+      expect(control.props.accessibilityLabel).toBe(tabs[index]);
+      expect(control.props.accessible).toBe(true);
     });
     act(() => component.unmount());
   });
@@ -45,10 +54,11 @@ describe('accessibility', () => {
       <TabBar tabs={tabs} activeTab="Log" onTabPress={() => {}} />,
       0
     );
-    const pressables = component.root.findAllByType(Pressable);
-    pressables.forEach((pressable, index) => {
+    const controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    controls.forEach((control, index) => {
       const isSelected = tabs[index] === 'Log';
-      expect(pressable.props.accessibilityState.selected).toBe(isSelected);
+      expect(control.props.accessibilityState.selected).toBe(isSelected);
     });
     act(() => component.unmount());
   });
@@ -59,9 +69,10 @@ describe('accessibility', () => {
       <TabBar tabs={tabs} activeTab="Home" onTabPress={() => {}} />,
       0
     );
-    let pressables = component.root.findAllByType(Pressable);
-    expect(pressables[0].props.accessibilityState.selected).toBe(true);
-    expect(pressables[1].props.accessibilityState.selected).toBe(false);
+    let controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    expect(controls[0].props.accessibilityState.selected).toBe(true);
+    expect(controls[1].props.accessibilityState.selected).toBe(false);
 
     act(() => {
       component.update(
@@ -71,9 +82,10 @@ describe('accessibility', () => {
       );
     });
 
-    pressables = component.root.findAllByType(Pressable);
-    expect(pressables[0].props.accessibilityState.selected).toBe(false);
-    expect(pressables[1].props.accessibilityState.selected).toBe(true);
+    controls = findTabs(component);
+    expect(controls).toHaveLength(tabs.length);
+    expect(controls[0].props.accessibilityState.selected).toBe(false);
+    expect(controls[1].props.accessibilityState.selected).toBe(true);
 
     act(() => component.unmount());
   });

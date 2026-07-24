@@ -70,7 +70,6 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeigh
       onTouchStart={handleInteractionStart}
       onTouchEnd={handleInteractionEnd}
       accessibilityRole="tablist"
-      accessible={true}
     >
       {tabs.map((tab) => (
         <Pressable
