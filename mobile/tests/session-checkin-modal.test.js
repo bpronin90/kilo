@@ -345,3 +345,129 @@ describe('SessionCheckInModal — dismiss (X button) failure handling', () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('SessionCheckInModal — accessibility semantics', () => {
+  // Every Pressable in the tree that exposes accessibilityRole="checkbox" or
+  // "button" must carry a non-empty accessibilityLabel, and any decorative
+  // glyph/icon rendered inside it must be excluded from the accessibility tree
+  // (accessible={false} / importantForAccessibility="no") so it isn't announced
+  // a second time alongside the parent's label.
+  function findByRole(root, role) {
+    return root.findAll(node => node.props?.accessibilityRole === role, { deep: true });
+  }
+
+  function expectNoRedundantGlyphAnnouncement(node) {
+    const glyphTexts = node.findAll(
+      n => n.type === 'Text' && typeof n.props?.children !== 'undefined',
+      { deep: true }
+    );
+    for (const glyph of glyphTexts) {
+      const hidden = glyph.props.accessible === false || glyph.props.importantForAccessibility === 'no';
+      expect(hidden).toBe(true);
+    }
+  }
+
+  it('initial state: close control has a distinct label and no redundant glyph announcement', async () => {
+    const props = makeProps();
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    const closeBtn = findCloseButton(instance.root);
+    expect(closeBtn.props.accessibilityRole).toBe('button');
+    expect(closeBtn.props.accessibilityLabel).toBe('Close');
+    expectNoRedundantGlyphAnnouncement(closeBtn);
+
+    // Back control is not rendered before a tier is chosen.
+    const backBtns = findByRole(instance.root, 'button').filter(n => n.props.accessibilityLabel === 'Back');
+    expect(backBtns.length).toBe(0);
+  });
+
+  it('selected-tier state: back control has a distinct label, separate from close', async () => {
+    const props = makeProps();
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    await act(async () => {
+      findOkTierButton(instance.root).props.onPress();
+    });
+
+    const backBtn = findByRole(instance.root, 'button').find(n => n.props.accessibilityLabel === 'Back');
+    expect(backBtn).toBeTruthy();
+    expectNoRedundantGlyphAnnouncement(backBtn);
+
+    // The back arrow is a MaterialIcons glyph, not a Text node, so it must be
+    // checked directly: importantForAccessibility="no" alone only suppresses
+    // Android, so accessible={false} is also required to hide it from iOS
+    // VoiceOver and avoid double-announcing alongside the parent's "Back" label.
+    const backIcon = backBtn.findAll(n => n.type === 'MaterialIcons', { deep: true })[0];
+    expect(backIcon).toBeTruthy();
+    expect(backIcon.props.accessible).toBe(false);
+    expect(backIcon.props.importantForAccessibility).toBe('no');
+
+    const closeBtn = findCloseButton(instance.root);
+    expect(closeBtn.props.accessibilityLabel).toBe('Close');
+    expect(closeBtn.props.accessibilityLabel).not.toBe(backBtn.props.accessibilityLabel);
+  });
+
+  it('reason-selection state: reason chips expose checkbox semantics and toggle checked state', async () => {
+    const props = makeProps();
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    await act(async () => {
+      findPressableWithText(instance.root, 'Not great').props.onPress();
+    });
+
+    const chip = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Tired');
+    expect(chip).toBeTruthy();
+    expect(chip.props.accessibilityState).toEqual({ checked: false });
+    expectNoRedundantGlyphAnnouncement(chip);
+
+    await act(async () => {
+      chip.props.onPress();
+    });
+
+    const chipAfter = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Tired');
+    expect(chipAfter.props.accessibilityState).toEqual({ checked: true });
+  });
+
+  it('the free-text field has a descriptive accessibility label', async () => {
+    const props = makeProps();
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    await act(async () => {
+      findPressableWithText(instance.root, 'Not great').props.onPress();
+    });
+
+    const textInput = instance.root.findByProps({ multiline: true });
+    expect(textInput.props.accessibilityLabel).toBe('Additional notes');
+  });
+
+  it('edit state: reason chips restored from existing data are announced as checked', async () => {
+    const props = makeProps({
+      isEdit: true,
+      checkInData: { ...baseCheckInData, status: 'rough', reasons: ['Sore'], note: 'Prior note', responded_at: '2026-01-01T00:00:00.000Z' },
+    });
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...props} />);
+    });
+
+    const chip = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Sore');
+    expect(chip).toBeTruthy();
+    expect(chip.props.accessibilityState).toEqual({ checked: true });
+
+    const unselectedChip = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Tired');
+    expect(unselectedChip.props.accessibilityState).toEqual({ checked: false });
+  });
+});
