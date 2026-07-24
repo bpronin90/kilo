@@ -28,6 +28,22 @@ Only allow-listed event names and bounded fields:
 
 The client sanitizer discards unknown event names, unknown fields, and values outside their documented bounds.
 
+## Installation identifier and deletion token
+
+On first use the client generates two independent random values and persists
+them in AsyncStorage:
+
+- an **install id** used to attribute aggregate events to an install, and
+- a separate **deletion token** that a later erasure follow-up can present to
+  delete this install's aggregate events.
+
+Both are random, PII-free, and never derived from any account, device, or
+health data. They are distinct from each other, keeping attribution separate
+from deletion authority. Neither value is ever logged or included in an event
+payload; the sanitizer strips them like any other unknown field. Revoking
+consent clears both values along with the buffer, and the next use regenerates
+fresh, unlinkable identifiers.
+
 ## Storage and transport
 
 The initial implementation stores a maximum of 500 sanitized events locally in AsyncStorage. It does not send events anywhere. A later transport change must preserve this contract, add explicit deletion behavior, and receive a separate privacy/security review before activation.
