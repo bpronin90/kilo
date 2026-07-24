@@ -568,6 +568,24 @@ describe('AnalyticsScreen non-weighted exercise cards — minimal layout', () =>
   });
 });
 
+// ── Analytics empty state copy (issue #582) ──────────────────────────────────
+
+describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('empty state names the real Track control, not a nonexistent bookmark (issue #582)', () => {
+    // When no exercises are tracked, the empty state should tell users to tap Track
+    // on an exercise, matching the actual control name in the UI.
+    const component = setup({ hookOverrides: { notes: [], currentNote: null, trackedLifts: {} } });
+    const root = component.root;
+
+    // New copy mentions the real control name "Track"
+    expect(hasText(root, 'Tap Track on any exercise')).toBe(true);
+    // Old copy mentioning "bookmark" must be absent
+    expect(hasText(root, 'bookmark')).toBe(false);
+  });
+});
+
 // ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────
 
 describe('AnalyticsScreen Weight Trends — two rolling charts', () => {
