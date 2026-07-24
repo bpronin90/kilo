@@ -3307,6 +3307,65 @@ describe('#616: oversize note reaches the read-view failure affordance through t
   });
 });
 
+// ── LogEmptyState: shared syntax example regression tests (#585)
+describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
+  // LogEmptyState is mocked at the top of this file for LogScreen tests; pull
+  // the real module here so we validate the shipped component and its exports.
+  const { LogEmptyState, WORKOUT_SYNTAX_EXAMPLE, WORKOUT_SYNTAX_ROWS } = jest.requireActual('../components/LogEmptyState');
+
+  test('rendered rows are derived from the exact tested example string', () => {
+    // Single source of truth: displayed rows must be the tested string split.
+    expect(WORKOUT_SYNTAX_ROWS).toEqual(WORKOUT_SYNTAX_EXAMPLE.split('\n'));
+
+    let component;
+    render.act(() => {
+      component = render.create(<LogEmptyState onCreateRoutine={jest.fn()} />);
+    });
+    const rendered = component.root.findAllByType('Text').map(t => {
+      const child = t.props.children;
+      return Array.isArray(child) ? child.join('') : String(child ?? '');
+    });
+    for (const row of WORKOUT_SYNTAX_EXAMPLE.split('\n')) {
+      expect(rendered).toContain(row);
+    }
+  });
+
+  test('example syntax parses without errors', () => {
+    const result = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    expect(result.ok).toBe(true);
+  });
+
+  test('example produces one section Monday/Lifting/Bench', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].heading).toBe('Monday');
+    expect(sections[0].subheading).toBe('Lifting');
+    expect(sections[0].exercises[0].name).toBe('Bench');
+  });
+
+  test('example has 3 session rows (135/140/145)', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    expect(bench.rows).toHaveLength(3);
+    const sessionWeights = bench.rows.map(r => r.raw);
+    expect(sessionWeights).toEqual(['135 5,5,5', '140 5,5', '145 5']);
+  });
+
+  test('example logs 6 total sets across 3 sessions', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    const totalSets = bench.rows.reduce((sum, r) => sum + r.sets.length, 0);
+    expect(totalSets).toBe(6);
+  });
+
+  test('example has no unparsed entries', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    const unparsedEntries = bench.session_entries.filter(e => e.unparsed);
+    expect(unparsedEntries).toHaveLength(0);
+  });
+});
+
 describe('#583: App Guide analytics copy matches shipped surfaces', () => {
   const renderGuideTexts = () => {
     let component;
