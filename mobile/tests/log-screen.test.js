@@ -3306,3 +3306,43 @@ describe('#616: oversize note reaches the read-view failure affordance through t
     expect(emptyNodes.length).toBe(0);
   });
 });
+
+// ── LogEmptyState: shared syntax example regression tests (#585)
+describe('LogEmptyState workout syntax example parses correctly (#585)', () => {
+  const { WORKOUT_SYNTAX_EXAMPLE } = require('../components/WorkoutSyntaxReference.js');
+
+  test('example syntax parses without errors', () => {
+    const result = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    expect(result.ok).toBe(true);
+  });
+
+  test('example produces one section Monday/Lifting/Bench', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].heading).toBe('Monday');
+    expect(sections[0].subheading).toBe('Lifting');
+    expect(sections[0].exercises[0].name).toBe('Bench');
+  });
+
+  test('example has 3 session rows (135/140/145)', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    expect(bench.rows).toHaveLength(3);
+    const sessionWeights = bench.rows.map(r => r.raw);
+    expect(sessionWeights).toEqual(['135 5,5,5', '140 5,5', '145 5']);
+  });
+
+  test('example logs 6 total sets across 3 sessions', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    const totalSets = bench.rows.reduce((sum, r) => sum + r.sets.length, 0);
+    expect(totalSets).toBe(6);
+  });
+
+  test('example has no unparsed entries', () => {
+    const { sections } = parseWorkoutNote(WORKOUT_SYNTAX_EXAMPLE);
+    const bench = sections[0].exercises[0];
+    const unparsedEntries = bench.session_entries.filter(e => e.unparsed);
+    expect(unparsedEntries).toHaveLength(0);
+  });
+});

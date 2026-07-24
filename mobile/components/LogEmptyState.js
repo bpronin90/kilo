@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card, Button, WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine } from './UI';
+import { Card, Button } from './UI';
 import { Colors } from '../theme/colors';
+import { WORKOUT_SYNTAX_EXAMPLE, WORKOUT_SYNTAX_ROWS } from './WorkoutSyntaxReference';
 
 export function LogEmptyState({ onCreateRoutine }) {
   return (
@@ -18,16 +19,30 @@ export function LogEmptyState({ onCreateRoutine }) {
         />
       </Card>
 
-      <Text style={styles.exampleLabel}>Example Format</Text>
+      <Text style={styles.exampleLabel}>Type this format</Text>
       <Card style={styles.exampleCard}>
-        <WorkoutHeading style={{ marginTop: 0 }}>Monday</WorkoutHeading>
-        <WorkoutSubheading>Push Day</WorkoutSubheading>
-        <ExerciseBlock name="Bench Press">
-          <SetLine sets={[{ weight_value: 135, rep_count: 5 }, { weight_value: 135, rep_count: 5 }]} />
-        </ExerciseBlock>
-        <ExerciseBlock name="Overhead Press">
-          <SetLine sets={[{ weight_value: 95, rep_count: 8 }]} />
-        </ExerciseBlock>
+        <View style={styles.codeBlock}>
+          {WORKOUT_SYNTAX_ROWS.map((row, idx) => (
+            <Text key={idx} style={styles.codeLine}>{row}</Text>
+          ))}
+        </View>
+        <Text style={[styles.helpText, { marginTop: 12 }]}>
+          <Text style={{ fontWeight: 'bold' }}>How it works:</Text>
+        </Text>
+        <View style={{ marginTop: 6, gap: 6 }}>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>-Bench</Text>
+            <Text style={styles.formatDesc}>Exercise name (starts with a dash)</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>135 5,5,5</Text>
+            <Text style={styles.formatDesc}>3 sets at 135 lbs for 5 reps</Text>
+          </View>
+          <View style={styles.formatRow}>
+            <Text style={styles.codeText}>-</Text>
+            <Text style={styles.formatDesc}>A dash alone marks a skipped session</Text>
+          </View>
+        </View>
       </Card>
     </View>
   );
@@ -69,7 +84,41 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   exampleCard: {
-    opacity: 0.8,
     padding: 18,
+  },
+  codeBlock: {
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 8,
+    padding: 12,
+    gap: 4,
+  },
+  codeLine: {
+    fontSize: 13,
+    fontFamily: 'monospace',
+    color: Colors.text,
+    lineHeight: 18,
+  },
+  helpText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  formatRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  codeText: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: Colors.text,
+    fontWeight: '600',
+    minWidth: 80,
+  },
+  formatDesc: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    flex: 1,
   },
 });
