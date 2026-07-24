@@ -26,6 +26,21 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn().mockResolvedValue(null),
 }));
 
+// Neutralize App's unawaited startup async work so it cannot resolve after the
+// Jest environment is torn down. On mount App fires installForegroundHandler()
+// and reconcileWorkoutReminder() (both from lib/reminderScheduler), which each
+// perform a lazy require('expo-notifications') inside their async bodies. The
+// synchronous act() transitions this suite drives complete before those
+// promises settle, so the deferred lazy require (and any trailing setState) ran
+// after teardown — surfacing as "You are trying to `import` a file after the
+// Jest environment has been torn down" plus an uncaught <App> error. Mocking
+// them to resolved no-ops removes that post-teardown work at the source without
+// touching product code or any assertion.
+jest.mock('../lib/reminderScheduler', () => ({
+  installForegroundHandler: jest.fn().mockResolvedValue(undefined),
+  reconcileWorkoutReminder: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../screens/HomeScreen', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -155,7 +170,20 @@ describe('App workout-editor hydration authority (#614)', () => {
     useEntries.useAutoSync.mockReturnValue({});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Tear the tree down deterministically: unmount inside act so cleanup
+    // effects run, then flush any remaining microtasks (e.g. the mocked
+    // startup promises / loadFatigueMultiplier-style .then(setState) chains
+    // reading mocked AsyncStorage) while the environment is still alive. This
+    // guarantees no App-scheduled async work settles after Jest tears down.
+    if (component) {
+      renderer.act(() => {
+        component.unmount();
+      });
+    }
+    await renderer.act(async () => {
+      await Promise.resolve();
+    });
     component = null;
     latestLogProps = null;
   });
