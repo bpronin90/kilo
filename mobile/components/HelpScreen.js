@@ -1,10 +1,11 @@
 import React from 'react';
-import { Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle } from './UI';
 import { Colors } from '../theme/colors';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
+import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
 const LOGO = require('../assets/brand/logo.png');
 
@@ -88,50 +89,7 @@ export function HelpScreen({ onBack }) {
       <SectionTitle>Logging Workouts</SectionTitle>
 
       <Card>
-        <Text style={styles.helpText}>
-          Each workout note is plain text. Declare an exercise with a dash (<Text style={{ fontWeight: 'bold' }}>-</Text>), then write your sets (weight followed by reps) on the lines below it.
-        </Text>
-
-        <View style={styles.codeBlock}>
-          <Text style={styles.codeText}>Monday</Text>
-          <Text style={styles.codeText}>+Lifting</Text>
-          <Text style={styles.codeText}>-Bench</Text>
-          <Text style={styles.codeText}>135 5,5,5</Text>
-          <Text style={styles.codeText}>140 5,5</Text>
-          <Text style={styles.codeText}>-</Text>
-          <Text style={styles.codeText}>145 5</Text>
-        </View>
-
-        <Text style={[styles.helpText, { marginTop: 12 }]}>
-          How it works:
-        </Text>
-        <View style={{ marginTop: 6, gap: 6 }}>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>-Bench</Text>
-            <Text style={styles.formatDesc}>Declares the exercise name (starts with a dash)</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>135 5,5,5</Text>
-            <Text style={styles.formatDesc}>Logs 3 sets at 135 lbs for 5 reps (separated by commas)</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>140 5,5</Text>
-            <Text style={styles.formatDesc}>Logs 2 sets at 140 lbs for 5 reps (each new line is a new session)</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>-</Text>
-            <Text style={styles.formatDesc}>A single dash on a set line marks that session as skipped</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>12,12</Text>
-            <Text style={styles.formatDesc}>Logs bodyweight exercises (reps only, no weight prefix)</Text>
-          </View>
-        </View>
-
-         <Text style={[styles.helpText, { marginTop: 12 }]}>
-          Day names (e.g., <Text style={{ fontWeight: 'bold', color: Colors.text }}>Monday</Text>) group exercises by training day. Block headers starting with a plus (e.g., <Text style={{ fontWeight: 'bold', color: Colors.text }}>+Lifting</Text>) group exercises within that day. If you omit day names, exercises are parsed normally but will not have day/session grouping headings in the log view.{"\n\n"}
-          To track an exercise in Analytics: tap it in your parsed log and tap "Track" to monitor its progress.
-        </Text>
+        <WorkoutSyntaxReference />
       </Card>
 
       <SectionTitle>Terminology</SectionTitle>
@@ -194,31 +152,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: Colors.textMuted,
-  },
-  codeBlock: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    padding: 10,
-    marginTop: 8,
-    gap: 2,
-  },
-  codeText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 13,
-    color: Colors.text,
-  },
-  formatRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  formatDesc: {
-    flex: 1,
-    fontSize: 13,
-    color: Colors.textMuted,
-    lineHeight: 18,
   },
   tabRow: {
     marginBottom: 16,

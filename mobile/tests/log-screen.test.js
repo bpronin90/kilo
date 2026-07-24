@@ -2923,6 +2923,7 @@ describe('Android Back routes through registerBackConsumer, gated by isActive (#
 
 // ── syntax-sensitive input autocorrect/autocapitalize/spellcheck disabled ──────
 
+import { Modal } from 'react-native';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 import { LogDeloadSection } from '../components/LogDeloadSection';
 
@@ -3103,6 +3104,132 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
     expect(sessionInput.props.autoCorrect).toBe(false);
     expect(sessionInput.props.autoCapitalize).toBe('none');
     expect(sessionInput.props.spellCheck).toBe(false);
+  });
+});
+
+// ── editor-reachable workout syntax help (#584) ─────────────────────────────
+
+describe('LogScreenEditorCard workout syntax help button', () => {
+  const mockHandlers = {
+    handleSaveDeload: jest.fn(),
+    handleCurrentTextChange: jest.fn(),
+    handleSaveOtherNote: jest.fn(),
+    handleSave: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleDeleteDeloadNoteFromEditor: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    setDeloadEditText: jest.fn(),
+    setEditingTitle: jest.fn(),
+    setWorkoutNoteTitle: jest.fn(),
+    setDeloadEditDate: jest.fn(),
+    setShowDeloadDatePicker: jest.fn(),
+    setDeloadEditOrdinal: jest.fn(),
+    setEditingText: jest.fn(),
+  };
+
+  function renderEditor(overrides = {}) {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogScreenEditorCard
+          deloadMode="read"
+          deloadEditText=""
+          isSaving={false}
+          saveSuccess={false}
+          editingNoteId={null}
+          isEditingDeloadNote={false}
+          workoutNoteTitle="Test"
+          editingTitle=""
+          deloadDateEditEnabled={false}
+          editingDeloadHasLinkedRecord={false}
+          deloadEditDate=""
+          deloadEditOrdinal=""
+          showDeloadDatePicker={false}
+          editingNote={null}
+          editingText=""
+          activeEditText="Monday\n-Bench\n135 5,5,5"
+          currentId={null}
+          {...mockHandlers}
+          {...overrides}
+        />
+      );
+    });
+    return component;
+  }
+
+  function findSyntaxHelpButton(root) {
+    return root.findAll(
+      node => node.props?.accessibilityLabel === 'Workout syntax help' && typeof node.props?.onPress === 'function'
+    )[0];
+  }
+
+  test('a "Workout syntax help" button is reachable from the editor', () => {
+    const component = renderEditor();
+    const button = findSyntaxHelpButton(component.root);
+    expect(button).toBeTruthy();
+  });
+
+  test('tapping the button opens the modal, and the close control closes it', () => {
+    const component = renderEditor();
+    const root = component.root;
+
+    // Modal starts closed: WorkoutSyntaxModal returns null when not visible.
+    expect(root.findAllByType(Modal).length).toBe(0);
+
+    render.act(() => {
+      findSyntaxHelpButton(root).props.onPress();
+    });
+
+    const modal = root.findByType(Modal);
+    expect(modal.props.visible).toBe(true);
+    expect(typeof modal.props.onRequestClose).toBe('function');
+
+    const closeBtn = root.findAll(
+      node => node.props?.accessibilityLabel === 'Close workout syntax help' && typeof node.props?.onPress === 'function'
+    )[0];
+    expect(closeBtn).toBeTruthy();
+
+    render.act(() => {
+      closeBtn.props.onPress();
+    });
+
+    expect(root.findAllByType(Modal).length).toBe(0);
+  });
+
+  test('Modal onRequestClose (Android back) also closes it without altering editor text', () => {
+    const component = renderEditor();
+    const root = component.root;
+
+    render.act(() => {
+      findSyntaxHelpButton(root).props.onPress();
+    });
+
+    render.act(() => {
+      root.findByType(Modal).props.onRequestClose();
+    });
+
+    expect(root.findAllByType(Modal).length).toBe(0);
+    expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
+    expect(mockHandlers.setEditingText).not.toHaveBeenCalled();
+  });
+
+  test('opening and closing the syntax help modal preserves unsaved editor text', () => {
+    const component = renderEditor({ activeEditText: 'Unsaved draft text\n-Squat\n' });
+    const root = component.root;
+
+    const noteInputBefore = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === 'Unsaved draft text\n-Squat\n');
+    expect(noteInputBefore).toBeTruthy();
+
+    render.act(() => {
+      findSyntaxHelpButton(root).props.onPress();
+    });
+    render.act(() => {
+      root.findByType(Modal).props.onRequestClose();
+    });
+
+    const noteInputAfter = root.findAllByType('TextInput').find(ti => ti.props.multiline && ti.props.value === 'Unsaved draft text\n-Squat\n');
+    expect(noteInputAfter).toBeTruthy();
+    expect(mockHandlers.handleCurrentTextChange).not.toHaveBeenCalled();
   });
 });
 
