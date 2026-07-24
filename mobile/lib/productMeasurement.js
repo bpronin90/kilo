@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSupabaseClient } from './supabaseClient';
 
 const CONSENT_KEY = 'kilo.productMeasurement.consent.v1';
 const EVENTS_KEY = 'kilo.productMeasurement.events.v1';
@@ -6,6 +7,37 @@ const INSTALL_ID_KEY = 'kilo.productMeasurement.installId.v1';
 const DELETION_TOKEN_KEY = 'kilo.productMeasurement.deletionToken.v1';
 const MAX_BUFFERED_EVENTS = 500;
 const IDENTIFIER_BYTES = 16;
+
+// Transport tuning for flushBufferedProductMeasurements. One flush call sends
+// at most MAX_FLUSH_BATCH events (oldest first) so a huge backlog cannot block
+// the caller for long; anything beyond the batch, plus anything that could not
+// be sent, stays buffered for the next flush.
+const MAX_FLUSH_BATCH = 50;
+const MAX_SEND_ATTEMPTS = 5;
+const BASE_RETRY_DELAY_MS = 500;
+
+// kilo.record_product_measurement_event (supabase/migrations/20260724120000_
+// product_measurement_events.sql) re-validates event name, install id, and
+// every property server-side. A network/5xx failure is transient and worth
+// retrying; a validation error raised by the RPC (unknown event name, bad
+// install id, bad recorded_at) can never succeed no matter how many times it
+// is retried, so those events are dropped rather than retried forever. This
+// should not happen in practice since the client sanitizer already enforces
+// the same allow-list before an event is ever buffered, but it is defense in
+// depth against a stale client or a future server allow-list change.
+const PERMANENT_REJECTION_MESSAGES = ['unknown event name', 'invalid install id', 'invalid recorded_at'];
+
+function isPermanentRejection(error) {
+  if (!error || typeof error.message !== 'string') return false;
+  const message = error.message.toLowerCase();
+  return PERMANENT_REJECTION_MESSAGES.some((needle) => message.includes(needle));
+}
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 // Emit a random, PII-free hex identifier. It is never derived from any
 // account, device, or health data. Strong randomness is used when the runtime
@@ -155,4 +187,103 @@ export async function readBufferedProductMeasurements() {
 
 export async function clearBufferedProductMeasurements() {
   await AsyncStorage.removeItem(EVENTS_KEY);
+}
+
+// Sends one buffered event via the validated RPC, retrying transient failures
+// with exponential backoff. Returns:
+//   'sent'    - the server persisted the event
+//   'dropped' - the server permanently rejected it (never retried)
+//   'kept'    - throttled by the server's per-install rate limit, or every
+//               retry attempt failed transiently; left buffered for a later
+//               flush call
+async function sendBufferedEventWithRetry(client, installId, event, sleepFn) {
+  for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS; attempt += 1) {
+    let data;
+    let error;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      ({ data, error } = await client.rpc('record_product_measurement_event', {
+        p_install_id: installId,
+        p_event_name: event.name,
+        p_properties: event.properties,
+        p_client_recorded_at_ms: event.recorded_at_ms,
+      }));
+    } catch (networkError) {
+      error = networkError;
+    }
+
+    if (!error) {
+      // data === true: persisted. data === false: the server's per-install
+      // rate limit throttled this request — not an error, but retrying it
+      // immediately within the same window would just be throttled again, so
+      // it is left buffered for a later flush instead.
+      return data === true ? 'sent' : 'kept';
+    }
+
+    if (isPermanentRejection(error)) {
+      return 'dropped';
+    }
+
+    if (attempt < MAX_SEND_ATTEMPTS - 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleepFn(BASE_RETRY_DELAY_MS * 2 ** attempt);
+    }
+  }
+  return 'kept';
+}
+
+// Flushes buffered measurement events to Supabase, oldest first, up to
+// MAX_FLUSH_BATCH per call. Requires consent AND Supabase configuration:
+//   - No consent: nothing is sent, buffer is untouched (mirrors
+//     recordProductMeasurement's own consent gate).
+//   - Consent granted but Supabase is not configured (signed-out/local-only
+//     use, or no EXPO_PUBLIC_SUPABASE_URL/ANON_KEY): returns immediately with
+//     no network call of any kind, so local-only use keeps working exactly as
+//     documented in docs/product-measurement.md.
+// Successfully sent and permanently rejected events are removed from the
+// buffer; throttled or transiently-failed events remain buffered for the next
+// call. Returns { flushed, dropped, kept } counts.
+export async function flushBufferedProductMeasurements({ sleepFn = defaultSleep } = {}) {
+  if (!(await getProductMeasurementConsent())) {
+    return { flushed: 0, dropped: 0, kept: 0 };
+  }
+
+  const client = getSupabaseClient();
+  if (!client) {
+    return { flushed: 0, dropped: 0, kept: 0 };
+  }
+
+  const events = await readBufferedProductMeasurements();
+  if (events.length === 0) {
+    return { flushed: 0, dropped: 0, kept: 0 };
+  }
+
+  const batch = events.slice(0, MAX_FLUSH_BATCH);
+  const overflow = events.slice(MAX_FLUSH_BATCH);
+  const installId = await getProductMeasurementInstallId();
+
+  let flushed = 0;
+  let dropped = 0;
+  const remaining = [];
+
+  for (const event of batch) {
+    // eslint-disable-next-line no-await-in-loop
+    const outcome = await sendBufferedEventWithRetry(client, installId, event, sleepFn);
+    if (outcome === 'sent') {
+      flushed += 1;
+    } else if (outcome === 'dropped') {
+      dropped += 1;
+    } else {
+      remaining.push(event);
+    }
+  }
+
+  const nextBuffer = [...remaining, ...overflow];
+  if (nextBuffer.length > 0) {
+    await AsyncStorage.setItem(EVENTS_KEY, JSON.stringify(nextBuffer));
+  } else {
+    await AsyncStorage.removeItem(EVENTS_KEY);
+  }
+
+  return { flushed, dropped, kept: remaining.length };
 }

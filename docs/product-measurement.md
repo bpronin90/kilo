@@ -46,7 +46,48 @@ fresh, unlinkable identifiers.
 
 ## Storage and transport
 
-The initial implementation stores a maximum of 500 sanitized events locally in AsyncStorage. It does not send events anywhere. A later transport change must preserve this contract, add explicit deletion behavior, and receive a separate privacy/security review before activation.
+The client stores a maximum of 500 sanitized events locally in AsyncStorage.
+
+When product measurement consent is granted AND the app is configured for Supabase
+(`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`), `flushBufferedProductMeasurements`
+(`mobile/lib/productMeasurement.js`) sends buffered events, oldest first, to the
+`kilo.record_product_measurement_event` RPC
+(`supabase/migrations/20260724120000_product_measurement_events.sql`). Signed-out
+and local-only use is unaffected: without consent, or without Supabase
+configuration, the flush function returns immediately and makes no network call
+of any kind, so nothing changes for a user who has not opted in or is not
+signed in.
+
+The RPC independently re-validates every event before it can persist — it is the
+security boundary, not the client sanitizer:
+
+- `install_id` must match the client's 32-hex-character random id format.
+- `event_name` must be one of the same allow-listed names as the client
+  sanitizer; an unrecognized name is rejected outright (the call raises and
+  nothing is inserted).
+- `properties` are re-sanitized server-side using the same per-event bounds as
+  the client's `EVENT_SCHEMAS` (`kilo.sanitize_product_measurement_properties`);
+  unknown keys and out-of-range/wrong-typed values are dropped, not persisted.
+- Writes are rate-limited per install id (120 events/minute) via the existing
+  `kilo.rate_limit_check` used elsewhere in the schema.
+
+The receiving table (`kilo.product_measurement_events`) has row-level security
+enabled with no policies, so neither `anon` nor `authenticated` can read or
+write it directly; the validated RPC is the only path in, and only
+`service_role` (via `BYPASSRLS`) can otherwise touch the table.
+
+On the client, a successfully persisted event is removed from the local buffer.
+A transient failure (network error, server unavailable) is retried up to 5
+times with exponential backoff within the same flush call; if every attempt
+fails, or the server's per-install rate limit throttles the request, the event
+stays buffered for a later flush rather than being dropped. A permanent
+rejection (an event that can never succeed, e.g. an unrecognized event name)
+is dropped rather than retried forever. No raw health, workout, weight, or
+profile data is ever part of the payload sent to the server — only the same
+allow-listed shape the client sanitizer already enforces locally.
+
+Deletion: the deletion token described above is reserved for a later erasure
+follow-up and is not yet wired to any endpoint.
 
 ## Intended questions
 
