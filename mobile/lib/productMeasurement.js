@@ -37,6 +37,9 @@ function sanitizeValue(rule, value) {
 }
 
 export function sanitizeMeasurementEvent(name, properties = {}) {
+  if (!Object.prototype.hasOwnProperty.call(EVENT_SCHEMAS, name)) {
+    return null;
+  }
   const schema = EVENT_SCHEMAS[name];
   if (!schema || !properties || Array.isArray(properties) || typeof properties !== 'object') {
     return null;

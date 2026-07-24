@@ -35,6 +35,17 @@ describe('product measurement', () => {
     });
   });
 
+  test('rejects inherited prototype names', async () => {
+    expect(sanitizeMeasurementEvent('__proto__', {})).toBeNull();
+    expect(sanitizeMeasurementEvent('toString', {})).toBeNull();
+    expect(sanitizeMeasurementEvent('constructor', {})).toBeNull();
+    expect(sanitizeMeasurementEvent('hasOwnProperty', {})).toBeNull();
+
+    await setProductMeasurementConsent(true);
+    expect(await recordProductMeasurement('__proto__', {})).toBe(false);
+    expect(await readBufferedProductMeasurements()).toEqual([]);
+  });
+
   test('drops invalid and unbounded values', () => {
     expect(sanitizeMeasurementEvent(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
       ok: 'yes',
