@@ -60,14 +60,20 @@ export function SectionTitle({ children }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false }) {
+export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false, accessibilityLabel }) {
   // Disabled and loading are different states. Preserve the existing shorthand
   // for callers that provide loadingTitle alongside disabled={busy}, while
   // allowing validation-disabled actions to keep their real label.
   const showLoading = loading === undefined ? disabled && Boolean(loadingTitle) : loading;
+  // Announce the control as a button and expose truthful disabled/busy state so
+  // assistive tech reflects both the non-interactive and loading conditions.
+  // Titles stay the accessible name unless a caller supplies an explicit label.
   return (
     <Pressable
       onPress={disabled ? null : onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled, busy: showLoading }}
       style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
     >
       <Text style={[styles.buttonText, textStyle]}>
