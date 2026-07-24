@@ -37,7 +37,8 @@ const MemoAnalyticsScreen = React.memo(AnalyticsScreen);
 
 import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
 import { useAuthSession } from './hooks/useAuthSession';
-import { parseWeightEntry } from './lib/parser';
+import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
+import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/productMeasurement';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
 import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
@@ -65,6 +66,26 @@ export async function buildExportPayload(exportFn = buildCloudExport) {
     console.error('[handleExport] export threw unexpectedly:', e);
     return { ok: false, error: e?.message ? `Export failed: ${e.message}` : 'Export failed.' };
   }
+}
+
+// Fire-and-forget product measurement emit (#672). recordProductMeasurement
+// already no-ops when consent is off and routes every event through the
+// allow-list sanitizer, so call sites stay non-blocking and never surface
+// instrumentation failures into the user-facing save/navigation flow.
+export function emitMeasurement(name, properties = {}) {
+  Promise.resolve()
+    .then(() => recordProductMeasurement(name, properties))
+    .catch(() => {});
+}
+
+// Map the free-form Analytics navigation section to the sanitizer's bounded
+// analytics_viewed variant list. No current call site passes a section, so the
+// reachable value today is 'overview'; 'strength'/'weight' cover the
+// AnalyticsScreen's supported deep-link targets and anything else is 'other'.
+export function analyticsSectionVariant(section) {
+  if (section === 'strength' || section === 'weight') return section;
+  if (section == null) return 'overview';
+  return 'other';
 }
 
 export default function App() {
@@ -321,6 +342,12 @@ export default function App() {
     setSaveSuccess('');
     setAnalyticsSection(section);
     setActiveTab(tab);
+    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
+    if (tab === 'Analytics') {
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.ANALYTICS_VIEWED, {
+        section: analyticsSectionVariant(section),
+      });
+    }
   }, []);
 
   // Browser-safe back affordance: web has no Android hardware back button, so a
@@ -331,11 +358,17 @@ export default function App() {
 
   const saveWeight = useCallback(async (date) => {
     if (weightSaving) return false;
+    const startedAt = Date.now();
+    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {});
     Keyboard.dismiss();
     setSaveError('');
     const parsed = parseWeightEntry(weightValue);
     if (!parsed.ok) {
       setSaveError(parsed.error);
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_COMPLETED, {
+        ok: false,
+        duration_ms: Date.now() - startedAt,
+      });
       return false;
     }
     let loggedAt = parsed.logged_at || new Date().toISOString();
@@ -368,12 +401,20 @@ export default function App() {
         // values so the user can retry instead of silently losing the entry.
         // pendingWeightEntryIdRef stays set so the retry reuses this id.
         setSaveError('Could not save weight entry. Please try again.');
+        emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_COMPLETED, {
+          ok: false,
+          duration_ms: Date.now() - startedAt,
+        });
         return false;
       }
       pendingWeightEntryIdRef.current = null;
       setWeightValue('');
       setWeightNote('');
       setSaveSuccess('Weight entry saved!');
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_COMPLETED, {
+        ok: true,
+        duration_ms: Date.now() - startedAt,
+      });
       return true;
     } catch {
       // Rejected write (e.g. a thrown storage failure, possibly after a
@@ -381,6 +422,10 @@ export default function App() {
       // user can retry instead of silently losing the entry or duplicating
       // the partially-written row.
       setSaveError('Could not save weight entry. Please try again.');
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_COMPLETED, {
+        ok: false,
+        duration_ms: Date.now() - startedAt,
+      });
       return false;
     } finally {
       setWeightSaving(false);
@@ -423,7 +468,26 @@ export default function App() {
   const saveWorkout = useCallback(async () => {
     if (workoutSaving) return { ok: false, error: 'Save already in progress' };
 
+    const startedAt = Date.now();
+    // Warning count from the same parse that governs logging; emitted both as a
+    // standalone parse_warning_summary and folded into the save outcome (#672).
+    let warningCount = 0;
+    try {
+      warningCount = buildSessionsFromNote(workoutNoteText).warnings.length;
+    } catch {
+      warningCount = 0;
+    }
+    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_ATTEMPTED, {});
+    emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.PARSE_WARNING_SUMMARY, {
+      warning_count: warningCount,
+    });
+
     if (!workoutNoteText.trim()) {
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
+        ok: false,
+        duration_ms: Date.now() - startedAt,
+        warning_count: warningCount,
+      });
       return { ok: false, error: 'Workout notes are required' };
     }
     setWorkoutSaving(true);
@@ -434,8 +498,18 @@ export default function App() {
         const note = await noteHook.add('My Workout', workoutNoteText.trim());
         await noteHook.selectCurrent(note.id);
       }
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
+        ok: true,
+        duration_ms: Date.now() - startedAt,
+        warning_count: warningCount,
+      });
       return { ok: true };
     } catch {
+      emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.WORKOUT_SAVE_COMPLETED, {
+        ok: false,
+        duration_ms: Date.now() - startedAt,
+        warning_count: warningCount,
+      });
       return { ok: false, error: 'Failed to save workout notes' };
     } finally {
       setWorkoutSaving(false);
