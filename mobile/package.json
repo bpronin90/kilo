@@ -49,7 +49,7 @@
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "^4.2.0"
     },
-    "postcss": "^8.5.16",
+    "postcss": "^8.5.18",
     "uuid": "^14.0.1"
   },
   "jest": {
