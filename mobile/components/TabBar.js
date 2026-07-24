@@ -69,12 +69,17 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeigh
       onLayout={handleLayout}
       onTouchStart={handleInteractionStart}
       onTouchEnd={handleInteractionEnd}
+      accessibilityRole="tablist"
     >
       {tabs.map((tab) => (
         <Pressable
           key={tab}
           onPress={() => onTabPress(tab)}
           style={[styles.tab, activeTab === tab ? styles.tabActive : null]}
+          accessibilityRole="tab"
+          accessibilityLabel={tab}
+          accessibilityState={{ selected: activeTab === tab }}
+          accessible={true}
         >
           <Text style={[styles.tabText, activeTab === tab ? styles.tabTextActive : null]}>
             {tab}
