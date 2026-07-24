@@ -193,13 +193,32 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
         >
           <View style={styles.header}>
             {tier !== null ? (
-              <Pressable onPress={() => setTier(null)} hitSlop={12} style={styles.backBtn}>
-                <MaterialIcons name="arrow-back" size={20} color={Colors.textMuted} />
+              <Pressable
+                onPress={() => setTier(null)}
+                hitSlop={12}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Back"
+              >
+                <MaterialIcons
+                  name="arrow-back"
+                  size={20}
+                  color={Colors.textMuted}
+                  importantForAccessibility="no"
+                />
               </Pressable>
             ) : null}
             <Text style={styles.title}>{title}</Text>
-            <Pressable onPress={handleDismiss} hitSlop={12} style={styles.closeBtn} disabled={isSaving}>
-              <Text style={styles.closeBtnText}>✕</Text>
+            <Pressable
+              onPress={handleDismiss}
+              hitSlop={12}
+              style={styles.closeBtn}
+              disabled={isSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              accessibilityState={{ disabled: isSaving }}
+            >
+              <Text style={styles.closeBtnText} accessible={false} importantForAccessibility="no">✕</Text>
             </Pressable>
           </View>
 
@@ -214,14 +233,18 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               <Pressable
                 style={[styles.tierBtn, styles.tierBtnOk]}
                 onPress={() => setTier('ok')}
+                accessibilityRole="button"
+                accessibilityLabel="I'm okay"
               >
-                <Text style={styles.tierBtnText}>I'm okay</Text>
+                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">I'm okay</Text>
               </Pressable>
               <Pressable
                 style={[styles.tierBtn, styles.tierBtnRough]}
                 onPress={() => setTier('rough')}
+                accessibilityRole="button"
+                accessibilityLabel="Not great"
               >
-                <Text style={styles.tierBtnText}>Not great</Text>
+                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">Not great</Text>
               </Pressable>
             </View>
           )}
@@ -240,8 +263,15 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                     key={r}
                     style={[styles.chip, selectedReasons.has(r) && styles.chipSelected]}
                     onPress={() => toggleReason(r)}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={r}
+                    accessibilityState={{ checked: selectedReasons.has(r) }}
                   >
-                    <Text style={[styles.chipText, selectedReasons.has(r) && styles.chipTextSelected]}>
+                    <Text
+                      style={[styles.chipText, selectedReasons.has(r) && styles.chipTextSelected]}
+                      accessible={false}
+                      importantForAccessibility="no"
+                    >
                       {r}
                     </Text>
                   </Pressable>
@@ -251,8 +281,11 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 style={[styles.submitBtn, isSaving && styles.submitBtnDisabled]}
                 onPress={handleSubmit}
                 disabled={isSaving}
+                accessibilityRole="button"
+                accessibilityLabel={isSaving ? 'Saving…' : 'Done'}
+                accessibilityState={{ disabled: isSaving }}
               >
-                <Text style={styles.submitBtnText}>{isSaving ? 'Saving…' : 'Done'}</Text>
+                <Text style={styles.submitBtnText} accessible={false} importantForAccessibility="no">{isSaving ? 'Saving…' : 'Done'}</Text>
               </Pressable>
             </ScrollView>
           )}
@@ -273,8 +306,15 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                         key={r}
                         style={[styles.chip, selectedReasons.has(r) && styles.chipSelected]}
                         onPress={() => toggleReason(r)}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={r}
+                        accessibilityState={{ checked: selectedReasons.has(r) }}
                       >
-                        <Text style={[styles.chipText, selectedReasons.has(r) && styles.chipTextSelected]}>
+                        <Text
+                          style={[styles.chipText, selectedReasons.has(r) && styles.chipTextSelected]}
+                          accessible={false}
+                          importantForAccessibility="no"
+                        >
                           {r}
                         </Text>
                       </Pressable>
@@ -289,8 +329,15 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                             key={r}
                             style={[styles.chipSub, selectedReasons.has(r) && styles.chipSelected]}
                             onPress={() => toggleReason(r)}
+                            accessibilityRole="checkbox"
+                            accessibilityLabel={r}
+                            accessibilityState={{ checked: selectedReasons.has(r) }}
                           >
-                            <Text style={[styles.chipSubText, selectedReasons.has(r) && styles.chipTextSelected]}>
+                            <Text
+                              style={[styles.chipSubText, selectedReasons.has(r) && styles.chipTextSelected]}
+                              accessible={false}
+                              importantForAccessibility="no"
+                            >
                               {r}
                             </Text>
                           </Pressable>
@@ -308,13 +355,17 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 onChangeText={setFreeText}
                 multiline
                 maxLength={300}
+                accessibilityLabel="Additional notes"
               />
               <Pressable
                 style={[styles.submitBtn, isSaving && styles.submitBtnDisabled]}
                 onPress={handleSubmit}
                 disabled={isSaving}
+                accessibilityRole="button"
+                accessibilityLabel={isSaving ? 'Saving…' : 'Done'}
+                accessibilityState={{ disabled: isSaving }}
               >
-                <Text style={styles.submitBtnText}>{isSaving ? 'Saving…' : 'Done'}</Text>
+                <Text style={styles.submitBtnText} accessible={false} importantForAccessibility="no">{isSaving ? 'Saving…' : 'Done'}</Text>
               </Pressable>
             </ScrollView>
           )}
