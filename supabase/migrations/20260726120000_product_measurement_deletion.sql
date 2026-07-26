@@ -35,7 +35,13 @@
 --     tombstone in between an ingest's read and its later insert, letting an
 --     already-admitted event survive a deletion that had already run.
 --     Whichever RPC acquires the lock first now runs to completion (commit)
---     before the other proceeds — see the comments at each FOR UPDATE.
+--     before the other proceeds — see the comments at each FOR UPDATE. A row
+--     lock cannot protect a row that does not exist yet, though: it cannot
+--     serialize a deletion against a *first* ingest for a still-unbound
+--     token. kilo.product_measurement_revocations (independent of any
+--     install binding) plus a token-digest advisory lock taken by both RPCs
+--     before they touch either table closes that gap — see the comments
+--     there for the exact interleaving it prevents.
 --   * Rows in kilo.product_measurement_events predate any token binding and
 --     cannot be securely claimed by inference from install id alone, so this
 --     migration purges all of them before the new binding contract takes
@@ -75,6 +81,32 @@ create table if not exists kilo.product_measurement_installs (
 -- directly. Only service_role (BYPASSRLS) and the SECURITY DEFINER functions
 -- below ever touch this table.
 alter table kilo.product_measurement_installs enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- 2b. Independent digest revocation. A row lock on product_measurement_
+--     installs cannot serialize a deletion against a *first* ingest for a
+--     still-unbound token: there is no row to lock yet. A first flush can
+--     already hold an install id/token locally when opt-out clears them and
+--     calls delete_product_measurement_install; if that deletion runs (and
+--     returns its non-revealing success result) before the first ingest's
+--     transaction reaches the database, the ingest would otherwise see no
+--     binding, insert a fresh one, and persist an event the client can never
+--     delete again (its only token has already been discarded). Recording
+--     the digest here — independent of whether any install binding exists —
+--     lets ingest reject a revoked token outright before it ever tries to
+--     establish a binding. Both RPCs additionally take the same
+--     digest-derived advisory lock (pg_advisory_xact_lock) before touching
+--     either table, so a first ingest and a deletion for the same token
+--     cannot interleave even though there is no row for FOR UPDATE to lock
+--     until a binding is established.
+create table if not exists kilo.product_measurement_revocations (
+  deletion_token_digest text primary key check (deletion_token_digest ~ '^[0-9a-f]{64}$'),
+  revoked_at timestamptz not null default now()
+);
+
+-- Locked down exactly like the other two tables: RLS enabled with no
+-- policies, no direct anon/authenticated access.
+alter table kilo.product_measurement_revocations enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- 3. One-way digest helper. Never returns or logs the raw token; callers
@@ -140,6 +172,21 @@ begin
   end if;
 
   v_token_digest := kilo.hash_product_measurement_deletion_token(p_deletion_token);
+
+  -- Serializes against kilo.delete_product_measurement_install for this
+  -- exact token (same key derivation there) before either RPC touches the
+  -- binding or revocation tables — this is what protects a *first* ingest,
+  -- for which no product_measurement_installs row exists yet to FOR UPDATE.
+  -- Identical lock ordering (advisory lock first, binding row second) in
+  -- both RPCs avoids deadlocks.
+  perform pg_advisory_xact_lock(hashtext('product_measurement_deletion:' || v_token_digest));
+
+  if exists (
+    select 1 from kilo.product_measurement_revocations
+    where deletion_token_digest = v_token_digest
+  ) then
+    raise exception 'installation has been revoked';
+  end if;
 
   -- Establish the binding on first accepted ingest for this install id.
   -- ON CONFLICT (install_id) DO NOTHING lets an already-bound install id
@@ -229,12 +276,28 @@ begin
 
   v_token_digest := kilo.hash_product_measurement_deletion_token(p_deletion_token);
 
+  -- Same digest-derived advisory lock kilo.record_product_measurement_event
+  -- takes, acquired before either RPC touches the binding or revocation
+  -- tables. This is what serializes deletion against a *first* ingest for a
+  -- still-unbound token, where there is no binding row yet for FOR UPDATE to
+  -- lock. Identical lock ordering in both RPCs avoids deadlocks.
+  perform pg_advisory_xact_lock(hashtext('product_measurement_deletion:' || v_token_digest));
+
+  -- Recorded unconditionally, even when no binding exists yet: this is what
+  -- makes a concurrent first ingest for this exact token see itself as
+  -- revoked once it acquires the advisory lock above, rather than
+  -- establishing a fresh binding for a token the client has already
+  -- discarded. Idempotent: on_conflict keeps the earliest revocation time.
+  insert into kilo.product_measurement_revocations (deletion_token_digest)
+  values (v_token_digest)
+  on conflict (deletion_token_digest) do nothing;
+
   -- FOR UPDATE takes the same row lock the ingest RPC takes on this install's
   -- binding row (see the comment there), so the two RPCs cannot interleave:
   -- whichever acquires the lock first runs to completion (commit) before the
   -- other proceeds. This is what makes deletion actually final against a
-  -- concurrent in-flight ingest, not just one that starts after deletion
-  -- commits.
+  -- concurrent in-flight ingest for an ALREADY-bound install; the advisory
+  -- lock above covers the still-unbound case this row lock cannot.
   select install_id into v_install_id
   from kilo.product_measurement_installs
   where deletion_token_digest = v_token_digest

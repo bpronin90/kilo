@@ -169,8 +169,20 @@ a deletion that genuinely *overlap* in time cannot interleave either: whichever
 one acquires the lock first runs to completion (commit) before the other
 proceeds — either the ingest commits first and the deletion, once unblocked,
 still sweeps up the row it just committed, or the deletion commits first and
-the ingest, once unblocked, re-reads `revoked_at` as set and rejects. This is
-proven with two real concurrent database sessions in
+the ingest, once unblocked, re-reads `revoked_at` as set and rejects.
+
+A row lock cannot protect a row that does not exist yet, though, so it cannot
+by itself serialize a deletion against a genuinely concurrent *first* ingest
+for a still-unbound token — there is no `kilo.product_measurement_installs`
+row for either RPC to lock until a binding exists. `kilo.product_measurement_revocations`
+closes that gap: it records a token's digest as revoked independent of
+whether any install binding exists, and both RPCs take the same
+digest-derived advisory lock (`pg_advisory_xact_lock`) before touching either
+table, in the same order, so a first ingest and a deletion for the same token
+cannot interleave either — whichever commits first is what the other observes
+once unblocked. All four orderings (already-bound ingest vs. deletion in
+either order, and first ingest vs. deletion of a still-unbound token in
+either order) are proven with real concurrent database sessions in
 `supabase/tests/product-measurement-deletion-concurrency.test.sql`.
 
 **This is intentionally fail-open, not durable.** Once the token is discarded

@@ -10,10 +10,7 @@
 --
 -- This file uses dblink to open real, separate PostgreSQL sessions and prove
 -- both RPCs actually block on the same install's binding row (FOR UPDATE)
--- under both possible commit orderings. Each scenario pre-establishes the
--- install/token binding OUTSIDE the race (a fresh, still-unbound install
--- cannot be "locked out from under" a concurrent deletion — there is nothing
--- to lock until a binding exists), then races a second RPC call against it:
+-- under both possible commit orderings:
 --
 --   A: an in-flight second ingest commits first; a concurrent deletion,
 --      blocked behind it, is unblocked and still sweeps up every event for
@@ -21,6 +18,21 @@
 --   B: an in-flight deletion transaction commits first; a concurrent second
 --      ingest, blocked behind it, is unblocked and observes revocation
 --      rather than resurrecting anything.
+--
+-- Scenarios A and B pre-establish the install/token binding OUTSIDE the
+-- race, so there is always an existing binding row to FOR UPDATE. A row lock
+-- cannot protect a row that does not exist yet, though: it cannot serialize
+-- a deletion against a genuinely concurrent *first* ingest for a
+-- still-unbound token. Scenarios C and D race a still-unbound token instead,
+-- exercising kilo.product_measurement_revocations and the digest-derived
+-- advisory lock both RPCs take before touching either table:
+--
+--   C: an in-flight deletion for a never-bound token commits first; a
+--      concurrent first ingest for that same token, blocked behind it, is
+--      unblocked and observes revocation instead of establishing a binding.
+--   D: an in-flight first ingest commits first; a concurrent deletion for
+--      that same (now just-bound) token, blocked behind it, is unblocked
+--      and still sweeps up the event and tombstones the binding.
 --
 -- Harness: pgTAP on disposable local Supabase only.
 --   supabase test db supabase/tests/product-measurement-deletion-concurrency.test.sql
@@ -34,7 +46,7 @@
 
 create extension if not exists dblink with schema extensions;
 
-select plan(6);
+select plan(14);
 
 -- Fetching an async dblink_send_query result via dblink_get_result raises
 -- locally if the remote statement raised; capture the message instead of
@@ -184,15 +196,156 @@ select extensions.dblink_disconnect('pm_a2_671');
 select extensions.dblink_disconnect('pm_b2_671');
 
 -- ---------------------------------------------------------------------------
+-- Scenario C: an in-flight deletion for a NEVER-bound token commits first; a
+-- concurrent first ingest for that exact token, blocked behind it, is
+-- unblocked and observes revocation instead of establishing a binding. There
+-- is no product_measurement_installs row for FOR UPDATE to lock here — only
+-- the digest-derived advisory lock (acquired by both RPCs before either
+-- touches product_measurement_installs or product_measurement_revocations)
+-- can serialize this.
+-- ---------------------------------------------------------------------------
+select extensions.dblink_connect(
+  'pm_c1_671',
+  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
+    ' user=postgres password=postgres'
+);
+select extensions.dblink_connect(
+  'pm_c2_671',
+  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
+    ' user=postgres password=postgres'
+);
+
+-- No prior ingest at all: this token has never been bound to any install.
+select extensions.dblink_exec('pm_c1_671', 'begin');
+select extensions.dblink_exec('pm_c1_671', $delete3$
+  do $do$ begin
+    perform kilo.delete_product_measurement_install('e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1');
+  end $do$;
+$delete3$);
+
+-- Dispatched asynchronously: with session C1's transaction still open and
+-- holding the digest's advisory lock, this must block rather than run to
+-- completion, even though no binding row exists for it to FOR UPDATE.
+select extensions.dblink_send_query('pm_c2_671', $ingest3$
+  select kilo.record_product_measurement_event(
+    'f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1', 'e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1',
+    'tab_viewed', '{"tab":"Home"}'::jsonb, 1000
+  )
+$ingest3$);
+
+select ok(
+  extensions.dblink_is_busy('pm_c2_671') = 1,
+  'scenario C: the concurrent first ingest for a never-bound token is genuinely blocked behind the open deletion'
+);
+
+-- Release session C1's lock; the revocation record becomes durable.
+select extensions.dblink_exec('pm_c1_671', 'commit');
+
+select is(
+  pg_temp.fetch_dblink_bool_671('pm_c2_671'),
+  'installation has been revoked',
+  'scenario C: the blocked first ingest is rejected once unblocked, not silently admitted'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_installs
+   where install_id = 'f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1'),
+  0,
+  'scenario C: no binding is established for the losing first ingest'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_events
+   where install_id = 'f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1'),
+  0,
+  'scenario C: no event is persisted for the losing first ingest'
+);
+
+select extensions.dblink_disconnect('pm_c1_671');
+select extensions.dblink_disconnect('pm_c2_671');
+
+-- ---------------------------------------------------------------------------
+-- Scenario D: an in-flight FIRST ingest (still-unbound token) commits first;
+-- a concurrent deletion for that same token, blocked behind it, is unblocked
+-- and still sweeps up the event and tombstones the binding it just missed
+-- racing to prevent. The inverse of scenario C: here the advisory lock lets
+-- the first ingest establish its binding before deletion can act on it.
+-- ---------------------------------------------------------------------------
+select extensions.dblink_connect(
+  'pm_d1_671',
+  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
+    ' user=postgres password=postgres'
+);
+select extensions.dblink_connect(
+  'pm_d2_671',
+  'host=127.0.0.1 port=5432 dbname=' || current_database() ||
+    ' user=postgres password=postgres'
+);
+
+select extensions.dblink_exec('pm_d1_671', 'begin');
+select extensions.dblink_exec('pm_d1_671', $ingest4$
+  do $do$ begin
+    perform kilo.record_product_measurement_event(
+      'f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2', 'e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2',
+      'tab_viewed', '{"tab":"Home"}'::jsonb, 1000
+    );
+  end $do$;
+$ingest4$);
+
+-- Dispatched asynchronously: with session D1's transaction still open and
+-- holding the digest's advisory lock, this must block rather than run to
+-- completion.
+select extensions.dblink_send_query('pm_d2_671', $delete4$
+  select kilo.delete_product_measurement_install('e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2')
+$delete4$);
+
+select ok(
+  extensions.dblink_is_busy('pm_d2_671') = 1,
+  'scenario D: the concurrent deletion for the still-racing token is genuinely blocked behind the open first ingest'
+);
+
+-- Release session D1's lock; the fresh binding and its event become durable.
+select extensions.dblink_exec('pm_d1_671', 'commit');
+
+select is(
+  pg_temp.fetch_dblink_bool_671('pm_d2_671'),
+  'true',
+  'scenario D: the deletion completes successfully once unblocked'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_events
+   where install_id = 'f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2'),
+  0,
+  'scenario D: the event the first ingest had just committed does not survive'
+);
+
+select ok(
+  (select revoked_at from kilo.product_measurement_installs
+   where install_id = 'f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2') is not null,
+  'scenario D: the binding the first ingest just established is tombstoned, not left active'
+);
+
+select extensions.dblink_disconnect('pm_d1_671');
+select extensions.dblink_disconnect('pm_d2_671');
+
+-- ---------------------------------------------------------------------------
 -- Cleanup: explicit, since dblink commits are independent of this session.
 -- ---------------------------------------------------------------------------
 delete from kilo.product_measurement_events
  where install_id in (
-   'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1'
+   'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
+   'f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1', 'f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2'
  );
 delete from kilo.product_measurement_installs
  where install_id in (
-   'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1'
+   'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', 'c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
+   'f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1', 'f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2'
+ );
+delete from kilo.product_measurement_revocations
+ where deletion_token_digest in (
+   encode(sha256(convert_to('e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', 'UTF8')), 'hex'),
+   encode(sha256(convert_to('e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2', 'UTF8')), 'hex')
  );
 
 select * from finish();

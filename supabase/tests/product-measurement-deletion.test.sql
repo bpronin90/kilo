@@ -1,18 +1,24 @@
 -- Product measurement: server-side deletion on opt-out (issue #671).
 --
--- Covers kilo.product_measurement_installs, the token-aware
--- kilo.record_product_measurement_event(text, text, text, jsonb, bigint),
--- and kilo.delete_product_measurement_install: one-to-one install/token
--- binding, token-only scoped deletion, cross-install isolation, idempotent
--- non-enumerating behavior, removal of the old tokenless ingest overload,
--- RLS/direct-access denial, and function grants/search_path.
+-- Covers kilo.product_measurement_installs, kilo.product_measurement_
+-- revocations, the token-aware kilo.record_product_measurement_event(text,
+-- text, text, jsonb, bigint), and kilo.delete_product_measurement_install:
+-- one-to-one install/token binding, token-only scoped deletion, cross-install
+-- isolation, idempotent non-enumerating behavior, revocation of a token that
+-- was never bound to any install, removal of the old tokenless ingest
+-- overload, RLS/direct-access denial, and function grants/search_path.
+--
+-- The genuinely concurrent variant of these races (two overlapping database
+-- transactions, not two sequential calls) is covered separately in
+-- product-measurement-deletion-concurrency.test.sql, since it requires two
+-- real database sessions via dblink.
 --
 -- Run: psql "$DATABASE_URL" -f supabase/tests/product-measurement-deletion.test.sql
 -- or:  supabase test db
 
 begin;
 
-select plan(38);
+select plan(48);
 
 -- ---------------------------------------------------------------------------
 -- record_product_measurement_event: format validation, in order
@@ -219,15 +225,17 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- record_product_measurement_event: the revoked token's digest stays
--- permanently reserved — a different install id still cannot claim it.
+-- record_product_measurement_event: a revoked token is permanently rejected
+-- by kilo.product_measurement_revocations before ingest ever reaches the
+-- one-to-one binding check — a different install id still cannot claim it,
+-- but the error now reports revocation, not a cross-install binding clash.
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$select kilo.record_product_measurement_event(
     'ffffffffffffffffffffffffffffffff', '22222222222222222222222222222222',
     'tab_viewed', '{"tab":"Home"}'::jsonb, 9000
   )$$,
-  'deletion token already bound to a different installation'
+  'installation has been revoked'
 );
 
 select is(
@@ -237,12 +245,55 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
+-- kilo.product_measurement_revocations: deletion records the digest
+-- unconditionally and idempotently, independent of the install binding.
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)::int from kilo.product_measurement_revocations
+   where deletion_token_digest = encode(sha256(convert_to('22222222222222222222222222222222', 'UTF8')), 'hex')),
+  1, 'the deleted token''s digest is recorded exactly once'
+);
+
+-- ---------------------------------------------------------------------------
 -- delete_product_measurement_install: repeating deletion with the
--- already-revoked token is safe and returns the same non-revealing success.
+-- already-revoked token is safe and returns the same non-revealing success,
+-- and does not duplicate the revocation record.
 -- ---------------------------------------------------------------------------
 select ok(
   kilo.delete_product_measurement_install('22222222222222222222222222222222'),
   'repeating deletion with an already-used token is idempotent'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_revocations
+   where deletion_token_digest = encode(sha256(convert_to('22222222222222222222222222222222', 'UTF8')), 'hex')),
+  1, 'repeating deletion does not duplicate the revocation record'
+);
+
+-- ---------------------------------------------------------------------------
+-- delete_product_measurement_install: a token that was NEVER bound to any
+-- install is still recorded as revoked, independent of any install binding
+-- — this is what lets a first ingest for that exact token be rejected even
+-- though no product_measurement_installs row for it ever existed.
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)::int from kilo.product_measurement_revocations
+   where deletion_token_digest = encode(sha256(convert_to('99999999999999999999999999999999', 'UTF8')), 'hex')),
+  1, 'a never-bound token is still recorded as revoked'
+);
+
+select throws_ok(
+  $$select kilo.record_product_measurement_event(
+    'aaaa1111aaaa1111aaaa1111aaaa1111', '99999999999999999999999999999999',
+    'tab_viewed', '{"tab":"Home"}'::jsonb, 9000
+  )$$,
+  'installation has been revoked'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_installs
+   where install_id = 'aaaa1111aaaa1111aaaa1111aaaa1111'),
+  0, 'a first ingest for a never-bound-but-revoked token establishes no binding'
 );
 
 -- ---------------------------------------------------------------------------
@@ -295,6 +346,36 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
+-- RLS: neither anon nor authenticated can read or write the revocations
+-- table directly either.
+-- ---------------------------------------------------------------------------
+select is(
+  (select relrowsecurity from pg_class
+   where oid = 'kilo.product_measurement_revocations'::regclass),
+  true,
+  'row level security is enabled on the revocations table'
+);
+
+select is(
+  (select count(*)::int from pg_policies
+   where schemaname = 'kilo' and tablename = 'product_measurement_revocations'),
+  0,
+  'no RLS policies exist on the revocations table'
+);
+
+select is(
+  has_table_privilege('anon', 'kilo.product_measurement_revocations', 'select'),
+  false,
+  'anon has no direct read privilege on the revocations table'
+);
+
+select is(
+  has_table_privilege('authenticated', 'kilo.product_measurement_revocations', 'select'),
+  false,
+  'authenticated has no direct read privilege on the revocations table'
+);
+
+-- ---------------------------------------------------------------------------
 -- Security posture: SECURITY DEFINER with a fixed safe search_path.
 -- ---------------------------------------------------------------------------
 select is(
@@ -319,6 +400,13 @@ select is(
    where c.oid = 'kilo.product_measurement_installs'::regclass),
   'kilo',
   'the installs table lives in the kilo schema'
+);
+
+select is(
+  (select nspname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where c.oid = 'kilo.product_measurement_revocations'::regclass),
+  'kilo',
+  'the revocations table lives in the kilo schema'
 );
 
 select * from finish();
