@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   PRODUCT_MEASUREMENT_EVENTS,
   clearBufferedProductMeasurements,
+  flushBufferedProductMeasurements,
   getProductMeasurementConsent,
   getProductMeasurementDeletionToken,
   getProductMeasurementInstallId,
@@ -10,10 +11,17 @@ import {
   sanitizeMeasurementEvent,
   setProductMeasurementConsent,
 } from '../lib/productMeasurement';
+import { getSupabaseClient } from '../lib/supabaseClient';
+
+jest.mock('../lib/supabaseClient', () => ({ getSupabaseClient: jest.fn() }));
+
+const noopSleep = () => Promise.resolve();
 
 describe('product measurement', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    getSupabaseClient.mockReset();
+    getSupabaseClient.mockReturnValue(null);
   });
 
   test('is disabled by default', async () => {
@@ -141,5 +149,115 @@ describe('product measurement', () => {
     const nextDeletionToken = await getProductMeasurementDeletionToken();
     expect(nextInstallId).not.toBe(installId);
     expect(nextDeletionToken).not.toBe(deletionToken);
+  });
+
+  describe('flushBufferedProductMeasurements', () => {
+    test('does not send anything without consent, even if Supabase is configured', async () => {
+      const rpc = jest.fn();
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      await AsyncStorage.setItem('kilo.productMeasurement.events.v1', JSON.stringify([
+        { name: PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, properties: { tab: 'Home' }, recorded_at_ms: 1 },
+      ]));
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 0, kept: 0 });
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    test('signed-out/local-only use requires no network: consent granted but Supabase unconfigured', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab: 'Home' });
+      getSupabaseClient.mockReturnValue(null);
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 0, kept: 0 });
+      expect(await readBufferedProductMeasurements()).toHaveLength(1);
+    });
+
+    test('flushes buffered events and clears them once sent', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab: 'Home' }, 1);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 2);
+      const installId = await getProductMeasurementInstallId();
+
+      const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 2, dropped: 0, kept: 0 });
+      expect(await readBufferedProductMeasurements()).toEqual([]);
+      expect(rpc).toHaveBeenCalledTimes(2);
+      expect(rpc).toHaveBeenNthCalledWith(1, 'record_product_measurement_event', {
+        p_install_id: installId,
+        p_event_name: PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED,
+        p_properties: { tab: 'Home' },
+        p_client_recorded_at_ms: 1,
+      });
+    });
+
+    test('retries a transient failure with backoff, then succeeds', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 5);
+
+      const rpc = jest.fn()
+        .mockResolvedValueOnce({ data: null, error: new Error('network error') })
+        .mockResolvedValueOnce({ data: null, error: new Error('network error') })
+        .mockResolvedValueOnce({ data: true, error: null });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const sleepFn = jest.fn().mockResolvedValue(undefined);
+      const result = await flushBufferedProductMeasurements({ sleepFn });
+
+      expect(result).toEqual({ flushed: 1, dropped: 0, kept: 0 });
+      expect(rpc).toHaveBeenCalledTimes(3);
+      expect(sleepFn).toHaveBeenCalledTimes(2);
+      expect(await readBufferedProductMeasurements()).toEqual([]);
+    });
+
+    test('keeps an event buffered after every retry attempt fails transiently', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 9);
+
+      const rpc = jest.fn().mockResolvedValue({ data: null, error: new Error('service unavailable') });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 0, kept: 1 });
+      expect(rpc).toHaveBeenCalledTimes(5);
+      expect(await readBufferedProductMeasurements()).toHaveLength(1);
+    });
+
+    test('drops an event on permanent server rejection instead of retrying', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 3);
+
+      const rpc = jest.fn().mockResolvedValue({ data: null, error: new Error('unknown event name') });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 1, kept: 0 });
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(await readBufferedProductMeasurements()).toEqual([]);
+    });
+
+    test('keeps a throttled event buffered without retrying immediately', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 7);
+
+      const rpc = jest.fn().mockResolvedValue({ data: false, error: null });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 0, kept: 1 });
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(await readBufferedProductMeasurements()).toHaveLength(1);
+    });
   });
 });
