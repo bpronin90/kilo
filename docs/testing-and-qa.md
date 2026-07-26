@@ -328,7 +328,7 @@ When reproducing a suspected isolation flake, always pass `--no-cache`; Jest's
 on-disk transform cache masks the failure roughly half the time:
 
 ```sh
-npx jest --no-cache --maxWorkers=2
+npm --prefix mobile test -- --no-cache --maxWorkers=2
 ```
 
 ---
