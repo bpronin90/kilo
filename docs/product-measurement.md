@@ -162,6 +162,17 @@ checks `revoked_at` and rejects any ingest for a revoked installation
 outright, and the revoked token's digest stays permanently reserved so it can
 never be rebound — by the same installation or a different one.
 
+The tombstone alone only guards a late call that *starts* after deletion has
+already committed. Both RPCs also take a row lock (`SELECT ... FOR UPDATE`) on
+the same install's binding row before reading or changing it, so an ingest and
+a deletion that genuinely *overlap* in time cannot interleave either: whichever
+one acquires the lock first runs to completion (commit) before the other
+proceeds — either the ingest commits first and the deletion, once unblocked,
+still sweeps up the row it just committed, or the deletion commits first and
+the ingest, once unblocked, re-reads `revoked_at` as set and rejects. This is
+proven with two real concurrent database sessions in
+`supabase/tests/product-measurement-deletion-concurrency.test.sql`.
+
 **This is intentionally fail-open, not durable.** Once the token is discarded
 from local storage during opt-out, there is no retry: an offline or failed
 deletion request is not queued, persisted, or retried later. A durable

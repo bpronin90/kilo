@@ -29,6 +29,13 @@
 --     installation's events and marks its binding row revoked (rather than
 --     deleting the binding) in one transaction — see the revoked_at note
 --     below for why the binding row itself must survive deletion.
+--   * Both RPCs take a FOR UPDATE lock on the same install's binding row
+--     before acting on it, so they cannot interleave: a plain (non-locking)
+--     read of revoked_at would let a concurrent deletion delete-then-
+--     tombstone in between an ingest's read and its later insert, letting an
+--     already-admitted event survive a deletion that had already run.
+--     Whichever RPC acquires the lock first now runs to completion (commit)
+--     before the other proceeds — see the comments at each FOR UPDATE.
 --   * Rows in kilo.product_measurement_events predate any token binding and
 --     cannot be securely claimed by inference from install id alone, so this
 --     migration purges all of them before the new binding contract takes
@@ -147,9 +154,21 @@ begin
     raise exception 'deletion token already bound to a different installation';
   end;
 
+  -- FOR UPDATE locks this install's binding row for the rest of the
+  -- transaction, serializing against kilo.delete_product_measurement_install
+  -- (which takes the same row lock on the same row before tombstoning/
+  -- deleting). Without this, a plain SELECT here is not enough: under READ
+  -- COMMITTED, this ingest could read revoked_at IS NULL, then a concurrent
+  -- deletion could delete the current events, tombstone the row, and commit,
+  -- and only then would this ingest insert its event — surviving a deletion
+  -- that had already run. The lock guarantees one of two outcomes instead:
+  -- either this ingest's insert commits before deletion starts (so deletion
+  -- subsequently sees and removes it too), or deletion commits first and
+  -- this ingest, unblocked, re-reads revoked_at as set and rejects.
   select deletion_token_digest, revoked_at into v_bound_digest, v_revoked_at
   from kilo.product_measurement_installs
-  where install_id = p_install_id;
+  where install_id = p_install_id
+  for update;
 
   if v_bound_digest is distinct from v_token_digest then
     raise exception 'install is bound to a different deletion token';
@@ -210,9 +229,16 @@ begin
 
   v_token_digest := kilo.hash_product_measurement_deletion_token(p_deletion_token);
 
+  -- FOR UPDATE takes the same row lock the ingest RPC takes on this install's
+  -- binding row (see the comment there), so the two RPCs cannot interleave:
+  -- whichever acquires the lock first runs to completion (commit) before the
+  -- other proceeds. This is what makes deletion actually final against a
+  -- concurrent in-flight ingest, not just one that starts after deletion
+  -- commits.
   select install_id into v_install_id
   from kilo.product_measurement_installs
-  where deletion_token_digest = v_token_digest;
+  where deletion_token_digest = v_token_digest
+  for update;
 
   -- A well-formed but unknown/already-used token falls through with no
   -- match: idempotent no-op, same successful result as a completed
