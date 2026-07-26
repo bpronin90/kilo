@@ -151,6 +151,110 @@ describe('product measurement', () => {
     expect(nextDeletionToken).not.toBe(deletionToken);
   });
 
+  describe('server-side deletion on revoke', () => {
+    test('reads the already-persisted deletion token and requests deletion with it, never a new one', async () => {
+      await setProductMeasurementConsent(true);
+      const deletionToken = await getProductMeasurementDeletionToken();
+
+      const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      await setProductMeasurementConsent(false);
+
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(rpc).toHaveBeenCalledWith('delete_product_measurement_install', {
+        p_deletion_token: deletionToken,
+      });
+    });
+
+    test('clears local state before the deletion request is made', async () => {
+      await setProductMeasurementConsent(true);
+      await getProductMeasurementDeletionToken();
+      const callOrder = [];
+      const rpc = jest.fn(() => {
+        callOrder.push('rpc');
+        return Promise.resolve({ data: true, error: null });
+      });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      await setProductMeasurementConsent(false);
+
+      expect(await getProductMeasurementConsent()).toBe(false);
+      expect(await AsyncStorage.getItem('kilo.productMeasurement.installId.v1')).toBeNull();
+      expect(await AsyncStorage.getItem('kilo.productMeasurement.deletionToken.v1')).toBeNull();
+      expect(callOrder).toEqual(['rpc']);
+    });
+
+    test('does not call the deletion RPC when no deletion token exists locally (never opted in)', async () => {
+      const rpc = jest.fn();
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    test('does not call any RPC when Supabase is not configured', async () => {
+      await setProductMeasurementConsent(true);
+      getSupabaseClient.mockReturnValue(null);
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(await getProductMeasurementConsent()).toBe(false);
+    });
+
+    test('opt-out resolves without waiting for the deletion request to settle', async () => {
+      await setProductMeasurementConsent(true);
+      const deletionToken = await getProductMeasurementDeletionToken();
+      const rpc = jest.fn(() => new Promise(() => {})); // never resolves or rejects
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(rpc).toHaveBeenCalledWith('delete_product_measurement_install', {
+        p_deletion_token: deletionToken,
+      });
+    });
+
+    test('opt-out succeeds even if the deletion RPC call throws synchronously', async () => {
+      await setProductMeasurementConsent(true);
+      const rpc = jest.fn(() => {
+        throw new Error('client misconfigured');
+      });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(await getProductMeasurementConsent()).toBe(false);
+    });
+
+    test('opt-out succeeds even if the deletion request rejects (offline/network failure)', async () => {
+      await setProductMeasurementConsent(true);
+      const rpc = jest.fn().mockRejectedValue(new Error('network error'));
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(await getProductMeasurementConsent()).toBe(false);
+    });
+
+    test('opt-out succeeds even if the server rejects the deletion request', async () => {
+      await setProductMeasurementConsent(true);
+      const rpc = jest.fn().mockResolvedValue({ data: null, error: new Error('server error') });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await setProductMeasurementConsent(false);
+
+      expect(result).toBe(false);
+      expect(await getProductMeasurementConsent()).toBe(false);
+    });
+  });
+
   describe('flushBufferedProductMeasurements', () => {
     test('does not send anything without consent, even if Supabase is configured', async () => {
       const rpc = jest.fn();
@@ -182,6 +286,7 @@ describe('product measurement', () => {
       await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab: 'Home' }, 1);
       await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 2);
       const installId = await getProductMeasurementInstallId();
+      const deletionToken = await getProductMeasurementDeletionToken();
 
       const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
       getSupabaseClient.mockReturnValue({ rpc });
@@ -193,6 +298,7 @@ describe('product measurement', () => {
       expect(rpc).toHaveBeenCalledTimes(2);
       expect(rpc).toHaveBeenNthCalledWith(1, 'record_product_measurement_event', {
         p_install_id: installId,
+        p_deletion_token: deletionToken,
         p_event_name: PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED,
         p_properties: { tab: 'Home' },
         p_client_recorded_at_ms: 1,
@@ -237,6 +343,23 @@ describe('product measurement', () => {
       await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 3);
 
       const rpc = jest.fn().mockResolvedValue({ data: null, error: new Error('unknown event name') });
+      getSupabaseClient.mockReturnValue({ rpc });
+
+      const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });
+
+      expect(result).toEqual({ flushed: 0, dropped: 1, kept: 0 });
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(await readBufferedProductMeasurements()).toEqual([]);
+    });
+
+    test('drops an event on a token/install binding rejection instead of retrying', async () => {
+      await setProductMeasurementConsent(true);
+      await recordProductMeasurement(PRODUCT_MEASUREMENT_EVENTS.WEIGHT_SAVE_ATTEMPTED, {}, 4);
+
+      const rpc = jest.fn().mockResolvedValue({
+        data: null,
+        error: new Error('install is bound to a different deletion token'),
+      });
       getSupabaseClient.mockReturnValue({ rpc });
 
       const result = await flushBufferedProductMeasurements({ sleepFn: noopSleep });

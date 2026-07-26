@@ -6,6 +6,13 @@
 -- or out-of-range fields are dropped, and neither anon nor authenticated can
 -- read or write the table directly.
 --
+-- The RPC signature gained a p_deletion_token argument in issue #671
+-- (supabase/migrations/20260726120000_product_measurement_deletion.sql);
+-- install/token binding and deletion behavior are covered separately in
+-- supabase/tests/product-measurement-deletion.test.sql. Each install id used
+-- below is paired with its own fixed, valid-format token so calls here never
+-- collide with the one-to-one binding enforced by that migration.
+--
 -- Run: psql "$DATABASE_URL" -f supabase/tests/product-measurement-events.test.sql
 -- or:  supabase test db
 
@@ -18,7 +25,7 @@ select plan(22);
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$select kilo.record_product_measurement_event(
-    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'unknown_event', '{}'::jsonb, 1000
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '01010101010101010101010101010101', 'unknown_event', '{}'::jsonb, 1000
   )$$,
   'unknown event name'
 );
@@ -34,7 +41,7 @@ select is(
 -- ---------------------------------------------------------------------------
 select throws_ok(
   $$select kilo.record_product_measurement_event(
-    'not-a-valid-install-id', 'tab_viewed', '{"tab":"Home"}'::jsonb, 1000
+    'not-a-valid-install-id', '01010101010101010101010101010101', 'tab_viewed', '{"tab":"Home"}'::jsonb, 1000
   )$$,
   'invalid install id'
 );
@@ -44,7 +51,7 @@ select throws_ok(
 -- ---------------------------------------------------------------------------
 select ok(
   kilo.record_product_measurement_event(
-    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'tab_viewed', '{"tab":"Log"}'::jsonb, 5000
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '02020202020202020202020202020202', 'tab_viewed', '{"tab":"Log"}'::jsonb, 5000
   ),
   'well-formed tab_viewed event is admitted'
 );
@@ -70,6 +77,7 @@ select is(
 select ok(
   kilo.record_product_measurement_event(
     'cccccccccccccccccccccccccccccccc',
+    '03030303030303030303030303030303',
     'workout_save_completed',
     '{"ok": true, "duration_ms": 1234.6, "warning_count": 2, "raw_text": "bench 225x5", "email": "person@example.com"}'::jsonb,
     9000
@@ -117,6 +125,7 @@ select is(
 select ok(
   kilo.record_product_measurement_event(
     'dddddddddddddddddddddddddddddddd',
+    '04040404040404040404040404040404',
     'workout_save_attempted',
     '{"anything": "goes here"}'::jsonb,
     1000
@@ -137,7 +146,7 @@ select is(
 select is(
   (select count(*)::int from (
     select kilo.record_product_measurement_event(
-      'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'weight_save_attempted', '{}'::jsonb, 1000
+      'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '05050505050505050505050505050505', 'weight_save_attempted', '{}'::jsonb, 1000
     ) as admitted
     from generate_series(1, 120)
   ) admits where admitted),
@@ -147,7 +156,7 @@ select is(
 
 select is(
   kilo.record_product_measurement_event(
-    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'weight_save_attempted', '{}'::jsonb, 1000
+    'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '05050505050505050505050505050505', 'weight_save_attempted', '{}'::jsonb, 1000
   ),
   false,
   '121st event for the same install within the window is throttled, not persisted'
@@ -200,7 +209,7 @@ select is(
 
 select is(
   has_function_privilege(
-    'anon', 'kilo.record_product_measurement_event(text, text, jsonb, bigint)', 'execute'
+    'anon', 'kilo.record_product_measurement_event(text, text, text, jsonb, bigint)', 'execute'
   ),
   true,
   'anon can call the validated RPC (installs may be signed out)'

@@ -17,15 +17,25 @@ const MAX_SEND_ATTEMPTS = 5;
 const BASE_RETRY_DELAY_MS = 500;
 
 // kilo.record_product_measurement_event (supabase/migrations/20260724120000_
-// product_measurement_events.sql) re-validates event name, install id, and
-// every property server-side. A network/5xx failure is transient and worth
-// retrying; a validation error raised by the RPC (unknown event name, bad
-// install id, bad recorded_at) can never succeed no matter how many times it
-// is retried, so those events are dropped rather than retried forever. This
+// product_measurement_events.sql, extended by 20260726120000_
+// product_measurement_deletion.sql) re-validates event name, install id,
+// deletion token, and every property server-side. A network/5xx failure is
+// transient and worth retrying; a validation error raised by the RPC (unknown
+// event name, bad install id, bad deletion token, a token/install binding
+// mismatch, bad recorded_at) can never succeed no matter how many times it is
+// retried, so those events are dropped rather than retried forever. This
 // should not happen in practice since the client sanitizer already enforces
-// the same allow-list before an event is ever buffered, but it is defense in
-// depth against a stale client or a future server allow-list change.
-const PERMANENT_REJECTION_MESSAGES = ['unknown event name', 'invalid install id', 'invalid recorded_at'];
+// the same allow-list before an event is ever buffered, and the persisted
+// install id/deletion token pair never changes underneath a flush, but it is
+// defense in depth against a stale client or a future server contract change.
+const PERMANENT_REJECTION_MESSAGES = [
+  'unknown event name',
+  'invalid install id',
+  'invalid recorded_at',
+  'invalid deletion token',
+  'bound to a different deletion token',
+  'bound to a different installation',
+];
 
 function isPermanentRejection(error) {
   if (!error || typeof error.message !== 'string') return false;
@@ -127,14 +137,53 @@ export async function getProductMeasurementConsent() {
 
 export async function setProductMeasurementConsent(enabled) {
   if (!enabled) {
-    // Clear the install id and deletion token alongside consent and the buffer.
-    // The next accessor call regenerates fresh, unlinkable values, so a later
-    // opt-in cannot be tied back to the previous install.
+    // Read the already-persisted deletion token before it is cleared. A new
+    // token is never generated for deletion — only the one this install has
+    // carried since opt-in is valid erasure authority for its own rows.
+    const deletionToken = await AsyncStorage.getItem(DELETION_TOKEN_KEY);
+
+    // Clear consent, the buffer, the install id, and the deletion token
+    // together, before any network work. The next accessor call regenerates
+    // fresh, unlinkable values, so a later opt-in cannot be tied back to the
+    // previous install. Local opt-out is complete at this point regardless of
+    // what happens next.
     await AsyncStorage.multiRemove([CONSENT_KEY, EVENTS_KEY, INSTALL_ID_KEY, DELETION_TOKEN_KEY]);
+
+    if (typeof deletionToken === 'string' && deletionToken.length > 0) {
+      requestProductMeasurementDeletion(deletionToken);
+    }
+
     return false;
   }
   await AsyncStorage.setItem(CONSENT_KEY, 'granted');
   return true;
+}
+
+// Fires one best-effort, fire-and-forget request to erase this installation's
+// server-side measurement rows via kilo.delete_product_measurement_install
+// (supabase/migrations/20260726120000_product_measurement_deletion.sql),
+// using the deletion token as the sole authority. Deliberately not awaited by
+// setProductMeasurementConsent: local opt-out has already completed by the
+// time this is called, and must not depend on, retry, or await network
+// success. The call is wrapped in try/catch and the returned promise's
+// rejection is swallowed, so missing Supabase configuration, offline/network
+// failure, a server-side timeout, a synchronously thrown error, and a server
+// rejection all leave the already-completed opt-out untouched.
+//
+// This is intentionally fail-open: once the token is discarded locally above,
+// there is no durable retry for an offline or failed request. Durable
+// deletion jobs/retry storage are out of scope (see docs/product-measurement.md).
+function requestProductMeasurementDeletion(deletionToken) {
+  try {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    Promise.resolve(
+      client.rpc('delete_product_measurement_install', { p_deletion_token: deletionToken })
+    ).catch(() => {});
+  } catch {
+    // Best-effort: a synchronous client failure must never affect opt-out.
+  }
 }
 
 // Random, persisted identifier used to attribute aggregate events to an install
@@ -196,7 +245,7 @@ export async function clearBufferedProductMeasurements() {
 //   'kept'    - throttled by the server's per-install rate limit, or every
 //               retry attempt failed transiently; left buffered for a later
 //               flush call
-async function sendBufferedEventWithRetry(client, installId, event, sleepFn) {
+async function sendBufferedEventWithRetry(client, installId, deletionToken, event, sleepFn) {
   for (let attempt = 0; attempt < MAX_SEND_ATTEMPTS; attempt += 1) {
     let data;
     let error;
@@ -204,6 +253,7 @@ async function sendBufferedEventWithRetry(client, installId, event, sleepFn) {
       // eslint-disable-next-line no-await-in-loop
       ({ data, error } = await client.rpc('record_product_measurement_event', {
         p_install_id: installId,
+        p_deletion_token: deletionToken,
         p_event_name: event.name,
         p_properties: event.properties,
         p_client_recorded_at_ms: event.recorded_at_ms,
@@ -261,6 +311,7 @@ export async function flushBufferedProductMeasurements({ sleepFn = defaultSleep 
   const batch = events.slice(0, MAX_FLUSH_BATCH);
   const overflow = events.slice(MAX_FLUSH_BATCH);
   const installId = await getProductMeasurementInstallId();
+  const deletionToken = await getProductMeasurementDeletionToken();
 
   let flushed = 0;
   let dropped = 0;
@@ -268,7 +319,7 @@ export async function flushBufferedProductMeasurements({ sleepFn = defaultSleep 
 
   for (const event of batch) {
     // eslint-disable-next-line no-await-in-loop
-    const outcome = await sendBufferedEventWithRetry(client, installId, event, sleepFn);
+    const outcome = await sendBufferedEventWithRetry(client, installId, deletionToken, event, sleepFn);
     if (outcome === 'sent') {
       flushed += 1;
     } else if (outcome === 'dropped') {

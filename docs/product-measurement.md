@@ -34,8 +34,8 @@ On first use the client generates two independent random values and persists
 them in AsyncStorage:
 
 - an **install id** used to attribute aggregate events to an install, and
-- a separate **deletion token** that a later erasure follow-up can present to
-  delete this install's aggregate events.
+- a separate **deletion token** that authorizes deleting this install's
+  server-side aggregate events.
 
 Both are random, PII-free, and never derived from any account, device, or
 health data. They are distinct from each other, keeping attribution separate
@@ -43,6 +43,25 @@ from deletion authority. Neither value is ever logged or included in an event
 payload; the sanitizer strips them like any other unknown field. Revoking
 consent clears both values along with the buffer, and the next use regenerates
 fresh, unlinkable identifiers.
+
+### Server-side binding
+
+The server never sees or stores the raw deletion token. On the first accepted
+event for a given install id, `kilo.record_product_measurement_event`
+(`supabase/migrations/20260726120000_product_measurement_deletion.sql`) binds
+that install id to a one-way SHA-256 digest of the deletion token in the
+private, RLS-locked `kilo.product_measurement_installs` table. The binding is
+one-to-one in both directions: an install id cannot later be rebound to a
+different token, and a token digest cannot be bound to more than one install
+id — both ingest calls are rejected outright if attempted. Every subsequent
+event from that install must present the same deletion token to be accepted.
+
+`kilo.product_measurement_events` rows that existed before this binding
+contract shipped predated any trustworthy token and could not be securely
+claimed by any install after the fact, so the migration that introduced
+binding purged them outright rather than inferring ownership from install id
+alone. The prior tokenless ingest RPC overload was dropped in the same
+migration, so no caller can bypass binding.
 
 ## Storage and transport
 
@@ -62,6 +81,10 @@ The RPC independently re-validates every event before it can persist — it is t
 security boundary, not the client sanitizer:
 
 - `install_id` must match the client's 32-hex-character random id format.
+- `deletion_token` must match the same 32-hex-character format and must match
+  (or establish, on first ingest) this install's bound token digest — see
+  Server-side binding above. A format or binding mismatch rejects the call
+  outright and nothing is inserted.
 - `event_name` must be one of the same allow-listed names as the client
   sanitizer; an unrecognized name is rejected outright (the call raises and
   nothing is inserted).
@@ -71,10 +94,11 @@ security boundary, not the client sanitizer:
 - Writes are rate-limited per install id (120 events/minute) via the existing
   `kilo.rate_limit_check` used elsewhere in the schema.
 
-The receiving table (`kilo.product_measurement_events`) has row-level security
-enabled with no policies, so neither `anon` nor `authenticated` can read or
-write it directly; the validated RPC is the only path in, and only
-`service_role` (via `BYPASSRLS`) can otherwise touch the table.
+The receiving table (`kilo.product_measurement_events`) and the binding table
+(`kilo.product_measurement_installs`) both have row-level security enabled
+with no policies, so neither `anon` nor `authenticated` can read or write
+either directly; the validated RPCs are the only path in, and only
+`service_role` (via `BYPASSRLS`) can otherwise touch either table.
 
 On the client, a successfully persisted event is removed from the local buffer.
 A transient failure (network error, server unavailable) is retried up to 5
@@ -86,8 +110,46 @@ is dropped rather than retried forever. No raw health, workout, weight, or
 profile data is ever part of the payload sent to the server — only the same
 allow-listed shape the client sanitizer already enforces locally.
 
-Deletion: the deletion token described above is reserved for a later erasure
-follow-up and is not yet wired to any endpoint.
+## Deletion on opt-out
+
+Disabling product measurement (`setProductMeasurementConsent(false)` in
+`mobile/lib/productMeasurement.js`) completes locally first and unconditionally:
+it reads the already-persisted deletion token, then clears consent, the
+buffered events, the install id, and the deletion token from AsyncStorage — a
+new token is never generated for deletion, only the one this install has
+already carried since opt-in. Local opt-out has fully succeeded at this point
+regardless of network state.
+
+Only if a deletion token existed does the client then fire one best-effort,
+fire-and-forget request to `kilo.delete_product_measurement_install`
+(`supabase/migrations/20260726120000_product_measurement_deletion.sql`),
+passing that token as the sole deletion authority — never the install id,
+account id, or any other identifier. The request is not awaited by
+`setProductMeasurementConsent`, is wrapped in a try/catch, and any rejection is
+swallowed: missing Supabase configuration, being offline, a network or server
+timeout, a thrown error, and an explicit server rejection all leave the
+already-completed local opt-out untouched.
+
+The RPC is `SECURITY DEFINER`, idempotent, and non-enumerating:
+
+- A malformed token (wrong format) is rejected without deleting anything.
+- A well-formed token that is unknown, already used, or never bound to an
+  install returns the exact same success result as a completed deletion, so a
+  caller can never learn whether a binding existed.
+- A well-formed, currently-bound token deletes exactly that installation's
+  `kilo.product_measurement_events` rows and its `kilo.product_measurement_installs`
+  binding row, in one transaction — no other installation's rows are ever
+  touched.
+- Repeating the same deletion request afterward is safe: the token no longer
+  resolves to a binding, so it is treated as unknown and returns success
+  without deleting anything further.
+
+**This is intentionally fail-open, not durable.** Once the token is discarded
+from local storage during opt-out, there is no retry: an offline or failed
+deletion request is not queued, persisted, or retried later. A durable
+deletion job or retry-storage mechanism is out of scope for this contract. A
+later opt-in always generates a fresh install id and deletion token that
+cannot be linked to, or used to affect, any previously revoked installation.
 
 ## Intended questions
 
