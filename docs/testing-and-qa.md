@@ -303,6 +303,34 @@ The repo root no longer hosts an active browser/Vitest suite. After the
 browser prototype archival in issue `#213`, the root `package.json` only
 retains non-test commands such as `npm run audit`.
 
+### Cross-file test isolation: fake timers
+
+Jest reuses a worker process across test files. The module registry is reset
+between files, but React and `react-test-renderer` scheduler state established
+during import-graph evaluation is not. A module-scope `jest.useFakeTimers()`
+therefore contaminates the next file that runs on the same worker, which caused
+an intermittent required-`test`-job failure in `session-checkin-modal.test.js`
+(issue `#679`).
+
+Suites that render components must install fake timers per test, never at module
+scope:
+
+```js
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
+```
+
+When reproducing a suspected isolation flake, always pass `--no-cache`; Jest's
+on-disk transform cache masks the failure roughly half the time:
+
+```sh
+npm --prefix mobile test -- --no-cache --maxWorkers=2
+```
+
 ---
 
 ## Automated Coverage Inventory

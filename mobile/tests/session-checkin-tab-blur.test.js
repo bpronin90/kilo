@@ -2,7 +2,10 @@ import React from 'react';
 import { act } from 'react';
 import render from 'react-test-renderer';
 
-jest.useFakeTimers();
+// Fake timers are installed per-test (see beforeEach), not at module scope: a
+// module-scope jest.useFakeTimers() contaminates React/react-test-renderer
+// scheduler state during import-graph evaluation, which then leaks across Jest's
+// shared worker into the next test file (#679).
 
 jest.mock('../lib/data', () => ({
   ...jest.requireActual('../lib/data'),
@@ -70,10 +73,12 @@ function text(instance, id) {
 
 describe('tab-blur fires check-in detection in edit mode', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     global.requestAnimationFrame = cb => { cb(); return 0; };
   });
   afterEach(() => {
     jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   it('isActive false while in read mode does NOT show modal', async () => {
