@@ -29,7 +29,7 @@ jest.mock('../components/LineChart', () => {
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   return { __esModule: true, default: () => null };
-}, { virtual: true });
+});
 
 // Keep the real getNoteSections (per-note parse cache) so the screen parses
 // notes for real; only the data hooks are stubbed via mockReturnValue below.
@@ -46,7 +46,16 @@ jest.mock('../hooks/useEntries', () => {
 });
 
 const MOCK_NOW = new Date('2026-05-26T12:00:00Z');
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
+// Fake timers are installed per-test, not at module scope: a module-scope
+// jest.useFakeTimers() contaminates React/react-test-renderer scheduler state
+// during import-graph evaluation, which then leaks across Jest's shared worker
+// into the next test file (#679).
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
   useEntries.useFeatureToggles.mockReturnValue({

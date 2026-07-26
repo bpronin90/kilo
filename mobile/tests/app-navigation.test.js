@@ -27,7 +27,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   return { __esModule: true, default: () => null };
-}, { virtual: true });
+});
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
@@ -75,9 +75,12 @@ jest.mock('../components/ScreenShell', () => {
 });
 
 // WeightScreen schedules a real setTimeout for its midnight-refresh effect; fake
-// timers keep that from becoming a live open handle across test runs.
+// timers keep that from becoming a live open handle across test runs. Fake timers
+// are installed per-test in beforeEach and torn down in afterEach (#679) — NOT at
+// module scope: a module-scope jest.useFakeTimers() contaminates React/
+// react-test-renderer scheduler state during import-graph evaluation, and that
+// contamination leaks across Jest's shared worker into the next test file.
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
 
 let capturedTabPress = null;
 jest.mock('../components/TabBar', () => {
@@ -178,6 +181,8 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
   });
 
   beforeEach(() => {
+    // Scope fake timers to test execution only (see MOCK_NOW note above).
+    jest.useFakeTimers().setSystemTime(MOCK_NOW);
     capturedTabPress = null;
     mockUpdateNote = jest.fn().mockResolvedValue({});
 
@@ -228,6 +233,9 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     addListenerSpy.mockRestore();
     component = null;
     capturedTabPress = null;
+    // Restore real timers so neither the pending midnight-refresh setTimeout nor
+    // the fake-timer install survives into the next test file on this worker.
+    jest.useRealTimers();
   });
 
   function getLatestBackHandler() {

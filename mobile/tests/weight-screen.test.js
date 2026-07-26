@@ -36,7 +36,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   return { __esModule: true, default: () => null };
-}, { virtual: true });
+});
 
 jest.mock('../screens/HomeScreen', () => {
   const React = require('react');
@@ -84,7 +84,16 @@ jest.mock('../components/ScreenShell', () => {
 });
 
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
+// Fake timers are installed per-test, not at module scope: a module-scope
+// jest.useFakeTimers() contaminates React/react-test-renderer scheduler state
+// during import-graph evaluation, which then leaks across Jest's shared worker
+// into the next test file (#679).
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 // Wrapper that owns form state so handleEditEntry/setWeightValue callbacks propagate
 function ControlledWeightScreen(props) {

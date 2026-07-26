@@ -50,13 +50,22 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   return { __esModule: true, default: () => null };
-}, { virtual: true });
+});
 
 // TabBar schedules a real animation timeout on mount; fake timers keep it
 // from firing after the test (and Jest environment) tear down, matching the
 // pattern used by tests/app-navigation.test.js for the same shell.
 const MOCK_NOW = new Date('2026-05-24T12:00:00Z');
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
+// Fake timers are installed per-test, not at module scope: a module-scope
+// jest.useFakeTimers() contaminates React/react-test-renderer scheduler state
+// during import-graph evaluation, which then leaks across Jest's shared worker
+// into the next test file (#679).
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 const renderCounts = {
   Home: 0,
