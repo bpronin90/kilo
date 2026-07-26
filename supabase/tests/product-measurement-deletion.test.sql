@@ -12,7 +12,7 @@
 
 begin;
 
-select plan(33);
+select plan(38);
 
 -- ---------------------------------------------------------------------------
 -- record_product_measurement_event: format validation, in order
@@ -182,7 +182,13 @@ select is(
 select is(
   (select count(*)::int from kilo.product_measurement_installs
    where install_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
-  0, 'the bound installation''s binding row is gone'
+  1, 'the bound installation''s binding row survives as a tombstone, not deleted'
+);
+
+select ok(
+  (select revoked_at from kilo.product_measurement_installs
+   where install_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb') is not null,
+  'the tombstone records a revocation timestamp'
 );
 
 select is(
@@ -192,8 +198,47 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- delete_product_measurement_install: repeating deletion with the now-unbound
--- token is safe and returns the same non-revealing success.
+-- record_product_measurement_event: a late in-flight ingest that reaches the
+-- server after deletion committed (e.g. a flush that read the install id and
+-- token before local opt-out cleared them) must not resurrect the revoked
+-- installation's data. This is the tombstone's reason for existing: without
+-- it, the ingest function would see no binding and recreate one.
+-- ---------------------------------------------------------------------------
+select throws_ok(
+  $$select kilo.record_product_measurement_event(
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '22222222222222222222222222222222',
+    'tab_viewed', '{"tab":"Home"}'::jsonb, 9000
+  )$$,
+  'installation has been revoked'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_events
+   where install_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'),
+  0, 'the late in-flight ingest does not resurrect any event for the revoked install'
+);
+
+-- ---------------------------------------------------------------------------
+-- record_product_measurement_event: the revoked token's digest stays
+-- permanently reserved — a different install id still cannot claim it.
+-- ---------------------------------------------------------------------------
+select throws_ok(
+  $$select kilo.record_product_measurement_event(
+    'ffffffffffffffffffffffffffffffff', '22222222222222222222222222222222',
+    'tab_viewed', '{"tab":"Home"}'::jsonb, 9000
+  )$$,
+  'deletion token already bound to a different installation'
+);
+
+select is(
+  (select count(*)::int from kilo.product_measurement_installs
+   where install_id = 'ffffffffffffffffffffffffffffffff'),
+  0, 'a revoked token''s digest cannot be claimed by a new installation either'
+);
+
+-- ---------------------------------------------------------------------------
+-- delete_product_measurement_install: repeating deletion with the
+-- already-revoked token is safe and returns the same non-revealing success.
 -- ---------------------------------------------------------------------------
 select ok(
   kilo.delete_product_measurement_install('22222222222222222222222222222222'),

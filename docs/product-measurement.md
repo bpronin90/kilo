@@ -77,6 +77,11 @@ configuration, the flush function returns immediately and makes no network call
 of any kind, so nothing changes for a user who has not opted in or is not
 signed in.
 
+Both this RPC and the deletion RPC below are called through `client.schema('kilo').rpc(...)`:
+the shared `getSupabaseClient()` does not set a default schema, so an
+unqualified `.rpc()` call would target `public`, where neither function
+exists.
+
 The RPC independently re-validates every event before it can persist — it is the
 security boundary, not the client sanitizer:
 
@@ -133,16 +138,29 @@ already-completed local opt-out untouched.
 The RPC is `SECURITY DEFINER`, idempotent, and non-enumerating:
 
 - A malformed token (wrong format) is rejected without deleting anything.
-- A well-formed token that is unknown, already used, or never bound to an
-  install returns the exact same success result as a completed deletion, so a
-  caller can never learn whether a binding existed.
+- A well-formed token that is unknown or never bound to an install returns
+  the exact same success result as a completed deletion, so a caller can
+  never learn whether a binding existed.
 - A well-formed, currently-bound token deletes exactly that installation's
-  `kilo.product_measurement_events` rows and its `kilo.product_measurement_installs`
-  binding row, in one transaction — no other installation's rows are ever
-  touched.
-- Repeating the same deletion request afterward is safe: the token no longer
-  resolves to a binding, so it is treated as unknown and returns success
-  without deleting anything further.
+  `kilo.product_measurement_events` rows, in one transaction — no other
+  installation's rows are ever touched.
+- Repeating the same deletion request afterward is safe: it is treated the
+  same as any already-revoked token and returns success without deleting
+  anything further.
+
+**The install/token binding row is tombstoned, not deleted.** A flush can
+read the install id and deletion token from storage and start its RPC call
+before local opt-out clears them; that in-flight request can then reach the
+server *after* the deletion transaction has already committed. If deletion
+removed the binding row outright, that late call would find no binding, treat
+itself as a first ingest, recreate it, and insert events for an installation
+the user just had erased — using a token the client has already discarded and
+can never present again. To close this, `kilo.delete_product_measurement_install`
+deletes the installation's events but marks its `kilo.product_measurement_installs`
+row revoked (`revoked_at`) instead of deleting it. `kilo.record_product_measurement_event`
+checks `revoked_at` and rejects any ingest for a revoked installation
+outright, and the revoked token's digest stays permanently reserved so it can
+never be rebound — by the same installation or a different one.
 
 **This is intentionally fail-open, not durable.** Once the token is discarded
 from local storage during opt-out, there is no retry: an offline or failed

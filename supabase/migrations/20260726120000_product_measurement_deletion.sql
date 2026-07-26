@@ -25,8 +25,10 @@
 --     deletion entry point. It is idempotent and non-enumerating: a
 --     malformed token is rejected without touching any row, while a
 --     well-formed but unknown/already-used token returns the same success
---     result as a completed deletion. A valid, bound token deletes exactly
---     that installation's events and its binding row, in one transaction.
+--     result as a completed deletion. A valid, bound token deletes that
+--     installation's events and marks its binding row revoked (rather than
+--     deleting the binding) in one transaction — see the revoked_at note
+--     below for why the binding row itself must survive deletion.
 --   * Rows in kilo.product_measurement_events predate any token binding and
 --     cannot be securely claimed by inference from install id alone, so this
 --     migration purges all of them before the new binding contract takes
@@ -44,10 +46,21 @@ delete from kilo.product_measurement_events;
 -- ---------------------------------------------------------------------------
 -- 2. The private install/token binding table.
 -- ---------------------------------------------------------------------------
+-- revoked_at: set by kilo.delete_product_measurement_install and never
+-- cleared. A deletion request can race a flush that already read the same
+-- install id/token before local opt-out cleared them: if that in-flight
+-- ingest call reaches kilo.record_product_measurement_event AFTER the
+-- deletion transaction commits, the binding row must still be there for the
+-- ingest function to recognize the installation as revoked and reject the
+-- event — otherwise it would see no binding, treat the call as a first
+-- ingest, recreate it, and resurrect rows the user just had deleted, using a
+-- token the client has already irreversibly discarded. Deleting the binding
+-- row on revoke (instead of tombstoning it) would reopen exactly that race.
 create table if not exists kilo.product_measurement_installs (
   install_id text primary key check (install_id ~ '^[0-9a-f]{32}$'),
   deletion_token_digest text not null unique check (deletion_token_digest ~ '^[0-9a-f]{64}$'),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  revoked_at timestamptz
 );
 
 -- Locked down exactly like kilo.product_measurement_events: RLS enabled with
@@ -92,6 +105,7 @@ as $$
 declare
   v_token_digest text;
   v_bound_digest text;
+  v_revoked_at timestamptz;
   v_sanitized jsonb;
 begin
   if p_install_id is null or p_install_id !~ '^[0-9a-f]{32}$' then
@@ -133,12 +147,19 @@ begin
     raise exception 'deletion token already bound to a different installation';
   end;
 
-  select deletion_token_digest into v_bound_digest
+  select deletion_token_digest, revoked_at into v_bound_digest, v_revoked_at
   from kilo.product_measurement_installs
   where install_id = p_install_id;
 
   if v_bound_digest is distinct from v_token_digest then
     raise exception 'install is bound to a different deletion token';
+  end if;
+
+  -- Closes the late-ingest-after-deletion race: the binding row survives
+  -- deletion specifically so this check can reject an ingest that arrives
+  -- after this installation was revoked, rather than treating it as fresh.
+  if v_revoked_at is not null then
+    raise exception 'installation has been revoked';
   end if;
 
   -- Bound the ingest rate per install id so a single (or spoofed) install
@@ -196,9 +217,20 @@ begin
   -- A well-formed but unknown/already-used token falls through with no
   -- match: idempotent no-op, same successful result as a completed
   -- deletion, so the caller cannot learn whether a binding ever existed.
+  --
+  -- The binding row is marked revoked, not deleted: kilo.record_product_
+  -- measurement_event checks revoked_at and rejects any ingest for this
+  -- install id, including a call that started before opt-out and only
+  -- reaches the server after this transaction commits. Deleting the row
+  -- instead would let that late call see no binding, recreate it, and
+  -- resurrect events using a token the client already discarded. coalesce
+  -- keeps a repeat deletion idempotent without moving the original
+  -- revocation timestamp.
   if v_install_id is not null then
     delete from kilo.product_measurement_events where install_id = v_install_id;
-    delete from kilo.product_measurement_installs where install_id = v_install_id;
+    update kilo.product_measurement_installs
+    set revoked_at = coalesce(revoked_at, now())
+    where install_id = v_install_id;
   end if;
 
   return true;

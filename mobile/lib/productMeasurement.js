@@ -35,6 +35,7 @@ const PERMANENT_REJECTION_MESSAGES = [
   'invalid deletion token',
   'bound to a different deletion token',
   'bound to a different installation',
+  'has been revoked',
 ];
 
 function isPermanentRejection(error) {
@@ -178,8 +179,11 @@ function requestProductMeasurementDeletion(deletionToken) {
     const client = getSupabaseClient();
     if (!client) return;
 
+    // getSupabaseClient() does not set db.schema, so an unqualified .rpc()
+    // targets public — where these functions do not exist. .schema('kilo')
+    // is required on every call; kilo is exposed in supabase/config.toml.
     Promise.resolve(
-      client.rpc('delete_product_measurement_install', { p_deletion_token: deletionToken })
+      client.schema('kilo').rpc('delete_product_measurement_install', { p_deletion_token: deletionToken })
     ).catch(() => {});
   } catch {
     // Best-effort: a synchronous client failure must never affect opt-out.
@@ -251,7 +255,7 @@ async function sendBufferedEventWithRetry(client, installId, deletionToken, even
     let error;
     try {
       // eslint-disable-next-line no-await-in-loop
-      ({ data, error } = await client.rpc('record_product_measurement_event', {
+      ({ data, error } = await client.schema('kilo').rpc('record_product_measurement_event', {
         p_install_id: installId,
         p_deletion_token: deletionToken,
         p_event_name: event.name,
