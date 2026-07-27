@@ -4,7 +4,7 @@ import { StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
-import { Colors } from '../theme/colors';
+import { LightColors } from '../theme/colors';
 
 // Mock dependencies
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -331,12 +331,12 @@ describe('WeightScreen', () => {
 
       // Positive delta (+3.0) goes opposite to the weight loss goal, so it should be highlighted (warn)
       const posColor = getStyleProp(positiveDeltaText, 'color');
-      expect(posColor).not.toBe(Colors.textMuted);
+      expect(posColor).not.toBe(LightColors.textMuted);
       expect(posColor).toBeTruthy();
 
       // Negative delta (-3.0) matches the weight loss goal, so it should NOT be highlighted (remain muted)
       const negColor = getStyleProp(negativeDeltaText, 'color');
-      expect(negColor).toBe(Colors.textMuted);
+      expect(negColor).toBe(LightColors.textMuted);
     });
 
     test('suppresses warnings for weight gain when goal is weight gain, but warns on weight loss', () => {
@@ -360,11 +360,11 @@ describe('WeightScreen', () => {
 
       // Positive delta (+3.0) matches weight gain goal, so it should NOT be highlighted
       const posColor = getStyleProp(positiveDeltaText, 'color');
-      expect(posColor).toBe(Colors.textMuted);
+      expect(posColor).toBe(LightColors.textMuted);
 
       // Negative delta (-3.0) goes opposite to the weight gain goal, so it should be highlighted
       const negColor = getStyleProp(negativeDeltaText, 'color');
-      expect(negColor).not.toBe(Colors.textMuted);
+      expect(negColor).not.toBe(LightColors.textMuted);
       expect(negColor).toBeTruthy();
     });
   });
@@ -752,7 +752,7 @@ describe('WeightScreen', () => {
         const successNode = findByExactText(root, 'Success');
         expect(successNode).toBeTruthy();
         expect(getStyleProp(successNode, 'fontWeight')).toBe('900');
-        expect(getStyleProp(successNode, 'color')).toBe(Colors.success);
+        expect(getStyleProp(successNode, 'color')).toBe(LightColors.success);
       });
 
       test('collapsed Goal History summary shows a bold Missed outcome (red) for an unmet goal', () => {
@@ -770,7 +770,7 @@ describe('WeightScreen', () => {
 
         const missedNode = findByExactText(root, 'Missed');
         expect(missedNode).toBeTruthy();
-        expect(getStyleProp(missedNode, 'color')).toBe(Colors.error);
+        expect(getStyleProp(missedNode, 'color')).toBe(LightColors.error);
       });
 
       // #411 option B: the From/To controls are hidden by default and revealed
@@ -857,7 +857,7 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const endNode = findByExactText(component.root, '174 lb');
         expect(endNode).toBeTruthy();
-        expect(getStyleProp(endNode, 'color')).toBe(Colors.success);
+        expect(getStyleProp(endNode, 'color')).toBe(LightColors.success);
       });
 
       test('missed loss goal colors End Weight error (red)', () => {
@@ -874,7 +874,7 @@ describe('WeightScreen', () => {
         expandGoalHistory(component.root);
         const endNode = findByExactText(component.root, '185 lb');
         expect(endNode).toBeTruthy();
-        expect(getStyleProp(endNode, 'color')).toBe(Colors.error);
+        expect(getStyleProp(endNode, 'color')).toBe(LightColors.error);
       });
 
       test('missing completed weight stays neutral', () => {
@@ -891,9 +891,9 @@ describe('WeightScreen', () => {
         const endNode = findByExactText(component.root, '—');
         expect(endNode).toBeTruthy();
         const color = getStyleProp(endNode, 'color');
-        expect(color).toBe(Colors.text);
-        expect(color).not.toBe(Colors.success);
-        expect(color).not.toBe(Colors.error);
+        expect(color).toBe(LightColors.text);
+        expect(color).not.toBe(LightColors.success);
+        expect(color).not.toBe(LightColors.error);
       });
     });
 

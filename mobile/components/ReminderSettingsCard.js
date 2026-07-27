@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import * as Storage from '../storage/entries';
 // Imported directly from the hook module (not the `hooks/useEntries` barrel)
 // so this card's display refresh subscribes to the same add/update/remove/
@@ -47,6 +47,7 @@ const WORKOUT_DAYS_REQUIRED_MESSAGE = 'Pick at least one workout day before enab
 // dedup cache means that call is a no-op for scheduling whenever the
 // always-on subscriber already reconciled the same change.
 export function ReminderSettingsCard() {
+  const styles = useThemedStyles(createStyles);
   const [weighIn, setWeighIn] = useState({ ...DEFAULT_WEIGH_IN_REMINDER });
   const [workout, setWorkout] = useState({ ...DEFAULT_WORKOUT_REMINDER, fallbackWeekdays: [] });
   const [inferredWeekdays, setInferredWeekdays] = useState([]);
@@ -279,7 +280,7 @@ export function ReminderSettingsCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -293,15 +294,15 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   settingHelp: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   errorText: {
     fontSize: 12,
-    color: Colors.error,
+    color: colors.error,
   },
   subRow: {
     flexDirection: 'row',
@@ -313,20 +314,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   timeButton: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
   timeButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -338,20 +339,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   weekdayChipSelected: {
-    backgroundColor: Colors.chipBackground,
-    borderColor: Colors.chipText,
+    backgroundColor: colors.chipBackground,
+    borderColor: colors.chipText,
   },
   weekdayChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   weekdayChipTextSelected: {
-    color: Colors.chipText,
+    color: colors.chipText,
   },
 });

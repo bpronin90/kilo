@@ -2,64 +2,120 @@
 
 Audit of every style token across all screens, organized by role. Use this to find exactly where to change any visual property.
 
-Last updated: 2026-07-01
-Source branch: `issue/386-ui-design-rules`
+Last updated: 2026-07-27
+Source branch: `issue/689-appearance-modes`
 
 Reconciled after the #383→#413 UI cleanup (tab-spacing polish, unified
 Weight/Goal history panel system, standardized collapse convention, analytics
-hierarchy fixes). For the *rules* derived from these patterns see
-`docs/ui-design-rules.md`; this map records the *current values*.
+hierarchy fixes), then after the #689 appearance-mode rollout (two palettes,
+`useTheme()`/`useThemedStyles()` migration, derived semantic tokens). For the
+*rules* derived from these patterns see `docs/ui-design-rules.md`; this map
+records the *current values*.
+
+`colors.<token>` below means the active palette read from `useTheme()` — there
+is no static `Colors` object any more. Every token resolves to a Light and a
+Dark value; see the Color Palette table.
 
 Line numbers below are accurate for the sections touched by that cleanup
 (tokens, ScreenShell, the history-panel system, Weight Screen, Analytics
 collapse/PO). Home and Log sections predate the cleanup and were not in scope;
-treat their line numbers as approximate.
+treat their line numbers as approximate. The #689 migration moved each
+stylesheet into a `createStyles(colors)` factory, shifting line numbers within
+every migrated file.
 
 ---
+
+## Appearance Modes (#689)
+
+Source: `mobile/theme/colors.js`, `mobile/theme/ThemeContext.js`,
+`mobile/lib/themePreference.js`
+
+Kilo ships two complete palettes — **Light** and **Dark (indigo)** — sharing the
+brand-orange accent `#d98d42`. There is no static `Colors` export and no mutable
+global palette: components read the active palette from `useTheme()` and build
+their sheets with `useThemedStyles(createStyles)`, so a preference or OS scheme
+change repaints every mounted surface without a reload.
+
+- Preference values: `light`, `dark`, `system`. Missing or invalid resolves to
+  `system`.
+- Persisted at AsyncStorage key `kilo.appearance_preference` (dot-namespaced so
+  the `kilo_` account-switch purge does not wipe a device display setting).
+- `system` resolves through React Native `useColorScheme()`, defaulting to light
+  when the platform reports no scheme.
+- `ThemeProvider` is mounted in `App.js` **above** `AppShell`, so the outermost
+  container, safe area, status bar, tab bar, screens, and modals all share one
+  resolved palette.
+- Chosen from **More → Settings → Appearance** via a three-way segmented
+  control that follows the existing `unitToggle` visual convention.
 
 ## Color Palette
 
 Source: `mobile/theme/colors.js`
 
-| Token | Hex | Role |
-|---|---|---|
-| `background` | `#f4efe5` | Global scroll background (warm cream) |
-| `card` | `#fffaf2` | Card fill |
-| `cardBorder` | `#e3d7c5` | Card stroke, dividers, separators |
-| `accent` | `#d98d42` | Primary brand orange — hero metrics, CTAs, active states |
-| `text` | `#1f1a17` | Primary text (near-black) |
-| `textMuted` | `#5d564f` | Secondary/support text |
-| `textLight` | `#f7f1e8` | Text on dark backgrounds (buttons, dark badges) |
-| `tabBarBackground` | `#201914` | Bottom tab bar |
-| `tabInactive` | `#cbb9a5` | Inactive tab icons |
-| `inputBackground` | `#ffffff` | Text input fill |
-| `inputBorder` | `#d9cdbf` | Text input stroke |
-| `chipBackground` | `#f0d8bb` | Chip/badge/highlight fill |
-| `divider` | `rgba(31, 26, 23, 0.05)` | Subtle separator overlay |
-| `subtleBg` | `rgba(31, 26, 23, 0.02)` | Very subtle tinted background — history/column header rows |
-| `panelBackground` | `#ffffff` | Panel/section background (same value as `inputBackground`) |
-| `chipText` | `#96571c` | Chip/badge text |
-| `success` | `#4a7c44` | Green (progressing, bulking, goal met) |
-| `error` | `#b03a2e` | Red (regressing, delete, warnings, goal missed) |
-| `caution` | `#d4a017` | Yellow (steady/stalled classifications) |
-| `cardAccentBg` | `#96571c` | Filled accent tone card/badge bg (WCAG AA with `textLight`) |
-| `cardSuccessBg` | `#3a6035` | Filled success tone card/badge bg (WCAG AA with `textLight`) |
-| `cardCautionBg` | `#7f6310` | Filled caution tone card/badge bg (WCAG AA with `textLight`) |
-| `roughBackground` | `#fff0e8` | ArtisanalPanel fill |
-| `roughBorder` | `#e8c4a0` | ArtisanalPanel stroke |
+| Token | Light | Dark | Role |
+|---|---|---|---|
+| `background` | `#f7f2ea` | `#100f1a` | Global scroll background |
+| `card` | `#ffffff` | `#1e1c2c` | Card fill (dark keeps a deliberate elevation jump from `background`) |
+| `cardBorder` | `rgba(34,28,23,0.1)` | `rgba(217,141,66,0.28)` | Card stroke, dividers, separators. Uniform 1px on every ordinary card; accent-tinted in dark |
+| `accent` | `#d98d42` | `#d98d42` | Primary brand orange — hero metrics, CTAs, active states |
+| `text` | `#221c17` | `#f2f0f7` | Primary text |
+| `textMuted` | `#6b6259` | `#a29fb3` | Secondary/support text |
+| `textLight` | `#faf6f0` | `#f2f0f7` | Text on filled tone surfaces |
+| `tabBarBackground` | `#201914` | `#1e1c2c` | Bottom tab bar |
+| `tabInactive` | `#8a8177` | `#6a6780` | Inactive tab icons |
+| `inputBackground` | `#fbf8f3` | `#242235` | Text input fill |
+| `inputBorder` | `rgba(34,28,23,0.16)` | `rgba(217,141,66,0.28)` | Text input stroke |
+| `chipBackground` | `#f3ddc0` | `rgba(217,141,66,0.32)` | Chip/badge/highlight fill |
+| `chipText` | `#96571c` | `#ffc98a` | Chip/badge text |
+| `success` | `#4a7c44` | `#7ed968` | Green — direct status marks and text |
+| `error` | `#b03a2e` | `#f2705c` | Red — direct status marks and text |
+| `caution` | `#c98f1a` | `#f2b94a` | Yellow — direct status marks and text |
+| `divider` | `rgba(31,26,23,0.05)` | `rgba(255,255,255,0.08)` | Subtle separator overlay |
+| `subtleBg` | `rgba(34,28,23,0.04)` | `rgba(255,255,255,0.06)` | Very subtle tinted background — history/column header rows |
+| `panelBackground` | `#ffffff` | `#1e1c2c` | Panel/section background |
 
-The `cardAccentBg` / `cardSuccessBg` / `cardCautionBg` tokens are darkened tone
-backgrounds used only for *filled* tone surfaces (UI.js Card/StatCard tone
-variants, trend badges) so `textLight` meets WCAG AA 4.5:1. Direct users of the
-lighter `accent`/`success`/`caution` palette tones (e.g. SessionGauge segments)
-are intentionally unchanged.
+### Derived semantic tokens
+
+These carry the pairings that would otherwise be unreadable in one of the two
+modes. Every ratio below is asserted automatically in
+`mobile/tests/theme-rendering.test.js`.
+
+| Token | Light | Dark | Role and measured contrast |
+|---|---|---|---|
+| `cardAccentBg` | `#96571c` | `#7a4a14` | Filled accent tone card/badge, label `textLight` — 5.30:1 / 6.60:1 |
+| `cardSuccessBg` | `#3a6035` | `#2f5a28` | Filled success tone, label `textLight` — 6.72:1 / 7.11:1 |
+| `cardCautionBg` | `#7f6310` | `#6b5210` | Filled caution tone, label `textLight` — 5.28:1 / 6.54:1 |
+| `cardErrorBg` | `#b03a2e` | `#8a2f24` | Filled error tone, label `textLight` — 5.59:1 / 7.40:1 |
+| `buttonLabel` | `#faf6f0` | `#100f1a` | Label on the shared Button (background is `text`) — 15.65:1 / 16.81:1 |
+| `onAccent` | `#ffffff` | `#100f1a` | Label on small accent-filled controls (segmented tabs, confirm, checkmarks) — 2.68:1 / 7.09:1 |
+| `errorSurface` | `#fdeceb` | `#3a1f1c` | Tinted error surface, label `error` — 5.26:1 / 5.20:1 |
+| `cautionSurface` | `#f7ecd2` | `#2e2717` | Tinted caution surface (fatigue alert) — see `cautionSurfaceText` |
+| `cautionSurfaceText` | `#7f6310` | `#f2b94a` | Ink on `cautionSurface` — 4.84:1 / 8.33:1 |
+| `roughBackground` | `#fbeee0` | `#2a2338` | "Rough session" tier surface, label `chipText` — 5.01:1 / 10.01:1 |
+| `roughBorder` | `#e5c49c` | `rgba(217,141,66,0.32)` | Rough tier stroke |
+| `overlay` | `rgba(31,26,23,0.55)` | `rgba(0,0,0,0.65)` | Modal scrim |
+| `shadowColor` | `#000000` | `#000000` | Tab bar / panel shadow ink |
+
+The `card*Bg` tokens are used only for *filled* tone surfaces (UI.js
+Card/StatCard tone variants, trend badges, pace badges, error banners). The
+direct `success`/`caution`/`error`/`accent` values are for status marks, dots,
+meter segments, and colored text — dark mode intentionally uses the brighter
+supplied values there, which is exactly why they cannot back a `textLight`
+label.
+
+**Known gap:** `chipText` on `chipBackground` in light mode measures 4.33:1,
+just under AA for normal text. Both values are contractually fixed by the #689
+approved palette, so this is recorded rather than adjusted; dark mode is fine at
+11.11:1.
 
 ### Hardcoded Color Leaks (not in colors.js)
 
 | File | Line | Value | Used For |
 |---|---|---|---|
-| `LogScreen.js` | `749` | `#fff0f0` | Error card background tint |
-| `HomeScreen.js` | `33, 37` | `#FF5C00` | KiloWordmark SVG (brand mark, intentional) |
+| `HomeScreen.js` | `35, 39` | `#FF5C00` | KiloWordmark SVG accents (brand mark, intentionally fixed in both modes) |
+
+This is now the complete list: every other visual color in the migrated
+production surfaces resolves through a palette token.
 
 ---
 
@@ -71,12 +127,17 @@ Source: `mobile/components/UI.js`
 
 | Property | Value | Line |
 |---|---|---|
-| backgroundColor | `Colors.card` | `158` |
+| backgroundColor | `colors.card` | `158` |
 | borderRadius | `24` | `159` |
 | padding | `18` | `160` |
 | borderWidth | `1` | `161` |
-| borderColor | `Colors.cardBorder` | `162` |
+| borderColor | `colors.cardBorder` | `162` |
 | gap (between children) | `10` | `163` |
+
+Every ordinary card uses this 1px `cardBorder` in both modes — no card is
+special-cased. The single documented exception is the current-routine card in
+`LogActiveRoutineCard.js`, which keeps a 4px `colors.accent` border on all
+sides so the active note is identifiable at a glance.
 
 Tone variants (accent/success/error/warn) override bg and border to the tone color. Lines `165-180`.
 
@@ -86,19 +147,23 @@ Tone variants (accent/success/error/warn) override bg and border to the tone col
 |---|---|---|
 | fontSize | `18` | `182` |
 | fontWeight | `700` | `183` |
-| color | `Colors.text` | `184` |
+| color | `colors.text` | `184` |
 | marginTop | `6` | `185` |
 
 ### Button
 
 | Property | Value | Line |
 |---|---|---|
-| backgroundColor | `Colors.text` (dark) | `188` |
+| backgroundColor | `colors.text` | `188` |
 | borderRadius | `18` | `189` |
 | paddingVertical | `16` | `190` |
 | text fontSize | `16` | `199` |
 | text fontWeight | `700` | `200` |
-| text color | `Colors.textLight` | `198` |
+| text color | `colors.buttonLabel` | `198` |
+
+The pill/label pairing inverts by mode: light renders a dark pill with a light
+label, dark renders a light pill with a dark label. Both clear AA (see the
+derived-token table above).
 
 ### StatCard
 
@@ -106,7 +171,7 @@ Tone variants (accent/success/error/warn) override bg and border to the tone col
 |---|---|---|
 | label fontSize | `13` | `207` |
 | label fontWeight | `700` | `208` |
-| label color | `Colors.textMuted` | `209` |
+| label color | `colors.textMuted` | `209` |
 | value fontSize | `28` | `212` |
 | value fontWeight | `800` | `213` |
 
@@ -143,10 +208,10 @@ Source: `mobile/components/ScreenShell.js`
 | Header internal gap | `8` | `73` |
 | Screen title fontSize | `34` | `87` |
 | Screen title fontWeight | `700` | `88` |
-| Screen title color | `Colors.text` | `89` |
+| Screen title color | `colors.text` | `89` |
 | Subtitle fontSize | `15` | `96` |
 | Subtitle lineHeight | `22` | `97` |
-| Subtitle color | `Colors.textMuted` | `98` |
+| Subtitle color | `colors.textMuted` | `98` |
 
 Current values live in `styles` at the bottom of `ScreenShell.js`
 (`container` gap/padding ~123-127, `header` ~131-135, `title` ~152-156). The
@@ -182,15 +247,15 @@ numerically identical by hand.
 
 | Element | Property | Value |
 |---|---|---|
-| Panel card | bg / radius / border | `Colors.card` / `24` / 1px `cardBorder`, `overflow: hidden` |
-| Header row | bg | `Colors.subtleBg`, `paddingVertical: 10`, left pad 16 / right pad 0 |
+| Panel card | bg / radius / border | `colors.card` / `24` / 1px `cardBorder`, `overflow: hidden` |
+| Header row | bg | `colors.subtleBg`, `paddingVertical: 10`, left pad 16 / right pad 0 |
 | Header row (expanded) | border | 1px `cardBorder` bottom (`headerRowBordered`) |
 | Column label | fontSize / weight | `11` / `700`, uppercase, `letterSpacing: 0.5`, `textMuted` |
 | Column flex | col1 / col2 / col3 | `1.35` (left) / `1.25` (center) / `1.5` (right) |
 | Control cell | width | `56` (trailing chevron / filter / delete) |
 | Row | padding | `paddingVertical: 12`, left 16 / right 0 |
-| Row value | fontSize / weight | `20` / `700`, `Colors.text` |
-| Row date | fontSize / weight | `15` / `600`, `Colors.textMuted`, right-aligned |
+| Row value | fontSize / weight | `20` / `700`, `colors.text` |
+| Row date | fontSize / weight | `15` / `600`, `colors.textMuted`, right-aligned |
 | Collapsed summary count | fontSize / weight | `12` / `600`, `textMuted` |
 | Collapsed summary "Latest:" | fontSize / weight | `15` / `600`; emphasized value `900` `text` |
 | Collapse chevron | icon / size | `MaterialIcons` `expand-less`/`expand-more`, `18`, `textMuted` |
@@ -204,7 +269,7 @@ Panel-specific outcome colors (the only intended difference between panels):
 ### Collapse convention (standardized #389, #410)
 
 App-wide: collapse toggles are `MaterialIcons` `expand-more` (collapsed) /
-`expand-less` (expanded), size 16–18, `Colors.textMuted`, with the whole header
+`expand-less` (expanded), size 16–18, `colors.textMuted`, with the whole header
 row as the press target. This replaced the earlier text `▲`/`▼` glyphs. Used by
 both history panels, the Analytics Big 3 Mapping header, and the 1K "How is this
 calculated?" toggle.
@@ -233,42 +298,42 @@ Source: `mobile/screens/HomeScreen.js`
 | | marginTop | `12` | `861` |
 | Floating badge | fontSize | `10` | `876` |
 | | fontWeight | `700` | `877` |
-| | color | `Colors.textMuted` | `878` |
+| | color | `colors.textMuted` | `878` |
 | | textTransform | `uppercase` | `879` |
 | | letterSpacing | `1` | `880` |
 | | borderRadius | `20` | `871` |
 | | position | `absolute`, top: `-12` | `863-864` |
-| Badge week number | color | `Colors.text` | `883` |
+| Badge week number | color | `colors.text` | `883` |
 | Hero content | padding | `24` all, `32` top (badge clearance) | `886-887` |
 | **Weight value** | fontSize | **`48`** | `899` |
 | | fontWeight | `800` | `900` |
-| | color | **`Colors.accent`** | `901` |
+| | color | **`colors.accent`** | `901` |
 | Weight placeholder | fontSize | `48` | `905` |
-| | color | `Colors.textMuted` | `907` |
+| | color | `colors.textMuted` | `907` |
 | Weight unit "lb" | fontSize | `20` | `911` |
-| | color | `Colors.textMuted` | `913` |
+| | color | `colors.textMuted` | `913` |
 | Sublabels ("current weight", "7-day trend") | fontSize | `11` | `916` |
 | | fontWeight | `600` | `917` |
 | | textTransform | `uppercase` | `920` |
 | | letterSpacing | `0.3` | `921` |
 | Weight+sparkline row | gap | `16` | `893` |
 | | marginBottom | `24` | `892` |
-| Sparkline | color | `Colors.accent` | `115` |
+| Sparkline | color | `colors.accent` | `115` |
 | | height | `40` | `116` |
 | Classification dot | width/height | `8` | `936-937` |
 | Classification count | fontSize | `16` | `942` |
 | | fontWeight | `800` | `943` |
 | Classification label | fontSize | `10` | `946` |
 | | fontWeight | `600` | `947` |
-| | color | `Colors.textMuted` | `948` |
+| | color | `colors.textMuted` | `948` |
 | Classification row | marginBottom | `24` | `928` |
 | Hero divider | height | `1` | `953` |
-| | color | `Colors.cardBorder` | `954` |
+| | color | `colors.cardBorder` | `954` |
 | | margin | `marginHorizontal: -24` (full-bleed) | `955` |
 | Insights link text | fontSize | `13` | `968` |
 | | fontWeight | `700` | `969` |
-| | color | `Colors.accent` | `970` |
-| Insights chevron SVG | stroke | `Colors.accent` | `147` |
+| | color | `colors.accent` | `970` |
+| Insights chevron SVG | stroke | `colors.accent` | `147` |
 
 ### Weight Goal Card
 
@@ -278,19 +343,19 @@ Source: `mobile/screens/HomeScreen.js`
 | Card borderRadius | `24` | | `973` |
 | Direction text ("Cutting"/"Bulking") | fontSize | `18` | `983` |
 | | fontWeight | `700` | `984` |
-| | color | dynamic: `Colors.success` (gain), `Colors.accent` (loss), `Colors.textMuted` (maintain) | `159-163` |
+| | color | dynamic: `colors.success` (gain), `colors.accent` (loss), `colors.textMuted` (maintain) | `159-163` |
 | Weeks text | fontSize | `14` | `992` |
 | | fontWeight | `700` | `993` |
-| | color | `Colors.text` | `994` |
-| Weeks chevron SVG | stroke | `Colors.cardBorder` | `168` |
+| | color | `colors.text` | `994` |
+| Weeks chevron SVG | stroke | `colors.cardBorder` | `168` |
 | Stat label ("Target"/"Pace") | fontSize | `12` | `1004` |
 | | fontWeight | `600` | `1005` |
-| | color | `Colors.textMuted` | `1006` |
+| | color | `colors.textMuted` | `1006` |
 | Stat value (number) | fontSize | `32` | `1014` |
 | | fontWeight | `800` | `1015` |
-| | color | `Colors.text` | `1016` |
+| | color | `colors.text` | `1016` |
 | Stat unit ("lb", "lb/wk") | fontSize | `16` | `1019` |
-| | color | `Colors.textMuted` | `1021` |
+| | color | `colors.textMuted` | `1021` |
 | Stats grid | gap | `40` | `998` |
 
 ### 1K Club Card
@@ -301,22 +366,22 @@ Source: `mobile/screens/HomeScreen.js`
 | Card borderRadius | `24` | | `1025` |
 | Hero total value | fontSize | `32` | `1032` |
 | | fontWeight | `800` | `1033` |
-| | color | `Colors.accent` | `1034` |
+| | color | `colors.accent` | `1034` |
 | Hero unit "lb" | fontSize | `14` | `1037` |
-| | color | `Colors.textMuted` | `1038` |
+| | color | `colors.textMuted` | `1038` |
 | Progress bar | height | `8` | `1041` |
-| | background | `Colors.cardBorder` | `1042` |
-| | fill | `Colors.accent` | `1049` |
+| | background | `colors.cardBorder` | `1042` |
+| | fill | `colors.accent` | `1049` |
 | | borderRadius | `6` | `1043` |
 | | marginBottom | `28` | `1045` |
 | Breakdown value | fontSize | `16` | `1066` |
 | | fontWeight | `800` | `1067` |
-| | color | `Colors.text` | `1068` |
+| | color | `colors.text` | `1068` |
 | Breakdown label | fontSize | `12` | `1071` |
 | | fontWeight | `600` | `1072` |
-| | color | `Colors.textMuted` | `1073` |
+| | color | `colors.textMuted` | `1073` |
 | Breakdown dividers | borderWidth | `1` | `1061-1062` |
-| | color | `Colors.cardBorder` | `1063` |
+| | color | `colors.cardBorder` | `1063` |
 
 ---
 
@@ -334,7 +399,7 @@ Source: `mobile/screens/AnalyticsScreen.js`
 | | textTransform | `uppercase` | `367` |
 | Weight value | fontSize | `32` | `372` |
 | | fontWeight | `900` | `373` |
-| | color | `Colors.accent` | `374` |
+| | color | `colors.accent` | `374` |
 | Chart | height | `100` | `166` |
 | Pace badge | borderRadius | `12` | `379` |
 | | text fontSize | `12` | `387` |
@@ -344,7 +409,7 @@ Source: `mobile/screens/AnalyticsScreen.js`
 | Footer stat label | fontSize | `11` | `408` |
 | | fontWeight | `600` | `409` |
 | | textTransform | `uppercase` | `410` |
-| Footer divider | borderTopWidth `1` / `Colors.cardBorder` | | `394-395` |
+| Footer divider | borderTopWidth `1` / `colors.cardBorder` | | `394-395` |
 
 ### 1K Progress Card
 
@@ -354,16 +419,16 @@ Source: `mobile/screens/AnalyticsScreen.js`
 | "1K PROGRESS" label | fontSize | `14` | `419` |
 | | fontWeight | `700` | `420` |
 | | textTransform | `uppercase` | `421` |
-| | color | `Colors.textMuted` | `421` |
+| | color | `colors.textMuted` | `421` |
 | Total value | fontSize | `48` | `424` |
 | | fontWeight | `900` | `425` |
-| | color | `Colors.accent` | `426` |
-| Breakdown divider | borderTopWidth `1` / `Colors.cardBorder`, paddingTop `16` | | `433-436` |
+| | color | `colors.accent` | `426` |
+| Breakdown divider | borderTopWidth `1` / `colors.cardBorder`, paddingTop `16` | | `433-436` |
 | Breakdown value | fontSize | `18` | `443` |
 | | fontWeight | `700` | `444` |
-| | color | `Colors.text` | `445` |
+| | color | `colors.text` | `445` |
 | Breakdown label | fontSize | `12` | `447` |
-| | color | `Colors.textMuted` | `448` |
+| | color | `colors.textMuted` | `448` |
 
 ### Strength Section (`AnalyticsStrengthSection.js`)
 
@@ -407,12 +472,12 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 |---|---|---|---|
 | Input label | fontSize | `13` | `WeightScreen.js:480` |
 | | fontWeight | `700` | `WeightScreen.js:481` |
-| | color | `Colors.textMuted` | `WeightScreen.js:482` |
+| | color | `colors.textMuted` | `WeightScreen.js:482` |
 | Input field | fontSize | `16` | `WeightScreen.js:491` |
 | | borderRadius | `16` | `WeightScreen.js:486` |
-| | bg | `Colors.inputBackground` | `WeightScreen.js:485` |
-| | border | `Colors.inputBorder` | `WeightScreen.js:488` |
-| Save button | bg | `Colors.text` | `UI.js:339` |
+| | bg | `colors.inputBackground` | `WeightScreen.js:485` |
+| | border | `colors.inputBorder` | `WeightScreen.js:488` |
+| Save button | bg | `colors.text` | `UI.js:339` |
 | | paddingVertical | `16` | `UI.js:341` |
 
 ### Trends Card
@@ -426,12 +491,12 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 | | letterSpacing | `0.5` | `WeightTrendSection.js:76` |
 | Trend value | fontSize | `20` | `UI.js:11` |
 | | fontWeight | `900` | `UI.js:11` |
-| | color | `Colors.text` | `WeightTrendSection.js:96` |
+| | color | `colors.text` | `WeightTrendSection.js:96` |
 | Trend label | fontSize | `11` | `WeightTrendSection.js:99` |
 | | fontWeight | `700` | `WeightTrendSection.js:101` |
 | | textTransform | `uppercase` | `WeightTrendSection.js:102` |
 | | letterSpacing | `0.5` | `WeightTrendSection.js:103` |
-| Section divider | borderBottomWidth `1` / `Colors.cardBorder` | | `WeightTrendSection.js:67-69` |
+| Section divider | borderBottomWidth `1` / `colors.cardBorder` | | `WeightTrendSection.js:67-69` |
 
 ### Goal Display
 
@@ -439,10 +504,10 @@ Sources: `mobile/screens/WeightScreen.js`, `mobile/components/UI.js`,
 |---|---|---|---|
 | Goal value (target weight) | fontSize | `28` | `WeightGoalCard.js:352` |
 | | fontWeight | `900` | `WeightGoalCard.js:353` |
-| | color | `Colors.accent` | `WeightGoalCard.js:354` |
+| | color | `colors.accent` | `WeightGoalCard.js:354` |
 | Goal value (target date) | fontSize | `28` | `WeightGoalCard.js:357` |
 | | fontWeight | `900` | `WeightGoalCard.js:358` |
-| | color | `Colors.text` | `WeightGoalCard.js:359` |
+| | color | `colors.text` | `WeightGoalCard.js:359` |
 | Goal label | fontSize | `12` | `WeightGoalCard.js:362` |
 | | fontWeight | `700` | `WeightGoalCard.js:364` |
 | | textTransform | `uppercase` | `WeightGoalCard.js:365` |
@@ -477,27 +542,27 @@ Style lock header at lines 1-14: do not change Log styling unless the repo owner
 |---|---|---|---|
 | Current note title | fontSize | `24` | `857` |
 | | fontWeight | `800` | `858` |
-| | color | `Colors.accent` | `859` |
+| | color | `colors.accent` | `859` |
 | Current routine card | borderWidth | `4` | `781` |
 | | padding | `0` | `779` |
 | Other note title | fontSize | `20` | `852` |
 | | fontWeight | `800` | `853` |
 | Other note subtitle | fontSize | `12` | `862` |
-| | color | `Colors.textMuted` | `863` |
+| | color | `colors.textMuted` | `863` |
 | WorkoutHeading (UI.js) | fontSize | `22` | UI.js:256 |
 | | fontWeight | `800` | UI.js:257 |
 | | textTransform | `capitalize` | UI.js:260 |
 | WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:271 |
 | | fontWeight | `700` | UI.js:272 |
-| | color | `Colors.accent` | UI.js:273 |
+| | color | `colors.accent` | UI.js:273 |
 | | textTransform | `uppercase` | UI.js:274 |
 | Exercise name (UI.js) | fontSize | `17` | UI.js:294 |
 | | fontWeight | `700` | UI.js:295 |
 | Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:5 |
 | Mode toggle ("Done") | fontSize | `14` | `739` |
 | | fontWeight | `700` | `740` |
-| | color | `Colors.accent` | `741` |
-| | bg | `Colors.chipBackground` | `736` |
+| | color | `colors.accent` | `741` |
+| | bg | `colors.chipBackground` | `736` |
 | | borderRadius | `12` | `735` |
 | Input field | fontSize | `16` | `761` |
 | | borderRadius | `16` | `756` |
@@ -578,7 +643,7 @@ Four different sizes for the same role (metadata label above a value). The `10px
 | `borderLeft/Right 1px` | Home 1K breakdown items |
 | `opacity: 0.5` divider | Weight goal divider |
 
-### Orange Usage (Colors.accent)
+### Orange Usage (colors.accent)
 
 | Screen | Elements using accent |
 |---|---|

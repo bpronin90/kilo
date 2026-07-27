@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScreenShell } from '../../components/ScreenShell';
-import { Button, InputStyle, SectionTitle } from '../../components/UI';
-import { Colors } from '../../theme/colors';
+import { Button, SectionTitle, useInputStyle } from '../../components/UI';
+import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 
 // Set-new-password surface (#497). AccountScreen renders this in place of its
 // normal Sign In / Signed In views whenever the shared `auth` instance
@@ -22,6 +22,9 @@ import { Colors } from '../../theme/colors';
 // `accountBlock` convention, rather than adding ad-hoc margins between
 // elements.
 export function SetNewPasswordScreen({ auth, onDone }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const inputStyle = useInputStyle();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [status, setStatus] = useState(auth.recoveryError || '');
@@ -87,18 +90,18 @@ export function SetNewPasswordScreen({ auth, onDone }) {
         {hasSession ? (
           <>
             <TextInput
-              style={InputStyle}
+              style={inputStyle}
               placeholder="New password"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
               accessibilityLabel="New Password"
             />
             <TextInput
-              style={InputStyle}
+              style={inputStyle}
               placeholder="Confirm new password"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               secureTextEntry
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -130,19 +133,19 @@ export function SetNewPasswordScreen({ auth, onDone }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   block: {
     gap: 12,
   },
   note: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   status: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 16,
   },
 });

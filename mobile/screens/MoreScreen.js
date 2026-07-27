@@ -2,7 +2,7 @@ import React, { useState, useLayoutEffect, useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionTitle } from '../components/UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 
 import { HelpScreen } from '../components/HelpScreen';
 import { AboutScreen } from '../components/AboutScreen';
@@ -28,6 +28,7 @@ export function MoreScreen({
   deloadDateEditEnabled,
   onUpdateDeloadDateEditEnabled,
 }) {
+  const styles = useThemedStyles(createStyles);
   const [activeView, setActiveView] = useState('menu');
 
   // Password recovery (#497): when the shell reports an active recovery
@@ -150,7 +151,7 @@ export function MoreScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   list: {
     gap: 12,
   },
@@ -158,20 +159,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     padding: 20,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   menuItemText: {
     fontSize: 17,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   menuItemChevron: {
     fontSize: 18,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '700',
   },
 });

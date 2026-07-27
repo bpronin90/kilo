@@ -11,8 +11,8 @@ import {
   View,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Colors } from '../theme/colors';
-import { InputStyle } from './UI';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
+import { createInputStyle } from './UI';
 
 const REASON_GROUPS = [
   {
@@ -83,6 +83,8 @@ function deriveTitle(detectors, flagged) {
 }
 
 export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose, isEdit = false }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [tier, setTier] = useState(null);
   const [selectedReasons, setSelectedReasons] = useState(new Set());
   const [freeText, setFreeText] = useState('');
@@ -203,7 +205,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 <MaterialIcons
                   name="arrow-back"
                   size={20}
-                  color={Colors.textMuted}
+                  color={colors.textMuted}
                   accessible={false}
                   importantForAccessibility="no"
                 />
@@ -351,7 +353,7 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
               <TextInput
                 style={styles.noteInput}
                 placeholder="Any other notes… (optional)"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={colors.textMuted}
                 value={freeText}
                 onChangeText={setFreeText}
                 multiline
@@ -376,10 +378,10 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(31,26,23,0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
@@ -389,10 +391,10 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
   sheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   sheetBounded: {
     maxHeight: '85%',
@@ -407,7 +409,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
     gap: 8,
   },
   backBtn: {
@@ -417,14 +419,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
   },
   errorBanner: {
@@ -433,17 +435,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: Colors.error,
+    backgroundColor: colors.cardErrorBg,
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: colors.cardErrorBg,
   },
   errorBannerText: {
     fontSize: 13,
     fontWeight: '600',
-    // Filled `error` tone background paired with `textLight`, matching the
+    // Filled error surface paired with `textLight`, matching the
     // cardAccentBg/cardSuccessBg/cardCautionBg convention for WCAG AA 4.5:1
     // contrast on filled tone surfaces (see docs/design-system-map.md).
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   tierRow: {
     flexDirection: 'row',
@@ -458,17 +460,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   tierBtnOk: {
-    backgroundColor: Colors.chipBackground,
-    borderColor: Colors.cardBorder,
+    backgroundColor: colors.chipBackground,
+    borderColor: colors.cardBorder,
   },
   tierBtnRough: {
-    backgroundColor: Colors.roughBackground,
-    borderColor: Colors.roughBorder,
+    backgroundColor: colors.roughBackground,
+    borderColor: colors.roughBorder,
   },
   tierBtnText: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   body: {
     flexShrink: 1,
@@ -494,14 +496,14 @@ const styles = StyleSheet.create({
   subGroupLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   groupLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -514,43 +516,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   chipSubText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '500',
   },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   chipSelected: {
-    backgroundColor: Colors.chipBackground,
-    borderColor: Colors.accent,
+    backgroundColor: colors.chipBackground,
+    borderColor: colors.accent,
   },
   chipText: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '500',
   },
   chipTextSelected: {
-    color: Colors.chipText,
+    color: colors.chipText,
     fontWeight: '700',
   },
   noteInput: {
-    ...InputStyle,
+    ...createInputStyle(colors),
     minHeight: 72,
     textAlignVertical: 'top',
   },
   submitBtn: {
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
@@ -562,6 +564,6 @@ const styles = StyleSheet.create({
   submitBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.textLight,
+    color: colors.onAccent,
   },
 });

@@ -2,12 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ScreenShell } from './ScreenShell';
-import { Card, SectionTitle, Button, InputStyle } from './UI';
-import { Colors } from '../theme/colors';
+import { Card, SectionTitle, Button, createInputStyle } from './UI';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useUserProfile } from '../hooks/useEntries';
 import { setWeightUnitPreference } from '../lib/unitPreference';
 
 export function ProfileScreen({ onBack }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const webDateInputStyle = useThemedStyles(createWebDateInputStyle);
   const { profile, save, loading, clear: clearAll } = useUserProfile();
   const [localProfile, setLocalProfile] = useState(null);
   const [heightUnit, setHeightUnit] = useState('ft'); // 'ft' or 'cm'
@@ -146,7 +149,7 @@ export function ProfileScreen({ onBack }) {
 
   const headerRight = (
     <Pressable onPress={handleClearProfile}>
-      <Text style={{ color: Colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
+      <Text style={{ color: colors.error, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>Clear All</Text>
     </Pressable>
   );
 
@@ -238,7 +241,7 @@ export function ProfileScreen({ onBack }) {
           <Text style={styles.inputLabel}>Date of Birth</Text>
           {localProfile?.date_of_birth && (
             <Pressable onPress={() => updateField('date_of_birth', null)}>
-              <Text style={{ color: Colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Clear</Text>
+              <Text style={{ color: colors.error, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Clear</Text>
             </Pressable>
           )}
         </View>
@@ -257,7 +260,7 @@ export function ProfileScreen({ onBack }) {
         ) : (
           <>
             <Pressable style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-              <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: Colors.textMuted }]}>
+              <Text style={[styles.datePickerText, !localProfile?.date_of_birth && { color: colors.textMuted }]}>
                 {localProfile?.date_of_birth || 'Select Date'}
               </Text>
             </Pressable>
@@ -308,7 +311,7 @@ export function ProfileScreen({ onBack }) {
         />
         {saveSuccess && (
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: Colors.success, fontWeight: '700' }}>Profile saved successfully!</Text>
+            <Text style={{ color: colors.success, fontWeight: '700' }}>Profile saved successfully!</Text>
           </View>
         )}
       </View>
@@ -318,25 +321,26 @@ export function ProfileScreen({ onBack }) {
 
 // Plain DOM style object for the web-only <input type="date"> (react-native-web
 // renders this as a real HTML element, so it takes CSS, not an RN StyleSheet).
-const webDateInputStyle = {
-  backgroundColor: Colors.inputBackground,
+const createWebDateInputStyle = (colors) => ({
+  backgroundColor: colors.inputBackground,
   borderWidth: 1,
   borderStyle: 'solid',
-  borderColor: Colors.cardBorder,
+  borderColor: colors.cardBorder,
   borderRadius: 12,
   padding: 16,
   fontSize: 16,
   fontWeight: '700',
-  color: Colors.text,
+  colorScheme: colors.scheme,
+  color: colors.text,
   width: '100%',
   boxSizing: 'border-box',
-};
+});
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -344,7 +348,7 @@ const styles = StyleSheet.create({
   inputSublabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     textTransform: 'uppercase',
   },
@@ -358,27 +362,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    backgroundColor: Colors.inputBackground,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.inputBackground,
   },
   toggleButtonActive: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   toggleButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   toggleButtonTextActive: {
-    color: Colors.textLight,
+    color: colors.onAccent,
   },
   unitToggle: {
     flexDirection: 'row',
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
   unitTab: {
@@ -386,29 +390,29 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   unitTabActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
   },
   unitTabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   unitTabTextActive: {
-    color: Colors.textLight,
+    color: colors.onAccent,
   },
   heightRow: {
     flexDirection: 'row',
     gap: 12,
   },
   profileInput: {
-    ...InputStyle,
+    ...createInputStyle(colors),
     fontWeight: '700',
     textAlign: 'center',
   },
   datePickerButton: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -416,49 +420,49 @@ const styles = StyleSheet.create({
   datePickerText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   activityCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     gap: 12,
   },
   activityCardActive: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.card,
+    borderColor: colors.accent,
+    backgroundColor: colors.card,
   },
   activityLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 2,
   },
   activityLabelActive: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   activityDesc: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
   },
   activityDescActive: {
-    color: Colors.text,
+    color: colors.text,
   },
   checkCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkText: {
-    color: Colors.textLight,
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: '800',
   },

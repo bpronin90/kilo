@@ -2,13 +2,22 @@ import React from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useFeatureToggles, useUserProfile } from '../hooks/useEntries';
 import { ReminderSettingsCard } from './ReminderSettingsCard';
 import { useWeightUnit, setWeightUnitPreference } from '../lib/unitPreference';
 import { unitSystemFromUnit } from '../lib/units';
 
+// Appearance choices, in the order the segmented control renders them (#689).
+const APPEARANCE_OPTIONS = [
+  { value: 'light', label: 'Light', a11yLabel: 'Use the light appearance' },
+  { value: 'dark', label: 'Dark', a11yLabel: 'Use the dark appearance' },
+  { value: 'system', label: 'System', a11yLabel: 'Follow the device appearance' },
+];
+
 export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
+  const styles = useThemedStyles(createStyles);
+  const { preference: appearance, setPreference: setAppearance } = useTheme();
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
   const { profile, save: saveProfile, loading: profileLoading } = useUserProfile();
   const weightUnit = useWeightUnit();
@@ -65,6 +74,35 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
 
       <SectionTitle>Reminders</SectionTitle>
       <ReminderSettingsCard />
+
+      <SectionTitle>Appearance</SectionTitle>
+      <Card>
+        <View style={[styles.settingRow, { marginBottom: 0 }]}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingHelp}>Light, Dark, or follow your device's system setting. Applies everywhere immediately.</Text>
+          </View>
+          {/* Same segmented pattern as the lb/kg and ft/cm selectors, extended
+              to three options. Selection applies on press and persists. */}
+          <View style={styles.unitToggle}>
+            {APPEARANCE_OPTIONS.map(({ value, label, a11yLabel }) => {
+              const selected = appearance === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setAppearance(value)}
+                  style={[styles.unitTab, selected && styles.unitTabActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled: false }}
+                  accessibilityLabel={a11yLabel}
+                >
+                  <Text style={[styles.unitTabText, selected && styles.unitTabTextActive]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Card>
 
       <SectionTitle>Units</SectionTitle>
       <Card>
@@ -156,7 +194,7 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -170,19 +208,19 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   settingHelp: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
   stepperButton: {
@@ -190,12 +228,12 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   stepperText: {
     fontSize: 20,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   stepperValueContainer: {
     width: 60,
@@ -204,16 +242,16 @@ const styles = StyleSheet.create({
   stepperValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   // Segmented lb/kg control — mirrors the ft/cm unitToggle pattern on the
   // Profile screen so unit selectors read identically across the app.
   unitToggle: {
     flexDirection: 'row',
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
   unitTab: {
@@ -221,7 +259,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   unitTabActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
   },
   unitTabDisabled: {
     opacity: 0.5,
@@ -229,10 +267,12 @@ const styles = StyleSheet.create({
   unitTabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
+  // Selected tabs are accent-filled, so the label takes the on-accent ink,
+  // which is white in light mode and dark ink in dark mode (#689).
   unitTabTextActive: {
-    color: Colors.textLight,
+    color: colors.onAccent,
   },
   resetButton: {
     backgroundColor: 'transparent',
@@ -240,7 +280,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   resetButtonText: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',

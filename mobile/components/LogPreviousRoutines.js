@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, Button, SectionTitle } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -19,6 +19,7 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
 }) {
+  const styles = useThemedStyles(createStyles);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -119,7 +120,7 @@ export function LogPreviousRoutines({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   previousRoutines: {
     marginTop: 4,
     gap: 12,
@@ -146,36 +147,36 @@ const styles = StyleSheet.create({
   otherNoteTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   otherNoteSub: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
     paddingBottom: 24,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
   },
   editHint: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginBottom: 8,
   },
   inlineActions: {
@@ -186,27 +187,27 @@ const styles = StyleSheet.create({
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   deleteButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: colors.error,
   },
   deleteButtonText: {
-    color: Colors.error,
+    color: colors.error,
   },
   createButton: {
     marginTop: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.accent,
+    borderColor: colors.accent,
     borderStyle: 'dashed',
   },
   createButtonText: {
-    color: Colors.accent,
+    color: colors.accent,
   },
 });

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { formatDate, formatDelta } from '../lib/format';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue } from '../lib/units';
@@ -34,12 +34,12 @@ const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
 const HISTORY_SUMMARY_COUNT_SIZE = 12;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
-const historyPanel = StyleSheet.create({
+const createHistoryPanel = (colors) => StyleSheet.create({
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
   headerRow: {
@@ -48,11 +48,11 @@ const historyPanel = StyleSheet.create({
     paddingLeft: HISTORY_ROW_PAD_H,
     paddingRight: 0,
     paddingVertical: 10,
-    backgroundColor: Colors.subtleBg,
+    backgroundColor: colors.subtleBg,
   },
   headerRowBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   headerContent: {
     flex: 1,
@@ -79,7 +79,7 @@ const historyPanel = StyleSheet.create({
   columnLabel: {
     fontSize: HISTORY_LABEL_SIZE,
     fontWeight: HISTORY_LABEL_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -99,10 +99,10 @@ const historyPanel = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   activeRow: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   lastRow: {
     borderBottomWidth: 0,
@@ -120,23 +120,23 @@ const historyPanel = StyleSheet.create({
   value: {
     fontSize: HISTORY_VALUE_SIZE,
     fontWeight: HISTORY_VALUE_WEIGHT,
-    color: Colors.text,
+    color: colors.text,
   },
   dateValue: {
     fontSize: HISTORY_DATE_SIZE,
     fontWeight: HISTORY_DATE_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
-    color: Colors.text,
+    color: colors.text,
   },
   summaryStack: {
     flex: 1,
@@ -147,12 +147,12 @@ const historyPanel = StyleSheet.create({
   summaryCount: {
     fontSize: HISTORY_SUMMARY_COUNT_SIZE,
     fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   summaryLatest: {
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   columnLabelCenter: {
     textAlign: 'center',
@@ -186,6 +186,7 @@ function toYMD(date) {
 }
 
 function WebDateTextInput({ value, onChange, placeholder }) {
+  const { colors } = useTheme();
   return React.createElement('input', {
     type: 'text',
     value: value || '',
@@ -195,13 +196,13 @@ function WebDateTextInput({ value, onChange, placeholder }) {
       onChange(next || '');
     },
     style: {
-      backgroundColor: Colors.chipBackground,
+      backgroundColor: colors.chipBackground,
       border: 'none',
       borderRadius: 8,
       padding: '4px 8px',
       fontSize: 12,
       fontWeight: '700',
-      color: Colors.chipText,
+      color: colors.chipText,
       fontFamily: 'inherit',
       cursor: 'text',
       outline: 'none',
@@ -228,6 +229,9 @@ function WeightHistoryListImpl({
   getWeightDeltaSeverity,
   goalInfo,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const s = useThemedStyles(createHistoryPanel);
   const unit = useWeightUnit();
   const [collapsed, setCollapsed] = useState(false);
   const [showDateFilter, setShowDateFilter] = useState(false);
@@ -283,8 +287,6 @@ function WeightHistoryListImpl({
     setShowDateFilter(false);
   };
 
-  const s = historyPanel;
-
   return (
     <View style={s.card}>
       {/* Header row IS the column-header / summary row. In expanded state the
@@ -332,7 +334,7 @@ function WeightHistoryListImpl({
                 <MaterialIcons
                   name="date-range"
                   size={18}
-                  color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+                  color={(hasRange || showDateFilter) ? colors.accent : colors.textMuted}
                   accessible={false}
                 />
               </Pressable>
@@ -352,7 +354,7 @@ function WeightHistoryListImpl({
               <MaterialIcons
                 name="date-range"
                 size={18}
-                color={(hasRange || showDateFilter) ? Colors.accent : Colors.textMuted}
+                color={(hasRange || showDateFilter) ? colors.accent : colors.textMuted}
                 accessible={false}
               />
             </Pressable>
@@ -360,7 +362,7 @@ function WeightHistoryListImpl({
           <MaterialIcons
             name={collapsed ? 'expand-more' : 'expand-less'}
             size={18}
-            color={Colors.textMuted}
+            color={colors.textMuted}
             accessible={false}
           />
         </View>
@@ -522,9 +524,9 @@ function WeightHistoryListImpl({
 // unrelated keystrokes (see its useCallback/useMemo usage).
 export const WeightHistoryList = React.memo(WeightHistoryListImpl);
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   historyRowPressed: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     opacity: 0.8,
   },
   dateFilterRow: {
@@ -534,29 +536,29 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: Colors.subtleBg,
+    backgroundColor: colors.subtleBg,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   dateChip: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   dateChipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   dateChipPlaceholder: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
   },
   dateRangeSep: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   dateClearBtn: {
     paddingHorizontal: 6,
@@ -564,48 +566,48 @@ const styles = StyleSheet.create({
   },
   dateClearBtnText: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '700',
   },
   rowDelta: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   rowDeltaEmpty: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     opacity: 0.4,
     textAlign: 'center',
   },
   deltaNotable: {
-    color: Colors.caution,
+    color: colors.caution,
   },
   deltaSpike: {
-    color: Colors.error,
+    color: colors.error,
   },
   deltaOutlier: {
-    color: Colors.error,
+    color: colors.error,
     fontWeight: '900',
   },
   rowNote: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
   },
   deleteAffordancePressed: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     opacity: 0.8,
   },
   deleteAffordanceText: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     opacity: 0.5,
   },
   emptyText: {
     textAlign: 'center',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     paddingVertical: 32,
     fontSize: 15,
   },

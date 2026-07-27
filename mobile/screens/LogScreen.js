@@ -12,7 +12,7 @@ import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
 
@@ -38,6 +38,8 @@ export function LogScreen({
   isActive,
   registerBackConsumer,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { notes, currentId, currentNote, deloadNotes, loading: notesLoading, error: notesError, refresh: refreshNotes, selectCurrent, update, add, remove } = useWorkoutNotes();
   const { trackedLifts, toggle: toggleTrackedLift } = useTrackedLifts();
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
@@ -293,12 +295,12 @@ export function LogScreen({
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleToggleEditingWeek}
-                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.cardBorder, marginRight: 8 }]}
+                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.cardBorder, marginRight: 8 }]}
                 accessibilityRole="button"
                 accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                 accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
               >
-                <Text style={[styles.modeToggleText, { color: Colors.accent }]}>
+                <Text style={[styles.modeToggleText, { color: colors.accent }]}>
                   Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
                 </Text>
               </Pressable>
@@ -306,11 +308,11 @@ export function LogScreen({
             {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
               <Pressable
                 onPress={otherEditor.handleMergeEditingWeeks}
-                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.cardBorder, marginRight: 8 }]}
+                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.cardBorder, marginRight: 8 }]}
                 accessibilityRole="button"
                 accessibilityLabel="Merge Week A and Week B into one routine"
               >
-                <Text style={[styles.modeToggleText, { color: Colors.textMuted, fontWeight: '500' }]}>Merge weeks</Text>
+                <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]}>Merge weeks</Text>
               </Pressable>
             )}
             <Pressable
@@ -323,7 +325,7 @@ export function LogScreen({
               accessibilityLabel="Undo"
               accessibilityRole="button"
             >
-              <Text style={[styles.modeToggleText, { color: Colors.textMuted, fontWeight: '500' }]}>Undo</Text>
+              <Text style={[styles.modeToggleText, { color: colors.textMuted, fontWeight: '500' }]}>Undo</Text>
             </Pressable>
             <Pressable
               onPress={
@@ -388,22 +390,22 @@ export function LogScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   modeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   modeToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   tabToggle: {
     flexDirection: 'row',
     borderRadius: 12,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     marginBottom: 12,
     padding: 2,
   },
@@ -414,14 +416,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabToggleItemActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
   },
   tabToggleText: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   tabToggleTextActive: {
-    color: '#fff',
+    color: colors.onAccent,
   },
 });

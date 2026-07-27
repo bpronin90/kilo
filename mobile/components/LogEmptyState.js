@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card, Button } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 
 // Shared workout syntax example used by the empty state and its regression
 // tests. Exporting a single source keeps the displayed guidance and the
@@ -14,6 +14,7 @@ export const WORKOUT_SYNTAX_EXAMPLE = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n140 
 export const WORKOUT_SYNTAX_ROWS = WORKOUT_SYNTAX_EXAMPLE.split('\n');
 
 export function LogEmptyState({ onCreateRoutine }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
       <Card style={styles.introCard}>
@@ -57,7 +58,7 @@ export function LogEmptyState({ onCreateRoutine }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     gap: 16,
     paddingBottom: 24,
@@ -70,12 +71,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
   },
   copy: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 8,
@@ -86,7 +87,7 @@ const styles = StyleSheet.create({
   exampleLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginLeft: 8,
@@ -96,7 +97,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   codeBlock: {
-    backgroundColor: Colors.backgroundSecondary,
+    backgroundColor: colors.backgroundSecondary,
     borderRadius: 8,
     padding: 12,
     gap: 4,
@@ -104,12 +105,12 @@ const styles = StyleSheet.create({
   codeLine: {
     fontSize: 13,
     fontFamily: 'monospace',
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 18,
   },
   helpText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
   },
   formatRow: {
@@ -120,13 +121,13 @@ const styles = StyleSheet.create({
   codeText: {
     fontSize: 12,
     fontFamily: 'monospace',
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '600',
     minWidth: 80,
   },
   formatDesc: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
     flex: 1,
   },

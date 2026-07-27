@@ -1,7 +1,7 @@
 import React, { useContext, createContext } from 'react';
 import { ScrollView, StyleSheet, Text, View, Platform, StatusBar, useWindowDimensions } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { Button } from './UI';
 import { TabBarLayoutContext, TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 import pkg from '../package.json';
@@ -24,6 +24,7 @@ const DESKTOP_CONTENT_MAX_WIDTH = 640;
  * - Top safe area: Handled via localized SafeAreaView in the headerWrapper
  */
 export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, keyboardShouldPersistTaps, onScroll: propOnScroll, style, children, stickyHeaderIndices, onBack }, ref) => {
+  const styles = useThemedStyles(createStyles);
   const version = `v${pkg.version}`;
   const { onScroll: contextOnScroll } = useContext(ScrollContext);
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
@@ -90,18 +91,18 @@ export const ScreenShell = React.forwardRef(({ title, subtitle, headerRight, key
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   stickyHeader: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   stickyHeaderInner: {
     flexDirection: 'row',
@@ -111,7 +112,7 @@ const styles = StyleSheet.create({
   backButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     alignSelf: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backButtonText: {
-    color: Colors.text,
+    color: colors.text,
     fontSize: 14,
   },
   scroll: {
@@ -161,15 +162,15 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 34,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   version: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
 });

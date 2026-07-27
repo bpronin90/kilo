@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
 import { deriveHomeDashboardData } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -22,44 +22,55 @@ function lerpColor(a, b, t) {
 }
 
 // Home title wordmark. Source artwork: src/assets/brand/home-title.svg
+// The letterforms follow the palette `text` so the mark reads in both modes,
+// but the two #FF5C00 accents are the fixed Kilo brand orange and are
+// intentionally NOT themed — they are the only hardcoded colors left in the
+// migrated production surfaces (#689).
 function KiloWordmark({ width = 140, height = 48 }) {
+  const { colors } = useTheme();
   return (
     <View style={{ width, height, justifyContent: 'center', marginLeft: -8 }}>
       <Svg width="100%" height="100%" viewBox="0 0 303 106">
         {/* K */}
-        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={Colors.text} />
-        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+        <Rect x="8" y="9" width="7" height="88" rx="3.5" ry="3.5" fill={colors.text} />
+        <Path d="M 21 52 L 43 52 L 78 12 M 43 52 L 78 92" fill="none" stroke={colors.text} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
         {/* I */}
-        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={Colors.text} />
+        <Rect x="102" y="30" width="7" height="66" rx="3.5" ry="3.5" fill={colors.text} />
         <Rect x="102" y="10" width="7" height="15" rx="3.5" ry="3.5" fill="#FF5C00" />
         {/* L */}
-        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinecap="round" />
+        <Path d="M 136.5 12.5 V 80.5 A 12 12 0 0 0 148.5 92.5 H 178.5" fill="none" stroke={colors.text} strokeWidth="7" strokeLinecap="round" />
         {/* O (dot) */}
         <Rect x="187" y="89.5" width="16" height="7" rx="3.5" ry="3.5" fill="#FF5C00" />
         {/* O (circle) */}
-        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={Colors.text} strokeWidth="7" strokeLinejoin="round" />
+        <Path d="M 251.5 11.5 C 282.7 11.5 290.5 19.7 290.5 52.5 C 290.5 85.3 282.7 93.5 251.5 93.5 C 220.3 93.5 212.5 85.3 212.5 52.5 C 212.5 19.7 220.3 11.5 251.5 11.5 Z" fill="none" stroke={colors.text} strokeWidth="7" strokeLinejoin="round" />
       </Svg>
     </View>
   );
 }
 
-function BarbellIcon({ color = Colors.accent, size = 22 }) {
+function BarbellIcon({ color, size = 22 }) {
+  const { colors } = useTheme();
+  const stroke = color || colors.accent;
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <Path d="M18 4v16M6 4v16M2 8v8M22 8v8M6 12h12" />
     </Svg>
   );
 }
 
-function ScaleIcon({ color = Colors.accent, size = 22 }) {
+function ScaleIcon({ color, size = 22 }) {
+  const { colors } = useTheme();
+  const stroke = color || colors.accent;
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <Path d="M3 6h18M12 6v14M12 20H9m3 0h3M5 6l3 8h8l3-8" />
     </Svg>
   );
 }
 
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
   const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
   const unit = useWeightUnit();
@@ -80,9 +91,9 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   );
 
   const weekTone = getSessionTone(dashboardData.sessionCount);
-  const weekToneColor = weekTone === 'error' ? Colors.error
-    : weekTone === 'warn' ? Colors.caution
-    : weekTone === 'success' ? Colors.success
+  const weekToneColor = weekTone === 'error' ? colors.error
+    : weekTone === 'warn' ? colors.caution
+    : weekTone === 'success' ? colors.success
     : null;
 
   // Gate the whole first paint on every data source Home renders, not just
@@ -173,7 +184,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             <View style={styles.heroSparklineStrip}>
               <LineChart
                 data={displayChartSeries(dashboardData.weightSeries, unit)}
-                color={Colors.textMuted}
+                color={colors.textMuted}
                 height={44}
                 paddingHorizontal={0}
                 hideHeader
@@ -188,9 +199,9 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </View>
               <View style={styles.classifRow}>
                 {[
-                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: Colors.success },
-                  { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: Colors.caution },
-                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: Colors.error },
+                  { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
+                  { label: 'Steady', count: dashboardData.weeklySummary.classifications?.stalled ?? 0, color: colors.caution },
+                  { label: 'Regressing', count: dashboardData.weeklySummary.classifications?.regressing ?? 0, color: colors.error },
                 ].map((item, idx) => (
                   <View key={idx} style={styles.classifCol}>
                     <View style={[styles.classifDot, { backgroundColor: item.color }]} />
@@ -205,7 +216,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             <View style={styles.heroFooter}>
               <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
                 <Text style={styles.insightsLinkText}>Full history and insights</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={Colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
           </Card>
@@ -214,9 +225,9 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           {dashboardData.goalInfo ? (() => {
             const gi = dashboardData.goalInfo;
             const warnings = gi.warnings || [];
-            const paceColor = warnings.includes('unrealistic') ? Colors.error
-              : warnings.includes('unhealthy') ? Colors.caution
-              : Colors.success;
+            const paceColor = warnings.includes('unrealistic') ? colors.error
+              : warnings.includes('unhealthy') ? colors.caution
+              : colors.success;
             const modeLabel = gi.direction === 'loss' ? 'Cutting' : gi.direction === 'gain' ? 'Bulking' : 'Maintaining';
             return (
               <Card style={styles.goalCard}>
@@ -257,7 +268,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           {/* ══ TIER 3: 1k Club Progress ══ */}
           <Card style={styles.oneKCard}>
             <Text style={styles.oneKLabel}>1K Progress</Text>
-            <Text style={[styles.oneKHeroValue, { color: lerpColor(Colors.accent, Colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
+            <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
             </Text>
@@ -289,7 +300,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     </ScreenShell>
   );
 }
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   weeklyHero: {
     padding: 24,
     gap: 0,
@@ -298,22 +309,22 @@ const styles = StyleSheet.create({
   heroWeekLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginBottom: 12,
   },
   heroWeightValue: {
     ...HeroMetric.hero,
-    color: Colors.accent,
+    color: colors.accent,
   },
   heroWeightPlaceholder: {
     ...HeroMetric.hero,
     fontWeight: '400',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   heroWeightUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   heroSparklineStrip: {
     marginTop: 8,
@@ -322,13 +333,13 @@ const styles = StyleSheet.create({
   heroSparklineSublabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'right',
     marginTop: 2,
   },
   classifSection: {
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
     paddingTop: 16,
     marginBottom: 16,
   },
@@ -338,7 +349,7 @@ const styles = StyleSheet.create({
   classifSectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -358,12 +369,12 @@ const styles = StyleSheet.create({
   classifCount: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   classifLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 14,
   },
@@ -379,7 +390,7 @@ const styles = StyleSheet.create({
   insightsLinkText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   goalCard: {
     padding: 24,
@@ -393,15 +404,15 @@ const styles = StyleSheet.create({
   goalDirectionText: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   goalModeAccent: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   goalWeeksText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   goalStatsGrid: {
     flexDirection: 'row',
@@ -414,7 +425,7 @@ const styles = StyleSheet.create({
   goalStatLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   goalStatValueRow: {
     flexDirection: 'row',
@@ -424,12 +435,12 @@ const styles = StyleSheet.create({
   goalStatValueLarge: {
     fontSize: 30,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   goalStatUnitLabel: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   oneKCard: {
     padding: 24,
@@ -438,7 +449,7 @@ const styles = StyleSheet.create({
   oneKLabel: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -448,16 +459,16 @@ const styles = StyleSheet.create({
   },
   oneKHeroValue: {
     ...HeroMetric.hero,
-    color: Colors.text,
+    color: colors.text,
   },
   oneKHeroUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   progressBarLarge: {
     height: 8,
-    backgroundColor: Colors.cardBorder,
+    backgroundColor: colors.cardBorder,
     borderRadius: 6,
     overflow: 'hidden',
     marginBottom: 28,
@@ -465,7 +476,7 @@ const styles = StyleSheet.create({
   },
   progressFillLarge: {
     height: '100%',
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
     borderRadius: 6,
   },
   oneKGrid: {
@@ -480,26 +491,26 @@ const styles = StyleSheet.create({
   oneKGridItemBorder: {
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   oneKGridValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   oneKGridLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   placeholderText: {
     fontSize: 48,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '400',
   },
   emptyText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
     fontStyle: 'italic',
@@ -514,17 +525,17 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   welcomeSubtitle: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
     marginTop: 6,
   },
   welcomeDivider: {
     height: 1,
-    backgroundColor: Colors.cardBorder,
+    backgroundColor: colors.cardBorder,
     marginVertical: 16,
   },
   welcomeStep: {
@@ -540,7 +551,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: Colors.cardBorder,
+    backgroundColor: colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.8,
@@ -551,11 +562,11 @@ const styles = StyleSheet.create({
   welcomeStepTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   welcomeStepDesc: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
     marginTop: 4,
   },

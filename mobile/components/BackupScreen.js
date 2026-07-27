@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Platform, Share, StyleSheet, Text, TextInput } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 function backupFileName() {
   return `kilo-backup-${new Date().toISOString().slice(0, 10)}`;
@@ -74,6 +74,8 @@ async function readNewestBackupFile() {
 }
 
 export function BackupScreen({ onBack, onExport, onImport }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [importText, setImportText] = useState('');
   const [status, setStatus] = useState(null); // { ok: bool, message: string }
   const [busy, setBusy] = useState(false);
@@ -245,7 +247,7 @@ export function BackupScreen({ onBack, onExport, onImport }) {
           multiline
           numberOfLines={6}
           placeholder="Paste backup JSON here…"
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           value={importText}
           onChangeText={setImportText}
           autoCapitalize="none"
@@ -257,24 +259,24 @@ export function BackupScreen({ onBack, onExport, onImport }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   statusText: {
     fontSize: 15,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
     textAlign: 'center',
   },
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   warnText: {
     marginTop: 10,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
-    color: Colors.caution ?? Colors.error ?? Colors.textMuted,
+    color: colors.caution ?? colors.error ?? colors.textMuted,
   },
   actionButton: {
     marginTop: 12,
@@ -282,11 +284,11 @@ const styles = StyleSheet.create({
   importInput: {
     marginTop: 12,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     borderRadius: 12,
     padding: 12,
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
     fontFamily: 'monospace',
     minHeight: 100,
     textAlignVertical: 'top',

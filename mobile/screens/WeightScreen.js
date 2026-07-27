@@ -4,7 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
 import { Card, Button, SectionTitle, ErrorBanner } from '../components/UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightEntries, useWeightGoal, useUserProfile } from '../hooks/useEntries';
 import { formatDate, getWeightDeltaSeverity } from '../lib/format';
 import { parseWeightEntry } from '../lib/parser';
@@ -22,6 +22,7 @@ import { localDateToday, buildTrendSections } from '../lib/WeightScreenHelpers';
 // It writes the YYYY-MM-DD value straight back via onChangeDate, matching the
 // native onChange path which also normalizes to a YYYY-MM-DD string.
 function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
+  const { colors } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -32,14 +33,15 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: Colors.inputBackground,
+      backgroundColor: colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: Colors.inputBorder,
+      borderColor: colors.inputBorder,
       padding: 14,
       fontSize: 16,
-      color: Colors.text,
+      colorScheme: colors.scheme,
+      color: colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -65,6 +67,7 @@ function toYMD(date) {
 // label + web-input / native-picker blocks; this consolidates them and owns its own
 // picker-visibility state so the parent only tracks the YYYY-MM-DD value.
 function DateEntryField({ value, onChangeDate, a11yLabel }) {
+  const styles = useThemedStyles(createStyles);
   const [showPicker, setShowPicker] = useState(false);
   const dateObj = useMemo(() => {
     if (value) {
@@ -126,6 +129,9 @@ export function WeightScreen({
   isActive,
   registerBackConsumer,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const hp = useThemedStyles(createHistoryPanel);
   const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
   const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
@@ -391,7 +397,7 @@ export function WeightScreen({
           value={weightValue}
           onChangeText={setWeightValue}
           placeholder={unit === 'kg' ? '84.0' : '185.0'}
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           keyboardType="decimal-pad"
           style={styles.input}
         />
@@ -400,7 +406,7 @@ export function WeightScreen({
           value={weightNote}
           onChangeText={setWeightNote}
           placeholder="Morning, fasted"
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
         {weightDateEditEnabled && !editingId && (
@@ -478,6 +484,9 @@ export function WeightScreen({
 // History (#411): the header row IS the column-header / summary row, with the
 // collapse chevron in a trailing control cell and no separate empty chevron strip.
 function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latestArchivedOutcome, unit = 'lb' }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const hp = useThemedStyles(createHistoryPanel);
   return (
     <View style={styles.archivedContainer}>
       <SectionTitle>Goal History</SectionTitle>
@@ -519,7 +528,7 @@ function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latest
             <MaterialIcons
               name={collapsed ? 'expand-more' : 'expand-less'}
               size={18}
-              color={Colors.textMuted}
+              color={colors.textMuted}
               accessible={false}
             />
           </View>
@@ -567,9 +576,9 @@ function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latest
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   errorText: {
-    color: Colors.error,
+    color: colors.error,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
@@ -577,21 +586,21 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   input: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
     justifyContent: 'center',
   },
   editingCard: {
-    borderColor: Colors.accent,
+    borderColor: colors.accent,
     borderWidth: 2,
   },
   editingHeader: {
@@ -603,18 +612,18 @@ const styles = StyleSheet.create({
   editingTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
     textTransform: 'uppercase',
   },
   cancelText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     padding: 4,
   },
   pickerText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
   trendsCardMerged: {
     padding: 0,
@@ -628,10 +637,10 @@ const styles = StyleSheet.create({
   // difference from the Weight History panel (#411). Applied on top of the
   // shared hp.value / hp.summaryEmphasis typography below.
   archivedValueMet: {
-    color: Colors.success,
+    color: colors.success,
   },
   archivedValueMissed: {
-    color: Colors.error,
+    color: colors.error,
   },
 });
 
@@ -662,12 +671,12 @@ const HISTORY_SUMMARY_EMPHASIS_WEIGHT = '900';
 const HISTORY_SUMMARY_COUNT_SIZE = 12;
 const HISTORY_SUMMARY_COUNT_WEIGHT = '600';
 
-const hp = StyleSheet.create({
+const createHistoryPanel = (colors) => StyleSheet.create({
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     overflow: 'hidden',
   },
   headerRow: {
@@ -676,11 +685,11 @@ const hp = StyleSheet.create({
     paddingLeft: HISTORY_ROW_PAD_H,
     paddingRight: 0,
     paddingVertical: 10,
-    backgroundColor: Colors.subtleBg,
+    backgroundColor: colors.subtleBg,
   },
   headerRowBordered: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   headerContent: {
     flex: 1,
@@ -707,7 +716,7 @@ const hp = StyleSheet.create({
   columnLabel: {
     fontSize: HISTORY_LABEL_SIZE,
     fontWeight: HISTORY_LABEL_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -727,10 +736,10 @@ const hp = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   activeRow: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   lastRow: {
     borderBottomWidth: 0,
@@ -748,23 +757,23 @@ const hp = StyleSheet.create({
   value: {
     fontSize: HISTORY_VALUE_SIZE,
     fontWeight: HISTORY_VALUE_WEIGHT,
-    color: Colors.text,
+    color: colors.text,
   },
   dateValue: {
     fontSize: HISTORY_DATE_SIZE,
     fontWeight: HISTORY_DATE_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'right',
   },
   summaryText: {
     flex: 1,
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   summaryEmphasis: {
     fontWeight: HISTORY_SUMMARY_EMPHASIS_WEIGHT,
-    color: Colors.text,
+    color: colors.text,
   },
   summaryStack: {
     flex: 1,
@@ -775,12 +784,12 @@ const hp = StyleSheet.create({
   summaryCount: {
     fontSize: HISTORY_SUMMARY_COUNT_SIZE,
     fontWeight: HISTORY_SUMMARY_COUNT_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   summaryLatest: {
     fontSize: HISTORY_SUMMARY_SIZE,
     fontWeight: HISTORY_SUMMARY_WEIGHT,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   columnLabelCenter: {
     textAlign: 'center',

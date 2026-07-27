@@ -1,33 +1,128 @@
-export const Colors = {
-  background: '#f4efe5',
-  card: '#fffaf2',
-  cardBorder: '#e3d7c5',
+// Kilo appearance palettes (#689).
+//
+// Two complete semantic palettes — refreshed Light and Dark (indigo) — that
+// share the brand-orange accent #d98d42. Every visual color in the app resolves
+// through one of these role names; nothing imports a static `Colors` object any
+// more. Screens read the active palette from `useTheme()` (theme/ThemeContext)
+// so a preference or OS scheme change repaints immediately.
+//
+// Contrast notes (WCAG 2.1 AA, 4.5:1 for normal text) are recorded next to the
+// roles they constrain and are asserted automatically in
+// tests/theme-rendering.test.js.
+
+export const LightColors = {
+  // CSS `color-scheme` for the web-only DOM controls (the `<input type="date">`
+  // fallbacks), so the browser's own picker chrome matches the app appearance
+  // instead of always rendering light.
+  scheme: 'light',
+  background: '#f7f2ea',
+  card: '#ffffff',
+  cardBorder: 'rgba(34,28,23,0.1)',
   accent: '#d98d42',
-  text: '#1f1a17',
-  textMuted: '#5d564f',
-  textLight: '#f7f1e8',
+  text: '#221c17',
+  textMuted: '#6b6259',
+  textLight: '#faf6f0',
   tabBarBackground: '#201914',
-  tabInactive: '#cbb9a5',
-  inputBackground: '#ffffff',
-  inputBorder: '#d9cdbf',
-  chipBackground: '#f0d8bb',
+  tabInactive: '#8a8177',
+  inputBackground: '#fbf8f3',
+  inputBorder: 'rgba(34,28,23,0.16)',
+  chipBackground: '#f3ddc0',
   chipText: '#96571c',
   success: '#4a7c44',
   error: '#b03a2e',
-  caution: '#d4a017',
-  // Darkened tone backgrounds used only for filled accent/success/caution tone
-  // surfaces (UI.js Card/StatCard and trend badges), tuned so the existing light
-  // text (textLight #f7f1e8) meets WCAG AA 4.5:1. These are intentionally
-  // separate from the palette tones above so SessionGauge meter segments and
-  // other direct users of accent/success/caution are not visually changed.
-  // Resulting contrast (textLight on bg): accent #96571c -> 5.09:1,
-  // success #3a6035 -> 6.44:1, caution #7f6310 -> 5.06:1.
+  caution: '#c98f1a',
+  divider: 'rgba(31,26,23,0.05)',
+  subtleBg: 'rgba(34,28,23,0.04)',
+  panelBackground: '#ffffff',
+
+  // Filled tone surfaces (UI.js Card/StatCard tones and trend badges) render
+  // `textLight`, so they use their own darkened tones rather than the direct
+  // status colors. Ratios against textLight #faf6f0: accent 5.30:1,
+  // success 6.72:1, caution 5.28:1, error 5.59:1.
   cardAccentBg: '#96571c',
   cardSuccessBg: '#3a6035',
   cardCautionBg: '#7f6310',
-  divider: 'rgba(31, 26, 23, 0.05)',
-  subtleBg: 'rgba(31, 26, 23, 0.02)',
-  panelBackground: '#ffffff',
-  roughBackground: '#fff0e8',
-  roughBorder: '#e8c4a0',
+  cardErrorBg: '#b03a2e',
+
+  // Label on the shared Button, whose background is the palette `text`.
+  // #221c17 pill / #faf6f0 label -> 15.65:1.
+  buttonLabel: '#faf6f0',
+  // Label on small accent-filled controls (segmented-control active item,
+  // confirm affordances). Light mode keeps the shipped white ink.
+  onAccent: '#ffffff',
+
+  // Tinted (not filled) status surfaces. Labels are `error` and
+  // `cautionSurfaceText`: error 5.26:1, caution 4.84:1.
+  errorSurface: '#fdeceb',
+  cautionSurface: '#f7ecd2',
+  cautionSurfaceText: '#7f6310',
+
+  // "Rough session" tier surface in the check-in modal; label is `chipText`
+  // (5.01:1).
+  roughBackground: '#fbeee0',
+  roughBorder: '#e5c49c',
+
+  // Modal scrim and shadow ink.
+  overlay: 'rgba(31,26,23,0.55)',
+  shadowColor: '#000000',
 };
+
+export const DarkColors = {
+  scheme: 'dark',
+  background: '#100f1a',
+  // Deliberate elevation jump from `background`; do not collapse the two.
+  card: '#1e1c2c',
+  cardBorder: 'rgba(217,141,66,0.28)',
+  accent: '#d98d42',
+  text: '#f2f0f7',
+  textMuted: '#a29fb3',
+  textLight: '#f2f0f7',
+  tabBarBackground: '#1e1c2c',
+  tabInactive: '#6a6780',
+  inputBackground: '#242235',
+  inputBorder: 'rgba(217,141,66,0.28)',
+  chipBackground: 'rgba(217,141,66,0.32)',
+  chipText: '#ffc98a',
+  success: '#7ed968',
+  error: '#f2705c',
+  caution: '#f2b94a',
+  divider: 'rgba(255,255,255,0.08)',
+  subtleBg: 'rgba(255,255,255,0.06)',
+  panelBackground: '#1e1c2c',
+
+  // Dark filled tone surfaces. The bright direct status colors above are for
+  // marks and text only — they cannot carry a `textLight` label — so these are
+  // separate, deeper tones. Ratios against textLight #f2f0f7: accent 6.60:1,
+  // success 7.11:1, caution 6.54:1, error 7.40:1.
+  cardAccentBg: '#7a4a14',
+  cardSuccessBg: '#2f5a28',
+  cardCautionBg: '#6b5210',
+  cardErrorBg: '#8a2f24',
+
+  // Button inverts in dark mode: light #f2f0f7 pill / dark #100f1a label ->
+  // 16.81:1.
+  buttonLabel: '#100f1a',
+  // Dark ink on the accent reads correctly against a dark shell and, unlike
+  // white, is accessible on #d98d42 (7.09:1).
+  onAccent: '#100f1a',
+
+  // Tinted status surfaces: error 5.20:1, caution 8.33:1.
+  errorSurface: '#3a1f1c',
+  cautionSurface: '#2e2717',
+  cautionSurfaceText: '#f2b94a',
+
+  // Rough tier surface; label is `chipText` (10.01:1).
+  roughBackground: '#2a2338',
+  roughBorder: 'rgba(217,141,66,0.32)',
+
+  overlay: 'rgba(0,0,0,0.65)',
+  shadowColor: '#000000',
+};
+
+export const PALETTES = { light: LightColors, dark: DarkColors };
+
+// Resolve a mode name to its palette. Anything unrecognized falls back to
+// light so a bad value can never render an unstyled screen.
+export function paletteForMode(mode) {
+  return mode === 'dark' ? DarkColors : LightColors;
+}

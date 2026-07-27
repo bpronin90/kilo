@@ -1,8 +1,9 @@
 import React from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../../theme/colors';
+import { useThemedStyles } from '../../theme/ThemeContext';
 
 export function LegalLinks() {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.legalLinks}>
       <Text
@@ -26,7 +27,7 @@ export function LegalLinks() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   legalLinks: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -36,11 +37,11 @@ const styles = StyleSheet.create({
   },
   legalLink: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textDecorationLine: 'underline',
   },
   legalSep: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
 });

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, HeroMetric, SectionTitle, LineChart, ArtisanalPanel } from './UI';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -20,6 +20,8 @@ export function AnalyticsStrengthSection({
   noteExerciseNames,
   handleSelectExercise,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [big3Collapsed, setBig3Collapsed] = useState(false);
   const [selectedSeriesPoint, setSelectedSeriesPoint] = useState(null);
   const [oneKInfoExpanded, setOneKInfoExpanded] = useState(false);
@@ -41,11 +43,11 @@ export function AnalyticsStrengthSection({
       {(isNotesLoading || oneK?.total) ? (
         <ArtisanalPanel style={[styles.oneKCard, isNotesLoading && { opacity: 0.5, minHeight: 160, justifyContent: 'center' }]}>
           {isNotesLoading ? (
-            <ActivityIndicator size="large" color={Colors.accent} />
+            <ActivityIndicator size="large" color={colors.accent} />
           ) : (
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Text style={[styles.oneKValue, { color: lerpColor('#d98d42', '#4a7c44', Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
+              <Text style={[styles.oneKValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
                 {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}>{unit}</Text>
               </Text>
 
@@ -88,12 +90,12 @@ export function AnalyticsStrengthSection({
                   accessibilityLabel={oneKInfoExpanded ? 'Hide how the 1K is calculated' : 'How is the 1K calculated?'}
                   testID="onek-info-toggle"
                 >
-                  <MaterialIcons name="info-outline" size={14} color={Colors.textMuted} accessible={false} />
+                  <MaterialIcons name="info-outline" size={14} color={colors.textMuted} accessible={false} />
                   <Text style={styles.oneKInfoToggleText}>How is this calculated?</Text>
                   <MaterialIcons
                     name={oneKInfoExpanded ? 'expand-less' : 'expand-more'}
                     size={16}
-                    color={Colors.textMuted}
+                    color={colors.textMuted}
                     accessible={false}
                   />
                 </Pressable>
@@ -133,7 +135,7 @@ export function AnalyticsStrengthSection({
           <MaterialIcons
             name={big3Collapsed ? 'expand-more' : 'expand-less'}
             size={16}
-            color={Colors.textMuted}
+            color={colors.textMuted}
             accessible={false}
           />
         </Pressable>
@@ -151,7 +153,7 @@ export function AnalyticsStrengthSection({
                 <MaterialIcons
                   name={activeSlot === slot ? 'expand-less' : 'expand-more'}
                   size={14}
-                  color={Colors.textMuted}
+                  color={colors.textMuted}
                   accessible={false}
                 />
               </View>
@@ -187,7 +189,7 @@ export function AnalyticsStrengthSection({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   strengthSection: {
     gap: 16,
   },
@@ -195,36 +197,36 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.panelBackground,
+    backgroundColor: colors.panelBackground,
   },
   oneKLabel: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   oneKValue: {
     ...HeroMetric.hero,
-    color: Colors.text,
+    color: colors.text,
   },
   oneKUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginLeft: 4,
   },
   oneKProgressBarContainer: {
     width: '100%',
     height: 8,
-    backgroundColor: Colors.divider,
+    backgroundColor: colors.divider,
     borderRadius: 4,
     marginVertical: 12,
     overflow: 'hidden',
   },
   oneKProgressBar: {
     height: '100%',
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
     borderRadius: 4,
   },
   oneKBreakdown: {
@@ -240,7 +242,7 @@ const styles = StyleSheet.create({
   oneKChartLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
     textAlign: 'center',
@@ -253,12 +255,12 @@ const styles = StyleSheet.create({
   oneKItemValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   oneKItemLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   oneKInfoBlock: {
@@ -266,7 +268,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: colors.divider,
   },
   oneKInfoToggle: {
     flexDirection: 'row',
@@ -277,7 +279,7 @@ const styles = StyleSheet.create({
   oneKInfoToggleText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -287,7 +289,7 @@ const styles = StyleSheet.create({
   },
   oneKInfoText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 19,
     textAlign: 'left',
   },
@@ -295,12 +297,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderStyle: 'dashed',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     padding: 20,
   },
   infoText: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -317,7 +319,7 @@ const styles = StyleSheet.create({
   slotCardTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 0,
   },
@@ -327,12 +329,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
   },
   slotLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     width: 72,
   },
   slotValueRow: {
@@ -345,11 +347,11 @@ const styles = StyleSheet.create({
   slotValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'right',
   },
   slotPicker: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 10,
     marginBottom: 4,
     overflow: 'hidden',
@@ -358,22 +360,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   slotOptionSelected: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   slotOptionText: {
     fontSize: 14,
-    color: Colors.text,
+    color: colors.text,
   },
   slotOptionTextSelected: {
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   slotEmpty: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontStyle: 'italic',
     paddingVertical: 8,
     paddingHorizontal: 4,

@@ -2,8 +2,8 @@ import React, { useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { ScreenShell } from '../../components/ScreenShell';
-import { Button, InputStyle, SectionTitle } from '../../components/UI';
-import { Colors } from '../../theme/colors';
+import { Button, SectionTitle, useInputStyle } from '../../components/UI';
+import { useTheme, useThemedStyles } from '../../theme/ThemeContext';
 import { KILO_AUTH_REDIRECT } from '../../hooks/useAuthSession';
 import { CloudSyncRecovery } from './CloudSyncRecovery';
 import { AccountLifecycle } from './AccountLifecycle';
@@ -20,6 +20,9 @@ import { SetNewPasswordScreen } from './SetNewPasswordScreen';
 // here) means the session is already resolved when this screen mounts, so the
 // Signed-In view renders immediately with no per-mount re-probe (#366).
 export function AccountScreen({ onBack, auth }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const inputStyle = useInputStyle();
   const scrollRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -175,9 +178,9 @@ export function AccountScreen({ onBack, auth }) {
             local data.
           </Text>
           <TextInput
-            style={InputStyle}
+            style={inputStyle}
             placeholder="Email"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -185,9 +188,9 @@ export function AccountScreen({ onBack, auth }) {
             accessibilityLabel="Email"
           />
           <TextInput
-            style={InputStyle}
+            style={inputStyle}
             placeholder="Password"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -243,19 +246,19 @@ export function AccountScreen({ onBack, auth }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
   accountNote: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   accountStatus: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 16,
   },
 });

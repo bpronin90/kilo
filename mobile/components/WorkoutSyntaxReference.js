@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 
 // Single source of truth for the workout log text syntax taught in the App
 // Guide (HelpScreen) and the editor-reachable WorkoutSyntaxModal (#584,
@@ -35,6 +35,7 @@ export const WORKOUT_SYNTAX_ROW_EXPLANATIONS = [
 ];
 
 export function WorkoutSyntaxReference() {
+  const styles = useThemedStyles(createStyles);
   return (
     <View>
       <Text style={styles.helpText}>
@@ -67,24 +68,24 @@ export function WorkoutSyntaxReference() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   bold: {
     fontWeight: 'bold',
   },
   boldText: {
     fontWeight: 'bold',
-    color: Colors.text,
+    color: colors.text,
   },
   codeBlock: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     padding: 10,
     marginTop: 8,
     gap: 2,
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
   codeText: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
   },
   rowList: {
     marginTop: 6,
@@ -106,7 +107,7 @@ const styles = StyleSheet.create({
   formatDesc: {
     flex: 1,
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
   },
 });

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
-import { Colors } from '../../theme/colors';
+import { useThemedStyles } from '../../theme/ThemeContext';
 import { LegalLinks } from './LegalLinks';
 
 // Server-side export and account deletion panel (Phase 5 / Task 13).
@@ -11,6 +11,7 @@ import { LegalLinks } from './LegalLinks';
 // Deletion uses a two-step confirmation: the user must tap once to arm, then
 // confirm, reducing accidental destructive actions.
 export function AccountLifecycle({ auth }) {
+  const styles = useThemedStyles(createStyles);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -119,18 +120,18 @@ export function AccountLifecycle({ auth }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
   accountNote: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
   },
   accountStatus: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 16,
   },
 });

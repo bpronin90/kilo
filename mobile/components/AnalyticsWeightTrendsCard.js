@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Card, SectionTitle, LineChart } from './UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 
 export function AnalyticsWeightTrendsCard({
@@ -11,6 +11,8 @@ export function AnalyticsWeightTrendsCard({
   rolling30,
   isWeightLoading,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   // rolling7/rolling30 and weightSummary arrive already converted into display
   // space by AnalyticsScreen, so only the unit label is needed here.
   const unit = useWeightUnit();
@@ -80,7 +82,7 @@ export function AnalyticsWeightTrendsCard({
             ) : (
               <View style={styles.chartPlaceholder}>
                 {isWeightLoading
-                  ? <ActivityIndicator size="small" color={Colors.accent} />
+                  ? <ActivityIndicator size="small" color={colors.accent} />
                   : <Text style={styles.chartEmpty}>Not enough data</Text>}
               </View>
             )}
@@ -91,11 +93,11 @@ export function AnalyticsWeightTrendsCard({
           <Text style={styles.chartLabel}>30-day rolling average</Text>
           <View style={styles.chartArea}>
             {rolling30.length > 1 ? (
-              <LineChart data={rolling30} height={100} hideHeader color={Colors.textMuted} onSelect={handleSelect} />
+              <LineChart data={rolling30} height={100} hideHeader color={colors.textMuted} onSelect={handleSelect} />
             ) : (
               <View style={styles.chartPlaceholder}>
                 {isWeightLoading
-                  ? <ActivityIndicator size="small" color={Colors.accent} />
+                  ? <ActivityIndicator size="small" color={colors.accent} />
                   : <Text style={styles.chartEmpty}>Not enough data</Text>}
               </View>
             )}
@@ -117,14 +119,14 @@ export function AnalyticsWeightTrendsCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   sectionWrapper: {
     gap: 16,
   },
   weightCard: {
     padding: 20,
     gap: 16,
-    backgroundColor: Colors.panelBackground,
+    backgroundColor: colors.panelBackground,
   },
   chartBlock: {
     gap: 4,
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
   chartLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
@@ -142,14 +144,14 @@ const styles = StyleSheet.create({
   },
   chartPlaceholder: {
     height: 100,
-    backgroundColor: Colors.subtleBg,
+    backgroundColor: colors.subtleBg,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   chartEmpty: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   weightHeader: {
     flexDirection: 'row',
@@ -159,19 +161,19 @@ const styles = StyleSheet.create({
   weightLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   weightValueLarge: {
     fontSize: 32,
     fontWeight: '800',
-    color: Colors.accent,
+    color: colors.accent,
   },
   weightUnit: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
     marginLeft: 4,
   },
   paceBadge: {
@@ -179,22 +181,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
+  // Filled pace badges carrying a `textLight` label, so they use the error and
+  // caution *surface* tones rather than the direct status colors (#689).
   paceSpike: {
-    backgroundColor: Colors.error,
+    backgroundColor: colors.cardErrorBg,
   },
   paceNotable: {
-    backgroundColor: Colors.caution,
+    backgroundColor: colors.cardCautionBg,
   },
   paceText: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   weightFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
     paddingTop: 16,
   },
   weightStat: {
@@ -205,11 +209,11 @@ const styles = StyleSheet.create({
   weightStatValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   weightStatLabel: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
     textTransform: 'uppercase',
   },

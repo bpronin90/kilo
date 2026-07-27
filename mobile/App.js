@@ -4,7 +4,7 @@ import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, Styl
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 
-import { Colors } from './theme/colors';
+import { ThemeProvider, useTheme, useThemedStyles } from './theme/ThemeContext';
 import { TabBar } from './components/TabBar';
 import { Button } from './components/UI';
 import { ScrollContext } from './components/ScreenShell';
@@ -88,7 +88,21 @@ export function analyticsSectionVariant(section) {
   return 'other';
 }
 
+// ThemeProvider wraps the entire shell (#689). It must sit above AppShell, not
+// inside it: AppShell's own container/safe-area/status-bar styling resolves
+// through useTheme, so a provider mounted alongside that markup would leave the
+// outermost chrome on the default palette.
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
+  );
+}
+
+function AppShell() {
+  const { mode } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
@@ -612,7 +626,8 @@ export default function App() {
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         <SafeAreaView style={styles.topSafeArea} />
-        <ExpoStatusBar style="dark" />
+        {/* Dark chrome needs light status-bar glyphs and vice versa. */}
+        <ExpoStatusBar style={mode === 'dark' ? 'light' : 'dark'} />
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -730,14 +745,14 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   appContainer: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   topSafeArea: {
     flex: 0,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 30) : 0,
   },
   container: {
@@ -763,34 +778,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 4,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   updateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   updateBannerText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   updateBannerButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: Colors.chipText,
+    borderColor: colors.chipText,
     minHeight: 32,
     justifyContent: 'center',
   },
   updateBannerButtonText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   webBackButton: {
     alignSelf: 'flex-start',
@@ -798,7 +813,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     backgroundColor: 'transparent',
     // WCAG 2.5.5 / mobile a11y: guarantee a >=44x44 tappable area.
     minHeight: 44,
@@ -806,39 +821,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   webBackButtonText: {
-    color: Colors.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   ownershipOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   ownershipCard: {
     alignSelf: 'stretch',
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     padding: 20,
     gap: 12,
   },
   ownershipTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   ownershipBody: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
   },
   ownershipHint: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
     marginTop: -6,
   },

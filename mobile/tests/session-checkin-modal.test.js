@@ -5,8 +5,10 @@ import { Modal } from 'react-native';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 
 jest.mock('@expo/vector-icons/MaterialIcons', () => ({ __esModule: true, default: 'MaterialIcons' }));
-jest.mock('../theme/colors', () => ({ Colors: {} }));
-jest.mock('../components/UI', () => ({ InputStyle: {} }));
+// The palette is no longer a static export (#689): the modal resolves it
+// through the theme context, whose default is the real light palette, so this
+// suite exercises the shipped tokens rather than a stub.
+jest.mock('../components/UI', () => ({ createInputStyle: () => ({}) }));
 
 const baseCheckInData = {
   sessionIndex: 0,

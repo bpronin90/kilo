@@ -16,7 +16,7 @@ import {
   shapeEditCheckInData,
 } from './analytics/analyticsDerivations';
 import { formatDuration } from '../lib/format';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 import { lerpColor } from '../lib/AnalyticsScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -27,6 +27,8 @@ import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 
 export function AnalyticsScreen({ multiplier, section }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
   const [editPendingCheckIn, setEditPendingCheckIn] = useState(null); // { ci, note }
   const [fatigueExpanded, setFatigueExpanded] = useState(false);
@@ -253,7 +255,7 @@ export function AnalyticsScreen({ multiplier, section }) {
         <TextInput
           style={styles.searchInput}
           placeholder="Search tracked exercises..."
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={colors.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
           clearButtonMode="while-editing"
@@ -271,7 +273,7 @@ export function AnalyticsScreen({ multiplier, section }) {
 
     (isNotesLoading || isTrackedLoading) ? (
       <View key="loading" style={{ height: 100, justifyContent: 'center' }}>
-        <ActivityIndicator color={Colors.accent} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     ) : groupedSignals.length > 0 ? (
       <ArtisanalPanel key="po-container" style={styles.poContainer}>
@@ -287,7 +289,7 @@ export function AnalyticsScreen({ multiplier, section }) {
                 <MaterialIcons 
                   name={isCollapsed ? "expand-more" : "expand-less"} 
                   size={20} 
-                  color={Colors.textMuted} 
+                  color={colors.textMuted} 
                 />
               </Pressable>
               
@@ -328,7 +330,7 @@ export function AnalyticsScreen({ multiplier, section }) {
                             </View>
                             <View style={styles.metricCol} />
                             <View style={styles.metricCol}>
-                              {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow)}
+                              {formatOverload(nw.exercise_class === 'reps_only' ? nw.reps_arrow : nw.hold_arrow, colors)}
                             </View>
                           </View>
                         ) : (
@@ -352,7 +354,7 @@ export function AnalyticsScreen({ multiplier, section }) {
                               </Text>
                             </View>
                             <View style={styles.metricCol}>
-                              {formatOverload(rowTrend)}
+                              {formatOverload(rowTrend, colors)}
                             </View>
                           </View>
                         )}
@@ -411,9 +413,9 @@ export function AnalyticsScreen({ multiplier, section }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   signalStickyHeader: {
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     paddingTop: 8,
     paddingBottom: 8,
   },
@@ -422,14 +424,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchInput: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
   signalColumnHeader: {
     flexDirection: 'row',
@@ -440,7 +442,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     textAlign: 'center',
@@ -458,7 +460,7 @@ const styles = StyleSheet.create({
   },
   groupSectionBorder: {
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: colors.divider,
   },
   groupHeader: {
     flexDirection: 'row',
@@ -466,12 +468,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: Colors.subtleBg,
+    backgroundColor: colors.subtleBg,
   },
   groupName: {
     fontSize: 14,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -483,7 +485,7 @@ const styles = StyleSheet.create({
   },
   signalRowBorder: {
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: colors.divider,
   },
   signalNameRow: {
     flexDirection: 'row',
@@ -494,7 +496,7 @@ const styles = StyleSheet.create({
   signalName: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     flex: 1,
   },
   signalMetricsGrid: {
@@ -507,7 +509,7 @@ const styles = StyleSheet.create({
   signalValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   unitSuffix: {
@@ -518,13 +520,13 @@ const styles = StyleSheet.create({
   nwMetricLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
     letterSpacing: 0.5,
   },
   multiDaySummary: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 6,
     fontStyle: 'italic',
   },
@@ -534,7 +536,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 20,
     fontSize: 15,
   },
