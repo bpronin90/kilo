@@ -331,6 +331,37 @@ on-disk transform cache masks the failure roughly half the time:
 npm --prefix mobile test -- --no-cache --maxWorkers=2
 ```
 
+### Cross-file test isolation: unmount renderers that schedule real timers
+
+If a rendered component schedules a real (non-fake) `setTimeout`/`setInterval` as
+a side effect (for example, clearing a transient "saved" flag a couple of
+seconds after a successful save), the test must unmount the `react-test-renderer`
+instance so the component's effect cleanup clears that timer before the test
+file ends:
+
+```js
+let harnessRenderer;
+afterEach(() => {
+  if (harnessRenderer) {
+    render.act(() => { harnessRenderer.unmount(); });
+    harnessRenderer = null;
+  }
+});
+// ...
+render.act(() => { harnessRenderer = render.create(<Harness />); });
+```
+
+An un-unmounted renderer leaves the real timer live past the test file's
+completion. If it fires later in the same process, the resulting `console.error`
+(for example, a React "not wrapped in act(...)" warning) lands on Jest's
+post-teardown console guard, which sets a non-zero exit code with no failing
+suite or test to point at. This reproduced as `cd mobile && npx jest --runInBand`
+exiting 1 with a fully green summary and no visible diagnostic (issue `#683`);
+`--runInBand` runs the whole suite in one process, so the leaked timer has time
+to fire before the process exits. The default parallel `npm test` job splits
+work across worker processes and did not reproduce the same exit-code flip,
+but the underlying leak is still worth fixing wherever it's found.
+
 ---
 
 ## Automated Coverage Inventory

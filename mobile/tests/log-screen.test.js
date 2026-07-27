@@ -479,6 +479,20 @@ describe('deload date edit: save flow does not get stuck in pending state', () =
 describe('handleDoneOther flushes trailing edits when Done races an in-flight autosave (#528)', () => {
   const { useLogOtherRoutineEditor } = require('../screens/log/useLogOtherRoutineEditor');
 
+  // These tests exercise handleSaveOtherNote({ autosave: true }), which on success
+  // schedules a real (non-fake-timer) setTimeout to clear a transient "saved" flag
+  // (see useLogOtherRoutineEditor). Unmounting the harness after each test runs that
+  // hook's effect cleanup and clears the timer, so it can't fire after the test file
+  // has finished and trip Jest's "log after tests are done" guard (#683).
+  let harnessRenderer;
+
+  afterEach(() => {
+    if (harnessRenderer) {
+      render.act(() => { harnessRenderer.unmount(); });
+      harnessRenderer = null;
+    }
+  });
+
   test('the latest keystrokes are persisted when Done is pressed during an in-flight autosave', async () => {
     const note = { id: 'n1', title: 'R', raw_text: 'A0' };
 
@@ -517,7 +531,7 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
       return null;
     }
 
-    render.act(() => { render.create(<Harness notes={[note]} />); });
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} />); });
 
     // Open the existing note, then type "A".
     render.act(() => { latest.hook.handleOpenOtherNote(note); });
@@ -593,7 +607,7 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
       return null;
     }
 
-    render.act(() => { render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
 
     render.act(() => { latest.hook.handleOpenOtherNote(note); });
     // Edit the body so the autosave persists something, and start it in flight.
@@ -655,7 +669,7 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
       return null;
     }
 
-    render.act(() => { render.create(<Harness notes={[note]} />); });
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} />); });
     render.act(() => { latest.hook.handleOpenOtherNote(note); });
     render.act(() => { latest.hook.setEditingText('A'); });
     let autosavePromise;
