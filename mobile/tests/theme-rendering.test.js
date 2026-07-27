@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DarkColors, LightColors, paletteForMode } from '../theme/colors';
 import { ThemeProvider, useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { Button, Card, StatCard } from '../components/UI';
+import { Button, Card, LineChart, StatCard } from '../components/UI';
 import { SettingsScreen } from '../components/SettingsScreen';
 import {
   __resetAppearancePreferenceForTests,
@@ -401,6 +401,124 @@ describe('shared primitives switch palettes', () => {
 
     expect(surface()).toBe(DarkColors.cardCautionBg);
     expect(surface()).not.toBe(DarkColors.caution);
+  });
+});
+
+// Regression: a themed default must never be written as a parameter default.
+// Parameter initializers evaluate before the function body, so `colors.accent`
+// in a signature resolves the body-scoped `colors` binding inside its temporal
+// dead zone and throws for every caller that omits the prop — which is the
+// common case for both Analytics charts.
+describe('themed prop defaults resolve after the theme is read', () => {
+  const series = [
+    { value: 180, label: 'Mon' },
+    { value: 181, label: 'Tue' },
+    { value: 179, label: 'Wed' },
+  ];
+
+  function strokes(component) {
+    return component.root
+      .findAll((n) => n.props && n.props.stroke !== undefined)
+      .map((n) => n.props.stroke);
+  }
+
+  // The chart gates its SVG children on a measured width, which onLayout only
+  // supplies on a real host. Feed it one so the marks actually render.
+  function mountChart(props = {}) {
+    let component;
+    act(() => {
+      component = renderer.create(
+        <ThemeProvider>
+          <LineChart data={series} {...props} />
+        </ThemeProvider>
+      );
+    });
+    act(() => {
+      component.root
+        .findAll((n) => n.props && typeof n.props.onLayout === 'function')[0]
+        .props.onLayout({ nativeEvent: { layout: { width: 300 } } });
+    });
+    return component;
+  }
+
+  test('LineChart renders with no color prop and falls back to the accent', () => {
+    let component;
+    expect(() => {
+      component = mountChart();
+    }).not.toThrow();
+
+    expect(strokes(component)).toContain(LightColors.accent);
+    expect(strokes(component).every((s) => s !== undefined)).toBe(true);
+  });
+
+  test('an omitted color follows a palette change instead of freezing', () => {
+    const component = mountChart();
+
+    act(() => {
+      setAppearancePreference('dark');
+    });
+
+    expect(strokes(component)).toContain(DarkColors.accent);
+    expect(strokes(component).every((s) => s !== undefined)).toBe(true);
+  });
+
+  test('an explicit color still wins over the accent fallback', () => {
+    const component = mountChart({ color: '#123456' });
+
+    expect(strokes(component)).toContain('#123456');
+    expect(strokes(component)).not.toContain(LightColors.accent);
+  });
+
+  test('no component declares a themed parameter default anywhere', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const parser = require('@babel/parser');
+    const traverseMod = require('@babel/traverse');
+    const traverse = traverseMod.default || traverseMod;
+
+    const root = path.join(__dirname, '..');
+    function walk(dir, acc = []) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full, acc);
+        else if (entry.name.endsWith('.js')) acc.push(full);
+      }
+      return acc;
+    }
+
+    const files = [
+      path.join(root, 'App.js'),
+      ...walk(path.join(root, 'components')),
+      ...walk(path.join(root, 'screens')),
+    ];
+
+    const hazards = [];
+    for (const file of files) {
+      const ast = parser.parse(fs.readFileSync(file, 'utf8'), {
+        sourceType: 'module',
+        plugins: ['jsx'],
+      });
+      traverse(ast, {
+        Function(p) {
+          const bodyStart = p.node.body.start;
+          p.get('params').forEach((param) => {
+            param.traverse({
+              ReferencedIdentifier(ref) {
+                const binding = p.scope.getBinding(ref.node.name);
+                // Referenced in the signature, declared in the body: TDZ.
+                if (binding && binding.path.node.start > bodyStart) {
+                  hazards.push(
+                    `${path.relative(root, file)}:${ref.node.loc.start.line} ${ref.node.name}`
+                  );
+                }
+              },
+            });
+          });
+        },
+      });
+    }
+
+    expect(hazards).toEqual([]);
   });
 });
 

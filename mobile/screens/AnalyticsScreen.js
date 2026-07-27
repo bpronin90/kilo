@@ -289,7 +289,7 @@ export function AnalyticsScreen({ multiplier, section }) {
                 <MaterialIcons 
                   name={isCollapsed ? "expand-more" : "expand-less"} 
                   size={20} 
-                  color={colors.textMuted} 
+                  color={colors.textMuted}
                 />
               </Pressable>
               
