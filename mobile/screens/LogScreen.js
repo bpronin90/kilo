@@ -261,6 +261,9 @@ export function LogScreen({
                 viewingNoteId={otherEditor.viewingNoteId}
                 viewingNote={otherEditor.viewingNote}
                 viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
+                viewingHasABWeeks={otherEditor.viewingHasABWeeks}
+                viewingEffectiveWeek={otherEditor.viewingEffectiveWeek}
+                handleToggleViewingWeek={otherEditor.handleToggleViewingWeek}
                 handleSwitchCurrent={otherEditor.handleSwitchCurrent}
                 handleEditViewedNote={otherEditor.handleEditViewedNote}
                 handleDeleteRoutine={otherEditor.handleDeleteRoutine}
