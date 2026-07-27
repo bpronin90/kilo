@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.100.0 - 2026-07-27
+
+- Issue #669: Added a random, PII-free installation identifier and a separate deletion token to product measurement, generated on first use, cleared and regenerated on consent revoke.
+- Issue #670: Buffered product measurement events now flush to Supabase when consent is granted and the app is configured, retrying transient failures with backoff and dropping only permanently-rejected events; signed-out/local-only use still requires no network. Added the `kilo.product_measurement_events` table and a validated RPC that independently enforces the allow-listed event shape server-side.
+- Issue #671: Disabling product measurement now clears local state immediately and makes a best-effort request to erase that installation's server-side measurement rows, authorized solely by its independent deletion token.
+- Issue #672: Instrumented the core loop with consent-gated product measurement events (tab views, workout and weight save attempts/outcomes with timing and warning counts, parse-warning summaries, and Analytics section views), all routed through the existing sanitizer and non-blocking.
+- Issue #687: Expanded routine notes with a standalone `---` separator now expose their own Week A/Week B toggle, independent of which routine is current, with the selection persisted per note.
+- Issue #689: Added Light, Dark, and System appearance modes. Choose one under More > Settings > Appearance; the selection persists, System follows your device, and the whole app repaints immediately without a restart.
+
 ## 0.99.0 - 2026-07-24
 
 - Issue #582: Fixed Analytics empty state to name the real Track control instead of the nonexistent bookmark.
