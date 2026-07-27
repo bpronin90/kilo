@@ -2031,6 +2031,117 @@ describe('A/B week for non-current routines: viewing projection and per-note per
       })
     );
   });
+
+  test('a brand-new A/B routine persists its selected Week B on first save, and reopening it stays on Week B; currentId is never touched', async () => {
+    // add() (useWorkoutNotes) always creates a note with activeWeek: null —
+    // the new-note save path must follow up with an explicit update() to
+    // persist whichever week was selected before the first save, or the
+    // routine would silently reopen on Week A regardless of the author's
+    // choice.
+    let storedNote = null;
+    const add = jest.fn().mockImplementation(async (title, raw_text) => {
+      storedNote = { id: 'new1', title, raw_text, activeWeek: null };
+      return storedNote;
+    });
+    const update = jest.fn().mockImplementation(async (id, patch) => {
+      storedNote = { ...storedNote, ...patch };
+      return storedNote;
+    });
+    const selectCurrent = jest.fn();
+
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'current1',
+        currentNote: { id: 'current1', raw_text: 'x' },
+        deloadHistory: [],
+        update,
+        add,
+        remove: jest.fn(),
+        selectCurrent,
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: false,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[]} />); });
+
+    render.act(() => { latest.hook.handleCreateRoutine(); });
+    render.act(() => {
+      latest.hook.setEditingText('MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8');
+    });
+    expect(latest.hook.editingEffectiveWeek).toBe('A');
+
+    // Select Week B before the very first save.
+    render.act(() => { latest.hook.handleToggleEditingWeek(); });
+    expect(latest.hook.editingEffectiveWeek).toBe('B');
+
+    await render.act(async () => { await latest.hook.handleSaveOtherNote(); });
+
+    expect(add).toHaveBeenCalledWith(
+      'Untitled Routine',
+      'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8'
+    );
+    // The follow-up persistence call, and never a currentId change.
+    expect(update).toHaveBeenCalledWith('new1', { activeWeek: 'B' });
+    expect(selectCurrent).not.toHaveBeenCalled();
+    expect(storedNote.activeWeek).toBe('B');
+
+    // Reopening the note as freshly loaded from the store must still select
+    // Week B, not silently reset to the Week A default.
+    render.act(() => { latest.hook.handleOpenOtherNote(storedNote); });
+    expect(latest.hook.editingHasABWeeks).toBe(true);
+    expect(latest.hook.editingEffectiveWeek).toBe('B');
+    expect(latest.hook.editingText).toContain('DB Floor Press');
+    expect(latest.hook.editingText).not.toContain('DB Bench Press');
+  });
+
+  test('a brand-new plain routine (no ---) still saves with activeWeek: null and never calls update() for a week', async () => {
+    const add = jest.fn().mockResolvedValue({ id: 'new2', title: 'Plain', raw_text: 'MONDAY\n-Squat 3x5', activeWeek: null });
+    const update = jest.fn();
+    let latest = null;
+    function Harness({ notes }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'current1',
+        currentNote: { id: 'current1', raw_text: 'x' },
+        deloadHistory: [],
+        update,
+        add,
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload: jest.fn(),
+        deleteDeloadNote: jest.fn(),
+        deloadDateEditEnabled: false,
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { render.create(<Harness notes={[]} />); });
+    render.act(() => { latest.hook.handleCreateRoutine(); });
+    render.act(() => { latest.hook.setEditingTitle('Plain'); });
+    render.act(() => { latest.hook.setEditingText('MONDAY\n-Squat 3x5'); });
+
+    await render.act(async () => { await latest.hook.handleSaveOtherNote(); });
+
+    expect(add).toHaveBeenCalledWith('Plain', 'MONDAY\n-Squat 3x5');
+    expect(update).not.toHaveBeenCalled();
+  });
 });
 
 describe('LogScreen editor header: editing-week toggle for non-current A/B notes (#687 review feedback)', () => {

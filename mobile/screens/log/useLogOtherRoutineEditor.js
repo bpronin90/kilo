@@ -346,6 +346,16 @@ export function useLogOtherRoutineEditor({
         if (editingNoteId === 'new') {
           result = await add(titleToSave, editingFullText);
           setEditingNoteId(result.id);
+          // add() (useWorkoutNotes) always creates the note with activeWeek:
+          // null, so a new note authored with a standalone --- must persist
+          // its selected week in a follow-up update — otherwise it silently
+          // reopens on Week A regardless of which week was selected when
+          // first saved. A plain new note (no boundary) correctly keeps the
+          // null activeWeek add() already wrote; currentId is never touched.
+          if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
+            const withWeek = await update(result.id, { activeWeek: editingEffectiveWeek });
+            if (withWeek) result = withWeek;
+          }
         } else {
           const patch = { title: titleToSave, raw_text: editingFullText };
           if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
