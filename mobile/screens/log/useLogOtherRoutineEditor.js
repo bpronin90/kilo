@@ -151,6 +151,23 @@ export function useLogOtherRoutineEditor({
     setEditingActiveWeek(prev => ((prev ?? 'A') === 'B' ? 'A' : 'B'));
   };
 
+  // Explicit boundary-removal action: merges Week A and Week B back into a
+  // single-week note. Chosen semantics — Week A's authored body, then a
+  // single blank-line join, then Week B's authored body, so no text from
+  // either week is lost and nothing is reordered. The note becomes a plain
+  // (non-A/B) note: editingHasABWeeks recomputes to false on the next
+  // render (there is no longer a standalone '---' line), the Week toggle
+  // disappears, and editingActiveWeek is cleared so a stale selection can't
+  // leak into a future save. The persisted activeWeek field is reconciled
+  // (cleared) by handleSaveOtherNote once this merge is saved.
+  const handleMergeEditingWeeks = () => {
+    if (!editingHasABWeeks) return;
+    const weekAText = sliceActiveWeekText(editingFullText, 'A');
+    const weekBText = sliceActiveWeekText(editingFullText, 'B');
+    setEditingFullText(weekAText + '\n\n' + weekBText);
+    setEditingActiveWeek(null);
+  };
+
   const hasUnsavedOther = useMemo(() => {
     if (!editingNoteId) return false;
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingFullText.trim() !== '';
@@ -333,6 +350,11 @@ export function useLogOtherRoutineEditor({
           const patch = { title: titleToSave, raw_text: editingFullText };
           if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
             patch.activeWeek = editingEffectiveWeek;
+          } else if (!editingHasABWeeks && editingNote?.activeWeek != null) {
+            // The note used to be A/B (had a persisted selection) but the
+            // separator is gone now (e.g. handleMergeEditingWeeks): clear the
+            // stale selection so it can never leak into a future A/B note.
+            patch.activeWeek = null;
           }
           if (isEditingDeloadNote && deloadDateEditEnabled) {
             const histRecord = editingDeloadHasLinkedRecord
@@ -708,6 +730,7 @@ export function useLogOtherRoutineEditor({
     editingHasABWeeks,
     editingEffectiveWeek,
     handleToggleEditingWeek,
+    handleMergeEditingWeeks,
     viewingNote,
     viewingNoteDayGroups,
     viewingHasABWeeks,

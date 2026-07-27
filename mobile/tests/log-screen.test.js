@@ -1994,6 +1994,43 @@ describe('A/B week for non-current routines: viewing projection and per-note per
     expect(get().hook.editingEffectiveWeek).toBe(null);
     expect(get().hook.editingText).toBe(mergedNoBoundary.raw_text);
   });
+
+  test('handleMergeEditingWeeks removes the boundary while editing: both authored bodies survive, the toggle disappears, and the persisted activeWeek is cleared', async () => {
+    const abNote = { id: 'r1', title: 'R', raw_text: AB_RAW, activeWeek: 'B' };
+    const update = jest.fn().mockImplementation(async (id, patch) => ({ ...abNote, ...patch }));
+    const { Harness, get } = makeHarness();
+    render.act(() => { render.create(<Harness notes={[abNote]} update={update} />); });
+
+    // Open the A/B note in the editor and author both weeks first.
+    render.act(() => { get().hook.handleOpenOtherNote(abNote); });
+    expect(get().hook.editingHasABWeeks).toBe(true);
+    expect(get().hook.editingEffectiveWeek).toBe('B');
+
+    render.act(() => { get().hook.setEditingText('MONDAY — Home\n-DB Floor Press 4x8'); });
+    render.act(() => { get().hook.handleToggleEditingWeek(); });
+    expect(get().hook.editingEffectiveWeek).toBe('A');
+    render.act(() => { get().hook.setEditingText('MONDAY — Push\n-DB Bench Press 5x8'); });
+
+    // Invoke the real editor removal action.
+    render.act(() => { get().hook.handleMergeEditingWeeks(); });
+
+    // The note is now a plain single-week note: no boundary, no toggle state,
+    // and both authored bodies present in the merged text.
+    expect(get().hook.editingHasABWeeks).toBe(false);
+    expect(get().hook.editingEffectiveWeek).toBe(null);
+    expect(get().hook.editingText).toBe('MONDAY — Push\n-DB Bench Press 5x8\n\nMONDAY — Home\n-DB Floor Press 4x8');
+    expect(get().hook.editingText).not.toContain('---');
+
+    // Saving persists the merge and reconciles (clears) the stale activeWeek.
+    await render.act(async () => { await get().hook.handleSaveOtherNote(); });
+    expect(update).toHaveBeenLastCalledWith(
+      'r1',
+      expect.objectContaining({
+        raw_text: 'MONDAY — Push\n-DB Bench Press 5x8\n\nMONDAY — Home\n-DB Floor Press 4x8',
+        activeWeek: null,
+      })
+    );
+  });
 });
 
 describe('LogScreen editor header: editing-week toggle for non-current A/B notes (#687 review feedback)', () => {
@@ -2058,6 +2095,66 @@ describe('LogScreen editor header: editing-week toggle for non-current A/B notes
     expect(toggleToA.props.accessibilityState).toEqual({ selected: true });
     render.act(() => { toggleToA.props.onPress(); });
     expect(getInput(root).props.value).toBe('MONDAY — Push\n-DB Bench Press 3x8');
+  });
+
+  test('the Merge weeks control removes the boundary while editing and then disappears (truthful control)', () => {
+    const otherNote = { id: 'other1', title: 'Other', raw_text: 'MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8', activeWeek: 'A' };
+    const currentNote = { id: 'current1', title: 'Current', raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5' };
+    const update = jest.fn().mockImplementation(async (id, patch) => ({ ...otherNote, ...patch }));
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote, otherNote],
+      currentId: 'current1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update,
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+
+    let component;
+    render.act(() => {
+      // No current-routine content (workoutNoteText: '') so the current-routine
+      // card (which also has a "Double-tap to edit" body) is not rendered, and
+      // the double-tap below unambiguously targets the non-current routine card.
+      component = render.create(<ControlledLogScreen workoutNoteText="" setWorkoutNoteText={jest.fn()} />);
+    });
+    const root = component.root;
+
+    // Expand the non-current routine, then open it in the editor via double-tap.
+    render.act(() => { findPressableByText(root, 'Other').props.onPress(); });
+    const body = pressableAround(root, t => t.includes('Double-tap to edit'));
+    render.act(() => { body.props.onPress(); });
+    render.act(() => { body.props.onPress(); });
+
+    // A/B controls are present for this note, including the truthful Merge weeks
+    // control — it must not render for a plain note (covered by the toggle test
+    // above finding no "Week B" control at all before any A/B note is open).
+    const mergeButton = findPressableByText(root, 'Merge weeks');
+    expect(mergeButton).toBeTruthy();
+    expect(mergeButton.props.accessibilityRole).toBe('button');
+    expect(mergeButton.props.accessibilityLabel).toBe('Merge Week A and Week B into one routine');
+    expect(findPressableByText(root, 'Week B')).toBeTruthy();
+
+    render.act(() => { mergeButton.props.onPress(); });
+
+    // The boundary is gone: both authored bodies remain in the single input,
+    // and the editor's Merge control disappears (truthful — there is nothing
+    // left to merge). Note: the still-mounted (but hidden) non-current
+    // viewing card's own Week toggle can remain until this edit is actually
+    // saved, since it reflects the persisted note, not the in-progress edit.
+    expect(getInput(root).props.value).toBe('MONDAY — Push\n-DB Bench Press 3x8\n\nMONDAY — Home\n-DB Floor Press 3x8');
+    expect(findPressableByText(root, 'Merge weeks')).toBeNull();
   });
 });
 

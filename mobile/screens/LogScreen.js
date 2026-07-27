@@ -303,6 +303,16 @@ export function LogScreen({
                 </Text>
               </Pressable>
             )}
+            {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
+              <Pressable
+                onPress={otherEditor.handleMergeEditingWeeks}
+                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.cardBorder, marginRight: 8 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Merge Week A and Week B into one routine"
+              >
+                <Text style={[styles.modeToggleText, { color: Colors.textMuted, fontWeight: '500' }]}>Merge weeks</Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={
                 deloadEditor.deloadMode === 'edit' ? deloadEditor.handleUndoDeload :
