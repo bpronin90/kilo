@@ -11,6 +11,9 @@ export function LogPreviousRoutines({
   viewingNoteId,
   viewingNote,
   viewingNoteDayGroups,
+  viewingHasABWeeks,
+  viewingEffectiveWeek,
+  handleToggleViewingWeek,
   handleSwitchCurrent,
   handleEditViewedNote,
   handleDeleteRoutine,
@@ -46,16 +49,36 @@ export function LogPreviousRoutines({
                 <View style={styles.otherNoteInfo}>
                   <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
                   {other.updated_at && (
-                    <Text style={styles.otherNoteSub}>{localDate(other.updated_at).toLocaleDateString()}</Text>
+                    <Text style={styles.otherNoteSub}>
+                      {viewingNoteId === other.id && viewingHasABWeeks
+                        ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
+                        : localDate(other.updated_at).toLocaleDateString()}
+                    </Text>
                   )}
                 </View>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
-                  style={styles.inlineSwitchButton}
-                  hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                >
-                  <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
-                </Pressable>
+                <View style={styles.headerActions}>
+                  {viewingNoteId === other.id && viewingHasABWeeks && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); handleToggleViewingWeek(); }}
+                      style={styles.inlineSwitchButton}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                      accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                    >
+                      <Text style={styles.inlineSwitchButtonText}>
+                        Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                      </Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
+                    style={styles.inlineSwitchButton}
+                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
+                  </Pressable>
+                </View>
               </Pressable>
               {viewingNoteId === other.id && viewingNote && (
                 <>
@@ -114,6 +137,11 @@ const styles = StyleSheet.create({
   },
   otherNoteInfo: {
     flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   otherNoteTitle: {
     fontSize: 20,

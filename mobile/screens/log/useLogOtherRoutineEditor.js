@@ -10,6 +10,33 @@ import {
 import { DELOAD_NOTE_PREFIX, AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 
+function isValidActiveWeek(value) {
+  return value === 'A' || value === 'B';
+}
+
+// Splits raw note text on a standalone '---' line, returning the requested
+// half (or the full text unchanged when there is no boundary). Mirrors the
+// slicing used by the current-routine editor (useLogCurrentRoutineEditor's
+// activeEditText/handleCurrentTextChange) so non-current A/B notes behave
+// identically.
+function sliceActiveWeekText(fullText, week) {
+  const lines = (fullText || '').split('\n');
+  const sepIdx = lines.findIndex(l => l.trim() === '---');
+  if (sepIdx === -1) return fullText || '';
+  if (week === 'B') return lines.slice(sepIdx + 1).join('\n');
+  return lines.slice(0, sepIdx).join('\n');
+}
+
+function spliceActiveWeekText(fullText, week, newActiveText) {
+  const lines = (fullText || '').split('\n');
+  const sepIdx = lines.findIndex(l => l.trim() === '---');
+  if (sepIdx === -1) return newActiveText;
+  const weekAText = lines.slice(0, sepIdx).join('\n');
+  const weekBText = lines.slice(sepIdx + 1).join('\n');
+  if (week === 'A') return newActiveText + '\n---\n' + weekBText;
+  return weekAText + '\n---\n' + newActiveText;
+}
+
 export function useLogOtherRoutineEditor({
   notes,
   currentId,
@@ -30,12 +57,22 @@ export function useLogOtherRoutineEditor({
 }) {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
-  const [editingText, setEditingText] = useState('');
+  // Full underlying raw_text being edited (both A/B halves + separator, when
+  // present). The publicly exposed `editingText`/`setEditingText` below
+  // project this down to the currently selected week, mirroring the
+  // current-routine editor's workoutNoteText/activeEditText split.
+  const [editingFullText, setEditingFullText] = useState('');
+  const [editingActiveWeek, setEditingActiveWeek] = useState(null);
   const [noteIsSaving, setNoteIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
   const [originalNoteState, setOriginalNoteState] = useState(null);
   const [viewingNoteId, setViewingNoteId] = useState(null);
+  // Per-note selected week for the expanded (non-current) viewing card. Reset
+  // whenever the viewed note changes to that note's own persisted `activeWeek`
+  // (or 'A' when missing/invalid), so switching between routines never bleeds
+  // one note's selection into another's.
+  const [viewingActiveWeek, setViewingActiveWeek] = useState(null);
   const [deloadEditDate, setDeloadEditDate] = useState('');
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
   const [deloadEditOrdinal, setDeloadEditOrdinal] = useState('');
@@ -54,12 +91,12 @@ export function useLogOtherRoutineEditor({
   const lastSavedDeloadOrdinalRef = useRef(null);
 
   // Live-value refs so async save callbacks read current state without stale closures.
-  const editingTextRef = useRef(editingText);
+  const editingFullTextRef = useRef(editingFullText);
   const editingTitleRef = useRef(editingTitle);
   const editingNoteIdRef = useRef(editingNoteId);
   const deloadEditDateRef = useRef(deloadEditDate);
   const deloadEditOrdinalRef = useRef(deloadEditOrdinal);
-  editingTextRef.current = editingText;
+  editingFullTextRef.current = editingFullText;
   editingTitleRef.current = editingTitle;
   editingNoteIdRef.current = editingNoteId;
   deloadEditDateRef.current = deloadEditDate;
@@ -84,11 +121,58 @@ export function useLogOtherRoutineEditor({
     isEditingDeloadNote ? deloadHistory.some(r => r.note_id === editingNoteId) : false,
   [isEditingDeloadNote, deloadHistory, editingNoteId]);
 
+  // hasABWeeks / effective selected week for the note currently open in the
+  // editor, derived from the full underlying text (both halves), mirroring
+  // useLogCurrentRoutineEditor's hasABWeeks/effectiveActiveWeek.
+  const editingParsed = useMemo(() => parseWorkoutNote(editingFullText), [editingFullText]);
+  const editingHasABWeeks = (editingParsed.weekBStartIndex ?? null) !== null;
+  const editingEffectiveWeek = editingHasABWeeks ? (editingActiveWeek ?? 'A') : null;
+
+  // The publicly exposed editor text: the selected week's body only, for A/B
+  // notes, or the full text otherwise. This is what LogScreenEditorCard binds
+  // its input to.
+  const editingText = useMemo(
+    () => (editingHasABWeeks ? sliceActiveWeekText(editingFullText, editingEffectiveWeek) : editingFullText),
+    [editingFullText, editingHasABWeeks, editingEffectiveWeek]
+  );
+
+  // Setter bound to the editor input: splices the edited half back into the
+  // full underlying text, preserving the other week and the separator.
+  const setEditingText = (newActiveText) => {
+    if (!editingHasABWeeks) {
+      setEditingFullText(newActiveText);
+      return;
+    }
+    setEditingFullText(spliceActiveWeekText(editingFullText, editingEffectiveWeek, newActiveText));
+  };
+
+  const handleToggleEditingWeek = () => {
+    if (!editingHasABWeeks) return;
+    setEditingActiveWeek(prev => ((prev ?? 'A') === 'B' ? 'A' : 'B'));
+  };
+
+  // Explicit boundary-removal action: merges Week A and Week B back into a
+  // single-week note. Chosen semantics — Week A's authored body, then a
+  // single blank-line join, then Week B's authored body, so no text from
+  // either week is lost and nothing is reordered. The note becomes a plain
+  // (non-A/B) note: editingHasABWeeks recomputes to false on the next
+  // render (there is no longer a standalone '---' line), the Week toggle
+  // disappears, and editingActiveWeek is cleared so a stale selection can't
+  // leak into a future save. The persisted activeWeek field is reconciled
+  // (cleared) by handleSaveOtherNote once this merge is saved.
+  const handleMergeEditingWeeks = () => {
+    if (!editingHasABWeeks) return;
+    const weekAText = sliceActiveWeekText(editingFullText, 'A');
+    const weekBText = sliceActiveWeekText(editingFullText, 'B');
+    setEditingFullText(weekAText + '\n\n' + weekBText);
+    setEditingActiveWeek(null);
+  };
+
   const hasUnsavedOther = useMemo(() => {
     if (!editingNoteId) return false;
-    if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingText.trim() !== '';
+    if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingFullText.trim() !== '';
     if (!editingNote) return false;
-    const textChanged = editingTitle !== (editingNote.title || '') || editingText !== editingNote.raw_text;
+    const textChanged = editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text;
     const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
@@ -100,7 +184,7 @@ export function useLogOtherRoutineEditor({
         })()
       : false;
     return textChanged || dateChanged || ordinalChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
+  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
   const viewingNote = useMemo(() =>
     viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
@@ -110,10 +194,56 @@ export function useLogOtherRoutineEditor({
     viewingNote ? parseWorkoutNote(viewingNote.raw_text || '') : null
   , [viewingNote]);
 
+  const viewingHasABWeeks = !!viewingNoteParsed && (viewingNoteParsed.weekBStartIndex ?? null) !== null;
+  const viewingEffectiveWeek = viewingHasABWeeks ? (viewingActiveWeek ?? 'A') : null;
+
+  // Reset the viewed note's selected week whenever the viewed note changes,
+  // seeding from that note's own persisted activeWeek (defaulting to Week A
+  // for a legacy note with no valid selection), so each routine remembers its
+  // own selection independently.
+  useEffect(() => {
+    if (!viewingNoteId) {
+      setViewingActiveWeek(null);
+      return;
+    }
+    const note = notes.find(n => n.id === viewingNoteId);
+    const persisted = isValidActiveWeek(note?.activeWeek) ? note.activeWeek : null;
+    setViewingActiveWeek(persisted ?? 'A');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingNoteId]);
+
+  const viewingActiveText = useMemo(() => {
+    if (!viewingNote) return '';
+    if (!viewingHasABWeeks) return viewingNote.raw_text || '';
+    return sliceActiveWeekText(viewingNote.raw_text || '', viewingEffectiveWeek);
+  }, [viewingNote, viewingHasABWeeks, viewingEffectiveWeek]);
+
+  const viewingNoteProjectedParsed = useMemo(() => {
+    if (!viewingNote) return null;
+    return viewingHasABWeeks ? parseWorkoutNote(viewingActiveText) : viewingNoteParsed;
+  }, [viewingNote, viewingHasABWeeks, viewingActiveText, viewingNoteParsed]);
+
   const viewingNoteDayGroups = useMemo(() => {
-    if (!viewingNoteParsed) return [];
-    return buildDayGroups(viewingNoteParsed.sections);
-  }, [viewingNoteParsed]);
+    if (!viewingNoteProjectedParsed) return [];
+    return buildDayGroups(viewingNoteProjectedParsed.sections);
+  }, [viewingNoteProjectedParsed]);
+
+  // Toggles the expanded (non-current) card's selected week and persists it
+  // through the note's existing activeWeek field — never touching currentId,
+  // so this never affects which routine is current.
+  const handleToggleViewingWeek = async () => {
+    if (!viewingNoteId || !viewingHasABWeeks) return;
+    const previous = viewingEffectiveWeek ?? 'A';
+    const next = previous === 'B' ? 'A' : 'B';
+    setViewingActiveWeek(next);
+    try {
+      const updated = await update(viewingNoteId, { activeWeek: next });
+      if (!updated) setViewingActiveWeek(previous);
+    } catch (err) {
+      setViewingActiveWeek(previous);
+      throw err;
+    }
+  };
 
   // Debounced autosave for a non-current (existing) note while in edit mode.
   useEffect(() => {
@@ -130,7 +260,7 @@ export function useLogOtherRoutineEditor({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingText, editingTitle, editingNoteId, deloadEditDate]);
+  }, [editingFullText, editingTitle, editingNoteId, deloadEditDate]);
 
   useEffect(() => {
     return () => {
@@ -152,7 +282,10 @@ export function useLogOtherRoutineEditor({
     if (!viewingNote) return;
     setEditingNoteId(viewingNote.id);
     setEditingTitle(viewingNote.title || '');
-    setEditingText(viewingNote.raw_text);
+    setEditingFullText(viewingNote.raw_text);
+    // Continue editing whichever week the expanded card was showing, so the
+    // editor never silently switches weeks on entry.
+    setEditingActiveWeek(viewingHasABWeeks ? viewingEffectiveWeek : null);
     setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
     const _histRec = deloadHistory.find(r => r.note_id === viewingNote.id);
     const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
@@ -163,6 +296,7 @@ export function useLogOtherRoutineEditor({
       text: viewingNote.raw_text,
       date: viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '',
       ordinal: initialOrdinal,
+      activeWeek: viewingHasABWeeks ? viewingEffectiveWeek : null,
     });
     setSaveError('');
     setSaveSuccess('');
@@ -171,7 +305,9 @@ export function useLogOtherRoutineEditor({
   const handleOpenOtherNote = (other) => {
     setEditingNoteId(other.id);
     setEditingTitle(other.title || '');
-    setEditingText(other.raw_text);
+    setEditingFullText(other.raw_text);
+    const _persistedWeek = isValidActiveWeek(other.activeWeek) ? other.activeWeek : null;
+    setEditingActiveWeek(_persistedWeek);
     setDeloadEditDate(other.saved_at ? other.saved_at.slice(0, 10) : '');
     const _histRec = deloadHistory.find(r => r.note_id === other.id);
     const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
@@ -182,6 +318,7 @@ export function useLogOtherRoutineEditor({
       text: other.raw_text,
       date: other.saved_at ? other.saved_at.slice(0, 10) : '',
       ordinal: initialOrdinal,
+      activeWeek: _persistedWeek,
     });
     setSaveError('');
     setSaveSuccess('');
@@ -191,7 +328,7 @@ export function useLogOtherRoutineEditor({
     if (saveOtherNoteInFlightRef.current) return saveOtherNoteInFlightRef.current;
 
     const savedNoteId = editingNoteId;
-    const snapshotText = editingText;
+    const snapshotText = editingFullText;
     const snapshotTitle = editingTitle;
     const snapshotDeloadDate = deloadEditDate;
     const snapshotDeloadOrdinal = deloadEditOrdinal;
@@ -207,10 +344,28 @@ export function useLogOtherRoutineEditor({
           titleToSave = DELOAD_NOTE_PREFIX + (deloadEditDate || titleToSave);
         }
         if (editingNoteId === 'new') {
-          result = await add(titleToSave, editingText);
+          result = await add(titleToSave, editingFullText);
           setEditingNoteId(result.id);
+          // add() (useWorkoutNotes) always creates the note with activeWeek:
+          // null, so a new note authored with a standalone --- must persist
+          // its selected week in a follow-up update — otherwise it silently
+          // reopens on Week A regardless of which week was selected when
+          // first saved. A plain new note (no boundary) correctly keeps the
+          // null activeWeek add() already wrote; currentId is never touched.
+          if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
+            const withWeek = await update(result.id, { activeWeek: editingEffectiveWeek });
+            if (withWeek) result = withWeek;
+          }
         } else {
-          const patch = { title: titleToSave, raw_text: editingText };
+          const patch = { title: titleToSave, raw_text: editingFullText };
+          if (editingHasABWeeks && isValidActiveWeek(editingEffectiveWeek)) {
+            patch.activeWeek = editingEffectiveWeek;
+          } else if (!editingHasABWeeks && editingNote?.activeWeek != null) {
+            // The note used to be A/B (had a persisted selection) but the
+            // separator is gone now (e.g. handleMergeEditingWeeks): clear the
+            // stale selection so it can never leak into a future A/B note.
+            patch.activeWeek = null;
+          }
           if (isEditingDeloadNote && deloadDateEditEnabled) {
             const histRecord = editingDeloadHasLinkedRecord
               ? deloadHistory.find(r => r.note_id === editingNoteId)
@@ -251,13 +406,13 @@ export function useLogOtherRoutineEditor({
           lastSavedDeloadDateRef.current = snapshotDeloadDate;
           lastSavedDeloadOrdinalRef.current = snapshotDeloadOrdinal;
           const contentUnchanged =
-            editingTextRef.current === snapshotText &&
+            editingFullTextRef.current === snapshotText &&
             editingTitleRef.current === snapshotTitle;
           const identityUnchanged =
             savedNoteId === 'new' || editingNoteIdRef.current === savedNoteId;
           if (contentUnchanged && identityUnchanged) {
             setEditingTitle(result.title || '');
-            setEditingText(result.raw_text || '');
+            setEditingFullText(result.raw_text || '');
             if (!autosave) setSaveSuccess('Saved!');
           }
           return true;
@@ -301,7 +456,7 @@ export function useLogOtherRoutineEditor({
       if (!ok) return;
       let guard = 0;
       while (
-        editingTextRef.current !== lastSavedTextRef.current ||
+        editingFullTextRef.current !== lastSavedTextRef.current ||
         editingTitleRef.current !== lastSavedTitleRef.current ||
         deloadEditDateRef.current !== lastSavedDeloadDateRef.current ||
         deloadEditOrdinalRef.current !== lastSavedDeloadOrdinalRef.current
@@ -319,7 +474,8 @@ export function useLogOtherRoutineEditor({
   const handleUndoOther = async () => {
     if (editingNoteId === 'new') {
       setEditingTitle('');
-      setEditingText('');
+      setEditingFullText('');
+      setEditingActiveWeek(null);
       return;
     }
     if (!originalNoteState) return;
@@ -334,6 +490,9 @@ export function useLogOtherRoutineEditor({
         title: originalNoteState.title,
         raw_text: originalNoteState.text,
       };
+      if (isValidActiveWeek(originalNoteState.activeWeek)) {
+        patch.activeWeek = originalNoteState.activeWeek;
+      }
       if (isEditingDeloadNote && deloadDateEditEnabled) {
         const histRecord = editingDeloadHasLinkedRecord
           ? deloadHistory.find(r => r.note_id === editingNoteId)
@@ -385,7 +544,8 @@ export function useLogOtherRoutineEditor({
         throw updateErr;
       }
       setEditingTitle(originalNoteState.title);
-      setEditingText(originalNoteState.text);
+      setEditingFullText(originalNoteState.text);
+      setEditingActiveWeek(originalNoteState.activeWeek ?? null);
       if (isEditingDeloadNote && deloadDateEditEnabled) {
         setDeloadEditDate(originalNoteState.date);
         setDeloadEditOrdinal(originalNoteState.ordinal);
@@ -441,7 +601,8 @@ export function useLogOtherRoutineEditor({
     setOriginalNoteState(null);
     setEditingNoteId('new');
     setEditingTitle('');
-    setEditingText('');
+    setEditingFullText('');
+    setEditingActiveWeek(null);
     setSaveError('');
     setSaveSuccess('');
   };
@@ -576,8 +737,15 @@ export function useLogOtherRoutineEditor({
     isEditingDeloadNote,
     editingDeloadHasLinkedRecord,
     hasUnsavedOther,
+    editingHasABWeeks,
+    editingEffectiveWeek,
+    handleToggleEditingWeek,
+    handleMergeEditingWeeks,
     viewingNote,
     viewingNoteDayGroups,
+    viewingHasABWeeks,
+    viewingEffectiveWeek,
+    handleToggleViewingWeek,
     handleViewOtherNote,
     handleEditViewedNote,
     handleOpenOtherNote,
