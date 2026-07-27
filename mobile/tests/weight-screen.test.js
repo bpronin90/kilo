@@ -3,7 +3,7 @@ import render from 'react-test-renderer';
 import { Alert, StyleSheet } from 'react-native';
 import { WeightScreen } from '../screens/WeightScreen';
 import { TrendSection } from '../components/WeightTrendSection';
-import { Colors } from '../theme/colors';
+import { LightColors } from '../theme/colors';
 import * as useEntries from '../hooks/useEntries';
 import * as weightHooks from '../hooks/entries/weightHooks';
 import App from '../App';
@@ -1380,22 +1380,22 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
 
   test('upward trend is success (green) for a gain goal', () => {
     const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↑ Gaining' } });
-    expect(col3Color(root, '↑ Gaining')).toBe(Colors.success);
+    expect(col3Color(root, '↑ Gaining')).toBe(LightColors.success);
   });
 
   test('upward trend is error (red) for a loss goal', () => {
     const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↑ Gaining' } });
-    expect(col3Color(root, '↑ Gaining')).toBe(Colors.error);
+    expect(col3Color(root, '↑ Gaining')).toBe(LightColors.error);
   });
 
   test('downward trend is success (green) for a loss goal', () => {
     const root = renderSection({ goalDirection: 'loss', col3: { label: 'Trend', value: '↓ Losing' } });
-    expect(col3Color(root, '↓ Losing')).toBe(Colors.success);
+    expect(col3Color(root, '↓ Losing')).toBe(LightColors.success);
   });
 
   test('downward trend is error (red) for a gain goal', () => {
     const root = renderSection({ goalDirection: 'gain', col3: { label: 'Trend', value: '↓ Losing' } });
-    expect(col3Color(root, '↓ Losing')).toBe(Colors.error);
+    expect(col3Color(root, '↓ Losing')).toBe(LightColors.error);
   });
 
   // #408: with no active goal the goal-relative meaning is absent, but ↑/↓ keep
@@ -1404,23 +1404,23 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   test('with no goal direction ↑ Gaining keeps a visible directional color (#408)', () => {
     const root = renderSection({ col3: { label: 'Trend', value: '↑ Gaining' } });
     const color = col3Color(root, '↑ Gaining');
-    expect(color).toBe(Colors.error);
-    expect(color).not.toBe(Colors.text);
+    expect(color).toBe(LightColors.error);
+    expect(color).not.toBe(LightColors.text);
   });
 
   test('with no goal direction ↓ Losing keeps a visible directional color (#408)', () => {
     const root = renderSection({ col3: { label: 'Trend', value: '↓ Losing' } });
     const color = col3Color(root, '↓ Losing');
-    expect(color).toBe(Colors.success);
-    expect(color).not.toBe(Colors.text);
+    expect(color).toBe(LightColors.success);
+    expect(color).not.toBe(LightColors.text);
   });
 
   test('with no goal direction → Stable stays neutral (#408)', () => {
     const root = renderSection({ col3: { label: 'Trend', value: '→ Stable' } });
     const color = col3Color(root, '→ Stable');
-    expect(color).toBe(Colors.text);
-    expect(color).not.toBe(Colors.success);
-    expect(color).not.toBe(Colors.error);
+    expect(color).toBe(LightColors.text);
+    expect(color).not.toBe(LightColors.success);
+    expect(color).not.toBe(LightColors.error);
   });
 
   test('pace anomaly keeps its severity color regardless of goal direction', () => {
@@ -1429,7 +1429,7 @@ describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
       paceLevel: 'spike',
       col3: { label: 'Trend', value: '↑ Gaining' },
     });
-    expect(col3Color(root, '↑ Gaining')).toBe(Colors.error);
+    expect(col3Color(root, '↑ Gaining')).toBe(LightColors.error);
   });
 
   test('col3 value is right-aligned for stable scanning (M-8)', () => {

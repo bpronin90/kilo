@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { HeroMetric } from './UI';
 
 // Resolve the col3 trend color.
@@ -12,7 +12,9 @@ import { HeroMetric } from './UI';
 // but a bare ↑/↓ still reads clearer with a visible directional cue than flat
 // neutral text, so we fall back to the directional coloring (gaining/losing).
 // Stable (→) and missing data (-) stay neutral in every case.
-function resolveCol3ColorStyle({ value, paceLevel, goalDirection }) {
+// `styles` is passed in rather than closed over: the sheet is now built per
+// palette by the calling component, not at module load (#689).
+function resolveCol3ColorStyle({ value, paceLevel, goalDirection, styles }) {
   if (paceLevel === 'spike') return styles.paceSpike;
   if (paceLevel === 'notable') return styles.paceNotable;
 
@@ -34,7 +36,8 @@ function resolveCol3ColorStyle({ value, paceLevel, goalDirection }) {
 }
 
 export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalDirection }) {
-  const col3ColorStyle = resolveCol3ColorStyle({ value: col3.value, paceLevel, goalDirection });
+  const styles = useThemedStyles(createStyles);
+  const col3ColorStyle = resolveCol3ColorStyle({ value: col3.value, paceLevel, goalDirection, styles });
 
   return (
     <View style={[styles.trendSection, !isLast && styles.trendSectionDivider]}>
@@ -59,19 +62,19 @@ export function TrendSection({ title, col1, col2, col3, isLast, paceLevel, goalD
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   trendSection: {
     padding: 16,
     gap: 12,
   },
   trendSectionDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
   },
   trendSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -93,33 +96,33 @@ const styles = StyleSheet.create({
   },
   trendValue: {
     ...HeroMetric.statTertiary,
-    color: Colors.text,
+    color: colors.text,
   },
   trendLabel: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   paceSpike: {
-    color: Colors.error,
+    color: colors.error,
   },
   paceNotable: {
-    color: Colors.caution,
+    color: colors.caution,
   },
   trendPositive: {
-    color: Colors.success,
+    color: colors.success,
   },
   trendNegative: {
-    color: Colors.error,
+    color: colors.error,
   },
   // No-goal directional fallback: gaining reads as a rise (error tone),
   // losing as a drop (success tone), matching the pre-goal-aware default.
   trendGaining: {
-    color: Colors.error,
+    color: colors.error,
   },
   trendLosing: {
-    color: Colors.success,
+    color: colors.success,
   },
 });

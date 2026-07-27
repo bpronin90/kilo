@@ -1,12 +1,13 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { computePlateLoad, formatPlateWeight } from '../lib/plateMath';
 
 // Lightweight sheet showing the per-side plate loading for a tapped weight.
 // Follows the SessionCheckInModal sheet pattern (transparent fade modal,
 // dimmed overlay, bordered card sheet with a header row and ✕ close).
 export function PlateCalculatorModal({ visible, weight, onClose }) {
+  const styles = useThemedStyles(createStyles);
   if (!visible) return null;
 
   const load = computePlateLoad(weight);
@@ -79,18 +80,18 @@ export function PlateCalculatorModal({ visible, weight, onClose }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(31,26,23,0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
   sheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     maxWidth: 360,
     width: '100%',
     alignSelf: 'center',
@@ -102,21 +103,21 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
   },
   body: {
@@ -133,34 +134,34 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   rowValue: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   plateBlock: {
     gap: 6,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: colors.divider,
   },
   plateBlockLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   message: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   remainder: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontStyle: 'italic',
     lineHeight: 19,
   },

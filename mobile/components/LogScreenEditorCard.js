@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 
@@ -21,6 +21,7 @@ function localDateToday() {
 // native onChange path which also normalizes to a YYYY-MM-DD string. Capped at
 // today via max, matching the native maximumDate.
 function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
+  const { colors } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -31,14 +32,15 @@ function WebDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: Colors.inputBackground,
+      backgroundColor: colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: Colors.inputBorder,
+      borderColor: colors.inputBorder,
       padding: 14,
       fontSize: 16,
-      color: Colors.text,
+      colorScheme: colors.scheme,
+      color: colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -80,6 +82,8 @@ export function LogScreenEditorCard({
   handleDeleteRoutine,
   currentId,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [syntaxHelpVisible, setSyntaxHelpVisible] = useState(false);
 
   return (
@@ -94,7 +98,7 @@ export function LogScreenEditorCard({
             value={deloadEditText}
             onChangeText={setDeloadEditText}
             placeholder="Deload note…"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             multiline
             autoCorrect={false}
             autoCapitalize="none"
@@ -116,7 +120,7 @@ export function LogScreenEditorCard({
                 value={editingNoteId ? editingTitle : workoutNoteTitle}
                 onChangeText={editingNoteId ? setEditingTitle : setWorkoutNoteTitle}
                 placeholder="Routine Name (e.g. Push Day)"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={colors.textMuted}
                 autoCorrect={false}
                 autoCapitalize="none"
                 spellCheck={false}
@@ -156,7 +160,7 @@ export function LogScreenEditorCard({
                       onChangeText={v => setDeloadEditOrdinal(v.replace(/[^0-9]/g, ''))}
                       keyboardType="number-pad"
                       placeholder="Session number"
-                      placeholderTextColor={Colors.textMuted}
+                      placeholderTextColor={colors.textMuted}
                       autoCorrect={false}
                       autoCapitalize="none"
                       spellCheck={false}
@@ -204,7 +208,7 @@ export function LogScreenEditorCard({
               value={editingNoteId ? editingText : activeEditText}
               onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
               placeholder="e.g.&#10;Monday&#10;+Lifting&#10;-Bench&#10;135 5,5,5"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               multiline
               autoCorrect={false}
               autoCapitalize="none"
@@ -252,19 +256,19 @@ export function LogScreenEditorCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   editContainer: {
     gap: 16,
   },
   input: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
   titleInput: {
     marginBottom: 12,
@@ -284,34 +288,34 @@ const styles = StyleSheet.create({
   syntaxHelpButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.accent,
+    color: colors.accent,
   },
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   deleteButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: colors.error,
   },
   deleteButtonText: {
-    color: Colors.error,
+    color: colors.error,
   },
   autosaveIndicator: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
   },
   inputLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginBottom: 6,
     marginTop: 4,
   },
@@ -324,6 +328,6 @@ const styles = StyleSheet.create({
   },
   dateInputText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
 });

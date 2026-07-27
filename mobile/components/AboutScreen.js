@@ -4,10 +4,11 @@ import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import pkg from '../package.json';
 
 export function AboutScreen({ onBack }) {
+  const styles = useThemedStyles(createStyles);
   const { currentlyRunning, isUpdateAvailable, isUpdatePending, isChecking } = useUpdates();
   const [checkResult, setCheckResult] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -127,7 +128,7 @@ export function AboutScreen({ onBack }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   aboutCard: {
     alignItems: 'center',
     paddingVertical: 32,
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   aboutLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     marginTop: 16,
     marginBottom: 4,
@@ -143,18 +144,18 @@ const styles = StyleSheet.create({
   aboutValue: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   aboutFooter: {
     marginTop: 32,
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   diagRow: {
     flexDirection: 'row',
@@ -165,19 +166,19 @@ const styles = StyleSheet.create({
   diagLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   diagValue: {
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flexShrink: 1,
     textAlign: 'right',
   },
   diagAlert: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     borderRadius: 8,
     paddingHorizontal: 10,
     marginTop: 4,
@@ -185,14 +186,14 @@ const styles = StyleSheet.create({
   diagAlertText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   diagButton: {
     marginTop: 12,
   },
   diagCheckResult: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -205,11 +206,11 @@ const styles = StyleSheet.create({
   },
   legalLink: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textDecorationLine: 'underline',
   },
   legalSep: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
 });

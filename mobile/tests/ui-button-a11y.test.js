@@ -1,6 +1,7 @@
 import React from 'react';
 import renderer from 'react-test-renderer';
 import { Button } from '../components/UI';
+import { DarkColors, LightColors } from '../theme/colors';
 
 // Issue 594: the shared Button primitive must consistently announce its control
 // role and a truthful disabled/busy accessibility state. Titles remain the
@@ -68,5 +69,35 @@ describe('shared Button accessibility contract', () => {
     });
     const pressable = findPressable(component.root);
     expect(pressable.props.accessibilityLabel).toBe('Save workout');
+  });
+});
+
+// Issue 689: the Button pill is the active palette's `text`, so its label must
+// be the semantic contrasting ink in both appearances — light mode dark pill /
+// light label, dark mode light pill / dark label — each at WCAG AA 4.5:1.
+describe('shared Button label contrast in both appearances', () => {
+  function luminance(hex) {
+    const raw = hex.replace('#', '');
+    const [r, g, b] = [0, 2, 4]
+      .map((i) => parseInt(raw.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrast(a, b) {
+    const [la, lb] = [luminance(a), luminance(b)];
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+
+  test.each([
+    ['light', LightColors],
+    ['dark', DarkColors],
+  ])('%s: pill background and label clear 4.5:1', (_mode, colors) => {
+    expect(contrast(colors.text, colors.buttonLabel)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('the pairing inverts between modes instead of repeating', () => {
+    expect(luminance(LightColors.text)).toBeLessThan(luminance(LightColors.buttonLabel));
+    expect(luminance(DarkColors.text)).toBeGreaterThan(luminance(DarkColors.buttonLabel));
   });
 });

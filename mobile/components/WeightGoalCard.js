@@ -1,8 +1,8 @@
 import React from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Card, Button, InputStyle } from './UI';
-import { Colors } from '../theme/colors';
+import { Card, Button, createInputStyle } from './UI';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { localDateToday } from '../lib/WeightScreenHelpers';
 import { useWeightUnit } from '../lib/unitPreference';
@@ -14,6 +14,7 @@ import { displayWeight, formatBodyweightValue } from '../lib/units';
 // mirroring the Weight tab entry-form fallback. Goal targets are future dates, so
 // this uses min={today} for parity with the native picker's minimumDate.
 function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
+  const { colors } = useTheme();
   return React.createElement('input', {
     type: 'date',
     value: value || '',
@@ -24,14 +25,15 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
       if (next) onChangeDate(next);
     },
     style: {
-      backgroundColor: Colors.inputBackground,
+      backgroundColor: colors.inputBackground,
       borderRadius: 16,
       borderWidth: 1,
       borderStyle: 'solid',
-      borderColor: Colors.inputBorder,
+      borderColor: colors.inputBorder,
       padding: 14,
       fontSize: 16,
-      color: Colors.text,
+      colorScheme: colors.scheme,
+      color: colors.text,
       fontFamily: 'inherit',
       width: '100%',
       boxSizing: 'border-box',
@@ -40,6 +42,7 @@ function WebGoalDateInput({ value, onChangeDate, accessibilityLabel }) {
 }
 
 export function GoalDerived({ info, calorieEstimate }) {
+  const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
   if (!info) return null;
   const { direction, required_weekly_pace, warnings } = info;
@@ -115,6 +118,8 @@ export function WeightGoalCard({
   isGoalMet,
   aheadOfSchedule,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
   const remainingToGoal =
     goal && currentWeight != null && goal.target_weight != null
@@ -180,7 +185,7 @@ export function WeightGoalCard({
                 value={goalStartWeight}
                 onChangeText={setGoalStartWeight}
                 placeholder={unit === 'kg' ? '90.0' : '200.0'}
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={colors.textMuted}
                 keyboardType="decimal-pad"
                 style={styles.input}
               />
@@ -191,7 +196,7 @@ export function WeightGoalCard({
             value={goalTargetWeight}
             onChangeText={setGoalTargetWeight}
             placeholder={unit === 'kg' ? '80.0' : '175.0'}
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             keyboardType="decimal-pad"
             style={styles.input}
           />
@@ -280,21 +285,21 @@ export function WeightGoalCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   input: {
-    ...InputStyle,
+    ...createInputStyle(colors),
     justifyContent: 'center',
   },
   goalCard: {
     gap: 10,
   },
   goalCardMet: {
-    borderColor: Colors.success,
+    borderColor: colors.success,
     borderWidth: 1.5,
   },
   goalHeader: {
@@ -315,17 +320,17 @@ const styles = StyleSheet.create({
   goalMetBadge: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.success,
+    color: colors.success,
     letterSpacing: 0.3,
   },
   goalArchiveChip: {
-    backgroundColor: Colors.cardSuccessBg,
+    backgroundColor: colors.cardSuccessBg,
   },
   goalArchiveText: {
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   goalActionChip: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -333,26 +338,26 @@ const styles = StyleSheet.create({
   goalActionChipText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   goalClearText: {
-    color: Colors.error,
+    color: colors.error,
   },
   goalActionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     padding: 4,
   },
   pickerText: {
     fontSize: 16,
-    color: Colors.text,
+    color: colors.text,
   },
   pickerTextPlaceholder: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   goalErrorText: {
-    color: Colors.error,
+    color: colors.error,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -371,16 +376,16 @@ const styles = StyleSheet.create({
   goalDisplayValue: {
     fontSize: 28,
     fontWeight: '900',
-    color: Colors.accent,
+    color: colors.accent,
   },
   goalDisplayDateValue: {
     fontSize: 28,
     fontWeight: '900',
-    color: Colors.text,
+    color: colors.text,
   },
   goalDisplayLabel: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -393,30 +398,30 @@ const styles = StyleSheet.create({
   goalProgressValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.accent,
+    color: colors.accent,
   },
   goalProgressLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   goalEndedText: {
     fontSize: 14,
-    color: Colors.error,
+    color: colors.error,
     fontWeight: '600',
   },
   goalAheadText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.caution,
+    color: colors.caution,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   goalDivider: {
     height: 1,
-    backgroundColor: Colors.cardBorder,
+    backgroundColor: colors.cardBorder,
     opacity: 0.5,
     marginVertical: 4,
   },
@@ -430,7 +435,7 @@ const styles = StyleSheet.create({
   },
   derivedLabel: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -438,24 +443,24 @@ const styles = StyleSheet.create({
   derivedValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   derivedValueNeutral: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     opacity: 0.5,
   },
   goalInfoText: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
   },
   goalWarningText: {
     fontSize: 13,
-    color: Colors.error,
+    color: colors.error,
     opacity: 0.9,
     fontWeight: '600',
     textAlign: 'center',

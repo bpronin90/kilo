@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { PlateCalculatorModal } from './PlateCalculatorModal';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
@@ -14,20 +14,28 @@ export const HeroMetric = {
   statTertiary:  { fontSize: 20, fontWeight: '900' },
 };
 
-export const InputStyle = {
-  backgroundColor: Colors.inputBackground,
+// Shared text-input skin. Two forms because both call shapes exist (#689):
+// createInputStyle(colors) so a screen's own createStyles() factory can spread
+// it, and useInputStyle() for the JSX call sites that apply it directly.
+export const createInputStyle = (colors) => ({
+  backgroundColor: colors.inputBackground,
   borderWidth: 1,
-  borderColor: Colors.inputBorder,
+  borderColor: colors.inputBorder,
   borderRadius: 12,
   paddingHorizontal: 12,
   paddingVertical: 12,
   fontSize: 15,
-  color: Colors.text,
-};
+  color: colors.text,
+});
+
+export function useInputStyle() {
+  return useThemedStyles(createInputStyle);
+}
 
 export { LineChart } from './LineChart';
 
 export function Card({ children, style, tone = 'default', onPress }) {
+  const styles = useThemedStyles(createStyles);
   const Container = onPress ? Pressable : View;
   
   const baseStyles = [
@@ -57,10 +65,12 @@ export function Card({ children, style, tone = 'default', onPress }) {
 }
 
 export function SectionTitle({ children }) {
+  const styles = useThemedStyles(createStyles);
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
 export function Button({ onPress, title, loadingTitle, loading, style, textStyle, disabled = false, accessibilityLabel }) {
+  const styles = useThemedStyles(createStyles);
   // Disabled and loading are different states. Preserve the existing shorthand
   // for callers that provide loadingTitle alongside disabled={busy}, while
   // allowing validation-disabled actions to keep their real label.
@@ -99,12 +109,15 @@ export function getSessionZoneCaption(count) {
   return 'No sessions logged';
 }
 
-const _SESSION_GAUGE_TONE_COLORS = {
-  success: Colors.success,
-  warn: Colors.caution,
-  error: Colors.error,
-  default: Colors.textMuted,
-};
+// Direct status mark color for a gauge tone. Resolved per render from the
+// active palette rather than a module-level map, so dark mode uses the brighter
+// success/caution/error values (#689).
+function sessionGaugeToneColor(tone, colors) {
+  if (tone === 'success') return colors.success;
+  if (tone === 'warn') return colors.caution;
+  if (tone === 'error') return colors.error;
+  return colors.textMuted;
+}
 
 // Deload-risk meter: a three-zone scale (Building / Approaching / Deload) with a
 // knob marking the current session depth — the UV-index / AQI pattern. Zone widths
@@ -112,8 +125,10 @@ const _SESSION_GAUGE_TONE_COLORS = {
 // (6, 9) mirror getSessionTone. The knob is positioned on a 0–11 unit scale so
 // session counts map linearly onto the zone segments.
 export function SessionGauge({ count, total, showDeload = true }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const tone = getSessionTone(count);
-  const toneColor = _SESSION_GAUGE_TONE_COLORS[tone] || Colors.textMuted;
+  const toneColor = sessionGaugeToneColor(tone, colors);
   const caption = getSessionZoneCaption(count);
   const markerPct = (Math.min(count, 11) / 11) * 100;
 
@@ -137,9 +152,9 @@ export function SessionGauge({ count, total, showDeload = true }) {
 
       <View style={styles.gaugeMeterWrap}>
         <View style={styles.gaugeBar}>
-          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: Colors.success }]} />
-          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: Colors.caution }]} />
-          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: Colors.error }]} />
+          <View style={[styles.gaugeSeg, styles.gaugeSegLeft, { flex: 6, backgroundColor: colors.success }]} />
+          <View style={[styles.gaugeSeg, { flex: 3, backgroundColor: colors.caution }]} />
+          <View style={[styles.gaugeSeg, styles.gaugeSegRight, { flex: 2, backgroundColor: colors.error }]} />
         </View>
         <View style={[styles.gaugeMarker, { left: `${markerPct}%`, borderColor: toneColor }]} />
       </View>
@@ -156,6 +171,7 @@ export function SessionGauge({ count, total, showDeload = true }) {
 }
 
 export function StatCard({ label, value, tone = 'default' }) {
+  const styles = useThemedStyles(createStyles);
   const isDarkTone = ['accent', 'success', 'error', 'warn'].includes(tone);
   return (
     <Card tone={tone} style={styles.statCard}>
@@ -166,6 +182,7 @@ export function StatCard({ label, value, tone = 'default' }) {
 }
 
 export function Badge({ children, status = 'default' }) {
+  const styles = useThemedStyles(createStyles);
   const isDarkStatus = ['improved', 'regressed', 'held'].includes(status);
   return (
     <View style={[styles.badge, styles[`badge_${status}`]]}>
@@ -177,6 +194,7 @@ export function Badge({ children, status = 'default' }) {
 }
 
 export function Chip({ children }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.chip}>
       <Text style={styles.chipText}>{children}</Text>
@@ -185,10 +203,12 @@ export function Chip({ children }) {
 }
 
 export function WorkoutHeading({ children, style, selectable }) {
+  const styles = useThemedStyles(createStyles);
   return <Text selectable={selectable} style={[styles.workoutHeading, style]}>{children}</Text>;
 }
 
 export function WorkoutSubheading({ children, selectable }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.subheadingContainer}>
       <Text selectable={selectable} style={styles.workoutSubheading}>{children}</Text>
@@ -198,6 +218,7 @@ export function WorkoutSubheading({ children, selectable }) {
 }
 
 export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabledTrack, selectable }) {
+  const styles = useThemedStyles(createStyles);
   const TrackContainer = (disabledTrack || !onToggleTrack) ? View : Pressable;
 
   return (
@@ -233,6 +254,7 @@ export function ExerciseBlock({ name, children, isTracked, onToggleTrack, disabl
 }
 
 export function SetLine({ sets, selectable, mark }) {
+  const styles = useThemedStyles(createStyles);
   const [plateWeight, setPlateWeight] = useState(null);
   const unit = useWeightUnit();
   if (!sets || sets.length === 0) return null;
@@ -288,6 +310,7 @@ export function SetLine({ sets, selectable, mark }) {
 // Muted, accessibility-labeled note line for a `--` comment stored beneath a
 // logged set row. Never affects parsed sets or exercise names — display only.
 export function AnnotationNote({ text, selectable }) {
+  const styles = useThemedStyles(createStyles);
   if (!text) return null;
   return (
     <Text
@@ -308,6 +331,7 @@ export function AnnotationNote({ text, selectable }) {
 // raw line and its recovery hint so screen-reader users get the same guidance
 // as the red text conveys visually (WCAG 1.4.1).
 export function UnparsedRow({ raw, error, muted, selectable }) {
+  const styles = useThemedStyles(createStyles);
   const rawStyle = muted ? styles.unparsedRowMuted : styles.unparsedRow;
   if (!error) {
     return (
@@ -336,6 +360,7 @@ export function UnparsedRow({ raw, error, muted, selectable }) {
 // with a visible, accessibility-labeled message so the failure is never
 // silent. No synthetic exercise/section is invented.
 export function NoteParseError({ message }) {
+  const styles = useThemedStyles(createStyles);
   const text = message || 'This note could not be parsed.';
   return (
     <View
@@ -349,10 +374,12 @@ export function NoteParseError({ message }) {
 }
 
 export function ArtisanalPanel({ children, style }) {
+  const styles = useThemedStyles(createStyles);
   return <View style={[styles.artisanalPanel, style]}>{children}</View>;
 }
 
 export function ErrorBanner({ message, onRetry }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.errorBanner}>
       <Text style={styles.errorBannerText}>{message || 'Failed to load data.'}</Text>
@@ -365,12 +392,12 @@ export function ErrorBanner({ message, onRetry }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   errorBanner: {
-    backgroundColor: '#fff0f0',
+    backgroundColor: colors.errorSurface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: colors.error,
     padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -380,68 +407,70 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.error,
+    color: colors.error,
   },
+  // Filled, so it takes the error *surface* tone rather than the direct error
+  // color: dark mode's `error` is a bright foreground red that cannot carry a
+  // textLight label.
   errorBannerRetry: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: Colors.error,
+    backgroundColor: colors.cardErrorBg,
   },
   errorBannerRetryText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   card: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 18,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     gap: 10,
   },
   artisanalPanel: {
-    backgroundColor: Colors.panelBackground,
+    backgroundColor: colors.panelBackground,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: Colors.divider,
-    shadowColor: Colors.text,
+    borderColor: colors.divider,
+    shadowColor: colors.text,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
     shadowRadius: 8,
     elevation: 2,
     overflow: 'hidden',
   },
-  // Filled accent/success/caution tone cards render light text (textLight), so
-  // they use the darkened card-only tone backgrounds
-  // (cardAccentBg/cardSuccessBg/cardCautionBg) tuned to meet WCAG AA 4.5:1.
-  // Error already passes with light text on Colors.error (5.36:1), so it keeps
-  // the palette color.
+  // Filled tone cards render light text (textLight), so every tone uses its
+  // mode-specific card surface (cardAccentBg/cardSuccessBg/cardCautionBg/
+  // cardErrorBg) rather than the direct status color. Each pair is tuned to
+  // WCAG AA 4.5:1 in both palettes and asserted in theme-rendering.test.js.
   cardAccent: {
-    backgroundColor: Colors.cardAccentBg,
-    borderColor: Colors.cardAccentBg,
+    backgroundColor: colors.cardAccentBg,
+    borderColor: colors.cardAccentBg,
   },
   cardSuccess: {
-    backgroundColor: Colors.cardSuccessBg,
-    borderColor: Colors.cardSuccessBg,
+    backgroundColor: colors.cardSuccessBg,
+    borderColor: colors.cardSuccessBg,
   },
   cardError: {
-    backgroundColor: Colors.error,
-    borderColor: Colors.error,
+    backgroundColor: colors.cardErrorBg,
+    borderColor: colors.cardErrorBg,
   },
   cardWarn: {
-    backgroundColor: Colors.cardCautionBg,
-    borderColor: Colors.cardCautionBg,
+    backgroundColor: colors.cardCautionBg,
+    borderColor: colors.cardCautionBg,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     marginTop: 6,
   },
   button: {
-    backgroundColor: Colors.text,
+    backgroundColor: colors.text,
     borderRadius: 18,
     paddingVertical: 16,
     paddingHorizontal: 24,
@@ -451,8 +480,11 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.45,
   },
+  // The pill is the palette `text`, so the label is the semantic contrasting
+  // ink: light mode stays dark pill / light label, dark mode inverts to light
+  // pill / dark label. Both exceed 4.5:1 (15.65:1 and 16.81:1).
   buttonText: {
-    color: Colors.textLight,
+    color: colors.buttonLabel,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -463,12 +495,12 @@ const styles = StyleSheet.create({
   sessionGauge: {
     flex: 1,
     gap: 10,
-    backgroundColor: Colors.panelBackground,
+    backgroundColor: colors.panelBackground,
   },
   sessionGaugePanelTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   sessionGaugeHeader: {
@@ -485,14 +517,14 @@ const styles = StyleSheet.create({
   sessionGaugeLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   sessionGaugeCount: {
     fontSize: 28,
     fontWeight: '900',
-    color: Colors.text,
+    color: colors.text,
   },
   sessionGaugeCountRow: {},
   sessionGaugeTotalStat: {},
@@ -525,7 +557,7 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderWidth: 3,
     transform: [{ translateX: -8 }],
   },
@@ -537,7 +569,7 @@ const styles = StyleSheet.create({
   gaugeZoneLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
@@ -555,47 +587,46 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   statValue: {
     fontSize: 28,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   textLight: {
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   // Trend badges render light text (textLight) for improved/held/regressed, so
-  // improved/held use the darkened tone backgrounds to meet WCAG AA 4.5:1
-  // (success #3a6035 -> 6.44:1, accent #96571c -> 5.09:1). regressed already
-  // passes with light text on Colors.error (5.36:1), so it keeps the palette tone.
+  // all three take the mode-specific filled tone surfaces rather than the
+  // direct status colors.
   badge_improved: {
-    backgroundColor: Colors.cardSuccessBg,
+    backgroundColor: colors.cardSuccessBg,
   },
   badge_regressed: {
-    backgroundColor: Colors.error,
+    backgroundColor: colors.cardErrorBg,
   },
   badge_held: {
-    backgroundColor: Colors.cardAccentBg,
+    backgroundColor: colors.cardAccentBg,
   },
   badge_first_session: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   badgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.chipText,
+    color: colors.chipText,
     textTransform: 'uppercase',
   },
   chip: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -603,12 +634,12 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   workoutHeading: {
     fontSize: 22,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
     marginTop: 24,
     marginBottom: 8,
     textTransform: 'capitalize',
@@ -623,14 +654,14 @@ const styles = StyleSheet.create({
   workoutSubheading: {
     fontSize: 14,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   subheadingLine: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.cardBorder,
+    backgroundColor: colors.cardBorder,
     opacity: 0.5,
   },
   exerciseBlock: {
@@ -646,7 +677,7 @@ const styles = StyleSheet.create({
   exerciseName: {
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     flex: 1,
   },
   trackToggle: {
@@ -654,27 +685,27 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     backgroundColor: 'transparent',
   },
   trackToggleActive: {
-    backgroundColor: Colors.chipBackground,
-    borderColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
+    borderColor: colors.chipBackground,
   },
   trackToggleDisabled: {
     opacity: 0.4,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   trackToggleText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   trackToggleTextActive: {
-    color: Colors.chipText,
+    color: colors.chipText,
   },
   trackToggleTextDisabled: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   exerciseContent: {
     paddingLeft: 4,
@@ -693,36 +724,36 @@ const styles = StyleSheet.create({
   setWeight: {
     fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   setReps: {
     fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '400',
-    color: Colors.text,
+    color: colors.text,
   },
   setMark: {
     fontSize: SET_ROW_FONT_SIZE,
     fontWeight: '400',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginLeft: 6,
   },
   annotationNote: {
     fontSize: SET_ROW_FONT_SIZE - 1,
     fontStyle: 'italic',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     paddingLeft: 0,
   },
   // Unparsed-row styles. unparsedRow/unparsedRowMuted keep the exact single
-  // color tokens the read view relied on before (Colors.error for unresolved
-  // lifting fallbacks, Colors.text otherwise) so per-mode color parity holds.
+  // color tokens the read view relied on before (colors.error for unresolved
+  // lifting fallbacks, colors.text otherwise) so per-mode color parity holds.
   unparsedRow: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.error,
+    color: colors.error,
     paddingLeft: 0,
   },
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.text,
+    color: colors.text,
     paddingLeft: 0,
   },
   unparsedGroup: {
@@ -736,22 +767,22 @@ const styles = StyleSheet.create({
   },
   unparsedGlyph: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.error,
+    color: colors.error,
   },
   unparsedGlyphMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   unparsedHint: {
     fontSize: SET_ROW_FONT_SIZE - 1,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     paddingLeft: 18,
   },
   noteParseError: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.error,
-    backgroundColor: Colors.panelBackground,
+    borderColor: colors.error,
+    backgroundColor: colors.panelBackground,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginTop: 8,
@@ -759,6 +790,6 @@ const styles = StyleSheet.create({
   noteParseErrorText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.error,
+    color: colors.error,
   },
 });

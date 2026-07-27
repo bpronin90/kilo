@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 
 // Editor-reachable workout syntax reference (#584, follow-up to #573).
@@ -10,6 +10,7 @@ import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 // same close handler (Android back). Opening/closing this overlay never
 // touches the underlying editor text, so unsaved edits are preserved.
 export function WorkoutSyntaxModal({ visible, onClose }) {
+  const styles = useThemedStyles(createStyles);
   if (!visible) return null;
 
   return (
@@ -39,19 +40,19 @@ export function WorkoutSyntaxModal({ visible, onClose }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(31,26,23,0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 40,
   },
   sheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     maxWidth: 420,
     maxHeight: '100%',
     width: '100%',
@@ -64,21 +65,21 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
+    borderBottomColor: colors.cardBorder,
     gap: 8,
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   closeBtn: {
     padding: 4,
   },
   closeBtnText: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
   },
   body: {

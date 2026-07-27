@@ -1,32 +1,37 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 
-export function formatOverload(trend) {
+// Pure render helper, not a component: it is called inline from AnalyticsScreen
+// rows rather than mounted, so it cannot hold a hook. The caller passes its own
+// active palette (#689).
+export function formatOverload(trend, colors) {
   switch (trend) {
-    case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={Colors.success} />;
-    case 'flat': return <Text style={{ color: Colors.caution, fontSize: 14 }}>↔</Text>;
-    case 'dash': return <Text style={{ color: Colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
-    case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={Colors.error}   />;
+    case 'up':   return <MaterialIcons name="arrow-upward"    size={16} color={colors.success} />;
+    case 'flat': return <Text style={{ color: colors.caution, fontSize: 14 }}>↔</Text>;
+    case 'dash': return <Text style={{ color: colors.caution, fontSize: 18, fontWeight: '900', lineHeight: 22 }}>—</Text>;
+    case 'down': return <MaterialIcons name="arrow-downward"  size={16} color={colors.error}   />;
     case 'baseline':
-    case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={Colors.textMuted} style={{ opacity: 0.4 }} />;
-    default:     return <Text style={{ color: Colors.textMuted, fontSize: 14 }}>—</Text>;
+    case 'first_session': return <MaterialIcons name="fiber-manual-record" size={8} color={colors.textMuted} style={{ opacity: 0.4 }} />;
+    default:     return <Text style={{ color: colors.textMuted, fontSize: 14 }}>—</Text>;
   }
 }
 
 export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
   const allDays = currentDay ? [currentDay, ...otherDays] : otherDays;
   return (
     <View style={styles.crossDayRow}>
       {allDays.map((day, i) => {
         const d = daySignals[day];
-        const trendColor = d?.overload_trend === 'up' ? Colors.success
-          : d?.overload_trend === 'down' ? Colors.error
-          : Colors.caution;
+        const trendColor = d?.overload_trend === 'up' ? colors.success
+          : d?.overload_trend === 'down' ? colors.error
+          : colors.caution;
         const trendChar = d?.overload_trend === 'up' ? '↑'
           : d?.overload_trend === 'down' ? '↓'
           : d?.overload_trend === 'flat' ? '↔' : null;
@@ -50,7 +55,7 @@ export function CrossDayComparison({ daySignals, currentDay, otherDays }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   crossDayRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -60,7 +65,7 @@ const styles = StyleSheet.create({
   },
   crossDaySep: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginHorizontal: 2,
   },
   crossDayChip: {
@@ -71,16 +76,16 @@ const styles = StyleSheet.create({
   crossDayChipLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     letterSpacing: 0.5,
   },
   crossDayChipLabelCurrent: {
-    color: Colors.text,
+    color: colors.text,
   },
   crossDayChipValue: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
   crossDayUnit: {

@@ -3,7 +3,7 @@ import render from 'react-test-renderer';
 import { LogScreen } from '../screens/LogScreen';
 import { MoreScreen } from '../screens/MoreScreen';
 import * as useEntries from '../hooks/useEntries';
-import { Colors } from '../theme/colors';
+import { LightColors } from '../theme/colors';
 
 jest.mock('expo-updates', () => ({
   useUpdates: () => ({ currentlyRunning: { isEmbeddedLaunch: true } }),
@@ -2300,9 +2300,9 @@ describe('A/B week: empty active card rendering', () => {
     const textNode = root.find(n => n.type === 'Text' && n.props.children === 'Raw B-week routine text');
     expect(textNode).toBeTruthy();
     
-    // Check that it does NOT have emptyText styling (which has textAlign: 'center'), and has unparsedRowMuted styling (color: Colors.text)
+    // Check that it does NOT have emptyText styling (which has textAlign: 'center'), and has unparsedRowMuted styling (color: LightColors.text)
     expect(textNode.props.style.textAlign).toBeUndefined();
-    expect(textNode.props.style.color).toBe(Colors.text);
+    expect(textNode.props.style.color).toBe(LightColors.text);
   });
 });
 
@@ -2339,7 +2339,7 @@ describe('WorkoutContentRenderer: per-mode parity with main', () => {
     root.find(n => n.type === 'Text' && n.props.children === 'garbage text');
 
   // Regression #3: past-deload view (isDeload, no mutedUnparsed) must keep red
-  // (unparsedRow / Colors.error) styling for unparsed lifting rows, like main:1423-1459.
+  // (unparsedRow / LightColors.error) styling for unparsed lifting rows, like main:1423-1459.
   test('past-deload view (isDeload only) renders unparsed lifting rows in error red', () => {
     let component;
     render.act(() => {
@@ -2347,7 +2347,7 @@ describe('WorkoutContentRenderer: per-mode parity with main', () => {
         <WorkoutContentRenderer dayGroups={liftingDayGroups} isDeload={true} />
       );
     });
-    expect(findRawText(component.root).props.style.color).toBe(Colors.error);
+    expect(findRawText(component.root).props.style.color).toBe(LightColors.error);
   });
 
   // Active deload editor card (isDeload + mutedUnparsed) was always muted on main.
@@ -2358,7 +2358,7 @@ describe('WorkoutContentRenderer: per-mode parity with main', () => {
         <WorkoutContentRenderer dayGroups={liftingDayGroups} isDeload={true} mutedUnparsed={true} />
       );
     });
-    expect(findRawText(component.root).props.style.color).toBe(Colors.text);
+    expect(findRawText(component.root).props.style.color).toBe(LightColors.text);
   });
 
   // Regression #4: read-only past-routine view passes no onToggleTrack. The renderer
@@ -2428,7 +2428,7 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
     );
     expect(noteNode).toBeTruthy();
     expect(noteNode.props.children).toBe('felt strong');
-    expect(noteNode.props.style.color).toBe(Colors.textMuted);
+    expect(noteNode.props.style.color).toBe(LightColors.textMuted);
   });
 
   test('a row with no annotation renders no mark or note text', () => {
@@ -2494,7 +2494,7 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
     );
     expect(noteNode).toBeTruthy();
     expect(noteNode.props.children).toBe('RPE 9');
-    expect(noteNode.props.style.color).toBe(Colors.textMuted);
+    expect(noteNode.props.style.color).toBe(LightColors.textMuted);
 
     // The set row still renders (225 lb), and the prose never appears as raw text.
     const weightNodes = component.root.findAll(
@@ -3936,7 +3936,7 @@ describe('#616: WorkoutContentRenderer surfaces parser errors', () => {
       n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.includes('too large to parse')
     );
     expect(bannerText).toBeTruthy();
-    expect(bannerText.props.style.color).toBe(Colors.error);
+    expect(bannerText.props.style.color).toBe(LightColors.error);
   });
 
   test('a non-weight unparsed row gets no error glyph (it is not a syntax error)', () => {

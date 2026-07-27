@@ -516,8 +516,8 @@ The real native app path now has a modular React Native shell:
   `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
   (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions
   are no longer shown there. The Settings screen groups its
-  controls into `Features`, `Reminders`, `Units`, `Date Editing`, and
-  `Advanced`:
+  controls into `Features`, `Reminders`, `Appearance`, `Units`, `Date Editing`,
+  and `Advanced`:
   persisted `Fatigue tracking` and `Deload mode` switches let users disable
   those optional workout-side flows without deleting their saved check-ins,
   deload note, or deload history; `Daily weigh-in reminder` and `Workout day
@@ -525,7 +525,10 @@ The real native app path now has a modular React Native shell:
   OS notification permission only when enabled, cancel their own scheduled
   notifications when disabled, and keep workout nudges on weekday sections
   inferred from the active routine note or user-selected fallback weekdays when
-  inference is ambiguous; the `Weight unit` selector defaults to lb and lets
+  inference is ambiguous; the `Appearance` section exposes a three-way
+  `Light` / `Dark` / `System` segmented control that defaults to `System`,
+  persists locally, and repaints the whole app immediately (see the appearance
+  entry below); the `Weight unit` selector defaults to lb and lets
   users opt into kg display and entry while leaving stored values and workout
   note text lb-canonical; `Edit weigh-in dates` governs whether the Weight tab
   exposes date controls for new and existing weigh-ins; `Edit deload dates`
@@ -660,7 +663,30 @@ The real native app path now has a modular React Native shell:
   during shared-shell scrolling, restoring a solid treatment during direct
   interaction, and then settling back after a short timeout
 - `mobile/assets/brand/` contains the bundled native logo and wordmark assets
-- `mobile/theme/colors.js` centralizes the native color system
+- `mobile/theme/colors.js` defines the two shipped appearance palettes —
+  refreshed Light and Dark (indigo) — which share the brand-orange accent
+  `#d98d42` and expose the same semantic role names, including the derived
+  filled-tone (`cardAccentBg` / `cardSuccessBg` / `cardCautionBg` /
+  `cardErrorBg`), `buttonLabel`, `onAccent`, `errorSurface`, `cautionSurface`,
+  `roughBackground`, and `overlay` tokens whose label contrast is asserted at
+  WCAG AA 4.5:1 in both modes. There is no static `Colors` export and no mutable
+  global palette
+- `mobile/lib/themePreference.js` is the AsyncStorage-backed appearance
+  preference store (`light` / `dark` / `system`, defaulting to `system` when
+  missing or invalid, persisted at `kilo.appearance_preference`). It mirrors
+  the `unitPreference.js` pattern: a synchronous in-memory value plus a
+  subscriber set, so a selection repaints subscribed UI on the same tick,
+  while a failed hydration or write falls back to the current value instead of
+  throwing
+- `mobile/theme/ThemeContext.js` provides `ThemeProvider` / `useTheme()` /
+  `useThemedStyles()`. `system` resolves through React Native
+  `useColorScheme()` and follows a live OS scheme change; the provider is
+  mounted in `App.js` above the app shell so the container, safe area, status
+  bar, tab bar, every screen, and every modal share one resolved palette.
+  Screens build their sheets from module-level `createStyles(colors)` factories
+  cached per palette, so a mode change never needs an app reload. The only
+  intentionally unthemed color left in production is the `#FF5C00` Kilo
+  wordmark accent
 - `mobile/lib/parser.js` / `mobile/lib/parser/` — parser barrel and domain
   implementations. Ports the MVP canonical parser path into native ES
   modules and now also includes tolerant workout-note parsing for the archived

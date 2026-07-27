@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
-import { Colors } from '../../theme/colors';
+import { useThemedStyles } from '../../theme/ThemeContext';
 import { CONSENT_COPY, fetchActiveConsentRevision, grantConsent } from '../../storage/cloud/consent';
 
 // The dedicated Art. 9(2)(a) explicit-consent surface (issue #487).
@@ -24,6 +24,7 @@ import { CONSENT_COPY, fetchActiveConsentRevision, grantConsent } from '../../st
 // grant. A client-side "yes" that was never recorded is not a lawful basis, so a
 // failed grant must leave sync off rather than optimistically queueing an upload.
 export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
+  const styles = useThemedStyles(createStyles);
   const [affirmed, setAffirmed] = useState(false);
   const [revision, setRevision] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -130,18 +131,18 @@ export function HealthDataConsent({ onGranted, onDecline, appVersion }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   block: {
     gap: 12,
   },
   disclosure: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
   },
   link: {
     fontSize: 15,
-    color: Colors.accent,
+    color: colors.accent,
     textDecorationLine: 'underline',
   },
   affirmRow: {
@@ -155,17 +156,17 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: Colors.textMuted,
+    borderColor: colors.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   checkboxChecked: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accent,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
   },
   checkmark: {
-    color: Colors.background,
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 16,
@@ -173,12 +174,12 @@ const styles = StyleSheet.create({
   affirmText: {
     flex: 1,
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
   },
   status: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 8,
   },
 });

@@ -2,7 +2,7 @@ import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { useWeightUnit } from '../lib/unitPreference';
 import { formatLiftWeightValue } from '../lib/units';
 import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
@@ -10,6 +10,7 @@ import { WorkoutSyntaxReference } from './WorkoutSyntaxReference';
 const LOGO = require('../assets/brand/logo.png');
 
 export function HelpScreen({ onBack }) {
+  const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
   // The 1,000 lb club is lb-defined; show its display-space equivalent when kg
   // is selected (#441). The lb copy keeps its original "1,000 lb" formatting.
@@ -132,7 +133,7 @@ export function HelpScreen({ onBack }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -145,13 +146,13 @@ const styles = StyleSheet.create({
   helpHeading: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 4,
   },
   helpText: {
     fontSize: 15,
     lineHeight: 22,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   tabRow: {
     marginBottom: 16,
@@ -159,12 +160,12 @@ const styles = StyleSheet.create({
   tabName: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     marginBottom: 3,
   },
   tabDesc: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   termRow: {
@@ -173,12 +174,12 @@ const styles = StyleSheet.create({
   termLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
     marginBottom: 2,
   },
   termDesc: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
 });

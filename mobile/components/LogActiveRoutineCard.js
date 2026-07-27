@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
 export function LogActiveRoutineCard({
@@ -26,6 +26,7 @@ export function LogActiveRoutineCard({
   roughFlaggedNames,
   activeEditText,
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.mirrorContainer}>
       <Card style={styles.currentRoutineCard}>
@@ -117,15 +118,19 @@ export function LogActiveRoutineCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   mirrorContainer: {
     paddingBottom: 2,
   },
+  // The one card that deviates from the shared 1px cardBorder: the current
+  // routine keeps a 4px accent border on all sides in both modes so the active
+  // note stays identifiable at a glance (#689). Ordinary cards are never
+  // special-cased this way.
   currentRoutineCard: {
     padding: 0,
     overflow: 'hidden',
     borderWidth: 4,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.accent,
   },
   otherNoteHeader: {
     flexDirection: 'row',
@@ -140,32 +145,32 @@ const styles = StyleSheet.create({
   currentNoteTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.accent,
+    color: colors.accent,
   },
   otherNoteSub: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   currentNoteContent: {
     paddingHorizontal: 24,
     paddingBottom: 24,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
   },
   editHintRow: {
     flexDirection: 'row',
@@ -175,7 +180,7 @@ const styles = StyleSheet.create({
   },
   editHint: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   skipWeekActions: {
     flexDirection: 'row',
@@ -183,14 +188,14 @@ const styles = StyleSheet.create({
   },
   skipWeekText: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   skipWeekTextDisabled: {
     opacity: 0.4,
   },
   skipWeekStatusText: {
     fontSize: 11,
-    color: Colors.accent,
+    color: colors.accent,
     marginBottom: 8,
     marginTop: -4,
   },

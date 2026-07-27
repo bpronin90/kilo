@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { Button, SectionTitle } from '../../components/UI';
-import { Colors } from '../../theme/colors';
+import { useThemedStyles } from '../../theme/ThemeContext';
 import { useSyncRecovery, useCloudExport } from '../../hooks/useEntries';
 import * as Storage from '../../storage/entries';
 import { SYNC_STATUS } from '../../storage/syncRecovery';
@@ -24,6 +24,7 @@ import appConfig from '../../app.json';
 // non-destructive retry only when a phase has failed. There are deliberately no
 // admin/support controls here — only the signed-in user's own retry/export.
 export function CloudSyncRecovery({ user, onConsentDismiss }) {
+  const styles = useThemedStyles(createStyles);
   const { bootstrap, sync, runBootstrap, runSync, retryBootstrap, retrySync } =
     useSyncRecovery(user);
   const { exportCloud } = useCloudExport();
@@ -495,7 +496,7 @@ export function CloudSyncRecovery({ user, onConsentDismiss }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   accountBlock: {
     gap: 12,
   },
@@ -504,19 +505,19 @@ const styles = StyleSheet.create({
   },
   accountNote: {
     fontSize: 15,
-    color: Colors.text,
+    color: colors.text,
     lineHeight: 22,
     marginBottom: 12,
   },
   phaseDesc: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
     marginTop: -2,
   },
   accountStatus: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 16,
   },
   syncRow: {
@@ -528,11 +529,11 @@ const styles = StyleSheet.create({
   syncLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: Colors.text,
+    color: colors.text,
   },
   syncValue: {
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     flexShrink: 1,
     textAlign: 'right',
     marginLeft: 12,

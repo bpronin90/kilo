@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WorkoutHeading, WorkoutSubheading, ExerciseBlock, SetLine, AnnotationNote, UnparsedRow, NoteParseError, SET_ROW_FONT_SIZE } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName } from '../lib/data';
 
 export function WorkoutContentRenderer({
@@ -17,6 +17,7 @@ export function WorkoutContentRenderer({
   emptyText = "Add some exercises to see the formatted view.",
   altWeekText = ""
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <>
       {noteError ? <NoteParseError message={noteError} /> : null}
@@ -165,26 +166,26 @@ export function WorkoutContentRenderer({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   // Retained for the alt-week raw-text preview shown when the inactive A/B
   // week has no parsed content; unparsed set rows themselves now render via
   // the shared `UnparsedRow` component.
   unparsedRowMuted: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.text,
+    color: colors.text,
     paddingLeft: 0,
   },
   skipMarker: {
     fontSize: SET_ROW_FONT_SIZE,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   flaggedExercise: {
     borderLeftWidth: 3,
-    borderLeftColor: Colors.error,
+    borderLeftColor: colors.error,
     marginLeft: -3,
   },
   emptyText: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: 16,
     textAlign: 'center',
     marginTop: 40,

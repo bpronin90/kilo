@@ -224,6 +224,48 @@ different or unavailable surfaces.
   product roadmap question, not a UX-writing question. Keep empty-state and help
   copy narrowly scoped to what is actually shipped and reachable today.
 
+## 13. Appearance modes and semantic color (#689)
+
+Kilo ships Light and Dark (indigo) appearances plus a System option. Every UI
+change must work in both palettes. Concrete values live in
+`docs/design-system-map.md`.
+
+- **Never write a literal color into a screen or component.** Read the active
+  palette with `useTheme()` and build the sheet with
+  `useThemedStyles(createStyles)`, where `createStyles` is a module-level
+  `(colors) => StyleSheet.create({ ... })` factory. A module-scope
+  `StyleSheet.create()` captures values at import time and cannot repaint on a
+  mode change, so it is an anti-pattern under this rule.
+
+- **There is no static palette import and no mutable global palette.** A helper
+  that renders JSX but cannot hold a hook (for example `formatOverload`) takes
+  `colors` as a parameter from its calling component; it does not reach for a
+  module-level object.
+
+- **Use the semantic token, not the nearest-looking one.** `success`, `caution`,
+  and `error` are *direct status* colors for marks, dots, meter segments, and
+  colored text — dark mode makes them deliberately bright. A *filled* surface
+  that carries a `textLight` label must use its `card*Bg` counterpart instead;
+  a *tinted* surface uses `errorSurface` / `cautionSurface` with the paired ink.
+  Text on an accent fill uses `onAccent`; the shared Button's label uses
+  `buttonLabel`.
+
+- **Any new filled surface + label pairing needs a recorded contrast ratio.**
+  Add the measured value to the derived-token table in
+  `docs/design-system-map.md` and an assertion in
+  `mobile/tests/theme-rendering.test.js`. Normal text targets WCAG AA 4.5:1 in
+  both modes.
+
+- **Card borders stay uniform.** Every ordinary card uses the shared 1px
+  `cardBorder`; in dark mode that border is accent-tinted for all of them. The
+  only sanctioned deviation is the current-routine card's 4px `accent` border.
+
+- **The only intentionally fixed color is the `#FF5C00` Kilo wordmark accent.**
+  Anything else hardcoded is a bug.
+
+- **No surface may require a reload.** A preference change or an OS scheme
+  change must repaint the shell, every screen, and every modal immediately.
+
 ### Ownership pause (active policy)
 
 Do not assign new UI implementation issues to `agent:gemini` until the repo

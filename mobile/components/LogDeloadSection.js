@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Card, Button, SectionTitle } from './UI';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -29,6 +29,7 @@ export function LogDeloadSection({
   handleOpenOtherNote,
   logSessionCount,
 }) {
+  const styles = useThemedStyles(createStyles);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
   const [expandedDeloads, setExpandedDeloads] = useState(new Set());
   const [showDeloadOrdinalPrompt, setShowDeloadOrdinalPrompt] = useState(false);
@@ -311,15 +312,15 @@ export function LogDeloadSection({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   errorText: {
-    color: Colors.error,
+    color: colors.error,
     fontSize: 14,
     fontWeight: '600',
   },
   errorCard: {
-    borderColor: Colors.error,
-    backgroundColor: '#fff0f0',
+    borderColor: colors.error,
+    backgroundColor: colors.errorSurface,
     padding: 12,
     marginBottom: 8,
   },
@@ -330,7 +331,7 @@ const styles = StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
     borderWidth: 4,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   otherNoteHeader: {
     flexDirection: 'row',
@@ -345,21 +346,21 @@ const styles = StyleSheet.create({
   otherNoteTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   currentNoteTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.accent,
+    color: colors.accent,
   },
   otherNoteSub: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
   },
   editHint: {
     fontSize: 11,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginBottom: 8,
   },
   currentNoteContent: {
@@ -367,20 +368,20 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   inlineSwitchButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.accent,
+    color: colors.accent,
   },
   previousRoutines: {
     marginTop: 4,
@@ -389,18 +390,18 @@ const styles = StyleSheet.create({
   generateButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   generateButtonText: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   deleteActiveButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.error,
+    borderColor: colors.error,
   },
   deleteActiveButtonText: {
-    color: Colors.error,
+    color: colors.error,
   },
   deloadEmpty: {
     marginTop: 40,
@@ -409,7 +410,7 @@ const styles = StyleSheet.create({
   },
   deloadEmptyText: {
     fontSize: 16,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   pastDeloads: {
@@ -421,19 +422,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   pastDeloadDeleteText: {
-    color: Colors.error,
+    color: colors.error,
     fontSize: 14,
     fontWeight: '600',
   },
   pastDeloadContent: {
     fontSize: 13,
-    color: Colors.text,
+    color: colors.text,
     fontFamily: 'monospace',
     paddingHorizontal: 24,
     paddingBottom: 20,
     paddingTop: 4,
     borderTopWidth: 1,
-    borderTopColor: Colors.cardBorder,
+    borderTopColor: colors.cardBorder,
   },
   inlineActions: {
     paddingHorizontal: 16,
@@ -443,45 +444,45 @@ const styles = StyleSheet.create({
   switchButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   switchButtonText: {
-    color: Colors.accent,
+    color: colors.accent,
   },
   ordinalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(31,26,23,0.55)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   ordinalSheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
     padding: 24,
     gap: 12,
   },
   ordinalTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
   },
   ordinalSubtitle: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
   },
   ordinalInput: {
-    backgroundColor: Colors.inputBackground,
+    backgroundColor: colors.inputBackground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: colors.inputBorder,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 20,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
   },
   ordinalButtons: {
@@ -494,25 +495,25 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: colors.cardBorder,
   },
   ordinalCancelText: {
     fontSize: 15,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   ordinalConfirm: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: Colors.accent,
+    backgroundColor: colors.accent,
   },
   ordinalConfirmText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#fff',
+    color: colors.onAccent,
   },
 });

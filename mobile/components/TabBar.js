@@ -1,10 +1,11 @@
 import React, { useContext, useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
-import { Colors } from '../theme/colors';
+import { useThemedStyles } from '../theme/ThemeContext';
 import { TAB_BAR_VISUAL_GAP } from './TabBarLayout';
 
 export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeightChange }) {
+  const styles = useThemedStyles(createStyles);
   const { bottom: bottomInset = 0 } = useContext(SafeAreaInsetsContext) || {};
 
   const handleLayout = (e) => {
@@ -90,19 +91,19 @@ export function TabBar({ tabs, activeTab, onTabPress, addScrollListener, onHeigh
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     position: 'absolute',
     left: 16,
     right: 16,
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: Colors.card,
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 8,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    shadowColor: '#000',
+    borderColor: colors.cardBorder,
+    shadowColor: colors.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -115,14 +116,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabActive: {
-    backgroundColor: Colors.chipBackground,
+    backgroundColor: colors.chipBackground,
   },
   tabText: {
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   tabTextActive: {
-    color: Colors.chipText,
+    color: colors.chipText,
   },
 });

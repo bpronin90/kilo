@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
 import Svg, { Polyline, Circle, Rect, G, Line } from 'react-native-svg';
-import { Colors } from '../theme/colors';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 
 export function LineChart({
   data = [],
@@ -9,10 +9,17 @@ export function LineChart({
   paddingVertical = 10,
   paddingHorizontal = 10,
   strokeWidth = 3,
-  color = Colors.accent,
+  color,
   hideHeader = false,
   onSelect,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  // Resolved here, not as a parameter default: parameter initializers evaluate
+  // before the function body, so `colors.accent` in the signature would hit the
+  // body-scoped `colors` binding in its temporal dead zone and throw for every
+  // caller that omits `color` (#689).
+  const strokeColor = color || colors.accent;
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [chartWidth, setChartWidth] = useState(0);
 
@@ -82,7 +89,7 @@ export function LineChart({
               <Polyline
                 points={points}
                 fill="none"
-                stroke={color}
+                stroke={strokeColor}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -93,8 +100,8 @@ export function LineChart({
                   cx={getX(i)}
                   cy={getY(d.value)}
                   r={i === displayIndex ? 5 : 3}
-                  fill={i === displayIndex ? color : Colors.card}
-                  stroke={color}
+                  fill={i === displayIndex ? strokeColor : colors.card}
+                  stroke={strokeColor}
                   strokeWidth={2}
                 />
               ))}
@@ -106,7 +113,7 @@ export function LineChart({
                     y1={0}
                     x2={getX(i)}
                     y2={height}
-                    stroke={Colors.textMuted}
+                    stroke={colors.textMuted}
                     strokeWidth={1}
                     strokeDasharray="2,3"
                     opacity={0.5}
@@ -120,7 +127,7 @@ export function LineChart({
                     y={0}
                     width={2}
                     height={height}
-                    fill={color}
+                    fill={strokeColor}
                     opacity={0.2}
                   />
                 </G>
@@ -142,7 +149,7 @@ export function LineChart({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     marginVertical: 10,
   },
@@ -155,42 +162,42 @@ const styles = StyleSheet.create({
   latestLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   latestValue: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
   unit: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginLeft: 2,
   },
   noData: {
     textAlign: 'center',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     marginTop: 20,
   },
   dateLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
   selectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
   selectionValue: {
     fontWeight: '800',
-    color: Colors.text,
+    color: colors.text,
   },
 });

@@ -63,7 +63,9 @@ jest.mock('../components/UI', () => {
   return {
     Button: ({ title, accessibilityLabel, onPress }) => React.createElement(View, { accessibilityLabel, onPress }, React.createElement(Text, null, title)),
     SectionTitle: ({ children }) => React.createElement(View, null, React.createElement(Text, null, children)),
-    InputStyle: {},
+    // #689: the static InputStyle object became a palette factory / hook pair.
+    createInputStyle: () => ({}),
+    useInputStyle: () => ({}),
   };
 });
 jest.mock('../hooks/useEntries', () => ({
