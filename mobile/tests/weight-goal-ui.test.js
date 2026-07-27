@@ -16,7 +16,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@expo/vector-icons/MaterialIcons', () => {
   const React = require('react');
   return { __esModule: true, default: () => null };
-}, { virtual: true });
+});
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
@@ -33,7 +33,16 @@ jest.mock('../hooks/entries/weightHooks');
 // Aug 2, 2026 is exactly 10 weeks later.
 // Use local time construction to ensure the date is the same across all timezones.
 const MOCK_NOW = new Date(2026, 4, 24, 12, 0, 0);
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
+// Fake timers are installed per-test, not at module scope: a module-scope
+// jest.useFakeTimers() contaminates React/react-test-renderer scheduler state
+// during import-graph evaluation, which then leaks across Jest's shared worker
+// into the next test file (#679).
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 import { deriveWeightGoalAnalytics } from '../lib/data';
 

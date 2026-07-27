@@ -149,7 +149,16 @@ jest.mock('../hooks/useEntries', () => {
 const useEntries = require('../hooks/useEntries');
 
 const MOCK_NOW = new Date('2026-07-07T12:00:00Z');
-jest.useFakeTimers().setSystemTime(MOCK_NOW);
+// Fake timers are installed per-test, not at module scope: a module-scope
+// jest.useFakeTimers() contaminates React/react-test-renderer scheduler state
+// during import-graph evaluation, which then leaks across Jest's shared worker
+// into the next test file (#679).
+beforeEach(() => {
+  jest.useFakeTimers().setSystemTime(MOCK_NOW);
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 function makeHomeProps(overrides = {}) {
   return {
