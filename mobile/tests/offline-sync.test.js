@@ -604,9 +604,22 @@ function driveHook(useHook) {
   return ref;
 }
 
+// A single `await Promise.resolve()` only advances the microtask queue by one
+// tick. The on-mount refresh this is meant to settle (e.g. useDeloadHistory's
+// effect) chains AsyncStorage.getItem() -> multiGet() -> .then(setState) ->
+// .finally(setLoading) — several microtask hops deep. One tick leaves that
+// chain's tail still pending when the test proceeds, so later state updates
+// land outside `act()` and race the still-resolving mount promise. Under
+// sharded/CPU-contended runs that extra untracked work occasionally lands late
+// enough to blow the test's wall-clock timeout even though no operation is
+// individually slow. `setImmediate` schedules a macrotask, and Node always
+// drains the entire microtask queue before running the next macrotask, so
+// waiting on it (inside `act()`, so React sees every resulting update) fully
+// settles the on-mount promise chain, however many hops deep, rather than
+// gambling on a fixed number of manual ticks.
 async function flushAsync() {
   await TestRenderer.act(async () => {
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
   });
 }
 
