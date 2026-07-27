@@ -1941,19 +1941,123 @@ describe('A/B week for non-current routines: viewing projection and per-note per
     );
   });
 
-  test('creating a --- boundary while editing a plain note exposes A/B controls without losing text', () => {
+  test('creating a --- boundary while editing, switching to Week B and authoring it, preserves both bodies', () => {
     const { Harness, get } = makeHarness();
     const note = { id: 'r1', title: 'R', raw_text: PLAIN_RAW };
     render.act(() => { render.create(<Harness notes={[note]} update={jest.fn()} />); });
     render.act(() => { get().hook.handleOpenOtherNote(note); });
     expect(get().hook.editingHasABWeeks).toBe(false);
 
+    // Creating the boundary: typing '---' turns the plain note into an A/B note.
     render.act(() => {
-      get().hook.setEditingText('MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n');
+      get().hook.setEditingText('MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5');
+    });
+    expect(get().hook.editingHasABWeeks).toBe(true);
+    expect(get().hook.editingEffectiveWeek).toBe('A');
+    expect(get().hook.editingText).toContain('Squat');
+    expect(get().hook.editingText).not.toContain('Deadlift');
+
+    // The editing-week toggle (handleToggleEditingWeek) must now be usable: switch
+    // to Week B and author it.
+    render.act(() => { get().hook.handleToggleEditingWeek(); });
+    expect(get().hook.editingEffectiveWeek).toBe('B');
+    expect(get().hook.editingText).toContain('Deadlift');
+    expect(get().hook.editingText).not.toContain('Squat');
+
+    render.act(() => { get().hook.setEditingText('MONDAY\n-Deadlift 5x5'); });
+
+    // Switching back to Week A must show the original, untouched Week A body —
+    // neither side lost any text across the create/switch/author cycle.
+    render.act(() => { get().hook.handleToggleEditingWeek(); });
+    expect(get().hook.editingEffectiveWeek).toBe('A');
+    expect(get().hook.editingText).toBe('MONDAY\n-Squat 3x5');
+
+    render.act(() => { get().hook.handleToggleEditingWeek(); });
+    expect(get().hook.editingText).toBe('MONDAY\n-Deadlift 5x5');
+  });
+
+  test('reopening a note whose --- boundary has been removed reconciles the controls without losing text', () => {
+    const { Harness, get } = makeHarness();
+    const abNote = { id: 'r1', title: 'R', raw_text: AB_RAW, activeWeek: 'B' };
+    render.act(() => { render.create(<Harness notes={[abNote]} update={jest.fn()} />); });
+    render.act(() => { get().hook.handleOpenOtherNote(abNote); });
+    expect(get().hook.editingHasABWeeks).toBe(true);
+    expect(get().hook.editingEffectiveWeek).toBe('B');
+
+    // The boundary is gone by the time the note is reopened (e.g. removed through
+    // some other save path). Reconciliation must show the full remaining text with
+    // no toggle and no data loss, not crash or silently drop content.
+    const mergedNoBoundary = { id: 'r1', title: 'R', raw_text: 'MONDAY — Push\n-DB Bench Press 3x8\nMONDAY — Home\n-DB Floor Press 3x8\n' };
+    render.act(() => { get().hook.handleOpenOtherNote(mergedNoBoundary); });
+
+    expect(get().hook.editingHasABWeeks).toBe(false);
+    expect(get().hook.editingEffectiveWeek).toBe(null);
+    expect(get().hook.editingText).toBe(mergedNoBoundary.raw_text);
+  });
+});
+
+describe('LogScreen editor header: editing-week toggle for non-current A/B notes (#687 review feedback)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const getInput = (root) =>
+    root.findAll(n => n.props && n.props.multiline === true && typeof n.props.onChangeText === 'function')[0];
+
+  test('typing a --- boundary into a new routine reveals an accessible Week toggle; switching weeks preserves both bodies', () => {
+    const currentNote = { id: 'current1', title: 'Current', raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5' };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote],
+      currentId: 'current1',
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn(),
+      add: jest.fn().mockResolvedValue({ id: 'new1' }),
+      remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // No toggle before there is any A/B routine open in the editor.
+    expect(findPressableByText(root, 'Week B')).toBeNull();
+
+    render.act(() => { findPressableByText(root, '+ New routine').props.onPress(); });
+
+    render.act(() => {
+      getInput(root).props.onChangeText('MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8');
     });
 
-    expect(get().hook.editingHasABWeeks).toBe(true);
-    expect(get().hook.editingText).toContain('Squat');
+    // The boundary now exists: the editing-week toggle must appear, accessibly.
+    const toggleToB = findPressableByText(root, 'Week B');
+    expect(toggleToB).toBeTruthy();
+    expect(toggleToB.props.accessibilityRole).toBe('button');
+    expect(toggleToB.props.accessibilityLabel).toBe('Switch to Week B');
+    expect(toggleToB.props.accessibilityState).toEqual({ selected: false });
+    expect(getInput(root).props.value).toBe('MONDAY — Push\n-DB Bench Press 3x8');
+
+    render.act(() => { toggleToB.props.onPress(); });
+    expect(getInput(root).props.value).toBe('MONDAY — Home\n-DB Floor Press 3x8');
+
+    render.act(() => { getInput(root).props.onChangeText('MONDAY — Home\n-DB Floor Press 4x8'); });
+
+    // Switch back to Week A: its body must be exactly as authored, untouched by
+    // the Week-B edit — neither side lost any text.
+    const toggleToA = findPressableByText(root, 'Week A');
+    expect(toggleToA.props.accessibilityState).toEqual({ selected: true });
+    render.act(() => { toggleToA.props.onPress(); });
+    expect(getInput(root).props.value).toBe('MONDAY — Push\n-DB Bench Press 3x8');
   });
 });
 

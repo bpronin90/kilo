@@ -290,6 +290,19 @@ export function LogScreen({
         }
         headerRight={
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {otherEditor.editingNoteId && otherEditor.editingHasABWeeks && (
+              <Pressable
+                onPress={otherEditor.handleToggleEditingWeek}
+                style={[styles.modeToggle, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.cardBorder, marginRight: 8 }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Switch to Week ${otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                accessibilityState={{ selected: otherEditor.editingEffectiveWeek === 'B' }}
+              >
+                <Text style={[styles.modeToggleText, { color: Colors.accent }]}>
+                  Week {otherEditor.editingEffectiveWeek === 'B' ? 'A' : 'B'}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               onPress={
                 deloadEditor.deloadMode === 'edit' ? deloadEditor.handleUndoDeload :
