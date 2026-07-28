@@ -27,7 +27,7 @@
 
 begin;
 
-select plan(21);
+select plan(23);
 
 \set granted   '11111111-1111-1111-1111-111111111111'
 \set reconsent '22222222-2222-2222-2222-222222222222'
@@ -60,6 +60,14 @@ on conflict (user_id) do update set status = excluded.status;
 -- The granted account has live cloud health data. It must survive.
 insert into kilo.weight_entries (user_id, id, weight_value)
   values (:'granted'::uuid, 'g1', 80), (:'granted'::uuid, 'g2', 81);
+
+-- The deletion_pending account has leftover recovery data (#694): its previous
+-- purge attempt failed with rows still present, which is precisely the state the
+-- operator re-enqueue path exists to recover from.
+insert into kilo.recovery_blocks (user_id, id, baseline_note_id, baseline)
+  values (:'pending'::uuid, 'rb-left', 'wn-baseline', '{"version": 1, "exercises": []}'::jsonb);
+insert into kilo.recovery_block_weeks (user_id, id, block_id, note_id, week_number)
+  values (:'pending'::uuid, 'rw-left', 'rb-left', 'wn-week-1', 1);
 
 -- A legitimate, recoverable failed withdrawal job for the deletion_pending user.
 insert into kilo.health_data_deletion_jobs (user_id, reason, status, attempts,
@@ -184,6 +192,25 @@ select ok(
 select ok(
   (select next_attempt_at <= now() from kilo.health_data_deletion_jobs where user_id = :'pending'::uuid),
   'the rearmed job is due now, not sitting out its backoff window'
+);
+
+-- The re-enqueue result is what an operator reads to decide whether the recovery
+-- actually has work to do. Its `table_counts` come from
+-- kilo.health_data_row_counts(), so recovery rows are only visible there while
+-- the recovery collections are in kilo.health_gated_tables() (#694). Before that,
+-- an account whose ONLY leftover health data was recovery metadata reported all
+-- zeroes, and the operator would have read a clean bill of health for an
+-- unfinished erasure.
+select ok(
+  (kilo.reenqueue_health_deletion(:'pending'::uuid) -> 'table_counts')
+    @> '{"recovery_blocks": 1, "recovery_block_weeks": 1}'::jsonb,
+  'the re-enqueue reports leftover recovery rows as remaining health data'
+);
+
+select is(
+  (select count(*) from kilo.health_data_deletion_jobs where user_id = :'pending'::uuid),
+  1::bigint,
+  'the repeated re-enqueue is idempotent: still exactly one job'
 );
 
 -- ---------------------------------------------------------------------------

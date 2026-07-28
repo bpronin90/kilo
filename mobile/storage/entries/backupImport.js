@@ -41,8 +41,18 @@ import {
   saveWorkoutCollapsed,
 } from './settings';
 import { loadDeloadNote, saveDeloadNote } from './deloadStorage';
+import {
+  loadRecoveryBlocksRaw,
+  replaceRecoveryBlocksRaw,
+  loadRecoveryBlockWeeksRaw,
+  replaceRecoveryBlockWeeksRaw,
+} from './recoveryStorage';
+import { RECOVERY_BASELINE_VERSION } from '../../lib/data/recoveryBlocks';
 
-const BACKUP_VERSION = '3';
+// v4 adds the two recovery collections (#694). Everything a v3 file carries is
+// unchanged, so a v4 file is a strict superset and a v3 importer would simply
+// ignore the two new keys.
+const BACKUP_VERSION = '4';
 const CLOUD_EXPORT_FORMAT = 'cloud-1';
 const CLOUD_FEATURE_TOGGLE_KEYS = [
   'weight_date_edit_enabled',
@@ -58,7 +68,65 @@ const PROFILE_ALLOWLIST = [...PROFILE_STRING_FIELDS, 'height_cm'];
 // Sanity bound for an imported height. Anything outside it is malformed input,
 // not a real person, and would poison the BMR/TDEE calculation.
 const MAX_IMPORT_HEIGHT_CM = 300;
-const SUPPORTED_VERSIONS = new Set(['1', '2', BACKUP_VERSION]);
+const SUPPORTED_VERSIONS = new Set(['1', '2', '3', BACKUP_VERSION]);
+
+// Which versions carry which collections. Stated as sets rather than as
+// `version === BACKUP_VERSION` comparisons because every one of those
+// comparisons silently changes meaning the moment the format is bumped: before
+// #694 the deload-history restore was written as `version === BACKUP_VERSION`,
+// so bumping to '4' would have stopped restoring deload history from a v3 file
+// without a single test failing.
+//
+// The rule these encode: a backup that PREDATES a collection says nothing about
+// it, and silence is never an instruction to delete.
+const NOTEBOOK_VERSIONS = new Set(['2', '3', '4']);
+const DELOAD_HISTORY_VERSIONS = new Set(['3', '4']);
+const RECOVERY_VERSIONS = new Set(['4']);
+
+// Explicit field allowlists for the two recovery collections, in both
+// directions. Export projects each record through them so a stray local field
+// can never leak into a shareable artifact, and import rebuilds each record from
+// them so a hand-edited file cannot write an unknown key into local storage —
+// the same discipline #471/#475/#488 applied to the profile block.
+//
+// These are the exact columns kilo.recovery_blocks / kilo.recovery_block_weeks
+// hold, minus the server-owned `sync_xid` and the device-owned `client_id`.
+const RECOVERY_BLOCK_FIELDS = [
+  'id',
+  'baseline_note_id',
+  'baseline_note_title',
+  'baseline',
+  'include_in_normal_analytics',
+  'started_at',
+  'completed_at',
+  'saved_at',
+  'updated_at',
+  'deleted_at',
+];
+const RECOVERY_WEEK_FIELDS = [
+  'id',
+  'block_id',
+  'note_id',
+  'week_number',
+  'completed_at',
+  'saved_at',
+  'updated_at',
+  'deleted_at',
+];
+const RECOVERY_BLOCK_TIMESTAMP_FIELDS = [
+  'started_at', 'completed_at', 'saved_at', 'updated_at', 'deleted_at',
+];
+const RECOVERY_WEEK_TIMESTAMP_FIELDS = [
+  'completed_at', 'saved_at', 'updated_at', 'deleted_at',
+];
+// A baseline snapshot holds one row per distinct exercise in one routine. A
+// realistic routine has tens; this cap rejects a payload built to make the
+// per-row validation loop below expensive.
+const MAX_IMPORT_BASELINE_EXERCISES = 1000;
+// Everything a baseline exercise row carries beyond these three is a numeric
+// metric (top_weight, volume, sets_completed, best_set_reps, total_reps,
+// best_hold_seconds, total_seconds — see lib/data/recoveryBlocks).
+const BASELINE_EXERCISE_STRING_FIELDS = ['key', 'name', 'exercise_class'];
 
 // Untrusted-input bounds for imported backups. importBackup() receives arbitrary
 // pasted/JSON-parsed text and validates arrays element-by-element, so without a
@@ -77,6 +145,19 @@ const MAX_IMPORT_RAW_TEXT_LENGTH = 200000;
 const MIN_IMPORT_FATIGUE_MULTIPLIER = 0;
 const MAX_IMPORT_FATIGUE_MULTIPLIER = 10;
 
+// Project one record through an explicit field allowlist. An absent field stays
+// absent rather than becoming `undefined`, so the emitted JSON matches the
+// stored record instead of gaining null-ish keys the source never had.
+function projectFields(record, fields) {
+  const out = {};
+  for (const field of fields) {
+    if (record && Object.prototype.hasOwnProperty.call(record, field)) {
+      out[field] = record[field];
+    }
+  }
+  return out;
+}
+
 export async function exportBackup() {
   const weight_entries = await readList(WEIGHT_KEY);
   const workout_notes = await readList(WORKOUT_NOTES_KEY);
@@ -84,6 +165,14 @@ export async function exportBackup() {
   const weight_goal = await loadWeightGoal();
   const fatigue_multiplier = await loadFatigueMultiplier();
   const deload_history = await readList(WORKOUT_DELOAD_HISTORY_KEY);
+  // The RAW lists, tombstones included. A tombstone is the only record that a
+  // block or membership was removed, so dropping them here would make a restore
+  // resurrect every deleted recovery record — and in cloud mode would re-upload
+  // them under a `deleted_at` the account has already accepted.
+  const recovery_blocks = (await loadRecoveryBlocksRaw())
+    .map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS));
+  const recovery_block_weeks = (await loadRecoveryBlockWeeksRaw())
+    .map((w) => projectFields(w, RECOVERY_WEEK_FIELDS));
   return {
     version: BACKUP_VERSION,
     exported_at: new Date().toISOString(),
@@ -93,21 +182,24 @@ export async function exportBackup() {
     weight_goal,
     fatigue_multiplier,
     deload_history,
+    recovery_blocks,
+    recovery_block_weeks,
   };
 }
 
 // Cloud export parity (Phase 4 / Task 12).
 //
-// Cloud users need an export that is a strict superset of the v3 backup shape so
-// it stays importable via importBackup(), but also carries the account-scoped
+// Cloud users need an export that is a strict superset of the plain backup shape
+// so it stays importable via importBackup(), but also carries the account-scoped
 // data the roadmap calls out for self-serve cloud users: profile, feature
 // toggles, and the preferences/pointers that live on user_profile in the cloud
 // model (roadmap "Self-Serve Product Obligations": "v3 backup shape plus
 // account/profile/toggle additions needed for cloud users").
 //
-// The base payload is exactly exportBackup() (version "3"), so any v3 importer
-// ignores the extra `cloud` block. The cloud-only additions are namespaced
-// under `cloud` to keep the v3 top-level contract untouched.
+// The base payload is exactly exportBackup() (currently version "4", which adds
+// the two recovery collections to the v3 shape), so any importer of that version
+// ignores the extra `cloud` block. The cloud-only additions are namespaced under
+// `cloud` to keep the top-level contract untouched.
 // Security (#350): the cloud block can carry account identity. The account `id`
 // is an opaque, non-PII identifier and is always safe to include. The account
 // `email` is personal data, so it is excluded from the shareable artifact unless
@@ -272,6 +364,137 @@ function validateDeloadHistory(entries) {
   return { ok: true };
 }
 
+// ── recovery collections (issue #694) ────────────────────────────────────────
+//
+// Recovery records are health data (see the RLS note in migration
+// 20260728215114), and a restore writes them to local storage and, in cloud
+// mode, straight back to the account. So they get the same treatment as every
+// other imported collection: bounded size, per-record shape checks, and NOTHING
+// written until the whole payload has passed.
+
+function validateTimestamps(record, fields, label) {
+  for (const field of fields) {
+    const value = record[field];
+    if (value == null) continue;
+    if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
+      return { ok: false, error: `Invalid backup: ${label} ${field} must be an ISO timestamp` };
+    }
+  }
+  return { ok: true };
+}
+
+// The frozen pre-recovery snapshot. Its whole contract is that it is captured
+// once and never recomputed, so the importer cannot repair a malformed one by
+// re-deriving it — an unreadable snapshot can only be rejected.
+function validateRecoveryBaseline(baseline) {
+  if (baseline == null) return { ok: true };
+  if (typeof baseline !== 'object' || Array.isArray(baseline))
+    return { ok: false, error: 'Invalid backup: recovery block baseline must be an object' };
+  if (!Number.isInteger(baseline.version) || baseline.version < 1)
+    return { ok: false, error: 'Invalid backup: recovery block baseline version must be a positive integer' };
+  // A snapshot from a FUTURE capture format is not readable by this app's
+  // comparison code, and storing it would hand later analytics a shape they
+  // would have to guess at. Rejecting is the honest outcome.
+  if (baseline.version > RECOVERY_BASELINE_VERSION)
+    return {
+      ok: false,
+      error: `Invalid backup: recovery block baseline version ${baseline.version} is newer than this app supports (${RECOVERY_BASELINE_VERSION})`,
+    };
+  if (!Array.isArray(baseline.exercises))
+    return { ok: false, error: 'Invalid backup: recovery block baseline exercises must be an array' };
+  if (baseline.exercises.length > MAX_IMPORT_BASELINE_EXERCISES)
+    return {
+      ok: false,
+      error: `Invalid backup: recovery block baseline too large (${baseline.exercises.length}; limit ${MAX_IMPORT_BASELINE_EXERCISES})`,
+    };
+  for (const exercise of baseline.exercises) {
+    if (!exercise || typeof exercise !== 'object' || Array.isArray(exercise))
+      return { ok: false, error: 'Invalid backup: recovery baseline exercise is not an object' };
+    for (const field of BASELINE_EXERCISE_STRING_FIELDS) {
+      if (typeof exercise[field] !== 'string')
+        return { ok: false, error: `Invalid backup: recovery baseline exercise missing ${field}` };
+    }
+    for (const [field, value] of Object.entries(exercise)) {
+      if (BASELINE_EXERCISE_STRING_FIELDS.includes(field)) continue;
+      if (typeof value !== 'number' || !Number.isFinite(value))
+        return { ok: false, error: `Invalid backup: recovery baseline metric ${field} must be a finite number` };
+    }
+  }
+  return { ok: true };
+}
+
+// Returns the validated block ids so the membership pass can check its
+// references against them without a second scan.
+function validateRecoveryBlocks(blocks) {
+  if (!Array.isArray(blocks))
+    return { ok: false, error: 'Invalid backup: recovery_blocks must be an array' };
+  if (blocks.length > MAX_IMPORT_ARRAY_LENGTH)
+    return { ok: false, error: `Invalid backup: recovery_blocks too large (${blocks.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+
+  const ids = new Set();
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object' || Array.isArray(block))
+      return { ok: false, error: 'Invalid backup: recovery block is not an object' };
+    if (typeof block.id !== 'string' || block.id.length === 0)
+      return { ok: false, error: 'Invalid backup: recovery block missing id' };
+    // Duplicate ids would collapse to one record on write while the payload
+    // claims two, so the restore would silently lose a block.
+    if (ids.has(block.id))
+      return { ok: false, error: `Invalid backup: duplicate recovery block id ${block.id}` };
+    ids.add(block.id);
+    if (typeof block.baseline_note_id !== 'string' || block.baseline_note_id.length === 0)
+      return { ok: false, error: `Invalid backup: recovery block ${block.id} missing baseline_note_id` };
+    if (block.baseline_note_title != null && typeof block.baseline_note_title !== 'string')
+      return { ok: false, error: `Invalid backup: recovery block ${block.id} baseline_note_title must be a string` };
+    if (block.include_in_normal_analytics != null && typeof block.include_in_normal_analytics !== 'boolean')
+      return { ok: false, error: `Invalid backup: recovery block ${block.id} include_in_normal_analytics must be a boolean` };
+
+    const baselineCheck = validateRecoveryBaseline(block.baseline);
+    if (!baselineCheck.ok) return baselineCheck;
+
+    const timeCheck = validateTimestamps(block, RECOVERY_BLOCK_TIMESTAMP_FIELDS, `recovery block ${block.id}`);
+    if (!timeCheck.ok) return timeCheck;
+  }
+  return { ok: true, blockIds: ids };
+}
+
+function validateRecoveryWeeks(weeks, blockIds) {
+  if (!Array.isArray(weeks))
+    return { ok: false, error: 'Invalid backup: recovery_block_weeks must be an array' };
+  if (weeks.length > MAX_IMPORT_ARRAY_LENGTH)
+    return { ok: false, error: `Invalid backup: recovery_block_weeks too large (${weeks.length}; limit ${MAX_IMPORT_ARRAY_LENGTH})` };
+
+  const ids = new Set();
+  for (const week of weeks) {
+    if (!week || typeof week !== 'object' || Array.isArray(week))
+      return { ok: false, error: 'Invalid backup: recovery week is not an object' };
+    if (typeof week.id !== 'string' || week.id.length === 0)
+      return { ok: false, error: 'Invalid backup: recovery week missing id' };
+    if (ids.has(week.id))
+      return { ok: false, error: `Invalid backup: duplicate recovery week id ${week.id}` };
+    ids.add(week.id);
+    if (typeof week.block_id !== 'string' || week.block_id.length === 0)
+      return { ok: false, error: `Invalid backup: recovery week ${week.id} missing block_id` };
+    // Referential integrity, checked against the payload rather than against
+    // local state. kilo.recovery_block_weeks has a real FK to the block, so an
+    // orphaned membership is not merely untidy — in cloud mode its upload is
+    // rejected by the database and the restore wedges.
+    if (!blockIds.has(week.block_id))
+      return { ok: false, error: `Invalid backup: recovery week ${week.id} references unknown recovery block ${week.block_id}` };
+    if (week.note_id != null && typeof week.note_id !== 'string')
+      return { ok: false, error: `Invalid backup: recovery week ${week.id} note_id must be a string` };
+    // Matches the recovery_block_weeks_week_number_positive check constraint:
+    // ordinals are what make week ordering unambiguous for later comparison
+    // analytics, and a zero or negative one has no meaning.
+    if (week.week_number != null && (!Number.isInteger(week.week_number) || week.week_number < 1))
+      return { ok: false, error: `Invalid backup: recovery week ${week.id} week_number must be a positive integer` };
+
+    const timeCheck = validateTimestamps(week, RECOVERY_WEEK_TIMESTAMP_FIELDS, `recovery week ${week.id}`);
+    if (!timeCheck.ok) return timeCheck;
+  }
+  return { ok: true };
+}
+
 function validateFatigueMultiplier(value) {
   if (
     typeof value !== 'number' ||
@@ -293,7 +516,7 @@ function validateBackup(payload) {
   const weightCheck = validateWeightEntries(payload.weight_entries);
   if (!weightCheck.ok) return weightCheck;
 
-  if (payload.version === '2' || payload.version === BACKUP_VERSION) {
+  if (NOTEBOOK_VERSIONS.has(payload.version)) {
     if (!Array.isArray(payload.workout_notes))
       return { ok: false, error: 'Invalid backup: workout_notes must be an array' };
     if (payload.workout_notes.length > MAX_IMPORT_ARRAY_LENGTH)
@@ -321,13 +544,40 @@ function validateBackup(payload) {
       if (typeof g.target_date !== 'string')
         return { ok: false, error: 'Invalid backup: weight_goal missing target_date' };
     }
-    if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
+    if (DELOAD_HISTORY_VERSIONS.has(payload.version) && 'deload_history' in payload) {
       const deloadCheck = validateDeloadHistory(payload.deload_history);
       if (!deloadCheck.ok) return deloadCheck;
     }
     if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
       const fatigueCheck = validateFatigueMultiplier(payload.fatigue_multiplier);
       if (!fatigueCheck.ok) return fatigueCheck;
+    }
+  }
+
+  // Blocks are validated first so the membership pass can resolve every
+  // `block_id` against them — the same dependency order the restore itself uses.
+  //
+  // Each key is acted on only when PRESENT, matching how `weight_goal` and
+  // `deload_history` are already handled: a key the payload does not mention is
+  // an absence of evidence, and replace semantics may not tombstone records on
+  // that. An exporting device always emits both keys (empty lists when the
+  // feature was never used), so this only affects hand-built payloads.
+  if (RECOVERY_VERSIONS.has(payload.version)) {
+    const hasBlocks = 'recovery_blocks' in payload;
+    const hasWeeks = 'recovery_block_weeks' in payload;
+    // Memberships are meaningless without the blocks they belong to, and their
+    // `block_id` references cannot be checked against a collection the payload
+    // never supplied.
+    if (hasWeeks && !hasBlocks)
+      return { ok: false, error: 'Invalid backup: recovery_block_weeks present without recovery_blocks' };
+
+    if (hasBlocks) {
+      const blockCheck = validateRecoveryBlocks(payload.recovery_blocks);
+      if (!blockCheck.ok) return blockCheck;
+      if (hasWeeks) {
+        const weekCheck = validateRecoveryWeeks(payload.recovery_block_weeks, blockCheck.blockIds);
+        if (!weekCheck.ok) return weekCheck;
+      }
     }
   }
 
@@ -587,6 +837,12 @@ async function replaceCollectionForCloud({ table, readRaw, writeRaw, imported, c
 // carry at all. A replace therefore leaves it untouched: the payload contains no
 // evidence that those records were dropped, and tombstoning them on that
 // non-evidence would destroy data the user never asked to remove.
+//
+// The two recovery collections (#694) follow the same evidence rule, one version
+// later: v4 carries them, so a v4 restore replaces them under the full cloud
+// contract including omission tombstones — but a v1/v2/v3 file predates the
+// format and says nothing about recovery data, so it leaves every block and
+// membership exactly where it is.
 export async function importBackup(payload, strategy = 'replace', { mode = IMPORT_MODES.LOCAL } = {}) {
   const check = validateBackup(payload);
   if (!check.ok) return check;
@@ -596,7 +852,11 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
   let queued = 0;
 
   if (strategy === 'replace') {
-    const isNotebookVersion = payload.version === '2' || payload.version === BACKUP_VERSION;
+    const isNotebookVersion = NOTEBOOK_VERSIONS.has(payload.version);
+    // Recovery data is restored only from a recovery-aware backup, and only for
+    // the keys that backup actually carries.
+    const hasRecovery = RECOVERY_VERSIONS.has(payload.version) && 'recovery_blocks' in payload;
+    const hasRecoveryWeeks = hasRecovery && 'recovery_block_weeks' in payload;
 
     if (cloudMode) {
       const clientId = await getClientId();
@@ -618,6 +878,31 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
           clientId,
         });
       }
+      // Blocks BEFORE memberships, always. kilo.recovery_block_weeks carries a
+      // real foreign key to kilo.recovery_blocks, and the push walks the dirty
+      // queue in enqueue order, so a membership queued ahead of its block is
+      // rejected by the database. The same order also means a crash between the
+      // two leaves blocks-without-memberships (recoverable, and what #525's
+      // reconcileLocalWrites re-derives) rather than memberships pointing at
+      // blocks that are not there.
+      if (hasRecovery) {
+        queued += await replaceCollectionForCloud({
+          table: SYNC_TABLES.RECOVERY_BLOCKS,
+          readRaw: loadRecoveryBlocksRaw,
+          writeRaw: replaceRecoveryBlocksRaw,
+          imported: payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+          clientId,
+        });
+      }
+      if (hasRecoveryWeeks) {
+        queued += await replaceCollectionForCloud({
+          table: SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
+          readRaw: loadRecoveryBlockWeeksRaw,
+          writeRaw: replaceRecoveryBlockWeeksRaw,
+          imported: payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
+          clientId,
+        });
+      }
     } else {
       // WORKOUT_KEY (legacy sessions) is not part of the backup scope and is not touched.
       const pairs = [[WEIGHT_KEY, JSON.stringify(payload.weight_entries)]];
@@ -625,6 +910,18 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
         pairs.push([WORKOUT_NOTES_KEY, JSON.stringify(payload.workout_notes)]);
       }
       await AsyncStorage.multiSet(pairs);
+      // Same dependency order on the local side, for the same reason a reader
+      // would hit: a membership is only interpretable once its block exists.
+      if (hasRecovery) {
+        await replaceRecoveryBlocksRaw(
+          payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
+        );
+      }
+      if (hasRecoveryWeeks) {
+        await replaceRecoveryBlockWeeksRaw(
+          payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
+        );
+      }
     }
 
     if (isNotebookVersion) {
@@ -643,7 +940,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
       if ('fatigue_multiplier' in payload && payload.fatigue_multiplier != null) {
         await saveFatigueMultiplier(payload.fatigue_multiplier);
       }
-      if (payload.version === BACKUP_VERSION && 'deload_history' in payload) {
+      if (DELOAD_HISTORY_VERSIONS.has(payload.version) && 'deload_history' in payload) {
         await writeList(WORKOUT_DELOAD_HISTORY_KEY, payload.deload_history);
       }
     }

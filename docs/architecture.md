@@ -380,17 +380,36 @@ User types in native Weight or Log form
 ```
 
 `mobile/storage/entries.js` also exposes a backup/restore recovery path:
-`exportBackup()` serializes a versioned v3 snapshot (weight entries, titled
+`exportBackup()` serializes a versioned v4 snapshot (weight entries, titled
 workout notes with `isCurrent` / `currentSince` metadata, the current workout
-id, an optional weight goal, an optional fatigue multiplier, and the completed
-deload history).
+id, an optional weight goal, an optional fatigue multiplier, the completed
+deload history, and — since issue #694 — the two recovery collections:
+`recovery_blocks` with each frozen `baseline` snapshot, and
+`recovery_block_weeks`). Both recovery collections are emitted through explicit
+field allowlists and carry their retained tombstones, because a tombstone is the
+only record that a block or membership was removed.
 `importBackup(payload, 'replace')` validates before any write, restores the
-full multi-note model for v2 and v3 backups, conditionally restores or clears the
+full multi-note model for v2 and later backups, conditionally restores or clears the
 weight goal when the key is present, restores only a finite in-range fatigue
-multiplier, validates every v3 deload-history record and caps its raw text before
+multiplier, validates every v3/v4 deload-history record and caps its raw text before
 restoring it, and still
 accepts v1 backups to restore weight history without
-clearing the newer workout-note state. The same storage module also performs a
+clearing the newer workout-note state.
+
+Recovery data is restored only from a v4 backup, and blocks are always restored
+before memberships — the order the real
+`recovery_block_weeks (user_id, block_id)` foreign key requires. Validation is
+bounded and total before the first write: ids are non-empty and unique, every
+membership's `block_id` resolves to a block in the same payload, week ordinals
+are positive integers, every timestamp parses, and each frozen baseline is an
+object with a known snapshot version and a bounded, numerically typed exercise
+list. A malformed recovery collection therefore rejects the whole restore, so no
+partial state reaches storage or the sync queue. A v1/v2/v3 file predates the
+format and says nothing about recovery data, so a legacy restore leaves every
+block and membership exactly where it is rather than treating silence as a
+deletion.
+
+The same storage module also performs a
 one-time forward migration from the legacy single-note key by seeding a
 `Routine 1` notebook entry with `isCurrent: true` and `currentSince: null`,
 and normalizes pre-existing notebook rows that predate the new metadata fields.
@@ -408,10 +427,10 @@ the next pull put it back (#522 claim 5).
 
 Under the cloud contract a replace is a batch of ordinary cloud writes rather
 than a special upload path. Every imported collection row is stamped and enqueued
-with the same primitives an in-app edit uses, and every `weight_entries` or
-`workout_notes` record the backup OMITS becomes a tombstone, because "replace"
-means those records are gone and a plain local deletion would simply be re-pulled
-from the server. Local storage is written before the queue, so an interruption
+with the same primitives an in-app edit uses, and every `weight_entries`,
+`workout_notes`, `recovery_blocks`, or `recovery_block_weeks` record the backup
+OMITS becomes a tombstone, because "replace" means those records are gone and a
+plain local deletion would simply be re-pulled from the server. Local storage is written before the queue, so an interruption
 between them leaves the imported state on disk for the signed-out-write
 reconciliation above to re-derive; the reverse order would promise rows the
 device does not have. The importer never uploads anything itself, so
@@ -423,7 +442,7 @@ and would otherwise compete in LWW as if this device had made the write;
 `deleted_at` is preserved, because a backup taken from raw storage legitimately
 carries tombstones.
 
-Everything outside those two collections is left to the diff-tracked sync path
+Everything outside those four collections is left to the diff-tracked sync path
 and needs no import-time queueing: the weight goal, deload history, profile,
 health profile, and feature toggles detect local change by diffing live state
 against a persisted snapshot, and that diff is indifferent to which writer

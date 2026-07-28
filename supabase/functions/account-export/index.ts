@@ -161,7 +161,11 @@ serve(async (req) => {
       ),
       feature_toggles: togglesResult.data,
       // user_health_profile, weight_entries, weight_goal, archived_weight_goals,
-      // workout_notes, deload_history, fatigue_checkins.
+      // workout_notes, deload_history, fatigue_checkins, and — since #694 — the
+      // recovery collections: recovery_blocks (with each frozen baseline
+      // snapshot) and recovery_block_weeks. Spread from the shared scope rather
+      // than named here, so a table added to that scope is exported the same day
+      // it becomes gated.
       ...healthResult.data,
     },
   }

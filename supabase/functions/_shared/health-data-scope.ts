@@ -7,7 +7,7 @@
 // exported on request" — and a list that drifts in one of them means Kilo either
 // under-deletes health data after consent is withdrawn (an Art. 17 failure) or
 // exports an incomplete copy (an Art. 15 failure). health-data-scope.test.ts
-// fails the build if the three ever diverge, or if the set omits one of the seven
+// fails the build if the three ever diverge, or if the set omits one of the nine
 // gated tables.
 //
 // Adding a gated table or column requires updating: this file, its contract test,
@@ -42,18 +42,33 @@ export interface HealthTableDescriptor {
 }
 
 /**
- * The seven tables that hold data concerning health. `user_health_profile` is the
+ * The nine tables that hold data concerning health. `user_health_profile` is the
  * canonical home of the six values that used to sit in the mixed `user_profile`
- * table; the other six tables were always health data.
+ * table; the other eight tables were always health data.
+ *
+ * The two recovery tables (#692/#693, brought into this scope by #694) are health
+ * data for the same reason the migration gates their RLS policies: a baseline
+ * snapshot is a frozen record of what the lifter could do before an injury, and a
+ * membership says which weeks they trained while recovering from one.
+ *
+ * `recovery_block_weeks` is deleted BEFORE `recovery_blocks`. Child before parent
+ * is the dependency-safe direction for the real
+ * `recovery_block_weeks_block_fk` foreign key: the parent delete would otherwise
+ * rely on its `on delete cascade` to remove rows this function believes it is
+ * deleting itself, which makes the per-table counts that
+ * kilo.complete_health_deletion_job() re-checks depend on cascade behavior rather
+ * than on the statements actually issued.
  */
 export const HEALTH_DATA_SCOPE: readonly HealthTableDescriptor[] = Object.freeze([
   { table: 'fatigue_checkins',     kind: 'collection', exportKey: 'fatigue_checkins',     deleteOrder: 1 },
   { table: 'deload_history',       kind: 'collection', exportKey: 'deload_history',       deleteOrder: 2 },
-  { table: 'workout_notes',        kind: 'collection', exportKey: 'workout_notes',        deleteOrder: 3 },
-  { table: 'weight_entries',       kind: 'collection', exportKey: 'weight_entries',       deleteOrder: 4 },
-  { table: 'archived_weight_goals',kind: 'collection', exportKey: 'archived_weight_goals',deleteOrder: 5 },
-  { table: 'weight_goal',          kind: 'singleton',  exportKey: 'weight_goal',          deleteOrder: 6 },
-  { table: 'user_health_profile',  kind: 'singleton',  exportKey: 'user_health_profile',  deleteOrder: 7 },
+  { table: 'recovery_block_weeks', kind: 'collection', exportKey: 'recovery_block_weeks', deleteOrder: 3 },
+  { table: 'recovery_blocks',      kind: 'collection', exportKey: 'recovery_blocks',      deleteOrder: 4 },
+  { table: 'workout_notes',        kind: 'collection', exportKey: 'workout_notes',        deleteOrder: 5 },
+  { table: 'weight_entries',       kind: 'collection', exportKey: 'weight_entries',       deleteOrder: 6 },
+  { table: 'archived_weight_goals',kind: 'collection', exportKey: 'archived_weight_goals',deleteOrder: 7 },
+  { table: 'weight_goal',          kind: 'singleton',  exportKey: 'weight_goal',          deleteOrder: 8 },
+  { table: 'user_health_profile',  kind: 'singleton',  exportKey: 'user_health_profile',  deleteOrder: 9 },
 ] as const)
 
 /**

@@ -13,7 +13,7 @@
 
 begin;
 
-select plan(16);
+select plan(18);
 
 \set user_new 'b0000000-0000-0000-0000-000000000001'
 \set user_lost 'b0000000-0000-0000-0000-000000000002'
@@ -292,6 +292,42 @@ select is(
   (select divergence from kilo.health_integrity_report() where user_id = :'user_sweep'::uuid),
   'health_row_lost',
   'the report still flags a lost row after the sweep that observed the deletion has run'
+);
+
+-- ---------------------------------------------------------------------------
+-- A purge is not complete while recovery metadata remains (issue #694)
+-- ---------------------------------------------------------------------------
+--
+-- kilo.health_integrity_report() watches ONE table: user_health_profile. That is
+-- by design (it is a loss detector for the single post-contract copy of the
+-- profile), but it means the report going quiet says nothing about the other
+-- gated tables. The integrity check that DOES cover them is
+-- kilo.health_data_row_counts(), and it only covers a table that
+-- kilo.health_gated_tables() names.
+--
+-- The state pinned below is the one that made this a real gap: an account whose
+-- user_health_profile row is legitimately gone — so the monitor is silent and
+-- looks like a clean purge — while its recovery blocks and week memberships are
+-- still sitting in the cloud. The row counts must contradict the silence.
+
+insert into kilo.consent_state (user_id, status) values (:'user_purged'::uuid, 'deletion_pending')
+  on conflict (user_id) do update set status = 'deletion_pending';
+
+insert into kilo.recovery_blocks (user_id, id, baseline_note_id, baseline)
+  values (:'user_purged'::uuid, 'rb-monitor', 'wn-monitor', '{"version": 1, "exercises": []}'::jsonb);
+insert into kilo.recovery_block_weeks (user_id, id, block_id, note_id, week_number)
+  values (:'user_purged'::uuid, 'rw-monitor', 'rb-monitor', 'wn-monitor-w1', 1);
+
+select is(
+  (select count(*) from kilo.health_integrity_report() where user_id = :'user_purged'::uuid),
+  0::bigint,
+  'the profile monitor stays quiet for the account, which is exactly why the row counts must not'
+);
+
+select ok(
+  (kilo.health_data_row_counts(:'user_purged'::uuid))
+    @> '{"recovery_blocks": 1, "recovery_block_weeks": 1}'::jsonb,
+  'leftover recovery metadata is reported as remaining health data, so no purge can be certified complete'
 );
 
 select * from finish();

@@ -784,6 +784,22 @@ but the underlying leak is still worth fixing wherever it's found.
   notes, and archived weight goals not tombstoned by a format that omits them
 - verifies the local contract is byte-for-byte unchanged: domain keys
   overwritten, no stamping, no tombstones, and nothing enqueued
+- covers the v4 recovery collections (#694): a recovery-aware backup round-trips
+  active and completed blocks, frozen baseline snapshots, week order, membership
+  completion, the analytics preference, and tombstones; the export emits only
+  allowlisted fields, so a stray local field cannot reach the shared artifact
+- covers ten malformed recovery payloads (a membership referencing a block the
+  payload does not carry, a non-positive week ordinal, a baseline with no version
+  or from a newer capture format, a non-numeric baseline metric, a non-ISO
+  timestamp, a duplicate or missing block id, memberships without their blocks,
+  and a non-array collection), asserting each is rejected with local storage,
+  the unrelated collections, and both recovery dirty queues byte-identical
+  afterwards — the "no partial writes" property, not merely "rejected"
+- verifies blocks are queued and pushed before the memberships that reference
+  them, matching the `recovery_block_weeks` foreign key; that a membership the
+  backup omits becomes a tombstone the account accepts and a later pull cannot
+  resurrect; and that a v3 backup, which says nothing about recovery data,
+  deletes no block or membership and queues nothing
 - negative control: with the cloud branch forced back to the local path, the
   cloud-contract cases fail because no stamping, queueing, or tombstoning happens;
   and restoring the prior `{ ...base, ...content }` whole-row merge fails exactly
@@ -946,13 +962,27 @@ but the underlying leak is still worth fixing wherever it's found.
   partial erasure never advances the user to `withdrawn`, a partially erased job
   is visible as `failed` with a rising attempt count, worker errors are bounded
   before they can reach a log, and a transport-level failure leaves the job in
-  the backlog rather than losing it
+  the backlog rather than losing it. Since #694 it also proves
+  `kilo.health_gated_tables()` names both recovery collections and that leftover
+  recovery metadata blocks completion even when every other gated table is empty
+  — the state that was previously certified as a finished erasure
 - `supabase/tests/reenqueue-health-deletion-consent-gate.test.sql` proves the
   operator re-enqueue RPC is fail-closed on consent state (#598): a `granted`,
   `needs_reconsent`, or stateless account (and a null target) is refused with an
   explicit reason and no job is created, while a `deletion_pending` account's
   failed job is rearmed in place (not duplicated) and a `withdrawn` account
-  stays authorized
+  stays authorized. It also proves the RPC's reported `table_counts` surface
+  leftover recovery rows as remaining health data (#694), so an operator cannot
+  read a clean bill of health for an unfinished erasure
+- `supabase/tests/health-integrity-monitor.test.sql` proves the post-contract
+  health-data-loss monitor (#558) flags a genuine loss (a granted account whose
+  content-bearing `user_health_profile` row disappeared or went empty) and stays
+  quiet for every legitimate absence: never-written, withdrawn,
+  `deletion_pending`, and a purge armed after content was last seen. Since #694
+  it also pins the gap that quietness leaves: the monitor watches ONE table, so
+  an account it is silent about can still hold leftover recovery blocks and week
+  memberships, and `kilo.health_data_row_counts()` must report them as remaining
+  health data
 - `npm run test:health-deletion-monitor` runs the offline contract suite for the
   backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
   email address, Supabase key, or JWT can never reach an alert surface), all
@@ -1021,7 +1051,16 @@ but the underlying leak is still worth fixing wherever it's found.
   suite never contacts production or reads secret values.
 - `supabase/functions/_shared/health-data-scope.test.ts` is the Deno contract
   suite preventing `account-export`, `account-delete`, and
-  `health-data-delete` from diverging from the shared gated table set
+  `health-data-delete` from diverging from the shared gated table set. It pins
+  the set at exactly nine tables (the two recovery collections joined in #694),
+  pins recovery memberships ahead of the blocks they reference in deletion
+  order, and compares the module against the EFFECTIVE
+  `kilo.health_gated_tables()` — resolved from the latest migration that
+  redefines it, since a pinned migration path would keep checking a definition
+  the database no longer runs. Run it with
+  `deno test --no-check --allow-read supabase/functions/_shared/health-data-scope.test.ts`;
+  `--no-check` is required only because the shared `supabase-js` client typing
+  fails to resolve locally, which is unrelated to the contract under test
 
 ### Public Signup Legal And Abuse Checks
 

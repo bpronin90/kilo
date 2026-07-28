@@ -24,7 +24,7 @@
 
 begin;
 
-select plan(37);
+select plan(41);
 
 \set user_a 'cccccccc-cccc-cccc-cccc-cccccccccccc'
 \set user_b 'dddddddd-dddd-dddd-dddd-dddddddddddd'
@@ -48,6 +48,37 @@ insert into kilo.weight_entries (user_id, id, weight_value)
 insert into kilo.user_health_profile (user_id, fatigue_multiplier)
   values (:'user_a'::uuid, 1.5)
   on conflict (user_id) do update set fatigue_multiplier = 1.5;
+
+-- Recovery data (#694). A baseline snapshot records what the lifter could do
+-- before an injury and a membership records which weeks they trained while
+-- recovering from one, so a withdrawal that leaves either behind has not erased
+-- the account's health data no matter how empty the other seven tables are.
+insert into kilo.recovery_blocks (user_id, id, baseline_note_id, baseline)
+  values (:'user_a'::uuid, 'rb1', 'wn1', '{"version": 1, "exercises": []}'::jsonb);
+insert into kilo.recovery_block_weeks (user_id, id, block_id, note_id, week_number)
+  values (:'user_a'::uuid, 'rw1', 'rb1', 'wn2', 1);
+
+-- ---------------------------------------------------------------------------
+-- The gated set actually contains the recovery collections
+-- ---------------------------------------------------------------------------
+--
+-- kilo.health_gated_tables() is what kilo.health_data_row_counts() walks and
+-- what kilo.complete_health_deletion_job() re-counts. A table missing from it is
+-- invisible to every one of those checks, so the purge would certify itself
+-- complete with the rows still present. This is the SQL half of the parity that
+-- supabase/functions/_shared/health-data-scope.test.ts enforces from the Deno
+-- side.
+
+select ok(
+  kilo.health_gated_tables() @> array['recovery_blocks', 'recovery_block_weeks']::text[],
+  'the gated set names both recovery collections'
+);
+
+select ok(
+  (kilo.health_data_row_counts(:'user_a'::uuid) ->> 'recovery_blocks')::bigint = 1
+    and (kilo.health_data_row_counts(:'user_a'::uuid) ->> 'recovery_block_weeks')::bigint = 1,
+  'leftover recovery rows are counted as remaining health data'
+);
 
 -- ---------------------------------------------------------------------------
 -- No work, no call
@@ -202,6 +233,30 @@ update kilo.user_profile set
 where user_id = :'user_a'::uuid;
 delete from kilo.weight_entries where user_id = :'user_a'::uuid;
 delete from kilo.user_health_profile where user_id = :'user_a'::uuid;
+
+-- Recovery data deliberately NOT deleted yet. This is the regression #694 closes:
+-- before the recovery tables joined the gated set, the state below — every other
+-- gated table empty, recovery metadata intact — was accepted as a completed
+-- erasure and moved the user to `withdrawn`.
+select is(
+  (kilo.complete_health_deletion_job(
+    (select id from kilo.health_data_deletion_jobs where user_id = :'user_a'::uuid limit 1)
+  ) ->> 'ok')::boolean,
+  false,
+  'leftover recovery metadata blocks completion even when every other gated table is empty'
+);
+
+select is(
+  (select status from kilo.consent_state where user_id = :'user_a'::uuid),
+  'deletion_pending',
+  'the user is not advanced to withdrawn while recovery data remains'
+);
+
+-- The worker deletes memberships before blocks (the deleteOrder in
+-- _shared/health-data-scope.ts), so the purge never leans on the FK cascade to
+-- remove rows it believes its own statements removed.
+delete from kilo.recovery_block_weeks where user_id = :'user_a'::uuid;
+delete from kilo.recovery_blocks where user_id = :'user_a'::uuid;
 
 select is(
   (kilo.complete_health_deletion_job(
