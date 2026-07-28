@@ -574,7 +574,18 @@ row set alone — keeping the most recently started block and completing the
 older, keeping the earliest membership for a note and tombstoning the rest, and
 renumbering a colliding ordinal to the next free one rather than dropping a
 legitimate membership. Because that resolution reads only client-authored,
-immutable values, all devices pick the same survivor. A recovery-block failure
+immutable values, all devices pick the same survivor.
+
+The collapsed rows are then re-pushed inside the same pass, in an order derived
+from row content: slot-freeing rows (a completed block, a tombstoned membership,
+a membership renumbered to a higher ordinal) go before rows that claim the slot
+being freed. The partial unique indexes are not deferrable, so Postgres checks
+them as it processes each row of an upsert, against the state the earlier rows
+left — a batch whose final form is valid is still rejected if a row claims a slot
+a later row frees. Order matters most on the device holding the SURVIVING row:
+its own write sits first in the id-keyed dirty queue and the freeing row is
+appended after it, so without an explicit order that device rebuilds the same
+rejected statement on every retry and never converges. A recovery-block failure
 is isolated: the pass finishes every unrelated table first and raises the
 failure afterwards, so a rejected recovery push never stops weight, workout-note,
 or settings sync — and never reports success over recovery data that has not

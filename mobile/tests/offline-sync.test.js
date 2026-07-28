@@ -74,56 +74,67 @@ const SINGLETON_TABLES = new Set([
   SYNC_TABLES.WEIGHT_GOAL,
 ]);
 
-// Postgres-side uniqueness for the two recovery collections, modelled against
-// the resulting row set (existing rows with the pushed batch applied) exactly as
-// a unique index sees it. Tombstoned rows are ignored, which is what
-// `where deleted_at is null` means in the migration: history stays intact and
-// only LIVE rows compete.
+// Postgres-side uniqueness for the two recovery collections (issue #693).
+//
+// The partial unique indexes are NOT deferrable, so Postgres checks them as it
+// processes each row of an `insert ... on conflict do update`, against the table
+// state produced by the rows before it — never against the batch's final state.
+// ORDER INSIDE THE BATCH IS THEREFORE PART OF THE CONTRACT: a row that claims a
+// live slot still held by a row later in the same batch fails the whole
+// statement, even though the completed batch would have satisfied every index.
+//
+// This checker replays the batch row by row for that reason. Checking only the
+// projected end state (the first version of this double) accepted an ordering
+// the real database rejects, and hid a permanent wedge: the losing device's
+// queue kept re-sending the same failing order forever.
 function makeRecoveryConstraintChecker(tables) {
-  const live = (table, batch) => {
-    const byId = new Map();
-    for (const row of tables[table].values()) byId.set(row.id, row);
-    for (const row of batch) byId.set(row.id, row);
-    return [...byId.values()].filter((row) => !row.deleted_at);
+  const violation = (constraint) => {
+    const error = new Error(
+      `duplicate key value violates unique constraint "${constraint}"`
+    );
+    error.code = '23505';
+    return error;
   };
-  const rejectDuplicates = (rows, keyOf, message) => {
-    const seen = new Set();
-    for (const row of rows) {
-      const key = keyOf(row);
-      if (key == null) continue;
-      if (seen.has(key)) {
-        const error = new Error(message);
-        error.code = '23505';
-        throw error;
-      }
-      seen.add(key);
+
+  // The live-row keys each partial unique index covers, for one table.
+  const liveKeys = (table, row) => {
+    if (row.deleted_at) return [];
+    if (table === SYNC_TABLES.RECOVERY_BLOCKS) {
+      return row.completed_at ? [] : [['recovery_blocks_one_active_idx', 'active']];
     }
+    return [
+      ['recovery_block_weeks_one_live_note_idx', `note:${row.note_id}`],
+      [
+        'recovery_block_weeks_live_ordinal_idx',
+        `ord:${row.block_id}#${row.week_number}`,
+      ],
+    ];
   };
 
   return function assertRecoveryConstraints(table, batch) {
-    if (table === SYNC_TABLES.RECOVERY_BLOCKS) {
-      const active = live(table, batch).filter((row) => !row.completed_at);
-      if (active.length > 1) {
-        const error = new Error(
-          'duplicate key value violates unique constraint "recovery_blocks_one_active_idx"'
-        );
-        error.code = '23505';
-        throw error;
-      }
+    if (
+      table !== SYNC_TABLES.RECOVERY_BLOCKS &&
+      table !== SYNC_TABLES.RECOVERY_BLOCK_WEEKS
+    ) {
       return;
     }
-    if (table !== SYNC_TABLES.RECOVERY_BLOCK_WEEKS) return;
-    const rows = live(table, batch);
-    rejectDuplicates(
-      rows,
-      (row) => row.note_id,
-      'duplicate key value violates unique constraint "recovery_block_weeks_one_live_note_idx"'
-    );
-    rejectDuplicates(
-      rows,
-      (row) => `${row.block_id}#${row.week_number}`,
-      'duplicate key value violates unique constraint "recovery_block_weeks_live_ordinal_idx"'
-    );
+    // Start from the committed table, then apply the batch in order, exactly as
+    // the statement does. Rejecting throws before any row is stored, mirroring
+    // the statement-level rollback.
+    const working = new Map();
+    for (const row of tables[table].values()) working.set(row.id, row);
+
+    for (const row of batch) {
+      for (const [constraint, key] of liveKeys(table, row)) {
+        for (const [otherId, other] of working) {
+          if (otherId === row.id) continue;
+          if (liveKeys(table, other).some(([, otherKey]) => otherKey === key)) {
+            throw violation(constraint);
+          }
+        }
+      }
+      working.set(row.id, row);
+    }
   };
 }
 
@@ -2703,6 +2714,18 @@ describe('recovery block sync (issue #693)', () => {
     });
   }
 
+  // Pin a membership's `saved_at`. Two rows created in the same millisecond tie
+  // on it and fall through to the id tie-break, which is deterministic but not
+  // what a test about "the earliest membership survives" means to assert — the
+  // survivor would depend on random id bytes. Setting it explicitly makes the
+  // intended survivor the actual one.
+  async function pinWeekSavedAt(id, savedAt) {
+    const list = await Storage.loadRecoveryBlockWeeksRaw();
+    await Storage.replaceRecoveryBlockWeeksRaw(
+      list.map((w) => (w.id === id ? { ...w, saved_at: savedAt } : w))
+    );
+  }
+
   async function seedBlockWithWeek() {
     await saveNote('wn_base');
     await saveNote('wn_week1', '-Bench\n- 95 5,5');
@@ -2842,12 +2865,17 @@ describe('recovery block sync (issue #693)', () => {
     });
     expect(second.started_at > first.started_at).toBe(true);
 
-    // The database rejects the second live-active row, so the pass reports a
-    // recovery failure — and the same pass collapses the duplicate locally and
-    // uploads the collapsed rows, so the account ends up with exactly one active
-    // block rather than a device stuck retrying forever.
-    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
-    await cloudAdapter.sync();
+    // The database rejects the second live-active row. The same pass then
+    // collapses the duplicate locally and re-pushes, and this is the direction
+    // that used to wedge: THIS device holds the surviving block, so its own row
+    // was queued first and the completion that frees the active slot was appended
+    // after it. Sent in that order Postgres rejects the survivor before reaching
+    // the row that frees the slot, and the retry rebuilds the same order forever.
+    // The push is ordered slot-freeing-first, so one sync() call converges.
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastBlockPush = cloud.pushes.filter((p) => p.table === RB).pop();
+    expect(lastBlockPush.ids).toEqual([first.id, second.id]);
 
     const activeRemote = cloud
       .remoteRows(RB)
@@ -2895,8 +2923,7 @@ describe('recovery block sync (issue #693)', () => {
     });
     expect(duplicate.id).not.toBe(kept.id);
 
-    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
-    await cloudAdapter.sync();
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
 
     const liveRemote = cloud.remoteRows(RW).filter((row) => !row.deleted_at);
     expect(liveRemote.map((row) => row.id)).toEqual([kept.id]);
@@ -2936,8 +2963,7 @@ describe('recovery block sync (issue #693)', () => {
     const collided = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_b' });
     expect(collided.week_number).toBe(1);
 
-    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
-    await cloudAdapter.sync();
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
 
     const ordered = await cloudAdapter.loadRecoveryWeeksForBlock(block.id);
     // Both memberships survive; the established ordinal is untouched and the
@@ -2948,6 +2974,112 @@ describe('recovery block sync (issue #693)', () => {
     ]);
     expect(cloud.remoteRow(RW, collided.id).week_number).toBe(2);
     expect(cloud.remoteRow(RW, first.id).week_number).toBe(1);
+  });
+
+  // The two collapse tests above happen to have the losing row on this device,
+  // so its push claims nothing and lands whatever the order. THESE two are the
+  // mirror, and the direction that wedges: this device holds the row the collapse
+  // KEEPS, so its own row sits first in the id-keyed dirty queue and the row that
+  // frees the slot is appended after it. Postgres checks each partial index as it
+  // processes a row, against the state the earlier rows left — so the claim is
+  // rejected before the freeing row is reached, and the retry rebuilds the same
+  // order forever. One test per week index; the active-block index is covered by
+  // the duplicate-active-block test above.
+  //
+  // The device holding the survivor is built by keeping it OFFLINE while it makes
+  // its write, so the row is still pending when the conflicting row reaches the
+  // cloud from elsewhere.
+  it('converges when this device holds the surviving membership (note index)', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_shared', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    let deviceA = await captureDevice();
+
+    // B downloads the account, then links the note while offline. Its row is the
+    // earliest, so the collapse will keep it — and it never reached the cloud.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await pinWeekSavedAt(kept.id, '2026-07-01T00:00:00.000Z');
+    const deviceB = await captureDevice();
+
+    // A links the same note later and pushes it, so the cloud now holds the row
+    // the collapse will retract.
+    await restoreDevice(deviceA);
+    const later = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await pinWeekSavedAt(later.id, '2026-07-02T00:00:00.000Z');
+    await cloudAdapter.sync();
+    deviceA = await captureDevice();
+
+    // B now pushes its surviving row while the cloud's live row still holds the
+    // note slot, and the retraction that frees it is queued behind.
+    await restoreDevice(deviceB);
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastPush = cloud.pushes.filter((p) => p.table === RW).pop();
+    expect(lastPush.ids.indexOf(later.id)).toBeLessThan(lastPush.ids.indexOf(kept.id));
+    expect(cloud.remoteRows(RW).filter((r) => !r.deleted_at).map((r) => r.id)).toEqual([
+      kept.id,
+    ]);
+
+    // A converges on the same survivor, and a further pass is a no-op.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => w.id)).toEqual([
+      kept.id,
+    ]);
+    const before = cloud.pushes.filter((p) => p.table === RW).length;
+    await cloudAdapter.sync();
+    expect(cloud.pushes.filter((p) => p.table === RW).length).toBe(before);
+  });
+
+  it('converges when this device holds the surviving ordinal (ordinal index)', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_a', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // B links its own note as week 1 while offline: a different note, so only the
+    // ORDINAL index is contested, and B's row is the earliest so it keeps week 1.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    await saveNote('wn_b', '-Bench\n- 105 5');
+    const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_b' });
+    expect(kept.week_number).toBe(1);
+    await pinWeekSavedAt(kept.id, '2026-07-01T00:00:00.000Z');
+    const deviceB = await captureDevice();
+
+    // A links a different note as week 1 and pushes it.
+    await restoreDevice(deviceA);
+    const collided = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_a' });
+    expect(collided.week_number).toBe(1);
+    await pinWeekSavedAt(collided.id, '2026-07-02T00:00:00.000Z');
+    await cloudAdapter.sync();
+
+    // B pushes its surviving week 1 while the cloud still holds week 1 for the
+    // other note; the renumber to week 2 that frees the ordinal is queued behind.
+    await restoreDevice(deviceB);
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastPush = cloud.pushes.filter((p) => p.table === RW).pop();
+    expect(lastPush.ids.indexOf(collided.id)).toBeLessThan(lastPush.ids.indexOf(kept.id));
+    expect(
+      (await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => [
+        w.id,
+        w.week_number,
+      ])
+    ).toEqual([
+      [kept.id, 1],
+      [collided.id, 2],
+    ]);
   });
 
   it('a recovery failure does not take weight, workout-note, or settings sync down', async () => {

@@ -120,9 +120,18 @@ create trigger set_updated_at
 --
 -- These indexes are the authority when two devices race. A second device that
 -- pushes a duplicate is rejected by the database rather than silently accepted,
--- and the client collapses the duplicate deterministically on its next pass (see
--- storage/cloud/syncAdapter.js). Rejecting is deliberate: accepting both would
--- make "the active block" ambiguous on every device at once.
+-- and the client then collapses the duplicate deterministically and re-pushes
+-- (see storage/cloud/syncAdapter.js). Rejecting is deliberate: accepting both
+-- would make "the active block" ambiguous on every device at once.
+--
+-- They are NOT deferrable, so they are checked as each row of an
+-- `insert ... on conflict do update` is processed, against the state the earlier
+-- rows of that same statement produced. A batch whose completed form satisfies
+-- every index is still rejected when a row CLAIMS a slot that a LATER row in the
+-- batch frees. The client therefore orders a recovery push slot-freeing-first
+-- (syncQueue's `orderPush`); without that, a device holding the surviving row
+-- re-sends a permanently failing order. Verified directly: the same two-row
+-- upsert fails in one order and succeeds in the other.
 
 -- At most one ACTIVE block per user: live and not yet completed.
 create unique index if not exists recovery_blocks_one_active_idx

@@ -631,6 +631,22 @@ async function recoverPushAcknowledgements(table, transport, cursor, pushed, res
 // before any physical deletion. If the push throws, the cursor is NOT advanced
 // and the dirty queue is left intact so the next pass retries.
 //
+// `orderPush(records)` optionally reorders the batch handed to `transport.push`.
+// It exists because a table can carry a constraint the DATABASE evaluates ROW BY
+// ROW inside one statement rather than against the batch's end state: Postgres
+// checks a non-deferrable unique index as each row of an
+// `insert ... on conflict do update` is processed, against the state the earlier
+// rows produced. A batch whose completed form satisfies every index is still
+// rejected if a row CLAIMS a slot that a LATER row in the same batch frees.
+//
+// The dirty queue is keyed by id and returns insertion order, which has no
+// relationship to that dependency — so without this hook a table with such a
+// constraint can queue a permanently failing order and retry it forever (the
+// recovery-block wedge; see storage/cloud/syncAdapter.js for the two orderings
+// that matter and why they are content-derived). It is a pure reordering: the
+// same records, and `clearDirty` still acknowledges the snapshots this pass read,
+// so nothing else in the loop depends on the order.
+//
 // `reconcileUnbaselined` opts the table into the first-pass reconciliation
 // described under "signed-out write reconciliation" below. It is a parameter
 // rather than unconditional behaviour because it makes the pass pull the FULL
@@ -651,6 +667,7 @@ export async function syncTable({
   readLocal,
   writeLocal,
   recomputeDerived,
+  orderPush,
   reconcileUnbaselined = false,
   ownedDevice = false,
 }) {
@@ -752,7 +769,10 @@ export async function syncTable({
   //    before any physical deletion happens locally.
   let acknowledged = [];
   if (dirty.length > 0) {
-    const toPush = dirty.map((d) => merged.get(d.id) || d);
+    const pending = dirty.map((d) => merged.get(d.id) || d);
+    // See `orderPush` above: for a table whose constraints are checked per row,
+    // the queue's insertion order is not a safe statement order.
+    const toPush = typeof orderPush === 'function' ? orderPush(pending) : pending;
     const recovered = await recoverPushAcknowledgements(
       table,
       transport,

@@ -265,6 +265,66 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
   };
 }
 
+// Statement-safe push order for the recovery collections (issue #693).
+//
+// The partial unique indexes are checked ROW BY ROW as Postgres processes an
+// upsert, against the state the earlier rows left behind — not against the
+// batch's end state. So a batch is rejected whenever a row CLAIMS a live slot
+// that a LATER row in the same batch frees, even though the completed batch
+// would satisfy every index.
+//
+// That is exactly the shape the duplicate collapse produces, and the dirty queue
+// hands it over in the worst possible order. When THIS device holds the
+// surviving active block, its own row was queued first (it is the pending local
+// write) and the collapse's completion for the losing block is appended after
+// it. Sent in that order the survivor is inserted while the loser still occupies
+// the active slot, the statement rolls back, and the retry rebuilds the same
+// order forever: a permanent wedge, not a transient rejection.
+//
+// The ordering below is derived from row CONTENT, not from a marker the collapse
+// leaves behind, so it is correct for any batch — including one assembled from a
+// restored dirty queue after a restart, where no in-memory knowledge of the
+// collapse survives.
+//
+//   blocks:  rows that do not occupy the active slot (tombstoned or completed)
+//            first, then the live-active row. Freeing always precedes claiming
+//            because the collapse frees a slot only by completing a block.
+//   weeks:   tombstoned rows first — they release both the note and the ordinal
+//            slot — then live rows by DESCENDING week_number. A collapse only
+//            ever moves a membership UP to the next free ordinal, so the mover is
+//            sent before the row that inherits the ordinal it vacated.
+//
+// Both are stable: ids break ties, so two devices that push the same batch
+// produce the same statement.
+function orderRecoveryPush(table) {
+  if (table === SYNC_TABLES.RECOVERY_BLOCKS) {
+    return (records) =>
+      records
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(claimsActiveBlockSlot(a)) - Number(claimsActiveBlockSlot(b)) ||
+            String(a.id).localeCompare(String(b.id))
+        );
+  }
+  if (table === SYNC_TABLES.RECOVERY_BLOCK_WEEKS) {
+    return (records) =>
+      records
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(!isTombstone(a)) - Number(!isTombstone(b)) ||
+            Number(b.week_number || 0) - Number(a.week_number || 0) ||
+            String(a.id).localeCompare(String(b.id))
+        );
+  }
+  return undefined;
+}
+
+function claimsActiveBlockSlot(record) {
+  return !isTombstone(record) && !record.completed_at;
+}
+
 function createTableIo(deferWorkoutNoteTombstone, deferRecoveryResolution = () => {}) {
   return {
   [SYNC_TABLES.WEIGHT_ENTRIES]: {
@@ -428,6 +488,9 @@ async function syncOne(table, tableIo, ownedDevice = false) {
     readLocal: io.read,
     writeLocal: io.write,
     recomputeDerived: getRecomputeDerived(),
+    // Only the recovery collections need one; see orderRecoveryPush for the two
+    // orderings and the wedge they exist to prevent.
+    orderPush: orderRecoveryPush(table),
     // These three are the tables whose signed-out writes the dirty queue misses,
     // so they opt into the unbaselined (upgrade-window) reconciliation described
     // in syncQueue: on the one pass where no baseline exists yet, reconcile
@@ -1119,22 +1182,39 @@ async function runSyncPass({ ownedDevice = false } = {}) {
   const reconciliation = await reconcileSignedOutWrites();
   // Isolated recovery failures (#693) are carried, not thrown, so the pass keeps
   // going for every unrelated table; they are raised together at the end.
-  const recoveryFailures = reconciliation.filter((result) => result && result.error);
-  await tombstoneLocalPhantoms();
+  //
+  // A failed RECONCILIATION is terminal for this pass and is never cleared by a
+  // later success: it means local writes were not enqueued, so a table sync that
+  // then "succeeds" has pushed an incomplete set and would record a baseline that
+  // launders the rest into looking synced. A failed PUSH is different — the rows
+  // are still queued — so it is keyed by table and dropped as soon as a later
+  // attempt for that table lands, which is what stops the converging rerun below
+  // from reporting a failure over data that did reach the cloud.
+  const terminalFailures = reconciliation
+    .filter((result) => result && result.error)
+    .map(({ table, error }) => ({ table, error }));
+  const pushFailures = new Map();
   const results = [];
+
+  const syncRecoveryTable = async (table) => {
+    try {
+      results.push(await syncOne(table, tableIo, ownedDevice));
+      pushFailures.delete(table);
+    } catch (error) {
+      results.push({ table, failed: true, error });
+      pushFailures.set(table, error);
+    }
+  };
+
+  await tombstoneLocalPhantoms();
   for (const table of COLLECTION_SYNC_TABLES) {
     if (!isRecoverySyncTable(table)) {
       // eslint-disable-next-line no-await-in-loop
       results.push(await syncOne(table, tableIo, ownedDevice));
       continue;
     }
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      results.push(await syncOne(table, tableIo, ownedDevice));
-    } catch (error) {
-      results.push({ table, failed: true, error });
-      recoveryFailures.push({ table, error });
-    }
+    // eslint-disable-next-line no-await-in-loop
+    await syncRecoveryTable(table);
   }
   if (pendingWorkoutNoteTombstones.length > 0) {
     const tombstones = pendingWorkoutNoteTombstones.splice(0);
@@ -1171,13 +1251,8 @@ async function runSyncPass({ ownedDevice = false } = {}) {
     // Preserve the blocks-before-memberships dependency order on the rerun too.
     for (const table of RECOVERY_SYNC_TABLES) {
       if (!tables.includes(table)) continue;
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        results.push(await syncOne(table, tableIo, ownedDevice));
-      } catch (error) {
-        results.push({ table, failed: true, error });
-        recoveryFailures.push({ table, error });
-      }
+      // eslint-disable-next-line no-await-in-loop
+      await syncRecoveryTable(table);
     }
   }
 
@@ -1191,10 +1266,16 @@ async function runSyncPass({ ownedDevice = false } = {}) {
     results.push(await syncDiffTable({ ...config, transport: singletonAware }));
   }
 
-  // Every unrelated table is now synced and persisted. A recovery failure is
-  // reported only here, and it IS reported: swallowing it would let the UI claim
+  // Every unrelated table is now synced and persisted. What remains unresolved is
+  // reported here, and it IS reported: swallowing it would let the UI claim
   // "Fully synced" over recovery data that never reached the cloud, which is the
-  // same contract failure #525 exists to close.
+  // same contract failure #525 exists to close. A rejection that the collapse
+  // rerun then resolved is deliberately NOT reported — the rows did reach the
+  // cloud, and an error the user cannot act on is its own kind of dishonesty.
+  const recoveryFailures = [
+    ...terminalFailures,
+    ...[...pushFailures].map(([table, error]) => ({ table, error })),
+  ];
   if (recoveryFailures.length > 0) throw new RecoverySyncError(recoveryFailures);
 
   return results;
