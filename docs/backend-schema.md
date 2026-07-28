@@ -22,7 +22,7 @@ Kilo is not an ingestion or ETL pipeline. There is no upstream feed to land raw,
 
 Consequences:
 
-- The seven app tables share **one ownership boundary**. There is no reason to split them across `raw/canonical/serving` layers, and doing so would only add coordination cost with no benefit at this scale.
+- The app tables share **one ownership boundary**. There is no reason to split them across `raw/canonical/serving` layers, and doing so would only add coordination cost with no benefit at this scale.
 - Canonical-vs-derived is expressed at **column granularity** (see Source-Of-Truth Rule), not at schema-layer granularity. One table can hold both the canonical text and its derived projections.
 - A future `kilo_ops` schema is reserved **only** for Phase 4 sync bookkeeping — cursors, dirty queues, tombstone retention — and only if that bookkeeping actually materializes as server-owned state. It is not created speculatively, and it is the one allowed exception to the single-schema rule.
 
@@ -34,16 +34,19 @@ Do not introduce the anime-tracker's `raw/canonical/serving/ops` layer model int
 
 - The derived `jsonb` snapshot columns on `workout_notes` (`tracked_exercises`, `one_k_exercises`, `skip_markers`, `attendance_flags`, `exercise_classifications`, `session_checkins`) are parser output cached for rendering, sync, and export. They are not an independent source of truth; on conflict, recompute from `raw_text` rather than treating derived drift as a user edit.
 - `fatigue_checkins` rows are **projections** of `workout_notes.session_checkins`, which is itself derived from `raw_text`. They exist to make fatigue history queryable; the source note stays canonical.
+- `recovery_blocks.baseline` is the one deliberate exception to "derived data can be regenerated": it is a **frozen snapshot**, captured once from the baselining routine's `raw_text` at block creation and never recomputed. That is the whole point of it — a later edit to the source routine must not move the target a recovery is measured against — so no sync, bootstrap, or server path may re-derive it. It is stored as opaque `jsonb` (`{ version, exercises: [...] }`) and versioned, so an old snapshot stays readable after the metric shape changes.
 
 Because Kilo's dataset is small and single-user, canonical-vs-derived is tracked at column (and projection-table) granularity. There is no separate canonical schema layer to point at — the rule lives in the column semantics documented here and in the migration's contract notes.
 
 ## Naming Conventions
 
 - **`*_history`** suffix for append/history tables (for example `deload_history`). The current/draft record stays on its owning singleton; completed historical records go to the `*_history` table.
-- **Explicit domain nouns** for table names (`weight_entries`, `workout_notes`, `weight_goal`, `feature_toggles`, `user_profile`, `fatigue_checkins`). No generic or abbreviated table names.
+- **Explicit domain nouns** for table names (`weight_entries`, `workout_notes`, `weight_goal`, `feature_toggles`, `user_profile`, `fatigue_checkins`, `recovery_blocks`, `recovery_block_weeks`). No generic or abbreviated table names.
 - **Singleton tables key on `user_id`** — one row per user, primary key is the user id (`user_profile`, `feature_toggles`, `weight_goal`).
-- **Multi-row tables key on `(user_id, id)`** — the local `id` is preserved as `text` so client ids survive sync (`weight_entries`, `workout_notes`, `deload_history`, `fatigue_checkins`).
+- **Multi-row tables key on `(user_id, id)`** — the local `id` is preserved as `text` so client ids survive sync (`weight_entries`, `workout_notes`, `deload_history`, `fatigue_checkins`, `recovery_blocks`, `recovery_block_weeks`).
+- **Foreign keys are owner-first and composite**, matching that primary key: `recovery_block_weeks (user_id, block_id)` references `recovery_blocks (user_id, id)`. A reference that crosses a boundary the withdrawal purge deletes is deliberately NOT a foreign key — `recovery_blocks.baseline_note_id` and `fatigue_checkins.workout_note_id` are plain `text`, because a constraint pointing at `workout_notes` from a table the purge does not cover would block the purge itself.
 - Conflict/sync columns are consistent across tables: `updated_at` is the conflict cursor and `deleted_at` is the tombstone. History/lookup indexes are owner-first, for example `(user_id, logged_at desc)` or `(user_id, updated_at desc)`.
+- **Cross-record uniqueness is expressed as a PARTIAL unique index over live rows** (`where deleted_at is null`), never as a plain unique constraint. The recovery tables carry all three of Kilo's: one active block per user, one live membership per workout note, one live ordinal per `(block, week)`. Scoping them to live rows is what lets tombstoned history stay intact — a note that left one block can join another, and a completed or deleted block frees the active slot.
 
 ## Grants And Isolation Posture
 
@@ -55,6 +58,14 @@ Isolation is enforced by RLS on top of explicit grants. A custom schema has no d
 - **`anon` is never granted.** Signed-out users stay local-only (AsyncStorage) and never reach these tables.
 
 This grant/RLS posture is what proves Kilo's rows are isolated inside the shared project, since the schema cannot rely on `public`'s default privileges.
+
+### Health-data records and the consent gate
+
+Tables holding data concerning health (Art. 9) carry a second RLS predicate on top of ownership: `kilo.health_gate_ok()`, which requires an active consent grant at the required material version. Both predicates are wrapped in a scalar subquery so the planner evaluates them once per statement.
+
+`recovery_blocks` and `recovery_block_weeks` (issue #693) are health data — a frozen baseline is a record of what the lifter could do before an injury, and a membership says which weeks they trained while recovering from one — and their policies are gated accordingly.
+
+**Known gap, stated explicitly.** They are gated but are **not yet in the authoritative health-data scope**: `kilo.health_gated_tables()` (`supabase/migrations/20260714120002`) and `HEALTH_DATA_SCOPE` (`supabase/functions/_shared/health-data-scope.ts`) still name the original seven tables. Account export, the withdrawal deletion worker, the verified-zero row count that gates `deletion_pending -> withdrawn`, and the consent material version were all out of scope for #693, and that list must move all of those surfaces together or not at all. The consequence is bounded and one-directional: a user who withdraws consent immediately loses read and write access to their recovery rows, but those rows are not yet erased by the purge and are not yet included in an export. Bringing both tables into the scope — with the matching material-version bump, so a new health category is not covered by an old grant — is required before withdrawal or export can be claimed complete for recovery data.
 
 ## Operational Notes
 

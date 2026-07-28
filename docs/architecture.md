@@ -520,6 +520,8 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_weight_date_edit_enabled` | Developer / advanced setting enabling manual date editing on weight entries |
 | `kilo_deload_date_edit_enabled` | Developer / advanced setting enabling manual date editing on deload entries |
 | `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
+| `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, `started_at`, `completed_at`) plus sync metadata and retained tombstones |
+| `kilo_recovery_block_weeks` | JSON array of ordered recovery-week memberships linking a workout note to a block (`block_id`, `note_id`, domain-assigned `week_number`, `completed_at`) plus sync metadata and retained tombstones |
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local
@@ -537,17 +539,48 @@ Cloud bootstrap allowlists `display_name` and `unit_system` from
 `kilo_user_profile`; all other local profile fields remain on-device. The
 Supabase `user_profile` schema has no catch-all profile payload column.
 
-After bootstrap, ongoing cloud reconciliation covers nine table contracts:
-`weight_entries`, `workout_notes`, `archived_weight_goals`, `user_profile`,
-`user_health_profile`, `feature_toggles`, `weight_goal`, `deload_history`, and
-`fatigue_checkins`.
+After bootstrap, ongoing cloud reconciliation covers eleven table contracts:
+`weight_entries`, `workout_notes`, `archived_weight_goals`, `recovery_blocks`,
+`recovery_block_weeks`, `user_profile`, `user_health_profile`,
+`feature_toggles`, `weight_goal`, `deload_history`, and `fatigue_checkins`.
 Ordinary account settings remain in `user_profile`; current routine, fatigue
 multiplier, tracked lifts, and the active generated deload reconcile through the
-consent-gated `user_health_profile`. The ninth contract, `fatigue_checkins`, is
-derived deterministically from converged `workout_notes.session_checkins` and
-never applies pulled projection rows back to canonical notes. The first three enqueue
-dirty rows at write time; the profile, toggles, active goal, and deload history
+consent-gated `user_health_profile`. `fatigue_checkins` is derived
+deterministically from converged `workout_notes.session_checkins` and
+never applies pulled projection rows back to canonical notes. The five
+collections enqueue dirty rows at write time or through the baseline
+reconciliation below; the profile, toggles, active goal, and deload history
 diff their allowlisted local projections against persisted sync snapshots.
+
+Collection order is part of the contract, because two of these tables hold
+references: a recovery block names the workout note its baseline was frozen
+from, and a week membership names both its block and its note. Every pass —
+bootstrap upload and ongoing sync alike — therefore runs `workout_notes` before
+`recovery_blocks` and `recovery_blocks` before `recovery_block_weeks`, so a
+reference always arrives after the row it points at. `kilo.recovery_block_weeks`
+carries a real owner-first foreign key to `kilo.recovery_blocks`; the reference
+to `workout_notes` is deliberately not a foreign key, because the withdrawal
+purge deletes workout notes and a referencing row in a table it does not cover
+would block that delete.
+
+The recovery collections are the only synced tables with cross-record
+uniqueness: one active block per user, one live membership per workout note, and
+one live ordinal per (block, week). All three are enforced as partial unique
+indexes over live rows, so tombstoned history is retained and never blocks a
+note from joining a later block. Two offline devices can each legitimately
+create a state that violates one of them; the database rejects the second write
+deterministically, and every device then collapses the duplicate from the merged
+row set alone — keeping the most recently started block and completing the
+older, keeping the earliest membership for a note and tombstoning the rest, and
+renumbering a colliding ordinal to the next free one rather than dropping a
+legitimate membership. Because that resolution reads only client-authored,
+immutable values, all devices pick the same survivor. A recovery-block failure
+is isolated: the pass finishes every unrelated table first and raises the
+failure afterwards, so a rejected recovery push never stops weight, workout-note,
+or settings sync — and never reports success over recovery data that has not
+reached the cloud. The frozen `baseline` snapshot and the assigned membership
+order are carried through every sync and bootstrap path verbatim; no path
+recomputes a baseline metric or renumbers an established sequence.
 
 Write-time dirty tracking only sees writes made through the cloud adapter, so it
 misses everything written while signed out. Sign-out reverts storage to

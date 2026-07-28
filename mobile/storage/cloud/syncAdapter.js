@@ -18,6 +18,7 @@ import {
   syncTable,
   syncDiffTable,
   isTombstone,
+  stampWrite,
   stampTombstone,
   stableStringify,
   getClientId,
@@ -25,6 +26,7 @@ import {
   getDirtyRecords,
   getSyncSnapshot,
   diffAgainstBaseline,
+  reconcileAgainstBaseline,
   clearCursor,
   clearSyncSnapshot,
   reconcileLocalWrites,
@@ -102,7 +104,168 @@ async function tombstoneLocalPhantoms() {
   }
 }
 
-function createTableIo(deferWorkoutNoteTombstone) {
+// ── recovery-block duplicate resolution (issue #693) ─────────────────────────
+//
+// kilo.recovery_blocks and kilo.recovery_block_weeks carry three PARTIAL unique
+// indexes over live rows: one active block per user, one live membership per
+// workout note, and one live ordinal per (block, week). #692 already enforces
+// all three locally, but a single device cannot enforce a cross-device
+// invariant: two devices that are both offline can each legitimately start a
+// recovery block, or each link the same note as week 3, and neither write is
+// wrong when it is made.
+//
+// The database rejects the second one deterministically, which is what the
+// acceptance criteria ask for — but a rejection alone would wedge the losing
+// device, whose queued row can never be accepted. So the merge result is
+// collapsed here, on every device, using ONLY values carried on the merged
+// records themselves. Every device sees the same merged set and therefore
+// computes the same survivor, which is what makes this converge instead of
+// oscillate: no `Date.now()`, no local-only state, no dependence on which
+// device happens to run first.
+//
+// Resolution runs in the sync WRITE path (see createTableIo below), the same
+// seam the phantom-note cleanup uses, and the rows it changes are deferred to
+// the caller so they are enqueued and pushed by a follow-up pass rather than
+// being cleared underneath the in-flight one.
+
+// Ascending record order used by every rule below. Both components are
+// client-authored and immutable after creation, so all devices agree on it.
+function compareRecoveryRecords(a, b, timeField) {
+  return (
+    String(a[timeField] || '').localeCompare(String(b[timeField] || '')) ||
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
+function laterIso(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+function isLiveRecoveryRecord(record) {
+  return Boolean(record) && record.id != null && !isTombstone(record);
+}
+
+// One active block per user. The most recently STARTED block is the recovery the
+// lifter is actually in, so it survives; every older still-open block is
+// completed as of the survivor's start — the reading a user would give it
+// themselves ("that recovery ended when this one began"). Completion is exactly
+// the state change #692 makes irreversible through the generic patch API, and
+// this is a sync-engine write against the raw list, not a patch, so it does not
+// go around that rule.
+export function resolveDuplicateActiveBlocks(list, clientId) {
+  const active = (list || []).filter(
+    (b) => isLiveRecoveryRecord(b) && !b.completed_at
+  );
+  if (active.length < 2) return { list: list || [], changed: [] };
+
+  const ordered = active.slice().sort((a, b) => compareRecoveryRecords(a, b, 'started_at'));
+  const survivor = ordered[ordered.length - 1];
+
+  const changedById = new Map();
+  for (const loser of ordered.slice(0, -1)) {
+    changedById.set(
+      loser.id,
+      stampWrite(
+        { ...loser, completed_at: laterIso(survivor.started_at, loser.started_at) },
+        clientId
+      )
+    );
+  }
+
+  return {
+    list: (list || []).map((b) => (b && changedById.get(b.id)) || b),
+    changed: [...changedById.values()],
+  };
+}
+
+// A membership that must not stay live is tombstoned at its OWN creation time
+// rather than at `now()`: the row is being retracted as one that should never
+// have existed, and a client-authored, immutable value is identical on every
+// device, so two devices resolving the same collision produce byte-identical
+// tombstones instead of fighting over a timestamp.
+const EPOCH_ISO = new Date(0).toISOString();
+
+function retractedAt(record) {
+  // The final fallback is never reached by a record the domain built (it always
+  // stamps saved_at), but it must exist: returning null would leave the row LIVE,
+  // so the same collision would be re-resolved and re-pushed on every pass.
+  return record.saved_at || record.started_at || record.updated_at || EPOCH_ISO;
+}
+
+// One live membership per note, and one live ordinal per (block, week).
+//
+// Both rules keep the EARLIEST membership, which is the one that was already
+// established when the second device made its conflicting write. Duplicate
+// note memberships are tombstoned (a note genuinely belongs to one block at a
+// time). A colliding ORDINAL is not dropped, because the membership itself is
+// legitimate — it is renumbered to the next free ordinal in its block, which
+// preserves the established order and appends the newcomer after it rather than
+// renumbering anything that already existed.
+export function resolveDuplicateWeekMemberships(list, clientId) {
+  const changedById = new Map();
+  const record = (rec) => {
+    changedById.set(rec.id, rec);
+    return rec;
+  };
+
+  // Rule 1 — one live membership per note.
+  const byNote = new Map();
+  for (const week of list || []) {
+    if (!isLiveRecoveryRecord(week) || week.note_id == null) continue;
+    const bucket = byNote.get(week.note_id);
+    if (bucket) bucket.push(week);
+    else byNote.set(week.note_id, [week]);
+  }
+  const retracted = new Set();
+  for (const bucket of byNote.values()) {
+    if (bucket.length < 2) continue;
+    const ordered = bucket.slice().sort((a, b) => compareRecoveryRecords(a, b, 'saved_at'));
+    for (const loser of ordered.slice(1)) {
+      retracted.add(loser.id);
+      record({ ...stampWrite(loser, clientId), deleted_at: retractedAt(loser) });
+    }
+  }
+
+  // Rule 2 — one live ordinal per (block, week_number), over what rule 1 left
+  // live. Grouping by block first keeps this O(rows) rather than a nested scan.
+  const byBlock = new Map();
+  for (const week of list || []) {
+    if (!isLiveRecoveryRecord(week) || retracted.has(week.id)) continue;
+    const bucket = byBlock.get(week.block_id);
+    if (bucket) bucket.push(week);
+    else byBlock.set(week.block_id, [week]);
+  }
+  for (const bucket of byBlock.values()) {
+    const byOrdinal = new Map();
+    let maxOrdinal = 0;
+    for (const week of bucket) {
+      const ordinal = Number(week.week_number);
+      if (Number.isInteger(ordinal) && ordinal > maxOrdinal) maxOrdinal = ordinal;
+      const collided = byOrdinal.get(week.week_number);
+      if (collided) collided.push(week);
+      else byOrdinal.set(week.week_number, [week]);
+    }
+    for (const collided of byOrdinal.values()) {
+      if (collided.length < 2) continue;
+      const ordered = collided
+        .slice()
+        .sort((a, b) => compareRecoveryRecords(a, b, 'saved_at'));
+      for (const loser of ordered.slice(1)) {
+        maxOrdinal += 1;
+        record(stampWrite({ ...loser, week_number: maxOrdinal }, clientId));
+      }
+    }
+  }
+
+  return {
+    list: (list || []).map((w) => (w && changedById.get(w.id)) || w),
+    changed: [...changedById.values()],
+  };
+}
+
+function createTableIo(deferWorkoutNoteTombstone, deferRecoveryResolution = () => {}) {
   return {
   [SYNC_TABLES.WEIGHT_ENTRIES]: {
     read: () => Storage.loadWeightEntriesRaw(),
@@ -142,17 +305,70 @@ function createTableIo(deferWorkoutNoteTombstone) {
     read: () => loadArchivedWeightGoalsRaw(),
     write: (list) => replaceArchivedWeightGoalsRaw(list),
   },
+  // Both recovery collections write the merged list back VERBATIM apart from the
+  // cross-device duplicate collapse above. In particular the frozen `baseline`
+  // and each membership's `week_number` are persisted exactly as they arrived:
+  // sync never recomputes a baseline metric and never reorders an established
+  // membership sequence.
+  [SYNC_TABLES.RECOVERY_BLOCKS]: {
+    read: () => Storage.loadRecoveryBlocksRaw(),
+    write: async (list) => {
+      const clientId = await getClientId();
+      const { list: resolved, changed } = resolveDuplicateActiveBlocks(list, clientId);
+      await Storage.replaceRecoveryBlocksRaw(resolved);
+      // Same deferral contract as the phantom-note tombstones above: syncTable
+      // snapshots and clears its dirty batch around writeLocal, so a row created
+      // during the write must be enqueued after the pass, not inside it.
+      for (const record of changed) deferRecoveryResolution(SYNC_TABLES.RECOVERY_BLOCKS, record);
+    },
+  },
+  [SYNC_TABLES.RECOVERY_BLOCK_WEEKS]: {
+    read: () => Storage.loadRecoveryBlockWeeksRaw(),
+    write: async (list) => {
+      const clientId = await getClientId();
+      const { list: resolved, changed } = resolveDuplicateWeekMemberships(list, clientId);
+      await Storage.replaceRecoveryBlockWeeksRaw(resolved);
+      for (const record of changed) {
+        deferRecoveryResolution(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, record);
+      }
+    },
+  },
   };
 }
 
 // The tables whose local changes are tracked by the dirty queue at write time.
 // Every other synced table is diff-tracked (see DIFF_TABLES below), which
 // detects local change by comparing live state against a snapshot instead.
+//
+// ORDER IS PART OF THE CONTRACT (issue #693). The list is walked in sequence by
+// runSyncPass, and the last two tables reference rows in tables above them: a
+// recovery block names the workout note its frozen baseline was captured from,
+// and a membership names both its block and its note. Syncing them in this order
+// is what makes a reference arrive after the row it points at, so a second
+// device never sees a block whose baseline routine it has not downloaded yet.
 const COLLECTION_SYNC_TABLES = Object.freeze([
   SYNC_TABLES.WEIGHT_ENTRIES,
   SYNC_TABLES.WORKOUT_NOTES,
   SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+  SYNC_TABLES.RECOVERY_BLOCKS,
+  SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
 ]);
+
+// The recovery collections are the two tables whose failure must not take the
+// rest of a pass down (issue #693). They are the only synced tables carrying
+// cross-record uniqueness constraints, so a two-device race can legitimately get
+// one push rejected — and weight entries, workout notes, and settings have
+// nothing to do with that. Every pass therefore runs them in isolation: their
+// error is recorded, the pass continues through every other table, and the error
+// is raised only once the rest of the work is durably done.
+const RECOVERY_SYNC_TABLES = Object.freeze([
+  SYNC_TABLES.RECOVERY_BLOCKS,
+  SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
+]);
+
+function isRecoverySyncTable(table) {
+  return RECOVERY_SYNC_TABLES.includes(table);
+}
 
 // Reconcile writes made while signed out (issue #525).
 //
@@ -177,12 +393,29 @@ const COLLECTION_SYNC_TABLES = Object.freeze([
 // table against a full pull instead (see reconcileAgainstRemote). Both halves
 // run inside the same sync phase, so neither can be skipped on the way to a
 // successful SYNC.
+//
+// Recovery reconciliation is isolated (issue #693) for the same reason its sync
+// pass is: an unreadable recovery collection — the fail-closed CorruptStorageError
+// readList raises for a key whose bytes will not parse — must not stop weight
+// entries and workout notes from reconciling and uploading. The failure is
+// carried out on the result instead of thrown, and runSyncPass raises it after
+// the rest of the pass has completed, so it is reported rather than swallowed.
 export async function reconcileSignedOutWrites() {
   const tableIo = createTableIo(() => {});
   const results = [];
   for (const table of COLLECTION_SYNC_TABLES) {
-    // eslint-disable-next-line no-await-in-loop
-    results.push(await reconcileLocalWrites({ table, readLocal: tableIo[table].read }));
+    const reconcile = () => reconcileLocalWrites({ table, readLocal: tableIo[table].read });
+    if (!isRecoverySyncTable(table)) {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await reconcile());
+      continue;
+    }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await reconcile());
+    } catch (error) {
+      results.push({ table, reconciled: 0, deferred: false, error });
+    }
   }
   return results;
 }
@@ -735,6 +968,22 @@ const STATUS_DIFF_TABLES = Object.freeze(
   DIFF_TABLES.filter(({ table }) => table !== SYNC_TABLES.FATIGUE_CHECKINS)
 );
 
+// The recovery collections have no write-time queue hook (see the recovery
+// methods in storage/cloudAdapter.js): the domain writes them through the same
+// storage module in both adapter modes, and the sync engine picks the change up
+// through reconcileSignedOutWrites at the start of the next pass. That is what
+// makes them correct, but it also means their dirty queue is EMPTY between the
+// write and that pass — so reading the queue alone would report "nothing to
+// upload" over a recovery block the user just created.
+//
+// Reconciling against the persisted baseline is the same evidence the pass
+// itself uses, so the count reported here is the count the next pass will push.
+// Pure: it reads local state and the snapshot, and enqueues/stamps nothing (the
+// stamped records reconcileAgainstBaseline builds are counted and discarded).
+// The other three collection tables are deliberately not read this way — they DO
+// enqueue at write time, so their queue is already the answer.
+const STATUS_RECONCILED_COLLECTION_TABLES = RECOVERY_SYNC_TABLES;
+
 export async function getPendingSyncIntent() {
   const dirtyByTable = await Promise.all(
     Object.values(SYNC_TABLES).map(async (table) => ({
@@ -743,6 +992,27 @@ export async function getPendingSyncIntent() {
     }))
   );
   const dirtyCount = dirtyByTable.reduce((count, { records }) => count + records.length, 0);
+
+  const tableIo = createTableIo(() => {});
+  const reconciled = await Promise.all(
+    STATUS_RECONCILED_COLLECTION_TABLES.map(async (table) => {
+      const baseline = await getSyncSnapshot(table);
+      // No baseline: this device has no server-confirmed state to diff against,
+      // so it cannot claim an upload is pending. Same rule as the diff tables.
+      if (baseline == null) return { table, count: 0 };
+      const { dirty } = reconcileAgainstBaseline({
+        current: (await tableIo[table].read()) || [],
+        baseline,
+        clientId: 'pending-intent-read',
+      });
+      // A record already sitting in the dirty queue is counted once, above.
+      const queued = new Set(
+        (dirtyByTable.find((entry) => entry.table === table)?.records || []).map((r) => r.id)
+      );
+      return { table, count: dirty.filter((rec) => !queued.has(rec.id)).length };
+    })
+  );
+  const reconciledCount = reconciled.reduce((count, result) => count + result.count, 0);
 
   const diffed = await Promise.all(
     STATUS_DIFF_TABLES.map(async (config) => {
@@ -769,12 +1039,14 @@ export async function getPendingSyncIntent() {
   const diffCount = diffed.reduce((count, result) => count + result.count, 0);
 
   return {
-    hasPending: dirtyCount + diffCount > 0,
+    hasPending: dirtyCount + diffCount + reconciledCount > 0,
     dirtyCount,
     diffCount,
-    tables: [...dirtyByTable, ...diffed]
+    reconciledCount,
+    tables: [...dirtyByTable, ...diffed, ...reconciled]
       .filter(({ records, count }) => (records ? records.length : count) > 0)
-      .map(({ table }) => table),
+      .map(({ table }) => table)
+      .filter((table, index, all) => all.indexOf(table) === index),
   };
 }
 
@@ -817,18 +1089,52 @@ function enqueueCloudOperation(operation) {
   return scheduled;
 }
 
+// Raised at the END of a pass whose recovery-block work failed while every other
+// table completed. Carries the first underlying failure as `cause` so the app's
+// error surface can still show what actually went wrong.
+export class RecoverySyncError extends Error {
+  constructor(failures) {
+    const [first] = failures;
+    super(
+      `Recovery-block sync failed for ${failures.map((f) => f.table).join(', ')}: ` +
+        `${first?.error?.message || first?.error || 'unknown error'}. Every other table synced.`
+    );
+    this.name = 'RecoverySyncError';
+    this.failures = failures;
+    this.recoverySyncFailure = true;
+    if (first?.error !== undefined) this.cause = first.error;
+  }
+}
+
 async function runSyncPass({ ownedDevice = false } = {}) {
   const pendingWorkoutNoteTombstones = [];
-  const tableIo = createTableIo((tombstone) => pendingWorkoutNoteTombstones.push(tombstone));
+  const pendingRecoveryResolutions = [];
+  const tableIo = createTableIo(
+    (tombstone) => pendingWorkoutNoteTombstones.push(tombstone),
+    (table, record) => pendingRecoveryResolutions.push({ table, record })
+  );
   // Before anything else: adopt writes made while signed out (#525). A failure
   // here propagates, so the SYNC phase fails and the user sees a retryable state
   // rather than a success that silently left local data behind.
-  await reconcileSignedOutWrites();
+  const reconciliation = await reconcileSignedOutWrites();
+  // Isolated recovery failures (#693) are carried, not thrown, so the pass keeps
+  // going for every unrelated table; they are raised together at the end.
+  const recoveryFailures = reconciliation.filter((result) => result && result.error);
   await tombstoneLocalPhantoms();
   const results = [];
   for (const table of COLLECTION_SYNC_TABLES) {
-    // eslint-disable-next-line no-await-in-loop
-    results.push(await syncOne(table, tableIo, ownedDevice));
+    if (!isRecoverySyncTable(table)) {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await syncOne(table, tableIo, ownedDevice));
+      continue;
+    }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await syncOne(table, tableIo, ownedDevice));
+    } catch (error) {
+      results.push({ table, failed: true, error });
+      recoveryFailures.push({ table, error });
+    }
   }
   if (pendingWorkoutNoteTombstones.length > 0) {
     const tombstones = pendingWorkoutNoteTombstones.splice(0);
@@ -837,6 +1143,42 @@ async function runSyncPass({ ownedDevice = false } = {}) {
       await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
     }
     results.push(await syncOne(SYNC_TABLES.WORKOUT_NOTES, tableIo, ownedDevice));
+  }
+
+  // Collapsed cross-device duplicates (issue #693). The write that produced them
+  // ran inside syncTable, which snapshots and clears its dirty batch around
+  // writeLocal, so — exactly like the phantom-note tombstones above — they are
+  // enqueued here and pushed by a rerun of their own table. This is what makes a
+  // two-device duplicate converge inside ONE sync() call: the first attempt is
+  // rejected by the partial unique index, the merge that follows collapses the
+  // duplicate locally, and this rerun uploads the collapsed rows.
+  //
+  // Drained in a bounded loop because a rerun can itself pull a row that
+  // collapses. Every resolved row MUST be enqueued before its table records a
+  // baseline, or the baseline would launder a local-only change into looking
+  // synced — the invariant syncTable documents at step 6. In practice the
+  // collapse is idempotent and the first round settles it; the bound exists so a
+  // pathological case ends the pass rather than spinning, and anything still
+  // pending is carried by the dirty queue into the next one.
+  for (let round = 0; round < 3 && pendingRecoveryResolutions.length > 0; round += 1) {
+    const resolutions = pendingRecoveryResolutions.splice(0);
+    const tables = [];
+    for (const { table, record } of resolutions) {
+      if (!tables.includes(table)) tables.push(table);
+      // eslint-disable-next-line no-await-in-loop
+      await enqueueDirty(table, record);
+    }
+    // Preserve the blocks-before-memberships dependency order on the rerun too.
+    for (const table of RECOVERY_SYNC_TABLES) {
+      if (!tables.includes(table)) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        results.push(await syncOne(table, tableIo, ownedDevice));
+      } catch (error) {
+        results.push({ table, failed: true, error });
+        recoveryFailures.push({ table, error });
+      }
+    }
   }
 
   // The tables bootstrap used to push once and abandon (issue #489). Run them
@@ -848,6 +1190,13 @@ async function runSyncPass({ ownedDevice = false } = {}) {
     // eslint-disable-next-line no-await-in-loop
     results.push(await syncDiffTable({ ...config, transport: singletonAware }));
   }
+
+  // Every unrelated table is now synced and persisted. A recovery failure is
+  // reported only here, and it IS reported: swallowing it would let the UI claim
+  // "Fully synced" over recovery data that never reached the cloud, which is the
+  // same contract failure #525 exists to close.
+  if (recoveryFailures.length > 0) throw new RecoverySyncError(recoveryFailures);
+
   return results;
 }
 
@@ -892,8 +1241,11 @@ export function sync({ ownedDevice = false } = {}) {
 // (intentionally empty) post-purge cloud snapshot over local state first: the
 // merge step unions local-only records straight into the push set exactly as
 // it does for any other unsynced local write.
-// The same three dirty-queue-tracked collections defined above; every one of
-// them is consent-gated and therefore emptied by a withdrawal purge.
+// The same dirty-queue-tracked collections defined above; every one of them is
+// consent-gated and therefore emptied by a withdrawal purge. The two recovery
+// collections (#693) are gated the same way and are included for the same
+// reason — a rebuild that skipped them would leave the account's recovery
+// history on the device only.
 const REBUILD_COLLECTION_TABLES = COLLECTION_SYNC_TABLES;
 
 // The diff-tracked tables among the seven gated ones. FEATURE_TOGGLES and

@@ -567,6 +567,11 @@ describe('reconciliation cannot be skipped or inferred without evidence', () => 
       SYNC_TABLES.WEIGHT_ENTRIES,
       SYNC_TABLES.WORKOUT_NOTES,
       SYNC_TABLES.ARCHIVED_WEIGHT_GOALS,
+      // The recovery collections (#693) reconcile here too, last, so a block or
+      // membership written through the local adapter is uploaded like any other
+      // signed-out write — and after the workout notes they reference.
+      SYNC_TABLES.RECOVERY_BLOCKS,
+      SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
     ]);
     expect(results.every((r) => r.reconciled === 0)).toBe(true);
   });

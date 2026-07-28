@@ -1474,3 +1474,46 @@ describe('useAutoSync: automatic post-purge cloud rebuild (issue #538)', () => {
     expect(await getCloudRebuildGeneration(USER.id)).toBe(1);
   });
 });
+
+// ── recovery-block sync failures at the app seam (issue #693) ────────────────
+//
+// The engine deliberately finishes every unrelated table before raising a
+// recovery failure, so the two halves of that contract have to be true at the
+// same time: the pass must NOT report success (the SYNC phase stays failed and
+// retryable), and the failure must not be reachable by any path that would let
+// the UI show "Fully synced" over unpushed recovery data. The convergence
+// mechanics themselves are covered end to end in offline-sync.test.js.
+describe('useAutoSync: a recovery-block failure fails the SYNC phase', () => {
+  test('leaves the phase failed and retryable, then recovers on manual retry', async () => {
+    await setLocalDataOwner(USER.id);
+    const recoveryFailure = Object.assign(
+      new Error('Recovery-block sync failed for recovery_blocks: duplicate key value'),
+      { name: 'RecoverySyncError', recoverySyncFailure: true }
+    );
+    let attempts = 0;
+    const syncFn = mockCloudSyncAdapter(() => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(recoveryFailure) : Promise.resolve({ ok: true });
+    });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let first;
+    await act(async () => {
+      first = await ref.current.runSync();
+    });
+    expect(first.ok).toBe(false);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).not.toBe(SYNC_STATUS.COMPLETE);
+
+    // The next pass — the one that pushes the collapsed rows — succeeds, and
+    // only then does the phase report completion.
+    let second;
+    await act(async () => {
+      second = await ref.current.retrySync();
+    });
+    expect(second.ok).toBe(true);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(syncFn).toHaveBeenCalledTimes(2);
+  });
+});

@@ -1513,3 +1513,123 @@ describe('sync adapter: archived_weight_goals transport', () => {
     expect(tables).toContain(SYNC_TABLES.ARCHIVED_WEIGHT_GOALS);
   });
 });
+
+// ── recovery blocks + week memberships (issue #693) ──────────────────────────
+describe('recovery-block bootstrap upload', () => {
+  const ROUTINE_TEXT = '-Bench\n- 135 5,5\n- 185 3';
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+  });
+
+  async function seedRecoveryData() {
+    await Storage.saveWorkoutNoteItem({
+      id: 'wn_base',
+      title: 'Routine 1',
+      raw_text: ROUTINE_TEXT,
+      saved_at: '2026-07-01T10:00:00.000Z',
+    });
+    await Storage.saveWorkoutNoteItem({
+      id: 'wn_week1',
+      title: 'Week 1',
+      raw_text: '-Bench\n- 95 5,5',
+      saved_at: '2026-07-08T10:00:00.000Z',
+    });
+    const block = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteTitle: 'Routine 1',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    const week = await Storage.addRecoveryWeek({ blockId: block.id, noteId: 'wn_week1' });
+    return { block, week };
+  }
+
+  it('uploads both collections with the frozen baseline and assigned ordinal intact', async () => {
+    const { block, week } = await seedRecoveryData();
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const [blockRow] = client.upsertsByTable.recovery_blocks;
+    expect(blockRow.user_id).toBe(USER_ID);
+    expect(blockRow.id).toBe(block.id);
+    expect(blockRow.baseline_note_id).toBe('wn_base');
+    // Verbatim: bootstrap does not re-parse the routine or re-derive a metric.
+    expect(blockRow.baseline).toEqual(block.baseline);
+    expect(blockRow.include_in_normal_analytics).toBe(false);
+    expect(blockRow.started_at).toBe(block.started_at);
+    expect(blockRow.completed_at).toBeNull();
+
+    const [weekRow] = client.upsertsByTable.recovery_block_weeks;
+    expect(weekRow.id).toBe(week.id);
+    expect(weekRow.block_id).toBe(block.id);
+    expect(weekRow.note_id).toBe('wn_week1');
+    expect(weekRow.week_number).toBe(1);
+  });
+
+  it('uploads blocks after their workout notes and memberships after their block', async () => {
+    await seedRecoveryData();
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    const order = client.calls.map((c) => c.table);
+    expect(order.indexOf('workout_notes')).toBeLessThan(order.indexOf('recovery_blocks'));
+    expect(order.indexOf('recovery_blocks')).toBeLessThan(
+      order.indexOf('recovery_block_weeks')
+    );
+    // Both key on the composite collection primary key, never on user_id alone.
+    const targets = Object.fromEntries(client.calls.map((c) => [c.table, c.opts?.onConflict]));
+    expect(targets.recovery_blocks).toBe('user_id,id');
+    expect(targets.recovery_block_weeks).toBe('user_id,id');
+  });
+
+  it('carries tombstones through instead of resurrecting deleted records', async () => {
+    const { block, week } = await seedRecoveryData();
+    await Storage.deleteRecoveryWeek(week.id);
+    await Storage.deleteRecoveryBlock(block.id);
+
+    const client = makeFakeClient();
+    await bootstrapFromLocal(USER_ID, client);
+
+    expect(client.upsertsByTable.recovery_blocks[0].deleted_at).toBeTruthy();
+    expect(client.upsertsByTable.recovery_block_weeks[0].deleted_at).toBeTruthy();
+  });
+
+  it('records a rejected recovery upsert instead of failing an otherwise complete bootstrap', async () => {
+    await seedRecoveryData();
+    // The account already has an active block from another device, so the
+    // partial unique index rejects this one. Everything else has already landed
+    // by then, and the sync pass that follows is what converges the duplicate.
+    const client = makeFakeClient({ failTable: 'recovery_blocks' });
+    const result = await bootstrapFromLocal(USER_ID, client);
+
+    expect(result.ok).toBe(true);
+    expect(result.deferred).toEqual([
+      { table: 'recovery_blocks', message: 'boom in recovery_blocks' },
+    ]);
+    expect(result.summary.recovery_blocks).toBe(0);
+    expect(client.upsertsByTable.workout_notes.length).toBeGreaterThan(0);
+    expect(client.upsertsByTable.user_profile).toHaveLength(1);
+  });
+
+  it('a device holding recovery data is not "empty" for the download-only restore', async () => {
+    const { isLocalDataEmpty } = require('../storage/cloudAdapter');
+    expect(await isLocalDataEmpty()).toBe(true);
+
+    await Storage.saveWorkoutNoteItem({
+      id: 'wn_base',
+      title: 'Routine 1',
+      raw_text: ROUTINE_TEXT,
+      saved_at: '2026-07-01T10:00:00.000Z',
+    });
+    await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    // The note alone already disqualifies it; clearing the notebook leaves the
+    // recovery block as the only local content, which must still disqualify it.
+    await Storage.replaceWorkoutNotesRaw([]);
+    expect(await isLocalDataEmpty()).toBe(false);
+  });
+});

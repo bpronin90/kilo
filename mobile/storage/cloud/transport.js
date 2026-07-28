@@ -142,6 +142,39 @@ const UPSERT_COLUMNS = Object.freeze({
     'source_json',
     'deleted_at',
   ]),
+  // ── recovery blocks (#692/#693) ────────────────────────────────────────────
+  // Two ordinary (user_id, id) collections. `baseline` is the frozen snapshot
+  // and rides through verbatim as jsonb: neither the client's sync path nor the
+  // server ever recomputes it, so what is written at creation is what every
+  // device reads back forever.
+  //
+  // `started_at`/`saved_at` ARE whitelisted even though they never change after
+  // creation. They are client-owned record content (when the recovery began,
+  // when the row was first written), not sync-ordering metadata, and the merge
+  // needs them to survive a round trip so a device that first learns of a block
+  // from the cloud can order and display it. The three columns omitted from
+  // every table above — `updated_at`, `client_id`, `sync_xid` — stay omitted
+  // here for exactly the reasons documented there.
+  recovery_blocks: Object.freeze([
+    'id',
+    'baseline_note_id',
+    'baseline_note_title',
+    'baseline',
+    'include_in_normal_analytics',
+    'started_at',
+    'completed_at',
+    'saved_at',
+    'deleted_at',
+  ]),
+  recovery_block_weeks: Object.freeze([
+    'id',
+    'block_id',
+    'note_id',
+    'week_number',
+    'completed_at',
+    'saved_at',
+    'deleted_at',
+  ]),
 });
 
 // Upsert conflict target per table. Singleton tables key on `user_id` alone;

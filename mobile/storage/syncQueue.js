@@ -39,7 +39,8 @@ const ROW_XID_FIELD = '__kilo_sync_xid';
 //
 // Two shapes exist in the `kilo` schema:
 //   - COLLECTION tables key on (user_id, id): weight_entries, workout_notes,
-//     archived_weight_goals, deload_history.
+//     archived_weight_goals, deload_history, recovery_blocks,
+//     recovery_block_weeks.
 //   - SINGLETON tables key on user_id alone and have NO `id` column:
 //     user_profile, feature_toggles, weight_goal. The merge machinery below is
 //     keyed by id, so a pulled singleton row is given the synthetic id
@@ -63,6 +64,13 @@ export const SYNC_TABLES = Object.freeze({
   // Art. 9 health-data scope. A pulled fatigue row is never written back into a
   // note — see syncAdapter.applyFatigueCheckins.
   FATIGUE_CHECKINS: 'fatigue_checkins',
+  // The recovery-block domain (#692, synced by #693). Two ordinary collections:
+  // a block carries the FROZEN pre-recovery baseline snapshot, and a week is an
+  // ordered membership binding one workout note to one block. They are listed
+  // last, and synced last, because both reference rows in tables above them:
+  // workout notes before blocks, blocks before the memberships that link them.
+  RECOVERY_BLOCKS: 'recovery_blocks',
+  RECOVERY_BLOCK_WEEKS: 'recovery_block_weeks',
 });
 
 // Synthetic local id for the one row a singleton table can hold. Stable across
