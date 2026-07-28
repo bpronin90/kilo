@@ -3082,6 +3082,68 @@ describe('recovery block sync (issue #693)', () => {
     ]);
   });
 
+  // A block delete cascades to its live memberships LOCALLY (#692), but a
+  // tombstone that arrives by PULL carries no cascade with it — and the foreign
+  // key cannot catch the result, because a tombstoned block row is still
+  // physically present. Without the cascade, a membership created offline
+  // against a block another device deleted is uploaded LIVE under a dead parent:
+  // invisible to the user (its block is gone) while still holding the live-note
+  // unique slot, so that note can never join another block. The note slot is the
+  // part that actually strands the user, so it is asserted here.
+  it('cascades a pulled block tombstone to a membership created offline, and frees the note', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_w1', '-Bench\n- 95 5,5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // B downloads the account while the block is still live.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    // A deletes the whole block and syncs.
+    await restoreDevice(deviceA);
+    await cloudAdapter.deleteRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(RB, block.id).deleted_at).toBeTruthy();
+
+    // B, which has not synced since, links a note to the block it still thinks
+    // is active — a legitimate write when it is made.
+    await restoreDevice(deviceB);
+    const orphan = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await cloudAdapter.sync();
+
+    // The block tombstone won, so the membership must not survive it.
+    expect(await cloudAdapter.loadRecoveryBlocks()).toEqual([]);
+    expect(await cloudAdapter.loadRecoveryBlockWeeks()).toEqual([]);
+    expect(cloud.remoteRow(RW, orphan.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+
+    // The note is free again: it can join a new block, which the live-note unique
+    // index would refuse while a stale live membership still held the slot.
+    const next = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    const rejoined = await cloudAdapter.addRecoveryWeek({
+      blockId: next.id,
+      noteId: 'wn_w1',
+    });
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+    expect(cloud.remoteRow(RW, rejoined.id).deleted_at).toBeFalsy();
+
+    // And A converges on the same state rather than seeing a live orphan.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([
+      rejoined.id,
+    ]);
+  });
+
   it('a recovery failure does not take weight, workout-note, or settings sync down', async () => {
     await seedBlockWithWeek();
     await Storage.saveWeightEntry({

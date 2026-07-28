@@ -563,6 +563,17 @@ to `workout_notes` is deliberately not a foreign key, because the withdrawal
 purge deletes workout notes and a referencing row in a table it does not cover
 would block that delete.
 
+Deleting a block tombstones its live memberships, and that cascade is the
+client's responsibility on both halves: when the delete is made on this device,
+and when the block tombstone arrives by PULL, which is applied before every
+membership sync. The foreign key cannot substitute for the second half — a
+tombstoned block row is still physically present, so a live membership under a
+deleted block satisfies it. A membership created offline against a block another
+device deleted would otherwise upload live under a dead parent: invisible to the
+user, while still holding the live-note unique slot, so that workout note could
+never join another block. A block that is merely ABSENT locally never cascades,
+matching the engine's rule that a row not yet downloaded is not a delete.
+
 The recovery collections are the only synced tables with cross-record
 uniqueness: one active block per user, one live membership per workout note, and
 one live ordinal per (block, week). All three are enforced as partial unique

@@ -265,6 +265,69 @@ export function resolveDuplicateWeekMemberships(list, clientId) {
   };
 }
 
+// Cascade a PULLED block tombstone to the memberships it should have taken with
+// it (issue #693).
+//
+// #692 cascades locally: deleting a block tombstones its live memberships in the
+// same write. A tombstone that arrives by PULL carries no such cascade — the
+// merge simply adopts the block row — so a membership this device created while
+// the block was still live stays live under a dead parent.
+//
+// Nothing downstream catches it. The foreign key cannot: a tombstoned block row
+// is still physically present, so the reference is valid. The live-row unique
+// indexes cannot: one live membership for that note is exactly what they allow.
+// So the row uploads, and the user is left with a membership they cannot see
+// (its block is gone) that permanently holds the live-note slot — meaning that
+// workout note can never join another recovery block. The slot is the real
+// damage; the invisible row is just how it hides.
+//
+// Runs BEFORE every recovery_block_weeks pass, so the tombstone is already in
+// the dirty queue when that pass pushes and converges in the same pass rather
+// than needing a follow-up.
+//
+// A block that is MISSING locally is deliberately not treated as deleted. That
+// is the "never infer a delete" rule the rest of the engine follows: an absent
+// block is a row this device has not downloaded yet (its push may simply have
+// failed on the other device), and tombstoning its memberships would destroy
+// legitimate data on a guess. Only an explicit tombstone cascades.
+//
+// The membership inherits the BLOCK's `deleted_at` rather than `now()`: it is a
+// converged, server-visible value, so every device that performs this cascade
+// writes a byte-identical tombstone instead of fighting over a timestamp.
+export async function cascadeDeletedBlockMemberships() {
+  const [blocks, weeks] = await Promise.all([
+    Storage.loadRecoveryBlocksRaw(),
+    Storage.loadRecoveryBlockWeeksRaw(),
+  ]);
+
+  const deletedBlockAt = new Map();
+  for (const block of blocks || []) {
+    if (block && block.id != null && isTombstone(block)) {
+      deletedBlockAt.set(block.id, block.deleted_at);
+    }
+  }
+  if (deletedBlockAt.size === 0) return [];
+
+  const clientId = await getClientId();
+  const cascaded = [];
+  const next = (weeks || []).map((week) => {
+    if (!isLiveRecoveryRecord(week)) return week;
+    const deletedAt = deletedBlockAt.get(week.block_id);
+    if (!deletedAt) return week;
+    const tombstone = { ...stampWrite(week, clientId), deleted_at: deletedAt };
+    cascaded.push(tombstone);
+    return tombstone;
+  });
+  if (cascaded.length === 0) return [];
+
+  await Storage.replaceRecoveryBlockWeeksRaw(next);
+  for (const record of cascaded) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueDirty(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, record);
+  }
+  return cascaded;
+}
+
 // Statement-safe push order for the recovery collections (issue #693).
 //
 // The partial unique indexes are checked ROW BY ROW as Postgres processes an
@@ -1198,6 +1261,14 @@ async function runSyncPass({ ownedDevice = false } = {}) {
 
   const syncRecoveryTable = async (table) => {
     try {
+      // Every membership pass is preceded by the cascade, reruns included: the
+      // blocks pass immediately before it may have pulled a tombstone, and a
+      // membership left live under a deleted block would upload and strand its
+      // note. Throwing here deliberately skips the push rather than sending a
+      // set this device knows is inconsistent.
+      if (table === SYNC_TABLES.RECOVERY_BLOCK_WEEKS) {
+        await cascadeDeletedBlockMemberships();
+      }
       results.push(await syncOne(table, tableIo, ownedDevice));
       pushFailures.delete(table);
     } catch (error) {

@@ -66,10 +66,18 @@ create table if not exists kilo.recovery_blocks (
 -- A membership binds one workout note to one block as its ordinal week. The
 -- block reference IS enforced, owner-first, because both sides of it live in
 -- this migration's own tables and the sync engine pushes blocks before weeks, so
--- the referenced row is always present in dependency order. `on delete cascade`
--- only fires for a PHYSICAL block delete (an auth.users cascade); the ordinary
--- app delete is a tombstone, which the client cascades to the block's live
--- memberships so both sides converge as retained rows.
+-- the referenced row is always present in dependency order.
+--
+-- The FK deliberately does NOT police the tombstone relationship, and cannot: a
+-- tombstoned block row is still physically present, so a LIVE membership under a
+-- deleted block satisfies it. `on delete cascade` here only fires for a PHYSICAL
+-- block delete (an auth.users cascade). The ordinary app delete is a tombstone,
+-- and the client owns cascading it to the block's live memberships — both when
+-- the delete is made locally (#692) and when the tombstone arrives by PULL,
+-- which is checked before every membership sync (storage/cloud/syncAdapter.js).
+-- Without that second half, a membership created offline against a block another
+-- device deleted uploads live under a dead parent and holds the live-note slot
+-- forever, so its workout note can never join another block.
 create table if not exists kilo.recovery_block_weeks (
   user_id uuid not null references auth.users (id) on delete cascade,
   id text not null,
