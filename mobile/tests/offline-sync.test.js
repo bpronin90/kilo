@@ -3144,6 +3144,68 @@ describe('recovery block sync (issue #693)', () => {
     ]);
   });
 
+  // Isolation must not become independence. The membership pass depends on the
+  // block pass having actually run: the cascade above can only act on a tombstone
+  // that a successful block PULL delivered. If the block pass fails for its own
+  // transient reason, local state still shows the parent live, the cascade finds
+  // nothing to do, and an unconditional membership pass uploads the offline live
+  // row against a remotely deleted parent — the FK is satisfied by the tombstoned
+  // row, so the stranded note comes back through the failure path instead.
+  it('does not sync memberships when the block pass failed, and converges on the retry', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_w1', '-Bench\n- 95 5,5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    await restoreDevice(deviceA);
+    await cloudAdapter.deleteRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+
+    // B links a note offline, then syncs while the block table specifically is
+    // unreachable — so it never learns the parent was deleted.
+    await restoreDevice(deviceB);
+    const orphan = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const realPull = cloud.transport.pull;
+    cloud.transport.pull = async (table, cursor) => {
+      if (table === RB) throw new Error('recovery_blocks pull exploded');
+      return realPull(table, cursor);
+    };
+    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
+
+    // The membership must not have been uploaded: this device never saw the
+    // tombstone, so it cannot know its parent is gone.
+    expect(cloud.remoteRow(RW, orphan.id)).toBeUndefined();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+    // Nothing was lost either — it is still queued.
+    expect((await getDirtyRecords(RW)).map((r) => r.id)).toContain(orphan.id);
+
+    // The retry has a working block pull, so the cascade runs and the membership
+    // converges as a tombstone rather than as a live row under a dead parent.
+    cloud.transport.pull = realPull;
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+    expect(cloud.remoteRow(RW, orphan.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+    expect(await cloudAdapter.loadRecoveryBlockWeeks()).toEqual([]);
+
+    // And the note slot is free.
+    const next = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await expect(
+      cloudAdapter.addRecoveryWeek({ blockId: next.id, noteId: 'wn_w1' })
+    ).resolves.toBeDefined();
+  });
+
   it('a recovery failure does not take weight, workout-note, or settings sync down', async () => {
     await seedBlockWithWeek();
     await Storage.saveWeightEntry({

@@ -1259,7 +1259,28 @@ async function runSyncPass({ ownedDevice = false } = {}) {
   const pushFailures = new Map();
   const results = [];
 
+  // Isolation between the recovery tables and everything else is the point;
+  // isolation BETWEEN the two recovery tables is not, because memberships depend
+  // on their blocks. The cascade below can only act on a tombstone a successful
+  // block PULL delivered, so after a failed block pass local state still shows
+  // every parent live and the cascade correctly finds nothing to do — while an
+  // unconditional membership pass would upload a membership created offline
+  // against a block that is deleted remotely. The foreign key accepts it (the
+  // tombstoned parent row is physically present), so the stranded note returns
+  // through the failure path. The membership pass therefore runs only when the
+  // most recent block attempt of this pass succeeded.
+  let blocksSynced = false;
+  let weeksDeferred = false;
+
   const syncRecoveryTable = async (table) => {
+    if (table === SYNC_TABLES.RECOVERY_BLOCK_WEEKS && !blocksSynced) {
+      // Not a failure of its own: the block failure is already recorded and is
+      // what fails this pass. The rows stay queued and this device pushes them
+      // once it can see the blocks they belong to.
+      weeksDeferred = true;
+      results.push({ table, skipped: true, dependsOn: SYNC_TABLES.RECOVERY_BLOCKS });
+      return;
+    }
     try {
       // Every membership pass is preceded by the cascade, reruns included: the
       // blocks pass immediately before it may have pulled a tombstone, and a
@@ -1270,8 +1291,11 @@ async function runSyncPass({ ownedDevice = false } = {}) {
         await cascadeDeletedBlockMemberships();
       }
       results.push(await syncOne(table, tableIo, ownedDevice));
+      if (table === SYNC_TABLES.RECOVERY_BLOCKS) blocksSynced = true;
+      if (table === SYNC_TABLES.RECOVERY_BLOCK_WEEKS) weeksDeferred = false;
       pushFailures.delete(table);
     } catch (error) {
+      if (table === SYNC_TABLES.RECOVERY_BLOCKS) blocksSynced = false;
       results.push({ table, failed: true, error });
       pushFailures.set(table, error);
     }
@@ -1325,6 +1349,14 @@ async function runSyncPass({ ownedDevice = false } = {}) {
       // eslint-disable-next-line no-await-in-loop
       await syncRecoveryTable(table);
     }
+  }
+
+  // A block rerun above can recover a block pass that failed earlier in this
+  // same pass. The memberships deferred by that failure are safe to sync now —
+  // this device has seen the blocks — so run them rather than making the user
+  // wait for another pass to push rows that are already reconciled.
+  if (weeksDeferred && blocksSynced) {
+    await syncRecoveryTable(SYNC_TABLES.RECOVERY_BLOCK_WEEKS);
   }
 
   // The tables bootstrap used to push once and abandon (issue #489). Run them

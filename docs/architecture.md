@@ -600,7 +600,12 @@ rejected statement on every retry and never converges. A recovery-block failure
 is isolated: the pass finishes every unrelated table first and raises the
 failure afterwards, so a rejected recovery push never stops weight, workout-note,
 or settings sync — and never reports success over recovery data that has not
-reached the cloud. The frozen `baseline` snapshot and the assigned membership
+reached the cloud. That isolation stops at the dependency between the two
+recovery tables: memberships are not synced when the block pass failed, because
+the cascade can only act on a tombstone a successful block pull delivered, so an
+unconditional membership pass would upload the same stranded row through the
+failure path. The deferred memberships stay queued and are synced as soon as a
+block pass succeeds, including a recovery within the same pass. The frozen `baseline` snapshot and the assigned membership
 order are carried through every sync and bootstrap path verbatim; no path
 recomputes a baseline metric or renumbers an established sequence.
 
