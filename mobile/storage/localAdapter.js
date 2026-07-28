@@ -63,6 +63,23 @@ export const localAdapter = {
   deleteDeloadHistory: (...args) => Storage.deleteDeloadHistory(...args),
   updateDeloadHistory: (...args) => Storage.updateDeloadHistory(...args),
 
+  // ── recovery blocks + week memberships ──────────────────────────────────
+  // The `*Raw` accessors are deliberately absent: like the workout-note raw
+  // cache, they exist for the cloud sync engine only and are not part of the
+  // adapter surface.
+  loadRecoveryBlocks: (...args) => Storage.loadRecoveryBlocks(...args),
+  getActiveRecoveryBlock: (...args) => Storage.getActiveRecoveryBlock(...args),
+  createRecoveryBlock: (...args) => Storage.createRecoveryBlock(...args),
+  updateRecoveryBlock: (...args) => Storage.updateRecoveryBlock(...args),
+  completeRecoveryBlock: (...args) => Storage.completeRecoveryBlock(...args),
+  deleteRecoveryBlock: (...args) => Storage.deleteRecoveryBlock(...args),
+  loadRecoveryBlockWeeks: (...args) => Storage.loadRecoveryBlockWeeks(...args),
+  loadRecoveryWeeksForBlock: (...args) => Storage.loadRecoveryWeeksForBlock(...args),
+  addRecoveryWeek: (...args) => Storage.addRecoveryWeek(...args),
+  updateRecoveryWeek: (...args) => Storage.updateRecoveryWeek(...args),
+  completeRecoveryWeek: (...args) => Storage.completeRecoveryWeek(...args),
+  deleteRecoveryWeek: (...args) => Storage.deleteRecoveryWeek(...args),
+
   // ── tracked lifts + collapsed state ─────────────────────────────────────
   loadTrackedLifts: (...args) => Storage.loadTrackedLifts(...args),
   saveTrackedLifts: (...args) => Storage.saveTrackedLifts(...args),
