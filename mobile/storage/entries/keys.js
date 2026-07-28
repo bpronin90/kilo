@@ -16,3 +16,5 @@ export const FATIGUE_TRACKING_KEY = 'kilo_fatigue_tracking_enabled';
 export const DELOAD_MODE_KEY = 'kilo_deload_mode_enabled';
 export const WEIGH_IN_REMINDER_KEY = 'kilo_weigh_in_reminder';
 export const WORKOUT_REMINDER_KEY = 'kilo_workout_reminder';
+export const RECOVERY_BLOCKS_KEY = 'kilo_recovery_blocks';
+export const RECOVERY_BLOCK_WEEKS_KEY = 'kilo_recovery_block_weeks';

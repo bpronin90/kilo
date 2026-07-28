@@ -65,6 +65,25 @@ export {
 } from './entries/deloadStorage';
 
 export {
+  loadRecoveryBlocks,
+  loadRecoveryBlocksRaw,
+  replaceRecoveryBlocksRaw,
+  getActiveRecoveryBlock,
+  createRecoveryBlock,
+  updateRecoveryBlock,
+  completeRecoveryBlock,
+  deleteRecoveryBlock,
+  loadRecoveryBlockWeeks,
+  loadRecoveryBlockWeeksRaw,
+  replaceRecoveryBlockWeeksRaw,
+  loadRecoveryWeeksForBlock,
+  addRecoveryWeek,
+  updateRecoveryWeek,
+  completeRecoveryWeek,
+  deleteRecoveryWeek,
+} from './entries/recoveryStorage';
+
+export {
   loadUserProfile,
   saveUserProfile,
   clearUserProfile,
