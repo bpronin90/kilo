@@ -495,6 +495,81 @@ function validateRecoveryWeeks(weeks, blockIds) {
   return { ok: true };
 }
 
+// The three CROSS-RECORD invariants, which no per-row check can see.
+//
+// These are not stylistic: kilo.recovery_blocks and kilo.recovery_block_weeks
+// enforce all three as partial unique indexes over live rows
+// (recovery_blocks_one_active_idx, recovery_block_weeks_one_live_note_idx,
+// recovery_block_weeks_live_ordinal_idx), and recoveryStorage.js enforces the
+// same three on every ordinary in-app write. A payload that breaks one is
+// therefore rejected by the database on push — but only AFTER a replace has
+// already overwritten local recovery storage and enqueued the dirty rows, which
+// is exactly the "no writes before validation" contract this importer exists to
+// keep. In local mode nothing pushes at all, so the invalid domain state simply
+// persists: two blocks both reporting as active, or a workout note bound to two
+// recovery blocks at once.
+//
+// Replace semantics are what make checking the PAYLOAD sufficient. Every live
+// record the backup omits becomes a tombstone, so the live set after the restore
+// is exactly the live set in the payload — there is no surviving local live row
+// for an imported one to collide with.
+//
+// Each predicate mirrors its index exactly, including the null handling: a
+// unique index treats NULLs as distinct, so rows with no `note_id` or no
+// `week_number` do not collide with each other and are skipped here too.
+//
+// O(blocks + weeks) via two keyed indexes; no nested scan.
+function validateRecoveryInvariants(blocks, weeks) {
+  const isLive = (record) => record.deleted_at == null;
+
+  // recovery_blocks_one_active_idx: at most one live, not-yet-completed block.
+  // Without this "the active block" is ambiguous on every device at once.
+  const active = blocks.filter((b) => isLive(b) && b.completed_at == null);
+  if (active.length > 1) {
+    return {
+      ok: false,
+      error: `Invalid backup: ${active.length} active recovery blocks (${active.map((b) => b.id).join(', ')}); at most one may be active`,
+    };
+  }
+
+  const noteOwner = new Map();
+  const claimedOrdinals = new Map();
+
+  for (const week of weeks) {
+    if (!isLive(week)) continue;
+
+    // recovery_block_weeks_one_live_note_idx: one live membership per workout
+    // note, across ALL blocks. A note in two blocks makes every later
+    // return-to-baseline comparison ambiguous about which recovery it belongs to.
+    if (week.note_id != null) {
+      const prior = noteOwner.get(week.note_id);
+      if (prior !== undefined) {
+        return {
+          ok: false,
+          error: `Invalid backup: workout note ${week.note_id} has two live recovery memberships (${prior}, ${week.id})`,
+        };
+      }
+      noteOwner.set(week.note_id, week.id);
+    }
+
+    // recovery_block_weeks_live_ordinal_idx: week ordinals are unique within a
+    // block among live memberships, which is what makes week order total.
+    if (week.week_number != null) {
+      const key = `${week.block_id} ${week.week_number}`;
+      const prior = claimedOrdinals.get(key);
+      if (prior !== undefined) {
+        return {
+          ok: false,
+          error: `Invalid backup: recovery block ${week.block_id} has two live memberships for week ${week.week_number} (${prior}, ${week.id})`,
+        };
+      }
+      claimedOrdinals.set(key, week.id);
+    }
+  }
+
+  return { ok: true };
+}
+
 function validateFatigueMultiplier(value) {
   if (
     typeof value !== 'number' ||
@@ -557,27 +632,41 @@ function validateBackup(payload) {
   // Blocks are validated first so the membership pass can resolve every
   // `block_id` against them — the same dependency order the restore itself uses.
   //
-  // Each key is acted on only when PRESENT, matching how `weight_goal` and
-  // `deload_history` are already handled: a key the payload does not mention is
-  // an absence of evidence, and replace semantics may not tombstone records on
-  // that. An exporting device always emits both keys (empty lists when the
-  // feature was never used), so this only affects hand-built payloads.
+  // The two keys stand or fall TOGETHER. Either the payload carries both — an
+  // exporting device always emits both, as empty lists when the feature was
+  // never used — or it carries neither and says nothing about recovery data at
+  // all, which a legacy backup does and which never deletes anything.
+  //
+  // Half a payload is rejected because either half alone is unrestorable.
+  // Memberships without blocks have `block_id` references that cannot be checked
+  // against a collection the payload never supplied. Blocks without memberships
+  // is the subtler one: replace would tombstone a block by omission while the
+  // device's live memberships still point at it, leaving each of their workout
+  // notes bound to a block that no longer exists and unable to join another. The
+  // client's cascade covers a local delete and a PULLED tombstone, not a
+  // tombstone a half-payload restore minted locally.
   if (RECOVERY_VERSIONS.has(payload.version)) {
     const hasBlocks = 'recovery_blocks' in payload;
     const hasWeeks = 'recovery_block_weeks' in payload;
-    // Memberships are meaningless without the blocks they belong to, and their
-    // `block_id` references cannot be checked against a collection the payload
-    // never supplied.
-    if (hasWeeks && !hasBlocks)
-      return { ok: false, error: 'Invalid backup: recovery_block_weeks present without recovery_blocks' };
+
+    if (hasBlocks !== hasWeeks) {
+      return {
+        ok: false,
+        error: `Invalid backup: ${hasBlocks ? 'recovery_blocks' : 'recovery_block_weeks'} present without ${hasBlocks ? 'recovery_block_weeks' : 'recovery_blocks'}; a recovery backup carries both collections or neither`,
+      };
+    }
 
     if (hasBlocks) {
       const blockCheck = validateRecoveryBlocks(payload.recovery_blocks);
       if (!blockCheck.ok) return blockCheck;
-      if (hasWeeks) {
-        const weekCheck = validateRecoveryWeeks(payload.recovery_block_weeks, blockCheck.blockIds);
-        if (!weekCheck.ok) return weekCheck;
-      }
+      const weekCheck = validateRecoveryWeeks(payload.recovery_block_weeks, blockCheck.blockIds);
+      if (!weekCheck.ok) return weekCheck;
+      // Last, because it is the only check that needs both collections whole.
+      const invariantCheck = validateRecoveryInvariants(
+        payload.recovery_blocks,
+        payload.recovery_block_weeks,
+      );
+      if (!invariantCheck.ok) return invariantCheck;
     }
   }
 
@@ -853,10 +942,10 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
 
   if (strategy === 'replace') {
     const isNotebookVersion = NOTEBOOK_VERSIONS.has(payload.version);
-    // Recovery data is restored only from a recovery-aware backup, and only for
-    // the keys that backup actually carries.
+    // Recovery data is restored only from a recovery-aware backup that carries
+    // it. Validation has already rejected a payload holding one collection
+    // without the other, so this single flag governs both.
     const hasRecovery = RECOVERY_VERSIONS.has(payload.version) && 'recovery_blocks' in payload;
-    const hasRecoveryWeeks = hasRecovery && 'recovery_block_weeks' in payload;
 
     if (cloudMode) {
       const clientId = await getClientId();
@@ -894,7 +983,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
           clientId,
         });
       }
-      if (hasRecoveryWeeks) {
+      if (hasRecovery) {
         queued += await replaceCollectionForCloud({
           table: SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
           readRaw: loadRecoveryBlockWeeksRaw,
@@ -917,7 +1006,7 @@ export async function importBackup(payload, strategy = 'replace', { mode = IMPOR
           payload.recovery_blocks.map((b) => projectFields(b, RECOVERY_BLOCK_FIELDS)),
         );
       }
-      if (hasRecoveryWeeks) {
+      if (hasRecovery) {
         await replaceRecoveryBlockWeeksRaw(
           payload.recovery_block_weeks.map((w) => projectFields(w, RECOVERY_WEEK_FIELDS)),
         );

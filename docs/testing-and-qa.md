@@ -788,13 +788,21 @@ but the underlying leak is still worth fixing wherever it's found.
   active and completed blocks, frozen baseline snapshots, week order, membership
   completion, the analytics preference, and tombstones; the export emits only
   allowlisted fields, so a stray local field cannot reach the shared artifact
-- covers ten malformed recovery payloads (a membership referencing a block the
-  payload does not carry, a non-positive week ordinal, a baseline with no version
-  or from a newer capture format, a non-numeric baseline metric, a non-ISO
-  timestamp, a duplicate or missing block id, memberships without their blocks,
-  and a non-array collection), asserting each is rejected with local storage,
-  the unrelated collections, and both recovery dirty queues byte-identical
-  afterwards — the "no partial writes" property, not merely "rejected"
+- covers fourteen malformed recovery payloads, asserting each is rejected with
+  local storage, the unrelated collections, and both recovery dirty queues
+  byte-identical afterwards — the "no partial writes" property, not merely
+  "rejected". Per-record cases: a membership referencing a block the payload does
+  not carry, a non-positive week ordinal, a baseline with no version or from a
+  newer capture format, a non-numeric baseline metric, a non-ISO timestamp, a
+  duplicate or missing block id, a non-array collection, and either recovery
+  collection present without the other. Cross-record cases, matching the three
+  partial unique indexes on the cloud tables: two live blocks both still active,
+  one workout note with two live memberships, and two live memberships claiming
+  the same week ordinal
+- verifies the mirror-image property, since the uniqueness rules are scoped to
+  live rows: a completed block beside a new active one, with the second recovery
+  reusing a workout note and a week ordinal the first one released, round-trips
+  rather than being rejected as a conflict
 - verifies blocks are queued and pushed before the memberships that reference
   them, matching the `recovery_block_weeks` foreign key; that a membership the
   backup omits becomes a tombstone the account accepts and a later pull cannot

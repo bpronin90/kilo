@@ -646,6 +646,38 @@ describe('recovery data in the backup format', () => {
     expect(isTombstone(restoredWeeks.find((w) => w.id === w2.id))).toBe(true);
   });
 
+  // The mirror image of the invariant rejections below: the uniqueness rules are
+  // scoped to LIVE rows, exactly as the partial indexes are, so accumulated
+  // history is never a conflict. A validator that read tombstoned and completed
+  // records as live would reject every long-time user's real backup.
+  it('accepts history: a completed block beside a new active one, and a freed note and ordinal', async () => {
+    const first = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn-keep',
+      baselineNoteText: '-Squat\n- 100 5,5',
+    });
+    const freed = await Storage.addRecoveryWeek({ blockId: first.id, noteId: 'wn-week-1' });
+    // Tombstoning the membership frees BOTH the note and week ordinal 1.
+    await Storage.deleteRecoveryWeek(freed.id);
+    await Storage.completeRecoveryBlock(first.id);
+
+    // A second recovery, reusing the note the first one released, at week 1.
+    const second = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn-keep',
+      baselineNoteText: '-Squat\n- 90 5,5',
+    });
+    const reused = await Storage.addRecoveryWeek({ blockId: second.id, noteId: 'wn-week-1' });
+    expect(reused.week_number).toBe(1);
+
+    const backup = await Storage.exportBackup();
+    expect(backup.recovery_blocks).toHaveLength(2);
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result).toEqual({ ok: true, mode: IMPORT_MODES.LOCAL, queued: 0 });
+    expect((await Storage.loadRecoveryBlocks()).length).toBe(2);
+    expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([reused.id]);
+  });
+
   it('emits only allowlisted fields, so a stray local field cannot reach the artifact', async () => {
     const { block } = await seedRecoveryData();
     const raw = await Storage.loadRecoveryBlocksRaw();
@@ -701,8 +733,44 @@ describe('recovery data: malformed payloads write nothing', () => {
     ['memberships without the blocks they belong to', (b) => {
       delete b.recovery_blocks;
     }],
+    // Blocks without memberships is rejected for a different reason: replace
+    // would tombstone a block by omission while the device's live memberships
+    // still point at it, stranding each of their workout notes under a block
+    // that no longer exists.
+    ['blocks without the memberships collection', (b) => {
+      delete b.recovery_block_weeks;
+    }],
     ['recovery_blocks that is not an array', (b) => {
       b.recovery_blocks = 'nope';
+    }],
+    // The three CROSS-RECORD invariants. Each is a partial unique index on the
+    // cloud tables, so before this validation existed a payload breaking one was
+    // accepted, written to local storage, enqueued — and only then rejected by
+    // the database mid-push, with the device already holding the invalid state.
+    // In local mode nothing pushes at all, so it simply persisted.
+    ['two live blocks that are both still active', (b) => {
+      b.recovery_blocks.push({
+        ...b.recovery_blocks[0],
+        id: 'rb-second-active',
+        completed_at: null,
+        deleted_at: null,
+      });
+    }],
+    ['one workout note with two live memberships', (b) => {
+      b.recovery_block_weeks.push({
+        ...b.recovery_block_weeks[0],
+        id: 'rw-duplicate-note',
+        week_number: 99,
+        deleted_at: null,
+      });
+    }],
+    ['two live memberships claiming the same week ordinal', (b) => {
+      b.recovery_block_weeks.push({
+        ...b.recovery_block_weeks[0],
+        id: 'rw-duplicate-ordinal',
+        note_id: 'wn-some-other-note',
+        deleted_at: null,
+      });
     }],
   ];
 

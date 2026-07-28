@@ -398,13 +398,27 @@ clearing the newer workout-note state.
 
 Recovery data is restored only from a v4 backup, and blocks are always restored
 before memberships — the order the real
-`recovery_block_weeks (user_id, block_id)` foreign key requires. Validation is
-bounded and total before the first write: ids are non-empty and unique, every
-membership's `block_id` resolves to a block in the same payload, week ordinals
-are positive integers, every timestamp parses, and each frozen baseline is an
-object with a known snapshot version and a bounded, numerically typed exercise
-list. A malformed recovery collection therefore rejects the whole restore, so no
-partial state reaches storage or the sync queue. A v1/v2/v3 file predates the
+`recovery_block_weeks (user_id, block_id)` foreign key requires. A v4 payload
+carries both collections or neither: half a payload is unrestorable in either
+direction, since memberships alone have references that cannot be checked, and
+blocks alone would tombstone a block by omission while the device's live
+memberships still point at it.
+
+Validation is bounded and total before the first write. Per record: non-empty
+unique ids, every membership's `block_id` resolving to a block in the same
+payload, positive integer week ordinals, parseable timestamps, and a frozen
+baseline that is an object with a known snapshot version and a bounded,
+numerically typed exercise list. Across the collections, the same three
+cross-record invariants the cloud tables enforce as partial unique indexes over
+live rows — one active block, one live membership per workout note, unique live
+week ordinals within a block. Those three are checked here because the database
+otherwise catches them only mid-push, after a replace has already overwritten
+local storage and enqueued the rows; in local mode nothing pushes at all, so an
+invalid domain state would simply persist. Like the indexes, all three are
+scoped to live rows, so a completed block, a tombstoned membership, and a reused
+week ordinal are history rather than conflicts. A malformed recovery collection
+therefore rejects the whole restore, so no partial state reaches storage or the
+sync queue. A v1/v2/v3 file predates the
 format and says nothing about recovery data, so a legacy restore leaves every
 block and membership exactly where it is rather than treating silence as a
 deletion.
