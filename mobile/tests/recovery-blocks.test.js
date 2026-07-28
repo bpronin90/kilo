@@ -457,6 +457,133 @@ describe('baseline immutability after creation', () => {
   });
 });
 
+describe('generic updates cannot rewrite lifecycle state', () => {
+  test('a stale record spread into updateRecoveryBlock cannot reopen a completed block', async () => {
+    const first = await makeBlock();
+    const stale = { ...first }; // captured while still active: completed_at === null
+    await completeRecoveryBlock(first.id);
+    const second = await makeBlock(); // allowed only because `first` is complete
+
+    const updated = await updateRecoveryBlock(first.id, stale);
+    expect(updated.completed_at).toBeTruthy();
+    // The one-active-block invariant survives: the new block is still the only
+    // active one, rather than two blocks now competing.
+    expect((await getActiveRecoveryBlock()).id).toBe(second.id);
+  });
+
+  test('updateRecoveryBlock cannot clear a tombstone or edit a deleted block', async () => {
+    const block = await makeBlock();
+    const stale = { ...block };
+    await deleteRecoveryBlock(block.id);
+
+    await expect(updateRecoveryBlock(block.id, stale))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND });
+    expect((await loadRecoveryBlocksRaw())[0].deleted_at).toBeTruthy();
+  });
+
+  test('updateRecoveryBlock cannot move started_at', async () => {
+    const block = await makeBlock();
+    const updated = await updateRecoveryBlock(block.id, { started_at: '1999-01-01T00:00:00.000Z' });
+    expect(updated.started_at).toBe(block.started_at);
+  });
+
+  test('a completed block remains patchable for presentation fields', async () => {
+    const block = await makeBlock();
+    await completeRecoveryBlock(block.id);
+    const updated = await updateRecoveryBlock(block.id, { include_in_normal_analytics: true });
+    expect(updated.include_in_normal_analytics).toBe(true);
+    expect(updated.completed_at).toBeTruthy();
+  });
+
+  test('updateRecoveryWeek cannot clear a completion or resurrect a tombstone', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const stale = { ...week }; // completed_at === null, deleted_at === null
+    await completeRecoveryWeek(week.id);
+
+    const updated = await updateRecoveryWeek(week.id, stale);
+    expect(updated.completed_at).toBeTruthy();
+
+    await deleteRecoveryWeek(week.id);
+    await expect(updateRecoveryWeek(week.id, stale))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND });
+    expect((await loadRecoveryBlockWeeksRaw())[0].deleted_at).toBeTruthy();
+  });
+
+  test('a resurrected membership cannot put one note in two blocks', async () => {
+    const first = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: first.id, noteId: 'wn_shared' });
+    const stale = { ...week };
+    await deleteRecoveryWeek(week.id);
+    await completeRecoveryBlock(first.id);
+
+    const second = await makeBlock();
+    await addRecoveryWeek({ blockId: second.id, noteId: 'wn_shared' });
+
+    // The stale patch must not revive the original membership.
+    await expect(updateRecoveryWeek(week.id, stale))
+      .rejects.toMatchObject({ code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND });
+    const live = await loadRecoveryBlockWeeks();
+    expect(live.filter(w => w.note_id === 'wn_shared')).toHaveLength(1);
+    expect(live[0].block_id).toBe(second.id);
+  });
+});
+
+describe('assigned week numbers are immutable', () => {
+  test('updateRecoveryWeek cannot rewrite an assigned ordinal', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const w2 = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w2' });
+
+    const updated = await updateRecoveryWeek(w2.id, { week_number: 1 });
+    expect(updated.week_number).toBe(2);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map(w => w.week_number)).toEqual([1, 2]);
+  });
+
+  test('updateRecoveryWeek cannot assign a non-positive ordinal', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const updated = await updateRecoveryWeek(week.id, { week_number: 0 });
+    expect(updated.week_number).toBe(1);
+  });
+
+  test('ordinals stay unique within a block under repeated patch attempts', async () => {
+    const block = await makeBlock();
+    for (const noteId of ['wn_a', 'wn_b', 'wn_c']) {
+      await addRecoveryWeek({ blockId: block.id, noteId });
+    }
+    for (const week of await loadRecoveryWeeksForBlock(block.id)) {
+      await updateRecoveryWeek(week.id, { week_number: 1 });
+    }
+    const numbers = (await loadRecoveryWeeksForBlock(block.id)).map(w => w.week_number);
+    expect(numbers).toEqual([1, 2, 3]);
+    expect(new Set(numbers).size).toBe(3);
+  });
+});
+
+describe('no-op updates do not mark records dirty', () => {
+  test('a patch of only immutable fields leaves updated_at untouched', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const blockAfter = await updateRecoveryBlock(block.id, { id: 'rb_x', baseline: null });
+    expect(blockAfter.updated_at).toBe(block.updated_at);
+
+    const weekAfter = await updateRecoveryWeek(week.id, { week_number: 9, note_id: 'wn_z' });
+    expect(weekAfter.updated_at).toBe(week.updated_at);
+  });
+
+  test('a caller-supplied updated_at is never written', async () => {
+    const block = await makeBlock();
+    const updated = await updateRecoveryBlock(block.id, {
+      include_in_normal_analytics: true,
+      updated_at: '1999-01-01T00:00:00.000Z',
+    });
+    expect(updated.updated_at).not.toBe('1999-01-01T00:00:00.000Z');
+    expect(updated.updated_at >= block.updated_at).toBe(true);
+  });
+});
+
 describe('block completion', () => {
   test('completion is explicit and sets completed_at', async () => {
     const block = await makeBlock();
@@ -659,13 +786,16 @@ describe('week completion, update, and tombstones', () => {
       block_id: 'rb_other',
       note_id: 'wn_other',
       saved_at: '1999-01-01T00:00:00.000Z',
+      week_number: 7,
+      // Completion belongs to completeRecoveryWeek, not to a generic patch.
       completed_at: '2026-05-01T00:00:00.000Z',
     });
     expect(updated.id).toBe(week.id);
     expect(updated.block_id).toBe(block.id);
     expect(updated.note_id).toBe('wn_w1');
     expect(updated.saved_at).toBe(week.saved_at);
-    expect(updated.completed_at).toBe('2026-05-01T00:00:00.000Z');
+    expect(updated.week_number).toBe(1);
+    expect(updated.completed_at).toBeNull();
   });
 
   test('deleted weeks are tombstoned and hidden from user-facing reads', async () => {

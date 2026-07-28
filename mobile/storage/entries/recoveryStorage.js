@@ -34,17 +34,41 @@ import {
   orderedLiveWeeks,
 } from '../../lib/data/recoveryBlocks';
 
-// Fields a caller may never patch after creation. `baseline` and
-// `baseline_note_id` are the frozen snapshot's identity — the whole contract is
-// that a later edit to the source routine cannot move the baseline — and `id` /
-// `saved_at` are immutable record identity. Silently dropping them (rather than
-// throwing) keeps callers that spread a whole record into a patch safe.
-const BLOCK_IMMUTABLE_FIELDS = ['id', 'baseline', 'baseline_note_id', 'saved_at'];
-const WEEK_IMMUTABLE_FIELDS = ['id', 'block_id', 'note_id', 'saved_at'];
+// Fields a caller may never patch through the generic update APIs. Three
+// groups, all of which a naive `update(id, {...wholeRecord})` would otherwise
+// rewrite:
+//
+//   record identity — `id`, `saved_at`, and (for weeks) the `block_id`/`note_id`
+//     the membership binds.
+//   frozen baseline — `baseline` and `baseline_note_id`. The whole contract is
+//     that a later edit to the source routine cannot move the baseline.
+//   lifecycle state — `started_at`, `completed_at`, `deleted_at`, and a week's
+//     assigned `week_number`. These belong to the explicit
+//     complete*/delete*/add* APIs that enforce the domain invariants. Letting a
+//     generic patch write them is how a stale record spread into an update
+//     reopens a completed block (breaking one-active-block), resurrects a
+//     tombstoned membership whose note has since joined another block, or
+//     assigns a duplicate/non-positive ordinal that makes week ordering
+//     ambiguous for later comparison analytics.
+//
+// Silently dropping them (rather than throwing) keeps callers that spread a
+// whole record into a patch safe.
+const BLOCK_IMMUTABLE_FIELDS = [
+  'id', 'saved_at',
+  'baseline', 'baseline_note_id',
+  'started_at', 'completed_at', 'deleted_at',
+];
+const WEEK_IMMUTABLE_FIELDS = [
+  'id', 'saved_at', 'block_id', 'note_id',
+  'week_number', 'completed_at', 'deleted_at',
+];
 
 function _stripImmutable(patch, fields) {
   const out = { ...(patch || {}) };
   for (const f of fields) delete out[f];
+  // `updated_at` is stamped by the writer, never carried in from a patch;
+  // accepting a caller's value would let a stale record rewind sync ordering.
+  delete out.updated_at;
   return out;
 }
 
@@ -105,8 +129,16 @@ export async function createRecoveryBlock({
   return block;
 }
 
-// Patch a block's mutable fields. Immutable identity and the frozen baseline are
-// dropped from the patch rather than applied.
+// Patch a block's mutable presentation fields (today: `baseline_note_title` and
+// `include_in_normal_analytics`). Record identity, the frozen baseline, and
+// lifecycle state are dropped from the patch rather than applied — see
+// BLOCK_IMMUTABLE_FIELDS.
+//
+// A tombstoned block is rejected outright: a deleted record has no mutable
+// state, and allowing a write would let a stale device edit a block the user
+// already removed. A completed block is still patchable, because reviewing a
+// finished recovery and toggling whether it counts toward normal analytics is a
+// legitimate action.
 export async function updateRecoveryBlock(id, patch) {
   const list = await readList(RECOVERY_BLOCKS_KEY);
   const idx = list.findIndex(b => b.id === id);
@@ -116,9 +148,22 @@ export async function updateRecoveryBlock(id, patch) {
       `No recovery block with id ${id}.`
     );
   }
+  if (!isLiveRecord(list[idx])) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+      `Recovery block ${id} is deleted.`
+    );
+  }
+
+  const effective = _stripImmutable(patch, BLOCK_IMMUTABLE_FIELDS);
+  // A patch of nothing but immutable fields is a no-op, not a touch. Stamping a
+  // fresh updated_at here would mark the record dirty and hand the sync engine a
+  // change to push that carries no content.
+  if (Object.keys(effective).length === 0) return list[idx];
+
   const updated = {
     ...list[idx],
-    ..._stripImmutable(patch, BLOCK_IMMUTABLE_FIELDS),
+    ...effective,
     updated_at: new Date().toISOString(),
   };
   list[idx] = updated;
@@ -269,6 +314,14 @@ export async function addRecoveryWeek({ blockId, noteId } = {}) {
   return week;
 }
 
+// Patch a membership's mutable fields.
+//
+// Every field a week record carries today is identity, ordinal, or lifecycle
+// state, so this currently accepts no content — it exists as the forward
+// -compatible seam for fields later issues add, and it deliberately refuses to
+// become a back door around addRecoveryWeek/completeRecoveryWeek/
+// deleteRecoveryWeek. Tombstoned memberships are rejected: resurrecting one
+// after its note joined another block would put a note in two blocks at once.
 export async function updateRecoveryWeek(id, patch) {
   const list = await readList(RECOVERY_BLOCK_WEEKS_KEY);
   const idx = list.findIndex(w => w.id === id);
@@ -278,9 +331,19 @@ export async function updateRecoveryWeek(id, patch) {
       `No recovery week with id ${id}.`
     );
   }
+  if (!isLiveRecord(list[idx])) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.WEEK_NOT_FOUND,
+      `Recovery week ${id} is deleted.`
+    );
+  }
+
+  const effective = _stripImmutable(patch, WEEK_IMMUTABLE_FIELDS);
+  if (Object.keys(effective).length === 0) return list[idx];
+
   const updated = {
     ...list[idx],
-    ..._stripImmutable(patch, WEEK_IMMUTABLE_FIELDS),
+    ...effective,
     updated_at: new Date().toISOString(),
   };
   list[idx] = updated;
