@@ -408,6 +408,58 @@ function buildUserHealthProfileRow(snapshot, userId) {
   };
 }
 
+// ── recovery blocks + week memberships (issue #693) ─────────────────────────
+//
+// Both are built from the RAW local lists, tombstones included, for the same
+// reason workout notes and weight entries are (#513): dropping a tombstone would
+// re-upsert a locally-deleted record as a fresh LIVE cloud row that then wins
+// LWW on every device. A tombstoned block or membership is also what keeps the
+// live-row unique indexes satisfiable — the history of a note that moved between
+// blocks is retained rather than replayed as a second live claim.
+//
+// `baseline` is carried through EXACTLY as captured. Bootstrap does not parse a
+// routine, does not re-derive a metric, and does not fill in a missing snapshot:
+// a baseline that a device froze at creation is the only baseline that record
+// will ever have.
+function buildRecoveryBlockRows(snapshot, userId) {
+  const now = new Date().toISOString();
+  return (snapshot.recoveryBlocks || [])
+    .filter((b) => b && b.id)
+    .map((b) => ({
+      user_id: userId,
+      id: b.id,
+      baseline_note_id: b.baseline_note_id ?? null,
+      baseline_note_title: b.baseline_note_title ?? null,
+      baseline: b.baseline ?? null,
+      include_in_normal_analytics: b.include_in_normal_analytics === true,
+      started_at: b.started_at ?? null,
+      completed_at: b.completed_at ?? null,
+      saved_at: b.saved_at ?? null,
+      updated_at: b.updated_at ?? now,
+      deleted_at: b.deleted_at ?? null,
+    }));
+}
+
+function buildRecoveryBlockWeekRows(snapshot, userId) {
+  const now = new Date().toISOString();
+  return (snapshot.recoveryBlockWeeks || [])
+    .filter((w) => w && w.id && w.block_id)
+    .map((w) => ({
+      user_id: userId,
+      id: w.id,
+      block_id: w.block_id,
+      note_id: w.note_id ?? null,
+      // The ordinal is uploaded as assigned by the domain. Bootstrap never
+      // renumbers a membership: the sequence is the order later comparison
+      // analytics walk, and re-deriving it here would silently rewrite history.
+      week_number: w.week_number ?? null,
+      completed_at: w.completed_at ?? null,
+      saved_at: w.saved_at ?? null,
+      updated_at: w.updated_at ?? now,
+      deleted_at: w.deleted_at ?? null,
+    }));
+}
+
 export function buildBootstrapPlan(snapshot, userId) {
   return {
     user_profile: [buildUserProfileRow(snapshot, userId)],
@@ -420,5 +472,7 @@ export function buildBootstrapPlan(snapshot, userId) {
     })(),
     workout_notes: buildWorkoutNoteRows(snapshot, userId),
     deload_history: buildDeloadHistoryRows(snapshot, userId),
+    recovery_blocks: buildRecoveryBlockRows(snapshot, userId),
+    recovery_block_weeks: buildRecoveryBlockWeekRows(snapshot, userId),
   };
 }

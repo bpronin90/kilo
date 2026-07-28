@@ -15,6 +15,13 @@ const DEFAULT_FATIGUE_MULTIPLIER = 1.07;
 // user_health_profile carries the six health values that used to sit on the mixed
 // user_profile row (#487). It is gated: the upsert below only succeeds for a user
 // with an active grant.
+//
+// Recovery blocks come after workout_notes and before their week memberships
+// (issue #693): a block names the note its baseline was frozen from, and a
+// membership names both its block and its note, so this is the order in which a
+// reference lands after the row it points at. `recovery_block_weeks` also has a
+// real foreign key to `recovery_blocks`, which the database would reject if the
+// two were uploaded the other way round.
 const UPSERT_ORDER = [
   'feature_toggles',
   'weight_entries',
@@ -23,7 +30,24 @@ const UPSERT_ORDER = [
   'deload_history',
   'user_profile',
   'user_health_profile',
+  'recovery_blocks',
+  'recovery_block_weeks',
 ];
+
+// The two tables whose upsert failure is recorded and carried rather than
+// thrown (issue #693). They are last in the order above, so everything else has
+// already landed by the time one of them can fail — and they are the only
+// bootstrap tables with cross-record uniqueness constraints, so "this account
+// already has an active recovery block from another device" is a state the
+// database legitimately rejects. Failing the whole bootstrap for it would wedge
+// the account: bootstrap is idempotent, so every retry would re-upload
+// everything and stop at the same row.
+//
+// The ordinary sync pass that follows bootstrap is what resolves it. It collapses
+// a cross-device duplicate deterministically and pushes the collapsed rows (see
+// storage/cloud/syncAdapter.js), so the data converges instead of blocking. The
+// failure is reported on the result rather than swallowed.
+const DEFERRABLE_TABLES = new Set(['recovery_blocks', 'recovery_block_weeks']);
 
 const CONFLICT_TARGETS = {
   user_profile: 'user_id',
@@ -33,6 +57,8 @@ const CONFLICT_TARGETS = {
   weight_goal: 'user_id',
   workout_notes: 'user_id,id',
   deload_history: 'user_id,id',
+  recovery_blocks: 'user_id,id',
+  recovery_block_weeks: 'user_id,id',
 };
 
 async function readLocalSnapshot() {
@@ -53,6 +79,8 @@ async function readLocalSnapshot() {
     deloadDateEditEnabled,
     fatigueTrackingEnabled,
     deloadModeEnabled,
+    recoveryBlocks,
+    recoveryBlockWeeks,
   ] = await Promise.all([
     Storage.loadWeightEntries(),
     Storage.loadWeightGoal(),
@@ -72,6 +100,10 @@ async function readLocalSnapshot() {
     Storage.loadDeloadDateEditEnabled(),
     Storage.loadFatigueTrackingEnabled(),
     Storage.loadDeloadModeEnabled(),
+    // Raw, tombstones included: bootstrap is a sync boundary, and a dropped
+    // tombstone re-uploads a deleted recovery record as a live row (#513).
+    Storage.loadRecoveryBlocksRaw(),
+    Storage.loadRecoveryBlockWeeksRaw(),
   ]);
 
   return {
@@ -91,6 +123,8 @@ async function readLocalSnapshot() {
     deloadDateEditEnabled,
     fatigueTrackingEnabled,
     deloadModeEnabled,
+    recoveryBlocks,
+    recoveryBlockWeeks,
   };
 }
 
@@ -174,6 +208,13 @@ export async function isLocalDataEmpty() {
   const hasNonDefaultMultiplier =
     snapshot.fatigueMultiplier != null &&
     Number(snapshot.fatigueMultiplier) !== DEFAULT_FATIGUE_MULTIPLIER;
+  // Recovery blocks and memberships are ordinary local domain records this
+  // device would push (#693), so their presence — tombstones included, since a
+  // tombstone is itself an unsynced delete — disqualifies the download-only
+  // restore path exactly as an archived goal or a deload record does.
+  const hasRecoveryData =
+    (Array.isArray(snapshot.recoveryBlocks) && snapshot.recoveryBlocks.length > 0) ||
+    (Array.isArray(snapshot.recoveryBlockWeeks) && snapshot.recoveryBlockWeeks.length > 0);
 
   if (
     hasWeightEntries ||
@@ -187,7 +228,8 @@ export async function isLocalDataEmpty() {
     hasDeloadNote ||
     hasCollapsedState ||
     hasNonDefaultToggles ||
-    hasNonDefaultMultiplier
+    hasNonDefaultMultiplier ||
+    hasRecoveryData
   ) {
     return false;
   }
@@ -265,6 +307,7 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
   const plan = buildBootstrapPlan(snapshotForPlan, userId);
 
   const summary = {};
+  const deferred = [];
   for (const table of UPSERT_ORDER) {
     const rows = plan[table] || [];
     summary[table] = rows.length;
@@ -274,6 +317,14 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
       .from(table)
       .upsert(rows, { onConflict: CONFLICT_TARGETS[table] });
     if (error) {
+      // See DEFERRABLE_TABLES: a rejected recovery upsert is carried to the
+      // caller and left for the sync pass to converge, instead of failing an
+      // otherwise complete bootstrap in a way every retry reproduces.
+      if (DEFERRABLE_TABLES.has(table)) {
+        summary[table] = 0;
+        deferred.push({ table, message: error.message || String(error) });
+        continue;
+      }
       throw new BootstrapError(
         `Bootstrap failed writing ${table}: ${error.message || error}`,
         { step: table, cause: error }
@@ -281,5 +332,7 @@ export async function bootstrapFromLocal(userId, client = getSupabaseClient()) {
     }
   }
 
-  return { ok: true, userId, summary };
+  return deferred.length > 0
+    ? { ok: true, userId, summary, deferred }
+    : { ok: true, userId, summary };
 }

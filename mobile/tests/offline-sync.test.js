@@ -17,7 +17,11 @@ import {
   replaceArchivedWeightGoalsRaw,
 } from '../storage/entries/weightGoal';
 import { cloudAdapter, setCloudTransport, setRecomputeDerived } from '../storage/cloudAdapter';
-import { rearmGatedTablesForRebuild, rebuildCloudCopy } from '../storage/cloud/syncAdapter';
+import {
+  rearmGatedTablesForRebuild,
+  rebuildCloudCopy,
+  getPendingSyncIntent,
+} from '../storage/cloud/syncAdapter';
 import {
   pickWinner,
   resolveRecord,
@@ -70,6 +74,70 @@ const SINGLETON_TABLES = new Set([
   SYNC_TABLES.WEIGHT_GOAL,
 ]);
 
+// Postgres-side uniqueness for the two recovery collections (issue #693).
+//
+// The partial unique indexes are NOT deferrable, so Postgres checks them as it
+// processes each row of an `insert ... on conflict do update`, against the table
+// state produced by the rows before it — never against the batch's final state.
+// ORDER INSIDE THE BATCH IS THEREFORE PART OF THE CONTRACT: a row that claims a
+// live slot still held by a row later in the same batch fails the whole
+// statement, even though the completed batch would have satisfied every index.
+//
+// This checker replays the batch row by row for that reason. Checking only the
+// projected end state (the first version of this double) accepted an ordering
+// the real database rejects, and hid a permanent wedge: the losing device's
+// queue kept re-sending the same failing order forever.
+function makeRecoveryConstraintChecker(tables) {
+  const violation = (constraint) => {
+    const error = new Error(
+      `duplicate key value violates unique constraint "${constraint}"`
+    );
+    error.code = '23505';
+    return error;
+  };
+
+  // The live-row keys each partial unique index covers, for one table.
+  const liveKeys = (table, row) => {
+    if (row.deleted_at) return [];
+    if (table === SYNC_TABLES.RECOVERY_BLOCKS) {
+      return row.completed_at ? [] : [['recovery_blocks_one_active_idx', 'active']];
+    }
+    return [
+      ['recovery_block_weeks_one_live_note_idx', `note:${row.note_id}`],
+      [
+        'recovery_block_weeks_live_ordinal_idx',
+        `ord:${row.block_id}#${row.week_number}`,
+      ],
+    ];
+  };
+
+  return function assertRecoveryConstraints(table, batch) {
+    if (
+      table !== SYNC_TABLES.RECOVERY_BLOCKS &&
+      table !== SYNC_TABLES.RECOVERY_BLOCK_WEEKS
+    ) {
+      return;
+    }
+    // Start from the committed table, then apply the batch in order, exactly as
+    // the statement does. Rejecting throws before any row is stored, mirroring
+    // the statement-level rollback.
+    const working = new Map();
+    for (const row of tables[table].values()) working.set(row.id, row);
+
+    for (const row of batch) {
+      for (const [constraint, key] of liveKeys(table, row)) {
+        for (const [otherId, other] of working) {
+          if (otherId === row.id) continue;
+          if (liveKeys(table, other).some(([, otherKey]) => otherKey === key)) {
+            throw violation(constraint);
+          }
+        }
+      }
+      working.set(row.id, row);
+    }
+  };
+}
+
 function makeFakeCloud() {
   // Every table the sync engine touches, including the four routed through the
   // ongoing sync path in issue #489.
@@ -79,6 +147,7 @@ function makeFakeCloud() {
   }
   const state = { online: true };
   const pushes = [];
+  const assertRecoveryConstraints = makeRecoveryConstraintChecker(tables);
 
   // Stands in for the Postgres `now()` the updated_at trigger uses. It must be
   // strictly later than anything already stored, so an arriving write always
@@ -120,6 +189,13 @@ function makeFakeCloud() {
     async push(table, records) {
       if (!state.online) throw new Error('offline');
       pushes.push({ table, ids: records.map((r) => r.id) });
+      // The recovery tables carry PARTIAL UNIQUE INDEXES over live rows (issue
+      // #693): one active block per user, one live membership per note, one
+      // live ordinal per (block, week). Postgres rejects the whole statement
+      // when a batch would violate one, so this fake rejects it too and applies
+      // nothing — a double that accepted a duplicate would make every
+      // convergence test below pass against a database that would not.
+      assertRecoveryConstraints(table, records);
       for (const rec of records) {
         // Model the REAL server, which does not arbitrate by client clock.
         //
@@ -2594,5 +2670,684 @@ describe('reconsent cloud rebuild (issue #538)', () => {
 
     const afterCounts = GATED_TABLES.map((t) => cloud.remoteRows(t).length);
     expect(afterCounts).toEqual(beforeCounts);
+  });
+});
+
+// ── recovery blocks and week memberships (issue #693) ────────────────────────
+//
+// Two ordinary collections with three cross-record uniqueness rules the database
+// enforces on LIVE rows only. What is specific to them, and what these tests
+// pin, is: the frozen baseline survives sync byte for byte, references arrive in
+// dependency order (notes -> blocks -> memberships), a stale device cannot
+// resurrect a record another device deleted, and a duplicate that only a
+// multi-device race can produce is rejected by the database and then collapsed
+// deterministically by every device rather than wedging one of them.
+describe('recovery block sync (issue #693)', () => {
+  const RB = SYNC_TABLES.RECOVERY_BLOCKS;
+  const RW = SYNC_TABLES.RECOVERY_BLOCK_WEEKS;
+  const WN = SYNC_TABLES.WORKOUT_NOTES;
+
+  const ROUTINE_TEXT = '-Bench\n- 135 5,5\n- 185 3';
+
+  async function captureDevice() {
+    const keys = await AsyncStorage.getAllKeys();
+    return AsyncStorage.multiGet(keys);
+  }
+
+  async function restoreDevice(pairs) {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    await AsyncStorage.multiSet(pairs);
+  }
+
+  async function cleanInstall() {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+  }
+
+  async function saveNote(id, raw_text = ROUTINE_TEXT) {
+    await cloudAdapter.saveWorkoutNoteItem({
+      id,
+      title: id,
+      raw_text,
+      saved_at: '2026-07-01T10:00:00.000Z',
+    });
+  }
+
+  // Pin a membership's `saved_at`. Two rows created in the same millisecond tie
+  // on it and fall through to the id tie-break, which is deterministic but not
+  // what a test about "the earliest membership survives" means to assert — the
+  // survivor would depend on random id bytes. Setting it explicitly makes the
+  // intended survivor the actual one.
+  async function pinWeekSavedAt(id, savedAt) {
+    const list = await Storage.loadRecoveryBlockWeeksRaw();
+    await Storage.replaceRecoveryBlockWeeksRaw(
+      list.map((w) => (w.id === id ? { ...w, saved_at: savedAt } : w))
+    );
+  }
+
+  async function seedBlockWithWeek() {
+    await saveNote('wn_base');
+    await saveNote('wn_week1', '-Bench\n- 95 5,5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteTitle: 'Routine 1',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    const week = await cloudAdapter.addRecoveryWeek({
+      blockId: block.id,
+      noteId: 'wn_week1',
+    });
+    return { block, week };
+  }
+
+  it('uploads blocks and memberships after the workout notes they reference', async () => {
+    await seedBlockWithWeek();
+    await cloudAdapter.sync();
+
+    const order = cloud.pushes.map((p) => p.table);
+    expect(order.indexOf(WN)).toBeLessThan(order.indexOf(RB));
+    expect(order.indexOf(RB)).toBeLessThan(order.indexOf(RW));
+
+    // And the referenced rows really are in the cloud by then.
+    const [remoteBlock] = cloud.remoteRows(RB);
+    const [remoteWeek] = cloud.remoteRows(RW);
+    expect(cloud.remoteRow(WN, remoteBlock.baseline_note_id)).toBeTruthy();
+    expect(cloud.remoteRow(WN, remoteWeek.note_id)).toBeTruthy();
+    expect(remoteWeek.block_id).toBe(remoteBlock.id);
+  });
+
+  it('carries the frozen baseline verbatim and never recomputes it during sync', async () => {
+    const { block } = await seedBlockWithWeek();
+    await cloudAdapter.sync();
+
+    const uploaded = cloud.remoteRow(RB, block.id);
+    expect(uploaded.baseline).toEqual(block.baseline);
+
+    // The source routine gets heavier AFTER the recovery started. Sync must not
+    // notice: a baseline is frozen at creation, and re-deriving it here would
+    // silently move the target every later comparison is measured against.
+    await saveNote('wn_base', '-Bench\n- 315 5,5');
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(RB, block.id).baseline).toEqual(block.baseline);
+
+    // A second device downloading the account gets the same frozen snapshot.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const [pulled] = await cloudAdapter.loadRecoveryBlocks();
+    expect(pulled.baseline).toEqual(block.baseline);
+  });
+
+  it('converges create, update, completion, membership, and tombstone across two devices', async () => {
+    // Device A authors the recovery.
+    const { block, week } = await seedBlockWithWeek();
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B is a clean install signing into the same account.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryBlocks()).map((b) => b.id)).toEqual([block.id]);
+    expect((await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => w.id)).toEqual([
+      week.id,
+    ]);
+
+    // B renames the baseline routine on the block and completes week 1.
+    await cloudAdapter.updateRecoveryBlock(block.id, { baseline_note_title: 'Pre-injury' });
+    await cloudAdapter.completeRecoveryWeek(week.id);
+    // B links a second week, then removes it again.
+    await saveNote('wn_week2', '-Bench\n- 105 5,5');
+    const week2 = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_week2' });
+    await cloudAdapter.deleteRecoveryWeek(week2.id);
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    // A pulls all of it.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    const [onA] = await cloudAdapter.loadRecoveryBlocks();
+    expect(onA.baseline_note_title).toBe('Pre-injury');
+    const weeksOnA = await cloudAdapter.loadRecoveryWeeksForBlock(block.id);
+    expect(weeksOnA.map((w) => w.id)).toEqual([week.id]);
+    expect(weeksOnA[0].completed_at).toBeTruthy();
+    // The removed membership is a retained tombstone, not a missing row.
+    expect(cloud.remoteRow(RW, week2.id).deleted_at).toBeTruthy();
+
+    // A completes the block; B sees it.
+    await cloudAdapter.completeRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+    await restoreDevice(deviceB);
+    await cloudAdapter.sync();
+    expect(await cloudAdapter.getActiveRecoveryBlock()).toBeNull();
+    expect((await cloudAdapter.loadRecoveryBlocks())[0].completed_at).toBeTruthy();
+  });
+
+  it('a stale device cannot resurrect a block or membership another device deleted', async () => {
+    const { block, week } = await seedBlockWithWeek();
+    await cloudAdapter.sync();
+    const stale = await captureDevice();
+
+    // Device B deletes the whole block, which cascades to its memberships.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    await cloudAdapter.deleteRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(RB, block.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRow(RW, week.id).deleted_at).toBeTruthy();
+
+    // The stale device still holds both as live rows and has no idea. Its next
+    // pass must adopt the newer tombstones rather than pushing its older copies
+    // back over them.
+    await restoreDevice(stale);
+    await cloudAdapter.sync();
+    expect(await cloudAdapter.loadRecoveryBlocks()).toEqual([]);
+    expect(await cloudAdapter.loadRecoveryBlockWeeks()).toEqual([]);
+    expect(cloud.remoteRow(RB, block.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRow(RW, week.id).deleted_at).toBeTruthy();
+  });
+
+  it('rejects a duplicate active block and collapses it to one, identically on both devices', async () => {
+    await saveNote('wn_base');
+    const first = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B was offline when A started its block and starts its own. Neither
+    // write is wrong when it is made; only the pair is.
+    await cleanInstall();
+    await saveNote('wn_base2');
+    const second = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base2',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    expect(second.started_at > first.started_at).toBe(true);
+
+    // The database rejects the second live-active row. The same pass then
+    // collapses the duplicate locally and re-pushes, and this is the direction
+    // that used to wedge: THIS device holds the surviving block, so its own row
+    // was queued first and the completion that frees the active slot was appended
+    // after it. Sent in that order Postgres rejects the survivor before reaching
+    // the row that frees the slot, and the retry rebuilds the same order forever.
+    // The push is ordered slot-freeing-first, so one sync() call converges.
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastBlockPush = cloud.pushes.filter((p) => p.table === RB).pop();
+    expect(lastBlockPush.ids).toEqual([first.id, second.id]);
+
+    const activeRemote = cloud
+      .remoteRows(RB)
+      .filter((row) => !row.deleted_at && !row.completed_at);
+    expect(activeRemote.map((row) => row.id)).toEqual([second.id]);
+    expect(cloud.remoteRow(RB, first.id).completed_at).toBe(second.started_at);
+    expect((await cloudAdapter.getActiveRecoveryBlock()).id).toBe(second.id);
+
+    // Device A converges on the same survivor without being told which one won.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.getActiveRecoveryBlock()).id).toBe(second.id);
+    expect((await cloudAdapter.loadRecoveryBlocks()).map((b) => b.id).sort()).toEqual(
+      [first.id, second.id].sort()
+    );
+  });
+
+  it('rejects a duplicate live membership for one note and keeps the earliest', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_shared', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    let deviceA = await captureDevice();
+
+    // Device B signs in and downloads the block and both notes — but no
+    // membership exists yet, so there is nothing for it to be stale about.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    // A links the note as week 1 and syncs.
+    await restoreDevice(deviceA);
+    const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await cloudAdapter.sync();
+    deviceA = await captureDevice();
+
+    // B, which has not synced since, links the SAME note to the same block.
+    await restoreDevice(deviceB);
+    const duplicate = await cloudAdapter.addRecoveryWeek({
+      blockId: block.id,
+      noteId: 'wn_shared',
+    });
+    expect(duplicate.id).not.toBe(kept.id);
+
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const liveRemote = cloud.remoteRows(RW).filter((row) => !row.deleted_at);
+    expect(liveRemote.map((row) => row.id)).toEqual([kept.id]);
+    expect(cloud.remoteRow(RW, duplicate.id).deleted_at).toBeTruthy();
+
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => w.id)).toEqual([
+      kept.id,
+    ]);
+  });
+
+  it('renumbers a duplicate live week ordinal instead of dropping the membership', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_a', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // Device B downloads the block, then both devices link their own note as
+    // week 1 without seeing each other: two legitimate memberships, one
+    // colliding ordinal.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    await restoreDevice(deviceA);
+    const first = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_a' });
+    expect(first.week_number).toBe(1);
+    await cloudAdapter.sync();
+
+    await restoreDevice(deviceB);
+    await saveNote('wn_b', '-Bench\n- 105 5');
+    const collided = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_b' });
+    expect(collided.week_number).toBe(1);
+
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const ordered = await cloudAdapter.loadRecoveryWeeksForBlock(block.id);
+    // Both memberships survive; the established ordinal is untouched and the
+    // newcomer is appended after it.
+    expect(ordered.map((w) => [w.id, w.week_number])).toEqual([
+      [first.id, 1],
+      [collided.id, 2],
+    ]);
+    expect(cloud.remoteRow(RW, collided.id).week_number).toBe(2);
+    expect(cloud.remoteRow(RW, first.id).week_number).toBe(1);
+  });
+
+  // The two collapse tests above happen to have the losing row on this device,
+  // so its push claims nothing and lands whatever the order. THESE two are the
+  // mirror, and the direction that wedges: this device holds the row the collapse
+  // KEEPS, so its own row sits first in the id-keyed dirty queue and the row that
+  // frees the slot is appended after it. Postgres checks each partial index as it
+  // processes a row, against the state the earlier rows left — so the claim is
+  // rejected before the freeing row is reached, and the retry rebuilds the same
+  // order forever. One test per week index; the active-block index is covered by
+  // the duplicate-active-block test above.
+  //
+  // The device holding the survivor is built by keeping it OFFLINE while it makes
+  // its write, so the row is still pending when the conflicting row reaches the
+  // cloud from elsewhere.
+  it('converges when this device holds the surviving membership (note index)', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_shared', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    let deviceA = await captureDevice();
+
+    // B downloads the account, then links the note while offline. Its row is the
+    // earliest, so the collapse will keep it — and it never reached the cloud.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await pinWeekSavedAt(kept.id, '2026-07-01T00:00:00.000Z');
+    const deviceB = await captureDevice();
+
+    // A links the same note later and pushes it, so the cloud now holds the row
+    // the collapse will retract.
+    await restoreDevice(deviceA);
+    const later = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_shared' });
+    await pinWeekSavedAt(later.id, '2026-07-02T00:00:00.000Z');
+    await cloudAdapter.sync();
+    deviceA = await captureDevice();
+
+    // B now pushes its surviving row while the cloud's live row still holds the
+    // note slot, and the retraction that frees it is queued behind.
+    await restoreDevice(deviceB);
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastPush = cloud.pushes.filter((p) => p.table === RW).pop();
+    expect(lastPush.ids.indexOf(later.id)).toBeLessThan(lastPush.ids.indexOf(kept.id));
+    expect(cloud.remoteRows(RW).filter((r) => !r.deleted_at).map((r) => r.id)).toEqual([
+      kept.id,
+    ]);
+
+    // A converges on the same survivor, and a further pass is a no-op.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => w.id)).toEqual([
+      kept.id,
+    ]);
+    const before = cloud.pushes.filter((p) => p.table === RW).length;
+    await cloudAdapter.sync();
+    expect(cloud.pushes.filter((p) => p.table === RW).length).toBe(before);
+  });
+
+  it('converges when this device holds the surviving ordinal (ordinal index)', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_a', '-Bench\n- 95 5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // B links its own note as week 1 while offline: a different note, so only the
+    // ORDINAL index is contested, and B's row is the earliest so it keeps week 1.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    await saveNote('wn_b', '-Bench\n- 105 5');
+    const kept = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_b' });
+    expect(kept.week_number).toBe(1);
+    await pinWeekSavedAt(kept.id, '2026-07-01T00:00:00.000Z');
+    const deviceB = await captureDevice();
+
+    // A links a different note as week 1 and pushes it.
+    await restoreDevice(deviceA);
+    const collided = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_a' });
+    expect(collided.week_number).toBe(1);
+    await pinWeekSavedAt(collided.id, '2026-07-02T00:00:00.000Z');
+    await cloudAdapter.sync();
+
+    // B pushes its surviving week 1 while the cloud still holds week 1 for the
+    // other note; the renumber to week 2 that frees the ordinal is queued behind.
+    await restoreDevice(deviceB);
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+
+    const lastPush = cloud.pushes.filter((p) => p.table === RW).pop();
+    expect(lastPush.ids.indexOf(collided.id)).toBeLessThan(lastPush.ids.indexOf(kept.id));
+    expect(
+      (await cloudAdapter.loadRecoveryWeeksForBlock(block.id)).map((w) => [
+        w.id,
+        w.week_number,
+      ])
+    ).toEqual([
+      [kept.id, 1],
+      [collided.id, 2],
+    ]);
+  });
+
+  // A block delete cascades to its live memberships LOCALLY (#692), but a
+  // tombstone that arrives by PULL carries no cascade with it — and the foreign
+  // key cannot catch the result, because a tombstoned block row is still
+  // physically present. Without the cascade, a membership created offline
+  // against a block another device deleted is uploaded LIVE under a dead parent:
+  // invisible to the user (its block is gone) while still holding the live-note
+  // unique slot, so that note can never join another block. The note slot is the
+  // part that actually strands the user, so it is asserted here.
+  it('cascades a pulled block tombstone to a membership created offline, and frees the note', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_w1', '-Bench\n- 95 5,5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    // B downloads the account while the block is still live.
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    // A deletes the whole block and syncs.
+    await restoreDevice(deviceA);
+    await cloudAdapter.deleteRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+    expect(cloud.remoteRow(RB, block.id).deleted_at).toBeTruthy();
+
+    // B, which has not synced since, links a note to the block it still thinks
+    // is active — a legitimate write when it is made.
+    await restoreDevice(deviceB);
+    const orphan = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await cloudAdapter.sync();
+
+    // The block tombstone won, so the membership must not survive it.
+    expect(await cloudAdapter.loadRecoveryBlocks()).toEqual([]);
+    expect(await cloudAdapter.loadRecoveryBlockWeeks()).toEqual([]);
+    expect(cloud.remoteRow(RW, orphan.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+
+    // The note is free again: it can join a new block, which the live-note unique
+    // index would refuse while a stale live membership still held the slot.
+    const next = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    const rejoined = await cloudAdapter.addRecoveryWeek({
+      blockId: next.id,
+      noteId: 'wn_w1',
+    });
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+    expect(cloud.remoteRow(RW, rejoined.id).deleted_at).toBeFalsy();
+
+    // And A converges on the same state rather than seeing a live orphan.
+    await restoreDevice(deviceA);
+    await cloudAdapter.sync();
+    expect((await cloudAdapter.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([
+      rejoined.id,
+    ]);
+  });
+
+  // Isolation must not become independence. The membership pass depends on the
+  // block pass having actually run: the cascade above can only act on a tombstone
+  // that a successful block PULL delivered. If the block pass fails for its own
+  // transient reason, local state still shows the parent live, the cascade finds
+  // nothing to do, and an unconditional membership pass uploads the offline live
+  // row against a remotely deleted parent — the FK is satisfied by the tombstoned
+  // row, so the stranded note comes back through the failure path instead.
+  it('does not sync memberships when the block pass failed, and converges on the retry', async () => {
+    await saveNote('wn_base');
+    await saveNote('wn_w1', '-Bench\n- 95 5,5');
+    const block = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await cloudAdapter.sync();
+    const deviceA = await captureDevice();
+
+    await cleanInstall();
+    await cloudAdapter.sync();
+    const deviceB = await captureDevice();
+
+    await restoreDevice(deviceA);
+    await cloudAdapter.deleteRecoveryBlock(block.id);
+    await cloudAdapter.sync();
+
+    // B links a note offline, then syncs while the block table specifically is
+    // unreachable — so it never learns the parent was deleted.
+    await restoreDevice(deviceB);
+    const orphan = await cloudAdapter.addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const realPull = cloud.transport.pull;
+    cloud.transport.pull = async (table, cursor) => {
+      if (table === RB) throw new Error('recovery_blocks pull exploded');
+      return realPull(table, cursor);
+    };
+    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
+
+    // The membership must not have been uploaded: this device never saw the
+    // tombstone, so it cannot know its parent is gone.
+    expect(cloud.remoteRow(RW, orphan.id)).toBeUndefined();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+    // Nothing was lost either — it is still queued.
+    expect((await getDirtyRecords(RW)).map((r) => r.id)).toContain(orphan.id);
+
+    // The retry has a working block pull, so the cascade runs and the membership
+    // converges as a tombstone rather than as a live row under a dead parent.
+    cloud.transport.pull = realPull;
+    await expect(cloudAdapter.sync()).resolves.toBeDefined();
+    expect(cloud.remoteRow(RW, orphan.id).deleted_at).toBeTruthy();
+    expect(cloud.remoteRows(RW).filter((row) => !row.deleted_at)).toEqual([]);
+    expect(await cloudAdapter.loadRecoveryBlockWeeks()).toEqual([]);
+
+    // And the note slot is free.
+    const next = await cloudAdapter.createRecoveryBlock({
+      baselineNoteId: 'wn_base',
+      baselineNoteText: ROUTINE_TEXT,
+    });
+    await expect(
+      cloudAdapter.addRecoveryWeek({ blockId: next.id, noteId: 'wn_w1' })
+    ).resolves.toBeDefined();
+  });
+
+  it('a recovery failure does not take weight, workout-note, or settings sync down', async () => {
+    await seedBlockWithWeek();
+    await Storage.saveWeightEntry({
+      id: 'w_iso',
+      entry_type: 'weight',
+      date: '2026-07-02',
+      logged_at: '2026-07-02T08:00:00.000Z',
+      weight_value: 181,
+    });
+    await Storage.saveUserProfile({ display_name: 'Ben', unit_system: 'lb' });
+
+    // Only the recovery tables fail. Everything else must still complete, and
+    // the pass must still REPORT the failure rather than claiming success.
+    const realPush = cloud.transport.push;
+    cloud.transport.push = async (table, records) => {
+      if (table === RB || table === RW) throw new Error('recovery push exploded');
+      return realPush(table, records);
+    };
+
+    await expect(cloudAdapter.sync()).rejects.toThrow(/Recovery-block sync failed/);
+
+    expect(cloud.remoteRow(SYNC_TABLES.WEIGHT_ENTRIES, 'w_iso').weight_value).toBe(181);
+    expect(cloud.remoteRows(WN).length).toBeGreaterThan(0);
+    expect(cloud.remoteRow(SYNC_TABLES.USER_PROFILE, SINGLETON_SYNC_ID).unit_system).toBe('lb');
+    expect(cloud.remoteRows(RB)).toEqual([]);
+
+    // Nothing was lost: the recovery rows are still pending and land on the
+    // next pass once the transport recovers.
+    cloud.transport.push = realPush;
+    await cloudAdapter.sync();
+    expect(cloud.remoteRows(RB).length).toBe(1);
+    expect(cloud.remoteRows(RW).length).toBe(1);
+  });
+
+  it('reports recovery writes as pending upload before the next pass runs', async () => {
+    await seedBlockWithWeek();
+    await cloudAdapter.sync();
+    expect((await getPendingSyncIntent()).hasPending).toBe(false);
+
+    // A write made after the last pass has no dirty-queue entry (these tables
+    // have no write-time hook), so the status read must reconcile against the
+    // baseline to answer honestly.
+    await cloudAdapter.completeRecoveryBlock((await cloudAdapter.loadRecoveryBlocks())[0].id);
+    const pending = await getPendingSyncIntent();
+    expect(pending.hasPending).toBe(true);
+    expect(pending.tables).toContain(RB);
+
+    await cloudAdapter.sync();
+    expect((await getPendingSyncIntent()).hasPending).toBe(false);
+  });
+});
+
+// ── recovery-block upload allowlist (issue #693) ─────────────────────────────
+//
+// The push path must not spread a client record onto the upsert: a tampered or
+// simply out-of-date client could otherwise write server-owned ordering columns
+// or a column the app never intended. These two tables are the newest surface
+// where that matters, and their `baseline` is the field a forged write would
+// most like to reach.
+describe('real Supabase transport: recovery collections (issue #693)', () => {
+  function makeUpsertClient(userId) {
+    const upserts = [];
+    const query = { gte: () => query, order: async () => ({ data: [], error: null }) };
+    const client = {
+      auth: { getUser: async () => ({ data: { user: { id: userId } }, error: null }) },
+      schema: () => ({
+        from: (table) => ({
+          select: () => query,
+          upsert: async (rows) => {
+            upserts.push(...rows.map((row) => ({ __table: table, ...row })));
+            return { error: null };
+          },
+        }),
+      }),
+    };
+    return { client, upserts };
+  }
+
+  it('sends whitelisted recovery columns only, with a server-bound user_id', async () => {
+    const { client, upserts } = makeUpsertClient('user-rec');
+    getSupabaseClient.mockReturnValue(client);
+
+    const clientId = await getClientId();
+    const baseline = { version: 1, exercises: [{ key: 'bench', top_weight: 185 }] };
+    await enqueueDirty(
+      SYNC_TABLES.RECOVERY_BLOCKS,
+      stampWrite(
+        {
+          id: 'rb1',
+          baseline_note_id: 'wn_base',
+          baseline_note_title: 'Routine 1',
+          baseline,
+          include_in_normal_analytics: false,
+          started_at: '2026-07-01T10:00:00.000Z',
+          completed_at: null,
+          saved_at: '2026-07-01T10:00:00.000Z',
+          // Neither of these may reach the database.
+          user_id: 'someone-else',
+          sync_xid: '999',
+          local_only_field: 'should-not-appear',
+        },
+        clientId
+      )
+    );
+    await enqueueDirty(
+      SYNC_TABLES.RECOVERY_BLOCK_WEEKS,
+      stampWrite(
+        {
+          id: 'rw1',
+          block_id: 'rb1',
+          note_id: 'wn_week1',
+          week_number: 1,
+          completed_at: null,
+          saved_at: '2026-07-08T10:00:00.000Z',
+          local_only_field: 'should-not-appear',
+        },
+        clientId
+      )
+    );
+
+    setCloudTransport(null);
+    await cloudAdapter.sync();
+
+    const block = upserts.find((r) => r.id === 'rb1');
+    expect(block).toBeTruthy();
+    expect(block.user_id).toBe('user-rec');
+    expect(block.baseline).toEqual(baseline);
+    expect(block.baseline_note_id).toBe('wn_base');
+    expect(block.started_at).toBe('2026-07-01T10:00:00.000Z');
+    expect(block.saved_at).toBe('2026-07-01T10:00:00.000Z');
+    expect(block.include_in_normal_analytics).toBe(false);
+    for (const forbidden of ['updated_at', 'client_id', 'sync_xid', 'local_only_field']) {
+      expect(block).not.toHaveProperty(forbidden);
+    }
+
+    const week = upserts.find((r) => r.id === 'rw1');
+    expect(week.user_id).toBe('user-rec');
+    expect(week.block_id).toBe('rb1');
+    expect(week.note_id).toBe('wn_week1');
+    expect(week.week_number).toBe(1);
+    for (const forbidden of ['updated_at', 'client_id', 'sync_xid', 'local_only_field']) {
+      expect(week).not.toHaveProperty(forbidden);
+    }
   });
 });

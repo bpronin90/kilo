@@ -126,6 +126,22 @@ describe('cloud adapter shell', () => {
     'loadWorkoutNotes',
     'saveWorkoutNoteItem',
     'deleteWorkoutNoteItem',
+    // The recovery-block domain (#692) became cloud-backed in #693. These
+    // delegate to the same storage module local mode uses; the sync engine picks
+    // their writes up through the baseline reconciliation rather than a
+    // write-time queue hook (see storage/cloudAdapter.js).
+    'loadRecoveryBlocks',
+    'getActiveRecoveryBlock',
+    'createRecoveryBlock',
+    'updateRecoveryBlock',
+    'completeRecoveryBlock',
+    'deleteRecoveryBlock',
+    'loadRecoveryBlockWeeks',
+    'loadRecoveryWeeksForBlock',
+    'addRecoveryWeek',
+    'updateRecoveryWeek',
+    'completeRecoveryWeek',
+    'deleteRecoveryWeek',
   ]);
 
   it('throws CloudNotImplementedError for every still-unimplemented domain method', () => {

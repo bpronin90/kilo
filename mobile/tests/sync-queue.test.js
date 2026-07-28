@@ -5,6 +5,7 @@ import {
   getClientId,
   getCursor,
   getDirtyRecords,
+  getSyncSnapshot,
   resetClientIdCacheForTests,
   resetStampClockForTests,
   setCursor,
@@ -591,6 +592,75 @@ describe('commit-safe pull boundary advancement', () => {
           expect.objectContaining({ id: 'writer-committed-later', value: 'recovered' }),
         ])
       );
+    }
+  );
+});
+
+// ── recovery collections in the engine (issue #693) ──────────────────────────
+//
+// Both recovery tables run through the same syncTable loop as weight entries and
+// workout notes. What is worth pinning at the engine level is that a REJECTED
+// push — the outcome the partial unique indexes produce when two devices race —
+// behaves like any other failed push: nothing is lost, the queue stays armed,
+// the cursor does not advance past rows this device has not reconciled, and no
+// baseline is recorded that would launder the unpushed row into looking synced.
+describe('recovery collections are ordinary, retryable collection tables', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetClientIdCacheForTests();
+    resetStampClockForTests();
+  });
+
+  it.each([SYNC_TABLES.RECOVERY_BLOCKS, SYNC_TABLES.RECOVERY_BLOCK_WEEKS])(
+    '%s keeps a rejected push retryable and lands it on the next pass',
+    async (table) => {
+      const clientId = await getClientId();
+      const record = stampWrite({ id: 'rec-1', week_number: 1, started_at: 'x' }, clientId);
+      await enqueueDirty(table, record);
+
+      let reject = true;
+      const stored = new Map();
+      const transport = {
+        async pull() {
+          return [...stored.values()];
+        },
+        async push(_table, records) {
+          if (reject) {
+            const error = new Error('duplicate key value violates unique constraint');
+            error.code = '23505';
+            throw error;
+          }
+          return records.map((row) => {
+            const persisted = { ...row, updated_at: '2026-07-28T12:00:00.000Z' };
+            delete persisted.client_id;
+            stored.set(persisted.id, persisted);
+            return { ...persisted };
+          });
+        },
+      };
+
+      let local = [record];
+      const io = {
+        table,
+        transport,
+        readLocal: async () => local,
+        writeLocal: async (list) => {
+          local = list;
+        },
+      };
+
+      await expect(syncTable(io)).rejects.toThrow(/unique constraint/);
+      expect(await getDirtyRecords(table)).toEqual([record]);
+      expect(await getCursor(table)).toBeNull();
+      expect(await getSyncSnapshot(table)).toBeNull();
+
+      reject = false;
+      const result = await syncTable(io);
+      expect(result.pushed).toBe(1);
+      expect(await getDirtyRecords(table)).toEqual([]);
+      expect(stored.get('rec-1').week_number).toBe(1);
+      // The record survived untouched: a rejected push never edits local data.
+      expect(local.find((r) => r.id === 'rec-1').week_number).toBe(1);
     }
   );
 });
