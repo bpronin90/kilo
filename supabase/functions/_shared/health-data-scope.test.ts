@@ -8,10 +8,10 @@
 //
 // So the rule is enforced structurally, in four directions:
 //
-//   1. The set contains exactly the seven gated tables, no more, no fewer.
+//   1. The set contains exactly the nine gated tables, no more, no fewer.
 //   2. account-export, account-delete, and health-data-delete all IMPORT this
 //      module and none of them keeps its own health-table list.
-//   3. The database's kilo.health_gated_tables() names the same seven tables.
+//   3. The database's kilo.health_gated_tables() names the same nine tables.
 //   4. Every read and delete in this module is filtered to a single user_id.
 //
 // Run:  deno test --allow-read supabase/functions/_shared/health-data-scope.test.ts
@@ -24,14 +24,17 @@ import {
   healthTableNames,
 } from './health-data-scope.ts'
 
-// The seven tables that hold data concerning health, per
-// docs/article-9-explicit-consent-spec.md § "Authoritative health-data boundary".
-// Written out literally rather than derived, so a change to the scope module can
-// never quietly change what this test considers correct.
+// The nine tables that hold data concerning health, per
+// docs/article-9-explicit-consent-spec.md § "Authoritative health-data boundary",
+// plus the two recovery tables admitted by #694. Written out literally rather
+// than derived, so a change to the scope module can never quietly change what
+// this test considers correct.
 const EXPECTED_GATED_TABLES = [
   'archived_weight_goals',
   'deload_history',
   'fatigue_checkins',
+  'recovery_block_weeks',
+  'recovery_blocks',
   'user_health_profile',
   'weight_entries',
   'weight_goal',
@@ -57,7 +60,7 @@ function readFunctionSource(relativePath: string): string {
   return Deno.readTextFileSync(new URL(relativePath, import.meta.url))
 }
 
-Deno.test('gated set is exactly the seven health tables', () => {
+Deno.test('gated set is exactly the nine health tables', () => {
   assertEquals([...healthTableNames()].sort(), EXPECTED_GATED_TABLES)
 })
 
@@ -84,6 +87,25 @@ Deno.test('deletion order is total and deterministic', () => {
     new Set(orders).size,
     orders.length,
     'two descriptors share a deleteOrder, so a partial purge would not retry identically',
+  )
+})
+
+Deno.test('recovery memberships are deleted before the blocks they reference', () => {
+  // kilo.recovery_block_weeks has a real FK to kilo.recovery_blocks. Deleting the
+  // parent first still empties both tables — via `on delete cascade` — which is
+  // exactly why this needs pinning: the purge would pass its own row-count check
+  // while relying on cascade behavior for rows it believes its own statements
+  // removed, and a later schema change to that FK would silently strand
+  // memberships that kilo.complete_health_deletion_job() then counts forever.
+  const order = (table: string) => {
+    const descriptor = HEALTH_DATA_SCOPE.find((d) => d.table === table)
+    assert(descriptor, `${table} is missing from HEALTH_DATA_SCOPE`)
+    return descriptor!.deleteOrder
+  }
+
+  assert(
+    order('recovery_block_weeks') < order('recovery_blocks'),
+    'recovery_block_weeks must be deleted before recovery_blocks (child before parent)',
   )
 })
 
@@ -134,20 +156,38 @@ Deno.test('no consumer keeps its own health-table list', () => {
   }
 })
 
+// The EFFECTIVE definition of kilo.health_gated_tables(): the one from the
+// latest migration that redefines it, since `create or replace` means the last
+// applied file wins. Reading a single hardcoded migration was correct only while
+// exactly one file defined the function — the moment a follow-up redefined it
+// (#694 did), a pinned path would have gone on checking a definition the
+// database no longer runs and passed while the two halves disagreed.
+function latestGatedTablesDefinition(): string {
+  const dir = new URL('../../migrations/', import.meta.url)
+  const marker = 'create or replace function kilo.health_gated_tables()'
+
+  const defining = [...Deno.readDirSync(dir)]
+    .filter((e) => e.isFile && e.name.endsWith('.sql'))
+    .map((e) => e.name)
+    // Migration filenames are timestamp-prefixed, so lexical order is apply order.
+    .sort()
+    .map((name) => ({ name, sql: Deno.readTextFileSync(new URL(name, dir)) }))
+    .filter((f) => f.sql.includes(marker))
+
+  assert(defining.length > 0, 'no migration defines kilo.health_gated_tables()')
+
+  const last = defining[defining.length - 1]
+  const fnStart = last.sql.indexOf(marker)
+  return last.sql.slice(fnStart, last.sql.indexOf('$$;', fnStart))
+}
+
 Deno.test('database gated-table list matches the module', () => {
   // kilo.health_gated_tables() is the SQL half of the same contract: it is what
   // kilo.complete_health_deletion_job() re-counts before allowing
   // deletion_pending -> withdrawn. If the two lists drift, the database would
   // certify a purge complete while a table the Edge Function never touched still
   // holds the user's health data.
-  const sql = Deno.readTextFileSync(
-    new URL('../../migrations/20260714120002_health_deletion_jobs.sql', import.meta.url),
-  )
-
-  const fnStart = sql.indexOf('create or replace function kilo.health_gated_tables()')
-  assert(fnStart > -1, 'kilo.health_gated_tables() not found in the migration')
-
-  const body = sql.slice(fnStart, sql.indexOf('$$;', fnStart))
+  const body = latestGatedTablesDefinition()
   const arrayMatch = body.match(/select array\[([\s\S]*?)\]::text\[\]/)
   assert(arrayMatch, 'could not parse the table array out of kilo.health_gated_tables()')
 

@@ -219,9 +219,11 @@ serve(async (req) => {
     })
   }
 
-  // 2. The gated health set, via the one shared definition. account-delete does
-  //    not keep its own health-table list — that is exactly the divergence the
-  //    shared scope exists to make impossible.
+  // 2. The gated health set, via the one shared definition, in that definition's
+  //    dependency-safe deleteOrder (which since #694 puts recovery_block_weeks
+  //    ahead of the recovery_blocks rows they reference). account-delete does not
+  //    keep its own health-table list — that is exactly the divergence the shared
+  //    scope exists to make impossible.
   const healthResult = await deleteHealthData(rlAdmin, user.id)
   if (!healthResult.ok) {
     console.error(`account-delete health deletion failed: ${healthResult.error}`)

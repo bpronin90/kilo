@@ -89,4 +89,31 @@ describe('buildExportPayload', () => {
     expect(entries.exportBackup).not.toHaveBeenCalled();
     expect(JSON.parse(result.json).cloud).toBeDefined();
   });
+
+  // #694: the recovery collections are health data, so the artifact the user
+  // shares out of the app has to actually contain them — the round trip is
+  // covered against real storage in backup-import.test.js, and what is pinned
+  // here is that App's export seam does not drop or reshape them on the way to
+  // the JSON the user receives.
+  test('carries the recovery collections through to the exported JSON', async () => {
+    const entries = require('../storage/entries');
+    const payload = {
+      version: '4',
+      recovery_blocks: [
+        {
+          id: 'rb-1',
+          baseline_note_id: 'wn-1',
+          baseline: { version: 1, exercises: [{ key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 185 }] },
+          include_in_normal_analytics: false,
+        },
+      ],
+      recovery_block_weeks: [{ id: 'rw-1', block_id: 'rb-1', note_id: 'wn-2', week_number: 1 }],
+      cloud: { user_profile: {} },
+    };
+    entries.buildCloudExport.mockResolvedValue(payload);
+
+    const result = await buildExportPayload();
+
+    expect(JSON.parse(result.json)).toEqual(payload);
+  });
 });

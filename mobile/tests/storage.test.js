@@ -752,12 +752,15 @@ describe('migrateWorkoutNote', () => {
 describe('exportBackup', () => {
   test('returns object with version, exported_at, weight_entries, workout_notes, current_workout_id', async () => {
     const backup = await exportBackup();
-    expect(backup).toHaveProperty('version', '3');
+    // v4 (#694) added the two recovery collections; every v3 key is unchanged.
+    expect(backup).toHaveProperty('version', '4');
     expect(backup).toHaveProperty('exported_at');
     expect(backup.exported_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(Array.isArray(backup.weight_entries)).toBe(true);
     expect(Array.isArray(backup.workout_notes)).toBe(true);
     expect('current_workout_id' in backup).toBe(true);
+    expect(Array.isArray(backup.recovery_blocks)).toBe(true);
+    expect(Array.isArray(backup.recovery_block_weeks)).toBe(true);
   });
 
   test('includes saved weight entries in weight_entries', async () => {
@@ -791,12 +794,12 @@ describe('exportBackup', () => {
   });
 });
 
-describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
-  test('emits a v3-compatible base payload', async () => {
+describe('buildCloudExport — local backup parity plus cloud-only fields', () => {
+  test('emits a base payload identical to the plain backup', async () => {
     await saveWeightEntry(W1);
     const payload = await buildCloudExport();
-    // v3 top-level contract is preserved exactly.
-    expect(payload).toHaveProperty('version', '3');
+    // The base payload is exactly exportBackup(); the cloud block is additive.
+    expect(payload).toHaveProperty('version', '4');
     expect(payload).toHaveProperty('exported_at');
     expect(Array.isArray(payload.weight_entries)).toBe(true);
     expect(Array.isArray(payload.workout_notes)).toBe(true);
@@ -807,11 +810,11 @@ describe('buildCloudExport — v3 parity plus cloud-only fields', () => {
     expect(payload.weight_entries.map(e => e.id)).toContain(W1.id);
   });
 
-  test('cloud-only block is namespaced and importable by a v3 importer', async () => {
+  test('cloud-only block is namespaced and importable by the plain importer', async () => {
     await saveWeightEntry(W1);
     const payload = await buildCloudExport();
     expect(payload).toHaveProperty('cloud');
-    // The v3 importer must accept the cloud-augmented payload unchanged.
+    // The importer must accept the cloud-augmented payload unchanged.
     const result = await importBackup(payload);
     expect(result.ok).toBe(true);
   });

@@ -784,6 +784,37 @@ but the underlying leak is still worth fixing wherever it's found.
   notes, and archived weight goals not tombstoned by a format that omits them
 - verifies the local contract is byte-for-byte unchanged: domain keys
   overwritten, no stamping, no tombstones, and nothing enqueued
+- covers the v4 recovery collections (#694): a recovery-aware backup round-trips
+  active and completed blocks, frozen baseline snapshots, week order, membership
+  completion, the analytics preference, and tombstones; the export emits only
+  allowlisted fields, so a stray local field cannot reach the shared artifact
+- covers twenty-six malformed recovery payloads, asserting each is rejected with
+  local storage, the unrelated collections, and both recovery dirty queues
+  byte-identical afterwards — the "no partial writes" property, not merely
+  "rejected". Per-record cases: a membership referencing a block the payload does
+  not carry, a non-positive, null, or missing week ordinal, a baseline with no
+  version or from a newer capture format, a non-numeric baseline metric, a
+  duplicate or missing block id, a non-array collection, and either recovery
+  collection present without the other. Cross-record cases, matching the three
+  partial unique indexes on the cloud tables: two live blocks both still active,
+  one workout note with two live memberships, and two live memberships claiming
+  the same week ordinal. Eleven timestamp cases pin the strict ISO instant rule,
+  including the ones `Date.parse` accepts (`"1"`, `"01/02/03"`, `"2026"`,
+  `"March 5, 2026"`, a date with no time, a time with no offset) and the ones it
+  silently normalizes into a different day (`"2026-02-30T00:00:00Z"`,
+  `"2025-02-29T00:00:00Z"`)
+- verifies the strict timestamp rule does not overshoot: a server-stamped
+  `+00:00` offset with microsecond precision, which is what a synced cloud user's
+  raw local rows actually carry, is accepted and persisted verbatim
+- verifies the mirror-image property, since the uniqueness rules are scoped to
+  live rows: a completed block beside a new active one, with the second recovery
+  reusing a workout note and a week ordinal the first one released, round-trips
+  rather than being rejected as a conflict
+- verifies blocks are queued and pushed before the memberships that reference
+  them, matching the `recovery_block_weeks` foreign key; that a membership the
+  backup omits becomes a tombstone the account accepts and a later pull cannot
+  resurrect; and that a v3 backup, which says nothing about recovery data,
+  deletes no block or membership and queues nothing
 - negative control: with the cloud branch forced back to the local path, the
   cloud-contract cases fail because no stamping, queueing, or tombstoning happens;
   and restoring the prior `{ ...base, ...content }` whole-row merge fails exactly
@@ -946,13 +977,27 @@ but the underlying leak is still worth fixing wherever it's found.
   partial erasure never advances the user to `withdrawn`, a partially erased job
   is visible as `failed` with a rising attempt count, worker errors are bounded
   before they can reach a log, and a transport-level failure leaves the job in
-  the backlog rather than losing it
+  the backlog rather than losing it. Since #694 it also proves
+  `kilo.health_gated_tables()` names both recovery collections and that leftover
+  recovery metadata blocks completion even when every other gated table is empty
+  — the state that was previously certified as a finished erasure
 - `supabase/tests/reenqueue-health-deletion-consent-gate.test.sql` proves the
   operator re-enqueue RPC is fail-closed on consent state (#598): a `granted`,
   `needs_reconsent`, or stateless account (and a null target) is refused with an
   explicit reason and no job is created, while a `deletion_pending` account's
   failed job is rearmed in place (not duplicated) and a `withdrawn` account
-  stays authorized
+  stays authorized. It also proves the RPC's reported `table_counts` surface
+  leftover recovery rows as remaining health data (#694), so an operator cannot
+  read a clean bill of health for an unfinished erasure
+- `supabase/tests/health-integrity-monitor.test.sql` proves the post-contract
+  health-data-loss monitor (#558) flags a genuine loss (a granted account whose
+  content-bearing `user_health_profile` row disappeared or went empty) and stays
+  quiet for every legitimate absence: never-written, withdrawn,
+  `deletion_pending`, and a purge armed after content was last seen. Since #694
+  it also pins the gap that quietness leaves: the monitor watches ONE table, so
+  an account it is silent about can still hold leftover recovery blocks and week
+  memberships, and `kilo.health_data_row_counts()` must report them as remaining
+  health data
 - `npm run test:health-deletion-monitor` runs the offline contract suite for the
   backlog monitor and the e2e harness: the redaction allowlist (a `user_id`,
   email address, Supabase key, or JWT can never reach an alert surface), all
@@ -1021,7 +1066,16 @@ but the underlying leak is still worth fixing wherever it's found.
   suite never contacts production or reads secret values.
 - `supabase/functions/_shared/health-data-scope.test.ts` is the Deno contract
   suite preventing `account-export`, `account-delete`, and
-  `health-data-delete` from diverging from the shared gated table set
+  `health-data-delete` from diverging from the shared gated table set. It pins
+  the set at exactly nine tables (the two recovery collections joined in #694),
+  pins recovery memberships ahead of the blocks they reference in deletion
+  order, and compares the module against the EFFECTIVE
+  `kilo.health_gated_tables()` — resolved from the latest migration that
+  redefines it, since a pinned migration path would keep checking a definition
+  the database no longer runs. Run it with
+  `deno test --no-check --allow-read supabase/functions/_shared/health-data-scope.test.ts`;
+  `--no-check` is required only because the shared `supabase-js` client typing
+  fails to resolve locally, which is unrelated to the contract under test
 
 ### Public Signup Legal And Abuse Checks
 

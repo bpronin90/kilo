@@ -770,7 +770,7 @@ describe('CloudSyncRecovery: manual upload respects local-data ownership (#450)'
 });
 
 describe('useCloudExport hook', () => {
-  test('produces a v3-compatible JSON payload with cloud-only fields', async () => {
+  test('produces a current-format JSON payload with cloud-only fields', async () => {
     await saveWeightEntry({
       id: 'w_export_1',
       entry_type: 'weight',
@@ -787,7 +787,8 @@ describe('useCloudExport hook', () => {
     });
     expect(result.ok).toBe(true);
     const parsed = JSON.parse(result.json);
-    expect(parsed.version).toBe('3');
+    // v4 (#694) added the recovery collections to the exported shape.
+    expect(parsed.version).toBe('4');
     expect(parsed.weight_entries.map((e) => e.id)).toContain('w_export_1');
     expect(parsed.cloud.cloud_export_format).toBe('cloud-1');
     expect(parsed.cloud.account).toEqual({ id: 'u_9', email: 'me@x.co' });

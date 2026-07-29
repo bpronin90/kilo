@@ -584,6 +584,348 @@ describe('cloud-mode replace: preserved invariants', () => {
   });
 });
 
+// ── recovery collections (issue #694) ────────────────────────────────────────
+//
+// #692/#693 added recovery blocks and week memberships as ordinary synced
+// collections, but the backup format did not carry them at all. A restore
+// therefore silently dropped every frozen baseline and every week link, and a
+// cloud restore left the account holding recovery data the device had just
+// replaced away. v4 closes that; these pin both the round trip and the two
+// things a restore must NOT do — write on malformed input, or delete on silence.
+
+// A block with a real frozen baseline, plus the two week memberships under it.
+async function seedRecoveryData() {
+  const block = await Storage.createRecoveryBlock({
+    baselineNoteId: 'wn-keep',
+    baselineNoteTitle: 'Routine A',
+    baselineNoteText: '-Squat\n- 100 5,5\n-Bench\n- 80 5,5',
+  });
+  const w1 = await Storage.addRecoveryWeek({ blockId: block.id, noteId: 'wn-week-1' });
+  const w2 = await Storage.addRecoveryWeek({ blockId: block.id, noteId: 'wn-week-2' });
+  return { block, w1, w2 };
+}
+
+describe('recovery data in the backup format', () => {
+  it('round-trips blocks, baselines, week order, completion, preferences, and tombstones', async () => {
+    const { block, w1, w2 } = await seedRecoveryData();
+    // Completion state on both levels, an explicit analytics preference, and a
+    // tombstoned membership — the four things a naive "export the live rows"
+    // implementation loses.
+    await Storage.completeRecoveryWeek(w1.id);
+    await Storage.updateRecoveryBlock(block.id, { include_in_normal_analytics: true });
+    await Storage.deleteRecoveryWeek(w2.id);
+    const completed = await Storage.completeRecoveryBlock(block.id);
+
+    const backup = await Storage.exportBackup();
+    expect(backup.version).toBe('4');
+
+    const blocksBefore = await Storage.loadRecoveryBlocksRaw();
+    const weeksBefore = await Storage.loadRecoveryBlockWeeksRaw();
+
+    // Wipe the device, then restore.
+    await Storage.replaceRecoveryBlocksRaw([]);
+    await Storage.replaceRecoveryBlockWeeksRaw([]);
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+    expect(result.ok).toBe(true);
+
+    expect(await Storage.loadRecoveryBlocksRaw()).toEqual(blocksBefore);
+    expect(await Storage.loadRecoveryBlockWeeksRaw()).toEqual(weeksBefore);
+
+    // Spot-check the parts a shape-only comparison would not notice.
+    const restoredBlock = (await Storage.loadRecoveryBlocksRaw())[0];
+    expect(restoredBlock.baseline.version).toBe(1);
+    expect(restoredBlock.baseline.exercises.map((e) => e.name).sort()).toEqual(['Bench', 'Squat']);
+    expect(restoredBlock.include_in_normal_analytics).toBe(true);
+    expect(restoredBlock.completed_at).toBe(completed.completed_at);
+
+    const live = await Storage.loadRecoveryBlockWeeks();
+    expect(live.map((w) => [w.note_id, w.week_number, w.completed_at != null])).toEqual([
+      ['wn-week-1', 1, true],
+    ]);
+    const restoredWeeks = await Storage.loadRecoveryBlockWeeksRaw();
+    expect(isTombstone(restoredWeeks.find((w) => w.id === w2.id))).toBe(true);
+  });
+
+  // The mirror image of the invariant rejections below: the uniqueness rules are
+  // scoped to LIVE rows, exactly as the partial indexes are, so accumulated
+  // history is never a conflict. A validator that read tombstoned and completed
+  // records as live would reject every long-time user's real backup.
+  it('accepts history: a completed block beside a new active one, and a freed note and ordinal', async () => {
+    const first = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn-keep',
+      baselineNoteText: '-Squat\n- 100 5,5',
+    });
+    const freed = await Storage.addRecoveryWeek({ blockId: first.id, noteId: 'wn-week-1' });
+    // Tombstoning the membership frees BOTH the note and week ordinal 1.
+    await Storage.deleteRecoveryWeek(freed.id);
+    await Storage.completeRecoveryBlock(first.id);
+
+    // A second recovery, reusing the note the first one released, at week 1.
+    const second = await Storage.createRecoveryBlock({
+      baselineNoteId: 'wn-keep',
+      baselineNoteText: '-Squat\n- 90 5,5',
+    });
+    const reused = await Storage.addRecoveryWeek({ blockId: second.id, noteId: 'wn-week-1' });
+    expect(reused.week_number).toBe(1);
+
+    const backup = await Storage.exportBackup();
+    expect(backup.recovery_blocks).toHaveLength(2);
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result).toEqual({ ok: true, mode: IMPORT_MODES.LOCAL, queued: 0 });
+    expect((await Storage.loadRecoveryBlocks()).length).toBe(2);
+    expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([reused.id]);
+  });
+
+  // The other half of the strict timestamp rule. There are exactly two producers
+  // of these values — `new Date().toISOString()` on the device (always `Z`,
+  // always milliseconds) and PostgREST for a server-stamped `updated_at` (a
+  // `+00:00` offset, up to microsecond precision) — and a cloud user's raw local
+  // rows carry the SERVER form. A validator tuned only to the device form would
+  // reject the backup of every signed-in user who has ever synced.
+  it('accepts a server-stamped timestamp offset and sub-millisecond precision', async () => {
+    const { block } = await seedRecoveryData();
+    const serverStamp = '2026-07-28T23:59:59.123456+00:00';
+
+    const backup = await Storage.exportBackup();
+    backup.recovery_blocks.find((b) => b.id === block.id).updated_at = serverStamp;
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result.ok).toBe(true);
+    const restored = (await Storage.loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    // Persisted verbatim: the importer validates the string, it does not rewrite it.
+    expect(restored.updated_at).toBe(serverStamp);
+  });
+
+  it('emits only allowlisted fields, so a stray local field cannot reach the artifact', async () => {
+    const { block } = await seedRecoveryData();
+    const raw = await Storage.loadRecoveryBlocksRaw();
+    // A field no cloud column holds — a stale local experiment, or a field a
+    // future version added and this one must not re-publish.
+    await Storage.replaceRecoveryBlocksRaw(
+      raw.map((b) => ({ ...b, private_scratch: 'should not be exported' })),
+    );
+
+    const backup = await Storage.exportBackup();
+
+    const exported = backup.recovery_blocks.find((b) => b.id === block.id);
+    expect(exported.private_scratch).toBeUndefined();
+    expect(Object.keys(exported).sort()).toEqual([
+      'baseline', 'baseline_note_id', 'baseline_note_title', 'completed_at',
+      'deleted_at', 'id', 'include_in_normal_analytics', 'saved_at',
+      'started_at', 'updated_at',
+    ]);
+  });
+});
+
+describe('recovery data: malformed payloads write nothing', () => {
+  // Each case is validated BEFORE any storage write, so the assertion is not
+  // just "rejected" but "the device is byte-identical afterwards".
+  const cases = [
+    ['a membership referencing a block the payload does not carry', (b) => {
+      b.recovery_block_weeks[0].block_id = 'rb-does-not-exist';
+    }],
+    ['a non-positive week ordinal', (b) => {
+      b.recovery_block_weeks[0].week_number = 0;
+    }],
+    ['a baseline snapshot with no version', (b) => {
+      b.recovery_blocks[0].baseline = { exercises: [] };
+    }],
+    ['a baseline snapshot from a newer capture format', (b) => {
+      b.recovery_blocks[0].baseline = { version: 99, exercises: [] };
+    }],
+    ['a baseline exercise metric that is not a number', (b) => {
+      b.recovery_blocks[0].baseline = {
+        version: 1,
+        exercises: [{ key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 'heavy' }],
+      };
+    }],
+    ['a duplicate block id', (b) => {
+      b.recovery_blocks.push({ ...b.recovery_blocks[0] });
+    }],
+    ['a block with no id', (b) => {
+      delete b.recovery_blocks[0].id;
+    }],
+    ['memberships without the blocks they belong to', (b) => {
+      delete b.recovery_blocks;
+    }],
+    // Blocks without memberships is rejected for a different reason: replace
+    // would tombstone a block by omission while the device's live memberships
+    // still point at it, stranding each of their workout notes under a block
+    // that no longer exists.
+    ['blocks without the memberships collection', (b) => {
+      delete b.recovery_block_weeks;
+    }],
+    ['recovery_blocks that is not an array', (b) => {
+      b.recovery_blocks = 'nope';
+    }],
+    // The three CROSS-RECORD invariants. Each is a partial unique index on the
+    // cloud tables, so before this validation existed a payload breaking one was
+    // accepted, written to local storage, enqueued — and only then rejected by
+    // the database mid-push, with the device already holding the invalid state.
+    // In local mode nothing pushes at all, so it simply persisted.
+    ['two live blocks that are both still active', (b) => {
+      b.recovery_blocks.push({
+        ...b.recovery_blocks[0],
+        id: 'rb-second-active',
+        completed_at: null,
+        deleted_at: null,
+      });
+    }],
+    ['one workout note with two live memberships', (b) => {
+      b.recovery_block_weeks.push({
+        ...b.recovery_block_weeks[0],
+        id: 'rw-duplicate-note',
+        week_number: 99,
+        deleted_at: null,
+      });
+    }],
+    ['two live memberships claiming the same week ordinal', (b) => {
+      b.recovery_block_weeks.push({
+        ...b.recovery_block_weeks[0],
+        id: 'rw-duplicate-ordinal',
+        note_id: 'wn-some-other-note',
+        deleted_at: null,
+      });
+    }],
+    // The cloud column is nullable (`week_number is null or week_number > 0`),
+    // but the local domain has no such tolerance: orderedLiveWeeks subtracts
+    // ordinals numerically and nextWeekNumber derives from the highest one, so a
+    // null is not a harmless gap — it makes week order stop being a total order,
+    // permanently in local mode.
+    ['a null week ordinal', (b) => {
+      b.recovery_block_weeks[0].week_number = null;
+    }],
+    ['a missing week ordinal', (b) => {
+      delete b.recovery_block_weeks[0].week_number;
+    }],
+  ].concat(
+    // Timestamps. `Date.parse` alone accepts every one of these: the short and
+    // ambiguous forms outright, and — the dangerous case — it NORMALIZES an
+    // impossible calendar date instead of rejecting it, so `2026-02-30` returns
+    // a finite value pointing at March 2 while the importer persists the
+    // original string. A value with no offset names no instant at all.
+    [
+      '1',
+      '01/02/03',
+      'March 5, 2026',
+      '2026',
+      '2026-07',
+      '2026-07-28',
+      '2026-07-28T23:59:59',
+      '2026-02-30T00:00:00Z',
+      '2025-02-29T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-07-28T24:00:00Z',
+    ].map((value) => [
+      `a timestamp of ${JSON.stringify(value)}`,
+      (b) => {
+        b.recovery_blocks[0].started_at = value;
+      },
+    ]),
+  );
+
+  for (const [label, corrupt] of cases) {
+    it(`rejects ${label} without touching local or cloud state`, async () => {
+      await seedSyncedDevice();
+      await seedRecoveryData();
+      await sync();
+
+      const blocksBefore = await Storage.loadRecoveryBlocksRaw();
+      const weeksBefore = await Storage.loadRecoveryBlockWeeksRaw();
+      const entriesBefore = await Storage.loadWeightEntriesRaw();
+
+      const payload = await Storage.exportBackup();
+      corrupt(payload);
+
+      const result = await cloudImport(payload);
+
+      expect(result.ok).toBe(false);
+      expect(typeof result.error).toBe('string');
+      expect(await Storage.loadRecoveryBlocksRaw()).toEqual(blocksBefore);
+      expect(await Storage.loadRecoveryBlockWeeksRaw()).toEqual(weeksBefore);
+      // The rejection is total: an unrelated collection earlier in the restore
+      // order must not have been written either.
+      expect(await Storage.loadWeightEntriesRaw()).toEqual(entriesBefore);
+      expect(await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCKS)).toHaveLength(0);
+      expect(await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toHaveLength(0);
+    });
+  }
+});
+
+describe('recovery data: cloud replace semantics', () => {
+  it('queues blocks before the memberships that reference them', async () => {
+    await seedSyncedDevice();
+    await seedRecoveryData();
+    await sync();
+
+    const payload = await Storage.exportBackup();
+    const result = await cloudImport(payload);
+
+    expect(result.ok).toBe(true);
+    expect((await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCKS)).length).toBe(1);
+    expect((await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).length).toBe(2);
+
+    // Blocks reach the account first: kilo.recovery_block_weeks has a real FK to
+    // kilo.recovery_blocks, so the reverse order is rejected by the database.
+    await sync();
+    const order = cloud.pushes.map((p) => p.table).filter((t) =>
+      t === SYNC_TABLES.RECOVERY_BLOCKS || t === SYNC_TABLES.RECOVERY_BLOCK_WEEKS);
+    expect(order.indexOf(SYNC_TABLES.RECOVERY_BLOCKS))
+      .toBeLessThan(order.indexOf(SYNC_TABLES.RECOVERY_BLOCK_WEEKS));
+  });
+
+  it('tombstones a removed membership instead of dropping it, so the pull cannot resurrect it', async () => {
+    await seedSyncedDevice();
+    const { w2 } = await seedRecoveryData();
+    await sync();
+    expect(cloud.liveRemoteRows(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toHaveLength(2);
+
+    // A backup taken BEFORE w2 existed is not what this tests — this is a backup
+    // that simply does not list w2, i.e. "that week is gone".
+    const payload = await Storage.exportBackup();
+    payload.recovery_block_weeks = payload.recovery_block_weeks.filter((w) => w.id !== w2.id);
+
+    await cloudImport(payload);
+
+    const localWeeks = await Storage.loadRecoveryBlockWeeksRaw();
+    const dropped = localWeeks.find((w) => w.id === w2.id);
+    expect(dropped).toBeDefined();
+    expect(isTombstone(dropped)).toBe(true);
+
+    await sync();
+    expect(isTombstone(cloud.remoteRow(SYNC_TABLES.RECOVERY_BLOCK_WEEKS, w2.id))).toBe(true);
+
+    // The account agrees, so a later pull has nothing to bring back.
+    await sync();
+    expect(cloud.liveRemoteRows(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toHaveLength(1);
+    expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([
+      localWeeks.find((w) => w.id !== w2.id).id,
+    ]);
+  });
+
+  it('does not delete recovery records for a v3 backup, which says nothing about them', async () => {
+    await seedSyncedDevice();
+    await seedRecoveryData();
+    await sync();
+
+    const legacy = replacementBackup(); // version '3', no recovery keys at all
+    const result = await cloudImport(legacy);
+
+    expect(result.ok).toBe(true);
+    expect((await Storage.loadRecoveryBlocks()).length).toBe(1);
+    expect((await Storage.loadRecoveryBlockWeeks()).length).toBe(2);
+    expect(await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCKS)).toHaveLength(0);
+    expect(await getDirtyRecords(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toHaveLength(0);
+    // And the account still has them after the restore is pushed.
+    await sync();
+    expect(cloud.liveRemoteRows(SYNC_TABLES.RECOVERY_BLOCKS)).toHaveLength(1);
+    expect(cloud.liveRemoteRows(SYNC_TABLES.RECOVERY_BLOCK_WEEKS)).toHaveLength(2);
+  });
+});
+
 describe('local-mode replace: unchanged contract', () => {
   beforeEach(() => {
     Storage.setStorageMode(Storage.STORAGE_MODES.LOCAL);
