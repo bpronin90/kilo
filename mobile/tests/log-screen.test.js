@@ -4371,6 +4371,63 @@ describe('Recovery Block start flow', () => {
     expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
   });
 
+  test('mark-as-recovery-week mode never offers the preset Week 1 note as its own baseline', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // "Mark as recovery week" on otherNote ("Pull Day") presets it as Week 1;
+    // it must never also be selectable as its own baseline (would otherwise
+    // only fail later as NOTE_IS_BASELINE after Confirm).
+    render.act(() => { findPressableByText(root, 'Mark as recovery week').props.onPress({ stopPropagation: jest.fn() }); });
+
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeNull();
+    // The other eligible note ("Push Day") remains a valid baseline choice.
+    expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+  });
+
+  test('onConfirm rejecting (e.g. the new-note write itself failing) clears "Starting…" and shows an error instead of getting stuck', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    add.mockRejectedValue(new Error('Could not save the note.'));
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Could not save the note.').length).toBe(1);
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    expect(confirmBtn.props.accessibilityLabel).toBe('Confirm and start recovery block');
+    expect(confirmBtn.props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('new-note path rollback: startBlock failing after note creation deletes the orphaned note', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    startBlock.mockResolvedValue({ ok: false, code: 'ACTIVE_BLOCK_EXISTS', error: 'Recovery block rbX is still active; complete or delete it first.' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(add).toHaveBeenCalledWith('Recovery Week 1', '');
+    // The note the flow created before the failure must not survive as an
+    // orphan routine — "no partial changes" covers the note it created too.
+    expect(remove).toHaveBeenCalledWith('newnote1');
+  });
+
   test('renders without crashing in dark palette', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
@@ -4414,5 +4471,56 @@ describe('useStartRecoveryBlock: rollback on Week-1 failure leaves no orphan act
     expect(createFn).toHaveBeenCalledTimes(1);
     expect(addFn).toHaveBeenCalledWith({ blockId: 'rb-orphan', noteId: 'week1' });
     expect(deleteFn).toHaveBeenCalledWith('rb-orphan');
+  });
+});
+
+describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
+  test('a completed SYNC phase refreshes recovery state even with no local startRecoveryBlockCore call', () => {
+    // Another device's active block/week records can arrive purely through
+    // cloud sync (App.js only reloads workout notes/weight on its
+    // automatic-sync callback), so the hook must subscribe to the sync-state
+    // broadcast directly rather than relying solely on the private local
+    // notification used by startRecoveryBlockCore. Spies target the leaf
+    // modules (not the `storage/entries` aggregator, whose re-exports are not
+    // spy-able — see the comment in storage/entries.js) so the hook's actual
+    // named imports resolve through the same live bindings we control.
+    const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+    const syncRecoveryModule = require('../storage/syncRecovery');
+    const { useRecoveryBlockState } = require('../hooks/entries/recoveryBlockHooks');
+
+    const loadBlocksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockResolvedValue([]);
+    const loadWeeksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlockWeeks').mockResolvedValue([]);
+    let syncListener = null;
+    const subscribeSpy = jest.spyOn(syncRecoveryModule, 'subscribeSyncState').mockImplementation((listener) => {
+      syncListener = listener;
+      return () => {};
+    });
+
+    function Harness() {
+      useRecoveryBlockState();
+      return null;
+    }
+
+    let component;
+    render.act(() => { component = render.create(React.createElement(Harness)); });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(1);
+    expect(typeof syncListener).toBe('function');
+
+    render.act(() => {
+      syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
+    });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
+
+    // A second notification of the same completed status (no new transition)
+    // must not refresh again — only the RUNNING->COMPLETE edge does.
+    render.act(() => {
+      syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
+    });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
+
+    render.act(() => { component.unmount(); });
+    loadBlocksSpy.mockRestore();
+    loadWeeksSpy.mockRestore();
+    subscribeSpy.mockRestore();
   });
 });

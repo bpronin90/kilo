@@ -194,9 +194,11 @@ export function LogScreen({
       return { ok: false, error: 'Select a baseline routine first.' };
     }
     let finalWeekNoteId = weekNoteId;
+    let createdNoteId = null;
     if (weekChoice === 'new') {
       const created = await add(newNoteTitle, '');
       finalWeekNoteId = created?.id;
+      createdNoteId = created?.id || null;
     }
     if (!finalWeekNoteId) {
       return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
@@ -207,7 +209,21 @@ export function LogScreen({
       baselineNoteText: baselineNote.raw_text || '',
       weekNoteId: finalWeekNoteId,
     });
-    if (result?.ok) refreshRecoveryState?.();
+    if (result?.ok) {
+      refreshRecoveryState?.();
+      return result;
+    }
+    // New-note path: the note itself was persisted before the block/week
+    // writes were attempted. A failure here (active block appeared mid-flow,
+    // Week-1 storage error) must not leave that note behind as an orphan
+    // routine — "no partial changes" covers the note it created, too.
+    if (createdNoteId) {
+      try {
+        await remove(createdNoteId);
+      } catch (_rollbackError) {
+        // Best-effort: the original failure is what the caller needs to see.
+      }
+    }
     return result;
   };
 

@@ -65,7 +65,12 @@ export function RecoveryBlockStartModal({
 
   if (!visible) return null;
 
-  const baselineChoices = eligibleBaselineNotes;
+  // In 'note' mode the preset note is already fixed as Week 1, so it can
+  // never also be offered as the baseline — picking it would only surface as
+  // a NOTE_IS_BASELINE failure after Confirm instead of being excluded here.
+  const baselineChoices = mode === 'note' && presetNote
+    ? eligibleBaselineNotes.filter(n => n.id !== presetNote.id)
+    : eligibleBaselineNotes;
   // A note picked as baseline can never also be the week-1 note.
   const weekChoices = eligibleWeekNotes.filter(n => n.id !== baselineNoteId);
 
@@ -81,18 +86,25 @@ export function RecoveryBlockStartModal({
     if (!canConfirm || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
-    const result = await onConfirm({
-      baselineNoteId,
-      weekChoice,
-      weekNoteId: weekChoice === 'existing' ? weekNoteId : null,
-      newNoteTitle: weekChoice === 'new' ? newNoteTitle.trim() : null,
-    });
-    setSubmitting(false);
-    if (!result || result.ok === false) {
-      setSubmitError((result && result.error) || 'Could not start the recovery block.');
-      return;
+    try {
+      const result = await onConfirm({
+        baselineNoteId,
+        weekChoice,
+        weekNoteId: weekChoice === 'existing' ? weekNoteId : null,
+        newNoteTitle: weekChoice === 'new' ? newNoteTitle.trim() : null,
+      });
+      if (!result || result.ok === false) {
+        setSubmitError((result && result.error) || 'Could not start the recovery block.');
+        return;
+      }
+      onClose();
+    } catch (e) {
+      // onConfirm rejecting (e.g. the new-note write itself failing) must not
+      // leave Confirm stuck disabled on "Starting…" with no visible error.
+      setSubmitError(e?.message || 'Could not start the recovery block.');
+    } finally {
+      setSubmitting(false);
     }
-    onClose();
   };
 
   return (

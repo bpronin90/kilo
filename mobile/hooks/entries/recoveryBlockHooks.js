@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
 import { findActiveBlock, findLiveMembershipForNote } from '../../lib/data/recoveryBlocks';
 import { safeNotify } from './shared';
+import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 
 let recoveryListeners = [];
 const notifyRecoveryBlocks = () => safeNotify(recoveryListeners);
@@ -42,8 +43,28 @@ export function useRecoveryBlockState() {
   useEffect(() => {
     refresh();
     recoveryListeners.push(refresh);
+
+    // A completed cloud sync (bootstrap or ongoing) can bring in another
+    // device's active block/week records without any local
+    // startRecoveryBlockCore call to fire the private `recoveryListeners`
+    // notification above. mobile/App.js only reloads workout notes/weight on
+    // its automatic-sync callback and tabs stay mounted, so without this the
+    // badge/eligibility state here would go stale until an unrelated remount.
+    // Subscribing directly to the sync-state broadcast (rather than requiring
+    // App.js to know about recovery state) keeps the fix inside this hook.
+    let lastSyncStatus = null;
+    const handleSyncState = (syncState) => {
+      const sync = syncState?.[SYNC_PHASE.SYNC];
+      if (sync && sync.status === SYNC_STATUS.COMPLETE && lastSyncStatus !== SYNC_STATUS.COMPLETE) {
+        refresh();
+      }
+      lastSyncStatus = sync ? sync.status : null;
+    };
+    const unsubscribeSync = subscribeSyncState(handleSyncState);
+
     return () => {
       recoveryListeners = recoveryListeners.filter(l => l !== refresh);
+      unsubscribeSync();
     };
   }, [refresh]);
 
