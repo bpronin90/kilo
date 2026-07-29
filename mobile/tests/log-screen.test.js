@@ -4133,3 +4133,394 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
     );
   });
 });
+
+// ── Recovery Block start flow (#695) ────────────────────────────────────────
+
+describe('Recovery Block start flow', () => {
+  const { LightColors, DarkColors } = require('../theme/colors');
+  const { ThemeContext } = require('../theme/ThemeContext');
+
+  const baselineNote = { id: 'routine1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+  const otherNote = { id: 'routine2', title: 'Pull Day', raw_text: 'Pull\n-Row\n80 5,5,5', updated_at: '2026-01-02T00:00:00.000Z' };
+  const linkedNote = { id: 'routine3', title: 'Legs Day', raw_text: 'Legs\n-Squat\n100 5,5,5', updated_at: '2026-01-03T00:00:00.000Z' };
+
+  let add, update, remove, selectCurrent, startBlock, refresh;
+
+  // Some note titles (e.g. "Pull Day") appear both as an ordinary previous-
+  // routine card in the background and as a selectable option inside the
+  // modal; accessibilityLabel disambiguates where text alone cannot.
+  const findByAccessibilityLabel = (root, label) =>
+    root.findAll(n => n.props && n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0] || null;
+
+  const setupCommonMocks = ({ notes, currentId, currentNote, activeBlock = null, blocks = [], weeks = [] } = {}) => {
+    add = jest.fn().mockResolvedValue({ id: 'newnote1', title: 'New Week 1 Note', raw_text: '' });
+    update = jest.fn();
+    remove = jest.fn();
+    selectCurrent = jest.fn();
+    startBlock = jest.fn().mockResolvedValue({ ok: true, block: { id: 'rb1' }, week: { id: 'rw1', week_number: 1 } });
+    refresh = jest.fn();
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes, currentId, currentNote, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(),
+      selectCurrent, update, add, remove,
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock,
+      blocks,
+      weeks,
+      recoveryWeekNumberByNoteId: weeks.reduce((acc, w) => {
+        if (!activeBlock || w.block_id === activeBlock.id) acc[w.note_id] = w.week_number;
+        return acc;
+      }, {}),
+      loading: false,
+      error: null,
+      refresh,
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock });
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Real (unmocked) pure eligibility helpers stay wired through the actual
+    // module — only the storage-backed hooks are mocked above.
+    useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
+    useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
+  });
+
+  test('entry point: "Start recovery block" on the active routine card opens the modal with the baseline preset', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const startBtn = findPressableByText(root, 'Start recovery block');
+    expect(startBtn).toBeTruthy();
+    render.act(() => { startBtn.props.onPress({ stopPropagation: jest.fn() }); });
+
+    expect(findPressableByText(root, 'Confirm')).toBeTruthy();
+    // The baseline is preset from the routine card entry point: its title
+    // appears fixed (not one of many selectable rows) in the baseline section.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Push Day').length).toBeGreaterThan(0);
+  });
+
+  test('entry point: "Mark as recovery week" on a previous-routine card opens the same modal asking for a baseline', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const markBtn = findPressableByText(root, 'Mark as recovery week');
+    expect(markBtn).toBeTruthy();
+    render.act(() => { markBtn.props.onPress({ stopPropagation: jest.fn() }); });
+
+    expect(findPressableByText(root, 'Confirm')).toBeTruthy();
+    // Baseline must still be an explicit choice: the only other eligible note
+    // (the current routine) is offered as a selectable baseline option.
+    const baselineOption = findPressableByText(root, 'Push Day');
+    expect(baselineOption).toBeTruthy();
+  });
+
+  test('existing-note path: selecting an eligible note and confirming calls startBlock with both ids, no new note created', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'Existing note').props.onPress(); });
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    await render.act(async () => { confirmBtn.props.onPress(); });
+
+    expect(add).not.toHaveBeenCalled();
+    expect(startBlock).toHaveBeenCalledWith({
+      baselineNoteId: 'routine1',
+      baselineNoteTitle: 'Push Day',
+      baselineNoteText: baselineNote.raw_text,
+      weekNoteId: 'routine2',
+    });
+  });
+
+  test('new-note path: choosing "New note" creates the note first, then starts the block with its id', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    // Defaults to "Existing note"; switch to "New note" and type a title.
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    await render.act(async () => { confirmBtn.props.onPress(); });
+
+    expect(add).toHaveBeenCalledWith('Recovery Week 1', '');
+    expect(startBlock).toHaveBeenCalledWith({
+      baselineNoteId: 'routine1',
+      baselineNoteTitle: 'Push Day',
+      baselineNoteText: baselineNote.raw_text,
+      weekNoteId: 'newnote1',
+    });
+  });
+
+  test('confirm requires an explicit selection: the Confirm button is disabled until both sides are chosen', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    // Baseline is preset from the entry point, but no Week 1 note is chosen yet.
+    expect(confirmBtn.props.accessibilityState.disabled).toBe(true);
+
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    expect(confirmBtn.props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('cancel flow: closing the modal makes no storage calls and leaves the current selection untouched', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Cancel').props.onPress(); });
+
+    expect(add).not.toHaveBeenCalled();
+    expect(startBlock).not.toHaveBeenCalled();
+    expect(selectCurrent).not.toHaveBeenCalled();
+    expect(findPressableByText(root, 'Confirm')).toBeNull();
+  });
+
+  test('ineligible notes never appear as selectable candidates: a note already linked to a block is excluded', () => {
+    const weeks = [{ id: 'rw0', block_id: 'rbX', note_id: linkedNote.id, week_number: 1, deleted_at: null }];
+    const blocks = [{ id: 'rbX', baseline_note_id: 'someOtherRoutine', started_at: '2026-01-01T00:00:00.000Z', completed_at: '2026-01-05T00:00:00.000Z', deleted_at: null }];
+    setupCommonMocks({ notes: [baselineNote, otherNote, linkedNote], currentId: baselineNote.id, currentNote: baselineNote, blocks, weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    // The note itself still renders as an ordinary previous-routine card in
+    // the background, but it must never appear as a selectable Week 1 option
+    // inside the modal — structurally excluded, never inferred from title.
+    expect(findByAccessibilityLabel(root, 'Use Legs Day as Recovery Week 1')).toBeNull();
+    // The still-eligible "Pull Day" card gets exactly one "Mark as recovery
+    // week" affordance in the background; the linked "Legs Day" card gets none.
+    const markButtons = root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week');
+    expect(markButtons.length).toBe(1);
+  });
+
+  test('duplicate active block rejection: startBlock failure surfaces truthful error copy and keeps the modal open', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    startBlock.mockResolvedValue({ ok: false, code: 'ACTIVE_BLOCK_EXISTS', error: 'Recovery block rbX is still active; complete or delete it first.' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery block rbX is still active; complete or delete it first.').length).toBe(1);
+    expect(findPressableByText(root, 'Confirm')).toBeTruthy();
+  });
+
+  test('recovery week badge is accessible on the linked note, in the active routine card', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: baselineNote.id, week_number: 1, deleted_at: null }];
+    const blocks = [{ id: 'rb1', baseline_note_id: 'someOtherRoutine', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, deleted_at: null }];
+    const activeBlock = blocks[0];
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote, activeBlock, blocks, weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const badge = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1');
+    expect(badge.length).toBeGreaterThan(0);
+    expect(badge[0].props.accessible).toBe(true);
+  });
+
+  test('current-note selection is preserved across opening and cancelling the recovery flow', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'Cancel').props.onPress(); });
+
+    expect(selectCurrent).not.toHaveBeenCalled();
+    expect(startBlock).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+    // The current-routine entry point is still reachable — the screen was not
+    // left in some half-open state by the cancelled flow.
+    expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
+  });
+
+  test('mark-as-recovery-week mode never offers the preset Week 1 note as its own baseline', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // "Mark as recovery week" on otherNote ("Pull Day") presets it as Week 1;
+    // it must never also be selectable as its own baseline (would otherwise
+    // only fail later as NOTE_IS_BASELINE after Confirm).
+    render.act(() => { findPressableByText(root, 'Mark as recovery week').props.onPress({ stopPropagation: jest.fn() }); });
+
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeNull();
+    // The other eligible note ("Push Day") remains a valid baseline choice.
+    expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+  });
+
+  test('onConfirm rejecting (e.g. the new-note write itself failing) clears "Starting…" and shows an error instead of getting stuck', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    add.mockRejectedValue(new Error('Could not save the note.'));
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Could not save the note.').length).toBe(1);
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    expect(confirmBtn.props.accessibilityLabel).toBe('Confirm and start recovery block');
+    expect(confirmBtn.props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('new-note path rollback: startBlock failing after note creation deletes the orphaned note', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    startBlock.mockResolvedValue({ ok: false, code: 'ACTIVE_BLOCK_EXISTS', error: 'Recovery block rbX is still active; complete or delete it first.' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(add).toHaveBeenCalledWith('Recovery Week 1', '');
+    // The note the flow created before the failure must not survive as an
+    // orphan routine — "no partial changes" covers the note it created too.
+    expect(remove).toHaveBeenCalledWith('newnote1');
+  });
+
+  test('renders without crashing in dark palette', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ThemeContext.Provider value={{ preference: 'dark', mode: 'dark', colors: DarkColors, setPreference: jest.fn() }}>
+          <ControlledLogScreen />
+        </ThemeContext.Provider>
+      );
+    });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    expect(findPressableByText(root, 'Confirm')).toBeTruthy();
+  });
+});
+
+describe('useStartRecoveryBlock: rollback on Week-1 failure leaves no orphan active block', () => {
+  test('createRecoveryBlock succeeding but addRecoveryWeek throwing deletes the just-created block', async () => {
+    // Only ../hooks/useEntries is auto-mocked at the top of this file.
+    // startRecoveryBlockCore takes the storage API as a parameter, so the
+    // rollback logic is exercised directly against a fake storage object —
+    // no module mocking or React rendering required.
+    const { startRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
+
+    const createFn = jest.fn().mockResolvedValue({ id: 'rb-orphan' });
+    const addFn = jest.fn().mockRejectedValue(
+      Object.assign(new Error('Workout note is the frozen baseline'), { code: 'NOTE_IS_BASELINE' })
+    );
+    const deleteFn = jest.fn().mockResolvedValue({ id: 'rb-orphan' });
+    const fakeStorage = { createRecoveryBlock: createFn, addRecoveryWeek: addFn, deleteRecoveryBlock: deleteFn };
+
+    const result = await startRecoveryBlockCore(fakeStorage, {
+      baselineNoteId: 'baseline1',
+      baselineNoteTitle: 'Push Day',
+      baselineNoteText: 'raw',
+      weekNoteId: 'week1',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('NOTE_IS_BASELINE');
+    expect(createFn).toHaveBeenCalledTimes(1);
+    expect(addFn).toHaveBeenCalledWith({ blockId: 'rb-orphan', noteId: 'week1' });
+    expect(deleteFn).toHaveBeenCalledWith('rb-orphan');
+  });
+});
+
+describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
+  test('a completed SYNC phase refreshes recovery state even with no local startRecoveryBlockCore call', () => {
+    // Another device's active block/week records can arrive purely through
+    // cloud sync (App.js only reloads workout notes/weight on its
+    // automatic-sync callback), so the hook must subscribe to the sync-state
+    // broadcast directly rather than relying solely on the private local
+    // notification used by startRecoveryBlockCore. Spies target the leaf
+    // modules (not the `storage/entries` aggregator, whose re-exports are not
+    // spy-able — see the comment in storage/entries.js) so the hook's actual
+    // named imports resolve through the same live bindings we control.
+    const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+    const syncRecoveryModule = require('../storage/syncRecovery');
+    const { useRecoveryBlockState } = require('../hooks/entries/recoveryBlockHooks');
+
+    const loadBlocksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockResolvedValue([]);
+    const loadWeeksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlockWeeks').mockResolvedValue([]);
+    let syncListener = null;
+    const subscribeSpy = jest.spyOn(syncRecoveryModule, 'subscribeSyncState').mockImplementation((listener) => {
+      syncListener = listener;
+      return () => {};
+    });
+
+    function Harness() {
+      useRecoveryBlockState();
+      return null;
+    }
+
+    let component;
+    render.act(() => { component = render.create(React.createElement(Harness)); });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(1);
+    expect(typeof syncListener).toBe('function');
+
+    render.act(() => {
+      syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
+    });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
+
+    // A second notification of the same completed status (no new transition)
+    // must not refresh again — only the RUNNING->COMPLETE edge does.
+    render.act(() => {
+      syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
+    });
+    expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
+
+    render.act(() => { component.unmount(); });
+    loadBlocksSpy.mockRestore();
+    loadWeeksSpy.mockRestore();
+    subscribeSpy.mockRestore();
+  });
+});

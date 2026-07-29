@@ -336,7 +336,17 @@ The real native app path now has a modular React Native shell:
   preserves the `Deload · ` title prefix invariant so deload records cannot
   silently reclassify into normal routines.
   Deleting any past deload recomputes the sessions-since-deload clock off the
-  remaining history (resetting to the absolute session count when none remain). The read view now also
+  remaining history (resetting to the absolute session count when none remain).
+  Log also exposes the first user-visible slice of the recovery-block domain
+  (#692-694): a `Start recovery block` action on an ordinary routine card, or a
+  `Mark as recovery week` action on an eligible unlinked note, opens a
+  confirmation modal that freezes the chosen baseline routine and attaches a
+  new-or-existing note as `Recovery Week 1` (#695). Eligibility is purely
+  structural (not linked to any block, not a baseline, not a deload note) and
+  a linked note only gains an accessible `Recovery Week 1` badge — its title,
+  raw text, editor, autosave, and analytics projections stay untouched. Week
+  2+, completion, browsing recovery blocks, and any recovery-specific
+  analytics are explicitly out of scope until later issues. The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render

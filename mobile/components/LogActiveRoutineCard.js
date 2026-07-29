@@ -25,6 +25,9 @@ export function LogActiveRoutineCard({
   currentId,
   roughFlaggedNames,
   activeEditText,
+  recoveryWeekNumber = null,
+  isEligibleForRecoveryBaseline = false,
+  onStartRecoveryBlock,
 }) {
   const styles = useThemedStyles(createStyles);
   return (
@@ -39,8 +42,28 @@ export function LogActiveRoutineCard({
             <Text style={styles.otherNoteSub}>
               {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
             </Text>
+            {recoveryWeekNumber != null && (
+              <View
+                style={styles.recoveryBadge}
+                accessible
+                accessibilityLabel={`Recovery Week ${recoveryWeekNumber}`}
+              >
+                <Text style={styles.recoveryBadgeText}>Recovery Week {recoveryWeekNumber}</Text>
+              </View>
+            )}
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            {isEligibleForRecoveryBaseline && onStartRecoveryBlock && (
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(); }}
+                style={styles.inlineSwitchButton}
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Start recovery block from this routine"
+              >
+                <Text style={styles.inlineSwitchButtonText}>Start recovery block</Text>
+              </Pressable>
+            )}
             {hasABWeeks && (
               <Pressable
                 onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
@@ -151,6 +174,22 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  // Purely presentational metadata layered on top of the ordinary note
+  // header — the badge never affects title, text, selection, or rendering.
+  recoveryBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: colors.chipBackground,
+  },
+  recoveryBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    color: colors.chipText,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,
