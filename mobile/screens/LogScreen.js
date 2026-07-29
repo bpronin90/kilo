@@ -14,12 +14,24 @@ import { ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useDeloadNote, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
+import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
+import {
+  useTrackedLifts,
+  useWorkoutNotes,
+  useDeloadNote,
+  useDeloadHistory,
+  useFeatureToggles,
+  useRecoveryBlockState,
+  useStartRecoveryBlock,
+  isEligibleBaselineNote,
+  isEligibleRecoveryWeekNote,
+} from '../hooks/useEntries';
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
+import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
@@ -45,6 +57,21 @@ export function LogScreen({
   const { note: deloadNote, loading: deloadLoading, save: saveDeloadNote, clear: clearDeloadNote } = useDeloadNote();
   const { history: deloadHistory, completeDeload, deleteDeload, deleteDeloadNote, updateDeload } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
+
+  // Recovery Block start flow (#695). Guarded with `|| {}`/`|| {}` because
+  // every other screen test mocks the whole `useEntries` module and most of
+  // them never set a return value for these two hooks; an automocked jest.fn()
+  // resolves to undefined, which must not crash the screen — it simply means
+  // no active block and no eligible actions render.
+  const {
+    activeBlock: activeRecoveryBlock = null,
+    blocks: recoveryBlocks = [],
+    weeks: recoveryWeeks = [],
+    recoveryWeekNumberByNoteId = {},
+    refresh: refreshRecoveryState,
+  } = useRecoveryBlockState() || {};
+  const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
+  const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
 
@@ -131,6 +158,58 @@ export function LogScreen({
   const otherNotes = notes.filter(n => n.id !== currentId && !n.title?.startsWith('Deload · '));
 
   const hasContent = workoutNoteText.trim().length > 0;
+
+  // Recovery-block eligibility (#695). Purely structural — never inferred from
+  // title/date/content, except the pre-existing deload-note title convention,
+  // which is reused as-is.
+  const recoveryEligibilityCtx = { blocks: recoveryBlocks, weeks: recoveryWeeks, deloadNotePrefix: DELOAD_NOTE_PREFIX };
+  const eligibleBaselineNotes = notes.filter(n => isEligibleBaselineNote(n, recoveryEligibilityCtx));
+  const eligibleWeekNotes = notes.filter(n => isEligibleRecoveryWeekNote(n, recoveryEligibilityCtx));
+  const eligibleBaselineNoteIds = new Set(eligibleBaselineNotes.map(n => n.id));
+  const eligibleWeekNoteIds = new Set(eligibleWeekNotes.map(n => n.id));
+
+  const currentIsEligibleRecoveryBaseline = !activeRecoveryBlock && !!currentNote && eligibleBaselineNoteIds.has(currentNote.id);
+  const currentRecoveryWeekNumber = currentNote ? (recoveryWeekNumberByNoteId[currentNote.id] ?? null) : null;
+
+  const recoveryBlockingMessage = activeRecoveryBlock
+    ? `A recovery block baselined from "${activeRecoveryBlock.baseline_note_title || 'Untitled Routine'}" is already active. Complete or delete it before starting another.`
+    : null;
+
+  const openStartRecoveryFromRoutine = (note) => {
+    if (!note) return;
+    setRecoveryModal({ mode: 'routine', note });
+  };
+  const openMarkAsRecoveryWeek = (note) => {
+    if (!note) return;
+    setRecoveryModal({ mode: 'note', note });
+  };
+  const closeRecoveryModal = () => setRecoveryModal(null);
+
+  const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle }) => {
+    if (!startRecoveryBlock) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    const baselineNote = notes.find(n => n.id === baselineNoteId);
+    if (!baselineNote) {
+      return { ok: false, error: 'Select a baseline routine first.' };
+    }
+    let finalWeekNoteId = weekNoteId;
+    if (weekChoice === 'new') {
+      const created = await add(newNoteTitle, '');
+      finalWeekNoteId = created?.id;
+    }
+    if (!finalWeekNoteId) {
+      return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
+    }
+    const result = await startRecoveryBlock({
+      baselineNoteId: baselineNote.id,
+      baselineNoteTitle: baselineNote.title || null,
+      baselineNoteText: baselineNote.raw_text || '',
+      weekNoteId: finalWeekNoteId,
+    });
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  };
 
   const handleToggleTrack = async (name) => {
     const key = normalizeLiftName(name);
@@ -253,6 +332,9 @@ export function LogScreen({
                 currentId={currentId}
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
+                recoveryWeekNumber={currentRecoveryWeekNumber}
+                isEligibleForRecoveryBaseline={currentIsEligibleRecoveryBaseline}
+                onStartRecoveryBlock={() => openStartRecoveryFromRoutine(currentNote)}
               />
             )}
 
@@ -270,6 +352,11 @@ export function LogScreen({
                 handleEditViewedNote={otherEditor.handleEditViewedNote}
                 handleDeleteRoutine={otherEditor.handleDeleteRoutine}
                 handleCreateRoutine={otherEditor.handleCreateRoutine}
+                recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
+                eligibleBaselineNoteIds={activeRecoveryBlock ? null : eligibleBaselineNoteIds}
+                eligibleWeekNoteIds={activeRecoveryBlock ? null : eligibleWeekNoteIds}
+                onStartRecoveryBlock={openStartRecoveryFromRoutine}
+                onMarkAsRecoveryWeek={openMarkAsRecoveryWeek}
               />
             )}
           </>
@@ -385,6 +472,16 @@ export function LogScreen({
         currentNote={currentNote}
         update={update}
         onClose={() => currentEditor.setShowCheckInModal(false)}
+      />
+      <RecoveryBlockStartModal
+        visible={!!recoveryModal}
+        mode={recoveryModal?.mode}
+        presetNote={recoveryModal?.note}
+        eligibleBaselineNotes={eligibleBaselineNotes}
+        eligibleWeekNotes={eligibleWeekNotes}
+        blockingMessage={recoveryBlockingMessage}
+        onConfirm={handleConfirmRecoveryBlock}
+        onClose={closeRecoveryModal}
       />
     </>
   );

@@ -18,6 +18,11 @@ export function LogPreviousRoutines({
   handleEditViewedNote,
   handleDeleteRoutine,
   handleCreateRoutine,
+  recoveryWeekNumberByNoteId = {},
+  eligibleBaselineNoteIds = null,
+  eligibleWeekNoteIds = null,
+  onStartRecoveryBlock,
+  onMarkAsRecoveryWeek,
 }) {
   const styles = useThemedStyles(createStyles);
   // Double-tap the viewed routine body to open it in the editor (matches main).
@@ -56,8 +61,41 @@ export function LogPreviousRoutines({
                         : localDate(other.updated_at).toLocaleDateString()}
                     </Text>
                   )}
+                  {recoveryWeekNumberByNoteId[other.id] != null && (
+                    <View
+                      style={styles.recoveryBadge}
+                      accessible
+                      accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                    >
+                      <Text style={styles.recoveryBadgeText}>
+                        Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.headerActions}>
+                  {onStartRecoveryBlock && eligibleBaselineNoteIds && eligibleBaselineNoteIds.has(other.id) && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(other); }}
+                      style={styles.inlineSwitchButton}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Start recovery block from this routine"
+                    >
+                      <Text style={styles.inlineSwitchButtonText}>Start recovery block</Text>
+                    </Pressable>
+                  )}
+                  {onMarkAsRecoveryWeek && eligibleWeekNoteIds && eligibleWeekNoteIds.has(other.id) && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); onMarkAsRecoveryWeek(other); }}
+                      style={styles.inlineSwitchButton}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Mark as recovery week"
+                    >
+                      <Text style={styles.inlineSwitchButtonText}>Mark as recovery week</Text>
+                    </Pressable>
+                  )}
                   {viewingNoteId === other.id && viewingHasABWeeks && (
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); handleToggleViewingWeek(); }}
@@ -153,6 +191,22 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  // Purely presentational metadata layered on top of the ordinary note
+  // header — the badge never affects title, text, selection, or rendering.
+  recoveryBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: colors.chipBackground,
+  },
+  recoveryBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    color: colors.chipText,
   },
   inlineSwitchButton: {
     paddingHorizontal: 8,

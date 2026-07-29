@@ -91,3 +91,9 @@ export { useDeloadNote, useDeloadHistory } from './entries/deloadHooks';
 export { useFeatureToggles } from './entries/featureToggleHooks';
 export { useUserProfile } from './entries/profileHooks';
 export { useSyncRecovery, useCloudExport, useAutoSync } from './entries/syncRecoveryHooks';
+export {
+  useRecoveryBlockState,
+  useStartRecoveryBlock,
+  isEligibleBaselineNote,
+  isEligibleRecoveryWeekNote,
+} from './entries/recoveryBlockHooks';
