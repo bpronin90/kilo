@@ -4547,7 +4547,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   let add, remove, update, refresh, alertSpy;
   let completeWeekSpy, addWeekSpy, deleteWeekSpy;
   let completeBlockWithWeekSpy, deleteWeekWithNoteSpy;
-  let loadWeeksForBlockSpy, loadBlocksSpy, loadAllWeeksSpy;
+  let loadWeeksForBlockSpy, loadBlocksSpy, loadAllWeeksSpy, loadWorkoutNotesRawSpy;
 
   const _orderedLive = (weeks, blockId) => (weeks || [])
     .filter(w => w.block_id === blockId && !w.deleted_at)
@@ -4597,6 +4597,11 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     loadBlocksSpy.mockResolvedValue(blocks);
     loadAllWeeksSpy.mockResolvedValue(weeks);
     loadWeeksForBlockSpy.mockImplementation(async (blockId) => _orderedLive(weeks, blockId));
+    // unlinkNoteForDeleteCore verifies a deleteNote rejection against the
+    // actual persisted notes (#696 review) rather than trusting the storage
+    // -layer revert blindly; default this to "still present" so ordinary
+    // tests never accidentally trip the reconciliation path.
+    loadWorkoutNotesRawSpy.mockResolvedValue(notes.map(n => ({ ...n, deleted_at: null })));
   };
 
   beforeEach(() => {
@@ -4621,6 +4626,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     loadWeeksForBlockSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryWeeksForBlock');
     loadBlocksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks');
     loadAllWeeksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlockWeeks');
+    loadWorkoutNotesRawSpy = jest.spyOn(require('../storage/entries/workoutNotes'), 'loadWorkoutNotesRaw');
   });
 
   afterEach(() => {
@@ -4633,6 +4639,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     loadWeeksForBlockSpy.mockRestore();
     loadBlocksSpy.mockRestore();
     loadAllWeeksSpy.mockRestore();
+    loadWorkoutNotesRawSpy.mockRestore();
   });
 
   test('current week open: "Complete week" is offered and "Add week" is not', () => {
@@ -5054,6 +5061,102 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const failResult = await completeRecoveryBlockCore(failStorage, { blockId: 'rb1' });
     expect(failResult.ok).toBe(false);
     expect(failResult.error).toBe('Network unavailable');
+  });
+
+  test('completeRecoveryBlockCore surfaces a RecoveryReconciliationError with a distinct RECONCILIATION_FAILED code, not a generic failure', async () => {
+    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
+    const { RecoveryReconciliationError } = require('../storage/entries/recoveryStorage');
+
+    const reconciliationStorage = {
+      completeRecoveryBlockWithCurrentWeek: jest.fn().mockRejectedValue(
+        new RecoveryReconciliationError('recovery data may be inconsistent and needs manual reconciliation', {
+          cause: new Error('block write failed'),
+          revertError: new Error('revert write failed'),
+        })
+      ),
+    };
+
+    const result = await completeRecoveryBlockCore(reconciliationStorage, { blockId: 'rb1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECONCILIATION_FAILED');
+    expect(result.error).toContain('reconciliation');
+  });
+
+  describe('unlinkNoteForDeleteCore: verifying a deleteNote rejection before trusting the storage-layer revert', () => {
+    const { unlinkNoteForDeleteCore } = require('../hooks/entries/recoveryBlockHooks');
+    const membership = { id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null };
+
+    test('the note still exists: the revert was correct, the real deleteNote failure is reported', async () => {
+      const deleteNote = jest.fn().mockRejectedValue(new Error('Network unavailable'));
+      const fakeStorage = {
+        loadRecoveryBlockWeeks: jest.fn().mockResolvedValue([membership]),
+        deleteRecoveryWeekWithNote: jest.fn().mockImplementation(async (weekId, dn) => { await dn(); }),
+        loadWorkoutNotesRaw: jest.fn().mockResolvedValue([{ id: 'noteA', deleted_at: null }]),
+        deleteRecoveryWeek: jest.fn(),
+      };
+
+      const result = await unlinkNoteForDeleteCore(fakeStorage, { noteId: 'noteA', deleteNote });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Network unavailable');
+      expect(fakeStorage.deleteRecoveryWeek).not.toHaveBeenCalled();
+    });
+
+    test('the note is actually gone despite the rejection: the wrongly-restored membership is re-tombstoned and success is reported with a deleteWarning', async () => {
+      // Models a deleteNote that commits the underlying delete, then rejects
+      // for an unrelated reason (e.g. a later sync-bookkeeping step) — the
+      // storage layer's own revert assumed the note survived and is wrong.
+      const deleteNote = jest.fn().mockRejectedValue(new Error('Sync bookkeeping failed after delete'));
+      const fakeStorage = {
+        loadRecoveryBlockWeeks: jest.fn().mockResolvedValue([membership]),
+        deleteRecoveryWeekWithNote: jest.fn().mockImplementation(async (weekId, dn) => { await dn(); }),
+        loadWorkoutNotesRaw: jest.fn().mockResolvedValue([]), // hard-deleted (local mode)
+        deleteRecoveryWeek: jest.fn().mockResolvedValue({ ...membership, deleted_at: '2026-01-10T00:00:00.000Z' }),
+      };
+
+      const result = await unlinkNoteForDeleteCore(fakeStorage, { noteId: 'noteA', deleteNote });
+
+      expect(result.ok).toBe(true);
+      expect(result.deleteWarning).toContain('Sync bookkeeping failed');
+      expect(fakeStorage.deleteRecoveryWeek).toHaveBeenCalledWith('rw1');
+    });
+
+    test('the note is gone, but the reconciling re-tombstone itself fails every retry: surfaced as RECONCILIATION_FAILED, not silently swallowed', async () => {
+      const deleteNote = jest.fn().mockRejectedValue(new Error('Sync bookkeeping failed after delete'));
+      const fakeStorage = {
+        loadRecoveryBlockWeeks: jest.fn().mockResolvedValue([membership]),
+        deleteRecoveryWeekWithNote: jest.fn().mockImplementation(async (weekId, dn) => { await dn(); }),
+        loadWorkoutNotesRaw: jest.fn().mockResolvedValue([]),
+        deleteRecoveryWeek: jest.fn().mockRejectedValue(new Error('Storage unavailable')),
+      };
+
+      const result = await unlinkNoteForDeleteCore(fakeStorage, { noteId: 'noteA', deleteNote });
+
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('RECONCILIATION_FAILED');
+      expect(result.error).toContain('manual reconciliation');
+      expect(fakeStorage.deleteRecoveryWeek).toHaveBeenCalledTimes(3);
+    });
+
+    test('a RecoveryReconciliationError from the storage layer itself is surfaced with the RECONCILIATION_FAILED code, never verified/guessed at', async () => {
+      const { RecoveryReconciliationError } = require('../storage/entries/recoveryStorage');
+      const deleteNote = jest.fn();
+      const fakeStorage = {
+        loadRecoveryBlockWeeks: jest.fn().mockResolvedValue([membership]),
+        deleteRecoveryWeekWithNote: jest.fn().mockRejectedValue(
+          new RecoveryReconciliationError('recovery data may be inconsistent and needs manual reconciliation')
+        ),
+        loadWorkoutNotesRaw: jest.fn(),
+        deleteRecoveryWeek: jest.fn(),
+      };
+
+      const result = await unlinkNoteForDeleteCore(fakeStorage, { noteId: 'noteA', deleteNote });
+
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('RECONCILIATION_FAILED');
+      expect(fakeStorage.loadWorkoutNotesRaw).not.toHaveBeenCalled();
+    });
   });
 
   test('every Week 2+ core re-reads persisted state instead of trusting a stale caller snapshot (sync-refresh race)', async () => {

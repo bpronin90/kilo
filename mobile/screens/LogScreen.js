@@ -126,6 +126,13 @@ export function LogScreen({
       throw new Error(result.error || 'Could not delete this note.');
     }
     if (result.week) refreshRecoveryState?.();
+    // The note delete itself landed; a deleteWarning means only a follow-up
+    // reconciliation step (see unlinkNoteForDeleteCore) needed extra work
+    // behind the scenes. Surface it as an FYI, not a failure — the deletion
+    // the user asked for did succeed.
+    if (result.deleteWarning) {
+      Alert.alert('Note deleted', result.deleteWarning);
+    }
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'

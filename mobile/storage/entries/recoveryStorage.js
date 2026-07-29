@@ -410,7 +410,24 @@ export async function deleteRecoveryWeek(id) {
 // same ids, same ordinals, same field values, not a delete-and-recreate that
 // changes record identity) before the error is rethrown. A caller can then
 // treat the whole operation as having landed, or not, with nothing observably
-// in between.
+// in between — UNLESS the revert write itself also fails, which is the one
+// case genuinely outside this module's control (the same underlying store
+// that just failed once is being asked to write again). That is never
+// swallowed as a generic error: it surfaces as RecoveryReconciliationError so
+// a caller can distinguish "cleanly failed, safe to retry" from "left in an
+// unknown state, needs reconciliation" rather than treating both the same.
+export class RecoveryReconciliationError extends Error {
+  constructor(message, { cause, revertError } = {}) {
+    super(message);
+    this.name = 'RecoveryReconciliationError';
+    if (cause !== undefined) this.cause = cause;
+    this.revertError = revertError;
+  }
+}
+
+export function isRecoveryReconciliationError(err) {
+  return err instanceof RecoveryReconciliationError;
+}
 
 // Complete a block's current (latest live) week, if it is still open, and the
 // block itself, as one unit. The domain-forbidden combination — a completed
@@ -458,9 +475,11 @@ export async function completeRecoveryBlockWithCurrentWeek(blockId, completedAt 
       if (weekNeedsCompletion) {
         try {
           await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksBefore);
-        } catch (_revertError) {
-          // Best-effort revert; the original failure is what the caller needs
-          // to see either way.
+        } catch (revertError) {
+          throw new RecoveryReconciliationError(
+            `Completing recovery block ${blockId} failed, and its current week's completion could not be reverted; recovery data may be inconsistent and needs manual reconciliation.`,
+            { cause: e, revertError }
+          );
         }
       }
       throw e;
@@ -506,9 +525,11 @@ export async function deleteRecoveryWeekWithNote(weekId, deleteNote) {
   } catch (e) {
     try {
       await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksBefore);
-    } catch (_revertError) {
-      // Best-effort revert; the original failure is what the caller needs to
-      // see either way.
+    } catch (revertError) {
+      throw new RecoveryReconciliationError(
+        `Deleting recovery week ${weekId} failed, and its membership tombstone could not be reverted; recovery data may be inconsistent and needs manual reconciliation.`,
+        { cause: e, revertError }
+      );
     }
     throw e;
   }

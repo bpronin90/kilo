@@ -223,12 +223,19 @@ export async function addRecoveryWeekCore(storage, { blockId, noteId }) {
 // The domain-forbidden combination — a completed block whose current week is
 // still open — can never be observed, including when the block write fails
 // after its week write already landed, since that write is reverted before
-// the error propagates.
+// the error propagates. The one exception is a `RecoveryReconciliationError`:
+// the storage layer's own revert write also failed, which is surfaced as its
+// own distinct code so the caller can tell "cleanly failed, retry freely"
+// apart from "left in an unknown state, needs manual reconciliation" — never
+// the same generic error either way.
 export async function completeRecoveryBlockCore(storage, { blockId }) {
   try {
     const { block } = await storage.completeRecoveryBlockWithCurrentWeek(blockId);
     return { ok: true, block };
   } catch (e) {
+    if (RecoveryStorageModule.isRecoveryReconciliationError(e)) {
+      return { ok: false, code: 'RECONCILIATION_FAILED', error: e.message };
+    }
     return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the recovery block.' };
   }
 }
@@ -255,6 +262,17 @@ export async function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
   }
 }
 
+// True when `noteId` is actually gone (hard-removed, as local mode does, or
+// soft-tombstoned, as cloud mode does) — read from the unfiltered raw list so
+// a tombstoned-but-still-present row still counts as gone. Used only to
+// verify a `deleteNote` rejection's assumption below; never used to decide
+// eligibility or any other recovery-domain question.
+async function _noteIsGone(storage, noteId) {
+  const rawNotes = await storage.loadWorkoutNotesRaw();
+  const note = rawNotes.find(n => n.id === noteId);
+  return !note || !!note.deleted_at;
+}
+
 // Cascade a workout-note deletion to its live recovery-week membership,
 // regardless of block state or the week's position — deleting the note itself
 // applies uniformly to any linked week (active or completed-history), unlike
@@ -265,8 +283,22 @@ export async function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
 // When there IS a membership, the tombstone and the note delete run as one
 // atomic storage operation (deleteRecoveryWeekWithNote): either both land, or
 // neither does. `deleteNote` is the caller's own local/cloud-sync-aware note
-// -removal function — this module never reimplements or bypasses that path,
-// it is just given the chance to run (or not) as part of the same unit.
+// -removal function (e.g. LogScreen's `remove`, which also runs cloud-sync
+// bookkeeping via writeVia) — this module never reimplements or bypasses that
+// path, it is just given the chance to run (or not) as part of the same unit.
+//
+// A rejected `deleteNote` is not simply trusted to mean "the note survived":
+// the storage layer's revert assumes that, but a caller-side failure can
+// still commit the underlying delete and reject afterward for an unrelated
+// reason (e.g. a later sync-bookkeeping step throwing after the local delete
+// already landed). So a rejection is verified against the actual persisted
+// notes before deciding what happened:
+//   - the note still exists → the revert was correct; report the real failure.
+//   - the note is actually gone → the revert wrongly resurrected the
+//     membership; re-tombstone it (retried a few times, since this is the one
+//     case where giving up would recreate the exact dangling-membership state
+//     the contract forbids) and report success with a non-blocking warning,
+//     since the delete the caller asked for did land.
 export async function unlinkNoteForDeleteCore(storage, { noteId, deleteNote }) {
   const weeks = await storage.loadRecoveryBlockWeeks();
   const membership = findLiveMembershipForNote(weeks, noteId);
@@ -279,7 +311,41 @@ export async function unlinkNoteForDeleteCore(storage, { noteId, deleteNote }) {
     await storage.deleteRecoveryWeekWithNote(membership.id, deleteNote);
     return { ok: true, week: membership };
   } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not delete this note.' };
+    if (RecoveryStorageModule.isRecoveryReconciliationError(e)) {
+      return { ok: false, code: 'RECONCILIATION_FAILED', error: e.message };
+    }
+
+    let noteIsGone = false;
+    try {
+      noteIsGone = await _noteIsGone(storage, noteId);
+    } catch (_verifyError) {
+      // Could not verify either way; fall back to trusting the storage
+      // layer's own revert (the pre-verification behavior) rather than
+      // guessing wrong in the other direction.
+    }
+
+    if (!noteIsGone) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not delete this note.' };
+    }
+
+    let reconciled = false;
+    let lastReconcileError = null;
+    for (let attempt = 0; attempt < 3 && !reconciled; attempt++) {
+      try {
+        await storage.deleteRecoveryWeek(membership.id);
+        reconciled = true;
+      } catch (reconcileError) {
+        lastReconcileError = reconcileError;
+      }
+    }
+    if (!reconciled) {
+      return {
+        ok: false,
+        code: 'RECONCILIATION_FAILED',
+        error: `The note was deleted, but its recovery membership could not be re-removed (${lastReconcileError?.message || 'unknown error'}); recovery data needs manual reconciliation.`,
+      };
+    }
+    return { ok: true, week: membership, deleteWarning: e?.message || 'The note was deleted, but a follow-up step failed.' };
   }
 }
 

@@ -34,6 +34,7 @@ import {
   loadRecoveryWeeksForBlock,
   replaceRecoveryBlockWeeksRaw,
   replaceRecoveryBlocksRaw,
+  isRecoveryReconciliationError,
   updateRecoveryBlock,
   updateRecoveryWeek,
 } from '../storage/entries/recoveryStorage';
@@ -932,6 +933,40 @@ describe('completeRecoveryBlockWithCurrentWeek', () => {
       code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
     });
   });
+
+  test('when the block write AND the week-revert write both fail, this surfaces as a distinct RecoveryReconciliationError rather than a generic/swallowed error', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const writeListModule = require('../storage/entries/jsonStorage');
+    const originalWriteList = writeListModule.writeList;
+    let weeksWriteCount = 0;
+    const writeSpy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCKS_KEY) throw new Error('Simulated storage failure on the block write');
+      if (key === RECOVERY_BLOCK_WEEKS_KEY) {
+        weeksWriteCount += 1;
+        // First call is the real week-completion write (must land so there is
+        // something to revert); the second call is the revert attempt itself,
+        // which this test also fails.
+        if (weeksWriteCount === 1) return originalWriteList(key, list);
+        throw new Error('Simulated storage failure on the revert write');
+      }
+      throw new Error('unexpected key');
+    });
+
+    let caught = null;
+    try {
+      await completeRecoveryBlockWithCurrentWeek(block.id);
+    } catch (e) {
+      caught = e;
+    }
+    writeSpy.mockRestore();
+
+    expect(caught).not.toBeNull();
+    expect(isRecoveryReconciliationError(caught)).toBe(true);
+    expect(caught.cause).toBeTruthy();
+    expect(caught.revertError).toBeTruthy();
+  });
 });
 
 describe('deleteRecoveryWeekWithNote', () => {
@@ -994,6 +1029,38 @@ describe('deleteRecoveryWeekWithNote', () => {
     await deleteRecoveryWeekWithNote(week.id, deleteNote);
 
     expect(deleteNote).toHaveBeenCalledTimes(1);
+  });
+
+  test('when deleteNote AND the membership-revert write both fail, this surfaces as a distinct RecoveryReconciliationError rather than a generic/swallowed error', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const deleteNote = jest.fn().mockRejectedValue(new Error('Simulated note-delete failure'));
+
+    const writeListModule = require('../storage/entries/jsonStorage');
+    const originalWriteList = writeListModule.writeList;
+    let weeksWriteCount = 0;
+    const writeSpy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key !== RECOVERY_BLOCK_WEEKS_KEY) throw new Error('unexpected key');
+      weeksWriteCount += 1;
+      // First call is the real tombstone write (must land so there is
+      // something to revert); the second call is the revert attempt itself,
+      // which this test also fails.
+      if (weeksWriteCount === 1) return originalWriteList(key, list);
+      throw new Error('Simulated storage failure on the revert write');
+    });
+
+    let caught = null;
+    try {
+      await deleteRecoveryWeekWithNote(week.id, deleteNote);
+    } catch (e) {
+      caught = e;
+    }
+    writeSpy.mockRestore();
+
+    expect(caught).not.toBeNull();
+    expect(isRecoveryReconciliationError(caught)).toBe(true);
+    expect(caught.cause).toBeTruthy();
+    expect(caught.revertError).toBeTruthy();
   });
 });
 
