@@ -69,7 +69,7 @@ export function LogRecoverySection({
   };
 
   const handleCompleteWeek = () => {
-    runAction(() => onCompleteWeek({ weeks, blockId: activeBlock.id }));
+    runAction(() => onCompleteWeek({ blockId: activeBlock.id }));
   };
 
   const handleCompleteBlock = () => {
@@ -81,7 +81,7 @@ export function LogRecoverySection({
         {
           text: 'Complete',
           style: 'destructive',
-          onPress: () => runAction(() => onCompleteBlock({ weeks, blockId: activeBlock.id })),
+          onPress: () => runAction(() => onCompleteBlock({ blockId: activeBlock.id })),
         },
       ]
     );
@@ -96,7 +96,7 @@ export function LogRecoverySection({
         {
           text: 'Unlink',
           style: 'destructive',
-          onPress: () => runAction(() => onUnlinkWeek({ weeks, blockId: activeBlock.id, weekId: week.id })),
+          onPress: () => runAction(() => onUnlinkWeek({ blockId: activeBlock.id, weekId: week.id })),
         },
       ]
     );

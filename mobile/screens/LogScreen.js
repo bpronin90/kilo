@@ -15,7 +15,7 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
-import { findLiveMembershipForNote, nextWeekNumber } from '../lib/data/recoveryBlocks';
+import { findLiveMembershipForNote, isBlockActive, nextWeekNumber, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
   useTrackedLifts,
   useWorkoutNotes,
@@ -104,24 +104,40 @@ export function LogScreen({
   // hook value): the only call site for note removal is inside the standard
   // "Delete Routine" alert's own "Delete" onPress (see guardedHandleDeleteRoutine
   // further down), so unlinking a recovery-week note happens exactly once,
-  // atomically with the removal it guards, never before that final confirm. A
-  // failed unlink throws before the note is ever removed, so a live recovery
-  // record can never end up pointing at a deleted note.
+  // atomically with the removal it guards, never before that final confirm.
+  // `unlinkNoteForDeleteCore` re-reads persisted state itself and only
+  // proceeds for the one case it can restore exactly if `remove` then fails
+  // (the latest open week of a still-active block); every other case is
+  // refused up front. If `remove` itself then fails, the note removal is
+  // compensated by re-adding the same note: it was the latest live week, so
+  // removing it is what freed that exact ordinal, and the domain reissues it
+  // to the recreated membership — restoring the pre-call state exactly rather
+  // than leaving the note unlinked with nothing removed.
   const removeNoteWithRecoveryUnlink = async (id) => {
-    const membership = findLiveMembershipForNote(recoveryWeeks, id);
-    if (!membership) return remove(id);
     const result = await runRecoveryAction('delete-unlink', async () => {
       if (!recoveryLifecycle.unlinkNoteForDelete) {
         return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
       }
-      return recoveryLifecycle.unlinkNoteForDelete({ weeks: recoveryWeeks, noteId: id });
+      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id });
     });
     if (!result.ok) {
-      Alert.alert('Could not unlink', result.error || 'Could not unlink this note from its recovery block.');
+      const title = result.code === 'NOT_DELETABLE_LINKED_WEEK' ? "Can't delete this note" : 'Could not unlink';
+      Alert.alert(title, result.error || 'Could not unlink this note from its recovery block.');
       throw new Error(result.error || 'Could not unlink this note from its recovery block.');
     }
+    if (!result.week) return remove(id);
     refreshRecoveryState?.();
-    return remove(id);
+    try {
+      return await remove(id);
+    } catch (removeError) {
+      try {
+        const relinked = await recoveryLifecycle.addWeek?.({ blockId: result.week.block_id, noteId: id });
+        if (relinked?.ok) refreshRecoveryState?.();
+      } catch (_compensateError) {
+        // Best-effort; the original removal failure is what the caller needs to see.
+      }
+      throw removeError;
+    }
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
@@ -300,7 +316,6 @@ export function LogScreen({
       return { ok: false, error: 'Select or create a note for this recovery week.' };
     }
     const result = await recoveryLifecycle.addWeek({
-      weeks: recoveryWeeks,
       blockId: activeRecoveryBlock.id,
       noteId: finalWeekNoteId,
     });
@@ -346,6 +361,18 @@ export function LogScreen({
     otherEditor.handleViewOtherNote(note);
   };
 
+  // Optimistic pre-check only (render-time snapshot) for deciding whether to
+  // show the recovery-aware dialog below. It is not the safety boundary — the
+  // dialog leads into removeNoteWithRecoveryUnlink, whose unlinkNoteForDelete
+  // call re-reads persisted state and is the sole authority on whether this
+  // deletion is actually safe to cascade.
+  const isDeletableLinkedWeek = (membership) => {
+    const block = recoveryBlocks.find(b => b.id === membership.block_id);
+    const ordered = orderedLiveWeeks(recoveryWeeks, membership.block_id);
+    const latest = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    return !!block && isBlockActive(block) && !!latest && latest.id === membership.id && !membership.completed_at;
+  };
+
   // Deleting a linked recovery-week note must never leave a live dangling
   // membership (#696), but cancelling either confirmation (ours, or the
   // pre-existing "Delete Routine" one below) must leave the note exactly as it
@@ -358,6 +385,13 @@ export function LogScreen({
     const membership = findLiveMembershipForNote(recoveryWeeks, id);
     if (!membership) {
       otherEditor.handleDeleteRoutine(id, title, isCurrent);
+      return;
+    }
+    if (!isDeletableLinkedWeek(membership)) {
+      Alert.alert(
+        "Can't delete this note",
+        `"${title}" is Recovery Week ${membership.week_number} and is part of your recovery block's history (or already completed). It must stay linked to keep recovery records consistent.`
+      );
       return;
     }
     Alert.alert(

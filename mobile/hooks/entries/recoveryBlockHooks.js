@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
-import { findActiveBlock, findLiveMembershipForNote, orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
+import { findActiveBlock, findLiveMembershipForNote, isBlockActive, orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
 import { safeNotify } from './shared';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 
@@ -145,20 +145,22 @@ export function useStartRecoveryBlock() {
 // and fires the same module-scope `recoveryListeners` notification the Week-1
 // flow uses, so every Log-screen instance stays in sync after a lifecycle
 // action lands.
+//
+// None of these accept a caller-supplied `weeks`/`blocks` snapshot. A native
+// confirmation (or the Add Week modal) can sit open for as long as the user
+// takes, and a background cloud sync can land new records during that whole
+// window — trusting a render-time array captured before the dialog opened
+// would let a stale read decide what "the current week" is. Every mutation
+// therefore re-reads the relevant records from storage immediately before it
+// acts, so it always decides against what is actually persisted right now.
 
-// The block's current week is its single latest live week, if any — the same
-// definition `nextWeekNumber` builds off of. No separate "current" flag exists
-// or is needed.
-function _currentWeek(weeks, blockId) {
-  const ordered = orderedLiveWeeks(weeks, blockId);
-  return ordered.length > 0 ? ordered[ordered.length - 1] : null;
-}
-
-// Complete the block's current week. A no-op (still ok:true) when there is no
-// current week or it is already complete — completion is idempotent, matching
-// the storage layer's own re-completion contract.
-export async function completeCurrentWeekCore(storage, { weeks, blockId }) {
-  const current = _currentWeek(weeks, blockId);
+// Complete the block's current week (its single latest live week, if any — the
+// same definition `nextWeekNumber` builds off of). A no-op (still ok:true)
+// when there is no current week or it is already complete — completion is
+// idempotent, matching the storage layer's own re-completion contract.
+export async function completeCurrentWeekCore(storage, { blockId }) {
+  const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+  const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
   if (!current) {
     return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no current week to complete.' };
   }
@@ -173,9 +175,11 @@ export async function completeCurrentWeekCore(storage, { weeks, blockId }) {
 
 // Attach the next sequential week. Rejects (without calling storage) when the
 // current week has not been explicitly completed yet — Week 2+ can never be
-// added early, no matter what the caller's own gating missed.
-export async function addRecoveryWeekCore(storage, { weeks, blockId, noteId }) {
-  const current = _currentWeek(weeks, blockId);
+// added early, no matter what the caller's own gating missed or what changed
+// underneath it since the Add Week modal was opened.
+export async function addRecoveryWeekCore(storage, { blockId, noteId }) {
+  const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+  const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
   if (current && !current.completed_at) {
     return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'Complete the current week before adding the next one.' };
   }
@@ -187,52 +191,48 @@ export async function addRecoveryWeekCore(storage, { weeks, blockId, noteId }) {
   }
 }
 
-// Complete the block. If its current week is still open this completes that
-// week first — the same idempotent completeCurrentWeekCore the explicit
-// "Complete week" action uses — so a block can always be finished in one user
-// action without requiring a separate week tap first.
+// Complete the block, then (best-effort) complete its now-current week if it
+// was still open.
 //
-// A week's `completed_at` is immutable once set (recoveryStorage.js strips it
-// from every patch API), so there is no direct "uncomplete" call to undo that
-// first write if the second (completeRecoveryBlock) then fails. Compensating
-// instead tombstones the just-completed week and re-adds the same note as a
-// fresh membership: with the just-completed week gone, it was by definition
-// the highest LIVE ordinal for this block, so nextWeekNumber immediately
-// reissues that exact ordinal to the recreated row — same note, same position,
-// completed_at back to null. That restores the pre-call state exactly, so a
-// block-completion failure never leaves an orphaned "completed" week behind.
-export async function completeRecoveryBlockCore(storage, { weeks, blockId }) {
-  const current = _currentWeek(weeks, blockId);
-  let compensateWeek = null;
-  if (current && !current.completed_at) {
-    const weekResult = await completeCurrentWeekCore(storage, { weeks, blockId });
-    if (!weekResult.ok) return weekResult;
-    compensateWeek = weekResult.week;
-  }
+// Block completion is attempted FIRST and is the only step whose failure
+// aborts the whole call: nothing else is written before it, so a failure here
+// is a clean, fully-safe no-op — never a partial transition. Once the block is
+// validly completed, nothing else in the domain requires its weeks to also be
+// complete, so completing the trailing open week is a best-effort convenience
+// cascade: a failure there is reported as a non-blocking `weekWarning` on an
+// otherwise-successful result (the block DID complete) rather than
+// mischaracterizing the whole action as failed, or silently discarding it. A
+// week's `completed_at` is immutable once set anyway (recoveryStorage.js
+// strips it from every patch API), so there was never a way to compensate a
+// week write after the fact — reordering so it only ever runs after the block
+// has already succeeded removes the need to.
+export async function completeRecoveryBlockCore(storage, { blockId }) {
+  let block;
   try {
-    const block = await storage.completeRecoveryBlock(blockId);
-    return { ok: true, block };
+    block = await storage.completeRecoveryBlock(blockId);
   } catch (e) {
-    if (compensateWeek) {
-      try {
-        await storage.deleteRecoveryWeek(compensateWeek.id);
-        await storage.addRecoveryWeek({ blockId, noteId: compensateWeek.note_id });
-      } catch (_rollbackError) {
-        // Best-effort; the original failure is what the caller needs to see.
-      }
-    }
     return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the recovery block.' };
   }
+  const weekResult = await completeCurrentWeekCore(storage, { blockId });
+  if (!weekResult.ok && weekResult.code !== 'NO_CURRENT_WEEK') {
+    return { ok: true, block, weekWarning: weekResult.error };
+  }
+  return { ok: true, block };
 }
 
-// Unlink one week membership. Restricted to the latest live week of an active
-// block — earlier/history weeks keep the ordinal sequence gap-free and stable,
-// so unlinking them is refused rather than silently reordering anything.
-export async function unlinkRecoveryWeekCore(storage, { weeks, blockId, weekId }) {
-  const ordered = orderedLiveWeeks(weeks, blockId);
+// Unlink one week membership. Restricted to the latest live week of a still
+// -active block — earlier/history weeks, and any week of a block that has
+// since completed, keep the ordinal sequence gap-free and stable, so unlinking
+// them is refused rather than silently reordering anything.
+export async function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
+  const [blocks, ordered] = await Promise.all([
+    storage.loadRecoveryBlocks(),
+    storage.loadRecoveryWeeksForBlock(blockId),
+  ]);
+  const block = blocks.find(b => b.id === blockId);
   const latest = ordered.length > 0 ? ordered[ordered.length - 1] : null;
-  if (!latest || latest.id !== weekId) {
-    return { ok: false, code: 'NOT_LATEST_WEEK', error: 'Only the most recent week can be unlinked.' };
+  if (!block || !isBlockActive(block) || !latest || latest.id !== weekId) {
+    return { ok: false, code: 'NOT_LATEST_WEEK', error: 'Only the most recent week of an active block can be unlinked.' };
   }
   try {
     await storage.deleteRecoveryWeek(weekId);
@@ -242,14 +242,38 @@ export async function unlinkRecoveryWeekCore(storage, { weeks, blockId, weekId }
   }
 }
 
-// Cascade a workout-note deletion to any live recovery-week membership it
-// holds, regardless of block state or position — unlike unlinkRecoveryWeekCore
-// above, this is not the user choosing to unlink; the note itself is being
-// destroyed, so its membership cannot be left dangling no matter which week it
-// was. A note with no live membership is a no-op.
-export async function unlinkNoteForDeleteCore(storage, { weeks, noteId }) {
+// Cascade a workout-note deletion to its live recovery-week membership.
+//
+// Deleting the note is destructive and, unlike the explicit Unlink action
+// above, offers no later chance to fix a mismatch — so this only proceeds when
+// the fresh, re-read state shows the membership is still the latest OPEN week
+// of a still-active block. That is deliberately the one case a caller-side
+// compensation can restore exactly if the note removal itself then fails
+// (re-adding the same note reissues the same ordinal, since removing the
+// latest live week is what freed it), so every other case — an earlier/
+// history week, an already-completed week, or a block that has since
+// completed — is refused with an explanatory code rather than silently
+// unlinking something a later failure could not safely restore.
+export async function unlinkNoteForDeleteCore(storage, { noteId }) {
+  const [blocks, weeks] = await Promise.all([
+    storage.loadRecoveryBlocks(),
+    storage.loadRecoveryBlockWeeks(),
+  ]);
   const membership = findLiveMembershipForNote(weeks, noteId);
   if (!membership) return { ok: true, week: null };
+
+  const block = blocks.find(b => b.id === membership.block_id);
+  const ordered = orderedLiveWeeks(weeks, membership.block_id);
+  const latest = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+  const isCompensable = !!block && isBlockActive(block) && !!latest && latest.id === membership.id && !membership.completed_at;
+  if (!isCompensable) {
+    return {
+      ok: false,
+      code: 'NOT_DELETABLE_LINKED_WEEK',
+      error: 'This note is part of recovery history (or already completed) and cannot be deleted while linked.',
+    };
+  }
+
   try {
     await storage.deleteRecoveryWeek(membership.id);
     return { ok: true, week: membership };
