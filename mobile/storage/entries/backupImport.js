@@ -372,12 +372,69 @@ function validateDeloadHistory(entries) {
 // other imported collection: bounded size, per-record shape checks, and NOTHING
 // written until the whole payload has passed.
 
+// Strict ISO 8601 instant. Deliberately NOT `Date.parse` alone.
+//
+// `Date.parse` is permissive by specification and by browser convention: it
+// accepts `"1"`, `"2026"`, `"01/02/03"`, and `"March 5, 2026"`, and — worse — it
+// NORMALIZES an impossible calendar date rather than rejecting it, so
+// `"2026-02-30T00:00:00Z"` returns a finite value pointing at March 2. The
+// importer persists the ORIGINAL string, so a permissive check leaves local
+// storage holding a timestamp that is not the instant it appears to be. Two
+// concrete consequences: local ordering compares these fields lexicographically,
+// which only works while every value is the same canonical shape; and a cloud
+// push of an impossible calendar date is rejected outright by PostgreSQL, which
+// wedges the restore after it has already written.
+//
+// The accepted shape is exactly what the two producers of these values emit:
+// `new Date().toISOString()` on the device (always `Z`, always milliseconds),
+// and PostgREST for a server-stamped `updated_at` (a `+00:00` offset, up to
+// microsecond precision). Both always carry an explicit offset, so one is
+// required — a local-time string names no instant at all and cannot be ordered
+// against the others.
+const ISO_INSTANT_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/;
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+// Computed from the Gregorian rule rather than via `Date`, whose two-digit-year
+// remapping (`Date.UTC(50, ...)` is 1950) would give the wrong leap-year answer
+// for a four-digit year below 100.
+function daysInMonth(year, month) {
+  if (month === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
+  return DAYS_IN_MONTH[month - 1];
+}
+
+function isIsoInstant(value) {
+  if (typeof value !== 'string') return false;
+  const match = ISO_INSTANT_RE.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (month < 1 || month > 12) return false;
+  // Calendar-aware, so February 30 and a non-leap February 29 are rejected
+  // instead of rolling silently into the following month.
+  if (day < 1 || day > daysInMonth(year, month)) return false;
+  if (Number(match[4]) > 23 || Number(match[5]) > 59 || Number(match[6]) > 59) return false;
+  // Offset components, absent for a `Z` value.
+  if (match[7] !== undefined && (Number(match[7]) > 23 || Number(match[8]) > 59)) return false;
+
+  // Final gate, so nothing that satisfies the shape checks can still reach
+  // storage as a value the engine reads as NaN.
+  return Number.isFinite(Date.parse(value));
+}
+
 function validateTimestamps(record, fields, label) {
   for (const field of fields) {
     const value = record[field];
     if (value == null) continue;
-    if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
-      return { ok: false, error: `Invalid backup: ${label} ${field} must be an ISO timestamp` };
+    if (!isIsoInstant(value)) {
+      return {
+        ok: false,
+        error: `Invalid backup: ${label} ${field} must be an ISO instant with an explicit offset (got ${JSON.stringify(value)})`,
+      };
     }
   }
   return { ok: true };
@@ -483,10 +540,16 @@ function validateRecoveryWeeks(weeks, blockIds) {
       return { ok: false, error: `Invalid backup: recovery week ${week.id} references unknown recovery block ${week.block_id}` };
     if (week.note_id != null && typeof week.note_id !== 'string')
       return { ok: false, error: `Invalid backup: recovery week ${week.id} note_id must be a string` };
-    // Matches the recovery_block_weeks_week_number_positive check constraint:
-    // ordinals are what make week ordering unambiguous for later comparison
-    // analytics, and a zero or negative one has no meaning.
-    if (week.week_number != null && (!Number.isInteger(week.week_number) || week.week_number < 1))
+    // Every membership must HAVE an ordinal, not merely have a valid one if it
+    // happens to carry it. The cloud column is nullable and its check constraint
+    // is written `week_number is null or week_number > 0`, but the local domain
+    // has no such tolerance: `buildRecoveryWeek` always assigns an ordinal,
+    // `orderedLiveWeeks` subtracts them numerically (a null yields NaN, so the
+    // comparator stops being a total order), and `nextWeekNumber` derives the
+    // next ordinal from the highest existing one. A null therefore does not
+    // survive as a harmless gap — it corrupts week ordering for every later
+    // comparison, and in local mode it stays that way permanently.
+    if (!Number.isInteger(week.week_number) || week.week_number < 1)
       return { ok: false, error: `Invalid backup: recovery week ${week.id} week_number must be a positive integer` };
 
     const timeCheck = validateTimestamps(week, RECOVERY_WEEK_TIMESTAMP_FIELDS, `recovery week ${week.id}`);
@@ -514,9 +577,11 @@ function validateRecoveryWeeks(weeks, blockIds) {
 // is exactly the live set in the payload — there is no surviving local live row
 // for an imported one to collide with.
 //
-// Each predicate mirrors its index exactly, including the null handling: a
-// unique index treats NULLs as distinct, so rows with no `note_id` or no
-// `week_number` do not collide with each other and are skipped here too.
+// Each predicate mirrors its index, including the null handling: a unique index
+// treats NULLs as distinct, so live rows with no `note_id` do not collide with
+// each other and are skipped. Ordinals need no such skip — validateRecoveryWeeks
+// has already rejected a membership without one, which is stricter than the
+// nullable cloud column because the local ordering logic cannot tolerate a null.
 //
 // O(blocks + weeks) via two keyed indexes; no nested scan.
 function validateRecoveryInvariants(blocks, weeks) {
@@ -554,17 +619,17 @@ function validateRecoveryInvariants(blocks, weeks) {
 
     // recovery_block_weeks_live_ordinal_idx: week ordinals are unique within a
     // block among live memberships, which is what makes week order total.
-    if (week.week_number != null) {
-      const key = `${week.block_id} ${week.week_number}`;
-      const prior = claimedOrdinals.get(key);
-      if (prior !== undefined) {
-        return {
-          ok: false,
-          error: `Invalid backup: recovery block ${week.block_id} has two live memberships for week ${week.week_number} (${prior}, ${week.id})`,
-        };
-      }
-      claimedOrdinals.set(key, week.id);
+    // The separator is an escaped NUL, which no record id can contain, so two
+    // different (block, ordinal) pairs cannot collide into one key.
+    const ordinalKey = `${week.block_id}\u0000${week.week_number}`;
+    const priorAtOrdinal = claimedOrdinals.get(ordinalKey);
+    if (priorAtOrdinal !== undefined) {
+      return {
+        ok: false,
+        error: `Invalid backup: recovery block ${week.block_id} has two live memberships for week ${week.week_number} (${priorAtOrdinal}, ${week.id})`,
+      };
     }
+    claimedOrdinals.set(ordinalKey, week.id);
   }
 
   return { ok: true };

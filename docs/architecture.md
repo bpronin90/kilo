@@ -406,9 +406,22 @@ memberships still point at it.
 
 Validation is bounded and total before the first write. Per record: non-empty
 unique ids, every membership's `block_id` resolving to a block in the same
-payload, positive integer week ordinals, parseable timestamps, and a frozen
-baseline that is an object with a known snapshot version and a bounded,
-numerically typed exercise list. Across the collections, the same three
+payload, a required positive-integer week ordinal, strict ISO instants, and a
+frozen baseline that is an object with a known snapshot version and a bounded,
+numerically typed exercise list.
+
+Two of those are stricter than the cloud column they mirror, deliberately. The
+`week_number` column is nullable, but the local domain has no such tolerance —
+`orderedLiveWeeks` subtracts ordinals numerically and `nextWeekNumber` derives
+from the highest one, so a null stops week order from being a total order rather
+than leaving a harmless gap. Timestamps are matched against a strict ISO instant
+pattern with calendar validation instead of `Date.parse`, which accepts `"1"`,
+`"2026"`, and `"March 5, 2026"`, and which normalizes an impossible calendar date
+rather than rejecting it — `"2026-02-30T00:00:00Z"` parses to March 2 while the
+importer persists the original string. An explicit UTC offset is required, since
+both producers of these values emit one (`toISOString()` on the device,
+PostgREST's `+00:00` with up to microsecond precision for a server-stamped
+`updated_at`) and a local-time string names no instant to order against. Across the collections, the same three
 cross-record invariants the cloud tables enforce as partial unique indexes over
 live rows — one active block, one live membership per workout note, unique live
 week ordinals within a block. Those three are checked here because the database

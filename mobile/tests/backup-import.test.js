@@ -678,6 +678,27 @@ describe('recovery data in the backup format', () => {
     expect((await Storage.loadRecoveryBlockWeeks()).map((w) => w.id)).toEqual([reused.id]);
   });
 
+  // The other half of the strict timestamp rule. There are exactly two producers
+  // of these values — `new Date().toISOString()` on the device (always `Z`,
+  // always milliseconds) and PostgREST for a server-stamped `updated_at` (a
+  // `+00:00` offset, up to microsecond precision) — and a cloud user's raw local
+  // rows carry the SERVER form. A validator tuned only to the device form would
+  // reject the backup of every signed-in user who has ever synced.
+  it('accepts a server-stamped timestamp offset and sub-millisecond precision', async () => {
+    const { block } = await seedRecoveryData();
+    const serverStamp = '2026-07-28T23:59:59.123456+00:00';
+
+    const backup = await Storage.exportBackup();
+    backup.recovery_blocks.find((b) => b.id === block.id).updated_at = serverStamp;
+
+    const result = await importBackup(backup, 'replace', { mode: IMPORT_MODES.LOCAL });
+
+    expect(result.ok).toBe(true);
+    const restored = (await Storage.loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    // Persisted verbatim: the importer validates the string, it does not rewrite it.
+    expect(restored.updated_at).toBe(serverStamp);
+  });
+
   it('emits only allowlisted fields, so a stray local field cannot reach the artifact', async () => {
     const { block } = await seedRecoveryData();
     const raw = await Storage.loadRecoveryBlocksRaw();
@@ -720,9 +741,6 @@ describe('recovery data: malformed payloads write nothing', () => {
         version: 1,
         exercises: [{ key: 'squat', name: 'Squat', exercise_class: 'weighted', top_weight: 'heavy' }],
       };
-    }],
-    ['a non-ISO timestamp', (b) => {
-      b.recovery_blocks[0].started_at = 'last tuesday';
     }],
     ['a duplicate block id', (b) => {
       b.recovery_blocks.push({ ...b.recovery_blocks[0] });
@@ -772,7 +790,42 @@ describe('recovery data: malformed payloads write nothing', () => {
         deleted_at: null,
       });
     }],
-  ];
+    // The cloud column is nullable (`week_number is null or week_number > 0`),
+    // but the local domain has no such tolerance: orderedLiveWeeks subtracts
+    // ordinals numerically and nextWeekNumber derives from the highest one, so a
+    // null is not a harmless gap — it makes week order stop being a total order,
+    // permanently in local mode.
+    ['a null week ordinal', (b) => {
+      b.recovery_block_weeks[0].week_number = null;
+    }],
+    ['a missing week ordinal', (b) => {
+      delete b.recovery_block_weeks[0].week_number;
+    }],
+  ].concat(
+    // Timestamps. `Date.parse` alone accepts every one of these: the short and
+    // ambiguous forms outright, and — the dangerous case — it NORMALIZES an
+    // impossible calendar date instead of rejecting it, so `2026-02-30` returns
+    // a finite value pointing at March 2 while the importer persists the
+    // original string. A value with no offset names no instant at all.
+    [
+      '1',
+      '01/02/03',
+      'March 5, 2026',
+      '2026',
+      '2026-07',
+      '2026-07-28',
+      '2026-07-28T23:59:59',
+      '2026-02-30T00:00:00Z',
+      '2025-02-29T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-07-28T24:00:00Z',
+    ].map((value) => [
+      `a timestamp of ${JSON.stringify(value)}`,
+      (b) => {
+        b.recovery_blocks[0].started_at = value;
+      },
+    ]),
+  );
 
   for (const [label, corrupt] of cases) {
     it(`rejects ${label} without touching local or cloud state`, async () => {

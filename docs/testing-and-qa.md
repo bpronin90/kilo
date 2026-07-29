@@ -788,17 +788,24 @@ but the underlying leak is still worth fixing wherever it's found.
   active and completed blocks, frozen baseline snapshots, week order, membership
   completion, the analytics preference, and tombstones; the export emits only
   allowlisted fields, so a stray local field cannot reach the shared artifact
-- covers fourteen malformed recovery payloads, asserting each is rejected with
+- covers twenty-six malformed recovery payloads, asserting each is rejected with
   local storage, the unrelated collections, and both recovery dirty queues
   byte-identical afterwards — the "no partial writes" property, not merely
   "rejected". Per-record cases: a membership referencing a block the payload does
-  not carry, a non-positive week ordinal, a baseline with no version or from a
-  newer capture format, a non-numeric baseline metric, a non-ISO timestamp, a
+  not carry, a non-positive, null, or missing week ordinal, a baseline with no
+  version or from a newer capture format, a non-numeric baseline metric, a
   duplicate or missing block id, a non-array collection, and either recovery
   collection present without the other. Cross-record cases, matching the three
   partial unique indexes on the cloud tables: two live blocks both still active,
   one workout note with two live memberships, and two live memberships claiming
-  the same week ordinal
+  the same week ordinal. Eleven timestamp cases pin the strict ISO instant rule,
+  including the ones `Date.parse` accepts (`"1"`, `"01/02/03"`, `"2026"`,
+  `"March 5, 2026"`, a date with no time, a time with no offset) and the ones it
+  silently normalizes into a different day (`"2026-02-30T00:00:00Z"`,
+  `"2025-02-29T00:00:00Z"`)
+- verifies the strict timestamp rule does not overshoot: a server-stamped
+  `+00:00` offset with microsecond precision, which is what a synced cloud user's
+  raw local rows actually carry, is accepted and persisted verbatim
 - verifies the mirror-image property, since the uniqueness rules are scoped to
   live rows: a completed block beside a new active one, with the second recovery
   reusing a workout note and a week ordinal the first one released, round-trips
