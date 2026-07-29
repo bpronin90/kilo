@@ -4836,7 +4836,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: ').length).toBe(1);
   });
 
-  test('deleting a linked recovery-week note requires an extra unlink confirmation, then cascades the unlink before the standard delete flow', async () => {
+  test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the unlink', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
     deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
@@ -4846,25 +4846,52 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const root = component.root;
 
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
-    const deleteBtn = findPressableByText(root, 'Delete routine');
-    render.act(() => { deleteBtn.props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
 
-    // First alert: the recovery-aware unlink/delete confirmation, naming the week.
+    // First alert: the recovery-aware confirmation, naming the week. Nothing
+    // is written yet — cancelling here must be a full no-op.
     expect(alertSpy).toHaveBeenCalledWith(
-      'Unlink and delete this note?',
+      'Delete this recovery week note?',
       expect.stringContaining('Recovery Week 1'),
       expect.any(Array)
     );
-    const unlinkConfirmButtons = alertSpy.mock.calls[0][2];
-    await render.act(async () => { await unlinkConfirmButtons.find(b => b.text === 'Continue').onPress(); });
+    expect(deleteWeekSpy).not.toHaveBeenCalled();
+
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    render.act(() => { firstAlertButtons.find(b => b.text === 'Continue').onPress(); });
+
+    // Second alert: the pre-existing standard "Delete Routine" confirmation.
+    // Still nothing written — the unlink is fused with the actual removal,
+    // not run eagerly on our own confirm.
+    expect(alertSpy).toHaveBeenCalledWith('Delete Routine', expect.any(String), expect.any(Array));
+    expect(deleteWeekSpy).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+
+    const secondAlertButtons = alertSpy.mock.calls[1][2];
+    await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
 
     expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
-    // Second alert: the pre-existing standard "Delete Routine" confirmation.
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Delete Routine',
-      expect.any(String),
-      expect.any(Array)
-    );
+    expect(remove).toHaveBeenCalledWith(week1Note.id);
+  });
+
+  test('cancelling the recovery-aware confirmation for a linked note leaves it linked and undeleted', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    // The recovery-aware alert's "Cancel" button carries no onPress (the
+    // standard no-op cancel style); nothing further must happen if it's the
+    // only button pressed.
+    expect(firstAlertButtons.find(b => b.text === 'Cancel').onPress).toBeUndefined();
+
+    expect(deleteWeekSpy).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 
   test('deleting an unlinked note skips the recovery confirmation entirely', () => {
@@ -4884,5 +4911,69 @@ describe('Recovery Block Week 2+ lifecycle', () => {
       expect.any(String),
       expect.any(Array)
     );
+  });
+
+  test('completeRecoveryBlockCore compensates a block-persistence failure: the just-completed current week is restored to open', async () => {
+    // Direct core-function test (fake storage, no rendering) mirroring the
+    // existing startRecoveryBlockCore rollback test: no un-complete API
+    // exists, so compensation tombstones the just-completed week and
+    // re-adds the same note, which the domain reissues the exact same
+    // ordinal to since it was the highest live week for the block.
+    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null }];
+
+    const completeWeekFn = jest.fn().mockResolvedValue({ ...weeks[0], completed_at: '2026-01-08T00:00:00.000Z' });
+    const completeBlockFn = jest.fn().mockRejectedValue(new Error('Network unavailable'));
+    const deleteWeekFn = jest.fn().mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-08T00:00:00.000Z' });
+    const addWeekFn = jest.fn().mockResolvedValue({ id: 'rw1b', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null });
+    const fakeStorage = {
+      completeRecoveryWeek: completeWeekFn,
+      completeRecoveryBlock: completeBlockFn,
+      deleteRecoveryWeek: deleteWeekFn,
+      addRecoveryWeek: addWeekFn,
+    };
+
+    const result = await completeRecoveryBlockCore(fakeStorage, { weeks, blockId: 'rb1' });
+
+    expect(result.ok).toBe(false);
+    expect(completeWeekFn).toHaveBeenCalledWith('rw1');
+    expect(completeBlockFn).toHaveBeenCalledWith('rb1');
+    expect(deleteWeekFn).toHaveBeenCalledWith('rw1');
+    expect(addWeekFn).toHaveBeenCalledWith({ blockId: 'rb1', noteId: 'noteA' });
+  });
+
+  test('race protection: an Add Week confirm while "Complete recovery block" is still persisting is rejected, not silently written', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    let resolveCompleteBlock;
+    completeBlockSpy.mockReturnValue(new Promise(resolve => { resolveCompleteBlock = resolve; }));
+    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: otherNote.id, week_number: 2, completed_at: null, deleted_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    let completePromise;
+    render.act(() => { completePromise = buttons.find(b => b.text === 'Complete').onPress(); });
+
+    // The block-completion write is still pending; race an Add Week confirm
+    // against it (bypassing the disabled button, to prove the mutex itself
+    // — not just the UI affordance — blocks the concurrent write).
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    const optionBtn = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'Use Other Eligible Note as this recovery week'
+      && typeof n.props.onPress === 'function')[0];
+    render.act(() => { optionBtn.props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(addWeekSpy).not.toHaveBeenCalled();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Another recovery action is already in progress.').length).toBeGreaterThan(0);
+
+    await render.act(async () => {
+      resolveCompleteBlock({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+      await completePromise;
+    });
   });
 });

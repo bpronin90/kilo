@@ -79,6 +79,51 @@ export function LogScreen({
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
   const [addWeekModalOpen, setAddWeekModalOpen] = useState(false);
 
+  // Single lifecycle mutex (#696 review): null | 'week' | 'block' | 'add' |
+  // 'delete-unlink' | a week id being unlinked. Every recovery-block write —
+  // including the Add Week modal's own confirm, which lives in a sibling
+  // component with no visibility into LogRecoverySection's own state — is
+  // serialized behind this one flag. A second attempt while one is in flight
+  // (double tap, or one action racing another) is rejected outright with a
+  // clear error rather than reading stale state and writing under a block or
+  // week that changed underneath it.
+  const [recoveryActionBusy, setRecoveryActionBusy] = useState(null);
+  const runRecoveryAction = async (key, action) => {
+    if (recoveryActionBusy) {
+      return { ok: false, error: 'Another recovery action is already in progress.' };
+    }
+    setRecoveryActionBusy(key);
+    try {
+      return await action();
+    } finally {
+      setRecoveryActionBusy(null);
+    }
+  };
+
+  // Bound to useLogOtherRoutineEditor's `remove` param below (not the raw
+  // hook value): the only call site for note removal is inside the standard
+  // "Delete Routine" alert's own "Delete" onPress (see guardedHandleDeleteRoutine
+  // further down), so unlinking a recovery-week note happens exactly once,
+  // atomically with the removal it guards, never before that final confirm. A
+  // failed unlink throws before the note is ever removed, so a live recovery
+  // record can never end up pointing at a deleted note.
+  const removeNoteWithRecoveryUnlink = async (id) => {
+    const membership = findLiveMembershipForNote(recoveryWeeks, id);
+    if (!membership) return remove(id);
+    const result = await runRecoveryAction('delete-unlink', async () => {
+      if (!recoveryLifecycle.unlinkNoteForDelete) {
+        return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+      }
+      return recoveryLifecycle.unlinkNoteForDelete({ weeks: recoveryWeeks, noteId: id });
+    });
+    if (!result.ok) {
+      Alert.alert('Could not unlink', result.error || 'Could not unlink this note from its recovery block.');
+      throw new Error(result.error || 'Could not unlink this note from its recovery block.');
+    }
+    refreshRecoveryState?.();
+    return remove(id);
+  };
+
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
 
   const editorScrollRef = useRef(null);
@@ -117,7 +162,7 @@ export function LogScreen({
     deloadHistory,
     update,
     add,
-    remove,
+    remove: removeNoteWithRecoveryUnlink,
     selectCurrent,
     updateDeload,
     deleteDeloadNote,
@@ -240,7 +285,7 @@ export function LogScreen({
   const openAddWeekModal = () => setAddWeekModalOpen(true);
   const closeAddWeekModal = () => setAddWeekModalOpen(false);
 
-  const handleConfirmAddWeek = async ({ weekChoice, weekNoteId, newNoteTitle }) => {
+  const handleConfirmAddWeek = ({ weekChoice, weekNoteId, newNoteTitle }) => runRecoveryAction('add', async () => {
     if (!activeRecoveryBlock || !recoveryLifecycle.addWeek) {
       return { ok: false, error: 'No active recovery block to add a week to.' };
     }
@@ -273,28 +318,28 @@ export function LogScreen({
       }
     }
     return result;
-  };
+  });
 
-  const handleCompleteCurrentWeek = async (params) => {
+  const handleCompleteCurrentWeek = (params) => runRecoveryAction('week', async () => {
     if (!recoveryLifecycle.completeCurrentWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
     const result = await recoveryLifecycle.completeCurrentWeek(params);
     if (result?.ok) refreshRecoveryState?.();
     return result;
-  };
+  });
 
-  const handleCompleteRecoveryBlock = async (params) => {
+  const handleCompleteRecoveryBlock = (params) => runRecoveryAction('block', async () => {
     if (!recoveryLifecycle.completeBlock) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
     const result = await recoveryLifecycle.completeBlock(params);
     if (result?.ok) refreshRecoveryState?.();
     return result;
-  };
+  });
 
-  const handleUnlinkRecoveryWeek = async (params) => {
+  const handleUnlinkRecoveryWeek = (params) => runRecoveryAction(params.weekId, async () => {
     if (!recoveryLifecycle.unlinkWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
     const result = await recoveryLifecycle.unlinkWeek(params);
     if (result?.ok) refreshRecoveryState?.();
     return result;
-  };
+  });
 
   const handleViewRecoveryNote = (note) => {
     if (!note || note.id === currentId) return;
@@ -302,9 +347,13 @@ export function LogScreen({
   };
 
   // Deleting a linked recovery-week note must never leave a live dangling
-  // membership (#696): when the note carries one, an explicit unlink/delete
-  // confirmation runs first and the membership is tombstoned before handing
-  // off to the existing standard delete-routine confirm-and-remove flow.
+  // membership (#696), but cancelling either confirmation (ours, or the
+  // pre-existing "Delete Routine" one below) must leave the note exactly as it
+  // was — still linked, still present. So the unlink never runs eagerly on our
+  // own confirm; instead it is fused into the actual note removal itself
+  // (removeNoteWithRecoveryUnlink, passed to useLogOtherRoutineEditor as its
+  // `remove`), which only ever executes from the standard delete flow's own
+  // "Delete" button. A cancel at either step calls no storage function at all.
   const guardedHandleDeleteRoutine = (id, title, isCurrent) => {
     const membership = findLiveMembershipForNote(recoveryWeeks, id);
     if (!membership) {
@@ -312,23 +361,14 @@ export function LogScreen({
       return;
     }
     Alert.alert(
-      'Unlink and delete this note?',
-      `"${title}" is Recovery Week ${membership.week_number}. Deleting it will unlink it from the recovery block; the block record itself is unaffected. Continue?`,
+      'Delete this recovery week note?',
+      `"${title}" is Recovery Week ${membership.week_number}. Deleting it will unlink it from the recovery block; the block record itself is unaffected. You will be asked to confirm the deletion itself next.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Continue',
           style: 'destructive',
-          onPress: async () => {
-            if (!recoveryLifecycle.unlinkNoteForDelete) return;
-            const result = await recoveryLifecycle.unlinkNoteForDelete({ weeks: recoveryWeeks, noteId: id });
-            if (!result?.ok) {
-              Alert.alert('Could not unlink', result?.error || 'Could not unlink this note from its recovery block.');
-              return;
-            }
-            refreshRecoveryState?.();
-            otherEditor.handleDeleteRoutine(id, title, isCurrent);
-          },
+          onPress: () => otherEditor.handleDeleteRoutine(id, title, isCurrent),
         },
       ]
     );
@@ -471,6 +511,7 @@ export function LogScreen({
                 onOpenAddWeek={openAddWeekModal}
                 onCompleteBlock={handleCompleteRecoveryBlock}
                 onUnlinkWeek={handleUnlinkRecoveryWeek}
+                busy={recoveryActionBusy}
               />
             )}
 
@@ -623,7 +664,11 @@ export function LogScreen({
         visible={addWeekModalOpen}
         weekNumber={activeRecoveryBlock ? nextWeekNumber(recoveryWeeks, activeRecoveryBlock.id) : null}
         eligibleWeekNotes={eligibleWeekNotes}
-        blockingMessage={activeRecoveryBlock ? null : 'No active recovery block to add a week to.'}
+        blockingMessage={
+          !activeRecoveryBlock
+            ? 'No active recovery block to add a week to.'
+            : (recoveryActionBusy ? 'Another recovery action is already in progress.' : null)
+        }
         onConfirm={handleConfirmAddWeek}
         onClose={closeAddWeekModal}
       />

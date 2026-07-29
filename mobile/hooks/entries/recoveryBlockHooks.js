@@ -190,20 +190,37 @@ export async function addRecoveryWeekCore(storage, { weeks, blockId, noteId }) {
 // Complete the block. If its current week is still open this completes that
 // week first — the same idempotent completeCurrentWeekCore the explicit
 // "Complete week" action uses — so a block can always be finished in one user
-// action without requiring a separate week tap first. Because that first step
-// leaves the domain in an already-valid state (a completed week under an
-// active block is exactly what "Complete week" alone produces), a failure on
-// the second call is safely retryable rather than a corrupt half-transition.
+// action without requiring a separate week tap first.
+//
+// A week's `completed_at` is immutable once set (recoveryStorage.js strips it
+// from every patch API), so there is no direct "uncomplete" call to undo that
+// first write if the second (completeRecoveryBlock) then fails. Compensating
+// instead tombstones the just-completed week and re-adds the same note as a
+// fresh membership: with the just-completed week gone, it was by definition
+// the highest LIVE ordinal for this block, so nextWeekNumber immediately
+// reissues that exact ordinal to the recreated row — same note, same position,
+// completed_at back to null. That restores the pre-call state exactly, so a
+// block-completion failure never leaves an orphaned "completed" week behind.
 export async function completeRecoveryBlockCore(storage, { weeks, blockId }) {
   const current = _currentWeek(weeks, blockId);
+  let compensateWeek = null;
   if (current && !current.completed_at) {
     const weekResult = await completeCurrentWeekCore(storage, { weeks, blockId });
     if (!weekResult.ok) return weekResult;
+    compensateWeek = weekResult.week;
   }
   try {
     const block = await storage.completeRecoveryBlock(blockId);
     return { ok: true, block };
   } catch (e) {
+    if (compensateWeek) {
+      try {
+        await storage.deleteRecoveryWeek(compensateWeek.id);
+        await storage.addRecoveryWeek({ blockId, noteId: compensateWeek.note_id });
+      } catch (_rollbackError) {
+        // Best-effort; the original failure is what the caller needs to see.
+      }
+    }
     return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the recovery block.' };
   }
 }

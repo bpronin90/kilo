@@ -31,11 +31,19 @@ export function LogRecoverySection({
   onOpenAddWeek,
   onCompleteBlock,
   onUnlinkWeek,
+  // The single in-flight lifecycle-action key, owned by LogScreen (not local
+  // state here): null | 'week' | 'block' | 'add' | a week id being unlinked.
+  // LogScreen serializes every recovery mutation — including the Add Week
+  // modal's own confirm — behind this one key, so a stale concurrent action
+  // (e.g. Add week racing Complete recovery block) is rejected rather than
+  // silently writing under a block/week that changed underneath it. Every
+  // button below disables on ANY non-null value, not just its own key, so two
+  // conflicting actions can never both be enabled at once.
+  busy = null,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
-  const [busyAction, setBusyAction] = useState(null); // 'week' | 'block' | weekId being unlinked
   const [actionError, setActionError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
@@ -52,21 +60,16 @@ export function LogRecoverySection({
   const canAddWeek = !!activeBlock && (!currentWeek || !!currentWeek.completed_at);
   const latestWeekId = activeWeeks.length > 0 ? activeWeeks[activeWeeks.length - 1].id : null;
 
-  const runAction = async (key, action) => {
-    setBusyAction(key);
+  const runAction = async (action) => {
     setActionError(null);
-    try {
-      const result = await action();
-      if (!result || result.ok === false) {
-        setActionError((result && result.error) || 'That action could not be completed.');
-      }
-    } finally {
-      setBusyAction(null);
+    const result = await action();
+    if (!result || result.ok === false) {
+      setActionError((result && result.error) || 'That action could not be completed.');
     }
   };
 
   const handleCompleteWeek = () => {
-    runAction('week', () => onCompleteWeek({ weeks, blockId: activeBlock.id }));
+    runAction(() => onCompleteWeek({ weeks, blockId: activeBlock.id }));
   };
 
   const handleCompleteBlock = () => {
@@ -78,7 +81,7 @@ export function LogRecoverySection({
         {
           text: 'Complete',
           style: 'destructive',
-          onPress: () => runAction('block', () => onCompleteBlock({ weeks, blockId: activeBlock.id })),
+          onPress: () => runAction(() => onCompleteBlock({ weeks, blockId: activeBlock.id })),
         },
       ]
     );
@@ -93,7 +96,7 @@ export function LogRecoverySection({
         {
           text: 'Unlink',
           style: 'destructive',
-          onPress: () => runAction(week.id, () => onUnlinkWeek({ weeks, blockId: activeBlock.id, weekId: week.id })),
+          onPress: () => runAction(() => onUnlinkWeek({ weeks, blockId: activeBlock.id, weekId: week.id })),
         },
       ]
     );
@@ -134,13 +137,13 @@ export function LogRecoverySection({
                   {week.id === latestWeekId && (
                     <Pressable
                       onPress={() => handleUnlinkWeek(week)}
-                      disabled={busyAction === week.id}
+                      disabled={!!busy}
                       style={styles.inlineButton}
                       accessibilityRole="button"
                       accessibilityLabel={`Unlink Week ${week.week_number}`}
-                      accessibilityState={{ disabled: busyAction === week.id }}
+                      accessibilityState={{ disabled: !!busy }}
                     >
-                      <Text style={styles.inlineButtonText}>Unlink</Text>
+                      <Text style={styles.inlineButtonText}>{busy === week.id ? 'Unlinking…' : 'Unlink'}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -151,37 +154,39 @@ export function LogRecoverySection({
               {canCompleteWeek && (
                 <Pressable
                   onPress={handleCompleteWeek}
-                  disabled={busyAction === 'week'}
+                  disabled={!!busy}
                   style={styles.actionButton}
                   accessibilityRole="button"
                   accessibilityLabel="Complete week"
-                  accessibilityState={{ disabled: busyAction === 'week' }}
+                  accessibilityState={{ disabled: !!busy }}
                 >
                   <Text style={styles.actionButtonText}>
-                    {busyAction === 'week' ? 'Completing…' : 'Complete week'}
+                    {busy === 'week' ? 'Completing…' : 'Complete week'}
                   </Text>
                 </Pressable>
               )}
               {canAddWeek && (
                 <Pressable
                   onPress={onOpenAddWeek}
+                  disabled={!!busy}
                   style={styles.actionButton}
                   accessibilityRole="button"
                   accessibilityLabel="Add next recovery week"
+                  accessibilityState={{ disabled: !!busy }}
                 >
                   <Text style={styles.actionButtonText}>Add week</Text>
                 </Pressable>
               )}
               <Pressable
                 onPress={handleCompleteBlock}
-                disabled={busyAction === 'block'}
+                disabled={!!busy}
                 style={[styles.actionButton, styles.actionButtonPrimary]}
                 accessibilityRole="button"
                 accessibilityLabel="Complete recovery block"
-                accessibilityState={{ disabled: busyAction === 'block' }}
+                accessibilityState={{ disabled: !!busy }}
               >
                 <Text style={styles.actionButtonPrimaryText}>
-                  {busyAction === 'block' ? 'Completing…' : 'Complete recovery block'}
+                  {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
                 </Text>
               </Pressable>
             </View>
