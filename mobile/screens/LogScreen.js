@@ -105,39 +105,27 @@ export function LogScreen({
   // "Delete Routine" alert's own "Delete" onPress (see guardedHandleDeleteRoutine
   // further down), so unlinking a recovery-week note happens exactly once,
   // atomically with the removal it guards, never before that final confirm.
-  // `unlinkNoteForDeleteCore` re-reads persisted state itself and applies
-  // uniformly to any linked week (active or completed-history) — deleting the
-  // note is not restricted the way the explicit Unlink action is.
   //
-  // If `remove` itself then fails, this does not attempt to "compensate" by
-  // re-adding the note: a membership tombstone cannot be undone atomically
-  // without a real transaction, and an earlier round of review already
-  // rejected that as unreliable. Consistency is preserved either way — the
-  // note is never removed while a live membership could still reference it —
-  // and the caller is told plainly that the note is now unlinked but still
-  // present, rather than a silent or fragile "fix" pretending otherwise.
+  // The actual note delete is injected as `deleteNote` rather than run here
+  // directly: `unlinkNoteForDeleteCore` (hooks/entries/recoveryBlockHooks.js)
+  // performs the membership tombstone and the note delete as a single atomic
+  // storage operation (deleteRecoveryWeekWithNote) — either both land, or the
+  // tombstone is reverted and the note delete never runs at all — while the
+  // note delete itself stays exactly this local/cloud-sync-aware `remove`, so
+  // this file never bypasses that path.
   const removeNoteWithRecoveryUnlink = async (id) => {
     const result = await runRecoveryAction('delete-unlink', async () => {
       if (!recoveryLifecycle.unlinkNoteForDelete) {
-        return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+        await remove(id);
+        return { ok: true, week: null };
       }
-      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id });
+      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id, deleteNote: () => remove(id) });
     });
     if (!result.ok) {
-      Alert.alert('Could not unlink', result.error || 'Could not unlink this note from its recovery block.');
-      throw new Error(result.error || 'Could not unlink this note from its recovery block.');
+      Alert.alert('Could not delete this note', result.error || 'Could not delete this note.');
+      throw new Error(result.error || 'Could not delete this note.');
     }
-    if (!result.week) return remove(id);
-    refreshRecoveryState?.();
-    try {
-      return await remove(id);
-    } catch (removeError) {
-      Alert.alert(
-        'Note not deleted',
-        'This note was unlinked from its recovery block, but could not be deleted. It is now an ordinary note — you can try deleting it again.'
-      );
-      throw removeError;
-    }
+    if (result.week) refreshRecoveryState?.();
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'

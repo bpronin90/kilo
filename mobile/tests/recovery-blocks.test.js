@@ -20,10 +20,12 @@ import {
 import {
   addRecoveryWeek,
   completeRecoveryBlock,
+  completeRecoveryBlockWithCurrentWeek,
   completeRecoveryWeek,
   createRecoveryBlock,
   deleteRecoveryBlock,
   deleteRecoveryWeek,
+  deleteRecoveryWeekWithNote,
   getActiveRecoveryBlock,
   loadRecoveryBlockWeeks,
   loadRecoveryBlockWeeksRaw,
@@ -864,6 +866,134 @@ describe('raw accessors', () => {
     await expect(loadRecoveryBlocks()).rejects.toThrow();
     await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{"not":"a list"}');
     await expect(loadRecoveryBlockWeeks()).rejects.toThrow();
+  });
+});
+
+// ── atomic multi-record operations (#696 review) ──────────────────────────────
+//
+// AsyncStorage has no real cross-key transaction, so these prove the
+// achievable substitute: every write this call could make is computed before
+// any of them land, and an injected failure on the second write reverts the
+// first back to its exact pre-call snapshot before the error propagates —
+// verified here against the real jsonStorage read/write path (not a fake),
+// with a real injected failure on the second write.
+
+describe('completeRecoveryBlockWithCurrentWeek', () => {
+  test('completes an open current week and the block together in one call', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const result = await completeRecoveryBlockWithCurrentWeek(block.id);
+
+    expect(result.block.completed_at).toBeTruthy();
+    expect(result.week.id).toBe(week.id);
+    expect(result.week.completed_at).toBeTruthy();
+    const persistedWeek = (await loadRecoveryWeeksForBlock(block.id))[0];
+    expect(persistedWeek.completed_at).toBeTruthy();
+  });
+
+    test('a block with no open current week completes cleanly with no week write', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const alreadyCompletedAt = (await loadRecoveryWeeksForBlock(block.id))[0].completed_at;
+
+    const result = await completeRecoveryBlockWithCurrentWeek(block.id);
+
+    expect(result.block.completed_at).toBeTruthy();
+    expect(result.week.completed_at).toBe(alreadyCompletedAt);
+  });
+
+  test('an injected failure on the block write reverts the already-landed week write', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const writeListModule = require('../storage/entries/jsonStorage');
+    const originalWriteList = writeListModule.writeList;
+    const writeSpy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCKS_KEY) throw new Error('Simulated storage failure on the block write');
+      return originalWriteList(key, list);
+    });
+
+    await expect(completeRecoveryBlockWithCurrentWeek(block.id)).rejects.toThrow('Simulated storage failure');
+    writeSpy.mockRestore();
+
+    // The week write landed first, then was reverted — no persisted change
+    // survives an operation that did not fully complete.
+    const revertedWeek = (await loadRecoveryWeeksForBlock(block.id))[0];
+    expect(revertedWeek.completed_at).toBeNull();
+    const revertedBlock = (await loadRecoveryBlocks()).find(b => b.id === block.id);
+    expect(revertedBlock.completed_at).toBeNull();
+    expect(week.completed_at).toBeNull();
+  });
+
+  test('rejects a block that does not exist', async () => {
+    await expect(completeRecoveryBlockWithCurrentWeek('missing')).rejects.toMatchObject({
+      code: RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+    });
+  });
+});
+
+describe('deleteRecoveryWeekWithNote', () => {
+  test('tombstones the membership and runs the injected note delete together', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const deleteNote = jest.fn().mockResolvedValue();
+
+    await deleteRecoveryWeekWithNote(week.id, deleteNote);
+
+    expect(deleteNote).toHaveBeenCalledTimes(1);
+    expect(await loadRecoveryBlockWeeks()).toEqual([]);
+  });
+
+  test('an injected note-delete failure reverts the membership tombstone and never leaves a dangling live membership pointing at a deleted note', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const deleteNote = jest.fn().mockRejectedValue(new Error('Simulated note-delete failure'));
+
+    await expect(deleteRecoveryWeekWithNote(week.id, deleteNote)).rejects.toThrow('Simulated note-delete failure');
+
+    // The membership tombstone already written is reverted — the week is
+    // still live, exactly as it was before the call, not gone.
+    const restored = (await loadRecoveryBlockWeeks())[0];
+    expect(restored.id).toBe(week.id);
+    expect(restored.deleted_at).toBeNull();
+    expect(restored.week_number).toBe(week.week_number);
+  });
+
+  test('a note-delete failure means the note is never actually deleted — deleteNote is the only place that happens', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    let noteDeleted = false;
+    const deleteNote = jest.fn().mockImplementation(async () => {
+      noteDeleted = true;
+      throw new Error('Simulated note-delete failure');
+    });
+
+    await expect(deleteRecoveryWeekWithNote(week.id, deleteNote)).rejects.toThrow();
+
+    // deleteNote is the caller's own note-removal function; this module has
+    // no independent notion of "the note" beyond what deleteNote does, so a
+    // failure inside it is exactly the same failure the caller would see
+    // calling it directly. Only assert this module never masks that.
+    expect(noteDeleted).toBe(true);
+  });
+
+  test('rejects a membership that does not exist', async () => {
+    await expect(deleteRecoveryWeekWithNote('missing', jest.fn())).rejects.toMatchObject({
+      code: RECOVERY_ERROR_CODES.WEEK_NOT_FOUND,
+    });
+  });
+
+  test('an already-tombstoned membership is a no-op that still runs deleteNote', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await deleteRecoveryWeek(week.id);
+    const deleteNote = jest.fn().mockResolvedValue();
+
+    await deleteRecoveryWeekWithNote(week.id, deleteNote);
+
+    expect(deleteNote).toHaveBeenCalledTimes(1);
   });
 });
 

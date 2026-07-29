@@ -13,9 +13,35 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
+// The two atomic multi-record operations (#696 review) are imported directly
+// from the leaf module rather than through the `storage/entries` aggregator:
+// that barrel is outside this issue's Allowed Files, and every other call in
+// this file already goes through the `Storage` aggregator. `RecoveryStorage`
+// merges both into one object for the core functions below — its two extra
+// methods are thin pass-throughs (not captured function references) so a
+// test's `jest.spyOn(recoveryStorageModule, ...)` on the leaf module is still
+// observed at call time, exactly like every other named property on `Storage`
+// already is via its own live re-export bindings.
+import * as RecoveryStorageModule from '../../storage/entries/recoveryStorage';
 import { findActiveBlock, findLiveMembershipForNote, isBlockActive } from '../../lib/data/recoveryBlocks';
 import { safeNotify } from './shared';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
+
+// A `{ ...Storage, ... }` spread would copy every property's function
+// reference by value at module-load time, which breaks `jest.spyOn` on the
+// aggregator's usual re-exports (they rely on a live property lookup on the
+// same namespace object every call, same as `Storage.xxx()` elsewhere in this
+// file). A Proxy forwards every other property straight through to the live
+// `Storage` object and only intercepts the two names that need the extra,
+// not-in-the-aggregator leaf module.
+const RecoveryStorage = new Proxy(Storage, {
+  get(target, prop) {
+    if (prop === 'completeRecoveryBlockWithCurrentWeek' || prop === 'deleteRecoveryWeekWithNote') {
+      return (...args) => RecoveryStorageModule[prop](...args);
+    }
+    return target[prop];
+  },
+});
 
 let recoveryListeners = [];
 const notifyRecoveryBlocks = () => safeNotify(recoveryListeners);
@@ -191,34 +217,16 @@ export async function addRecoveryWeekCore(storage, { blockId, noteId }) {
   }
 }
 
-// Complete the current week first (when one is open), then the block.
-//
-// The domain-forbidden combination is a block whose `completed_at` is set
-// while its current week's is not — nothing may ever observe that. Completing
-// the week FIRST makes it structurally unreachable: the block is only ever
-// written after its current week is confirmed complete (or there was none to
-// complete), so an `ok:true` result always means both are done. A failure
-// completing the week aborts before the block write is even attempted — a
-// clean no-op, since nothing was written.
-//
-// If the week succeeds but the block write then fails, the week's
-// `completed_at` is immutable (recoveryStorage.js strips it from every patch
-// API) and there is no real multi-write transaction to roll it back with —
-// two earlier rounds of review rejected a delete-and-recreate "compensation"
-// for this as itself non-atomic and identity-changing. So this is reported
-// honestly as a failure (never `ok:true`) rather than pretending the write
-// never happened: the current week is left completed — the same, independent
-// -ly reachable state the standalone "Complete week" action produces on its
-// own, not a corrupt one — and the block stays active. Retrying "Complete
-// recovery block" is then idempotent: it sees the week already complete and
-// only retries the block write.
+// Complete the block's current (still-open) week and the block itself as one
+// atomic storage operation (storage/entries/recoveryStorage.js
+// completeRecoveryBlockWithCurrentWeek): either both land, or neither does.
+// The domain-forbidden combination — a completed block whose current week is
+// still open — can never be observed, including when the block write fails
+// after its week write already landed, since that write is reverted before
+// the error propagates.
 export async function completeRecoveryBlockCore(storage, { blockId }) {
-  const weekResult = await completeCurrentWeekCore(storage, { blockId });
-  if (!weekResult.ok && weekResult.code !== 'NO_CURRENT_WEEK') {
-    return weekResult;
-  }
   try {
-    const block = await storage.completeRecoveryBlock(blockId);
+    const { block } = await storage.completeRecoveryBlockWithCurrentWeek(blockId);
     return { ok: true, block };
   } catch (e) {
     return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the recovery block.' };
@@ -251,51 +259,53 @@ export async function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
 // regardless of block state or the week's position — deleting the note itself
 // applies uniformly to any linked week (active or completed-history), unlike
 // the position-restricted explicit Unlink action above. A note with no live
-// membership (re-read fresh, not from a caller-supplied snapshot) is a no-op.
+// membership (re-read fresh, not from a caller-supplied snapshot) just runs
+// the caller's own `deleteNote`, unchanged.
 //
-// If the note removal that follows a successful unlink then fails, that is
-// surfaced honestly by the caller rather than "compensated": the membership
-// tombstone is not itself reversible without a real transaction, and an
-// earlier round of review already rejected a fragile re-add "restore" as
-// unreliable. Consistency is still guaranteed either way — the note is never
-// deleted while a live membership could still point at it, and an unlinked
-// note that fails to delete is simply an ordinary, still-editable note.
-export async function unlinkNoteForDeleteCore(storage, { noteId }) {
+// When there IS a membership, the tombstone and the note delete run as one
+// atomic storage operation (deleteRecoveryWeekWithNote): either both land, or
+// neither does. `deleteNote` is the caller's own local/cloud-sync-aware note
+// -removal function — this module never reimplements or bypasses that path,
+// it is just given the chance to run (or not) as part of the same unit.
+export async function unlinkNoteForDeleteCore(storage, { noteId, deleteNote }) {
   const weeks = await storage.loadRecoveryBlockWeeks();
   const membership = findLiveMembershipForNote(weeks, noteId);
-  if (!membership) return { ok: true, week: null };
+  if (!membership) {
+    await deleteNote();
+    return { ok: true, week: null };
+  }
 
   try {
-    await storage.deleteRecoveryWeek(membership.id);
+    await storage.deleteRecoveryWeekWithNote(membership.id, deleteNote);
     return { ok: true, week: membership };
   } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not unlink this note from its recovery block.' };
+    return { ok: false, code: e?.code || null, error: e?.message || 'Could not delete this note.' };
   }
 }
 
 export function useRecoveryBlockLifecycle() {
   const completeCurrentWeek = useCallback(async (params) => {
-    const result = await completeCurrentWeekCore(Storage, params);
+    const result = await completeCurrentWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const addWeek = useCallback(async (params) => {
-    const result = await addRecoveryWeekCore(Storage, params);
+    const result = await addRecoveryWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const completeBlock = useCallback(async (params) => {
-    const result = await completeRecoveryBlockCore(Storage, params);
+    const result = await completeRecoveryBlockCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const unlinkWeek = useCallback(async (params) => {
-    const result = await unlinkRecoveryWeekCore(Storage, params);
+    const result = await unlinkRecoveryWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const unlinkNoteForDelete = useCallback(async (params) => {
-    const result = await unlinkNoteForDeleteCore(Storage, params);
+    const result = await unlinkNoteForDeleteCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);

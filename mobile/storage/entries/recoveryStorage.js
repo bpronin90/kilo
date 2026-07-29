@@ -399,3 +399,118 @@ export async function deleteRecoveryWeek(id) {
   await writeList(RECOVERY_BLOCK_WEEKS_KEY, list);
   return updated;
 }
+
+// ── atomic multi-record operations (#696 review) ──────────────────────────────
+//
+// AsyncStorage has no real cross-key transaction, so "atomic" here means: the
+// full pre-write snapshot of every list touched is held in memory before any
+// write happens, writes land in a fixed order, and if a later write in the
+// sequence fails, every earlier write in this call is reverted back to its
+// exact pre-call snapshot (a plain writeList of the untouched original array —
+// same ids, same ordinals, same field values, not a delete-and-recreate that
+// changes record identity) before the error is rethrown. A caller can then
+// treat the whole operation as having landed, or not, with nothing observably
+// in between.
+
+// Complete a block's current (latest live) week, if it is still open, and the
+// block itself, as one unit. The domain-forbidden combination — a completed
+// block whose current week is still open — must never be observable, which
+// this makes true unconditionally: if completing the block fails after its
+// week write already landed, the week write is reverted before the error
+// propagates, rather than leaving a completed week behind under an active
+// block for the caller to somehow reconcile later.
+export async function completeRecoveryBlockWithCurrentWeek(blockId, completedAt = new Date().toISOString()) {
+  const blocks = await readList(RECOVERY_BLOCKS_KEY);
+  const blockIdx = blocks.findIndex(b => b.id === blockId);
+  if (blockIdx < 0) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+      `No recovery block with id ${blockId}.`
+    );
+  }
+  if (!isLiveRecord(blocks[blockIdx])) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.BLOCK_NOT_FOUND,
+      `Recovery block ${blockId} is deleted.`
+    );
+  }
+
+  const weeksBefore = await readList(RECOVERY_BLOCK_WEEKS_KEY);
+  const current = orderedLiveWeeks(weeksBefore, blockId).slice(-1)[0] || null;
+  const weekNeedsCompletion = !!current && !current.completed_at;
+  const weeksAfter = weekNeedsCompletion
+    ? weeksBefore.map(w => (w.id === current.id ? { ...w, completed_at: completedAt, updated_at: completedAt } : w))
+    : weeksBefore;
+
+  const alreadyCompleted = !!blocks[blockIdx].completed_at;
+  const updatedBlock = alreadyCompleted
+    ? blocks[blockIdx]
+    : { ...blocks[blockIdx], completed_at: completedAt, updated_at: completedAt };
+  const blocksAfter = blocks.map((b, i) => (i === blockIdx ? updatedBlock : b));
+
+  if (weekNeedsCompletion) {
+    await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksAfter);
+  }
+  if (!alreadyCompleted) {
+    try {
+      await writeList(RECOVERY_BLOCKS_KEY, blocksAfter);
+    } catch (e) {
+      if (weekNeedsCompletion) {
+        try {
+          await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksBefore);
+        } catch (_revertError) {
+          // Best-effort revert; the original failure is what the caller needs
+          // to see either way.
+        }
+      }
+      throw e;
+    }
+  }
+
+  return {
+    block: updatedBlock,
+    week: weekNeedsCompletion ? weeksAfter.find(w => w.id === current.id) : current,
+  };
+}
+
+// Tombstone one membership and delete its workout note as one unit. The note
+// delete itself is injected as `deleteNote` rather than reimplemented here:
+// note storage has its own local/cloud-sync-aware write path (writeVia in
+// hooks/entries/storageMode.js) that this domain module has no business
+// duplicating or bypassing. If `deleteNote` throws, the membership tombstone
+// already written is reverted back to its exact pre-call snapshot before the
+// error propagates, so a note-delete failure can never leave a live
+// membership pointing at nothing, and an unlink failure can never be
+// followed by a note delete at all (the throw happens before `deleteNote`
+// is ever called).
+export async function deleteRecoveryWeekWithNote(weekId, deleteNote) {
+  const weeksBefore = await readList(RECOVERY_BLOCK_WEEKS_KEY);
+  const idx = weeksBefore.findIndex(w => w.id === weekId);
+  if (idx < 0) {
+    throw new RecoveryBlockError(
+      RECOVERY_ERROR_CODES.WEEK_NOT_FOUND,
+      `No recovery week with id ${weekId}.`
+    );
+  }
+  if (!isLiveRecord(weeksBefore[idx])) {
+    await deleteNote();
+    return weeksBefore[idx];
+  }
+
+  const now = new Date().toISOString();
+  const weeksAfter = weeksBefore.map((w, i) => (i === idx ? { ...w, deleted_at: now, updated_at: now } : w));
+
+  await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksAfter);
+  try {
+    await deleteNote();
+  } catch (e) {
+    try {
+      await writeList(RECOVERY_BLOCK_WEEKS_KEY, weeksBefore);
+    } catch (_revertError) {
+      // Best-effort revert; the original failure is what the caller needs to
+      // see either way.
+    }
+    throw e;
+  }
+  return weeksAfter[idx];
+}

@@ -4545,7 +4545,8 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   };
 
   let add, remove, update, refresh, alertSpy;
-  let completeWeekSpy, completeBlockSpy, addWeekSpy, deleteWeekSpy;
+  let completeWeekSpy, addWeekSpy, deleteWeekSpy;
+  let completeBlockWithWeekSpy, deleteWeekWithNoteSpy;
   let loadWeeksForBlockSpy, loadBlocksSpy, loadAllWeeksSpy;
 
   const _orderedLive = (weeks, blockId) => (weeks || [])
@@ -4602,9 +4603,21 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     jest.clearAllMocks();
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     completeWeekSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryWeek');
-    completeBlockSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryBlock');
     addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek');
     deleteWeekSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryWeek');
+    // The two atomic multi-record operations (#696 review): completing a
+    // block's current week together with the block, and unlinking a
+    // membership together with deleting its workout note. Default
+    // implementations mirror the real function's externally-observable
+    // contract (calling through to the injected `deleteNote`) so tests that
+    // don't care about the exact mechanics still exercise the real call
+    // shape; tests below override these per scenario.
+    completeBlockWithWeekSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryBlockWithCurrentWeek');
+    deleteWeekWithNoteSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryWeekWithNote')
+      .mockImplementation(async (weekId, deleteNote) => {
+        await deleteNote();
+        return { id: weekId, deleted_at: '2026-01-10T00:00:00.000Z' };
+      });
     loadWeeksForBlockSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryWeeksForBlock');
     loadBlocksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks');
     loadAllWeeksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlockWeeks');
@@ -4613,9 +4626,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   afterEach(() => {
     alertSpy.mockRestore();
     completeWeekSpy.mockRestore();
-    completeBlockSpy.mockRestore();
     addWeekSpy.mockRestore();
     deleteWeekSpy.mockRestore();
+    completeBlockWithWeekSpy.mockRestore();
+    deleteWeekWithNoteSpy.mockRestore();
     loadWeeksForBlockSpy.mockRestore();
     loadBlocksSpy.mockRestore();
     loadAllWeeksSpy.mockRestore();
@@ -4718,7 +4732,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
   test('"Complete recovery block" confirms with advisory-target copy and, on confirm, completes the block', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
-    completeBlockSpy.mockResolvedValue({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+    completeBlockWithWeekSpy.mockResolvedValue({ block: { ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' }, week: weeks[0] });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4734,17 +4748,16 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const buttons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
 
-    // The current week was already complete, so completing the block never
-    // re-touches week completion.
-    expect(completeWeekSpy).not.toHaveBeenCalled();
-    expect(completeBlockSpy).toHaveBeenCalledWith('rb1');
+    expect(completeBlockWithWeekSpy).toHaveBeenCalledWith('rb1');
   });
 
-  test('completing the block with an open current week completes that week first', async () => {
+  test('completing the block with an open current week completes that week first (single atomic storage call)', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
-    completeWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: '2026-01-20T00:00:00.000Z' });
-    completeBlockSpy.mockResolvedValue({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+    completeBlockWithWeekSpy.mockResolvedValue({
+      block: { ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' },
+      week: { ...weeks[0], completed_at: '2026-01-20T00:00:00.000Z' },
+    });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4754,8 +4767,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const buttons = alertSpy.mock.calls[0][2];
     await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
 
-    expect(completeWeekSpy).toHaveBeenCalledWith('rw1');
-    expect(completeBlockSpy).toHaveBeenCalledWith('rb1');
+    // Completing the current week and completing the block are one atomic
+    // storage call — there is no separate completeRecoveryWeek write to
+    // observe for this action.
+    expect(completeBlockWithWeekSpy).toHaveBeenCalledWith('rb1');
   });
 
   test('only the latest week offers Unlink; earlier weeks do not', () => {
@@ -4859,10 +4874,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: ').length).toBe(1);
   });
 
-  test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the unlink', async () => {
+  test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the atomic delete', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
-    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4878,7 +4892,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
       expect.stringContaining('Recovery Week 1'),
       expect.any(Array)
     );
-    expect(deleteWeekSpy).not.toHaveBeenCalled();
+    expect(deleteWeekWithNoteSpy).not.toHaveBeenCalled();
 
     const firstAlertButtons = alertSpy.mock.calls[0][2];
     render.act(() => { firstAlertButtons.find(b => b.text === 'Continue').onPress(); });
@@ -4887,13 +4901,14 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     // Still nothing written — the unlink is fused with the actual removal,
     // not run eagerly on our own confirm.
     expect(alertSpy).toHaveBeenCalledWith('Delete Routine', expect.any(String), expect.any(Array));
-    expect(deleteWeekSpy).not.toHaveBeenCalled();
+    expect(deleteWeekWithNoteSpy).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
 
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
 
-    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    // Membership tombstone and note delete land as one atomic storage call.
+    expect(deleteWeekWithNoteSpy).toHaveBeenCalledWith('rw1', expect.any(Function));
     expect(remove).toHaveBeenCalledWith(week1Note.id);
   });
 
@@ -4913,7 +4928,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     // only button pressed.
     expect(firstAlertButtons.find(b => b.text === 'Cancel').onPress).toBeUndefined();
 
-    expect(deleteWeekSpy).not.toHaveBeenCalled();
+    expect(deleteWeekWithNoteSpy).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
   });
 
@@ -4926,7 +4941,6 @@ describe('Recovery Block Week 2+ lifecycle', () => {
       { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
     ];
     setup({ notes: [baselineNote, week1Note, week2Note], weeks });
-    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4944,7 +4958,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
 
-    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(deleteWeekWithNoteSpy).toHaveBeenCalledWith('rw1', expect.any(Function));
     expect(remove).toHaveBeenCalledWith(week1Note.id);
   });
 
@@ -4952,7 +4966,6 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const completedBlock = { id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline', started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null };
     const weeks = [{ id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks, activeBlock: null, blocks: [completedBlock] });
-    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4964,19 +4977,21 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const secondAlertButtons = alertSpy.mock.calls[1][2];
     await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
 
-    expect(deleteWeekSpy).toHaveBeenCalledWith('hw1');
+    expect(deleteWeekWithNoteSpy).toHaveBeenCalledWith('hw1', expect.any(Function));
     expect(remove).toHaveBeenCalledWith(week1Note.id);
   });
 
-  test('a note-removal failure after a successful unlink is surfaced honestly — no compensation is attempted', async () => {
-    // An earlier round tried to "compensate" a post-unlink removal failure by
-    // re-adding the note; review rejected that as itself non-atomic and
-    // unreliable. This now just tells the caller the truth: the note is
-    // unlinked but still present, rather than pretending to restore anything.
+  test('a note-removal failure after a successful unlink is reverted atomically and surfaced honestly', async () => {
+    // deleteRecoveryWeekWithNote (mobile/storage/entries/recoveryStorage.js)
+    // reverts its own membership tombstone if the injected `deleteNote`
+    // rejects, so this simulates that externally-observable contract at the
+    // hook boundary: the atomic call rejects with the original error.
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     setup({ notes: [baselineNote, week1Note], weeks });
-    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
     remove.mockRejectedValue(new Error('Could not delete the note.'));
+    deleteWeekWithNoteSpy.mockImplementation(async (weekId, deleteNote) => {
+      await deleteNote();
+    });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4990,10 +5005,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
       await expect(secondAlertButtons.find(b => b.text === 'Delete').onPress()).rejects.toThrow('Could not delete the note.');
     });
 
-    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(deleteWeekWithNoteSpy).toHaveBeenCalledWith('rw1', expect.any(Function));
     expect(remove).toHaveBeenCalledWith(week1Note.id);
+    expect(alertSpy).toHaveBeenCalledWith('Could not delete this note', 'Could not delete the note.');
     expect(addWeekSpy).not.toHaveBeenCalled();
-    expect(alertSpy).toHaveBeenCalledWith('Note not deleted', expect.stringContaining('unlinked'));
   });
 
   test('deleting an unlinked note skips the recovery confirmation entirely', () => {
@@ -5015,76 +5030,30 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     );
   });
 
-  test('completeRecoveryBlockCore: a failure completing the open current week aborts before the block is ever touched', async () => {
-    // Direct core-function test (fake storage, no rendering). The week is
-    // completed FIRST — the domain-forbidden combination (a completed block
-    // whose current week is still open) is structurally unreachable this way,
-    // since the block is never written unless its week already succeeded (or
-    // there was none to complete).
+  test('completeRecoveryBlockCore delegates to the single atomic storage call and reports its result', async () => {
+    // completeRecoveryBlockCore is now a thin wrapper: the actual week+block
+    // atomicity lives in storage/entries/recoveryStorage.js
+    // completeRecoveryBlockWithCurrentWeek, covered directly (including its
+    // revert-on-second-write-failure contract) in recovery-blocks.test.js.
     const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
-    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null }];
 
-    const completeWeekFn = jest.fn().mockRejectedValue(new Error('Network unavailable'));
-    const completeBlockFn = jest.fn();
-    const loadWeeksForBlockFn = jest.fn().mockResolvedValue(weeks);
-    const fakeStorage = {
-      completeRecoveryWeek: completeWeekFn,
-      completeRecoveryBlock: completeBlockFn,
-      loadRecoveryWeeksForBlock: loadWeeksForBlockFn,
+    const okStorage = {
+      completeRecoveryBlockWithCurrentWeek: jest.fn().mockResolvedValue({
+        block: { id: 'rb1', completed_at: '2026-01-20T00:00:00.000Z' },
+        week: { id: 'rw1', completed_at: '2026-01-20T00:00:00.000Z' },
+      }),
     };
+    const okResult = await completeRecoveryBlockCore(okStorage, { blockId: 'rb1' });
+    expect(okResult.ok).toBe(true);
+    expect(okResult.block.completed_at).toBe('2026-01-20T00:00:00.000Z');
+    expect(okStorage.completeRecoveryBlockWithCurrentWeek).toHaveBeenCalledWith('rb1');
 
-    const result = await completeRecoveryBlockCore(fakeStorage, { blockId: 'rb1' });
-
-    expect(result.ok).toBe(false);
-    expect(completeWeekFn).toHaveBeenCalledWith('rw1');
-    expect(completeBlockFn).not.toHaveBeenCalled();
-  });
-
-  test('completeRecoveryBlockCore: no open current week to complete is a clean path straight to the block write', async () => {
-    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
-    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
-
-    const completeWeekFn = jest.fn();
-    const completeBlockFn = jest.fn().mockResolvedValue({ id: 'rb1', completed_at: '2026-01-20T00:00:00.000Z' });
-    const loadWeeksForBlockFn = jest.fn().mockResolvedValue(weeks);
-    const fakeStorage = {
-      completeRecoveryWeek: completeWeekFn,
-      completeRecoveryBlock: completeBlockFn,
-      loadRecoveryWeeksForBlock: loadWeeksForBlockFn,
+    const failStorage = {
+      completeRecoveryBlockWithCurrentWeek: jest.fn().mockRejectedValue(new Error('Network unavailable')),
     };
-
-    const result = await completeRecoveryBlockCore(fakeStorage, { blockId: 'rb1' });
-
-    expect(result.ok).toBe(true);
-    expect(result.block.completed_at).toBe('2026-01-20T00:00:00.000Z');
-    expect(completeWeekFn).not.toHaveBeenCalled();
-  });
-
-  test('completeRecoveryBlockCore: a block-write failure after the week already succeeded is reported honestly as a failure — never ok:true', async () => {
-    // No un-complete API exists and two earlier rounds of review rejected a
-    // delete-and-recreate "compensation" for this as itself non-atomic. So
-    // this is never silently reported as success: the week is left completed
-    // (the same, independently-reachable state the standalone "Complete week"
-    // action produces on its own — not a corrupt one), and retrying the whole
-    // action is idempotent since the week is already done.
-    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
-    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null }];
-
-    const completeWeekFn = jest.fn().mockResolvedValue({ ...weeks[0], completed_at: '2026-01-08T00:00:00.000Z' });
-    const completeBlockFn = jest.fn().mockRejectedValue(new Error('Network unavailable'));
-    const loadWeeksForBlockFn = jest.fn().mockResolvedValue(weeks);
-    const fakeStorage = {
-      completeRecoveryWeek: completeWeekFn,
-      completeRecoveryBlock: completeBlockFn,
-      loadRecoveryWeeksForBlock: loadWeeksForBlockFn,
-    };
-
-    const result = await completeRecoveryBlockCore(fakeStorage, { blockId: 'rb1' });
-
-    expect(result.ok).toBe(false);
-    expect(result.error).toBeTruthy();
-    expect(completeWeekFn).toHaveBeenCalledWith('rw1');
-    expect(completeBlockFn).toHaveBeenCalledWith('rb1');
+    const failResult = await completeRecoveryBlockCore(failStorage, { blockId: 'rb1' });
+    expect(failResult.ok).toBe(false);
+    expect(failResult.error).toBe('Network unavailable');
   });
 
   test('every Week 2+ core re-reads persisted state instead of trusting a stale caller snapshot (sync-refresh race)', async () => {
@@ -5140,7 +5109,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
     setup({ notes: [baselineNote, week1Note, otherNote], weeks });
     let resolveCompleteBlock;
-    completeBlockSpy.mockReturnValue(new Promise(resolve => { resolveCompleteBlock = resolve; }));
+    completeBlockWithWeekSpy.mockReturnValue(new Promise(resolve => { resolveCompleteBlock = resolve; }));
     addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: otherNote.id, week_number: 2, completed_at: null, deleted_at: null });
 
     let component;
@@ -5166,7 +5135,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Another recovery action is already in progress.').length).toBeGreaterThan(0);
 
     await render.act(async () => {
-      resolveCompleteBlock({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+      resolveCompleteBlock({ block: { ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' }, week: weeks[0] });
       await completePromise;
     });
   });
