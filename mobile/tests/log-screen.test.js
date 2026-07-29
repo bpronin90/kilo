@@ -4524,3 +4524,365 @@ describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
     subscribeSpy.mockRestore();
   });
 });
+
+// ── Recovery Block Week 2+ lifecycle (#696) ─────────────────────────────────
+
+describe('Recovery Block Week 2+ lifecycle', () => {
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+
+  const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+  const week1Note = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Push\n-Bench\n60 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
+  const week2Note = { id: 'week2note', title: 'Recovery Week 2 Note', raw_text: 'Push\n-Bench\n65 5,5,5', updated_at: '2026-01-15T00:00:00.000Z' };
+  const otherNote = { id: 'other1', title: 'Other Eligible Note', raw_text: 'Pull\n-Row\n80 5,5,5', updated_at: '2026-01-16T00:00:00.000Z' };
+
+  const activeBlockFixture = {
+    id: 'rb1',
+    baseline_note_id: baselineNote.id,
+    baseline_note_title: baselineNote.title,
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+  };
+
+  let add, remove, update, refresh, alertSpy;
+  let completeWeekSpy, completeBlockSpy, addWeekSpy, deleteWeekSpy;
+
+  const setup = ({ notes, weeks, activeBlock = activeBlockFixture, blocks = [activeBlockFixture] } = {}) => {
+    add = jest.fn().mockResolvedValue({ id: 'newweeknote1', title: 'New Recovery Week Note', raw_text: '' });
+    remove = jest.fn().mockResolvedValue();
+    update = jest.fn();
+    refresh = jest.fn();
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes, currentId: baselineNote.id, currentNote: baselineNote, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(),
+      selectCurrent: jest.fn(), update, add, remove,
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock,
+      blocks,
+      weeks,
+      recoveryWeekNumberByNoteId: weeks.reduce((acc, w) => {
+        if (!activeBlock || w.block_id === activeBlock.id) acc[w.note_id] = w.week_number;
+        return acc;
+      }, {}),
+      loading: false,
+      error: null,
+      refresh,
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
+    useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
+    useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    completeWeekSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryWeek');
+    completeBlockSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryBlock');
+    addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek');
+    deleteWeekSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryWeek');
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+    completeWeekSpy.mockRestore();
+    completeBlockSpy.mockRestore();
+    addWeekSpy.mockRestore();
+    deleteWeekSpy.mockRestore();
+  });
+
+  test('current week open: "Complete week" is offered and "Add week" is not', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Complete week')).toBeTruthy();
+    expect(findPressableByText(root, 'Add week')).toBeNull();
+  });
+
+  test('tapping "Complete week" completes the current week and refreshes', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: '2026-01-08T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+
+    expect(completeWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test('current week completed: "Add week" is offered and "Complete week" is not', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Add week')).toBeTruthy();
+    expect(findPressableByText(root, 'Complete week')).toBeNull();
+  });
+
+  test('add-week existing-note path attaches the chosen note as the next week, no new note created', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: otherNote.id, week_number: 2, completed_at: null, deleted_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    const optionBtn = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'Use Other Eligible Note as this recovery week'
+      && typeof n.props.onPress === 'function')[0];
+    render.act(() => { optionBtn.props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(add).not.toHaveBeenCalled();
+    expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rb1', noteId: otherNote.id });
+  });
+
+  test('add-week new-note path creates the note first, then attaches its id', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: 'newweeknote1', week_number: 2, completed_at: null, deleted_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(add).toHaveBeenCalledWith('Recovery Week 2', '');
+    expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rb1', noteId: 'newweeknote1' });
+  });
+
+  test('add-week new-note rollback: a storage failure after note creation deletes the orphaned note', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    addWeekSpy.mockRejectedValue(Object.assign(new Error('Complete the current week before adding the next one.'), { code: 'WEEK_NOT_COMPLETE' }));
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(remove).toHaveBeenCalledWith('newweeknote1');
+  });
+
+  test('"Complete recovery block" confirms with advisory-target copy and, on confirm, completes the block', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeBlockSpy.mockResolvedValue({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Complete recovery block?',
+      expect.stringContaining('advisory'),
+      expect.any(Array)
+    );
+
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+
+    // The current week was already complete, so completing the block never
+    // re-touches week completion.
+    expect(completeWeekSpy).not.toHaveBeenCalled();
+    expect(completeBlockSpy).toHaveBeenCalledWith('rb1');
+  });
+
+  test('completing the block with an open current week completes that week first', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: '2026-01-20T00:00:00.000Z' });
+    completeBlockSpy.mockResolvedValue({ ...activeBlockFixture, completed_at: '2026-01-20T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+
+    expect(completeWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(completeBlockSpy).toHaveBeenCalledWith('rb1');
+  });
+
+  test('only the latest week offers Unlink; earlier weeks do not', () => {
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+      { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note, week2Note], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const unlinkButtons = root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Unlink Week')
+      && typeof n.props.onPress === 'function');
+    expect(unlinkButtons.length).toBe(1);
+    expect(unlinkButtons[0].props.accessibilityLabel).toBe('Unlink Week 2');
+  });
+
+  test('unlinking the latest week confirms, then removes only the membership — the note itself is never deleted', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const unlinkBtn = root.findAll(n => n.props && n.props.accessibilityLabel === 'Unlink Week 1')[0];
+    render.act(() => { unlinkBtn.props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Unlink').onPress(); });
+
+    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  test('a persistence failure on "Complete week" surfaces an inline error and does not crash', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeWeekSpy.mockRejectedValue(new Error('Network unavailable'));
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Network unavailable').length).toBe(1);
+  });
+
+  test('completed-block history renders collapsed with a summary, and expands to show ordered weeks', () => {
+    const completedBlock = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
+    };
+    const historyWeeks = [
+      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, '1 completed block')).toBeTruthy();
+    // Default expanded: the baseline title and its week both render without
+    // needing to tap the collapse control.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBeGreaterThan(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Week 1 Note').length).toBeGreaterThan(0);
+  });
+
+  test('collapsing recovery history hides detail but keeps a meaningful summary', () => {
+    const completedBlock = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
+    };
+    const historyWeeks = [
+      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // Expanded: the baseline title renders once (the detail row), no "Latest:"
+    // summary yet, and the linked week's date is visible in the history row.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(1);
+
+    const collapseBtn = findPressableByText(root, '1 completed block');
+    render.act(() => { collapseBtn.props.onPress(); });
+
+    // Collapsed: the per-week detail (including its completion date) is gone,
+    // but the baseline title survives as the collapsed summary's "Latest: …"
+    // line, not as a bare count.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: ').length).toBe(1);
+  });
+
+  test('deleting a linked recovery-week note requires an extra unlink confirmation, then cascades the unlink before the standard delete flow', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    const deleteBtn = findPressableByText(root, 'Delete routine');
+    render.act(() => { deleteBtn.props.onPress(); });
+
+    // First alert: the recovery-aware unlink/delete confirmation, naming the week.
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Unlink and delete this note?',
+      expect.stringContaining('Recovery Week 1'),
+      expect.any(Array)
+    );
+    const unlinkConfirmButtons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await unlinkConfirmButtons.find(b => b.text === 'Continue').onPress(); });
+
+    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    // Second alert: the pre-existing standard "Delete Routine" confirmation.
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete Routine',
+      expect.any(String),
+      expect.any(Array)
+    );
+  });
+
+  test('deleting an unlinked note skips the recovery confirmation entirely', () => {
+    setup({ notes: [baselineNote, otherNote], weeks: [], activeBlock: null, blocks: [] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, otherNote.title).props.onPress(); });
+    const deleteBtn = findPressableByText(root, 'Delete routine');
+    render.act(() => { deleteBtn.props.onPress(); });
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete Routine',
+      expect.any(String),
+      expect.any(Array)
+    );
+  });
+});

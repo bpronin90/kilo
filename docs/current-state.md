@@ -344,9 +344,21 @@ The real native app path now has a modular React Native shell:
   new-or-existing note as `Recovery Week 1` (#695). Eligibility is purely
   structural (not linked to any block, not a baseline, not a deload note) and
   a linked note only gains an accessible `Recovery Week 1` badge — its title,
-  raw text, editor, autosave, and analytics projections stay untouched. Week
-  2+, completion, browsing recovery blocks, and any recovery-specific
-  analytics are explicitly out of scope until later issues. The read view now also
+  raw text, editor, autosave, and analytics projections stay untouched. A
+  Recovery section on Log (#696) now shows the active block's baseline, its
+  ordered linked-note weeks, and status; `Complete week` is required before
+  `Add week` can attach a next new-or-existing note as the next sequential
+  ordinal, and only the latest week can be `Unlink`ed (earlier weeks and
+  history stay immutable and gap-free). `Complete recovery block` is always a
+  manual, confirmed action — advisory exercise targets never block it — and
+  completing a block with an open current week completes that week first,
+  without touching the frozen baseline. A collapsible Recovery History panel
+  lists completed blocks with their baseline, duration, and ordered weeks.
+  Deleting a workout note that is a linked recovery week now shows an
+  additional unlink/delete confirmation and tombstones its membership first,
+  so a live recovery record can never dangle on a deleted note. Recovery
+  -specific analytics remain explicitly out of scope until later issues. The
+  read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
