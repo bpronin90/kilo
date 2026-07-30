@@ -846,6 +846,17 @@ boundaries below.
   the SYNC phase failed and retryable with the reconciliation cause and the
   journal record intact, and reports a complete sync through the same code path
   once nothing is pending
+- covers the exclusion boundary deterministically: a fake pass snapshots the whole
+  recovery-week collection, suspends on a gate, and writes the merged whole list
+  back on resume. A journaled Add Week started while the pass is gated is drained
+  for far more turns than it needs and must still not have run — proving exclusion
+  rather than luck — and after both complete, the pass's pulled row AND the
+  journaled week both survive, with the new ordinal derived from post-pass state.
+  The mirrored case (lifecycle action first) proves the pass observes the verified
+  write instead of publishing success over a stale merge. This test was
+  negative-controlled against the previous behaviour that released the guard for
+  the pass body: it fails there and passes with the guard held across the whole
+  sequence
 
 ### `mobile/tests/backup-import.test.js`
 

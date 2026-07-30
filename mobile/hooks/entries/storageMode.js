@@ -1,8 +1,8 @@
 import { getStorageAdapter, getStorageMode, STORAGE_MODES } from '../../storage/entries';
 import {
   RECOVERY_OPERATION_CODES,
-  reconcileRecoveryOperations,
   setRecoveryNoteOperations,
+  withExclusiveRecoveryAccess,
 } from '../../storage/entries/recoveryOperationJournal';
 import * as Storage from '../../storage/entries';
 import {
@@ -106,13 +106,23 @@ export class RecoveryReconciliationPendingError extends Error {
 // A still-pending operation fails the pass. That is deliberate: reporting
 // "synced" over a collection this device knows is mid-transition is the same
 // dishonesty the recovery-table isolation in syncAdapter.js exists to avoid.
+// The ENTIRE sequence — pre-reconcile, the pass, post-reconcile — holds the
+// recovery-operation guard, so no journaled lifecycle action can execute while the
+// pass is in flight. That exclusion is the point, not an optimisation: both sides
+// read and rewrite whole `recovery_blocks`/`recovery_block_weeks` arrays, so an
+// interleaving loses whichever change is written first, and the post-pass
+// reconciliation cannot see it once the UI operation has verified and cleared its
+// own record. Reconciliation inside the callback deliberately skips re-acquiring
+// the guard (that is what `reconcile` is), so the nesting cannot deadlock.
 export async function withRecoveryReconciliation(run) {
-  const before = await reconcileRecoveryOperations();
-  if (!before.ok) throw new RecoveryReconciliationPendingError(before);
-  const result = await run();
-  const after = await reconcileRecoveryOperations();
-  if (!after.ok) throw new RecoveryReconciliationPendingError(after);
-  return result;
+  return withExclusiveRecoveryAccess(async ({ reconcile }) => {
+    const before = await reconcile();
+    if (!before.ok) throw new RecoveryReconciliationPendingError(before);
+    const result = await run();
+    const after = await reconcile();
+    if (!after.ok) throw new RecoveryReconciliationPendingError(after);
+    return result;
+  });
 }
 
 export async function maybeSyncCloud() {

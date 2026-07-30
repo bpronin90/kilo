@@ -1391,3 +1391,139 @@ describe('a pending local-mode deletion replayed after switching to cloud mode',
     expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
   });
 });
+
+// The exclusion boundary itself (#696). Both the sync engine and the journal
+// replayers read a COMPLETE recovery collection array and later write the whole
+// array back, so an interleaving silently discards whichever change landed first —
+// and the post-pass reconciliation cannot detect it once the UI operation has
+// verified and cleared its own journal record. Reconciling under the guard and
+// then releasing it for the pass is therefore not sufficient; the guard has to be
+// held across the whole pre-reconcile → pass → post-reconcile sequence.
+describe('a cloud pass and a journaled lifecycle action cannot interleave', () => {
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { registerRecoveryNoteOperations, withRecoveryReconciliation } =
+    require('../hooks/entries/storageMode');
+  const { addRecoveryWeekWithNewNoteCore } = require('../hooks/entries/recoveryBlockHooks');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } =
+    require('../storage/entries/keys');
+
+  const BLOCK = {
+    id: 'rb_race',
+    baseline_note_id: 'wn_baseline',
+    baseline_note_title: 'Baseline',
+    started_at: '2026-07-01T00:00:00.000Z',
+    completed_at: null,
+    saved_at: '2026-07-01T00:00:00.000Z',
+    updated_at: '2026-07-01T00:00:00.000Z',
+    deleted_at: null,
+  };
+  const WEEK_ONE = {
+    id: 'rw_race_1',
+    block_id: 'rb_race',
+    note_id: 'wn_week1',
+    week_number: 1,
+    completed_at: '2026-07-05T00:00:00.000Z',
+    saved_at: '2026-07-02T00:00:00.000Z',
+    updated_at: '2026-07-05T00:00:00.000Z',
+    deleted_at: null,
+  };
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+    registerRecoveryNoteOperations();
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([BLOCK]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([WEEK_ONE]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem('kilo_workout_notes', JSON.stringify([
+      { id: 'wn_baseline', title: 'Baseline', raw_text: '' },
+      { id: 'wn_week1', title: 'Week 1', raw_text: '' },
+    ]));
+  });
+
+  afterEach(() => {
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  const storage = {
+    loadRecoveryBlocksRaw: () => Storage.loadRecoveryBlocksRaw(),
+    loadRecoveryBlockWeeksRaw: () => Storage.loadRecoveryBlockWeeksRaw(),
+  };
+
+  it('an Add Week started mid-pass is serialized, so neither update is lost', async () => {
+    let releasePass;
+    let passBody;
+    const passReachedGate = new Promise((resolveReached) => {
+      const gate = new Promise((resolve) => { releasePass = resolve; });
+      // A faithful stand-in for a pull/merge/replace: snapshot the whole
+      // collection, await network work, then write the merged whole list back.
+      passBody = async () => {
+        const snapshot = await Storage.loadRecoveryBlockWeeksRaw();
+        resolveReached();
+        await gate;
+        await Storage.replaceRecoveryBlockWeeksRaw([...snapshot, {
+          id: 'rw_remote', block_id: 'rb_race', note_id: 'wn_remote', week_number: 9,
+          completed_at: '2026-07-06T00:00:00.000Z', saved_at: 'x', updated_at: 'x', deleted_at: null,
+        }]);
+        return 'synced';
+      };
+    });
+    const syncPromise = withRecoveryReconciliation(() => passBody());
+    await passReachedGate;
+
+    // The pass has read the collection and is suspended. Start a journaled Add
+    // Week now: on a build that releases the guard for the pass body, this runs
+    // here, writes weeks [1, 2], and is then wiped out when the pass writes its
+    // stale snapshot back.
+    let addSettled = false;
+    const addPromise = addRecoveryWeekWithNewNoteCore(storage, { blockId: 'rb_race', title: 'Week 2' })
+      .then((r) => { addSettled = true; return r; });
+    // Drain generously — far more turns than the operation needs end to end — so
+    // "not settled" means genuinely excluded rather than merely not scheduled yet.
+    // This is the discriminator: with the guard released for the pass body the add
+    // completes here, writes weeks [1, 2], and is then erased when the gated pass
+    // writes its stale snapshot back.
+    for (let i = 0; i < 25; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(addSettled).toBe(false);
+    // Nothing was journaled either: the operation has not even recorded intent.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+
+    releasePass();
+    await expect(syncPromise).resolves.toBe('synced');
+    const addResult = await addPromise;
+    expect(addResult.ok).toBe(true);
+
+    // Both changes survive: the pass's remote row AND the journaled week.
+    const weeks = JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))
+      .filter((w) => !w.deleted_at);
+    expect(weeks.map((w) => w.id).sort()).toEqual(['rw_race_1', 'rw_remote', addResult.week.id].sort());
+    // The Add Week read the POST-pass collection, so its ordinal accounts for the
+    // row the pass brought in rather than colliding with it.
+    const added = weeks.find((w) => w.id === addResult.week.id);
+    expect(added.week_number).toBe(10);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+  });
+
+  it('a pass cannot be reported complete over a lifecycle write that arrived during it', async () => {
+    // The same interleaving from the other side: the lifecycle action goes first
+    // and the pass must wait for its verified outcome, so the pass reads the
+    // post-operation collection and cannot publish success over a stale merge.
+    const addPromise = addRecoveryWeekWithNewNoteCore(storage, { blockId: 'rb_race', title: 'Week 2' });
+    let sawWeeks = null;
+    const syncPromise = withRecoveryReconciliation(async () => {
+      sawWeeks = await Storage.loadRecoveryBlockWeeksRaw();
+      return 'synced';
+    });
+
+    const addResult = await addPromise;
+    await expect(syncPromise).resolves.toBe('synced');
+
+    expect(addResult.ok).toBe(true);
+    // The pass observed the completed operation's write, not a pre-operation view.
+    expect(sawWeeks.some((w) => w.id === addResult.week.id)).toBe(true);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+  });
+});

@@ -672,8 +672,21 @@ remote change can alter an affected record while an operation is pending
 and every `SYNC_PHASE.SYNC` runner in `syncRecoveryHooks.js`). An operation that
 still cannot be verified fails the pass, surfacing through the existing
 failed/retryable sync state with the reconciliation cause rather than a silent
-"Fully synced". UI actions, retries, and sync share one single-flight queue, so
-re-entry awaits the in-flight pass instead of starting a competing replay.
+"Fully synced".
+
+UI actions, retries, and sync share one single-flight queue, and the sync boundary
+holds it across the WHOLE pre-reconcile → pass → post-reconcile sequence
+(`withExclusiveRecoveryAccess`), not merely around each reconciliation. Releasing
+it for the pass body would not be safe: the sync engine and the journal replayers
+both read a complete `recovery_blocks`/`recovery_block_weeks` array and later write
+the whole array back, so a lifecycle action executing during the pass means
+whichever side writes last silently discards the other's change — and the post-pass
+reconciliation cannot detect that once the UI operation has verified and cleared
+its own record, so sync would report success over a lost update. Excluding
+lifecycle writes for the duration of the pass is what actually prevents it. The
+nested pre/post reconciliation runs without re-acquiring the guard, which is what
+keeps that nesting from deadlocking; competing UI actions queue behind the pass and
+run against post-pass state.
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local

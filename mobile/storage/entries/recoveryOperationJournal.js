@@ -841,6 +841,27 @@ async function reconcileAllUnlocked() {
   };
 }
 
+// Hold the recovery-operation guard across a whole multi-step sequence — the one
+// caller is the cloud sync/bootstrap boundary, which must reconcile, run its
+// pass, and reconcile again as ONE indivisible unit.
+//
+// Reconciling under the lock and then releasing it for the pass is not enough. A
+// journaled UI action could acquire the queue during the unguarded pass, and both
+// sides read a complete `recovery_blocks`/`recovery_block_weeks` array and later
+// write the whole array back: whichever writes last silently discards the other's
+// change. The post-pass reconciliation cannot detect that, because the UI
+// operation already verified and cleared its own record — so sync would report
+// success over a lost update. Excluding lifecycle writes for the duration of the
+// pass is the only thing that actually prevents it.
+//
+// `run` receives a `reconcile()` that replays WITHOUT re-acquiring the queue,
+// which is what keeps the nested pre/post reconciliation from deadlocking against
+// the guard this function is already holding. Competing UI actions simply queue
+// behind it and run once the pass is done.
+export function withExclusiveRecoveryAccess(run) {
+  return withRecoveryOperationLock(() => run({ reconcile: () => reconcileAllUnlocked() }));
+}
+
 // Public reconciler. Startup/remount, the `Retry recovery` action, pre-action
 // gating, and both cloud sync boundaries all call THIS function — there is no
 // second repair algorithm anywhere in the codebase. A concurrent call awaits the
