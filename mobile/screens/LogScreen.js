@@ -73,6 +73,11 @@ export function LogScreen({
     weeks: recoveryWeeks = [],
     recoveryWeekNumberByNoteId = {},
     refresh: refreshRecoveryState,
+    // Journaled lifecycle operations that are not yet verified (#696), plus the
+    // single shared reconciler behind the `Retry recovery` affordance.
+    pendingRecovery = [],
+    recoveryPendingError = null,
+    retryRecovery,
   } = useRecoveryBlockState() || {};
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
@@ -104,35 +109,30 @@ export function LogScreen({
   // hook value): the only call site for note removal is inside the standard
   // "Delete Routine" alert's own "Delete" onPress (see guardedHandleDeleteRoutine
   // further down), so unlinking a recovery-week note happens exactly once,
-  // atomically with the removal it guards, never before that final confirm.
+  // together with the removal it guards, never before that final confirm.
   //
-  // The actual note delete is injected as `deleteNote` rather than run here
-  // directly: `unlinkNoteForDeleteCore` (hooks/entries/recoveryBlockHooks.js)
-  // performs the membership tombstone and the note delete as a single atomic
-  // storage operation (deleteRecoveryWeekWithNote) — either both land, or the
-  // tombstone is reverted and the note delete never runs at all — while the
-  // note delete itself stays exactly this local/cloud-sync-aware `remove`, so
-  // this file never bypasses that path.
+  // The note delete is NOT injected as a callback any more (#696). A callback
+  // that persists the removal and then throws is indistinguishable from one
+  // that never committed, so the journaled operation owns the deletion end to
+  // end and decides the outcome from persisted state. It still runs the same
+  // local/cloud-sync-aware storage path this screen's `remove` uses — the
+  // registration in hooks/entries/storageMode.js — so nothing is bypassed; the
+  // notebook is simply reloaded afterwards instead of being notified by the
+  // callback.
   const removeNoteWithRecoveryUnlink = async (id) => {
     const result = await runRecoveryAction('delete-unlink', async () => {
       if (!recoveryLifecycle.unlinkNoteForDelete) {
         await remove(id);
         return { ok: true, week: null };
       }
-      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id, deleteNote: () => remove(id) });
+      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id });
     });
     if (!result.ok) {
       Alert.alert('Could not delete this note', result.error || 'Could not delete this note.');
       throw new Error(result.error || 'Could not delete this note.');
     }
+    refreshNotes?.();
     if (result.week) refreshRecoveryState?.();
-    // The note delete itself landed; a deleteWarning means only a follow-up
-    // reconciliation step (see unlinkNoteForDeleteCore) needed extra work
-    // behind the scenes. Surface it as an FYI, not a failure — the deletion
-    // the user asked for did succeed.
-    if (result.deleteWarning) {
-      Alert.alert('Note deleted', result.deleteWarning);
-    }
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
@@ -351,6 +351,20 @@ export function LogScreen({
     return result;
   });
 
+  // The `Retry recovery` affordance. It runs the same idempotent reconciler as
+  // app start, remount, and the cloud sync boundary — never a separate repair
+  // path — and then refreshes both the workout-note and recovery views so a
+  // successful reconciliation clears the warning.
+  const handleRetryRecovery = () => runRecoveryAction('retry-recovery', async () => {
+    if (!recoveryLifecycle.retryRecovery) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    const result = await recoveryLifecycle.retryRecovery();
+    await Promise.resolve(refreshRecoveryState?.());
+    refreshNotes?.();
+    return result;
+  });
+
   const handleViewRecoveryNote = (note) => {
     if (!note || note.id === currentId) return;
     otherEditor.handleViewOtherNote(note);
@@ -524,6 +538,9 @@ export function LogScreen({
                 onCompleteBlock={handleCompleteRecoveryBlock}
                 onUnlinkWeek={handleUnlinkRecoveryWeek}
                 busy={recoveryActionBusy}
+                pendingRecovery={pendingRecovery}
+                pendingRecoveryError={recoveryPendingError}
+                onRetryRecovery={handleRetryRecovery}
               />
             )}
 

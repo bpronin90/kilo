@@ -813,3 +813,74 @@ describe('useCloudExport hook', () => {
     expect(JSON.parse(signedOut.json).cloud.account).toBeNull();
   });
 });
+
+// ── recovery reconciliation surfaces through the existing sync state (#696) ───
+
+describe('a pending recovery operation blocks a successful sync report', () => {
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
+
+  beforeEach(async () => {
+    __resetSyncQueue();
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    journal.__resetRecoveryOperationJournal();
+    __resetSyncQueue();
+  });
+
+  it('maybeSyncCloud leaves the SYNC phase failed and retryable, carrying the reconciliation cause', async () => {
+    jest.spyOn(entries, 'getStorageMode').mockReturnValue(entries.STORAGE_MODES.CLOUD);
+    const syncSpy = jest.fn().mockResolvedValue([]);
+    jest.spyOn(entries, 'getStorageAdapter').mockReturnValue({ mode: 'cloud', sync: syncSpy });
+
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw_p', block_id: 'rb_p', note_id: 'wn_p', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1,
+      operation_id: 'recop_ui_pending',
+      created_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-01T00:00:00.000Z',
+      stage: 'intent',
+      attempts: 0,
+      last_error: null,
+      type: 'delete_linked_note',
+      block_id: 'rb_p',
+      week_id: 'rw_p',
+      note_id: 'wn_p',
+      requested_deleted_at: '2026-05-01T00:00:00.000Z',
+      intended_outcome: 'membership tombstoned and note deleted',
+    }]));
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async () => { throw new Error('Note store unavailable'); },
+      deleteNote: async () => {},
+    });
+
+    await maybeSyncCloud();
+
+    const state = getSyncState()[SYNC_PHASE.SYNC];
+    expect(state.status).toBe(SYNC_STATUS.FAILED);
+    expect(state.retryable).toBe(true);
+    expect(state.error).toMatch(/pending/i);
+    // The pass itself never ran, so nothing was published as synced.
+    expect(syncSpy).not.toHaveBeenCalled();
+    // The durable evidence needed for a later retry is preserved.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toHaveLength(1);
+  });
+
+  it('once the operation converges, the same code path reports a complete sync', async () => {
+    jest.spyOn(entries, 'getStorageMode').mockReturnValue(entries.STORAGE_MODES.CLOUD);
+    const syncSpy = jest.fn().mockResolvedValue([]);
+    jest.spyOn(entries, 'getStorageAdapter').mockReturnValue({ mode: 'cloud', sync: syncSpy });
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+
+    await maybeSyncCloud();
+
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+  });
+});

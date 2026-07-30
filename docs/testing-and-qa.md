@@ -712,6 +712,60 @@ but the underlying leak is still worth fixing wherever it's found.
   falsely report success, leaves the dirty queue armed, and a reconnected retry
   is safe and idempotent (no duplicate rows) (#538)
 
+### `mobile/tests/recovery-blocks.test.js`
+
+Covers the recovery-block domain (baseline capture, single-record storage
+invariants, ordinals, tombstones) and the durable recovery operation journal
+(#696). The journal coverage is a failure-injection matrix rather than a happy
+-path suite: each case breaks exactly one protocol boundary against the real
+`jsonStorage` read/write path — never a fake collection — then asserts the
+immediate persisted state, the retained journal record, the returned
+machine-readable code, and convergence after replay.
+
+Boundaries injected, for both durable operations:
+
+- journal intent read and intent write (an intent write failure must produce no
+  domain mutation at all; an intent read failure must refuse the operation);
+- each affected-domain read;
+- the first domain write (week completion / membership tombstone);
+- the second domain write (block completion / note deletion);
+- the cloud tombstone write and the queue enqueue/bookkeeping step, separately;
+- the post-write verification read;
+- the journal stage update;
+- the journal clear.
+
+Scenarios pinned beyond the per-boundary sweep:
+
+- delete committed and then threw — the persisted state decides, and the
+  membership is not restored;
+- delete committed, threw, and the verification read failed — pending, fail
+  closed, no dangling live membership, converges on retry;
+- membership tombstoned while the note is live, and note deleted while the
+  membership is live — both converge toward the recorded deletion;
+- both postconditions already satisfied under a stale journal intent — cleanup
+  only, with no timestamp churn on either record;
+- journal cleanup failure — reported as verified-with-cleanup-pending, cleared on
+  the next reconciliation;
+- malformed record, unsupported schema version, and unparseable journal bytes —
+  all fail closed, stay on disk, and block a new operation rather than reading as
+  "no pending work";
+- concurrent retry, sync, and double-tap attempts — one completion, one stable
+  timestamp, no duplicate ordinals, and single-flight re-entry returning the
+  in-flight pass;
+- local hard-delete versus cloud tombstone plus pending-sync intent, including a
+  replay that re-enqueues without re-stamping the tombstone;
+- app-restart replay: in-memory protocol state (single-flight queue, registered
+  note operations) is discarded and only persisted state drives convergence;
+- pre-action gating: a pending operation over the same block, week, or note
+  blocks a conflicting action, while an unrelated action still proceeds;
+- cancellation and validation failures proving zero writes, journal included.
+
+`mobile/tests/log-screen.test.js` covers the same protocol at the screen level
+(verified persisted postconditions instead of a mocked storage call, the pending
+warning with its `Retry recovery` action, and disabled conflicting actions), and
+`mobile/tests/sync-recovery.test.js` / `sync-recovery-ui.test.js` cover the sync
+boundaries below.
+
 ### `mobile/tests/sync-recovery.test.js`
 
 - drives the confirmed #522 claim-4 lifecycle end to end against the real
@@ -754,6 +808,17 @@ but the underlying leak is still worth fixing wherever it's found.
   classification, including that an already-tombstoned remote row is never
   re-tombstoned and that a missing cursor is a conflict on an owned device but not
   on a clean one
+- covers the recovery operation journal's sync boundaries (#696): an unverifiable
+  pending operation and a corrupt journal both fail the pass before it runs, so
+  mid-operation state is never pushed; a resumable operation is reconciled before
+  the pass and the pass then proceeds; reconciliation runs AGAIN after the
+  pull/merge, so an operation a remote change introduced is applied and verified
+  before success may be published; and reconciliation repairs local invariants
+  with no transport configured at all, proving repair needs no network.
+  `sync-recovery-ui.test.js` pins the user-facing half: `maybeSyncCloud` leaves
+  the SYNC phase failed and retryable with the reconciliation cause and the
+  journal record intact, and reports a complete sync through the same code path
+  once nothing is pending
 
 ### `mobile/tests/backup-import.test.js`
 

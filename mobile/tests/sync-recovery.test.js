@@ -1150,3 +1150,145 @@ describe('reconcileAgainstRemote: absent-local remote rows', () => {
     expect(cursorTrust.reason).toBe('absent');
   });
 });
+
+// ── recovery operation journal ↔ sync boundary (#696) ─────────────────────────
+//
+// A cloud pass may not read, push, or report success over workout notes,
+// recovery blocks, or recovery weeks while a recovery lifecycle operation over
+// those records is unresolved. Reconciliation therefore runs on both sides of
+// the pass: before it, so pending work converges before this device publishes
+// anything, and again after the pull/merge, because a remote change can alter
+// an affected record while an operation is pending.
+
+describe('recovery reconciliation at the sync boundary', () => {
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { withRecoveryReconciliation } = require('../hooks/entries/storageMode');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } =
+    require('../storage/entries/keys');
+
+  const pendingRecord = {
+    version: 1,
+    operation_id: 'recop_sync_boundary',
+    created_at: '2026-05-01T00:00:00.000Z',
+    updated_at: '2026-05-01T00:00:00.000Z',
+    stage: 'intent',
+    attempts: 0,
+    last_error: null,
+    type: 'delete_linked_note',
+    block_id: 'rb_sync',
+    week_id: 'rw_sync',
+    note_id: 'wn_sync',
+    requested_deleted_at: '2026-05-01T00:00:00.000Z',
+    intended_outcome: 'membership tombstoned and note deleted',
+  };
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  afterEach(() => {
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  it('an unverifiable pending operation fails the pass instead of reporting it synced', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw_sync', block_id: 'rb_sync', note_id: 'wn_sync', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([pendingRecord]));
+    // The note outcome cannot be read at all: neither survival nor deletion is
+    // evidenced, so the operation must stay pending and fail closed.
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async () => { throw new Error('Note store unavailable'); },
+      deleteNote: async () => {},
+    });
+
+    const pass = jest.fn().mockResolvedValue('synced');
+    await expect(withRecoveryReconciliation(pass)).rejects.toThrow(/pending/i);
+    // The pass never ran: this device does not push mid-operation state.
+    expect(pass).not.toHaveBeenCalled();
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toHaveLength(1);
+  });
+
+  it('a corrupt journal fails the pass rather than being read as "no pending work"', async () => {
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, '{not json');
+    const pass = jest.fn().mockResolvedValue('synced');
+
+    await expect(withRecoveryReconciliation(pass)).rejects.toThrow();
+    expect(pass).not.toHaveBeenCalled();
+  });
+
+  it('reconciles before the pass, so a resumable operation converges and the pass proceeds', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw_sync', block_id: 'rb_sync', note_id: 'wn_sync', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([pendingRecord]));
+    const deleted = [];
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async (id) => ({ exists: !deleted.includes(id), deleted: deleted.includes(id), requiresQueue: false, queued: false }),
+      deleteNote: async (id) => { deleted.push(id); },
+    });
+
+    const pass = jest.fn().mockResolvedValue('synced');
+    await expect(withRecoveryReconciliation(pass)).resolves.toBe('synced');
+
+    expect(deleted).toEqual(['wn_sync']);
+    const weeks = JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY));
+    expect(weeks[0].deleted_at).toBe(pendingRecord.requested_deleted_at);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+    expect(pass).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs reconciliation AGAIN after the pull/merge, before success may be published', async () => {
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([
+      { id: 'rb_post', baseline_note_id: 'wn_b', started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null },
+    ]));
+
+    // The "pull" writes a new pending operation, standing in for a remote
+    // change that lands while local state is mid-transition.
+    const pass = jest.fn().mockImplementation(async () => {
+      await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+        version: 1,
+        operation_id: 'recop_post_pull',
+        created_at: '2026-05-02T00:00:00.000Z',
+        updated_at: '2026-05-02T00:00:00.000Z',
+        stage: 'intent',
+        attempts: 0,
+        last_error: null,
+        type: 'complete_block_with_week',
+        block_id: 'rb_post',
+        week_id: null,
+        note_id: null,
+        requested_completed_at: '2026-05-02T00:00:00.000Z',
+        intended_outcome: 'block completed',
+      }]));
+      return 'synced';
+    });
+
+    await expect(withRecoveryReconciliation(pass)).resolves.toBe('synced');
+
+    // The post-pass reconciliation applied and verified it; success was only
+    // published after that.
+    const blocks = JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY));
+    expect(blocks[0].completed_at).toBe('2026-05-02T00:00:00.000Z');
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+  });
+
+  it('reconciliation needs no network: it repairs local invariants in local-only mode', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw_sync', block_id: 'rb_sync', note_id: 'wn_sync', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([pendingRecord]));
+    await AsyncStorage.setItem('kilo_workout_notes', JSON.stringify([{ id: 'wn_sync', title: 'Week 1' }]));
+    // No registered operations at all: the journal's local default is used, and
+    // no transport is configured for this test.
+    journal.resetRecoveryNoteOperations();
+
+    const result = await journal.reconcileRecoveryOperations();
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(await AsyncStorage.getItem('kilo_workout_notes'))).toEqual([]);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))[0].deleted_at).toBeTruthy();
+  });
+});

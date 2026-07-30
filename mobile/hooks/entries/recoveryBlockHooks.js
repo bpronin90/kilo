@@ -13,35 +13,25 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as Storage from '../../storage/entries';
-// The two atomic multi-record operations (#696 review) are imported directly
-// from the leaf module rather than through the `storage/entries` aggregator:
-// that barrel is outside this issue's Allowed Files, and every other call in
-// this file already goes through the `Storage` aggregator. `RecoveryStorage`
-// merges both into one object for the core functions below — its two extra
-// methods are thin pass-throughs (not captured function references) so a
-// test's `jest.spyOn(recoveryStorageModule, ...)` on the leaf module is still
-// observed at call time, exactly like every other named property on `Storage`
-// already is via its own live re-export bindings.
-import * as RecoveryStorageModule from '../../storage/entries/recoveryStorage';
-import { findActiveBlock, findLiveMembershipForNote, isBlockActive } from '../../lib/data/recoveryBlocks';
+import {
+  RECOVERY_OPERATION_CODES,
+  RECOVERY_OPERATION_TYPES,
+  deleteWorkoutNoteViaRecoveryOperations as deleteNoteViaJournalOperations,
+  reconcileRecoveryOperations,
+  runGuardedRecoveryAction,
+  startRecoveryOperation,
+} from '../../storage/entries/recoveryOperationJournal';
+import { findActiveBlock, findLiveMembershipForNote, isBlockActive, orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
 import { safeNotify } from './shared';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
+// Imported for its module-load side effect as well as nothing else: it
+// registers the mode-aware note-deletion operations into the recovery journal
+// (see hooks/entries/storageMode.js). Without it the journal would fall back to
+// its local-only default even in cloud mode.
+import './storageMode';
+import { reloadWorkoutNotes } from './workoutNoteHooks';
 
-// A `{ ...Storage, ... }` spread would copy every property's function
-// reference by value at module-load time, which breaks `jest.spyOn` on the
-// aggregator's usual re-exports (they rely on a live property lookup on the
-// same namespace object every call, same as `Storage.xxx()` elsewhere in this
-// file). A Proxy forwards every other property straight through to the live
-// `Storage` object and only intercepts the two names that need the extra,
-// not-in-the-aggregator leaf module.
-const RecoveryStorage = new Proxy(Storage, {
-  get(target, prop) {
-    if (prop === 'completeRecoveryBlockWithCurrentWeek' || prop === 'deleteRecoveryWeekWithNote') {
-      return (...args) => RecoveryStorageModule[prop](...args);
-    }
-    return target[prop];
-  },
-});
+const RecoveryStorage = Storage;
 
 let recoveryListeners = [];
 const notifyRecoveryBlocks = () => safeNotify(recoveryListeners);
@@ -54,10 +44,23 @@ export function useRecoveryBlockState() {
   const [weeks, setWeeks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Journaled operations that are not yet verified (#696). Recovery lifecycle
+  // state is not considered ready until reconciliation has run, so a resumed
+  // operation converges before the user can act on the records it touches.
+  const [pendingRecovery, setPendingRecovery] = useState([]);
+  const [recoveryPendingError, setRecoveryPendingError] = useState(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
+    // Reconciliation first, reads second: replaying a pending operation can
+    // change what these two reads return, and publishing the pre-replay values
+    // would show the user a transition that is about to be completed anyway.
+    return reconcileRecoveryOperations()
+      .then((reconciliation) => {
+        setPendingRecovery(reconciliation.pending || []);
+        setRecoveryPendingError(reconciliation.ok ? null : reconciliation.error);
+        return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
+      })
       .then(([b, w]) => {
         setBlocks(b);
         setWeeks(w);
@@ -102,7 +105,21 @@ export function useRecoveryBlockState() {
     }
   }
 
-  return { blocks, weeks, activeBlock, recoveryWeekNumberByNoteId, loading, error, refresh };
+  return {
+    blocks,
+    weeks,
+    activeBlock,
+    recoveryWeekNumberByNoteId,
+    loading,
+    error,
+    refresh,
+    pendingRecovery,
+    recoveryPendingError,
+    // The `Retry recovery` affordance is deliberately the SAME call the initial
+    // mount, the sync boundary, and every pre-action gate make. There is no
+    // separate repair algorithm to keep in step.
+    retryRecovery: refresh,
+  };
 }
 
 // True when `note` may serve as a NEW block's frozen baseline: not a deload
@@ -184,37 +201,41 @@ export function useStartRecoveryBlock() {
 // same definition `nextWeekNumber` builds off of). A no-op (still ok:true)
 // when there is no current week or it is already complete — completion is
 // idempotent, matching the storage layer's own re-completion contract.
-export async function completeCurrentWeekCore(storage, { blockId }) {
-  const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
-  const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
-  if (!current) {
-    return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no current week to complete.' };
-  }
-  if (current.completed_at) return { ok: true, week: current };
-  try {
-    const week = await storage.completeRecoveryWeek(current.id);
-    return { ok: true, week };
-  } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the current week.' };
-  }
+export function completeCurrentWeekCore(storage, { blockId }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+    const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    if (!current) {
+      return { ok: false, code: 'NO_CURRENT_WEEK', error: 'This block has no current week to complete.' };
+    }
+    if (current.completed_at) return { ok: true, week: current };
+    try {
+      const week = await storage.completeRecoveryWeek(current.id);
+      return { ok: true, week };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the current week.' };
+    }
+  });
 }
 
 // Attach the next sequential week. Rejects (without calling storage) when the
 // current week has not been explicitly completed yet — Week 2+ can never be
 // added early, no matter what the caller's own gating missed or what changed
 // underneath it since the Add Week modal was opened.
-export async function addRecoveryWeekCore(storage, { blockId, noteId }) {
-  const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
-  const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
-  if (current && !current.completed_at) {
-    return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'Complete the current week before adding the next one.' };
-  }
-  try {
-    const week = await storage.addRecoveryWeek({ blockId, noteId });
-    return { ok: true, week };
-  } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not add the next recovery week.' };
-  }
+export function addRecoveryWeekCore(storage, { blockId, noteId }) {
+  return runGuardedRecoveryAction({ blockId, noteId }, async () => {
+    const ordered = await storage.loadRecoveryWeeksForBlock(blockId);
+    const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    if (current && !current.completed_at) {
+      return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'Complete the current week before adding the next one.' };
+    }
+    try {
+      const week = await storage.addRecoveryWeek({ blockId, noteId });
+      return { ok: true, week };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not add the next recovery week.' };
+    }
+  });
 }
 
 // Complete the block's current (still-open) week and the block itself as one
@@ -228,125 +249,131 @@ export async function addRecoveryWeekCore(storage, { blockId, noteId }) {
 // own distinct code so the caller can tell "cleanly failed, retry freely"
 // apart from "left in an unknown state, needs manual reconciliation" — never
 // the same generic error either way.
-export async function completeRecoveryBlockCore(storage, { blockId }) {
-  try {
-    const { block } = await storage.completeRecoveryBlockWithCurrentWeek(blockId);
-    return { ok: true, block };
-  } catch (e) {
-    if (RecoveryStorageModule.isRecoveryReconciliationError(e)) {
-      return { ok: false, code: 'RECONCILIATION_FAILED', error: e.message };
+export function completeRecoveryBlockCore(storage, { blockId }) {
+  return startRecoveryOperation({
+    scope: { blockId },
+    // Step 1: validate against persisted state. Every rejection below happens
+    // before any journal record or domain write exists, which is what makes
+    // "cancellation and validation failures write nothing" provable.
+    validate: async () => {
+      const blocks = await storage.loadRecoveryBlocksRaw();
+      const block = blocks.find(b => b.id === blockId);
+      if (!block || block.deleted_at) {
+        return { ok: false, code: 'BLOCK_NOT_FOUND', error: `No recovery block with id ${blockId}.` };
+      }
+      const ordered = orderedLiveWeeks(await storage.loadRecoveryBlockWeeksRaw(), blockId);
+      const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+      const openWeek = current && !current.completed_at ? current : null;
+
+      // Already in the requested final state: no intent, no writes, no
+      // timestamp churn. Replay of a real record reaches the same conclusion.
+      if (block.completed_at && !openWeek) {
+        return { ok: true, skip: true, result: { block } };
+      }
+
+      // One immutable requested timestamp, reused by every replay, so the block
+      // and its current week always converge to the SAME stable completed_at no
+      // matter how many attempts it takes.
+      const requestedCompletedAt = new Date().toISOString();
+      return {
+        ok: true,
+        intent: {
+          type: RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK,
+          block_id: blockId,
+          week_id: openWeek ? openWeek.id : null,
+          note_id: null,
+          requested_completed_at: requestedCompletedAt,
+          intended_outcome: openWeek
+            ? 'block and its open current week both completed at the requested timestamp'
+            : 'block completed at the requested timestamp',
+        },
+      };
+    },
+  }).then(async (result) => {
+    if (!result.ok) return result;
+    // Postconditions are verified; re-read the block so the caller reports what
+    // is actually persisted rather than what it hoped to write.
+    if (result.block) return result;
+    try {
+      const blocks = await storage.loadRecoveryBlocksRaw();
+      return { ...result, block: blocks.find(b => b.id === blockId) || null };
+    } catch {
+      return result;
     }
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not complete the recovery block.' };
-  }
+  });
 }
 
 // Unlink one week membership. Restricted to the latest live week of a still
 // -active block — earlier/history weeks, and any week of a block that has
 // since completed, keep the ordinal sequence gap-free and stable, so unlinking
 // them is refused rather than silently reordering anything.
-export async function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
-  const [blocks, ordered] = await Promise.all([
-    storage.loadRecoveryBlocks(),
-    storage.loadRecoveryWeeksForBlock(blockId),
-  ]);
-  const block = blocks.find(b => b.id === blockId);
-  const latest = ordered.length > 0 ? ordered[ordered.length - 1] : null;
-  if (!block || !isBlockActive(block) || !latest || latest.id !== weekId) {
-    return { ok: false, code: 'NOT_LATEST_WEEK', error: 'Only the most recent week of an active block can be unlinked.' };
-  }
-  try {
-    await storage.deleteRecoveryWeek(weekId);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, code: e?.code || null, error: e?.message || 'Could not unlink this week.' };
-  }
-}
-
-// True when `noteId` is actually gone (hard-removed, as local mode does, or
-// soft-tombstoned, as cloud mode does) — read from the unfiltered raw list so
-// a tombstoned-but-still-present row still counts as gone. Used only to
-// verify a `deleteNote` rejection's assumption below; never used to decide
-// eligibility or any other recovery-domain question.
-async function _noteIsGone(storage, noteId) {
-  const rawNotes = await storage.loadWorkoutNotesRaw();
-  const note = rawNotes.find(n => n.id === noteId);
-  return !note || !!note.deleted_at;
-}
-
-// Cascade a workout-note deletion to its live recovery-week membership,
-// regardless of block state or the week's position — deleting the note itself
-// applies uniformly to any linked week (active or completed-history), unlike
-// the position-restricted explicit Unlink action above. A note with no live
-// membership (re-read fresh, not from a caller-supplied snapshot) just runs
-// the caller's own `deleteNote`, unchanged.
-//
-// When there IS a membership, the tombstone and the note delete run as one
-// atomic storage operation (deleteRecoveryWeekWithNote): either both land, or
-// neither does. `deleteNote` is the caller's own local/cloud-sync-aware note
-// -removal function (e.g. LogScreen's `remove`, which also runs cloud-sync
-// bookkeeping via writeVia) — this module never reimplements or bypasses that
-// path, it is just given the chance to run (or not) as part of the same unit.
-//
-// A rejected `deleteNote` is not simply trusted to mean "the note survived":
-// the storage layer's revert assumes that, but a caller-side failure can
-// still commit the underlying delete and reject afterward for an unrelated
-// reason (e.g. a later sync-bookkeeping step throwing after the local delete
-// already landed). So a rejection is verified against the actual persisted
-// notes before deciding what happened:
-//   - the note still exists → the revert was correct; report the real failure.
-//   - the note is actually gone → the revert wrongly resurrected the
-//     membership; re-tombstone it (retried a few times, since this is the one
-//     case where giving up would recreate the exact dangling-membership state
-//     the contract forbids) and report success with a non-blocking warning,
-//     since the delete the caller asked for did land.
-export async function unlinkNoteForDeleteCore(storage, { noteId, deleteNote }) {
-  const weeks = await storage.loadRecoveryBlockWeeks();
-  const membership = findLiveMembershipForNote(weeks, noteId);
-  if (!membership) {
-    await deleteNote();
-    return { ok: true, week: null };
-  }
-
-  try {
-    await storage.deleteRecoveryWeekWithNote(membership.id, deleteNote);
-    return { ok: true, week: membership };
-  } catch (e) {
-    if (RecoveryStorageModule.isRecoveryReconciliationError(e)) {
-      return { ok: false, code: 'RECONCILIATION_FAILED', error: e.message };
+export function unlinkRecoveryWeekCore(storage, { blockId, weekId }) {
+  return runGuardedRecoveryAction({ blockId, weekId }, async () => {
+    const [blocks, ordered] = await Promise.all([
+      storage.loadRecoveryBlocks(),
+      storage.loadRecoveryWeeksForBlock(blockId),
+    ]);
+    const block = blocks.find(b => b.id === blockId);
+    const latest = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+    if (!block || !isBlockActive(block) || !latest || latest.id !== weekId) {
+      return { ok: false, code: 'NOT_LATEST_WEEK', error: 'Only the most recent week of an active block can be unlinked.' };
     }
-
-    let noteIsGone = false;
     try {
-      noteIsGone = await _noteIsGone(storage, noteId);
-    } catch (_verifyError) {
-      // Could not verify either way; fall back to trusting the storage
-      // layer's own revert (the pre-verification behavior) rather than
-      // guessing wrong in the other direction.
+      await storage.deleteRecoveryWeek(weekId);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, code: e?.code || null, error: e?.message || 'Could not unlink this week.' };
     }
+  });
+}
 
-    if (!noteIsGone) {
-      return { ok: false, code: e?.code || null, error: e?.message || 'Could not delete this note.' };
-    }
-
-    let reconciled = false;
-    let lastReconcileError = null;
-    for (let attempt = 0; attempt < 3 && !reconciled; attempt++) {
-      try {
-        await storage.deleteRecoveryWeek(membership.id);
-        reconciled = true;
-      } catch (reconcileError) {
-        lastReconcileError = reconcileError;
+// Delete a workout note that is (or may be) a recovery week, as one durable
+// journaled operation.
+//
+// This applies uniformly to any linked week — active or completed-history —
+// unlike the position-restricted explicit Unlink action above.
+//
+// The single roll-forward outcome is: membership tombstoned AND note deleted
+// (absent locally, tombstoned plus durable pending-sync intent in cloud mode).
+// There is no rollback path, deliberately. A `deleteNote` call that persisted
+// the removal and then threw is indistinguishable from one that never
+// committed, and a failed verification read is evidence of neither outcome, so
+// restoring the membership could point a live week at a note that is already
+// gone. Replay always converges toward the recorded deletion, and the journal
+// record is retained until both postconditions are read back from storage.
+//
+// A note with NO live membership is a single-domain delete: no journal record
+// is written, because there is no second collection to keep consistent.
+export function unlinkNoteForDeleteCore(storage, { noteId }) {
+  return startRecoveryOperation({
+    scope: { noteId },
+    validate: async () => {
+      const weeks = await storage.loadRecoveryBlockWeeks();
+      const membership = findLiveMembershipForNote(weeks, noteId);
+      if (!membership) {
+        try {
+          await deleteNoteViaJournalOperations(noteId);
+        } catch (e) {
+          return { ok: false, code: RECOVERY_OPERATION_CODES.OPERATION_FAILED, reason: 'NOTE_DELETE_FAILED', error: e?.message || 'Could not delete this note.' };
+        }
+        return { ok: true, skip: true, result: { week: null } };
       }
-    }
-    if (!reconciled) {
       return {
-        ok: false,
-        code: 'RECONCILIATION_FAILED',
-        error: `The note was deleted, but its recovery membership could not be re-removed (${lastReconcileError?.message || 'unknown error'}); recovery data needs manual reconciliation.`,
+        ok: true,
+        intent: {
+          type: RECOVERY_OPERATION_TYPES.DELETE_LINKED_NOTE,
+          block_id: membership.block_id,
+          week_id: membership.id,
+          note_id: noteId,
+          requested_deleted_at: new Date().toISOString(),
+          intended_outcome: 'recovery week membership tombstoned and workout note deleted',
+        },
+        membership,
       };
-    }
-    return { ok: true, week: membership, deleteWarning: e?.message || 'The note was deleted, but a follow-up step failed.' };
-  }
+    },
+  }).then((result) => (result.ok && result.week === undefined
+    ? { ...result, week: result.week_id ? { id: result.week_id, note_id: result.note_id } : null }
+    : result));
 }
 
 export function useRecoveryBlockLifecycle() {
@@ -372,9 +399,24 @@ export function useRecoveryBlockLifecycle() {
   }, []);
   const unlinkNoteForDelete = useCallback(async (params) => {
     const result = await unlinkNoteForDeleteCore(RecoveryStorage, params);
-    if (result.ok) notifyRecoveryBlocks();
+    if (result.ok) {
+      notifyRecoveryBlocks();
+      // This operation is the one that also changes the notebook. Reload (not
+      // refresh) every mounted workout-note instance so the deleted note leaves
+      // the Log tab without re-entering cloud sync from inside a lifecycle
+      // action. Step 7: notify only after the verified result.
+      reloadWorkoutNotes();
+    }
+    return result;
+  }, []);
+  // Step 7 for the failure side, and the `Retry recovery` affordance's engine:
+  // the SAME reconciler startup, sync, and every pre-action gate use.
+  const retryRecovery = useCallback(async () => {
+    const result = await reconcileRecoveryOperations();
+    notifyRecoveryBlocks();
+    reloadWorkoutNotes();
     return result;
   }, []);
 
-  return { completeCurrentWeek, addWeek, completeBlock, unlinkWeek, unlinkNoteForDelete };
+  return { completeCurrentWeek, addWeek, completeBlock, unlinkWeek, unlinkNoteForDelete, retryRecovery };
 }

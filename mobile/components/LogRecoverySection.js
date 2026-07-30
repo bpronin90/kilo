@@ -40,6 +40,14 @@ export function LogRecoverySection({
   // button below disables on ANY non-null value, not just its own key, so two
   // conflicting actions can never both be enabled at once.
   busy = null,
+  // Journaled recovery operations that are not yet verified (#696), and the
+  // shared reconciler behind `Retry recovery`. While anything is pending, the
+  // requested transition is NOT presented as complete and every conflicting
+  // action for the affected records is disabled — but ordinary read access to
+  // the rest of the recovery and workout data is retained.
+  pendingRecovery = [],
+  pendingRecoveryError = null,
+  onRetryRecovery,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -47,11 +55,21 @@ export function LogRecoverySection({
   const [actionError, setActionError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
+  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0 || !!pendingRecoveryError;
+  const pendingMessage = pendingRecoveryError
+    || pendingRecovery?.[0]?.error
+    || 'A recovery change is still being applied on this device.';
+  // One flag for every lifecycle control: a pending operation and an in-flight
+  // action are both reasons no second write may start.
+  const actionsLocked = !!busy || hasPendingRecovery;
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
 
-  if (!activeBlock && completedBlocks.length === 0) return null;
+  // A pending recovery operation must stay visible even when neither an active
+  // block nor any completed block renders — otherwise the retry affordance
+  // would disappear with the records it is trying to repair.
+  if (!activeBlock && completedBlocks.length === 0 && !hasPendingRecovery) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -102,14 +120,43 @@ export function LogRecoverySection({
     );
   };
 
+  const pendingBanner = (
+    <View
+      style={styles.pendingBanner}
+      accessible
+      accessibilityRole="alert"
+      accessibilityLabel={`Recovery change pending. ${pendingMessage}`}
+    >
+      <Text style={styles.pendingBannerText}>{pendingMessage}</Text>
+      <Pressable
+        onPress={() => runAction(() => onRetryRecovery?.())}
+        disabled={!!busy}
+        style={styles.pendingRetryButton}
+        accessibilityRole="button"
+        accessibilityLabel="Retry recovery"
+        accessibilityState={{ disabled: !!busy }}
+      >
+        <Text style={styles.pendingRetryText}>Retry recovery</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
+      {!activeBlock && hasPendingRecovery && (
+        <View style={styles.activeGroup}>
+          <SectionTitle>Recovery</SectionTitle>
+          <Card style={styles.card}>{pendingBanner}</Card>
+        </View>
+      )}
       {activeBlock && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
             <Text style={styles.baselineLabel}>Baseline routine</Text>
             <Text style={styles.baselineTitle}>{activeBlock.baseline_note_title || 'Untitled Routine'}</Text>
+
+            {hasPendingRecovery ? pendingBanner : null}
 
             {actionError ? (
               <View style={styles.errorBanner}>
@@ -137,11 +184,11 @@ export function LogRecoverySection({
                   {week.id === latestWeekId && (
                     <Pressable
                       onPress={() => handleUnlinkWeek(week)}
-                      disabled={!!busy}
+                      disabled={actionsLocked}
                       style={styles.inlineButton}
                       accessibilityRole="button"
                       accessibilityLabel={`Unlink Week ${week.week_number}`}
-                      accessibilityState={{ disabled: !!busy }}
+                      accessibilityState={{ disabled: actionsLocked }}
                     >
                       <Text style={styles.inlineButtonText}>{busy === week.id ? 'Unlinking…' : 'Unlink'}</Text>
                     </Pressable>
@@ -154,11 +201,11 @@ export function LogRecoverySection({
               {canCompleteWeek && (
                 <Pressable
                   onPress={handleCompleteWeek}
-                  disabled={!!busy}
+                  disabled={actionsLocked}
                   style={styles.actionButton}
                   accessibilityRole="button"
                   accessibilityLabel="Complete week"
-                  accessibilityState={{ disabled: !!busy }}
+                  accessibilityState={{ disabled: actionsLocked }}
                 >
                   <Text style={styles.actionButtonText}>
                     {busy === 'week' ? 'Completing…' : 'Complete week'}
@@ -168,22 +215,22 @@ export function LogRecoverySection({
               {canAddWeek && (
                 <Pressable
                   onPress={onOpenAddWeek}
-                  disabled={!!busy}
+                  disabled={actionsLocked}
                   style={styles.actionButton}
                   accessibilityRole="button"
                   accessibilityLabel="Add next recovery week"
-                  accessibilityState={{ disabled: !!busy }}
+                  accessibilityState={{ disabled: actionsLocked }}
                 >
                   <Text style={styles.actionButtonText}>Add week</Text>
                 </Pressable>
               )}
               <Pressable
                 onPress={handleCompleteBlock}
-                disabled={!!busy}
+                disabled={actionsLocked}
                 style={[styles.actionButton, styles.actionButtonPrimary]}
                 accessibilityRole="button"
                 accessibilityLabel="Complete recovery block"
-                accessibilityState={{ disabled: !!busy }}
+                accessibilityState={{ disabled: actionsLocked }}
               >
                 <Text style={styles.actionButtonPrimaryText}>
                   {busy === 'block' ? 'Completing…' : 'Complete recovery block'}
@@ -289,6 +336,34 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
+  },
+  pendingBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: 8,
+  },
+  pendingBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  pendingRetryButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.chipBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  pendingRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
   errorBanner: {
     paddingHorizontal: 12,

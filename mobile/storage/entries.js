@@ -48,6 +48,7 @@ export {
   replaceWorkoutNotesRaw,
   saveWorkoutNoteItem,
   deleteWorkoutNoteItem,
+  loadWorkoutNoteDeletionState,
   loadCurrentWorkoutId,
   saveCurrentWorkoutId,
   clearCurrentWorkoutId,
@@ -82,6 +83,26 @@ export {
   completeRecoveryWeek,
   deleteRecoveryWeek,
 } from './entries/recoveryStorage';
+
+// Durable write-ahead journal for the two multi-record recovery lifecycle
+// operations (#696). Device-local protocol metadata: deliberately absent from
+// the backup/export payload and from SYNC_TABLES.
+export {
+  RECOVERY_JOURNAL_VERSION,
+  RECOVERY_OPERATION_CODES,
+  RECOVERY_OPERATION_STAGES,
+  RECOVERY_OPERATION_TYPES,
+  RecoveryJournalCorruptError,
+  isRecoveryJournalCorruptError,
+  readRecoveryJournal,
+  loadPendingRecoveryOperations,
+  reconcileRecoveryOperations,
+  runGuardedRecoveryAction,
+  startRecoveryOperation,
+  setRecoveryNoteOperations,
+  resetRecoveryNoteOperations,
+  deleteWorkoutNoteViaRecoveryOperations,
+} from './entries/recoveryOperationJournal';
 
 export {
   loadUserProfile,

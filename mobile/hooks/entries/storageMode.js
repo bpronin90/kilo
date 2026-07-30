@@ -1,5 +1,87 @@
 import { getStorageAdapter, getStorageMode, STORAGE_MODES } from '../../storage/entries';
+import {
+  RECOVERY_OPERATION_CODES,
+  reconcileRecoveryOperations,
+  setRecoveryNoteOperations,
+} from '../../storage/entries/recoveryOperationJournal';
+import * as Storage from '../../storage/entries';
+import { loadWorkoutNoteDeletionState as cloudLoadWorkoutNoteDeletionState } from '../../storage/cloud/cloudDomainMethods';
 import { markComplete, markFailed, markRunning, SYNC_PHASE } from '../../storage/syncRecovery';
+
+// ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
+//
+// The recovery operation journal owns the "delete a linked workout note"
+// outcome, but the note deletion itself must go through whichever adapter is
+// active — local hard-delete, or cloud tombstone plus sync-queue bookkeeping.
+// The journal lives in the storage layer and cannot import this hook module, so
+// the mode-aware implementation is registered into it here, once, at load.
+//
+// Registered as thunks that resolve the mode at CALL time, not at load time: the
+// user can sign in, sign out, or switch storage modes while a pending operation
+// is journaled, and reconciliation must always use the adapter that is current
+// when it runs. Local-only remains the default inside the journal, so repairing
+// local invariants never requires network access or a signed-in session.
+function isCloudMode() {
+  return getStorageMode() === STORAGE_MODES.CLOUD;
+}
+
+setRecoveryNoteOperations({
+  // The deletion-outcome probe is not an adapter method: the adapter surface is
+  // pinned 1:1 against the local adapter and describes DOMAIN calls, while this
+  // is journal protocol machinery. It is selected by mode directly instead.
+  loadNoteState: (noteId) => (isCloudMode()
+    ? cloudLoadWorkoutNoteDeletionState(noteId)
+    : Storage.loadWorkoutNoteDeletionState(noteId)),
+  deleteNote: async (noteId) => {
+    await writeVia('deleteWorkoutNoteItem', Storage.deleteWorkoutNoteItem, noteId);
+    // The cloud adapter tombstones the row but does not own the "current
+    // routine" pointer, so a cloud-mode delete would otherwise leave the Log
+    // tab pointing at a note that no longer exists. Local mode already does
+    // this inside deleteWorkoutNoteItem; repeating it is idempotent.
+    const currentId = await Storage.loadCurrentWorkoutId();
+    if (currentId === noteId) await Storage.clearCurrentWorkoutId();
+  },
+});
+
+// Raised when a sync pass cannot honestly be reported as complete because a
+// recovery lifecycle operation over workout notes, recovery blocks, or recovery
+// weeks is still unresolved. Carries the reconciliation cause so the existing
+// failed/retryable sync surface can explain WHY rather than showing a bare
+// transport error.
+export class RecoveryReconciliationPendingError extends Error {
+  constructor(reconciliation) {
+    super(
+      reconciliation?.error ||
+        'A recovery lifecycle operation is still pending, so recovery data is not fully synced.'
+    );
+    this.name = 'RecoveryReconciliationPendingError';
+    this.code = reconciliation?.code || RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING;
+    this.pending = reconciliation?.pending || [];
+    if (reconciliation?.cause != null) this.cause = reconciliation.cause;
+  }
+}
+
+// Wrap a cloud sync/bootstrap runner in the two reconciliation boundaries the
+// #696 contract requires:
+//
+//   * BEFORE the pass, so a pending operation is replayed to its final outcome
+//     before this device reads or pushes workout notes, recovery blocks, or
+//     recovery weeks. Pushing mid-operation state would publish a partial
+//     transition to every other device.
+//   * AFTER the pull/merge and before publishing success, because a remote
+//     change can alter an affected record while an operation is pending.
+//
+// A still-pending operation fails the pass. That is deliberate: reporting
+// "synced" over a collection this device knows is mid-transition is the same
+// dishonesty the recovery-table isolation in syncAdapter.js exists to avoid.
+export async function withRecoveryReconciliation(run) {
+  const before = await reconcileRecoveryOperations();
+  if (!before.ok) throw new RecoveryReconciliationPendingError(before);
+  const result = await run();
+  const after = await reconcileRecoveryOperations();
+  if (!after.ok) throw new RecoveryReconciliationPendingError(after);
+  return result;
+}
 
 export async function maybeSyncCloud() {
   if (getStorageMode() !== STORAGE_MODES.CLOUD) return;
@@ -7,7 +89,7 @@ export async function maybeSyncCloud() {
   if (typeof adapter.sync !== 'function') return;
   markRunning(SYNC_PHASE.SYNC);
   try {
-    await adapter.sync();
+    await withRecoveryReconciliation(() => adapter.sync());
     markComplete(SYNC_PHASE.SYNC);
   } catch (error) {
     // Offline or transient failure: keep the local cache, expose a retryable
@@ -16,12 +98,12 @@ export async function maybeSyncCloud() {
   }
 }
 
-export function readVia(method, localFn) {
+export function readVia(method, localFn, ...args) {
   if (getStorageMode() === STORAGE_MODES.CLOUD) {
     const adapter = getStorageAdapter();
-    if (typeof adapter[method] === 'function') return adapter[method]();
+    if (typeof adapter[method] === 'function') return adapter[method](...args);
   }
-  return localFn();
+  return localFn(...args);
 }
 
 export function writeVia(method, localFn, ...args) {

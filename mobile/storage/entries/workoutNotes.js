@@ -120,6 +120,26 @@ export async function deleteWorkoutNoteItem(id) {
   }
 }
 
+// Deletion-outcome probe for the recovery operation journal (#696).
+//
+// Answers one question from persisted state: is this note gone? Local mode hard
+// -removes, so "absent" is the whole answer and there is no sync queue to keep
+// intent in. `requiresQueue: false` tells the reconciler not to look for one.
+//
+// Deliberately reads the RAW list: a tombstone written by a previous cloud
+// session that this device is now reading in local mode still counts as gone,
+// and must never be mistaken for a live note the journal should re-delete.
+export async function loadWorkoutNoteDeletionState(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const note = list.find(n => n?.id === id);
+  return {
+    exists: !!note,
+    deleted: !note || !!note.deleted_at,
+    requiresQueue: false,
+    queued: false,
+  };
+}
+
 // ── current workout selection ──────────────────────────────────────────────────
 
 export async function loadCurrentWorkoutId() {

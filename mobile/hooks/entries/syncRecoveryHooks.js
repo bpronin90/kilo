@@ -20,6 +20,7 @@ import {
 } from '../../storage/entries/localDataOwner';
 import { fetchConsentStatus } from '../../storage/cloud/consent';
 import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
+import { withRecoveryReconciliation } from './storageMode';
 
 // The Cloud Sync authorization seam (#487).
 //
@@ -106,8 +107,15 @@ async function selectSyncRunner(consent, userId, { ownedDevice = false } = {}) {
 
   const serverGeneration = Number(consent?.cloud_rebuild_generation ?? 0);
   const deviceGeneration = await getCloudRebuildGeneration(userId);
+  // Every SYNC-phase runner this function returns is wrapped in the recovery
+  // reconciliation boundaries (#696): replay pending recovery operations before
+  // this device reads or pushes workout notes / recovery blocks / recovery
+  // weeks, and again after the pull/merge before the phase may be published as
+  // complete. An operation that still cannot be verified fails the phase, which
+  // surfaces through the existing failed/retryable sync state with the
+  // reconciliation cause attached — never as a silent "Fully synced".
   if (userId && serverGeneration > deviceGeneration) {
-    return async () => {
+    return async () => withRecoveryReconciliation(async () => {
       const result = await rebuildCloudCopy();
       if (result && result.ok === false) return result;
       // Advance this device's generation only after the rebuild AND its
@@ -116,9 +124,9 @@ async function selectSyncRunner(consent, userId, { ownedDevice = false } = {}) {
       // idempotent), mirroring how the bootstrap runner treats its owner write.
       await setCloudRebuildGeneration(userId, serverGeneration);
       return result;
-    };
+    });
   }
-  return () => adapter.sync({ ownedDevice });
+  return () => withRecoveryReconciliation(() => adapter.sync({ ownedDevice }));
 }
 
 export function useSyncRecovery(user = null) {
