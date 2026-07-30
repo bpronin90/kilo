@@ -155,7 +155,8 @@ Nothing below is counted:
 - exercises skipped for that session
 - skipped sets inside a row (`80 4,-` counts only the 4)
 - rows the parser could not read
-- sets with zero or missing reps (or zero duration, for timed work)
+- sets with zero, missing, or nonsensical reps (or duration, for timed work)
+- totals that overflow past the largest number the app can represent — an impossible total is dropped rather than reported as a completed workout
 - notes that fail the parser's size or structure contract — those report an error state instead of a comparison
 
 #### The comparisons
@@ -178,16 +179,16 @@ Percentages can exceed 100% — if you came back stronger, the number says so. A
 | **Baseline met** | Every metric that applies to that exercise is at or above 100%. A weighted exercise needs **both** top load and volume; either one alone is not enough. |
 | **Rebuilding** | Comparable work exists but at least one metric is still short. The result names exactly which one (top load, volume, total reps, or total duration). |
 | **Not reintroduced** | That baseline exercise has no comparable completed work this week — not logged at all, only warmed up, or skipped. |
-| **Added during recovery** | Logged this week with no baseline counterpart: mobility work, a rehab accessory, or a substitute lift. Listed separately with its real numbers and **no** percentage, because there is nothing to compare it to. |
+| **Added during recovery** | Logged this week with no baseline counterpart: mobility work, a rehab accessory, or a substitute lift. Listed separately with its real numbers and **no** percentage, because there is nothing to compare it to. An addition that produced no usable number at all is left out rather than listed empty. |
 | **Not comparable** | Work exists but cannot be measured against the frozen row (see below). Never silently reported as Rebuilding, which would imply a measurement that was never taken. |
 
 A comparison is reported as **Not comparable** when:
 
+- the frozen row cannot supply a usable number for every dimension it is judged on — an unrecognized exercise family, or a value that is missing, zero, or impossible. Old snapshots are never rewritten, so this is reported rather than repaired. Whether a baseline is usable depends only on the snapshot, so the same block reports the same problem whether or not you happened to train that exercise this week.
 - the exercise changed family — bodyweight chin-ups this week against a weighted chin-up baseline, for example. Two different measurements; a ratio across them would be fiction.
 - the week's work carries none of the numbers the baseline family needs, such as assisted-only reps under a weighted baseline.
-- the frozen value is missing or zero, so a ratio would divide by zero. Old snapshots are never rewritten, so this is reported rather than repaired.
 
-Whole-block error states are reported the same explicit way: no snapshot on the block, a snapshot written by a different baseline format, a week whose linked note is missing, and a note that fails the parser contract each produce a named state instead of a comparison against zero.
+Whole-block error states are reported the same explicit way: no snapshot on the block, a snapshot written by a different baseline format, a snapshot of a supported format whose contents are unreadable, a week whose linked note is missing, and a note that fails the parser contract each produce a named state instead of a comparison against zero. The recorded format version is always read first, so a snapshot from a future version of the app is reported as unsupported rather than as missing.
 
 #### Limitations
 

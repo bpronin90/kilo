@@ -69,9 +69,12 @@ export const RECOVERY_UNAVAILABLE_REASONS = Object.freeze({
   // The week's completed work carries none of the numbers the baseline class
   // needs (e.g. an assisted-only session against a weighted baseline).
   NO_COMPARABLE_METRIC: 'no_comparable_metric',
-  // The frozen row is missing or non-positive for a dimension, so a ratio would
-  // divide by zero. Old snapshots are never rewritten, so this is reported, not
-  // repaired.
+  // The frozen row cannot supply a usable number for every dimension it is
+  // judged on: an unrecognized exercise family, or a value that is missing,
+  // non-positive, or non-finite, so a ratio would divide by zero or produce
+  // nonsense. Old snapshots are never rewritten, so this is reported, not
+  // repaired — and it is decided from the snapshot alone, independent of what
+  // the week happened to log.
   BASELINE_VALUE_UNUSABLE: 'baseline_value_unusable',
 });
 
@@ -98,6 +101,22 @@ const MET_EPSILON = 1e-9;
 
 // ── work aggregation ──────────────────────────────────────────────────────────
 
+// Every number this module treats as evidence must clear this bar. `Infinity`
+// and `NaN` are not work: a set carrying one is invalid input, and an aggregate
+// that overflows to `Infinity` (four sets at 1e307 is enough) would otherwise
+// produce an infinite ratio and mark an exercise `baseline_met` off nonsense.
+// Overflow is reachable from values the parser itself accepts, so the guard sits
+// on both the individual sets and the sums built from them.
+function _isPositiveFinite(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+// Assistance is signed (it can be negative) and only ever used to decide the
+// exercise family, never summed, so it needs finiteness rather than positivity.
+function _isUsableAssistance(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value !== 0;
+}
+
 // Classify a set list into the one comparable family it belongs to.
 //
 // Kept deliberately in lockstep with `_detectExerciseClass` in
@@ -109,10 +128,9 @@ const MET_EPSILON = 1e-9;
 // thing.
 function _detectExerciseClass(sets) {
   if (!sets || sets.length === 0) return null;
-  if (sets.some(s => (s.weight_value != null && s.weight_value > 0) ||
-                     (s.assistance_value != null && s.assistance_value !== 0))) return 'weighted';
-  if (sets.some(s => s.duration_seconds != null && s.duration_seconds > 0)) return 'time_based';
-  if (sets.some(s => s.rep_count != null && s.rep_count > 0)) return 'reps_only';
+  if (sets.some(s => _isPositiveFinite(s.weight_value) || _isUsableAssistance(s.assistance_value))) return 'weighted';
+  if (sets.some(s => _isPositiveFinite(s.duration_seconds))) return 'time_based';
+  if (sets.some(s => _isPositiveFinite(s.rep_count))) return 'reps_only';
   return null;
 }
 
@@ -123,9 +141,7 @@ function _detectExerciseClass(sets) {
 function _completedSets(sets) {
   return (sets || []).filter(s => {
     if (!s || s.skipped) return false;
-    const hasReps = s.rep_count != null && s.rep_count > 0;
-    const hasDuration = s.duration_seconds != null && s.duration_seconds > 0;
-    return hasReps || hasDuration;
+    return _isPositiveFinite(s.rep_count) || _isPositiveFinite(s.duration_seconds);
   });
 }
 
@@ -172,49 +188,54 @@ export function aggregateRecoveryWeekWork(sections) {
   return work;
 }
 
+const NO_METRICS = Object.freeze({ values: {}, sets_completed: 0 });
+
+// Every dimension must survive the finiteness bar after aggregation too, not
+// just per set. A sum that overflowed is not partial evidence — dropping the
+// whole row leaves the exercise `not_comparable` instead of letting `Infinity`
+// through as a measurement.
+function _checkedMetrics(values, sets_completed) {
+  if (Object.values(values).some(v => !_isPositiveFinite(v))) return NO_METRICS;
+  return { values, sets_completed };
+}
+
 // Reduce one exercise's completed sets to the values its family is judged on.
 // `values` holds only the dimensions that apply; a family whose sets carry none
-// of its own numbers (assisted-only work under a weighted baseline) yields an
-// empty `values` and is reported as not comparable rather than as zero work.
+// of its own usable numbers (assisted-only work under a weighted baseline)
+// yields an empty `values` and is reported as not comparable rather than as
+// zero work.
 function _classMetrics(exercise_class, completed) {
   if (exercise_class === 'weighted') {
     // Working sets only: an unloaded or unrepped set inside an otherwise
     // weighted session carries no comparable top-load or volume signal.
     const working = completed.filter(
-      s => s.weight_value != null && s.weight_value > 0 && s.rep_count != null && s.rep_count > 0
+      s => _isPositiveFinite(s.weight_value) && _isPositiveFinite(s.rep_count)
     );
-    if (working.length === 0) return { values: {}, sets_completed: 0 };
-    return {
-      values: {
-        top_load: Math.max(...working.map(s => s.weight_value)),
-        volume: working.reduce((sum, s) => sum + s.weight_value * s.rep_count, 0),
-      },
-      sets_completed: working.length,
-    };
+    if (working.length === 0) return NO_METRICS;
+    return _checkedMetrics({
+      top_load: Math.max(...working.map(s => s.weight_value)),
+      volume: working.reduce((sum, s) => sum + s.weight_value * s.rep_count, 0),
+    }, working.length);
   }
 
   if (exercise_class === 'reps_only') {
-    const repped = completed.filter(s => s.rep_count != null && s.rep_count > 0);
-    if (repped.length === 0) return { values: {}, sets_completed: 0 };
-    return {
-      values: { total_reps: repped.reduce((sum, s) => sum + s.rep_count, 0) },
-      sets_completed: repped.length,
-    };
+    const repped = completed.filter(s => _isPositiveFinite(s.rep_count));
+    if (repped.length === 0) return NO_METRICS;
+    return _checkedMetrics(
+      { total_reps: repped.reduce((sum, s) => sum + s.rep_count, 0) },
+      repped.length
+    );
   }
 
-  const held = completed.filter(s => s.duration_seconds != null && s.duration_seconds > 0);
-  if (held.length === 0) return { values: {}, sets_completed: 0 };
-  return {
-    values: { total_seconds: held.reduce((sum, s) => sum + s.duration_seconds, 0) },
-    sets_completed: held.length,
-  };
+  const held = completed.filter(s => _isPositiveFinite(s.duration_seconds));
+  if (held.length === 0) return NO_METRICS;
+  return _checkedMetrics(
+    { total_seconds: held.reduce((sum, s) => sum + s.duration_seconds, 0) },
+    held.length
+  );
 }
 
 // ── per-exercise comparison ───────────────────────────────────────────────────
-
-function _isPositiveNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0;
-}
 
 // One dimension of one exercise. `ratio` keeps the exact factual value and may
 // exceed 1 — a lifter who came back stronger did come back stronger, and a
@@ -225,9 +246,6 @@ function _isPositiveNumber(value) {
 // honest next to `met`: 99.6% of baseline reads as 99%, never as a "100%" beside
 // a Rebuilding chip. The epsilon case is clamped up for the same reason.
 function _metricRow(metric, current, baseline) {
-  if (!_isPositiveNumber(baseline)) {
-    return { metric, current: current ?? null, baseline: baseline ?? null, ratio: null, percent: null, met: false };
-  }
   const ratio = current / baseline;
   const met = ratio >= 1 - MET_EPSILON;
   let percent = Math.floor(ratio * 100);
@@ -256,6 +274,32 @@ function _compareExercise(baselineRow, weekWork) {
     baseline_sets_completed: baselineRow.sets_completed ?? null,
   };
 
+  const unavailable = (reason) => ({
+    ...base,
+    state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE,
+    metrics: metricNames.map(metric => ({
+      metric,
+      current: null,
+      baseline: baselineValues[metric],
+      ratio: null,
+      percent: null,
+      met: false,
+    })),
+    unmet: [],
+    sets_completed: weekWork ? weekWork.sets_completed : 0,
+    unavailable_reason: reason,
+  });
+
+  // Whether the frozen row can be compared against at all is a property of the
+  // snapshot, so it is settled before anything about this week is consulted. An
+  // imported or legacy snapshot with an unrecognized family or an unusable value
+  // must report the same defect whether or not the lifter happened to log that
+  // exercise — otherwise baseline validity would appear to depend on week
+  // activity.
+  if (metricNames.length === 0 || metricNames.some(m => !_isPositiveFinite(baselineValues[m]))) {
+    return unavailable(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
+  }
+
   // Nothing comparable logged: the baseline row still reports its dimensions so
   // the UI can say what has not come back yet.
   if (!weekWork) {
@@ -269,30 +313,11 @@ function _compareExercise(baselineRow, weekWork) {
     };
   }
 
-  const unavailable = (reason) => ({
-    ...base,
-    state: RECOVERY_COMPARISON_STATES.NOT_COMPARABLE,
-    metrics: metricNames.map(metric => ({
-      metric,
-      current: null,
-      baseline: baselineValues[metric],
-      ratio: null,
-      percent: null,
-      met: false,
-    })),
-    unmet: [],
-    sets_completed: weekWork.sets_completed,
-    unavailable_reason: reason,
-  });
-
   if (weekWork.exercise_class !== exercise_class) {
     return unavailable(RECOVERY_UNAVAILABLE_REASONS.EXERCISE_CLASS_CHANGED);
   }
-  if (metricNames.length === 0 || metricNames.some(m => weekWork.values[m] == null)) {
+  if (metricNames.some(m => !_isPositiveFinite(weekWork.values[m]))) {
     return unavailable(RECOVERY_UNAVAILABLE_REASONS.NO_COMPARABLE_METRIC);
-  }
-  if (metricNames.some(m => !_isPositiveNumber(baselineValues[m]))) {
-    return unavailable(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
   }
 
   const metrics = metricNames.map(metric =>
@@ -368,6 +393,12 @@ export function compareWeekWorkToBaseline(baseline, work) {
   const baselineKeys = new Set(baselineRows.map(row => row.key));
   const added = [...work.values()]
     .filter(w => !baselineKeys.has(w.key))
+    // An added exercise exists to report real numbers. One that produced no
+    // usable dimension — assisted-only work, or an aggregate that overflowed —
+    // would be a name with every field null, which is noise rather than
+    // evidence. A baseline exercise in the same position is kept, because there
+    // the absence of a comparison is itself the finding.
+    .filter(w => Object.keys(w.values).length > 0)
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map(_addedExercise);
 
@@ -437,11 +468,18 @@ export function deriveRecoveryComparison({ block, weeks = [], notes = [] } = {})
     weeks: [],
   });
 
-  if (!block || !baseline || !Array.isArray(baseline.exercises)) {
+  if (!block || !baseline) {
     return empty(RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE);
   }
+  // The version is the discriminator, so it is read before this module assumes
+  // anything about the snapshot's shape: a future format that no longer carries
+  // an `exercises` array is present-but-unsupported, not missing.
   if (baseline.version !== RECOVERY_BASELINE_VERSION) {
     return empty(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
+  }
+  // Right version, unreadable contents: there is no snapshot to compare against.
+  if (!Array.isArray(baseline.exercises)) {
+    return empty(RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE);
   }
 
   const notesById = _notesById(notes);

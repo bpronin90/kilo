@@ -814,7 +814,17 @@ what a lifter's log actually produces:
   against zero);
 - `Not comparable` rather than a fabricated ratio when the exercise changed
   family between baseline and week, when the week's work carries none of the
-  baseline family's numbers, or when a frozen value would divide by zero;
+  baseline family's numbers, or when the frozen row is unusable — and baseline
+  usability decided from the snapshot alone, so a quiet week and a logged week
+  report the same reason instead of the quiet one reading as
+  `not_reintroduced`;
+- non-finite evidence rejected: individual `Infinity`/`NaN` sets are excluded,
+  and an aggregate that overflows (four sets at 1e307, from values the parser
+  itself accepts) is dropped rather than emitted as an infinite volume that
+  would falsely satisfy `baseline_met`;
+- the baseline format version read before any assumption about snapshot shape,
+  so a future-version snapshot without an `exercises` array is
+  `baseline_unsupported` rather than `baseline_unavailable`;
 - substitutions and mobility additions listed as `Added during recovery` with
   real numbers and no baseline percentage, while the lift they stood in for
   stays `Not reintroduced`;

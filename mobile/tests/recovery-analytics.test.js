@@ -322,6 +322,116 @@ describe('weighted comparison — missing and non-comparable work', () => {
   });
 });
 
+describe('baseline validity is a property of the snapshot alone', () => {
+  // An unusable frozen row must report the same defect whether or not the lifter
+  // happened to log that exercise. Reporting it as Not reintroduced when the week
+  // is quiet would make baseline validity look like it depends on week activity.
+  const unusable = (row) => ({ version: RECOVERY_BASELINE_VERSION, exercises: [row] });
+
+  test('an unusable frozen value is reported even when the week logs nothing', () => {
+    const baseline = unusable(
+      { key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, volume: 0, sets_completed: 1 }
+    );
+    const row = rowFor(deriveRecoveryWeekComparison({ baseline, rawText: '' }), 'bench');
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+    expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
+    expect(row.sets_completed).toBe(0);
+  });
+
+  test('the same snapshot reports the same reason logged or not', () => {
+    const baseline = unusable(
+      { key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: 100, sets_completed: 1 }
+    );
+    const quiet = rowFor(deriveRecoveryWeekComparison({ baseline, rawText: '' }), 'bench');
+    const logged = rowFor(deriveRecoveryWeekComparison({ baseline, rawText: '-Bench\n- 100 10' }), 'bench');
+    expect(quiet.state).toBe(logged.state);
+    expect(quiet.unavailable_reason).toBe(logged.unavailable_reason);
+    expect(logged.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
+  });
+
+  test('a non-finite frozen value is never divided by', () => {
+    const baseline = unusable(
+      { key: 'bench', name: 'Bench', exercise_class: 'weighted', top_weight: Infinity, volume: 1000, sets_completed: 1 }
+    );
+    const row = rowFor(deriveRecoveryWeekComparison({ baseline, rawText: '-Bench\n- 100 10' }), 'bench');
+    expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
+    expect(row.metrics.every(m => m.ratio === null)).toBe(true);
+  });
+
+  test('an unrecognized frozen exercise family is reported, not silently empty', () => {
+    const baseline = unusable({ key: 'bench', name: 'Bench', exercise_class: 'mystery', sets_completed: 1 });
+    for (const rawText of ['', '-Bench\n- 100 10']) {
+      const row = rowFor(deriveRecoveryWeekComparison({ baseline, rawText }), 'bench');
+      expect(row.state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+      expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.BASELINE_VALUE_UNUSABLE);
+    }
+  });
+});
+
+describe('non-finite work is never evidence', () => {
+  // The parser's grammar rejects absurdly long digit strings outright, but it
+  // does accept values near the float ceiling, and their SUM can overflow to
+  // Infinity. An infinite volume must not read as a completed workout.
+  const HUGE = `1${'0'.repeat(307)}`;
+
+  test('an aggregate that overflows to Infinity is dropped, not reported as work', () => {
+    const bench = work(`-Bench\n- ${HUGE} 5,5,5,5`).get('bench');
+    expect(bench.exercise_class).toBe('weighted');
+    expect(bench.values).toEqual({});
+    expect(bench.sets_completed).toBe(0);
+  });
+
+  test('an overflowing week is Not comparable, never Baseline met', () => {
+    const result = compareOneWeek(WEIGHTED_BASELINE, `-Bench\n- ${HUGE} 5,5,5,5`);
+    const row = rowFor(result, 'bench');
+    expect(row.state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+    expect(row.unavailable_reason).toBe(RECOVERY_UNAVAILABLE_REASONS.NO_COMPARABLE_METRIC);
+    expect(row.metrics.every(m => m.ratio === null && m.met === false)).toBe(true);
+  });
+
+  test('an overflowing recovery-only exercise is dropped rather than listed empty', () => {
+    const result = compareOneWeek(WEIGHTED_BASELINE, `-Sled Push\n- ${HUGE} 5,5,5,5`);
+    expect(result.added).toEqual([]);
+    expect(result.summary.added_during_recovery).toBe(0);
+  });
+
+  test('an added exercise with no usable dimension is dropped, unlike a baseline one', () => {
+    // Assisted-only work yields no weighted metric. As an addition it is a
+    // name with every field null, so it is dropped; as a baseline exercise the
+    // missing comparison is itself the finding, so that row is kept.
+    const baseline = captureRecoveryBaselineFromText('-Chin-up\n- 25 5');
+    const weekWork = aggregateRecoveryWeekWork([
+      synthSection('Chin-up', [[assistedSet(60, 8)]]),
+      synthSection('Assisted Dip', [[assistedSet(60, 8)]]),
+    ]);
+    const result = compareWeekWorkToBaseline(baseline, weekWork);
+    expect(result.added).toEqual([]);
+    expect(rowFor(result, 'chin-up').state).toBe(RECOVERY_COMPARISON_STATES.NOT_COMPARABLE);
+  });
+
+  test('individual non-finite sets are excluded from completed work', () => {
+    const w = aggregateRecoveryWeekWork([
+      synthSection('Plank', [[durSet(Infinity), durSet(30)]]),
+    ]).get('plank');
+    expect(w.values.total_seconds).toBe(30);
+    expect(w.sets_completed).toBe(1);
+  });
+
+  test('an exercise whose every set is non-finite is absent entirely', () => {
+    const w = aggregateRecoveryWeekWork([
+      synthSection('Plank', [[durSet(Infinity), durSet(NaN)]]),
+    ]);
+    expect(w.has('plank')).toBe(false);
+  });
+
+  test('a non-finite rep count cannot inflate reps-only work', () => {
+    const w = aggregateRecoveryWeekWork([
+      synthSection('Push-ups', [[{ weight_value: null, rep_count: Infinity, duration_seconds: null, assistance_value: null }]]),
+    ]);
+    expect(w.has('push-ups')).toBe(false);
+  });
+});
+
 // ── reps-only and timed comparison ────────────────────────────────────────────
 
 describe('reps-only comparison', () => {
@@ -435,6 +545,18 @@ describe('deriveRecoveryComparison — block and baseline states', () => {
     expect(result.status).toBe(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
     expect(result.weeks).toEqual([]);
     expect(result.baseline_version).toBe(RECOVERY_BASELINE_VERSION + 1);
+  });
+
+  test('a future format that dropped the exercises array is unsupported, not missing', () => {
+    // The version is the discriminator: a present snapshot this module cannot
+    // read must not be reported as though the block never had one.
+    const block = blockWith({ version: RECOVERY_BASELINE_VERSION + 1, lifts: {} });
+    expect(deriveRecoveryComparison({ block }).status).toBe(RECOVERY_COMPARISON_STATUS.BASELINE_UNSUPPORTED);
+  });
+
+  test('a supported-version snapshot with unreadable contents is unavailable', () => {
+    const block = blockWith({ version: RECOVERY_BASELINE_VERSION, exercises: 'corrupt' });
+    expect(deriveRecoveryComparison({ block }).status).toBe(RECOVERY_COMPARISON_STATUS.BASELINE_UNAVAILABLE);
   });
 
   test('an empty snapshot still derives weeks, with all work reported as added', () => {
