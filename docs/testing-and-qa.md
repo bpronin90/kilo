@@ -793,6 +793,49 @@ the same React busy state), and
 `mobile/tests/sync-recovery.test.js` / `sync-recovery-ui.test.js` cover the sync
 boundaries below.
 
+### `mobile/tests/recovery-analytics.test.js`
+
+Covers the per-exercise return-to-baseline comparison (#697) — the pure
+derivation layer only; there is no UI to render yet. Fixtures are written as
+historical-style notes rather than hand-built result objects, so the suite pins
+what a lifter's log actually produces:
+
+- weighted exercises reaching `Baseline met` only when top load AND volume are
+  both at baseline, with load-only and volume-only weeks staying `Rebuilding`
+  and naming the unmet dimension;
+- reps-only and timed exercises judged on their single applicable metric, with
+  no load dimension invented for them;
+- ratios above baseline retaining their factual value uncapped, and a fractional
+  shortfall flooring so 99.6% can never render as "100%" beside a `Rebuilding`
+  state;
+- exclusions that must not inflate work: warmup sections, whole-exercise skips,
+  within-row skipped sets, unparsed rows, and notes rejected by the parser's
+  size or structure contract (which report `note_unreadable`, never a comparison
+  against zero);
+- `Not comparable` rather than a fabricated ratio when the exercise changed
+  family between baseline and week, when the week's work carries none of the
+  baseline family's numbers, or when the frozen row is unusable — and baseline
+  usability decided from the snapshot alone, so a quiet week and a logged week
+  report the same reason instead of the quiet one reading as
+  `not_reintroduced`;
+- non-finite evidence rejected: individual `Infinity`/`NaN` sets are excluded,
+  and an aggregate that overflows (four sets at 1e307, from values the parser
+  itself accepts) is dropped rather than emitted as an infinite volume that
+  would falsely satisfy `baseline_met`;
+- the baseline format version read before any assumption about snapshot shape,
+  so a future-version snapshot without an `exercises` array is
+  `baseline_unsupported` rather than `baseline_unavailable`;
+- substitutions and mobility additions listed as `Added during recovery` with
+  real numbers and no baseline percentage, while the lift they stood in for
+  stays `Not reintroduced`;
+- deterministic aggregation of the same normalized exercise across an A/B week
+  and across repeated sessions in one note;
+- week results following membership order — not note dates, titles, or the order
+  weeks were supplied — with tombstoned and other-block weeks excluded;
+- purity: neither the notes nor the frozen snapshot are mutated, repeated
+  derivation is identical, and switching the lb/kg display preference cannot
+  change a state or a percentage.
+
 ### `mobile/tests/sync-recovery.test.js`
 
 - drives the confirmed #522 claim-4 lifecycle end to end against the real
