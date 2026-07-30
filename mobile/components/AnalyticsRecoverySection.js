@@ -56,6 +56,39 @@ function _noteTitle(notesById, noteId) {
   return note?.title || 'Untitled Routine';
 }
 
+// Full accessible description of one exercise row, for VoiceOver/TalkBack.
+// The row collapses its children into a single accessible element (below), so
+// the state chip alone is not enough — the Load/Volume/Reps/Time evidence and
+// any unavailable/not-reintroduced explanation must be spoken too, since that
+// evidence is the entire point of this surface (#698 review).
+function _rowAccessibilityLabel(row, unit) {
+  const meta = STATE_META[row.state] || STATE_META[RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED];
+  const parts = [`${row.name}, ${meta.label}`];
+
+  if (
+    row.state === RECOVERY_COMPARISON_STATES.BASELINE_MET ||
+    row.state === RECOVERY_COMPARISON_STATES.REBUILDING
+  ) {
+    for (const m of row.metrics) {
+      parts.push(
+        `${METRIC_LABELS[m.metric] || m.metric} ${m.percent}%, ${_formatMetricNumber(m.metric, m.current, unit)} of ${_formatMetricNumber(m.metric, m.baseline, unit)} baseline`
+      );
+    }
+  } else if (row.state === RECOVERY_COMPARISON_STATES.ADDED_DURING_RECOVERY) {
+    for (const m of row.metrics) {
+      parts.push(`${METRIC_LABELS[m.metric] || m.metric} ${_formatMetricNumber(m.metric, m.current, unit)}`);
+    }
+  } else if (row.state === RECOVERY_COMPARISON_STATES.NOT_COMPARABLE) {
+    parts.push(UNAVAILABLE_REASON_TEXT[row.unavailable_reason] || 'This exercise could not be compared.');
+  } else if (row.state === RECOVERY_COMPARISON_STATES.NOT_REINTRODUCED) {
+    parts.push(
+      `Baseline ${row.metrics.map(m => `${METRIC_LABELS[m.metric]} ${_formatMetricNumber(m.metric, m.baseline, unit)}`).join(', ')}`
+    );
+  }
+
+  return parts.join('. ');
+}
+
 function MetricCell({ metric, unit }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -98,7 +131,7 @@ function ExerciseRow({ row, unit }) {
     <View
       style={styles.exerciseRow}
       accessible
-      accessibilityLabel={`${row.name}, ${meta.label}`}
+      accessibilityLabel={_rowAccessibilityLabel(row, unit)}
     >
       <View style={styles.exerciseRowHeader}>
         <Text style={styles.exerciseRowName} numberOfLines={1}>{row.name}</Text>
@@ -202,7 +235,6 @@ function BlockEvidence({ block, weeks, notes, unit }) {
 
   const totalBaselineExercises = selectedWeek ? (selectedWeek.exercises || []).length : 0;
   const metCount = selectedWeek ? (selectedWeek.summary?.baseline_met || 0) : 0;
-  const selectedWeekIndex = selectedWeek ? weekResults.findIndex(w => w.week_id === selectedWeek.week_id) : -1;
 
   return (
     <Card style={styles.card}>
@@ -210,7 +242,8 @@ function BlockEvidence({ block, weeks, notes, unit }) {
       <Text style={styles.baselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
       <Text style={styles.blockMeta}>
         {isActive ? 'Active' : 'Completed'}
-        {weekResults.length > 0 ? ` · Week ${selectedWeekIndex + 1} of ${weekResults.length}` : ''}
+        {selectedWeek ? ` · Week ${selectedWeek.week_number}` : ''}
+        {weekResults.length > 0 ? ` · ${weekResults.length} week${weekResults.length === 1 ? '' : 's'} logged` : ''}
         {` · Started ${formatDate(block.started_at)}`}
         {block.completed_at ? ` · Completed ${formatDate(block.completed_at)}` : ''}
       </Text>
@@ -244,7 +277,7 @@ function BlockEvidence({ block, weeks, notes, unit }) {
 
           {weekResults.length > 1 && (
             <View style={styles.weekChipRow}>
-              {weekResults.map((w, idx) => {
+              {weekResults.map((w) => {
                 const selected = selectedWeek && w.week_id === selectedWeek.week_id;
                 return (
                   <Pressable
@@ -253,10 +286,10 @@ function BlockEvidence({ block, weeks, notes, unit }) {
                     style={[styles.weekChip, selected ? styles.weekChipSelected : null]}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    accessibilityLabel={`Week ${idx + 1}${w.completed_at ? ', completed' : ''}`}
+                    accessibilityLabel={`Week ${w.week_number}${w.completed_at ? ', completed' : ''}`}
                   >
                     <Text style={[styles.weekChipText, selected ? styles.weekChipTextSelected : null]}>
-                      {`Week ${idx + 1}`}
+                      {`Week ${w.week_number}`}
                     </Text>
                   </Pressable>
                 );
