@@ -114,24 +114,65 @@ export async function deleteWorkoutNoteItem(id) {
 // a tombstone whose enqueue failed is a deletion that would silently never leave
 // the device — exactly the half-committed outcome the journal exists to close.
 //
-// A note that is absent from the local cache entirely is reported as deleted
-// with no queue requirement: there is no row left to push, and inventing one
-// would resurrect a record the server already removed.
+// An ABSENT note is the local→cloud transition case, and it is deliberately NOT
+// treated as a finished cloud deletion. A journaled linked-note deletion can
+// hard-delete the note while the device is in local mode, be interrupted before
+// verification, and only then enter cloud mode. Local absence says nothing about
+// the server: the row may still be live there and would return on the next pull.
+// So absence still reports `requiresQueue: true`, which keeps the operation
+// pending until `ensureWorkoutNoteDeleted` below has reconstructed the tombstone
+// and enqueued it. Only durable pending-sync intent — never local absence — can
+// verify a cloud-mode deletion.
 export async function loadWorkoutNoteDeletionState(id) {
   const list = await Storage.loadWorkoutNotesRaw();
   const note = list.find((n) => n?.id === id);
+  const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+  const queued = dirty.some((record) => record?.id === id && isTombstone(record));
   if (!note) {
-    return { exists: false, deleted: true, requiresQueue: false, queued: false };
+    return { exists: false, deleted: true, requiresQueue: true, queued };
   }
   const deleted = isTombstone(note);
   if (!deleted) {
     return { exists: true, deleted: false, requiresQueue: true, queued: false };
   }
-  const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
-  return {
-    exists: true,
-    deleted: true,
-    requiresQueue: true,
-    queued: dirty.some((record) => record?.id === id),
-  };
+  return { exists: true, deleted: true, requiresQueue: true, queued };
+}
+
+// Idempotent cloud-mode deletion used by the recovery operation journal's replay
+// (#696). Unlike deleteWorkoutNoteItem it can also act on a note that is already
+// ABSENT locally, which is the state a local-mode hard-delete leaves behind when
+// the device switches to cloud mode mid-operation.
+//
+// Three cases, all converging on "local tombstone present AND queued":
+//
+//   live row     — stamp a tombstone, persist it, enqueue it (the ordinary path);
+//   tombstoned   — re-enqueue verbatim, never re-stamped, so replay cannot slide
+//                  the timestamp forward past a copy another device accepted;
+//   absent       — reconstruct a minimal tombstone from the journal's own
+//                  recorded id and requested timestamp and persist + enqueue it,
+//                  so the deletion the user asked for actually reaches the
+//                  server instead of being silently dropped at the mode switch.
+//
+// The reconstructed row carries only the id and the tombstone timestamps. It
+// needs no other field: a tombstone is a deletion marker, every reader filters
+// it out, and the journal never stored the note's text to restore anyway.
+export async function ensureWorkoutNoteDeleted(id, { deletedAt = null } = {}) {
+  const list = await Storage.loadWorkoutNotesRaw();
+  const note = list.find((n) => n?.id === id);
+  const clientId = await getClientId();
+
+  if (note && isTombstone(note)) {
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, note);
+    return;
+  }
+
+  const base = note || { id, saved_at: deletedAt || undefined };
+  const tombstone = deletedAt
+    ? stampTombstone(base, clientId, deletedAt)
+    : stampTombstone(base, clientId);
+  const next = note
+    ? list.map((n) => (n?.id === id ? tombstone : n))
+    : [...list, tombstone];
+  await Storage.replaceWorkoutNotesRaw(next);
+  await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
 }

@@ -47,6 +47,7 @@ import {
 } from '../storage/entries/recoveryOperationJournal';
 import {
   addRecoveryWeekCore,
+  addRecoveryWeekWithNewNoteCore,
   completeCurrentWeekCore,
   completeRecoveryBlockCore,
   unlinkNoteForDeleteCore,
@@ -1607,6 +1608,200 @@ describe('delete a linked workout note — cloud tombstone and queue bookkeeping
 
     expect(notes[0].deleted_at).toBe(stamped);
     expect(queue).toEqual(['wn_w1']);
+  });
+});
+
+describe('add a new note as the next recovery week — a two-collection operation', () => {
+  function noteOpsFor(notes) {
+    return {
+      loadNoteState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async (id) => {
+        const idx = notes.findIndex((n) => n.id === id);
+        if (idx >= 0) notes.splice(idx, 1);
+      },
+      saveNote: async (note) => {
+        const idx = notes.findIndex((n) => n.id === note.id);
+        if (idx >= 0) notes[idx] = note; else notes.push(note);
+      },
+    };
+  }
+
+  async function seedReadyBlock() {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    return { block, week, notes };
+  }
+
+  test('creates the note and its membership at the next ordinal, then clears the journal', async () => {
+    const { block, notes } = await seedReadyBlock();
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    const created = notes.find((n) => n.title === 'Week 2');
+    expect(created).toBeTruthy();
+    // The journal never stores workout-note text.
+    expect(created.raw_text).toBe('');
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(created.id);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('intent write fails: neither the note nor the membership is created', async () => {
+    const { block, notes } = await seedReadyBlock();
+    failWritesFor([RECOVERY_OPERATION_JOURNAL_KEY]);
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect(notes).toHaveLength(1);
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+  });
+
+  test('the note write fails: intent retained, no membership, replay converges once', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const base = noteOpsFor(notes);
+    let attempts = 0;
+    setRecoveryNoteOperations({
+      ...base,
+      saveNote: async (note) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Injected note write failure');
+        return base.saveNote(note);
+      },
+    });
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].week_seed.week_number).toBe(2);
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.id === journal[0].note_id)).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('the membership write fails: replay reuses the SAME note id and ordinal, never a second of either', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+
+    spy.mockRestore();
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered).toHaveLength(2);
+    expect(ordered[1].id).toBe(journal[0].week_id);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(ordered[1].week_number).toBe(2);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+  });
+
+  test('a restart between the note write and the attach resumes from the journal alone', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    __resetRecoveryOperationJournal();
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('concurrent confirms allocate ONE ordinal and ONE note', async () => {
+    const { block, notes } = await seedReadyBlock();
+
+    const [a, b] = await Promise.all([
+      addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' }),
+      addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' }),
+    ]);
+
+    // The second attempt is refused because the first has already attached an
+    // incomplete current week — it can never allocate a duplicate ordinal.
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('validation refuses an unfinished current week with zero writes, journal included', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    const writeSpy = jest.spyOn(writeListModule, 'writeList');
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VALIDATION_FAILED);
+    expect(result.reason).toBe('WEEK_NOT_COMPLETE');
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(notes).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('an ordinal claimed by another device while pending fails closed rather than silently reassigning', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+
+    // Another device's week 2 arrives through sync before replay.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await replaceRecoveryBlockWeeksRaw([...raw, {
+      id: 'rw_remote', block_id: block.id, note_id: 'wn_remote', week_number: 2,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]);
+
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.ok).toBe(false);
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
+    expect(await readJournalRaw()).toHaveLength(1);
+    // No duplicate ordinal was created.
+    expect((await loadRecoveryWeeksForBlock(block.id)).filter((w) => w.week_number === 2)).toHaveLength(1);
+    expect(notes.some((n) => n.title === 'Week 2')).toBe(true);
+  });
+
+  test('a block deleted while the operation is pending retires the record instead of stranding it', async () => {
+    const { block } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+
+    await deleteRecoveryBlock(block.id);
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+    // No live membership was created under a deleted block.
+    expect(await loadRecoveryWeeksForBlock(block.id)).toEqual([]);
   });
 });
 

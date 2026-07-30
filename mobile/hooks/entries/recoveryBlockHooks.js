@@ -21,7 +21,16 @@ import {
   runGuardedRecoveryAction,
   startRecoveryOperation,
 } from '../../storage/entries/recoveryOperationJournal';
-import { findActiveBlock, findLiveMembershipForNote, isBlockActive, orderedLiveWeeks } from '../../lib/data/recoveryBlocks';
+import {
+  buildRecoveryWeek,
+  findActiveBlock,
+  findLiveMembershipForNote,
+  isBlockActive,
+  isLiveRecord,
+  nextWeekNumber,
+  orderedLiveWeeks,
+} from '../../lib/data/recoveryBlocks';
+import { makeWorkoutNoteItem } from '../../lib/data';
 import { safeNotify } from './shared';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
 // Imported for its module-load side effect as well as nothing else: it
@@ -238,6 +247,64 @@ export function addRecoveryWeekCore(storage, { blockId, noteId }) {
   });
 }
 
+// Create a brand-new workout note AND attach it as the next sequential week, as
+// one durable journaled operation.
+//
+// Previously the note was created by the screen BEFORE any lock or journal record
+// existed, and a failed attach was undone with a best-effort delete — so two
+// failures in a row left an orphan note with no intent to attach or remove it,
+// and two same-tick confirms could each create a note before either reached the
+// serialized attach. Both the note id and the week ordinal are now minted exactly
+// once here, inside the journal's single-flight lock, and recorded on the intent
+// before anything is written. A replay writes those same seeds, so no retry can
+// mint a second note or a second ordinal.
+export function addRecoveryWeekWithNewNoteCore(storage, { blockId, title }) {
+  return startRecoveryOperation({
+    scope: { blockId },
+    validate: async () => {
+      const blocks = await storage.loadRecoveryBlocksRaw();
+      const block = blocks.find(b => b.id === blockId);
+      if (!block || !isLiveRecord(block) || block.completed_at) {
+        return { ok: false, code: 'BLOCK_NOT_ACTIVE', error: 'No active recovery block to add a week to.' };
+      }
+      const weeks = await storage.loadRecoveryBlockWeeksRaw();
+      const ordered = orderedLiveWeeks(weeks, blockId);
+      const current = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+      if (current && !current.completed_at) {
+        return { ok: false, code: 'WEEK_NOT_COMPLETE', error: 'Complete the current week before adding the next one.' };
+      }
+
+      const requestedCreatedAt = new Date().toISOString();
+      // `raw_text` is deliberately empty: the seed persisted in the journal holds
+      // the title the user typed and no workout-note text.
+      const noteSeed = { ...makeWorkoutNoteItem({ title, raw_text: '' }), raw_text: '' };
+      const weekSeed = buildRecoveryWeek({
+        blockId,
+        noteId: noteSeed.id,
+        weekNumber: nextWeekNumber(weeks, blockId),
+        now: requestedCreatedAt,
+      });
+      return {
+        ok: true,
+        intent: {
+          type: RECOVERY_OPERATION_TYPES.ADD_WEEK_WITH_NEW_NOTE,
+          block_id: blockId,
+          week_id: weekSeed.id,
+          note_id: noteSeed.id,
+          requested_created_at: requestedCreatedAt,
+          note_seed: noteSeed,
+          week_seed: weekSeed,
+          intended_outcome: `new workout note ${noteSeed.id} exists and is linked to block ${blockId} as week ${weekSeed.week_number}`,
+        },
+        noteSeed,
+        weekSeed,
+      };
+    },
+  }).then(result => (result.ok && result.week === undefined
+    ? { ...result, week: result.week_id ? { id: result.week_id, block_id: result.block_id, note_id: result.note_id } : null }
+    : result));
+}
+
 // Complete the block's current (still-open) week and the block itself as one
 // atomic storage operation (storage/entries/recoveryStorage.js
 // completeRecoveryBlockWithCurrentWeek): either both land, or neither does.
@@ -387,6 +454,16 @@ export function useRecoveryBlockLifecycle() {
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
+  const addWeekWithNewNote = useCallback(async (params) => {
+    const result = await addRecoveryWeekWithNewNoteCore(RecoveryStorage, params);
+    if (result.ok) {
+      notifyRecoveryBlocks();
+      // This operation also writes the notebook, so every mounted workout-note
+      // instance reloads — after the verified result, never before it.
+      reloadWorkoutNotes();
+    }
+    return result;
+  }, []);
   const completeBlock = useCallback(async (params) => {
     const result = await completeRecoveryBlockCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
@@ -418,5 +495,5 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, addWeek, completeBlock, unlinkWeek, unlinkNoteForDelete, retryRecovery };
+  return { completeCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, retryRecovery };
 }

@@ -722,7 +722,8 @@ invariants, ordinals, tombstones) and the durable recovery operation journal
 immediate persisted state, the retained journal record, the returned
 machine-readable code, and convergence after replay.
 
-Boundaries injected, for both durable operations:
+Boundaries injected, for all three durable operations (complete block with
+current week, delete linked note, add a new note as the next week):
 
 - journal intent read and intent write (an intent write failure must produce no
   domain mutation at all; an intent read failure must refuse the operation);
@@ -758,11 +759,24 @@ Scenarios pinned beyond the per-boundary sweep:
   note operations) is discarded and only persisted state drives convergence;
 - pre-action gating: a pending operation over the same block, week, or note
   blocks a conflicting action, while an unrelated action still proceeds;
-- cancellation and validation failures proving zero writes, journal included.
+- cancellation and validation failures proving zero writes, journal included;
+- new-note week specifics: note-write failure, membership-write failure, a
+  membership failure whose journal clear also fails, restart replay between the
+  two writes, an ordinal claimed by another device while pending (fails closed,
+  never silently reassigned), a block deleted while pending, and concurrent
+  confirms — all asserting exactly one note and exactly one ordinal afterwards;
+- storage-mode change mid-operation: a deletion that hard-removed the note in
+  local mode and is replayed in cloud mode must reconstruct the tombstone and its
+  dirty-queue record before the journal may be cleared, must stay pending while
+  the enqueue keeps failing, and must still finish as a plain hard delete when the
+  device is genuinely local (`mobile/tests/sync-recovery.test.js`).
 
 `mobile/tests/log-screen.test.js` covers the same protocol at the screen level
 (verified persisted postconditions instead of a mocked storage call, the pending
-warning with its `Retry recovery` action, and disabled conflicting actions), and
+warning with its `Retry recovery` action, disabled conflicting actions, and a
+same-tick double confirm on the new-note Add Week path — which only a synchronous
+ref mutex can reject, since two presses dispatched before a re-render both observe
+the same React busy state), and
 `mobile/tests/sync-recovery.test.js` / `sync-recovery-ui.test.js` cover the sync
 boundaries below.
 

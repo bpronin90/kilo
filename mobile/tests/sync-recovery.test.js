@@ -1292,3 +1292,102 @@ describe('recovery reconciliation at the sync boundary', () => {
     expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))[0].deleted_at).toBeTruthy();
   });
 });
+
+// A journaled linked-note deletion that ran while the device was in LOCAL mode
+// hard-removes the note. If the operation is interrupted before verification and
+// the device then enters CLOUD mode, local absence must NOT be read as a finished
+// cloud deletion: the server copy can still be live and would return on the next
+// pull. The probe therefore keeps requiring durable pending-sync intent, and
+// replay reconstructs the tombstone from the journal's own recorded id and
+// timestamp before the record may be cleared.
+describe('a pending local-mode deletion replayed after switching to cloud mode', () => {
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { registerRecoveryNoteOperations } = require('../hooks/entries/storageMode');
+  const { getDirtyRecords, SYNC_TABLES, isTombstone } = require('../storage/syncQueue');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCK_WEEKS_KEY, WORKOUT_NOTES_KEY } =
+    require('../storage/entries/keys');
+
+  const NOTE_ID = 'wn_local_deleted';
+  const REQUESTED_AT = '2026-06-01T00:00:00.000Z';
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+    // Re-establish the real mode-aware note operations the app registers at
+    // load; the reset above restores the journal's local-only default.
+    registerRecoveryNoteOperations();
+    // Exactly the state a local-mode attempt leaves behind when it is
+    // interrupted after both domain writes but before verification/cleanup:
+    // membership tombstoned, note hard-removed, intent still journaled.
+    await AsyncStorage.setItem(WORKOUT_NOTES_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      {
+        id: 'rw_local', block_id: 'rb_local', note_id: NOTE_ID, week_number: 1,
+        completed_at: null, saved_at: REQUESTED_AT, updated_at: REQUESTED_AT, deleted_at: REQUESTED_AT,
+      },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1,
+      operation_id: 'recop_local_then_cloud',
+      created_at: REQUESTED_AT,
+      updated_at: REQUESTED_AT,
+      stage: 'second_write',
+      attempts: 1,
+      last_error: null,
+      type: 'delete_linked_note',
+      block_id: 'rb_local',
+      week_id: 'rw_local',
+      note_id: NOTE_ID,
+      requested_deleted_at: REQUESTED_AT,
+      intended_outcome: 'membership tombstoned and note deleted',
+    }]));
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  it('does not clear the journal until a cloud tombstone and dirty-queue record exist', async () => {
+    jest.spyOn(Storage, 'getStorageMode').mockReturnValue(Storage.STORAGE_MODES.CLOUD);
+
+    const result = await journal.reconcileRecoveryOperations();
+
+    expect(result.ok).toBe(true);
+    // The deletion the user asked for is now durably headed for the server.
+    const notes = JSON.parse(await AsyncStorage.getItem(WORKOUT_NOTES_KEY));
+    const tombstone = notes.find((n) => n.id === NOTE_ID);
+    expect(tombstone).toBeTruthy();
+    expect(isTombstone(tombstone)).toBe(true);
+    expect(tombstone.deleted_at).toBe(REQUESTED_AT);
+    const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+    expect(dirty.some((r) => r.id === NOTE_ID && isTombstone(r))).toBe(true);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+  });
+
+  it('stays pending — never verified — while the queue write keeps failing', async () => {
+    jest.spyOn(Storage, 'getStorageMode').mockReturnValue(Storage.STORAGE_MODES.CLOUD);
+    const syncQueue = require('../storage/syncQueue');
+    jest.spyOn(syncQueue, 'enqueueDirty').mockRejectedValue(new Error('Injected enqueue failure'));
+
+    const result = await journal.reconcileRecoveryOperations();
+
+    expect(result.ok).toBe(false);
+    // Fail closed: the membership stays tombstoned, and the record survives so a
+    // later retry can still establish the cloud outcome.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toHaveLength(1);
+    const weeks = JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY));
+    expect(weeks[0].deleted_at).toBe(REQUESTED_AT);
+  });
+
+  it('local mode alone still finishes the same operation with a hard delete and no queue requirement', async () => {
+    jest.spyOn(Storage, 'getStorageMode').mockReturnValue(Storage.STORAGE_MODES.LOCAL);
+
+    const result = await journal.reconcileRecoveryOperations();
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(await AsyncStorage.getItem(WORKOUT_NOTES_KEY))).toEqual([]);
+    expect(await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES)).toEqual([]);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+  });
+});

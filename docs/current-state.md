@@ -359,14 +359,20 @@ The real native app path now has a modular React Native shell:
   an additional unlink/delete confirmation before the standard delete
   confirmation; cancelling either one writes nothing at all.
 
-  Those two actions each change more than one persisted collection, and
+  Three of those actions each change more than one persisted collection, and
   AsyncStorage, the workout-note cloud queue, and the two recovery collections
   share no transaction. They therefore run as durable write-ahead journaled
-  operations (#696): the intent is persisted before the first domain write,
+  operations (#696) — completing a block with its current week, deleting a
+  linked note, and creating a new note as the next week: the intent is
+  persisted before the first domain write,
   the writes are idempotent and reuse one immutable requested timestamp, every
   affected collection is re-read and its postconditions verified before the
   journal record is cleared, and the UI reports success only after that
-  verification. An interrupted operation stays visible as a journaled pending
+  verification. For the new-note week the note id and the ordinal are minted
+  once inside that record, so a double tap or a replay can never create a
+  second note or a second ordinal, and a failed attempt leaves a resumable
+  intent rather than an untracked orphan note. An interrupted operation stays
+  visible as a journaled pending
   state rather than an untracked partial change — Log shows an accessible
   recovery warning with a `Retry recovery` action, disables conflicting
   lifecycle actions for the affected records, and keeps ordinary read access
@@ -377,7 +383,9 @@ The real native app path now has a modular React Native shell:
   converges to block and current week completed at one stable timestamp. A
   read that cannot determine the outcome, and a corrupt or unsupported journal
   record, both fail closed and stay retryable rather than being guessed at or
-  discarded. A cloud sync pass will not report workout notes or recovery data
+  discarded. Signing in between an interrupted attempt and its repair is safe:
+  a deletion that only hard-removed the note locally is not treated as finished
+  in cloud mode until the tombstone and its pending upload actually exist. A cloud sync pass will not report workout notes or recovery data
   as synced while such an operation is unresolved. Recovery
   -specific analytics remain explicitly out of scope until later issues. The
   read view now also

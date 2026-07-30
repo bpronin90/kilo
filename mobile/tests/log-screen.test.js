@@ -4641,6 +4641,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
         const idx = noteStore.findIndex(n => n.id === id);
         if (idx >= 0) noteStore.splice(idx, 1);
       },
+      saveNote: async (note) => {
+        const idx = noteStore.findIndex(n => n.id === note.id);
+        if (idx >= 0) noteStore[idx] = note; else noteStore.push(note);
+      },
     });
     return Promise.all([
       AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify(blocks || [])),
@@ -4735,10 +4739,9 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rb1', noteId: otherNote.id });
   });
 
-  test('add-week new-note path creates the note first, then attaches its id', async () => {
+  test('add-week new-note path journals one operation that creates the note and its membership', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
-    setup({ notes: [baselineNote, week1Note], weeks });
-    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: 'newweeknote1', week_number: 2, completed_at: null, deleted_at: null });
+    await setup({ notes: [baselineNote, week1Note], weeks });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4750,14 +4753,28 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
     await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
 
-    expect(add).toHaveBeenCalledWith('Recovery Week 2', '');
-    expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rb1', noteId: 'newweeknote1' });
+    // The screen no longer creates the note itself: the journaled operation owns
+    // both writes, so the note and the ordinal are minted once inside its lock.
+    expect(add).not.toHaveBeenCalled();
+    const created = noteStore.find(n => n.title === 'Recovery Week 2');
+    expect(created).toBeTruthy();
+    expect(created.raw_text).toBe('');
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === created.id).week_number).toBe(2);
+    expect(await readJournal()).toEqual([]);
   });
 
-  test('add-week new-note rollback: a storage failure after note creation deletes the orphaned note', async () => {
+  test('add-week new-note: a membership write failure retains the intent and replay finishes it — no orphan note, no second ordinal', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
-    setup({ notes: [baselineNote, week1Note], weeks });
-    addWeekSpy.mockRejectedValue(Object.assign(new Error('Complete the current week before adding the next one.'), { code: 'WEEK_NOT_COMPLETE' }));
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return originalWrite(key, list);
+    });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -4769,7 +4786,147 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
     await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
 
-    expect(remove).toHaveBeenCalledWith('newweeknote1');
+    // The note landed; the membership did not. That is a TRACKED partial state:
+    // the intent names the exact note id, week id, and ordinal to finish with, so
+    // there is no orphan note and nothing is left to a best-effort cleanup delete.
+    const journal = await readJournal();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].type).toBe('add_week_with_new_note');
+    expect(journal[0].week_seed.week_number).toBe(2);
+    const createdId = journal[0].note_id;
+    expect(noteStore.some(n => n.id === createdId)).toBe(true);
+    expect((await readPersistedWeeks()).filter(w => !w.deleted_at)).toHaveLength(1);
+
+    failWeeks = false;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === createdId).week_number).toBe(2);
+    // Exactly one note and exactly one ordinal, after a failure plus a replay.
+    expect(noteStore.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: a membership write failure whose journal-clear also fails still converges without duplicating anything', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    let failJournalClear = false;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      if (key === RECOVERY_OPERATION_JOURNAL_KEY && failJournalClear && Array.isArray(list) && list.length === 0) {
+        throw new Error('Injected journal cleanup failure');
+      }
+      return originalWrite(key, list);
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    const createdId = (await readJournal())[0].note_id;
+
+    // Second attempt: the membership lands, but the cleanup write fails.
+    failWeeks = false;
+    failJournalClear = true;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+    expect((await readPersistedWeeks()).filter(w => !w.deleted_at)).toHaveLength(2);
+    expect(await readJournal()).toHaveLength(1);
+
+    // Third attempt: only the cleanup is retried; nothing is written twice.
+    failJournalClear = false;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.filter(w => w.note_id === createdId)).toHaveLength(1);
+    expect(noteStore.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: an app restart between the note write and the attach resumes from the journal alone', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return originalWrite(key, list);
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    const journal = await readJournal();
+    const createdId = journal[0].note_id;
+    failWeeks = false;
+
+    // Restart: every piece of in-memory protocol state is discarded, including
+    // the registered note operations and the single-flight queue. Only the
+    // persisted journal and collections survive.
+    const survivingNotes = noteStore.map(n => ({ ...n }));
+    journalModule.__resetRecoveryOperationJournal();
+    journalModule.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = survivingNotes.find(n => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async () => {},
+      saveNote: async (note) => { survivingNotes.push(note); },
+    });
+
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === createdId).week_number).toBe(2);
+    expect(survivingNotes.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: two same-tick confirms create ONE note and ONE ordinal', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+
+    // Both presses are dispatched in the SAME tick, before any re-render can
+    // publish a busy flag. Only a synchronous mutex can reject the second one;
+    // React state cannot, because both closures captured the same null.
+    const confirm = findPressableByText(root, 'Confirm');
+    await render.act(async () => {
+      const first = confirm.props.onPress();
+      const second = confirm.props.onPress();
+      await Promise.all([first, second]);
+    });
+
+    const created = noteStore.filter(n => n.title === 'Recovery Week 2');
+    expect(created).toHaveLength(1);
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.map(w => w.week_number).sort()).toEqual([1, 2]);
+    expect(await readJournal()).toEqual([]);
   });
 
   test('"Complete recovery block" confirms with advisory-target copy and, on confirm, completes the block', async () => {

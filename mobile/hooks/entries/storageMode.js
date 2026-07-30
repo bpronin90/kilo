@@ -5,7 +5,10 @@ import {
   setRecoveryNoteOperations,
 } from '../../storage/entries/recoveryOperationJournal';
 import * as Storage from '../../storage/entries';
-import { loadWorkoutNoteDeletionState as cloudLoadWorkoutNoteDeletionState } from '../../storage/cloud/cloudDomainMethods';
+import {
+  loadWorkoutNoteDeletionState as cloudLoadWorkoutNoteDeletionState,
+  ensureWorkoutNoteDeleted as cloudEnsureWorkoutNoteDeleted,
+} from '../../storage/cloud/cloudDomainMethods';
 import { markComplete, markFailed, markRunning, SYNC_PHASE } from '../../storage/syncRecovery';
 
 // ── recovery journal ↔ storage mode wiring (#696) ────────────────────────────
@@ -25,23 +28,39 @@ function isCloudMode() {
   return getStorageMode() === STORAGE_MODES.CLOUD;
 }
 
-setRecoveryNoteOperations({
-  // The deletion-outcome probe is not an adapter method: the adapter surface is
-  // pinned 1:1 against the local adapter and describes DOMAIN calls, while this
-  // is journal protocol machinery. It is selected by mode directly instead.
-  loadNoteState: (noteId) => (isCloudMode()
-    ? cloudLoadWorkoutNoteDeletionState(noteId)
-    : Storage.loadWorkoutNoteDeletionState(noteId)),
-  deleteNote: async (noteId) => {
-    await writeVia('deleteWorkoutNoteItem', Storage.deleteWorkoutNoteItem, noteId);
-    // The cloud adapter tombstones the row but does not own the "current
-    // routine" pointer, so a cloud-mode delete would otherwise leave the Log
-    // tab pointing at a note that no longer exists. Local mode already does
-    // this inside deleteWorkoutNoteItem; repeating it is idempotent.
-    const currentId = await Storage.loadCurrentWorkoutId();
-    if (currentId === noteId) await Storage.clearCurrentWorkoutId();
-  },
-});
+// Exported so a test (or a module-registry reset) can re-establish the
+// registration after `__resetRecoveryOperationJournal()` restores the journal's
+// local-only default. Production calls it exactly once, at module load, below.
+export function registerRecoveryNoteOperations() {
+  setRecoveryNoteOperations({
+    // The deletion-outcome probe is not an adapter method: the adapter surface is
+    // pinned 1:1 against the local adapter and describes DOMAIN calls, while this
+    // is journal protocol machinery. It is selected by mode directly instead.
+    loadNoteState: (noteId) => (isCloudMode()
+      ? cloudLoadWorkoutNoteDeletionState(noteId)
+      : Storage.loadWorkoutNoteDeletionState(noteId)),
+    // `deletedAt` is the journal record's immutable requested timestamp. Cloud mode
+    // needs it to reconstruct a tombstone for a note this device already
+    // hard-deleted in local mode before the storage mode changed — without it the
+    // deletion would be declared finished locally and never reach the server.
+    deleteNote: async (noteId, { deletedAt = null } = {}) => {
+      if (isCloudMode()) {
+        await cloudEnsureWorkoutNoteDeleted(noteId, { deletedAt });
+      } else {
+        await Storage.deleteWorkoutNoteItem(noteId);
+      }
+      // The cloud adapter tombstones the row but does not own the "current
+      // routine" pointer, so a cloud-mode delete would otherwise leave the Log
+      // tab pointing at a note that no longer exists. Local mode already does
+      // this inside deleteWorkoutNoteItem; repeating it is idempotent.
+      const currentId = await Storage.loadCurrentWorkoutId();
+      if (currentId === noteId) await Storage.clearCurrentWorkoutId();
+    },
+    saveNote: (note) => writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, note),
+    });
+}
+
+registerRecoveryNoteOperations();
 
 // Raised when a sync pass cannot honestly be reported as complete because a
 // recovery lifecycle operation over workout notes, recovery blocks, or recovery

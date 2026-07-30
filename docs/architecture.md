@@ -572,10 +572,11 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 
 ### Recovery lifecycle operation journal
 
-Two Log-tab recovery actions change more than one persisted collection: completing
-a recovery block together with its open current week, and deleting a workout note
-that is a linked recovery week (membership plus the note, which in cloud mode is a
-tombstone plus sync-queue intent). AsyncStorage, the workout-note cloud queue,
+Three Log-tab recovery actions change more than one persisted collection:
+completing a recovery block together with its open current week; deleting a
+workout note that is a linked recovery week (membership plus the note, which in
+cloud mode is a tombstone plus sync-queue intent); and creating a brand-new note
+AND attaching it as the next sequential week (notebook plus membership). AsyncStorage, the workout-note cloud queue,
 `kilo_recovery_blocks`, and `kilo_recovery_block_weeks` share no native
 transaction, and snapshot-and-revert cannot substitute for one: the revert write
 can itself fail, and a note-delete that persists the removal and then throws is
@@ -598,21 +599,42 @@ Ownership and ordering, per operation:
    never as a silently dropped record;
 7. notify/refresh UI only after a verified result or a durable pending state.
 
-Both operations roll forward only. A note deletion converges to "membership
+All three operations roll forward only. A note deletion converges to "membership
 tombstoned and note deleted/tombstoned with pending-sync intent", never back to a
 live membership, because restoring one could point a live week at a note that is
 already gone. Block completion converges to block and current week completed at
 one stable timestamp, and never reopens a record or slides a timestamp forward.
+The new-note week converges to "this note id exists and this week id links it at
+this ordinal": both the note id and the ordinal are minted once at intent time and
+stored on the record as seeds, so no replay can mint a second note or a second
+ordinal, and a same-tick double confirm cannot allocate two. If the ordinal has
+since been claimed by another device, or the note has joined another block, replay
+fails closed and stays pending rather than silently choosing a different outcome.
+If the target block is deleted, the record is retired: whatever already landed
+remains an ordinary workout note, because destroying a note the user asked to
+create in order to tidy protocol state is worse than the untidiness.
 An unreadable, malformed, or unsupported-version journal fails closed with a
 retryable error; it is never read as "no pending work". A verification read that
 cannot determine the outcome retains the record rather than choosing a default.
 
-The journal owns no note-deletion mechanics of its own. The mode-aware
-implementation (local hard-delete, or cloud tombstone plus `enqueueDirty`
-bookkeeping through the cloud adapter) is registered into it at load by
-`mobile/hooks/entries/storageMode.js`, so replay always uses the adapter current
-when it runs and repairing local invariants never requires network access or a
-signed-in session. The local default is what a signed-out device uses.
+The journal owns no notebook mechanics of its own. The mode-aware implementations
+(local hard-delete, or cloud tombstone plus `enqueueDirty` bookkeeping) are
+registered into it at load by `mobile/hooks/entries/storageMode.js`, so replay
+always uses the adapter current when it runs and repairing local invariants never
+requires network access or a signed-in session. The local default is what a
+signed-out device uses.
+
+Because the storage mode can change while an operation is pending, cloud-mode
+deletion verification never accepts local absence as proof. A local-mode attempt
+hard-removes the note; if it is interrupted before verification and the device then
+enters cloud mode, the row may still be live on the server and would return on the
+next pull. `loadWorkoutNoteDeletionState` in `storage/cloud/cloudDomainMethods.js`
+therefore reports `requiresQueue: true` even for an absent note, and
+`ensureWorkoutNoteDeleted` reconstructs a minimal tombstone from the journal's own
+recorded id and requested timestamp, persists it, and enqueues it. Only durable
+pending-sync intent can verify a cloud-mode deletion. A deletion that local mode
+already verified and cleared is a different case, handled by the existing
+`reconcileSignedOutWrites` baseline diff rather than by this journal.
 
 One reconciler serves every entry point — `reconcileRecoveryOperations()`. It runs
 on initial mount/remount before recovery lifecycle state is considered ready,

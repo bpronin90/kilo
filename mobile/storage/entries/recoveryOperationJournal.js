@@ -38,6 +38,7 @@ import { readList, writeList } from './jsonStorage';
 import {
   loadWorkoutNoteDeletionState as localLoadWorkoutNoteDeletionState,
   deleteWorkoutNoteItem as localDeleteWorkoutNoteItem,
+  saveWorkoutNoteItem as localSaveWorkoutNoteItem,
 } from './workoutNotes';
 
 export const RECOVERY_JOURNAL_VERSION = 1;
@@ -45,6 +46,7 @@ export const RECOVERY_JOURNAL_VERSION = 1;
 export const RECOVERY_OPERATION_TYPES = Object.freeze({
   COMPLETE_BLOCK_WITH_WEEK: 'complete_block_with_week',
   DELETE_LINKED_NOTE: 'delete_linked_note',
+  ADD_WEEK_WITH_NEW_NOTE: 'add_week_with_new_note',
 });
 
 // Machine-readable outcomes. Every public entry point in this module returns one
@@ -109,6 +111,7 @@ export function isRecoveryJournalCorruptError(err) {
 const DEFAULT_NOTE_OPERATIONS = Object.freeze({
   loadNoteState: (noteId) => localLoadWorkoutNoteDeletionState(noteId),
   deleteNote: (noteId) => localDeleteWorkoutNoteItem(noteId),
+  saveNote: (note) => localSaveWorkoutNoteItem(note),
 });
 
 let noteOperations = DEFAULT_NOTE_OPERATIONS;
@@ -163,6 +166,17 @@ function isValidRecord(record) {
       isNonEmptyString(record.week_id) &&
       isNonEmptyString(record.note_id) &&
       isNonEmptyString(record.requested_deleted_at)
+    );
+  }
+  if (record.type === RECOVERY_OPERATION_TYPES.ADD_WEEK_WITH_NEW_NOTE) {
+    return (
+      isNonEmptyString(record.block_id) &&
+      isNonEmptyString(record.note_id) &&
+      isNonEmptyString(record.week_id) &&
+      isNonEmptyString(record.requested_created_at) &&
+      !!record.note_seed && record.note_seed.id === record.note_id &&
+      !!record.week_seed && record.week_seed.id === record.week_id &&
+      Number.isInteger(record.week_seed.week_number) && record.week_seed.week_number > 0
     );
   }
   return false;
@@ -476,7 +490,10 @@ async function replayDeleteLinkedNote(record) {
   const needsDelete = !noteState?.deleted || (noteState?.requiresQueue && !noteState?.queued);
   if (needsDelete) {
     try {
-      await noteOperations.deleteNote(record.note_id);
+      // The immutable requested timestamp travels with the call so cloud mode
+      // can reconstruct a tombstone for a note a local-mode attempt already
+      // hard-deleted before the storage mode changed.
+      await noteOperations.deleteNote(record.note_id, { deletedAt: record.requested_deleted_at });
     } catch (e) {
       // Deliberately NOT returned here. A callback that persisted the deletion
       // and then threw looks identical from this side; only the persisted state
@@ -521,9 +538,160 @@ async function replayDeleteLinkedNote(record) {
   return finishVerified(record);
 }
 
+// ── operation: attach a brand-new note as the next recovery week ──────────────
+//
+// The "create a new note for this week" path changes two collections — the
+// notebook and the recovery-week memberships — so it is journaled like the other
+// two. Before this it created the note OUTSIDE any durable record and relied on a
+// best-effort `remove()` if the membership write failed; a second failure there
+// left an untracked orphan note that no restart could attach or clean up.
+//
+// Single roll-forward outcome:
+//   * a workout note with the recorded id exists;
+//   * a live membership with the recorded id links it to the block at the
+//     recorded ordinal;
+//   * no second note and no second ordinal are ever created, however many times
+//     this replays.
+//
+// Both the note and the membership are minted ONCE, at intent time, and stored on
+// the record as seeds. Replay writes the seeds verbatim, which is what makes
+// "assign the next ordinal exactly once" true under double taps and replay alike:
+// a retry cannot mint a new id or a new ordinal, because it has none to mint.
+// `note_seed` carries the title the user typed and an empty `raw_text` — the
+// journal never stores workout-note text.
+async function replayAddWeekWithNewNote(record) {
+  let blocks;
+  let weeks;
+  let noteState;
+  try {
+    blocks = await readList(RECOVERY_BLOCKS_KEY);
+    weeks = await readList(RECOVERY_BLOCK_WEEKS_KEY);
+    noteState = await noteOperations.loadNoteState(record.note_id);
+  } catch (e) {
+    await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.DOMAIN_READ, error: e });
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      stage: RECOVERY_OPERATION_STAGES.DOMAIN_READ,
+      error: e,
+      message: 'Recovery data could not be read, so adding this week is still pending.',
+    });
+  }
+
+  const block = blocks.find((b) => b.id === record.block_id);
+  // The block is gone (deleted locally, or a sync pull brought its tombstone).
+  // The recorded outcome can never be applied: a live membership under a deleted
+  // block is precisely the dangling state cascadeDeletedBlockMemberships exists
+  // to remove. Retire the record. Anything this operation already persisted stays
+  // as an ordinary workout note — deleting a note the user asked to create, on a
+  // race they did not cause, would destroy user data to tidy protocol state.
+  if (!block || block.deleted_at) return finishVerified(record);
+
+  if (!noteState?.exists) {
+    try {
+      await noteOperations.saveNote(record.note_seed);
+    } catch (e) {
+      await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.FIRST_WRITE, error: e });
+      return pendingResult(record, {
+        code: RECOVERY_OPERATION_CODES.OPERATION_FAILED,
+        stage: RECOVERY_OPERATION_STAGES.FIRST_WRITE,
+        error: e,
+        message: 'The note for this recovery week could not be created; the operation is retained and will be retried.',
+      });
+    }
+  }
+
+  const liveForNote = weeks.find((w) => w.note_id === record.note_id && !w.deleted_at);
+  if (liveForNote && liveForNote.block_id !== record.block_id) {
+    // The note somehow belongs to another block now. Writing our membership would
+    // put one note in two blocks, so fail closed instead of guessing.
+    await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE, error: null });
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
+      error: null,
+      message: 'This recovery week cannot be attached because its note already belongs to another block.',
+    });
+  }
+
+  if (!liveForNote) {
+    const ordinalTaken = weeks.some(
+      (w) => w.block_id === record.block_id
+        && !w.deleted_at
+        && w.week_number === record.week_seed.week_number
+        && w.note_id !== record.note_id
+    );
+    if (ordinalTaken) {
+      // Another device claimed this ordinal while the operation was pending.
+      // Reassigning it here would silently change the outcome the record names,
+      // so this fails closed and stays retryable.
+      await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE, error: null });
+      return pendingResult(record, {
+        code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+        stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
+        error: null,
+        message: `Recovery week ${record.week_seed.week_number} is already taken on this block; adding this week is still pending.`,
+      });
+    }
+    const existingRow = weeks.find((w) => w.id === record.week_id);
+    const next = existingRow
+      // A tombstoned row with our own id: revive it verbatim from the seed rather
+      // than appending a duplicate id.
+      ? weeks.map((w) => (w.id === record.week_id ? { ...record.week_seed } : w))
+      : [...weeks, record.week_seed];
+    try {
+      await writeList(RECOVERY_BLOCK_WEEKS_KEY, next);
+    } catch (e) {
+      await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE, error: e });
+      return pendingResult(record, {
+        code: RECOVERY_OPERATION_CODES.OPERATION_FAILED,
+        stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
+        error: e,
+        message: 'This recovery week could not be attached; the operation is retained and will be retried.',
+      });
+    }
+  }
+
+  let weeksAfter;
+  let noteStateAfter;
+  try {
+    weeksAfter = await readList(RECOVERY_BLOCK_WEEKS_KEY);
+    noteStateAfter = await noteOperations.loadNoteState(record.note_id);
+  } catch (e) {
+    await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.VERIFY_READ, error: e });
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      stage: RECOVERY_OPERATION_STAGES.VERIFY_READ,
+      error: e,
+      message: 'Adding this recovery week could not be verified yet; the operation is still pending.',
+    });
+  }
+
+  const verifiedWeeks = weeksAfter.filter(
+    (w) => w.note_id === record.note_id && w.block_id === record.block_id && !w.deleted_at
+  );
+  const noteOk = !!noteStateAfter?.exists;
+  const membershipOk = verifiedWeeks.length === 1
+    && verifiedWeeks[0].week_number === record.week_seed.week_number;
+
+  if (!noteOk || !membershipOk) {
+    await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.VERIFY_READ, error: null });
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      stage: RECOVERY_OPERATION_STAGES.VERIFY_READ,
+      error: null,
+      message: 'This recovery week is not fully attached yet; the operation is still pending.',
+    });
+  }
+
+  return finishVerified(record);
+}
+
 function replayRecord(record) {
   if (record.type === RECOVERY_OPERATION_TYPES.COMPLETE_BLOCK_WITH_WEEK) {
     return replayCompleteBlockWithWeek(record);
+  }
+  if (record.type === RECOVERY_OPERATION_TYPES.ADD_WEEK_WITH_NEW_NOTE) {
+    return replayAddWeekWithNewNote(record);
   }
   return replayDeleteLinkedNote(record);
 }

@@ -93,14 +93,23 @@ export function LogScreen({
   // clear error rather than reading stale state and writing under a block or
   // week that changed underneath it.
   const [recoveryActionBusy, setRecoveryActionBusy] = useState(null);
+  // The ref — not the state — IS the mutex. React state is not a same-tick lock:
+  // two confirms dispatched before the next render both read the captured
+  // `recoveryActionBusy === null` and both proceed. The ref is written and read
+  // synchronously, so the second attempt is rejected in the same tick. The state
+  // exists only to drive the disabled/busy rendering, and the journal's own
+  // single-flight queue remains the durable backstop underneath both.
+  const recoveryActionLockRef = useRef(null);
   const runRecoveryAction = async (key, action) => {
-    if (recoveryActionBusy) {
+    if (recoveryActionLockRef.current) {
       return { ok: false, error: 'Another recovery action is already in progress.' };
     }
+    recoveryActionLockRef.current = key;
     setRecoveryActionBusy(key);
     try {
       return await action();
     } finally {
+      recoveryActionLockRef.current = null;
       setRecoveryActionBusy(null);
     }
   };
@@ -296,37 +305,45 @@ export function LogScreen({
   const openAddWeekModal = () => setAddWeekModalOpen(true);
   const closeAddWeekModal = () => setAddWeekModalOpen(false);
 
+  // Two distinct operations, deliberately.
+  //
+  // Attaching an EXISTING note touches one collection, so it stays a plain
+  // single-domain action. Creating a new note AND attaching it touches two, so it
+  // is a durable journaled operation (addRecoveryWeekWithNewNoteCore): the note id
+  // and the week ordinal are minted once inside the journal lock and recorded on
+  // the intent before anything is written. This screen no longer creates the note
+  // itself, and there is no best-effort rollback delete left to fail — a failed
+  // attempt leaves a journaled intent that replay finishes instead of an untracked
+  // orphan note.
   const handleConfirmAddWeek = ({ weekChoice, weekNoteId, newNoteTitle }) => runRecoveryAction('add', async () => {
-    if (!activeRecoveryBlock || !recoveryLifecycle.addWeek) {
+    if (!activeRecoveryBlock) {
       return { ok: false, error: 'No active recovery block to add a week to.' };
     }
-    let finalWeekNoteId = weekNoteId;
-    let createdNoteId = null;
     if (weekChoice === 'new') {
-      const created = await add(newNoteTitle, '');
-      finalWeekNoteId = created?.id;
-      createdNoteId = created?.id || null;
+      if (!recoveryLifecycle.addWeekWithNewNote) {
+        return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+      }
+      const result = await recoveryLifecycle.addWeekWithNewNote({
+        blockId: activeRecoveryBlock.id,
+        title: newNoteTitle,
+      });
+      if (result?.ok) {
+        refreshRecoveryState?.();
+        refreshNotes?.();
+      }
+      return result;
     }
-    if (!finalWeekNoteId) {
+    if (!recoveryLifecycle.addWeek) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    if (!weekNoteId) {
       return { ok: false, error: 'Select or create a note for this recovery week.' };
     }
     const result = await recoveryLifecycle.addWeek({
       blockId: activeRecoveryBlock.id,
-      noteId: finalWeekNoteId,
+      noteId: weekNoteId,
     });
-    if (result?.ok) {
-      refreshRecoveryState?.();
-      return result;
-    }
-    // Same "no partial changes" contract as the Week-1 flow: a new note
-    // created for this attempt must not survive a failed attach.
-    if (createdNoteId) {
-      try {
-        await remove(createdNoteId);
-      } catch (_rollbackError) {
-        // Best-effort: the original failure is what the caller needs to see.
-      }
-    }
+    if (result?.ok) refreshRecoveryState?.();
     return result;
   });
 
