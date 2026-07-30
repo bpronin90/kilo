@@ -15,11 +15,19 @@ import { parseWorkoutNote, applyWeekSkipToText, weeksSinceLastDeload, sessionsSi
 import { removeWeekSkipFromText, MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote.js';
 import { deriveRoutineStatus } from '../lib/data';
 
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-}));
+// A real in-memory store rather than bare jest.fn()s: the durable recovery
+// operation journal (#696) reads back what it wrote, so a mock that forgets
+// every write would make every journaled operation look unverifiable.
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const store = new Map();
+  return {
+    __store: store,
+    getItem: jest.fn(async (key) => (store.has(key) ? store.get(key) : null)),
+    setItem: jest.fn(async (key, value) => { store.set(key, value); }),
+    removeItem: jest.fn(async (key) => { store.delete(key); }),
+    clear: jest.fn(async () => { store.clear(); }),
+  };
+});
 
 jest.mock('@react-native-community/datetimepicker', () => {
   const React = require('react');
@@ -4475,7 +4483,7 @@ describe('useStartRecoveryBlock: rollback on Week-1 failure leaves no orphan act
 });
 
 describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
-  test('a completed SYNC phase refreshes recovery state even with no local startRecoveryBlockCore call', () => {
+  test('a completed SYNC phase refreshes recovery state even with no local startRecoveryBlockCore call', async () => {
     // Another device's active block/week records can arrive purely through
     // cloud sync (App.js only reloads workout notes/weight on its
     // automatic-sync callback), so the hook must subscribe to the sync-state
@@ -4502,18 +4510,20 @@ describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
     }
 
     let component;
-    render.act(() => { component = render.create(React.createElement(Harness)); });
+    // The reads are now preceded by reconciliation of the durable operation
+    // journal (#696), so refresh resolves on a later microtask than it used to.
+    await render.act(async () => { component = render.create(React.createElement(Harness)); });
     expect(loadBlocksSpy).toHaveBeenCalledTimes(1);
     expect(typeof syncListener).toBe('function');
 
-    render.act(() => {
+    await render.act(async () => {
       syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
     });
     expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
 
     // A second notification of the same completed status (no new transition)
     // must not refresh again — only the RUNNING->COMPLETE edge does.
-    render.act(() => {
+    await render.act(async () => {
       syncListener({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
     });
     expect(loadBlocksSpy).toHaveBeenCalledTimes(2);
@@ -4522,5 +4532,948 @@ describe('useRecoveryBlockState: cloud sync triggers a reload', () => {
     loadBlocksSpy.mockRestore();
     loadWeeksSpy.mockRestore();
     subscribeSpy.mockRestore();
+  });
+});
+
+// ── Recovery Block Week 2+ lifecycle (#696) ─────────────────────────────────
+
+describe('Recovery Block Week 2+ lifecycle', () => {
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const {
+    RECOVERY_BLOCKS_KEY,
+    RECOVERY_BLOCK_WEEKS_KEY,
+    RECOVERY_OPERATION_JOURNAL_KEY,
+  } = require('../storage/entries/keys');
+  const journalModule = require('../storage/entries/recoveryOperationJournal');
+
+  const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+  const week1Note = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Push\n-Bench\n60 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
+  const week2Note = { id: 'week2note', title: 'Recovery Week 2 Note', raw_text: 'Push\n-Bench\n65 5,5,5', updated_at: '2026-01-15T00:00:00.000Z' };
+  const otherNote = { id: 'other1', title: 'Other Eligible Note', raw_text: 'Pull\n-Row\n80 5,5,5', updated_at: '2026-01-16T00:00:00.000Z' };
+
+  const activeBlockFixture = {
+    id: 'rb1',
+    baseline_note_id: baselineNote.id,
+    baseline_note_title: baselineNote.title,
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+  };
+
+  let add, remove, update, refresh, alertSpy;
+  let completeWeekSpy, addWeekSpy, deleteWeekSpy;
+  let loadWeeksForBlockSpy, loadBlocksSpy, loadAllWeeksSpy, loadWorkoutNotesRawSpy;
+  // The note store the journal's registered note operations act on. The two
+  // journaled operations own the note deletion end to end (#696), so there is
+  // no injected `deleteNote` callback to assert on any more — the persisted
+  // outcome is the assertion.
+  let noteStore;
+
+  const readPersistedBlocks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)) || '[]');
+  const readPersistedWeeks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY)) || '[]');
+  const readJournal = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY)) || '[]');
+
+  const _orderedLive = (weeks, blockId) => (weeks || [])
+    .filter(w => w.block_id === blockId && !w.deleted_at)
+    .sort((a, b) => a.week_number - b.week_number || String(a.id).localeCompare(String(b.id)));
+
+  // The Week 2+ lifecycle cores (recoveryBlockHooks.js) re-read persisted
+  // state themselves rather than trusting a caller-supplied snapshot (#696
+  // review), so every test must give these three leaf reads a resolved value
+  // that matches the same fixtures `useRecoveryBlockState` reports for the
+  // UI — otherwise the real (unmocked) storage read would hit the bare
+  // AsyncStorage jest.fn() mock and silently see empty lists. A dedicated
+  // "stale UI, fresh storage" test further below overrides these to diverge
+  // from the UI props on purpose.
+  const setup = ({ notes, weeks, activeBlock = activeBlockFixture, blocks = [activeBlockFixture] } = {}) => {
+    add = jest.fn().mockResolvedValue({ id: 'newweeknote1', title: 'New Recovery Week Note', raw_text: '' });
+    remove = jest.fn().mockResolvedValue();
+    update = jest.fn();
+    refresh = jest.fn();
+
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes, currentId: baselineNote.id, currentNote: baselineNote, deloadNotes: [],
+      loading: false, error: null, refresh: jest.fn(),
+      selectCurrent: jest.fn(), update, add, remove,
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock,
+      blocks,
+      weeks,
+      recoveryWeekNumberByNoteId: weeks.reduce((acc, w) => {
+        if (!activeBlock || w.block_id === activeBlock.id) acc[w.note_id] = w.week_number;
+        return acc;
+      }, {}),
+      loading: false,
+      error: null,
+      refresh,
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
+    useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
+    useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
+
+    loadBlocksSpy.mockResolvedValue(blocks);
+    loadAllWeeksSpy.mockResolvedValue(weeks);
+    loadWeeksForBlockSpy.mockImplementation(async (blockId) => _orderedLive(weeks, blockId));
+    // unlinkNoteForDeleteCore verifies a deleteNote rejection against the
+    // actual persisted notes (#696 review) rather than trusting the storage
+    // -layer revert blindly; default this to "still present" so ordinary
+    // tests never accidentally trip the reconciliation path.
+    loadWorkoutNotesRawSpy.mockResolvedValue(notes.map(n => ({ ...n, deleted_at: null })));
+
+    // The journaled operations read and write persisted state directly (that
+    // is the whole point — they must survive a restart), so the fixtures have
+    // to exist in storage, not only in the mocked read-model hook.
+    noteStore = notes.map(n => ({ ...n }));
+    journalModule.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = noteStore.find(n => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async (id) => {
+        const idx = noteStore.findIndex(n => n.id === id);
+        if (idx >= 0) noteStore.splice(idx, 1);
+      },
+      // The new-note week operation's pair: "durably live", not merely present.
+      loadNoteLiveState: async (id) => {
+        const note = noteStore.find(n => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = noteStore.findIndex(n => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) noteStore[idx] = live; else noteStore.push(live);
+      },
+    });
+    return Promise.all([
+      AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify(blocks || [])),
+      AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks || [])),
+      AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([])),
+    ]);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    completeWeekSpy = jest.spyOn(recoveryStorageModule, 'completeRecoveryWeek');
+    addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek');
+    deleteWeekSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryWeek');
+    // The two journaled multi-record operations (#696) read and write
+    // persisted state directly, so each test starts from an empty store and a
+    // clean in-memory journal guard.
+    AsyncStorage.__store.clear();
+    journalModule.__resetRecoveryOperationJournal();
+    loadWeeksForBlockSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryWeeksForBlock');
+    loadBlocksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks');
+    loadAllWeeksSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlockWeeks');
+    loadWorkoutNotesRawSpy = jest.spyOn(require('../storage/entries/workoutNotes'), 'loadWorkoutNotesRaw');
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+    completeWeekSpy.mockRestore();
+    addWeekSpy.mockRestore();
+    deleteWeekSpy.mockRestore();
+    journalModule.__resetRecoveryOperationJournal();
+    loadWeeksForBlockSpy.mockRestore();
+    loadBlocksSpy.mockRestore();
+    loadAllWeeksSpy.mockRestore();
+    loadWorkoutNotesRawSpy.mockRestore();
+  });
+
+  test('current week open: "Complete week" is offered and "Add week" is not', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Complete week')).toBeTruthy();
+    expect(findPressableByText(root, 'Add week')).toBeNull();
+  });
+
+  test('tapping "Complete week" completes the current week and refreshes', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeWeekSpy.mockResolvedValue({ ...weeks[0], completed_at: '2026-01-08T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+
+    expect(completeWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test('current week completed: "Add week" is offered and "Complete week" is not', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Add week')).toBeTruthy();
+    expect(findPressableByText(root, 'Complete week')).toBeNull();
+  });
+
+  test('add-week existing-note path attaches the chosen note as the next week, no new note created', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: otherNote.id, week_number: 2, completed_at: null, deleted_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    const optionBtn = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'Use Other Eligible Note as this recovery week'
+      && typeof n.props.onPress === 'function')[0];
+    render.act(() => { optionBtn.props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(add).not.toHaveBeenCalled();
+    expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rb1', noteId: otherNote.id });
+  });
+
+  test('add-week new-note path journals one operation that creates the note and its membership', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    // The screen no longer creates the note itself: the journaled operation owns
+    // both writes, so the note and the ordinal are minted once inside its lock.
+    expect(add).not.toHaveBeenCalled();
+    const created = noteStore.find(n => n.title === 'Recovery Week 2');
+    expect(created).toBeTruthy();
+    expect(created.raw_text).toBe('');
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === created.id).week_number).toBe(2);
+    expect(await readJournal()).toEqual([]);
+  });
+
+  test('add-week new-note: a membership write failure retains the intent and replay finishes it — no orphan note, no second ordinal', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return originalWrite(key, list);
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    // The note landed; the membership did not. That is a TRACKED partial state:
+    // the intent names the exact note id, week id, and ordinal to finish with, so
+    // there is no orphan note and nothing is left to a best-effort cleanup delete.
+    const journal = await readJournal();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].type).toBe('add_week_with_new_note');
+    expect(journal[0].week_seed.week_number).toBe(2);
+    const createdId = journal[0].note_id;
+    expect(noteStore.some(n => n.id === createdId)).toBe(true);
+    expect((await readPersistedWeeks()).filter(w => !w.deleted_at)).toHaveLength(1);
+
+    failWeeks = false;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === createdId).week_number).toBe(2);
+    // Exactly one note and exactly one ordinal, after a failure plus a replay.
+    expect(noteStore.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: a membership write failure whose journal-clear also fails still converges without duplicating anything', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    let failJournalClear = false;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      if (key === RECOVERY_OPERATION_JOURNAL_KEY && failJournalClear && Array.isArray(list) && list.length === 0) {
+        throw new Error('Injected journal cleanup failure');
+      }
+      return originalWrite(key, list);
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    const createdId = (await readJournal())[0].note_id;
+
+    // Second attempt: the membership lands, but the cleanup write fails.
+    failWeeks = false;
+    failJournalClear = true;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+    expect((await readPersistedWeeks()).filter(w => !w.deleted_at)).toHaveLength(2);
+    expect(await readJournal()).toHaveLength(1);
+
+    // Third attempt: only the cleanup is retried; nothing is written twice.
+    failJournalClear = false;
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.filter(w => w.note_id === createdId)).toHaveLength(1);
+    expect(noteStore.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: an app restart between the note write and the attach resumes from the journal alone', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let failWeeks = true;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return originalWrite(key, list);
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    const journal = await readJournal();
+    const createdId = journal[0].note_id;
+    failWeeks = false;
+
+    // Restart: every piece of in-memory protocol state is discarded, including
+    // the registered note operations and the single-flight queue. Only the
+    // persisted journal and collections survive.
+    const survivingNotes = noteStore.map(n => ({ ...n }));
+    journalModule.__resetRecoveryOperationJournal();
+    journalModule.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = survivingNotes.find(n => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async () => {},
+      loadNoteLiveState: async (id) => {
+        const note = survivingNotes.find(n => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => { survivingNotes.push({ ...seed, deleted_at: null }); },
+    });
+
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.find(w => w.note_id === createdId).week_number).toBe(2);
+    expect(survivingNotes.filter(n => n.id === createdId)).toHaveLength(1);
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
+  });
+
+  test('add-week new-note: two same-tick confirms create ONE note and ONE ordinal', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery week note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 2'); });
+
+    // Both presses are dispatched in the SAME tick, before any re-render can
+    // publish a busy flag. Only a synchronous mutex can reject the second one;
+    // React state cannot, because both closures captured the same null.
+    const confirm = findPressableByText(root, 'Confirm');
+    await render.act(async () => {
+      const first = confirm.props.onPress();
+      const second = confirm.props.onPress();
+      await Promise.all([first, second]);
+    });
+
+    const created = noteStore.filter(n => n.title === 'Recovery Week 2');
+    expect(created).toHaveLength(1);
+    const persisted = (await readPersistedWeeks()).filter(w => !w.deleted_at);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.map(w => w.week_number).sort()).toEqual([1, 2]);
+    expect(await readJournal()).toEqual([]);
+  });
+
+  test('"Complete recovery block" confirms with advisory-target copy and, on confirm, completes the block', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Complete recovery block?',
+      expect.stringContaining('advisory'),
+      expect.any(Array)
+    );
+
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+
+    // The verified postcondition is the assertion: the persisted block carries
+    // a completion timestamp, and the journal is empty because it was cleared
+    // only after that was read back.
+    expect((await readPersistedBlocks()).find(b => b.id === 'rb1').completed_at).toBeTruthy();
+    expect(await readJournal()).toEqual([]);
+  });
+
+  test('completing the block with an open current week completes that week too, with one stable timestamp', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Complete').onPress(); });
+
+    // One journaled operation, one immutable requested timestamp: the block and
+    // its open current week must carry exactly the same completed_at, and the
+    // journal must be clear because both postconditions were verified.
+    const persistedBlock = (await readPersistedBlocks()).find(b => b.id === 'rb1');
+    const persistedWeek = (await readPersistedWeeks()).find(w => w.id === 'rw1');
+    expect(persistedBlock.completed_at).toBeTruthy();
+    expect(persistedWeek.completed_at).toBe(persistedBlock.completed_at);
+    expect(await readJournal()).toEqual([]);
+    // No separate single-record write is used for this action.
+    expect(completeWeekSpy).not.toHaveBeenCalled();
+  });
+
+  test('only the latest week offers Unlink; earlier weeks do not', () => {
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+      { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note, week2Note], weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const unlinkButtons = root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Unlink Week')
+      && typeof n.props.onPress === 'function');
+    expect(unlinkButtons.length).toBe(1);
+    expect(unlinkButtons[0].props.accessibilityLabel).toBe('Unlink Week 2');
+  });
+
+  test('unlinking the latest week confirms, then removes only the membership — the note itself is never deleted', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    deleteWeekSpy.mockResolvedValue({ ...weeks[0], deleted_at: '2026-01-10T00:00:00.000Z' });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const unlinkBtn = root.findAll(n => n.props && n.props.accessibilityLabel === 'Unlink Week 1')[0];
+    render.act(() => { unlinkBtn.props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    await render.act(async () => { await buttons.find(b => b.text === 'Unlink').onPress(); });
+
+    expect(deleteWeekSpy).toHaveBeenCalledWith('rw1');
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  test('a persistence failure on "Complete week" surfaces an inline error and does not crash', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    setup({ notes: [baselineNote, week1Note], weeks });
+    completeWeekSpy.mockRejectedValue(new Error('Network unavailable'));
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    await render.act(async () => { findPressableByText(root, 'Complete week').props.onPress(); });
+
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Network unavailable').length).toBe(1);
+  });
+
+  test('completed-block history renders collapsed with a summary, and expands to show ordered weeks', () => {
+    const completedBlock = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
+    };
+    const historyWeeks = [
+      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, '1 completed block')).toBeTruthy();
+    // Default expanded: the baseline title and its week both render without
+    // needing to tap the collapse control.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBeGreaterThan(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Week 1 Note').length).toBeGreaterThan(0);
+  });
+
+  test('collapsing recovery history hides detail but keeps a meaningful summary', () => {
+    const completedBlock = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
+    };
+    const historyWeeks = [
+      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // Expanded: the baseline title renders once (the detail row), no "Latest:"
+    // summary yet, and the linked week's date is visible in the history row.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(1);
+
+    const collapseBtn = findPressableByText(root, '1 completed block');
+    render.act(() => { collapseBtn.props.onPress(); });
+
+    // Collapsed: the per-week detail (including its completion date) is gone,
+    // but the baseline title survives as the collapsed summary's "Latest: …"
+    // line, not as a bare count.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
+    expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: ').length).toBe(1);
+  });
+
+  test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the atomic delete', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+
+    // First alert: the recovery-aware confirmation, naming the week. Nothing
+    // is written yet — cancelling here must be a full no-op, journal included.
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete this recovery week note?',
+      expect.stringContaining('Recovery Week 1'),
+      expect.any(Array)
+    );
+    expect(await readJournal()).toEqual([]);
+
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    render.act(() => { firstAlertButtons.find(b => b.text === 'Continue').onPress(); });
+
+    // Second alert: the pre-existing standard "Delete Routine" confirmation.
+    // Still nothing written — the unlink is fused with the actual removal,
+    // not run eagerly on our own confirm.
+    expect(alertSpy).toHaveBeenCalledWith('Delete Routine', expect.any(String), expect.any(Array));
+    expect(await readJournal()).toEqual([]);
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(true);
+
+    const secondAlertButtons = alertSpy.mock.calls[1][2];
+    await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
+
+    // Both halves of the single roll-forward outcome are persisted, and the
+    // journal was cleared only after they were read back.
+    expect((await readPersistedWeeks()).find(w => w.id === 'rw1').deleted_at).toBeTruthy();
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(false);
+    expect(await readJournal()).toEqual([]);
+  });
+
+  test('cancelling the recovery-aware confirmation for a linked note leaves it linked and undeleted', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    const firstAlertButtons = alertSpy.mock.calls[0][2];
+    // The recovery-aware alert's "Cancel" button carries no onPress (the
+    // standard no-op cancel style); nothing further must happen if it's the
+    // only button pressed.
+    expect(firstAlertButtons.find(b => b.text === 'Cancel').onPress).toBeUndefined();
+
+    expect(await readJournal()).toEqual([]);
+    expect((await readPersistedWeeks()).find(w => w.id === 'rw1').deleted_at).toBeFalsy();
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(true);
+  });
+
+  test('an earlier (non-latest, already-completed) linked week note can still be deleted — history notes stay ordinary and deletable', async () => {
+    // Deleting a linked note applies uniformly to any week, unlike the
+    // position-restricted explicit Unlink action: a completed-history note
+    // must remain an ordinary, editable (and deletable) note.
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+      { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
+    ];
+    await setup({ notes: [baselineNote, week1Note, week2Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete this recovery week note?',
+      expect.stringContaining('Recovery Week 1'),
+      expect.any(Array)
+    );
+
+    render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
+    const secondAlertButtons = alertSpy.mock.calls[1][2];
+    await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
+
+    const persisted = await readPersistedWeeks();
+    expect(persisted.find(w => w.id === 'rw1').deleted_at).toBeTruthy();
+    // The later week is untouched: this operation names exactly one membership.
+    expect(persisted.find(w => w.id === 'rw2').deleted_at).toBeFalsy();
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(false);
+  });
+
+  test('a completed block\'s linked note can still be deleted', async () => {
+    const completedBlock = { id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline', started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null };
+    const weeks = [{ id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
+    const secondAlertButtons = alertSpy.mock.calls[1][2];
+    await render.act(async () => { await secondAlertButtons.find(b => b.text === 'Delete').onPress(); });
+
+    expect((await readPersistedWeeks()).find(w => w.id === 'hw1').deleted_at).toBeTruthy();
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(false);
+  });
+
+  test('a note-delete failure leaves a journaled pending operation, an honest error, and no live dangling membership', async () => {
+    // The membership tombstone is written first and is NEVER reverted (#696):
+    // a delete callback that persisted the removal and then threw is
+    // indistinguishable from one that never committed, so rolling back could
+    // point a live week at a note that is already gone. The operation stays
+    // journaled and converges on the next reconciliation instead.
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    journalModule.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = noteStore.find(n => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async () => { throw new Error('Could not delete the note.'); },
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
+    render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
+    const secondAlertButtons = alertSpy.mock.calls[1][2];
+    await render.act(async () => {
+      await expect(secondAlertButtons.find(b => b.text === 'Delete').onPress()).rejects.toThrow();
+    });
+
+    // Not presented as complete, and the durable evidence for a retry is kept.
+    expect(alertSpy).toHaveBeenCalledWith('Could not delete this note', expect.any(String));
+    const journal = await readJournal();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].note_id).toBe(week1Note.id);
+    expect((await readPersistedWeeks()).find(w => w.id === 'rw1').deleted_at).toBeTruthy();
+    expect(addWeekSpy).not.toHaveBeenCalled();
+
+    // The same reconciler the retry affordance, restart, and sync all use.
+    journalModule.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = noteStore.find(n => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async (id) => {
+        const idx = noteStore.findIndex(n => n.id === id);
+        if (idx >= 0) noteStore.splice(idx, 1);
+      },
+    });
+    await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
+    expect(noteStore.some(n => n.id === week1Note.id)).toBe(false);
+    expect(await readJournal()).toEqual([]);
+  });
+
+  test('a pending recovery operation disables lifecycle actions and offers Retry recovery', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...useEntries.useRecoveryBlockState(),
+      pendingRecovery: [{ operationId: 'recop_1', type: 'delete_linked_note', error: 'This note deletion is not fully applied yet.' }],
+      recoveryPendingError: 'This note deletion is not fully applied yet.',
+      retryRecovery: jest.fn(),
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const retry = findPressableByText(root, 'Retry recovery');
+    expect(retry).toBeTruthy();
+    expect(retry.props.accessibilityLabel).toBe('Retry recovery');
+    // Conflicting lifecycle actions are disabled while the operation is pending.
+    expect(findPressableByText(root, 'Complete week').props.disabled).toBe(true);
+    expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(true);
+  });
+
+  test('a terminal recovery cancellation explains itself but locks nothing and offers no retry', async () => {
+    // A cancelled conflict has already retired its journal record, so there is
+    // nothing left to retry and nothing may stay disabled — otherwise an
+    // unreachable outcome would freeze every recovery action permanently.
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const base = useEntries.useRecoveryBlockState();
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...base,
+      pendingRecovery: [],
+      recoveryPendingError: 'That note was linked to a different recovery block before this week could be added, so this week was not created.',
+      retryRecovery: jest.fn(),
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const notice = root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Recovery change not applied'))[0];
+    expect(notice).toBeTruthy();
+    expect(findPressableByText(root, 'Retry recovery')).toBeNull();
+    expect(findPressableByText(root, 'Complete week').props.disabled).toBe(false);
+    expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(false);
+  });
+
+  test('deleting an unlinked note skips the recovery confirmation entirely', () => {
+    setup({ notes: [baselineNote, otherNote], weeks: [], activeBlock: null, blocks: [] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, otherNote.title).props.onPress(); });
+    const deleteBtn = findPressableByText(root, 'Delete routine');
+    render.act(() => { deleteBtn.props.onPress(); });
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete Routine',
+      expect.any(String),
+      expect.any(Array)
+    );
+  });
+
+  test('completeRecoveryBlockCore reports the machine-readable protocol outcome, not a generic failure', async () => {
+    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
+    const { RECOVERY_OPERATION_CODES } = journalModule;
+
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([{ ...activeBlockFixture }]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+
+    const storage = {
+      loadRecoveryBlocksRaw: recoveryStorageModule.loadRecoveryBlocksRaw,
+      loadRecoveryBlockWeeksRaw: recoveryStorageModule.loadRecoveryBlockWeeksRaw,
+    };
+
+    const okResult = await completeRecoveryBlockCore(storage, { blockId: 'rb1' });
+    expect(okResult.ok).toBe(true);
+    expect(okResult.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    expect(okResult.block.completed_at).toBeTruthy();
+
+    // Eligibility failure: an explicit VALIDATION_FAILED with the domain reason
+    // preserved, and provably zero writes.
+    const missing = await completeRecoveryBlockCore(storage, { blockId: 'rb_missing' });
+    expect(missing.ok).toBe(false);
+    expect(missing.code).toBe(RECOVERY_OPERATION_CODES.VALIDATION_FAILED);
+    expect(missing.reason).toBe('BLOCK_NOT_FOUND');
+  });
+
+  test('a pending operation is surfaced as RECONCILIATION_PENDING rather than an unexplained failure', async () => {
+    const { completeRecoveryBlockCore } = require('../hooks/entries/recoveryBlockHooks');
+    const { RECOVERY_OPERATION_CODES } = journalModule;
+    const jsonStorage = require('../storage/entries/jsonStorage');
+
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([{ ...activeBlockFixture }]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+    const storage = {
+      loadRecoveryBlocksRaw: recoveryStorageModule.loadRecoveryBlocksRaw,
+      loadRecoveryBlockWeeksRaw: recoveryStorageModule.loadRecoveryBlockWeeksRaw,
+    };
+
+    const originalWrite = jsonStorage.writeList;
+    const spy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCKS_KEY) throw new Error('Storage unavailable');
+      return originalWrite(key, list);
+    });
+
+    const result = await completeRecoveryBlockCore(storage, { blockId: 'rb1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect(await readJournal()).toHaveLength(1);
+    spy.mockRestore();
+  });
+
+  test('every Week 2+ core re-reads persisted state instead of trusting a stale caller snapshot (sync-refresh race)', async () => {
+    // A caller-supplied `weeks` array would be exactly what a render-time
+    // prop looks like while a native confirmation sits open; these cores no
+    // longer accept one at all, so a background sync that changes the
+    // persisted current week between confirm-open and confirm-press is
+    // reflected correctly rather than being decided from stale render state.
+    const { completeCurrentWeekCore, addRecoveryWeekCore, unlinkRecoveryWeekCore } = require('../hooks/entries/recoveryBlockHooks');
+
+    // Persisted truth: week 1 is already complete (e.g. another device just
+    // completed it), unlike whatever a stale UI snapshot might have shown.
+    const freshWeeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'noteA', week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    const freshBlocks = [{ id: 'rb1', completed_at: null, deleted_at: null }];
+    const loadWeeksForBlockFn = jest.fn().mockResolvedValue(freshWeeks);
+    const loadBlocksFn = jest.fn().mockResolvedValue(freshBlocks);
+    const addWeekFn = jest.fn().mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: 'noteB', week_number: 2, completed_at: null, deleted_at: null });
+    const completeWeekFn = jest.fn();
+    const deleteWeekFn = jest.fn();
+    const fakeStorage = {
+      loadRecoveryWeeksForBlock: loadWeeksForBlockFn,
+      loadRecoveryBlocks: loadBlocksFn,
+      addRecoveryWeek: addWeekFn,
+      completeRecoveryWeek: completeWeekFn,
+      deleteRecoveryWeek: deleteWeekFn,
+    };
+
+    // completeCurrentWeekCore sees the fresh, already-complete week and is a
+    // pure no-op — it never calls storage.completeRecoveryWeek again.
+    const completeResult = await completeCurrentWeekCore(fakeStorage, { blockId: 'rb1' });
+    expect(completeResult.ok).toBe(true);
+    expect(completeWeekFn).not.toHaveBeenCalled();
+
+    // addRecoveryWeekCore sees the fresh, already-complete week 1 and allows
+    // the next week to be added — a stale snapshot showing week 1 as still
+    // open would have wrongly refused this.
+    const addResult = await addRecoveryWeekCore(fakeStorage, { blockId: 'rb1', noteId: 'noteB' });
+    expect(addResult.ok).toBe(true);
+    expect(addWeekFn).toHaveBeenCalledWith({ blockId: 'rb1', noteId: 'noteB' });
+
+    // unlinkRecoveryWeekCore refuses to unlink week 1 once a fresh read shows
+    // it is no longer the latest live week (week 2 was just added above) —
+    // a stale snapshot still showing only week 1 would have wrongly allowed it.
+    const staleFreshWeeks = [...freshWeeks, { id: 'rw2', block_id: 'rb1', note_id: 'noteB', week_number: 2, completed_at: null, deleted_at: null }];
+    loadWeeksForBlockFn.mockResolvedValue(staleFreshWeeks);
+    const unlinkResult = await unlinkRecoveryWeekCore(fakeStorage, { blockId: 'rb1', weekId: 'rw1' });
+    expect(unlinkResult.ok).toBe(false);
+    expect(unlinkResult.code).toBe('NOT_LATEST_WEEK');
+    expect(deleteWeekFn).not.toHaveBeenCalled();
+  });
+
+  test('race protection: an Add Week confirm while "Complete recovery block" is still persisting is rejected, not silently written', async () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note, otherNote], weeks });
+    // Hold the block-completion write open so the two actions genuinely
+    // overlap. The block write is the second (and last) domain write of the
+    // journaled operation, so the whole operation is still in flight here.
+    const jsonStorage = require('../storage/entries/jsonStorage');
+    const originalWrite = jsonStorage.writeList;
+    let releaseBlockWrite;
+    const blocked = new Promise(resolve => { releaseBlockWrite = resolve; });
+    let held = false;
+    const writeSpy = jest.spyOn(jsonStorage, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCKS_KEY && !held) {
+        held = true;
+        await blocked;
+      }
+      return originalWrite(key, list);
+    });
+    addWeekSpy.mockResolvedValue({ id: 'rw2', block_id: 'rb1', note_id: otherNote.id, week_number: 2, completed_at: null, deleted_at: null });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    render.act(() => { findPressableByText(root, 'Complete recovery block').props.onPress(); });
+    const buttons = alertSpy.mock.calls[0][2];
+    let completePromise;
+    render.act(() => { completePromise = buttons.find(b => b.text === 'Complete').onPress(); });
+
+    // Race an Add Week confirm against the in-flight completion, bypassing the
+    // disabled button to prove the mutex itself — not just the UI affordance —
+    // blocks the concurrent write.
+    render.act(() => { findPressableByText(root, 'Add week').props.onPress(); });
+    const optionBtn = root.findAll(n => n.props
+      && n.props.accessibilityLabel === 'Use Other Eligible Note as this recovery week'
+      && typeof n.props.onPress === 'function')[0];
+    render.act(() => { optionBtn.props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+
+    expect(addWeekSpy).not.toHaveBeenCalled();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Another recovery action is already in progress.').length).toBeGreaterThan(0);
+
+    await render.act(async () => {
+      releaseBlockWrite();
+      await completePromise;
+    });
+    expect((await readPersistedBlocks()).find(b => b.id === 'rb1').completed_at).toBeTruthy();
+    expect(await readJournal()).toEqual([]);
+    writeSpy.mockRestore();
   });
 });

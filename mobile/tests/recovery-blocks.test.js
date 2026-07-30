@@ -35,6 +35,23 @@ import {
   updateRecoveryBlock,
   updateRecoveryWeek,
 } from '../storage/entries/recoveryStorage';
+import * as readListModule from '../storage/entries/jsonStorage';
+import * as writeListModule from '../storage/entries/jsonStorage';
+import { RECOVERY_OPERATION_JOURNAL_KEY } from '../storage/entries/keys';
+import {
+  RECOVERY_OPERATION_CODES,
+  __resetRecoveryOperationJournal,
+  readRecoveryJournal,
+  reconcileRecoveryOperations,
+  setRecoveryNoteOperations,
+} from '../storage/entries/recoveryOperationJournal';
+import {
+  addRecoveryWeekCore,
+  addRecoveryWeekWithNewNoteCore,
+  completeCurrentWeekCore,
+  completeRecoveryBlockCore,
+  unlinkNoteForDeleteCore,
+} from '../hooks/entries/recoveryBlockHooks';
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -864,6 +881,1163 @@ describe('raw accessors', () => {
     await expect(loadRecoveryBlocks()).rejects.toThrow();
     await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, '{"not":"a list"}');
     await expect(loadRecoveryBlockWeeks()).rejects.toThrow();
+  });
+});
+
+// ── durable recovery operation journal (#696) ─────────────────────────────────
+//
+// AsyncStorage, the workout-note cloud queue, and the two recovery collections
+// share no transaction, so "atomic" here is a write-ahead journal with a single
+// deterministic roll-forward outcome per operation, idempotent replay, and
+// persisted-postcondition verification before any success is reported.
+//
+// Every test below injects a real failure at one named protocol boundary
+// against the real jsonStorage read/write path (never a fake collection), then
+// asserts four things: the immediate persisted state, the retained journal
+// record, the machine-readable result code, and convergence after replay —
+// including a fresh-module replay standing in for an app restart.
+
+const journalStorage = {
+  loadRecoveryBlocks,
+  loadRecoveryBlocksRaw,
+  loadRecoveryBlockWeeks,
+  loadRecoveryBlockWeeksRaw,
+  loadRecoveryWeeksForBlock,
+  addRecoveryWeek,
+  completeRecoveryWeek,
+  deleteRecoveryWeek,
+};
+
+// A local-mode note store the journal's registered note operations read and
+// write, standing in for hooks/entries/storageMode.js's real registration.
+function makeLocalNoteOps(notes) {
+  return {
+    loadNoteState: async (id) => {
+      const note = notes.find((n) => n.id === id);
+      return { exists: !!note, deleted: !note || !!note.deleted_at, requiresQueue: false, queued: false };
+    },
+    deleteNote: async (id) => {
+      const idx = notes.findIndex((n) => n.id === id);
+      if (idx >= 0) notes.splice(idx, 1);
+    },
+  };
+}
+
+// A cloud-mode note store: deletion is a tombstone PLUS durable pending-sync
+// intent, and the journal must verify both.
+function makeCloudNoteOps(notes, queue) {
+  return {
+    loadNoteState: async (id) => {
+      const note = notes.find((n) => n.id === id);
+      if (!note) return { exists: false, deleted: true, requiresQueue: false, queued: false };
+      if (!note.deleted_at) return { exists: true, deleted: false, requiresQueue: true, queued: false };
+      return { exists: true, deleted: true, requiresQueue: true, queued: queue.includes(id) };
+    },
+    deleteNote: async (id) => {
+      const note = notes.find((n) => n.id === id);
+      if (!note) return;
+      if (!note.deleted_at) note.deleted_at = '2026-01-01T00:00:00.000Z';
+      if (!queue.includes(id)) queue.push(id);
+    },
+  };
+}
+
+async function readJournalRaw() {
+  const raw = await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+// Fail writeList for the named keys, exactly `times` times, then behave
+// normally. This is how a boundary is isolated: only the write under test is
+// broken, and every other collection keeps working.
+function failWritesFor(keys, { times = Infinity, message = 'Injected write failure' } = {}) {
+  const original = writeListModule.writeList;
+  let remaining = times;
+  return jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+    if (keys.includes(key) && remaining > 0) {
+      remaining -= 1;
+      throw new Error(message);
+    }
+    return original(key, list);
+  });
+}
+
+function failReadsFor(keys, { skip = 0, times = Infinity, message = 'Injected read failure' } = {}) {
+  const original = readListModule.readList;
+  let skipped = 0;
+  let remaining = times;
+  return jest.spyOn(readListModule, 'readList').mockImplementation(async (key) => {
+    if (keys.includes(key) && remaining > 0) {
+      if (skipped >= skip) {
+        remaining -= 1;
+        throw new Error(message);
+      }
+      skipped += 1;
+    }
+    return original(key);
+  });
+}
+
+beforeEach(() => {
+  __resetRecoveryOperationJournal();
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  __resetRecoveryOperationJournal();
+});
+
+describe('journal schema and fail-closed reads', () => {
+  test('an unsupported schema version is surfaced, never silently discarded', async () => {
+    await AsyncStorage.setItem(
+      RECOVERY_OPERATION_JOURNAL_KEY,
+      JSON.stringify([{ version: 99, operation_id: 'x', created_at: 'now', type: 'complete_block_with_week', block_id: 'b' }])
+    );
+    const result = await reconcileRecoveryOperations();
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
+    expect(result.corrupt).toBe(true);
+    // Still on disk: fail closed means retained for a later build/retry.
+    expect(await readJournalRaw()).toHaveLength(1);
+  });
+
+  test('a malformed record fails closed rather than reading as "no pending work"', async () => {
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{ version: 1, type: 'delete_linked_note' }]));
+    const result = await reconcileRecoveryOperations();
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
+    expect(result.pending).toEqual([]);
+    expect(await readJournalRaw()).toHaveLength(1);
+  });
+
+  test('unparseable journal bytes fail closed', async () => {
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, '{not json');
+    const result = await reconcileRecoveryOperations();
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
+    expect(await readRecoveryJournal().catch((e) => e.name)).toBe('RecoveryJournalCorruptError');
+  });
+
+  test('a corrupt journal blocks a new operation instead of writing under it', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, '{not json');
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
+    expect((await loadRecoveryBlocks())[0].completed_at).toBeFalsy();
+  });
+
+  test('an empty journal is not corrupt and reports no pending work', async () => {
+    const result = await reconcileRecoveryOperations();
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    expect(result.pending).toEqual([]);
+  });
+});
+
+describe('complete block with current week — verified path and validation', () => {
+  test('completes both records with ONE stable timestamp and clears the journal', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    const [persistedBlock] = await loadRecoveryBlocks();
+    const [persistedWeek] = await loadRecoveryWeeksForBlock(block.id);
+    expect(persistedBlock.completed_at).toBeTruthy();
+    expect(persistedWeek.id).toBe(week.id);
+    expect(persistedWeek.completed_at).toBe(persistedBlock.completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('an already-completed current week is not rewritten and keeps its own timestamp', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const completedWeek = await completeRecoveryWeek(week.id, '2020-01-01T00:00:00.000Z');
+
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    const [persistedWeek] = await loadRecoveryWeeksForBlock(block.id);
+    expect(persistedWeek.completed_at).toBe(completedWeek.completed_at);
+  });
+
+  test('validation failure writes neither a journal record nor domain data', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const writeSpy = jest.spyOn(writeListModule, 'writeList');
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: 'rb_missing' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VALIDATION_FAILED);
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('re-running a fully satisfied operation writes nothing and reports verified', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    const before = JSON.stringify(await loadRecoveryBlocksRaw());
+    const writeSpy = jest.spyOn(writeListModule, 'writeList');
+
+    const again = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(again.ok).toBe(true);
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(JSON.stringify(await loadRecoveryBlocksRaw())).toBe(before);
+  });
+
+  test('the block is never completed while its current week stays open after a full replay', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    spy.mockRestore();
+    await reconcileRecoveryOperations();
+
+    const [persistedBlock] = await loadRecoveryBlocks();
+    const [persistedWeek] = await loadRecoveryWeeksForBlock(block.id);
+    expect(persistedBlock.completed_at).toBeTruthy();
+    expect(persistedWeek.completed_at).toBe(persistedBlock.completed_at);
+  });
+});
+
+describe('complete block with current week — failure at every protocol boundary', () => {
+  async function seed() {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    return { block, week };
+  }
+
+  test('intent write fails: no domain mutation at all', async () => {
+    const { block, week } = await seed();
+    failWritesFor([RECOVERY_OPERATION_JOURNAL_KEY]);
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect((await loadRecoveryBlocksRaw()).find((b) => b.id === block.id).completed_at).toBeFalsy();
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).completed_at).toBeFalsy();
+  });
+
+  test('intent read fails: the operation is refused before any write', async () => {
+    const { block } = await seed();
+    failReadsFor([RECOVERY_OPERATION_JOURNAL_KEY]);
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT);
+    expect((await loadRecoveryBlocksRaw()).find((b) => b.id === block.id).completed_at).toBeFalsy();
+  });
+
+  test('first domain write (week) fails: intent retained, nothing completed, replay converges', async () => {
+    const { block, week } = await seed();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].type).toBe('complete_block_with_week');
+    expect(journal[0].week_id).toBe(week.id);
+    expect(journal[0].last_error).toBeTruthy();
+    expect((await loadRecoveryBlocksRaw()).find((b) => b.id === block.id).completed_at).toBeFalsy();
+
+    spy.mockRestore();
+    const replay = await reconcileRecoveryOperations();
+    expect(replay.ok).toBe(true);
+    const persistedBlock = (await loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    const persistedWeek = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persistedWeek.completed_at).toBe(persistedBlock.completed_at);
+    expect(persistedBlock.completed_at).toBe(journal[0].requested_completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('second domain write (block) fails: the partial transition is journaled, not untracked', async () => {
+    const { block, week } = await seed();
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    // The week write DID land. That is a partial transition — but a tracked
+    // one, which is exactly what the contract permits and what makes the next
+    // replay deterministic.
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).completed_at).toBe(
+      journal[0].requested_completed_at
+    );
+
+    spy.mockRestore();
+    const replay = await reconcileRecoveryOperations();
+    expect(replay.ok).toBe(true);
+    const persistedBlock = (await loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    expect(persistedBlock.completed_at).toBe(journal[0].requested_completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('post-write verification read fails: retained, no outcome chosen by default', async () => {
+    const { block, week } = await seed();
+    // Let the operation's own reads through, then break the verification read.
+    const spy = failReadsFor([RECOVERY_BLOCKS_KEY], { skip: 2, times: 1 });
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
+    expect(await readJournalRaw()).toHaveLength(1);
+
+    spy.mockRestore();
+    const replay = await reconcileRecoveryOperations();
+    expect(replay.ok).toBe(true);
+    const persistedBlock = (await loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    const persistedWeek = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persistedBlock.completed_at).toBe(persistedWeek.completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('journal clear fails: reported as verified-with-cleanup-pending, cleaned on replay without timestamp churn', async () => {
+    const { block, week } = await seed();
+    const spy = failWritesFor([RECOVERY_OPERATION_JOURNAL_KEY], { times: 1 });
+    // The intent write must succeed; only the CLEAR must fail. Persist the
+    // intent first by letting the first journal write through.
+    spy.mockRestore();
+    let journalWrites = 0;
+    const original = writeListModule.writeList;
+    const clearSpy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_OPERATION_JOURNAL_KEY) {
+        journalWrites += 1;
+        if (journalWrites > 1) throw new Error('Injected journal cleanup failure');
+      }
+      return original(key, list);
+    });
+
+    const result = await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED_CLEANUP_PENDING);
+    const persistedBlock = (await loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    const persistedWeek = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persistedBlock.completed_at).toBeTruthy();
+    expect(await readJournalRaw()).toHaveLength(1);
+
+    clearSpy.mockRestore();
+    const replay = await reconcileRecoveryOperations();
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+    // Replaying an already-satisfied operation is a no-op except cleanup.
+    expect((await loadRecoveryBlocksRaw()).find((b) => b.id === block.id).completed_at).toBe(persistedBlock.completed_at);
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).completed_at).toBe(persistedWeek.completed_at);
+  });
+
+  test('domain read fails during replay: pending, no outcome chosen', async () => {
+    const { block } = await seed();
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    spy.mockRestore();
+
+    const readSpy = failReadsFor([RECOVERY_BLOCK_WEEKS_KEY]);
+    const replay = await reconcileRecoveryOperations();
+    expect(replay.ok).toBe(false);
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
+    expect(await readJournalRaw()).toHaveLength(1);
+    readSpy.mockRestore();
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+  });
+
+  test('a stale intent whose postconditions already hold only retries cleanup', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const weekDone = await completeRecoveryWeek(week.id, '2021-01-01T00:00:00.000Z');
+    const blockDone = await completeRecoveryBlock(block.id, '2021-01-02T00:00:00.000Z');
+    await AsyncStorage.setItem(
+      RECOVERY_OPERATION_JOURNAL_KEY,
+      JSON.stringify([{
+        version: 1,
+        operation_id: 'recop_stale',
+        created_at: '2021-01-03T00:00:00.000Z',
+        updated_at: '2021-01-03T00:00:00.000Z',
+        stage: 'intent',
+        attempts: 0,
+        last_error: null,
+        type: 'complete_block_with_week',
+        block_id: block.id,
+        week_id: week.id,
+        note_id: null,
+        requested_completed_at: '2021-01-03T00:00:00.000Z',
+        intended_outcome: 'both completed',
+      }])
+    );
+
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+    // No timestamp churn: neither record slid forward to the stale request.
+    expect((await loadRecoveryBlocksRaw()).find((b) => b.id === block.id).completed_at).toBe(blockDone.completed_at);
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).completed_at).toBe(weekDone.completed_at);
+  });
+
+  test('a pending operation whose block was deleted meanwhile is retired, not stuck', async () => {
+    const { block } = await seed();
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    spy.mockRestore();
+
+    await deleteRecoveryBlock(block.id);
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('an app restart between stages resumes and completes the operation', async () => {
+    const { block, week } = await seed();
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    spy.mockRestore();
+
+    // Restart: every piece of in-memory state (the single-flight queue, the
+    // registered note operations) is discarded. Only the persisted journal and
+    // the persisted collections survive, and they alone must drive convergence.
+    __resetRecoveryOperationJournal();
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.ok).toBe(true);
+    const persistedBlock = (await loadRecoveryBlocksRaw()).find((b) => b.id === block.id);
+    const persistedWeek = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persistedBlock.completed_at).toBe(persistedWeek.completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('concurrent double taps produce one completion, one timestamp, and no duplicate records', async () => {
+    const { block } = await seed();
+
+    const [a, b] = await Promise.all([
+      completeRecoveryBlockCore(journalStorage, { blockId: block.id }),
+      completeRecoveryBlockCore(journalStorage, { blockId: block.id }),
+    ]);
+
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    const blocks = (await loadRecoveryBlocksRaw()).filter((x) => x.id === block.id);
+    expect(blocks).toHaveLength(1);
+    const weeks = await loadRecoveryWeeksForBlock(block.id);
+    expect(weeks[0].completed_at).toBe(blocks[0].completed_at);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+});
+
+describe('delete a linked workout note — verified path and boundaries', () => {
+  async function seedLinked() {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const notes = [{ id: 'wn_w1', title: 'Recovery Week 1' }];
+    setRecoveryNoteOperations(makeLocalNoteOps(notes));
+    return { block, week, notes };
+  }
+
+  test('tombstones the membership and deletes the note, then clears the journal', async () => {
+    const { week, notes } = await seedLinked();
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBeTruthy();
+    expect(notes).toEqual([]);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('a note with no live membership is a single-domain delete with no journal record', async () => {
+    const notes = [{ id: 'wn_free', title: 'Ordinary' }];
+    setRecoveryNoteOperations(makeLocalNoteOps(notes));
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_free' });
+
+    expect(result.ok).toBe(true);
+    expect(result.week).toBeNull();
+    expect(notes).toEqual([]);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('membership write fails: intent retained, the note is NOT deleted, replay converges', async () => {
+    const { week, notes } = await seedLinked();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect(notes).toHaveLength(1);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].note_id).toBe('wn_w1');
+
+    spy.mockRestore();
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBe(
+      journal[0].requested_deleted_at
+    );
+    expect(notes).toEqual([]);
+  });
+
+  test('delete committed and THEN threw: the persisted state decides, and success is reported', async () => {
+    const { week, notes } = await seedLinked();
+    const base = makeLocalNoteOps(notes);
+    setRecoveryNoteOperations({
+      ...base,
+      deleteNote: async (id) => {
+        await base.deleteNote(id);
+        throw new Error('Sync bookkeeping failed after the delete committed');
+      },
+    });
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    // The membership is NOT restored — restoring it would point a live week at
+    // a note that is already gone.
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBeTruthy();
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('delete committed, threw, AND the verification read failed: pending, never a restored membership', async () => {
+    const { week, notes } = await seedLinked();
+    const base = makeLocalNoteOps(notes);
+    let reads = 0;
+    setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        reads += 1;
+        if (reads === 2) throw new Error('Injected verification read failure');
+        return base.loadNoteState(id);
+      },
+      deleteNote: async (id) => {
+        await base.deleteNote(id);
+        throw new Error('Threw after committing');
+      },
+    });
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
+    // Fail closed: tombstoned membership retained, journal retained.
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBeTruthy();
+    expect(await readJournalRaw()).toHaveLength(1);
+
+    setRecoveryNoteOperations(base);
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('membership tombstoned while the note is still live: replay deletes the note', async () => {
+    const { block, week } = await seedLinked();
+    const notes = [{ id: 'wn_w1', title: 'Recovery Week 1' }];
+    setRecoveryNoteOperations(makeLocalNoteOps(notes));
+    await deleteRecoveryWeek(week.id);
+    await AsyncStorage.setItem(
+      RECOVERY_OPERATION_JOURNAL_KEY,
+      JSON.stringify([{
+        version: 1, operation_id: 'recop_half_a', created_at: 'x', updated_at: 'x', stage: 'first_write',
+        attempts: 1, last_error: null, type: 'delete_linked_note',
+        block_id: block.id, week_id: week.id, note_id: 'wn_w1',
+        requested_deleted_at: '2026-02-02T00:00:00.000Z', intended_outcome: 'membership and note removed',
+      }])
+    );
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(notes).toEqual([]);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('note deleted while the membership is still live: replay tombstones the membership', async () => {
+    const { block, week } = await seedLinked();
+    setRecoveryNoteOperations(makeLocalNoteOps([]));
+    await AsyncStorage.setItem(
+      RECOVERY_OPERATION_JOURNAL_KEY,
+      JSON.stringify([{
+        version: 1, operation_id: 'recop_half_b', created_at: 'x', updated_at: 'x', stage: 'second_write',
+        attempts: 1, last_error: null, type: 'delete_linked_note',
+        block_id: block.id, week_id: week.id, note_id: 'wn_w1',
+        requested_deleted_at: '2026-02-02T00:00:00.000Z', intended_outcome: 'membership and note removed',
+      }])
+    );
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    const persisted = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persisted.deleted_at).toBe('2026-02-02T00:00:00.000Z');
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('a live dangling membership can never survive reconciliation', async () => {
+    const { week } = await seedLinked();
+    const base = makeLocalNoteOps([]);
+    setRecoveryNoteOperations(base);
+
+    await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    const persisted = (await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id);
+    expect(persisted.deleted_at).toBeTruthy();
+  });
+
+  test('journal cleanup failure reports success with cleanup pending, then converges', async () => {
+    const { notes } = await seedLinked();
+    let journalWrites = 0;
+    const original = writeListModule.writeList;
+    const spy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_OPERATION_JOURNAL_KEY) {
+        journalWrites += 1;
+        if (journalWrites > 1) throw new Error('Injected journal cleanup failure');
+      }
+      return original(key, list);
+    });
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED_CLEANUP_PENDING);
+    expect(notes).toEqual([]);
+    expect(await readJournalRaw()).toHaveLength(1);
+
+    spy.mockRestore();
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('an app restart mid-operation resumes and completes the deletion', async () => {
+    const { week, notes } = await seedLinked();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+    spy.mockRestore();
+
+    __resetRecoveryOperationJournal();
+    setRecoveryNoteOperations(makeLocalNoteOps(notes));
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBeTruthy();
+    expect(notes).toEqual([]);
+  });
+
+  test('concurrent delete attempts over the same note do not compete', async () => {
+    const { week, notes } = await seedLinked();
+
+    const results = await Promise.all([
+      unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' }),
+      unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' }),
+    ]);
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(notes).toEqual([]);
+    const tombstoned = (await loadRecoveryBlockWeeksRaw()).filter((w) => w.id === week.id);
+    expect(tombstoned).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+});
+
+describe('delete a linked workout note — cloud tombstone and queue bookkeeping', () => {
+  async function seedCloudLinked() {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const notes = [{ id: 'wn_w1', title: 'Recovery Week 1' }];
+    const queue = [];
+    setRecoveryNoteOperations(makeCloudNoteOps(notes, queue));
+    return { block, week, notes, queue };
+  }
+
+  test('cloud mode requires BOTH a tombstone and durable pending-sync intent', async () => {
+    const { week, notes, queue } = await seedCloudLinked();
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(true);
+    expect(notes[0].deleted_at).toBeTruthy();
+    expect(queue).toEqual(['wn_w1']);
+    expect((await loadRecoveryBlockWeeksRaw()).find((w) => w.id === week.id).deleted_at).toBeTruthy();
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('cloud tombstone written but queue enqueue failed: pending, then re-enqueued on replay', async () => {
+    const { notes, queue } = await seedCloudLinked();
+    const base = makeCloudNoteOps(notes, queue);
+    let attempts = 0;
+    setRecoveryNoteOperations({
+      loadNoteState: base.loadNoteState,
+      deleteNote: async (id) => {
+        attempts += 1;
+        if (attempts === 1) {
+          // Tombstone lands; queue bookkeeping throws afterwards.
+          const note = notes.find((n) => n.id === id);
+          note.deleted_at = '2026-01-01T00:00:00.000Z';
+          throw new Error('Injected enqueue failure');
+        }
+        return base.deleteNote(id);
+      },
+    });
+
+    const result = await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect(notes[0].deleted_at).toBeTruthy();
+    expect(queue).toEqual([]);
+    expect(await readJournalRaw()).toHaveLength(1);
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(queue).toEqual(['wn_w1']);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('a cloud tombstone is never re-stamped by replay', async () => {
+    const { notes, queue } = await seedCloudLinked();
+    await unlinkNoteForDeleteCore(journalStorage, { noteId: 'wn_w1' });
+    const stamped = notes[0].deleted_at;
+
+    await reconcileRecoveryOperations();
+
+    expect(notes[0].deleted_at).toBe(stamped);
+    expect(queue).toEqual(['wn_w1']);
+  });
+});
+
+describe('add a new note as the next recovery week — a two-collection operation', () => {
+  // A local-mode note store: hard delete, no upload queue.
+  function noteOpsFor(notes) {
+    return {
+      loadNoteState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async (id) => {
+        const idx = notes.findIndex((n) => n.id === id);
+        if (idx >= 0) notes.splice(idx, 1);
+      },
+      loadNoteLiveState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = notes.findIndex((n) => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) notes[idx] = live; else notes.push(live);
+      },
+    };
+  }
+
+  // A cloud-mode note store: a live row plus durable upload intent are BOTH
+  // required, and `ensureNoteLive` persists the row before it queues — which is
+  // what makes the enqueue-failed gap reachable.
+  function cloudNoteOpsFor(notes, queue, { failEnqueue = () => false } = {}) {
+    return {
+      loadNoteState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !note || !!note.deleted_at, requiresQueue: true, queued: queue.includes(id) };
+      },
+      deleteNote: async () => {},
+      loadNoteLiveState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        if (!note) return { exists: false, deleted: false, requiresQueue: true, queued: false };
+        if (note.deleted_at) return { exists: true, deleted: true, requiresQueue: true, queued: false };
+        return { exists: true, deleted: false, requiresQueue: true, queued: queue.includes(id) };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = notes.findIndex((n) => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) notes[idx] = live; else notes.push(live);
+        // The row is committed at this point. A throw here is precisely the
+        // committed-write/failed-bookkeeping case.
+        if (failEnqueue()) throw new Error('Injected enqueue failure');
+        if (!queue.includes(seed.id)) queue.push(seed.id);
+      },
+    };
+  }
+
+  async function seedReadyBlock() {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    return { block, week, notes };
+  }
+
+  test('creates the note and its membership at the next ordinal, then clears the journal', async () => {
+    const { block, notes } = await seedReadyBlock();
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(true);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VERIFIED);
+    const created = notes.find((n) => n.title === 'Week 2');
+    expect(created).toBeTruthy();
+    // The journal never stores workout-note text.
+    expect(created.raw_text).toBe('');
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(created.id);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('intent write fails: neither the note nor the membership is created', async () => {
+    const { block, notes } = await seedReadyBlock();
+    failWritesFor([RECOVERY_OPERATION_JOURNAL_KEY]);
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    expect(notes).toHaveLength(1);
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+  });
+
+  test('the note write fails: intent retained, no membership, replay converges once', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const base = noteOpsFor(notes);
+    let attempts = 0;
+    setRecoveryNoteOperations({
+      ...base,
+      ensureNoteLive: async (seed) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Injected note write failure');
+        return base.ensureNoteLive(seed);
+      },
+    });
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(journal[0].week_seed.week_number).toBe(2);
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.id === journal[0].note_id)).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('the membership write fails: replay reuses the SAME note id and ordinal, never a second of either', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+
+    spy.mockRestore();
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered).toHaveLength(2);
+    expect(ordered[1].id).toBe(journal[0].week_id);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(ordered[1].week_number).toBe(2);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+  });
+
+  test('a restart between the note write and the attach resumes from the journal alone', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    __resetRecoveryOperationJournal();
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('concurrent confirms allocate ONE ordinal and ONE note', async () => {
+    const { block, notes } = await seedReadyBlock();
+
+    const [a, b] = await Promise.all([
+      addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' }),
+      addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' }),
+    ]);
+
+    // The second attempt is refused because the first has already attached an
+    // incomplete current week — it can never allocate a duplicate ordinal.
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('validation refuses an unfinished current week with zero writes, journal included', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    setRecoveryNoteOperations(noteOpsFor(notes));
+    const writeSpy = jest.spyOn(writeListModule, 'writeList');
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.VALIDATION_FAILED);
+    expect(result.reason).toBe('WEEK_NOT_COMPLETE');
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(notes).toHaveLength(1);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('an ordinal claimed by another device is durably reassigned, and ONE retry exits the conflict', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const before = await readJournalRaw();
+    expect(before[0].week_seed.week_number).toBe(2);
+
+    // Another device's week 2 arrives through sync before replay. Retrying the
+    // RECORDED ordinal could never succeed, so retrying it unchanged forever
+    // would lock every recovery action on this block permanently.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await replaceRecoveryBlockWeeksRaw([...raw, {
+      id: 'rw_remote', block_id: block.id, note_id: 'wn_remote', week_number: 2,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]);
+
+    const replay = await reconcileRecoveryOperations();
+
+    // One retry EXITS the conflict rather than reporting it again.
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2, 3]);
+    // Gap-free and unique: the remote row keeps 2, ours is renumbered to 3.
+    expect(ordered.find((w) => w.note_id === before[0].note_id).week_number).toBe(3);
+    expect(ordered.filter((w) => w.week_number === 2)).toHaveLength(1);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+  });
+
+  test('the reassignment is recorded on the journal BEFORE the write, so a failure replays the new ordinal', async () => {
+    const { block } = await seedReadyBlock();
+    let failWeeks = true;
+    const original = writeListModule.writeList;
+    const spy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return original(key, list);
+    });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    // Seeded through AsyncStorage directly, because the injected failure above
+    // blocks every write to this key.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([...raw, {
+      id: 'rw_remote', block_id: block.id, note_id: 'wn_remote', week_number: 2,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]));
+
+    // Replay reassigns to 3, then the membership write fails again. The new
+    // ordinal must already be on the record, not recomputed at write time.
+    await reconcileRecoveryOperations();
+    const mid = await readJournalRaw();
+    expect(mid).toHaveLength(1);
+    expect(mid[0].week_seed.week_number).toBe(3);
+    expect(mid[0].reassigned_from_week_number).toBe(2);
+    expect(mid[0].reassignments).toBe(1);
+
+    failWeeks = false;
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2, 3]);
+    spy.mockRestore();
+  });
+
+  test('a note claimed by another block is a terminal cancellation that unlocks recovery actions', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    // The seeded note now has a live membership in a DIFFERENT block. One note
+    // cannot be in two blocks, and nothing a retry does can change that.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await replaceRecoveryBlockWeeksRaw([...raw, {
+      id: 'rw_elsewhere', block_id: 'rb_elsewhere', note_id: journal[0].note_id, week_number: 1,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]);
+
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.CONFLICT_CANCELLED);
+    expect(replay.results[0].terminal).toBe(true);
+    expect(replay.results[0].error).toMatch(/different recovery block/i);
+    // Retired, not retried: nothing is pending, so no action stays locked.
+    expect(await readJournalRaw()).toEqual([]);
+    expect(replay.pending).toEqual([]);
+    // A further retry is a clean no-op — the state is genuinely exited.
+    const again = await reconcileRecoveryOperations();
+    expect(again.ok).toBe(true);
+    expect(again.cancelled).toEqual([]);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+  });
+
+  test('a block deleted while the operation is pending is a terminal cancellation, not a stranded record', async () => {
+    const { block } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+
+    await deleteRecoveryBlock(block.id);
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.CONFLICT_CANCELLED);
+    expect(replay.pending).toEqual([]);
+    expect(await readJournalRaw()).toEqual([]);
+    // No live membership was created under a deleted block.
+    expect(await loadRecoveryWeeksForBlock(block.id)).toEqual([]);
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+  });
+
+  test('cloud mode: the note write commits and the enqueue fails — existence alone must not verify', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    const queue = [];
+    let failEnqueue = true;
+    setRecoveryNoteOperations(cloudNoteOpsFor(notes, queue, { failEnqueue: () => failEnqueue }));
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    // The row committed; the bookkeeping did not. The note exists but has no
+    // durable upload intent, so the operation must NOT be verified or cleared.
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+    expect(queue).toEqual([]);
+    // No membership was published over a note that may never upload.
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+
+    failEnqueue = false;
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(queue).toEqual([journal[0].note_id]);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2]);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('cloud mode: a live-but-unqueued note is re-enqueued on replay without a second membership', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    const queue = [];
+    setRecoveryNoteOperations(cloudNoteOpsFor(notes, queue));
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    const created = notes.find((n) => n.title === 'Week 2');
+
+    // A sync pass consumed the queue entry, then the record is replayed from a
+    // stale intent: nothing may be duplicated.
+    queue.length = 0;
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1, operation_id: 'recop_stale_add', created_at: 'x', updated_at: 'x',
+      stage: 'verify_read', attempts: 1, last_error: null,
+      type: 'add_week_with_new_note', block_id: block.id,
+      week_id: (await loadRecoveryWeeksForBlock(block.id))[1].id, note_id: created.id,
+      requested_created_at: '2026-04-04T00:00:00.000Z',
+      note_seed: created,
+      week_seed: (await loadRecoveryWeeksForBlock(block.id))[1],
+      intended_outcome: 'note live and linked as week 2',
+    }]));
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(queue).toEqual([created.id]);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+  });
+
+  test('a tombstoned note is not accepted as a valid note: replay restores it live before attaching', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    // The created note is tombstoned before replay. Existence-only verification
+    // would attach a live membership to a deleted note.
+    const idx = notes.findIndex((n) => n.id === journal[0].note_id);
+    notes[idx] = { ...notes[idx], deleted_at: '2026-04-04T00:00:00.000Z' };
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const restored = notes.find((n) => n.id === journal[0].note_id);
+    expect(restored.deleted_at).toBeFalsy();
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+});
+
+describe('serialization and pre-action gating', () => {
+  test('a pending operation blocks a conflicting action over the same block', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const spy = failWritesFor([RECOVERY_BLOCKS_KEY], { times: 1 });
+    await completeRecoveryBlockCore(journalStorage, { blockId: block.id });
+    spy.mockRestore();
+    // Keep it pending by breaking the block write for the pre-action replay too.
+    const blockWrite = failWritesFor([RECOVERY_BLOCKS_KEY]);
+
+    const result = await addRecoveryWeekCore(journalStorage, { blockId: block.id, noteId: 'wn_w2' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
+    // No new ordinal was allocated under the pending operation.
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+    expect(week.week_number).toBe(1);
+    blockWrite.mockRestore();
+  });
+
+  test('reconciliation is single-flight: re-entry awaits the in-flight pass', async () => {
+    const block = await makeBlock();
+    await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    const first = reconcileRecoveryOperations();
+    const second = reconcileRecoveryOperations();
+    expect(second).toBe(first);
+    await first;
+  });
+
+  test('an unrelated action is not blocked by a pending operation elsewhere', async () => {
+    const blockA = await makeBlock();
+    const weekA = await addRecoveryWeek({ blockId: blockA.id, noteId: 'wn_a1' });
+    await AsyncStorage.setItem(
+      RECOVERY_OPERATION_JOURNAL_KEY,
+      JSON.stringify([{
+        version: 1, operation_id: 'recop_other', created_at: 'x', updated_at: 'x', stage: 'intent',
+        attempts: 0, last_error: null, type: 'complete_block_with_week',
+        block_id: 'rb_elsewhere', week_id: 'rw_elsewhere', note_id: null,
+        requested_completed_at: '2026-03-03T00:00:00.000Z', intended_outcome: 'x',
+      }])
+    );
+
+    const result = await completeCurrentWeekCore(journalStorage, { blockId: blockA.id });
+
+    expect(result.ok).toBe(true);
+    expect(result.week.id).toBe(weekA.id);
   });
 });
 

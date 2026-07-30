@@ -20,6 +20,7 @@ import {
 } from '../../storage/entries/localDataOwner';
 import { fetchConsentStatus } from '../../storage/cloud/consent';
 import { rebuildCloudCopy } from '../../storage/cloud/syncAdapter';
+import { withRecoveryReconciliation } from './storageMode';
 
 // The Cloud Sync authorization seam (#487).
 //
@@ -68,10 +69,27 @@ async function checkConsent() {
   };
 }
 
+// Bootstrap runs under the SAME exclusive recovery boundary as an ordinary sync
+// pass (#696), and for the same reason: `buildBootstrapPlan` includes
+// `recovery_blocks` and `recovery_block_weeks`, so bootstrap reads and uploads
+// exactly the collections the journal replayers rewrite as whole lists.
+//
+// Without the boundary, a journaled operation still pending at sign-in would have
+// its partial transition uploaded as the account's initial state, and a lifecycle
+// action started while bootstrap is building or uploading its snapshot would race
+// a whole-list write — the same defect ordinary sync had, on the one path where it
+// matters most, because there is no earlier cloud state to converge against.
+//
+// Both real upload paths (`runBootstrap` and `confirmOwnershipUpload`) build their
+// runner here, so wrapping at this single seam covers both. The post-reconcile
+// therefore completes BEFORE either caller persists ownership or activates cloud
+// mode, since both do that only after this runner resolves. A pending or corrupt
+// journal throws, which `runPhase` turns into a failed/retryable BOOTSTRAP phase
+// with the owner unwritten, the storage mode still LOCAL, and the journal intact.
 function makeBootstrapRunner(user) {
   const userId = user?.id;
   if (!userId) return null;
-  return () => cloudAdapter.bootstrapFromLocal(userId);
+  return () => withRecoveryReconciliation(() => cloudAdapter.bootstrapFromLocal(userId));
 }
 
 // Select the SYNC_PHASE.SYNC runner for this pass (issue #538). When the
@@ -106,8 +124,15 @@ async function selectSyncRunner(consent, userId, { ownedDevice = false } = {}) {
 
   const serverGeneration = Number(consent?.cloud_rebuild_generation ?? 0);
   const deviceGeneration = await getCloudRebuildGeneration(userId);
+  // Every SYNC-phase runner this function returns is wrapped in the recovery
+  // reconciliation boundaries (#696): replay pending recovery operations before
+  // this device reads or pushes workout notes / recovery blocks / recovery
+  // weeks, and again after the pull/merge before the phase may be published as
+  // complete. An operation that still cannot be verified fails the phase, which
+  // surfaces through the existing failed/retryable sync state with the
+  // reconciliation cause attached — never as a silent "Fully synced".
   if (userId && serverGeneration > deviceGeneration) {
-    return async () => {
+    return async () => withRecoveryReconciliation(async () => {
       const result = await rebuildCloudCopy();
       if (result && result.ok === false) return result;
       // Advance this device's generation only after the rebuild AND its
@@ -116,9 +141,9 @@ async function selectSyncRunner(consent, userId, { ownedDevice = false } = {}) {
       // idempotent), mirroring how the bootstrap runner treats its owner write.
       await setCloudRebuildGeneration(userId, serverGeneration);
       return result;
-    };
+    });
   }
-  return () => adapter.sync({ ownedDevice });
+  return () => withRecoveryReconciliation(() => adapter.sync({ ownedDevice }));
 }
 
 export function useSyncRecovery(user = null) {

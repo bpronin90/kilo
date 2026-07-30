@@ -18,3 +18,8 @@ export const WEIGH_IN_REMINDER_KEY = 'kilo_weigh_in_reminder';
 export const WORKOUT_REMINDER_KEY = 'kilo_workout_reminder';
 export const RECOVERY_BLOCKS_KEY = 'kilo_recovery_blocks';
 export const RECOVERY_BLOCK_WEEKS_KEY = 'kilo_recovery_block_weeks';
+// Device-local write-ahead journal for multi-record recovery lifecycle
+// operations (#696). Protocol metadata, never user health data: it is not a
+// sync table, is not exported in a backup, and is versioned in the key itself
+// so an older build's records are never silently reinterpreted.
+export const RECOVERY_OPERATION_JOURNAL_KEY = 'kilo_recovery_operation_journal_v1';

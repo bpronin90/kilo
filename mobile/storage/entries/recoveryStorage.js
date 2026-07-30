@@ -399,3 +399,20 @@ export async function deleteRecoveryWeek(id) {
   await writeList(RECOVERY_BLOCK_WEEKS_KEY, list);
   return updated;
 }
+
+// ── multi-record operations (#696) ────────────────────────────────────────────
+//
+// Completing a block together with its current week, and deleting a linked
+// workout note together with its membership, deliberately do NOT live here.
+//
+// Both span collections that share no transaction, and an earlier revision of
+// this file tried to make them atomic with snapshot-and-revert. That cannot
+// hold: the revert write can fail (leaving an untracked partial transition),
+// and a note-delete callback that persists the removal and then throws is
+// indistinguishable from one that never committed. Both are now durable
+// write-ahead journaled operations with a single roll-forward outcome and
+// persisted-postcondition verification — see
+// storage/entries/recoveryOperationJournal.js.
+//
+// Everything above remains the single-record domain surface those operations
+// (and the rest of the app) build on.

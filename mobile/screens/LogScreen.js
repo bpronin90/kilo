@@ -7,7 +7,7 @@
 // asks for that specific change.
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';
@@ -15,6 +15,7 @@ import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
+import { findLiveMembershipForNote, nextWeekNumber } from '../lib/data/recoveryBlocks';
 import {
   useTrackedLifts,
   useWorkoutNotes,
@@ -26,12 +27,15 @@ import {
   isEligibleBaselineNote,
   isEligibleRecoveryWeekNote,
 } from '../hooks/useEntries';
+import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
 import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
+import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
+import { LogRecoverySection } from '../components/LogRecoverySection';
 
 import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
@@ -69,9 +73,76 @@ export function LogScreen({
     weeks: recoveryWeeks = [],
     recoveryWeekNumberByNoteId = {},
     refresh: refreshRecoveryState,
+    // Journaled lifecycle operations that are not yet verified (#696), plus the
+    // single shared reconciler behind the `Retry recovery` affordance.
+    pendingRecovery = [],
+    recoveryPendingError = null,
+    retryRecovery,
   } = useRecoveryBlockState() || {};
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
+  const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
+  const [addWeekModalOpen, setAddWeekModalOpen] = useState(false);
+
+  // Single lifecycle mutex (#696 review): null | 'week' | 'block' | 'add' |
+  // 'delete-unlink' | a week id being unlinked. Every recovery-block write —
+  // including the Add Week modal's own confirm, which lives in a sibling
+  // component with no visibility into LogRecoverySection's own state — is
+  // serialized behind this one flag. A second attempt while one is in flight
+  // (double tap, or one action racing another) is rejected outright with a
+  // clear error rather than reading stale state and writing under a block or
+  // week that changed underneath it.
+  const [recoveryActionBusy, setRecoveryActionBusy] = useState(null);
+  // The ref — not the state — IS the mutex. React state is not a same-tick lock:
+  // two confirms dispatched before the next render both read the captured
+  // `recoveryActionBusy === null` and both proceed. The ref is written and read
+  // synchronously, so the second attempt is rejected in the same tick. The state
+  // exists only to drive the disabled/busy rendering, and the journal's own
+  // single-flight queue remains the durable backstop underneath both.
+  const recoveryActionLockRef = useRef(null);
+  const runRecoveryAction = async (key, action) => {
+    if (recoveryActionLockRef.current) {
+      return { ok: false, error: 'Another recovery action is already in progress.' };
+    }
+    recoveryActionLockRef.current = key;
+    setRecoveryActionBusy(key);
+    try {
+      return await action();
+    } finally {
+      recoveryActionLockRef.current = null;
+      setRecoveryActionBusy(null);
+    }
+  };
+
+  // Bound to useLogOtherRoutineEditor's `remove` param below (not the raw
+  // hook value): the only call site for note removal is inside the standard
+  // "Delete Routine" alert's own "Delete" onPress (see guardedHandleDeleteRoutine
+  // further down), so unlinking a recovery-week note happens exactly once,
+  // together with the removal it guards, never before that final confirm.
+  //
+  // The note delete is NOT injected as a callback any more (#696). A callback
+  // that persists the removal and then throws is indistinguishable from one
+  // that never committed, so the journaled operation owns the deletion end to
+  // end and decides the outcome from persisted state. It still runs the same
+  // local/cloud-sync-aware storage path this screen's `remove` uses — the
+  // registration in hooks/entries/storageMode.js — so nothing is bypassed; the
+  // notebook is simply reloaded afterwards instead of being notified by the
+  // callback.
+  const removeNoteWithRecoveryUnlink = async (id) => {
+    const result = await runRecoveryAction('delete-unlink', async () => {
+      if (!recoveryLifecycle.unlinkNoteForDelete) {
+        await remove(id);
+        return { ok: true, week: null };
+      }
+      return recoveryLifecycle.unlinkNoteForDelete({ noteId: id });
+    });
+    if (!result.ok) {
+      Alert.alert('Could not delete this note', result.error || 'Could not delete this note.');
+      throw new Error(result.error || 'Could not delete this note.');
+    }
+    refreshNotes?.();
+    if (result.week) refreshRecoveryState?.();
+  };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
 
@@ -111,7 +182,7 @@ export function LogScreen({
     deloadHistory,
     update,
     add,
-    remove,
+    remove: removeNoteWithRecoveryUnlink,
     selectCurrent,
     updateDeload,
     deleteDeloadNote,
@@ -225,6 +296,125 @@ export function LogScreen({
       }
     }
     return result;
+  };
+
+  // Week 2+ lifecycle (#696). Each wrapper delegates the actual mutation to
+  // hooks/entries/recoveryBlockHooks.js (which already enforces sequential
+  // completion and the latest-week-only unlink restriction) and only adds the
+  // Log-screen-local refresh/rollback glue.
+  const openAddWeekModal = () => setAddWeekModalOpen(true);
+  const closeAddWeekModal = () => setAddWeekModalOpen(false);
+
+  // Two distinct operations, deliberately.
+  //
+  // Attaching an EXISTING note touches one collection, so it stays a plain
+  // single-domain action. Creating a new note AND attaching it touches two, so it
+  // is a durable journaled operation (addRecoveryWeekWithNewNoteCore): the note id
+  // and the week ordinal are minted once inside the journal lock and recorded on
+  // the intent before anything is written. This screen no longer creates the note
+  // itself, and there is no best-effort rollback delete left to fail — a failed
+  // attempt leaves a journaled intent that replay finishes instead of an untracked
+  // orphan note.
+  const handleConfirmAddWeek = ({ weekChoice, weekNoteId, newNoteTitle }) => runRecoveryAction('add', async () => {
+    if (!activeRecoveryBlock) {
+      return { ok: false, error: 'No active recovery block to add a week to.' };
+    }
+    if (weekChoice === 'new') {
+      if (!recoveryLifecycle.addWeekWithNewNote) {
+        return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+      }
+      const result = await recoveryLifecycle.addWeekWithNewNote({
+        blockId: activeRecoveryBlock.id,
+        title: newNoteTitle,
+      });
+      if (result?.ok) {
+        refreshRecoveryState?.();
+        refreshNotes?.();
+      }
+      return result;
+    }
+    if (!recoveryLifecycle.addWeek) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    if (!weekNoteId) {
+      return { ok: false, error: 'Select or create a note for this recovery week.' };
+    }
+    const result = await recoveryLifecycle.addWeek({
+      blockId: activeRecoveryBlock.id,
+      noteId: weekNoteId,
+    });
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  });
+
+  const handleCompleteCurrentWeek = (params) => runRecoveryAction('week', async () => {
+    if (!recoveryLifecycle.completeCurrentWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    const result = await recoveryLifecycle.completeCurrentWeek(params);
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  });
+
+  const handleCompleteRecoveryBlock = (params) => runRecoveryAction('block', async () => {
+    if (!recoveryLifecycle.completeBlock) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    const result = await recoveryLifecycle.completeBlock(params);
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  });
+
+  const handleUnlinkRecoveryWeek = (params) => runRecoveryAction(params.weekId, async () => {
+    if (!recoveryLifecycle.unlinkWeek) return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    const result = await recoveryLifecycle.unlinkWeek(params);
+    if (result?.ok) refreshRecoveryState?.();
+    return result;
+  });
+
+  // The `Retry recovery` affordance. It runs the same idempotent reconciler as
+  // app start, remount, and the cloud sync boundary — never a separate repair
+  // path — and then refreshes both the workout-note and recovery views so a
+  // successful reconciliation clears the warning.
+  const handleRetryRecovery = () => runRecoveryAction('retry-recovery', async () => {
+    if (!recoveryLifecycle.retryRecovery) {
+      return { ok: false, error: 'Recovery blocks are not available in this build yet.' };
+    }
+    const result = await recoveryLifecycle.retryRecovery();
+    await Promise.resolve(refreshRecoveryState?.());
+    refreshNotes?.();
+    return result;
+  });
+
+  const handleViewRecoveryNote = (note) => {
+    if (!note || note.id === currentId) return;
+    otherEditor.handleViewOtherNote(note);
+  };
+
+  // Deleting a linked recovery-week note (any week, active or completed
+  // -history — this is deliberately not restricted to the latest week the way
+  // the explicit Unlink action is) must never leave a live dangling membership
+  // (#696), but cancelling either confirmation (ours, or the pre-existing
+  // "Delete Routine" one below) must leave the note exactly as it was — still
+  // linked, still present. So the unlink never runs eagerly on our own
+  // confirm; instead it is fused into the actual note removal itself
+  // (removeNoteWithRecoveryUnlink, passed to useLogOtherRoutineEditor as its
+  // `remove`), which only ever executes from the standard delete flow's own
+  // "Delete" button. A cancel at either step calls no storage function at all.
+  const guardedHandleDeleteRoutine = (id, title, isCurrent) => {
+    const membership = findLiveMembershipForNote(recoveryWeeks, id);
+    if (!membership) {
+      otherEditor.handleDeleteRoutine(id, title, isCurrent);
+      return;
+    }
+    Alert.alert(
+      'Delete this recovery week note?',
+      `"${title}" is Recovery Week ${membership.week_number}. Deleting it will unlink it from the recovery block; the block record itself is unaffected. You will be asked to confirm the deletion itself next.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => otherEditor.handleDeleteRoutine(id, title, isCurrent),
+        },
+      ]
+    );
   };
 
   const handleToggleTrack = async (name) => {
@@ -355,6 +545,23 @@ export function LogScreen({
             )}
 
             {effectiveTabView === 'routine' && (
+              <LogRecoverySection
+                blocks={recoveryBlocks}
+                weeks={recoveryWeeks}
+                notes={notes}
+                onViewNote={handleViewRecoveryNote}
+                onCompleteWeek={handleCompleteCurrentWeek}
+                onOpenAddWeek={openAddWeekModal}
+                onCompleteBlock={handleCompleteRecoveryBlock}
+                onUnlinkWeek={handleUnlinkRecoveryWeek}
+                busy={recoveryActionBusy}
+                pendingRecovery={pendingRecovery}
+                pendingRecoveryError={recoveryPendingError}
+                onRetryRecovery={handleRetryRecovery}
+              />
+            )}
+
+            {effectiveTabView === 'routine' && (
               <LogPreviousRoutines
                 otherNotes={otherNotes}
                 handleViewOtherNote={otherEditor.handleViewOtherNote}
@@ -366,7 +573,7 @@ export function LogScreen({
                 handleToggleViewingWeek={otherEditor.handleToggleViewingWeek}
                 handleSwitchCurrent={otherEditor.handleSwitchCurrent}
                 handleEditViewedNote={otherEditor.handleEditViewedNote}
-                handleDeleteRoutine={otherEditor.handleDeleteRoutine}
+                handleDeleteRoutine={guardedHandleDeleteRoutine}
                 handleCreateRoutine={otherEditor.handleCreateRoutine}
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
                 eligibleBaselineNoteIds={activeRecoveryBlock ? null : eligibleBaselineNoteIds}
@@ -477,7 +684,7 @@ export function LogScreen({
           noteIsSaving={otherEditor.noteIsSaving}
           handleSwitchCurrent={otherEditor.handleSwitchCurrent}
           handleDeleteDeloadNoteFromEditor={otherEditor.handleDeleteDeloadNoteFromEditor}
-          handleDeleteRoutine={otherEditor.handleDeleteRoutine}
+          handleDeleteRoutine={guardedHandleDeleteRoutine}
           currentId={currentId}
         />
       </ScreenShell>
@@ -498,6 +705,18 @@ export function LogScreen({
         blockingMessage={recoveryBlockingMessage}
         onConfirm={handleConfirmRecoveryBlock}
         onClose={closeRecoveryModal}
+      />
+      <RecoveryBlockWeekModal
+        visible={addWeekModalOpen}
+        weekNumber={activeRecoveryBlock ? nextWeekNumber(recoveryWeeks, activeRecoveryBlock.id) : null}
+        eligibleWeekNotes={eligibleWeekNotes}
+        blockingMessage={
+          !activeRecoveryBlock
+            ? 'No active recovery block to add a week to.'
+            : (recoveryActionBusy ? 'Another recovery action is already in progress.' : null)
+        }
+        onConfirm={handleConfirmAddWeek}
+        onClose={closeAddWeekModal}
       />
     </>
   );

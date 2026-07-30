@@ -813,3 +813,188 @@ describe('useCloudExport hook', () => {
     expect(JSON.parse(signedOut.json).cloud.account).toBeNull();
   });
 });
+
+// ── recovery reconciliation surfaces through the existing sync state (#696) ───
+
+describe('a pending recovery operation blocks a successful sync report', () => {
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
+
+  beforeEach(async () => {
+    __resetSyncQueue();
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    journal.__resetRecoveryOperationJournal();
+    __resetSyncQueue();
+  });
+
+  it('maybeSyncCloud leaves the SYNC phase failed and retryable, carrying the reconciliation cause', async () => {
+    jest.spyOn(entries, 'getStorageMode').mockReturnValue(entries.STORAGE_MODES.CLOUD);
+    const syncSpy = jest.fn().mockResolvedValue([]);
+    jest.spyOn(entries, 'getStorageAdapter').mockReturnValue({ mode: 'cloud', sync: syncSpy });
+
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      { id: 'rw_p', block_id: 'rb_p', note_id: 'wn_p', week_number: 1, completed_at: null, deleted_at: null },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1,
+      operation_id: 'recop_ui_pending',
+      created_at: '2026-05-01T00:00:00.000Z',
+      updated_at: '2026-05-01T00:00:00.000Z',
+      stage: 'intent',
+      attempts: 0,
+      last_error: null,
+      type: 'delete_linked_note',
+      block_id: 'rb_p',
+      week_id: 'rw_p',
+      note_id: 'wn_p',
+      requested_deleted_at: '2026-05-01T00:00:00.000Z',
+      intended_outcome: 'membership tombstoned and note deleted',
+    }]));
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async () => { throw new Error('Note store unavailable'); },
+      deleteNote: async () => {},
+    });
+
+    await maybeSyncCloud();
+
+    const state = getSyncState()[SYNC_PHASE.SYNC];
+    expect(state.status).toBe(SYNC_STATUS.FAILED);
+    expect(state.retryable).toBe(true);
+    expect(state.error).toMatch(/pending/i);
+    // The pass itself never ran, so nothing was published as synced.
+    expect(syncSpy).not.toHaveBeenCalled();
+    // The durable evidence needed for a later retry is preserved.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toHaveLength(1);
+  });
+
+  it('once the operation converges, the same code path reports a complete sync', async () => {
+    jest.spyOn(entries, 'getStorageMode').mockReturnValue(entries.STORAGE_MODES.CLOUD);
+    const syncSpy = jest.fn().mockResolvedValue([]);
+    jest.spyOn(entries, 'getStorageAdapter').mockReturnValue({ mode: 'cloud', sync: syncSpy });
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+
+    await maybeSyncCloud();
+
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(getSyncState()[SYNC_PHASE.SYNC].status).toBe(SYNC_STATUS.COMPLETE);
+  });
+});
+
+// The bootstrap WIRING, not just the boundary helper (#696): proves the runner
+// `runBootstrap` actually builds goes through the exclusive recovery boundary, so
+// an unresolved journal stops the first cloud activation before it uploads
+// anything, claims ownership, or switches the storage mode.
+describe('cloud bootstrap is gated on recovery reconciliation', () => {
+  const USER = { id: 'u_boot', email: 'boot@x.co' };
+  const journal = require('../storage/entries/recoveryOperationJournal');
+  const { registerRecoveryNoteOperations } = require('../hooks/entries/storageMode');
+  const { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCK_WEEKS_KEY } =
+    require('../storage/entries/keys');
+
+  beforeEach(async () => {
+    __resetSyncQueue();
+    await AsyncStorage.clear();
+    journal.__resetRecoveryOperationJournal();
+    registerRecoveryNoteOperations();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    journal.__resetRecoveryOperationJournal();
+    __resetSyncQueue();
+    entries.setStorageMode('local');
+  });
+
+  async function seedUnresolvableOperation() {
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([
+      {
+        id: 'rw_boot', block_id: 'rb_boot', note_id: 'wn_boot', week_number: 1,
+        completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+      },
+    ]));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1,
+      operation_id: 'recop_boot_gate',
+      created_at: '2026-07-09T00:00:00.000Z',
+      updated_at: '2026-07-09T00:00:00.000Z',
+      stage: 'intent',
+      attempts: 0,
+      last_error: null,
+      type: 'delete_linked_note',
+      block_id: 'rb_boot',
+      week_id: 'rw_boot',
+      note_id: 'wn_boot',
+      requested_deleted_at: '2026-07-09T00:00:00.000Z',
+      intended_outcome: 'membership tombstoned and note deleted',
+    }]));
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async () => { throw new Error('Note store unavailable'); },
+      deleteNote: async () => {},
+    });
+  }
+
+  test('an unresolved recovery operation fails bootstrap without uploading, claiming ownership, or activating cloud mode', async () => {
+    await seedUnresolvableOperation();
+    const uploadSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
+
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+
+    expect(result.ok).toBe(false);
+    // Nothing was uploaded: the account's initial state is never a partial
+    // transition or an unknown one.
+    expect(uploadSpy).not.toHaveBeenCalled();
+    // Failed and retryable, owner unwritten, storage mode still local.
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.FAILED);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].retryable).toBe(true);
+    expect(await getLocalDataOwner()).not.toBe(USER.id);
+    expect(entries.getStorageMode()).toBe('local');
+    // The durable evidence a later retry needs is intact.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toHaveLength(1);
+  });
+
+  test('once the operation converges, the same bootstrap path uploads and completes', async () => {
+    await seedUnresolvableOperation();
+    const uploadSpy = jest.spyOn(cloudAdapter, 'bootstrapFromLocal').mockResolvedValue({ ok: true });
+    const { ref } = renderHook(() => useSyncRecovery(USER));
+    await flush();
+    await act(async () => { await ref.current.runBootstrap(); });
+    expect(uploadSpy).not.toHaveBeenCalled();
+
+    // The note store comes back; the retry is the ordinary bootstrap action.
+    const notes = [{ id: 'wn_boot', title: 'Week 1' }];
+    journal.setRecoveryNoteOperations({
+      loadNoteState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
+      },
+      deleteNote: async (id) => {
+        const idx = notes.findIndex((n) => n.id === id);
+        if (idx >= 0) notes.splice(idx, 1);
+      },
+    });
+
+    let result;
+    await act(async () => {
+      result = await ref.current.runBootstrap();
+    });
+
+    expect(result.ok).toBe(true);
+    expect(uploadSpy).toHaveBeenCalledWith(USER.id);
+    expect(getSyncState()[SYNC_PHASE.BOOTSTRAP].status).toBe(SYNC_STATUS.COMPLETE);
+    expect(await getLocalDataOwner()).toBe(USER.id);
+    // The pending operation was reconciled to its recorded outcome before upload.
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_OPERATION_JOURNAL_KEY))).toEqual([]);
+    expect(JSON.parse(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY))[0].deleted_at).toBeTruthy();
+  });
+});

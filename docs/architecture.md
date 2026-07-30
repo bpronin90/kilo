@@ -568,6 +568,143 @@ chip is gone; nothing in the active path produces or reads `rep_drop_off_flags`.
 | `kilo_log_current_collapsed` | Persisted UI state: whether the current Log routine card is collapsed |
 | `kilo_recovery_blocks` | JSON array of recovery-block records (`baseline_note_id`, the frozen versioned `baseline` snapshot, `include_in_normal_analytics`, `started_at`, `completed_at`) plus sync metadata and retained tombstones |
 | `kilo_recovery_block_weeks` | JSON array of ordered recovery-week memberships linking a workout note to a block (`block_id`, `note_id`, domain-assigned `week_number`, `completed_at`) plus sync metadata and retained tombstones |
+| `kilo_recovery_operation_journal_v1` | Device-local write-ahead journal of in-flight multi-record recovery lifecycle operations (`operation_id`, schema `version`, `type`, affected `block_id`/`week_id`/`note_id`, immutable requested timestamp, intended outcome, stage/attempt metadata, `created_at`/`updated_at`, last-error diagnostics). Protocol metadata, not user health data: never exported in a backup, never a sync table, and never stores workout-note text |
+
+### Recovery lifecycle operation journal
+
+Three Log-tab recovery actions change more than one persisted collection:
+completing a recovery block together with its open current week; deleting a
+workout note that is a linked recovery week (membership plus the note, which in
+cloud mode is a tombstone plus sync-queue intent); and creating a brand-new note
+AND attaching it as the next sequential week (notebook plus membership). AsyncStorage, the workout-note cloud queue,
+`kilo_recovery_blocks`, and `kilo_recovery_block_weeks` share no native
+transaction, and snapshot-and-revert cannot substitute for one: the revert write
+can itself fail, and a note-delete that persists the removal and then throws is
+indistinguishable from one that never committed.
+
+`mobile/storage/entries/recoveryOperationJournal.js` owns the protocol.
+Ownership and ordering, per operation:
+
+1. validate eligibility against persisted state — a rejection here writes nothing,
+   journal included;
+2. persist the operation intent under `kilo_recovery_operation_journal_v1` before
+   the first domain write. If that write fails, no domain mutation happens;
+3. apply idempotent domain writes toward the recorded outcome, in a fixed order,
+   each conditional on its own postcondition being unmet, all reusing the one
+   immutable requested timestamp on the record;
+4. re-read every affected collection from persisted storage;
+5. verify all postconditions;
+6. clear the journal record only after verification succeeds. A failed clear is
+   reported as a verified success whose cleanup is retried, never as a failure and
+   never as a silently dropped record;
+7. notify/refresh UI only after a verified result or a durable pending state.
+
+All three operations roll forward only. A note deletion converges to "membership
+tombstoned and note deleted/tombstoned with pending-sync intent", never back to a
+live membership, because restoring one could point a live week at a note that is
+already gone. Block completion converges to block and current week completed at
+one stable timestamp, and never reopens a record or slides a timestamp forward.
+The new-note week converges to "this note is durably LIVE and this week id links
+it at this ordinal": both the note id and the ordinal are minted once at intent
+time and stored on the record as seeds, so no replay can mint a second note or a
+second ordinal, and a same-tick double confirm cannot allocate two. The note
+postcondition is deliberately not existence — a tombstoned row exists, and in
+cloud mode `saveWorkoutNoteItem` persists the row before it enqueues, so a failed
+enqueue leaves a note that exists with no durable upload intent. Since memberships
+reach the cloud through the baseline diff, verifying on existence alone would
+publish a membership referencing a note that may never upload. The postcondition is
+therefore `exists && !deleted`, plus queued intent in cloud mode
+(`loadWorkoutNotePresenceState`), repaired idempotently from the recorded seed by
+`ensureWorkoutNoteLive`.
+
+Retention is only honest when a retry can change the result, so conditions no
+retry, restart, or sync can alter get an explicit terminal transition instead of
+permanent pending:
+
+- **ordinal claimed by another device** — a durable reassignment. The next free
+  ordinal (one past the highest live week, the domain's own rule) is written onto
+  the journal record *before* any domain write, so replay and verification both
+  read the reassigned value and the outcome stays single and recorded. One retry
+  exits the conflict.
+- **the seeded note has joined another block**, or **the target block was
+  deleted** — `CONFLICT_CANCELLED`. The record is retired, so nothing stays
+  locked, and the caller receives a terminal non-ok result describing what
+  happened. Anything already persisted remains an ordinary workout note:
+  destroying a note the user asked to create, over a race they did not cause, is
+  worse than the untidiness. If the retiring write itself fails, the result
+  degrades to ordinary pending rather than claiming resolution.
+
+Reconciliation reports `pending` and `cancelled` separately for exactly this
+reason: pending locks conflicting actions, cancelled locks nothing and is shown
+once, without a retry affordance there is nothing left to retry.
+An unreadable, malformed, or unsupported-version journal fails closed with a
+retryable error; it is never read as "no pending work". A verification read that
+cannot determine the outcome retains the record rather than choosing a default.
+
+The journal owns no notebook mechanics of its own. The mode-aware implementations
+(local hard-delete, or cloud tombstone plus `enqueueDirty` bookkeeping) are
+registered into it at load by `mobile/hooks/entries/storageMode.js`, so replay
+always uses the adapter current when it runs and repairing local invariants never
+requires network access or a signed-in session. The local default is what a
+signed-out device uses.
+
+Because the storage mode can change while an operation is pending, cloud-mode
+deletion verification never accepts local absence as proof. A local-mode attempt
+hard-removes the note; if it is interrupted before verification and the device then
+enters cloud mode, the row may still be live on the server and would return on the
+next pull. `loadWorkoutNoteDeletionState` in `storage/cloud/cloudDomainMethods.js`
+therefore reports `requiresQueue: true` even for an absent note, and
+`ensureWorkoutNoteDeleted` reconstructs a minimal tombstone from the journal's own
+recorded id and requested timestamp, persists it, and enqueues it. Only durable
+pending-sync intent can verify a cloud-mode deletion. A deletion that local mode
+already verified and cleared is a different case, handled by the existing
+`reconcileSignedOutWrites` baseline diff rather than by this journal.
+
+One reconciler serves every entry point — `reconcileRecoveryOperations()`. It runs
+on initial mount/remount before recovery lifecycle state is considered ready,
+before any conflicting lifecycle action (a still-pending operation over the same
+block, week, or note blocks the action instead of writing underneath it), behind
+the UI's `Retry recovery` affordance, and on both cloud sync boundaries: before a
+pass reads or pushes workout notes, recovery blocks, or recovery weeks, and again
+after the pull/merge before the SYNC phase may be published as complete, because a
+remote change can alter an affected record while an operation is pending
+(`withRecoveryReconciliation` in `storageMode.js`, applied by both `maybeSyncCloud`
+and every `SYNC_PHASE.SYNC` runner in `syncRecoveryHooks.js`). An operation that
+still cannot be verified fails the pass, surfacing through the existing
+failed/retryable sync state with the reconciliation cause rather than a silent
+"Fully synced".
+
+UI actions, retries, sync, and cloud bootstrap share one single-flight queue, and
+that boundary holds it across the WHOLE pre-reconcile → operation →
+post-reconcile sequence (`withExclusiveRecoveryAccess`), not merely around each
+reconciliation. Releasing
+it for the pass body would not be safe: the sync engine and the journal replayers
+both read a complete `recovery_blocks`/`recovery_block_weeks` array and later write
+the whole array back, so a lifecycle action executing during the pass means
+whichever side writes last silently discards the other's change — and the post-pass
+reconciliation cannot detect that once the UI operation has verified and cleared
+its own record, so sync would report success over a lost update. Excluding
+lifecycle writes for the duration of the pass is what actually prevents it. The
+nested pre/post reconciliation runs without re-acquiring the guard, which is what
+keeps that nesting from deadlocking; competing UI actions queue behind the pass and
+run against post-pass state.
+
+Cloud **bootstrap** gets the identical boundary, applied at `makeBootstrapRunner`
+in `syncRecoveryHooks.js` so both upload paths (`runBootstrap` and
+`confirmOwnershipUpload`) are covered by one seam. `buildBootstrapPlan` includes
+`recovery_blocks` and `recovery_block_weeks`, so bootstrap reads and uploads
+exactly the collections the journal rewrites — and it matters more there than for
+an ordinary pass, because there is no earlier cloud state to converge against:
+whatever bootstrap uploads becomes the account's initial truth. An operation still
+pending at sign-in would otherwise be uploaded as a partial transition, and a
+lifecycle action started while the snapshot is being built or uploaded would race a
+whole-list write. Because both callers persist ownership and switch the storage
+mode only after the runner resolves, the post-reconcile always completes first; a
+pending or corrupt journal throws, which `runPhase` turns into a failed/retryable
+BOOTSTRAP phase with the owner unwritten, the mode still local, and the journal
+intact. The pull-only restore path (`downloadAccountData`) needs no boundary of its
+own: it uploads nothing, runs only on a verified-empty device, and its follow-on
+sync already goes through the same guard.
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local

@@ -120,6 +120,45 @@ export async function deleteWorkoutNoteItem(id) {
   }
 }
 
+// Deletion-outcome probe for the recovery operation journal (#696).
+//
+// Answers one question from persisted state: is this note gone? Local mode hard
+// -removes, so "absent" is the whole answer and there is no sync queue to keep
+// intent in. `requiresQueue: false` tells the reconciler not to look for one.
+//
+// Deliberately reads the RAW list: a tombstone written by a previous cloud
+// session that this device is now reading in local mode still counts as gone,
+// and must never be mistaken for a live note the journal should re-delete.
+export async function loadWorkoutNoteDeletionState(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const note = list.find(n => n?.id === id);
+  return {
+    exists: !!note,
+    deleted: !note || !!note.deleted_at,
+    requiresQueue: false,
+    queued: false,
+  };
+}
+
+// Presence probe for the recovery operation journal's "create a new note and
+// attach it as the next week" operation (#696).
+//
+// The mirror image of loadWorkoutNoteDeletionState above: that one asks "is this
+// note gone?", this one asks "is this note LIVE, and durably so?". Existence
+// alone is not the answer — a tombstoned row exists, and a live membership
+// pointing at a tombstoned note is exactly the dangling state the protocol
+// forbids. Local mode has no upload queue, so `requiresQueue` is false.
+export async function loadWorkoutNotePresenceState(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const note = list.find(n => n?.id === id);
+  return {
+    exists: !!note,
+    deleted: !!note?.deleted_at,
+    requiresQueue: false,
+    queued: false,
+  };
+}
+
 // ── current workout selection ──────────────────────────────────────────────────
 
 export async function loadCurrentWorkoutId() {

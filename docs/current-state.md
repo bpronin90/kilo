@@ -344,9 +344,57 @@ The real native app path now has a modular React Native shell:
   new-or-existing note as `Recovery Week 1` (#695). Eligibility is purely
   structural (not linked to any block, not a baseline, not a deload note) and
   a linked note only gains an accessible `Recovery Week 1` badge — its title,
-  raw text, editor, autosave, and analytics projections stay untouched. Week
-  2+, completion, browsing recovery blocks, and any recovery-specific
-  analytics are explicitly out of scope until later issues. The read view now also
+  raw text, editor, autosave, and analytics projections stay untouched. A
+  Recovery section on Log (#696) now shows the active block's baseline, its
+  ordered linked-note weeks, and status; `Complete week` is required before
+  `Add week` can attach a next new-or-existing note as the next sequential
+  ordinal, and only the latest week of an active block can be `Unlink`ed
+  (earlier weeks and history stay immutable and gap-free, and any linked note
+  can still be deleted as an ordinary editable note). `Complete recovery
+  block` is always a manual, confirmed action — advisory exercise targets
+  never block it — and completing a block with an open current week completes
+  that week too, without touching the frozen baseline. A collapsible Recovery
+  History panel lists completed blocks with their baseline, duration, and
+  ordered weeks. Deleting a workout note that is a linked recovery week shows
+  an additional unlink/delete confirmation before the standard delete
+  confirmation; cancelling either one writes nothing at all.
+
+  Three of those actions each change more than one persisted collection, and
+  AsyncStorage, the workout-note cloud queue, and the two recovery collections
+  share no transaction. They therefore run as durable write-ahead journaled
+  operations (#696) — completing a block with its current week, deleting a
+  linked note, and creating a new note as the next week: the intent is
+  persisted before the first domain write,
+  the writes are idempotent and reuse one immutable requested timestamp, every
+  affected collection is re-read and its postconditions verified before the
+  journal record is cleared, and the UI reports success only after that
+  verification. For the new-note week the note id and the ordinal are minted
+  once inside that record, so a double tap or a replay can never create a
+  second note or a second ordinal, and a failed attempt leaves a resumable
+  intent rather than an untracked orphan note; in cloud mode the note also has
+  to be durably queued for upload, not merely present, before the week counts
+  as added. When another device has taken the week number in the meantime the
+  week is renumbered to the next free ordinal and finishes on the next retry,
+  and when the outcome has become genuinely impossible (its block was deleted,
+  or its note joined another block) Log says so once and unlocks — it never
+  parks the user on a warning no retry could clear. An interrupted operation stays
+  visible as a journaled pending
+  state rather than an untracked partial change — Log shows an accessible
+  recovery warning with a `Retry recovery` action, disables conflicting
+  lifecycle actions for the affected records, and keeps ordinary read access
+  to everything else. Retry, app start, remount, and both cloud sync
+  boundaries all run the same reconciler, which always rolls forward: a note
+  deletion converges to "membership tombstoned and note deleted", never back
+  to a live membership pointing at a deleted note, and a block completion
+  converges to block and current week completed at one stable timestamp. A
+  read that cannot determine the outcome, and a corrupt or unsupported journal
+  record, both fail closed and stay retryable rather than being guessed at or
+  discarded. Signing in between an interrupted attempt and its repair is safe:
+  a deletion that only hard-removed the note locally is not treated as finished
+  in cloud mode until the tombstone and its pending upload actually exist. A cloud sync pass will not report workout notes or recovery data
+  as synced while such an operation is unresolved. Recovery
+  -specific analytics remain explicitly out of scope until later issues. The
+  read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render

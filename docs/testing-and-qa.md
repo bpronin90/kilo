@@ -712,6 +712,87 @@ but the underlying leak is still worth fixing wherever it's found.
   falsely report success, leaves the dirty queue armed, and a reconnected retry
   is safe and idempotent (no duplicate rows) (#538)
 
+### `mobile/tests/recovery-blocks.test.js`
+
+Covers the recovery-block domain (baseline capture, single-record storage
+invariants, ordinals, tombstones) and the durable recovery operation journal
+(#696). The journal coverage is a failure-injection matrix rather than a happy
+-path suite: each case breaks exactly one protocol boundary against the real
+`jsonStorage` read/write path — never a fake collection — then asserts the
+immediate persisted state, the retained journal record, the returned
+machine-readable code, and convergence after replay.
+
+Boundaries injected, for all three durable operations (complete block with
+current week, delete linked note, add a new note as the next week):
+
+- journal intent read and intent write (an intent write failure must produce no
+  domain mutation at all; an intent read failure must refuse the operation);
+- each affected-domain read;
+- the first domain write (week completion / membership tombstone);
+- the second domain write (block completion / note deletion);
+- the cloud tombstone write and the queue enqueue/bookkeeping step, separately;
+- the post-write verification read;
+- the journal stage update;
+- the journal clear.
+
+Scenarios pinned beyond the per-boundary sweep:
+
+- delete committed and then threw — the persisted state decides, and the
+  membership is not restored;
+- delete committed, threw, and the verification read failed — pending, fail
+  closed, no dangling live membership, converges on retry;
+- membership tombstoned while the note is live, and note deleted while the
+  membership is live — both converge toward the recorded deletion;
+- both postconditions already satisfied under a stale journal intent — cleanup
+  only, with no timestamp churn on either record;
+- journal cleanup failure — reported as verified-with-cleanup-pending, cleared on
+  the next reconciliation;
+- malformed record, unsupported schema version, and unparseable journal bytes —
+  all fail closed, stay on disk, and block a new operation rather than reading as
+  "no pending work";
+- concurrent retry, sync, and double-tap attempts — one completion, one stable
+  timestamp, no duplicate ordinals, and single-flight re-entry returning the
+  in-flight pass;
+- local hard-delete versus cloud tombstone plus pending-sync intent, including a
+  replay that re-enqueues without re-stamping the tombstone;
+- app-restart replay: in-memory protocol state (single-flight queue, registered
+  note operations) is discarded and only persisted state drives convergence;
+- pre-action gating: a pending operation over the same block, week, or note
+  blocks a conflicting action, while an unrelated action still proceeds;
+- cancellation and validation failures proving zero writes, journal included;
+- new-note week specifics: note-write failure, membership-write failure, a
+  membership failure whose journal clear also fails, restart replay between the
+  two writes, and concurrent confirms — all asserting exactly one note and
+  exactly one ordinal afterwards;
+- new-note week note postcondition: a cloud note whose write committed and whose
+  enqueue then failed must NOT verify on existence alone (the operation stays
+  pending, no membership is published, and a replay re-enqueues it), a
+  live-but-unqueued note is re-enqueued from a stale intent without duplicating
+  anything, and a tombstoned note is restored live before the membership is
+  attached rather than being accepted as valid;
+- new-note week conflict liveness — every conflict must EXIT, not repeat: an
+  ordinal claimed by another device is durably reassigned (recorded on the record
+  before the write, so a failure replays the new ordinal) and one retry converges
+  to a gap-free `[1, 2, 3]`; a note that joined another block and a deleted block
+  both retire as `CONFLICT_CANCELLED` with nothing pending, and a further retry is
+  a clean no-op. `log-screen.test.js` pins the UI half: a terminal cancellation
+  shows its explanation, offers no `Retry recovery` button, and leaves every
+  lifecycle action enabled;
+- storage-mode change mid-operation: a deletion that hard-removed the note in
+  local mode and is replayed in cloud mode must reconstruct the tombstone and its
+  dirty-queue record before the journal may be cleared, must stay pending while
+  the enqueue keeps failing, and must still finish as a plain hard delete when the
+  device is genuinely local (`mobile/tests/sync-recovery.test.js`).
+
+`mobile/tests/log-screen.test.js` covers the same protocol at the screen level
+(verified persisted postconditions instead of a mocked storage call, the pending
+warning with its `Retry recovery` action, disabled conflicting actions, and a
+same-tick double confirm on the new-note Add Week path — which only a synchronous
+ref mutex can reject, since two presses dispatched before a re-render both observe
+the same React busy state), and
+`mobile/tests/sync-recovery.test.js` / `sync-recovery-ui.test.js` cover the sync
+boundaries below.
+
 ### `mobile/tests/sync-recovery.test.js`
 
 - drives the confirmed #522 claim-4 lifecycle end to end against the real
@@ -754,6 +835,41 @@ but the underlying leak is still worth fixing wherever it's found.
   classification, including that an already-tombstoned remote row is never
   re-tombstoned and that a missing cursor is a conflict on an owned device but not
   on a clean one
+- covers the recovery operation journal's sync boundaries (#696): an unverifiable
+  pending operation and a corrupt journal both fail the pass before it runs, so
+  mid-operation state is never pushed; a resumable operation is reconciled before
+  the pass and the pass then proceeds; reconciliation runs AGAIN after the
+  pull/merge, so an operation a remote change introduced is applied and verified
+  before success may be published; and reconciliation repairs local invariants
+  with no transport configured at all, proving repair needs no network.
+  `sync-recovery-ui.test.js` pins the user-facing half: `maybeSyncCloud` leaves
+  the SYNC phase failed and retryable with the reconciliation cause and the
+  journal record intact, and reports a complete sync through the same code path
+  once nothing is pending
+- covers the exclusion boundary deterministically: a fake pass snapshots the whole
+  recovery-week collection, suspends on a gate, and writes the merged whole list
+  back on resume. A journaled Add Week started while the pass is gated is drained
+  for far more turns than it needs and must still not have run — proving exclusion
+  rather than luck — and after both complete, the pass's pulled row AND the
+  journaled week both survive, with the new ordinal derived from post-pass state.
+  The mirrored case (lifecycle action first) proves the pass observes the verified
+  write instead of publishing success over a stale merge. This test was
+  negative-controlled against the previous behaviour that released the guard for
+  the pass body: it fails there and passes with the guard held
+- covers the same boundary for cloud bootstrap, which uploads the recovery
+  collections as the account's initial state: a resumable pending operation is
+  reconciled before `bootstrapFromLocal` observes its snapshot (bootstrap sees the
+  converged records, not the mid-flight ones); an unresolvable operation and a
+  corrupt journal each prevent any upload at all; and a lifecycle action started
+  during a gated bootstrap is drained for far more turns than it needs and must
+  still not have run, after which both the uploaded snapshot and the local write
+  are intact. `sync-recovery-ui.test.js` proves the WIRING end to end through the
+  real `runBootstrap` hook — no upload, no ownership claim, no cloud-mode
+  activation, phase failed/retryable, journal intact — and that the same path
+  uploads and completes once the operation converges. Both wiring tests were
+  negative-controlled against the unwrapped bootstrap runner: they fail there and
+  pass with it routed through the boundary across the whole
+  sequence
 
 ### `mobile/tests/backup-import.test.js`
 

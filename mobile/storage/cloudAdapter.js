@@ -24,6 +24,11 @@ export { bootstrapFromLocal, isLocalDataEmpty } from './cloud/bootstrap';
 export { setCloudTransport } from './cloud/transport';
 export { setRecomputeDerived } from './cloud/transport';
 export { sync } from './cloud/syncAdapter';
+// The recovery operation journal's cloud-mode deletion-outcome probe (#696).
+// Deliberately NOT an adapter method: it is protocol machinery for the journal,
+// not a domain call any screen or hook makes, and the adapter surface is a
+// contract pinned 1:1 against the local adapter.
+export { loadWorkoutNoteDeletionState } from './cloud/cloudDomainMethods';
 
 // ── recovery blocks + week memberships (issues #692/#693) ────────────────────
 //
