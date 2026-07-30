@@ -55,13 +55,20 @@ export function LogRecoverySection({
   const [actionError, setActionError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
-  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0 || !!pendingRecoveryError;
+  // Two distinct states. A PENDING operation locks conflicting actions, because a
+  // second write over the same records is unsafe while one is unresolved. A
+  // message with no pending operation is a terminal outcome that already retired
+  // itself (a cancelled conflict): it must be explained, but it locks nothing —
+  // otherwise an unreachable outcome would freeze recovery forever.
+  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
+  const showRecoveryNotice = hasPendingRecovery || !!pendingRecoveryError;
   const pendingMessage = pendingRecoveryError
     || pendingRecovery?.[0]?.error
     || 'A recovery change is still being applied on this device.';
   // One flag for every lifecycle control: a pending operation and an in-flight
   // action are both reasons no second write may start.
   const actionsLocked = !!busy || hasPendingRecovery;
+  const noticeIsTerminal = !hasPendingRecovery && !!pendingRecoveryError;
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
@@ -69,7 +76,7 @@ export function LogRecoverySection({
   // A pending recovery operation must stay visible even when neither an active
   // block nor any completed block renders — otherwise the retry affordance
   // would disappear with the records it is trying to repair.
-  if (!activeBlock && completedBlocks.length === 0 && !hasPendingRecovery) return null;
+  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -125,25 +132,27 @@ export function LogRecoverySection({
       style={styles.pendingBanner}
       accessible
       accessibilityRole="alert"
-      accessibilityLabel={`Recovery change pending. ${pendingMessage}`}
+      accessibilityLabel={`${noticeIsTerminal ? 'Recovery change not applied' : 'Recovery change pending'}. ${pendingMessage}`}
     >
       <Text style={styles.pendingBannerText}>{pendingMessage}</Text>
-      <Pressable
-        onPress={() => runAction(() => onRetryRecovery?.())}
-        disabled={!!busy}
-        style={styles.pendingRetryButton}
-        accessibilityRole="button"
-        accessibilityLabel="Retry recovery"
-        accessibilityState={{ disabled: !!busy }}
-      >
-        <Text style={styles.pendingRetryText}>Retry recovery</Text>
-      </Pressable>
+      {!noticeIsTerminal && (
+        <Pressable
+          onPress={() => runAction(() => onRetryRecovery?.())}
+          disabled={!!busy}
+          style={styles.pendingRetryButton}
+          accessibilityRole="button"
+          accessibilityLabel="Retry recovery"
+          accessibilityState={{ disabled: !!busy }}
+        >
+          <Text style={styles.pendingRetryText}>Retry recovery</Text>
+        </Pressable>
+      )}
     </View>
   );
 
   return (
     <View style={styles.container}>
-      {!activeBlock && hasPendingRecovery && (
+      {!activeBlock && showRecoveryNotice && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>{pendingBanner}</Card>
@@ -156,7 +165,7 @@ export function LogRecoverySection({
             <Text style={styles.baselineLabel}>Baseline routine</Text>
             <Text style={styles.baselineTitle}>{activeBlock.baseline_note_title || 'Untitled Routine'}</Text>
 
-            {hasPendingRecovery ? pendingBanner : null}
+            {showRecoveryNotice ? pendingBanner : null}
 
             {actionError ? (
               <View style={styles.errorBanner}>

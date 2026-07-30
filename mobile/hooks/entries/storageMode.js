@@ -8,6 +8,8 @@ import * as Storage from '../../storage/entries';
 import {
   loadWorkoutNoteDeletionState as cloudLoadWorkoutNoteDeletionState,
   ensureWorkoutNoteDeleted as cloudEnsureWorkoutNoteDeleted,
+  loadWorkoutNotePresenceState as cloudLoadWorkoutNotePresenceState,
+  ensureWorkoutNoteLive as cloudEnsureWorkoutNoteLive,
 } from '../../storage/cloud/cloudDomainMethods';
 import { markComplete, markFailed, markRunning, SYNC_PHASE } from '../../storage/syncRecovery';
 
@@ -56,7 +58,18 @@ export function registerRecoveryNoteOperations() {
       const currentId = await Storage.loadCurrentWorkoutId();
       if (currentId === noteId) await Storage.clearCurrentWorkoutId();
     },
-    saveNote: (note) => writeVia('saveWorkoutNoteItem', Storage.saveWorkoutNoteItem, note),
+    // The new-note week operation's own pair. `loadNoteLiveState` asks whether the
+    // note is durably LIVE (not merely present, and not a tombstone), which in
+    // cloud mode includes queued upload intent — `saveWorkoutNoteItem` persists
+    // the row before it enqueues, so existence alone would verify a note that may
+    // never upload. `ensureNoteLive` is the idempotent repair for every state that
+    // check can reject, driven from the journal's recorded seed.
+    loadNoteLiveState: (noteId) => (isCloudMode()
+      ? cloudLoadWorkoutNotePresenceState(noteId)
+      : Storage.loadWorkoutNotePresenceState(noteId)),
+    ensureNoteLive: (noteSeed) => (isCloudMode()
+      ? cloudEnsureWorkoutNoteLive(noteSeed)
+      : Storage.saveWorkoutNoteItem({ ...noteSeed, deleted_at: null })),
     });
 }
 

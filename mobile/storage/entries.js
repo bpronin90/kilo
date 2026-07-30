@@ -49,6 +49,7 @@ export {
   saveWorkoutNoteItem,
   deleteWorkoutNoteItem,
   loadWorkoutNoteDeletionState,
+  loadWorkoutNotePresenceState,
   loadCurrentWorkoutId,
   saveCurrentWorkoutId,
   clearCurrentWorkoutId,

@@ -371,7 +371,13 @@ The real native app path now has a modular React Native shell:
   verification. For the new-note week the note id and the ordinal are minted
   once inside that record, so a double tap or a replay can never create a
   second note or a second ordinal, and a failed attempt leaves a resumable
-  intent rather than an untracked orphan note. An interrupted operation stays
+  intent rather than an untracked orphan note; in cloud mode the note also has
+  to be durably queued for upload, not merely present, before the week counts
+  as added. When another device has taken the week number in the meantime the
+  week is renumbered to the next free ordinal and finishes on the next retry,
+  and when the outcome has become genuinely impossible (its block was deleted,
+  or its note joined another block) Log says so once and unlocks — it never
+  parks the user on a warning no retry could clear. An interrupted operation stays
   visible as a journaled pending
   state rather than an untracked partial change — Log shows an accessible
   recovery warning with a `Retry recovery` action, disables conflicting

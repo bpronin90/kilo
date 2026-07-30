@@ -37,6 +37,7 @@ import { RECOVERY_OPERATION_JOURNAL_KEY, RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEE
 import { readList, writeList } from './jsonStorage';
 import {
   loadWorkoutNoteDeletionState as localLoadWorkoutNoteDeletionState,
+  loadWorkoutNotePresenceState as localLoadWorkoutNotePresenceState,
   deleteWorkoutNoteItem as localDeleteWorkoutNoteItem,
   saveWorkoutNoteItem as localSaveWorkoutNoteItem,
 } from './workoutNotes';
@@ -69,6 +70,15 @@ export const RECOVERY_OPERATION_CODES = Object.freeze({
   // failed. The user-visible operation succeeded; cleanup is retried on the
   // next reconciliation.
   VERIFIED_CLEANUP_PENDING: 'VERIFIED_CLEANUP_PENDING',
+  // TERMINAL. The recorded outcome became permanently unreachable through no
+  // fault of storage — a concurrent change made it impossible rather than merely
+  // delayed — so the operation is retired with an explanation instead of being
+  // retried forever. This exists because "retain and retry" is only honest when a
+  // retry can change the result: a condition no restart, retry, or sync can alter
+  // would otherwise lock every affected recovery action permanently and send the
+  // user into exactly the undefined manual-reconciliation state the contract
+  // forbids. The journal record is cleared, so actions unlock immediately.
+  CONFLICT_CANCELLED: 'CONFLICT_CANCELLED',
 });
 
 // Protocol stages recorded on the journal record for diagnostics and for the
@@ -111,7 +121,8 @@ export function isRecoveryJournalCorruptError(err) {
 const DEFAULT_NOTE_OPERATIONS = Object.freeze({
   loadNoteState: (noteId) => localLoadWorkoutNoteDeletionState(noteId),
   deleteNote: (noteId) => localDeleteWorkoutNoteItem(noteId),
-  saveNote: (note) => localSaveWorkoutNoteItem(note),
+  loadNoteLiveState: (noteId) => localLoadWorkoutNotePresenceState(noteId),
+  ensureNoteLive: (noteSeed) => localSaveWorkoutNoteItem({ ...noteSeed, deleted_at: null }),
 });
 
 let noteOperations = DEFAULT_NOTE_OPERATIONS;
@@ -262,6 +273,21 @@ async function updateRecordStage(record, { stage, error }) {
   }
 }
 
+// Durably rewrite fields on a journaled record and return the updated record, so
+// the rest of the pass acts on what is now persisted. Unlike updateRecordStage
+// this is NOT best effort: it is a write-ahead step for a changed outcome, so a
+// failure must stop the pass rather than let it write something the record does
+// not name.
+async function updateRecordFields(record, patch) {
+  const journal = await readRecoveryJournal();
+  const idx = journal.findIndex((r) => r.operation_id === record.operation_id);
+  if (idx < 0) return record;
+  const updated = { ...journal[idx], ...patch, updated_at: new Date().toISOString() };
+  journal[idx] = updated;
+  await writeRecoveryJournal(journal);
+  return updated;
+}
+
 async function clearRecord(record) {
   const journal = await readRecoveryJournal();
   const remaining = journal.filter((r) => r.operation_id !== record.operation_id);
@@ -297,6 +323,39 @@ function verifiedResult(record, code) {
     week_id: record.week_id || null,
     note_id: record.note_id || null,
     error: null,
+    cause: null,
+  };
+}
+
+// Retire an operation whose recorded outcome can never be reached. The record is
+// removed (so nothing stays locked) and the caller receives a terminal, non-ok
+// result describing what happened, which the UI shows once instead of a
+// permanent pending warning.
+async function finishCancelled(record, message) {
+  try {
+    await clearRecord(record);
+  } catch (e) {
+    // The record could not be removed. Report it as ordinarily pending rather
+    // than terminal: the cleanup itself is still retryable, and a stale record
+    // left behind must not be reported as resolved.
+    return pendingResult(record, {
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      stage: RECOVERY_OPERATION_STAGES.CLEANUP,
+      error: e,
+      message,
+    });
+  }
+  return {
+    ok: false,
+    terminal: true,
+    code: RECOVERY_OPERATION_CODES.CONFLICT_CANCELLED,
+    stage: RECOVERY_OPERATION_STAGES.CLEANUP,
+    operationId: record.operation_id,
+    type: record.type,
+    block_id: record.block_id || null,
+    week_id: record.week_id || null,
+    note_id: record.note_id || null,
+    error: message,
     cause: null,
   };
 }
@@ -559,14 +618,15 @@ async function replayDeleteLinkedNote(record) {
 // a retry cannot mint a new id or a new ordinal, because it has none to mint.
 // `note_seed` carries the title the user typed and an empty `raw_text` — the
 // journal never stores workout-note text.
-async function replayAddWeekWithNewNote(record) {
+async function replayAddWeekWithNewNote(operationRecord) {
+  let record = operationRecord;
   let blocks;
   let weeks;
   let noteState;
   try {
     blocks = await readList(RECOVERY_BLOCKS_KEY);
     weeks = await readList(RECOVERY_BLOCK_WEEKS_KEY);
-    noteState = await noteOperations.loadNoteState(record.note_id);
+    noteState = await noteOperations.loadNoteLiveState(record.note_id);
   } catch (e) {
     await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.DOMAIN_READ, error: e });
     return pendingResult(record, {
@@ -584,11 +644,25 @@ async function replayAddWeekWithNewNote(record) {
   // to remove. Retire the record. Anything this operation already persisted stays
   // as an ordinary workout note — deleting a note the user asked to create, on a
   // race they did not cause, would destroy user data to tidy protocol state.
-  if (!block || block.deleted_at) return finishVerified(record);
+  if (!block || block.deleted_at) {
+    return finishCancelled(
+      record,
+      'The recovery block was removed while this week was being added, so the new note was kept as an ordinary routine instead.'
+    );
+  }
 
-  if (!noteState?.exists) {
+  // The note postcondition is "durably LIVE", not merely "present". Existence
+  // alone would accept a tombstone (creating a membership that points at a
+  // deleted note) and would accept a cloud row whose enqueue failed after the
+  // write committed, which would publish a membership referencing a note that
+  // never uploads. `ensureNoteLive` is idempotent and repairs every one of those
+  // states from the recorded seed.
+  const noteNeedsWork = !noteState?.exists
+    || !!noteState?.deleted
+    || (noteState?.requiresQueue && !noteState?.queued);
+  if (noteNeedsWork) {
     try {
-      await noteOperations.saveNote(record.note_seed);
+      await noteOperations.ensureNoteLive(record.note_seed);
     } catch (e) {
       await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.FIRST_WRITE, error: e });
       return pendingResult(record, {
@@ -602,36 +676,54 @@ async function replayAddWeekWithNewNote(record) {
 
   const liveForNote = weeks.find((w) => w.note_id === record.note_id && !w.deleted_at);
   if (liveForNote && liveForNote.block_id !== record.block_id) {
-    // The note somehow belongs to another block now. Writing our membership would
-    // put one note in two blocks, so fail closed instead of guessing.
-    await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE, error: null });
-    return pendingResult(record, {
-      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
-      stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
-      error: null,
-      message: 'This recovery week cannot be attached because its note already belongs to another block.',
-    });
+    // The note belongs to another block now. One note cannot be in two blocks, and
+    // no retry, restart, or sync can undo that — retrying forever would lock every
+    // recovery action on this block permanently. Terminal cancellation: the note
+    // stays where it is, and the user is told what happened.
+    return finishCancelled(
+      record,
+      'That note was linked to a different recovery block before this week could be added, so this week was not created.'
+    );
   }
 
   if (!liveForNote) {
-    const ordinalTaken = weeks.some(
+    const ordinalOwner = weeks.find(
       (w) => w.block_id === record.block_id
         && !w.deleted_at
         && w.week_number === record.week_seed.week_number
         && w.note_id !== record.note_id
     );
-    if (ordinalTaken) {
-      // Another device claimed this ordinal while the operation was pending.
-      // Reassigning it here would silently change the outcome the record names,
-      // so this fails closed and stays retryable.
-      await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE, error: null });
-      return pendingResult(record, {
-        code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
-        stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
-        error: null,
-        message: `Recovery week ${record.week_seed.week_number} is already taken on this block; adding this week is still pending.`,
-      });
+    if (ordinalOwner) {
+      // Another device claimed this ordinal while the operation was pending. The
+      // conflict is permanent for the RECORDED ordinal, so retrying it unchanged
+      // could never succeed. The deterministic transition is a durable
+      // reassignment: recompute the next free ordinal (one past the highest live
+      // week, the same rule the domain applies), persist it onto the journal
+      // record BEFORE writing anything, then continue in this same pass. Replay
+      // and verification both read the reassigned value, so the outcome stays
+      // single and recorded rather than silently chosen at write time.
+      const highest = weeks.reduce(
+        (max, w) => (w.block_id === record.block_id && !w.deleted_at && w.week_number > max ? w.week_number : max),
+        0
+      );
+      const reassigned = highest + 1;
+      try {
+        record = await updateRecordFields(record, {
+          week_seed: { ...record.week_seed, week_number: reassigned },
+          reassigned_from_week_number: record.reassigned_from_week_number ?? record.week_seed.week_number,
+          reassignments: (record.reassignments || 0) + 1,
+          stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
+        });
+      } catch (e) {
+        return pendingResult(record, {
+          code: RECOVERY_OPERATION_CODES.OPERATION_FAILED,
+          stage: RECOVERY_OPERATION_STAGES.SECOND_WRITE,
+          error: e,
+          message: 'This recovery week could not be renumbered after a conflict; the operation is retained and will be retried.',
+        });
+      }
     }
+
     const existingRow = weeks.find((w) => w.id === record.week_id);
     const next = existingRow
       // A tombstoned row with our own id: revive it verbatim from the seed rather
@@ -655,7 +747,7 @@ async function replayAddWeekWithNewNote(record) {
   let noteStateAfter;
   try {
     weeksAfter = await readList(RECOVERY_BLOCK_WEEKS_KEY);
-    noteStateAfter = await noteOperations.loadNoteState(record.note_id);
+    noteStateAfter = await noteOperations.loadNoteLiveState(record.note_id);
   } catch (e) {
     await updateRecordStage(record, { stage: RECOVERY_OPERATION_STAGES.VERIFY_READ, error: e });
     return pendingResult(record, {
@@ -669,7 +761,9 @@ async function replayAddWeekWithNewNote(record) {
   const verifiedWeeks = weeksAfter.filter(
     (w) => w.note_id === record.note_id && w.block_id === record.block_id && !w.deleted_at
   );
-  const noteOk = !!noteStateAfter?.exists;
+  const noteOk = !!noteStateAfter?.exists
+    && !noteStateAfter?.deleted
+    && (!noteStateAfter?.requiresQueue || !!noteStateAfter?.queued);
   const membershipOk = verifiedWeeks.length === 1
     && verifiedWeeks[0].week_number === record.week_seed.week_number;
 
@@ -704,6 +798,7 @@ function corruptReconciliation(error) {
     code: RECOVERY_OPERATION_CODES.JOURNAL_CORRUPT,
     corrupt: true,
     pending: [],
+    cancelled: [],
     results: [],
     error:
       'Recovery operations could not be read from this device. Recovery actions are paused until this is retried.',
@@ -726,15 +821,23 @@ async function reconcileAllUnlocked() {
     // eslint-disable-next-line no-await-in-loop
     results.push(await replayRecord(record));
   }
-  const pending = results.filter((r) => !r.ok);
+  // A terminal cancellation is RESOLVED, not pending: its record is already
+  // cleared, so it must never keep an action locked or be retried. It is still
+  // reported separately so the UI can explain once what happened.
+  const cancelled = results.filter((r) => !r.ok && r.terminal);
+  const pending = results.filter((r) => !r.ok && !r.terminal);
+  const headline = pending[0] || cancelled[0] || null;
   return {
     ok: pending.length === 0,
-    code: pending.length === 0 ? RECOVERY_OPERATION_CODES.VERIFIED : pending[0].code,
+    code: pending.length > 0
+      ? pending[0].code
+      : (cancelled.length > 0 ? cancelled[0].code : RECOVERY_OPERATION_CODES.VERIFIED),
     corrupt: false,
     pending,
+    cancelled,
     results,
-    error: pending.length === 0 ? null : pending[0].error,
-    cause: pending.length === 0 ? null : pending[0].cause,
+    error: headline ? headline.error : null,
+    cause: headline ? headline.cause : null,
   };
 }
 

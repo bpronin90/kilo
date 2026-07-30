@@ -176,3 +176,65 @@ export async function ensureWorkoutNoteDeleted(id, { deletedAt = null } = {}) {
   await Storage.replaceWorkoutNotesRaw(next);
   await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, tombstone);
 }
+
+// Cloud-mode presence probe for the recovery operation journal's new-note week
+// operation (#696).
+//
+// `saveWorkoutNoteItem` persists the live row and only THEN enqueues it, so a
+// failed enqueue leaves a note that exists locally with no durable intent to
+// upload it. Recovery-week memberships reach the cloud through the baseline
+// diff, so verifying on existence alone would publish a membership referencing a
+// note that may never upload — the same committed-write/failed-bookkeeping gap
+// the deletion protocol closes. A live note is therefore only "durably live" in
+// cloud mode when a non-tombstone dirty record for it is still queued (or the
+// row has already been acknowledged; see ensureWorkoutNoteLive).
+export async function loadWorkoutNotePresenceState(id) {
+  const list = await Storage.loadWorkoutNotesRaw();
+  const note = list.find((n) => n?.id === id);
+  if (!note) {
+    return { exists: false, deleted: false, requiresQueue: true, queued: false };
+  }
+  if (isTombstone(note)) {
+    return { exists: true, deleted: true, requiresQueue: true, queued: false };
+  }
+  const dirty = await getDirtyRecords(SYNC_TABLES.WORKOUT_NOTES);
+  return {
+    exists: true,
+    deleted: false,
+    requiresQueue: true,
+    queued: dirty.some((record) => record?.id === id && !isTombstone(record)),
+  };
+}
+
+// Idempotent cloud-mode "make this note durably live" used by the journal's
+// new-note week replay. Converges on "live local row AND queued upload intent"
+// from every reachable state:
+//
+//   absent       — persist the recorded seed and enqueue it;
+//   tombstoned   — persist the recorded seed over the tombstone and enqueue it,
+//                  because the recorded outcome for this operation is a LIVE
+//                  note and the id was minted by this operation alone;
+//   live, queued — nothing to do;
+//   live, not queued — re-enqueue the existing row verbatim, which is the
+//                  enqueue-failed case: the write committed, the bookkeeping did
+//                  not, and only the queue record is missing.
+//
+// The seed's own `updated_at` is reused as the stamp so a replay cannot slide the
+// row's timestamp forward past a copy another device already accepted.
+export async function ensureWorkoutNoteLive(seed) {
+  const list = await Storage.loadWorkoutNotesRaw();
+  const existing = list.find((n) => n?.id === seed.id);
+  const clientId = await getClientId();
+
+  if (existing && !isTombstone(existing)) {
+    await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, existing);
+    return;
+  }
+
+  const stamped = stampWrite({ ...seed, deleted_at: null }, clientId, seed.updated_at);
+  const next = existing
+    ? list.map((n) => (n?.id === seed.id ? stamped : n))
+    : [...list, stamped];
+  await Storage.replaceWorkoutNotesRaw(next);
+  await enqueueDirty(SYNC_TABLES.WORKOUT_NOTES, stamped);
+}

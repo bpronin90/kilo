@@ -66,8 +66,11 @@ export function useRecoveryBlockState() {
     // would show the user a transition that is about to be completed anyway.
     return reconcileRecoveryOperations()
       .then((reconciliation) => {
+        // `pending` locks conflicting actions; `cancelled` does not. A terminal
+        // cancellation has already retired its record, so it must unlock
+        // everything while still explaining itself once.
         setPendingRecovery(reconciliation.pending || []);
-        setRecoveryPendingError(reconciliation.ok ? null : reconciliation.error);
+        setRecoveryPendingError(reconciliation.error || null);
         return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
       })
       .then(([b, w]) => {
@@ -260,6 +263,9 @@ export function addRecoveryWeekCore(storage, { blockId, noteId }) {
 // mint a second note or a second ordinal.
 export function addRecoveryWeekWithNewNoteCore(storage, { blockId, title }) {
   return startRecoveryOperation({
+    // Scoped on the block alone at start time: the note and week ids do not exist
+    // yet, so nothing else can be holding them. Once journaled, the record's own
+    // note_id/week_id are what block a conflicting linked-note delete.
     scope: { blockId },
     validate: async () => {
       const blocks = await storage.loadRecoveryBlocksRaw();

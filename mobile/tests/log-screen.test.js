@@ -4641,9 +4641,15 @@ describe('Recovery Block Week 2+ lifecycle', () => {
         const idx = noteStore.findIndex(n => n.id === id);
         if (idx >= 0) noteStore.splice(idx, 1);
       },
-      saveNote: async (note) => {
-        const idx = noteStore.findIndex(n => n.id === note.id);
-        if (idx >= 0) noteStore[idx] = note; else noteStore.push(note);
+      // The new-note week operation's pair: "durably live", not merely present.
+      loadNoteLiveState: async (id) => {
+        const note = noteStore.find(n => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = noteStore.findIndex(n => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) noteStore[idx] = live; else noteStore.push(live);
       },
     });
     return Promise.all([
@@ -4886,7 +4892,11 @@ describe('Recovery Block Week 2+ lifecycle', () => {
         return { exists: !!note, deleted: !note, requiresQueue: false, queued: false };
       },
       deleteNote: async () => {},
-      saveNote: async (note) => { survivingNotes.push(note); },
+      loadNoteLiveState: async (id) => {
+        const note = survivingNotes.find(n => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => { survivingNotes.push({ ...seed, deleted_at: null }); },
     });
 
     await render.act(async () => { await journalModule.reconcileRecoveryOperations(); });
@@ -5264,6 +5274,33 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     // Conflicting lifecycle actions are disabled while the operation is pending.
     expect(findPressableByText(root, 'Complete week').props.disabled).toBe(true);
     expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(true);
+  });
+
+  test('a terminal recovery cancellation explains itself but locks nothing and offers no retry', async () => {
+    // A cancelled conflict has already retired its journal record, so there is
+    // nothing left to retry and nothing may stay disabled — otherwise an
+    // unreachable outcome would freeze every recovery action permanently.
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
+    await setup({ notes: [baselineNote, week1Note], weeks });
+    const base = useEntries.useRecoveryBlockState();
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...base,
+      pendingRecovery: [],
+      recoveryPendingError: 'That note was linked to a different recovery block before this week could be added, so this week was not created.',
+      retryRecovery: jest.fn(),
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    const notice = root.findAll(n => n.props
+      && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('Recovery change not applied'))[0];
+    expect(notice).toBeTruthy();
+    expect(findPressableByText(root, 'Retry recovery')).toBeNull();
+    expect(findPressableByText(root, 'Complete week').props.disabled).toBe(false);
+    expect(findPressableByText(root, 'Complete recovery block').props.disabled).toBe(false);
   });
 
   test('deleting an unlinked note skips the recovery confirmation entirely', () => {

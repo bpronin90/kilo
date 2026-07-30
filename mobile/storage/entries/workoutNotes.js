@@ -140,6 +140,25 @@ export async function loadWorkoutNoteDeletionState(id) {
   };
 }
 
+// Presence probe for the recovery operation journal's "create a new note and
+// attach it as the next week" operation (#696).
+//
+// The mirror image of loadWorkoutNoteDeletionState above: that one asks "is this
+// note gone?", this one asks "is this note LIVE, and durably so?". Existence
+// alone is not the answer — a tombstoned row exists, and a live membership
+// pointing at a tombstoned note is exactly the dangling state the protocol
+// forbids. Local mode has no upload queue, so `requiresQueue` is false.
+export async function loadWorkoutNotePresenceState(id) {
+  const list = await readList(WORKOUT_NOTES_KEY);
+  const note = list.find(n => n?.id === id);
+  return {
+    exists: !!note,
+    deleted: !!note?.deleted_at,
+    requiresQueue: false,
+    queued: false,
+  };
+}
+
 // ── current workout selection ──────────────────────────────────────────────────
 
 export async function loadCurrentWorkoutId() {

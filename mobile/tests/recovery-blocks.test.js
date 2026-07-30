@@ -1612,6 +1612,7 @@ describe('delete a linked workout note — cloud tombstone and queue bookkeeping
 });
 
 describe('add a new note as the next recovery week — a two-collection operation', () => {
+  // A local-mode note store: hard delete, no upload queue.
   function noteOpsFor(notes) {
     return {
       loadNoteState: async (id) => {
@@ -1622,9 +1623,42 @@ describe('add a new note as the next recovery week — a two-collection operatio
         const idx = notes.findIndex((n) => n.id === id);
         if (idx >= 0) notes.splice(idx, 1);
       },
-      saveNote: async (note) => {
-        const idx = notes.findIndex((n) => n.id === note.id);
-        if (idx >= 0) notes[idx] = note; else notes.push(note);
+      loadNoteLiveState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !!note?.deleted_at, requiresQueue: false, queued: false };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = notes.findIndex((n) => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) notes[idx] = live; else notes.push(live);
+      },
+    };
+  }
+
+  // A cloud-mode note store: a live row plus durable upload intent are BOTH
+  // required, and `ensureNoteLive` persists the row before it queues — which is
+  // what makes the enqueue-failed gap reachable.
+  function cloudNoteOpsFor(notes, queue, { failEnqueue = () => false } = {}) {
+    return {
+      loadNoteState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        return { exists: !!note, deleted: !note || !!note.deleted_at, requiresQueue: true, queued: queue.includes(id) };
+      },
+      deleteNote: async () => {},
+      loadNoteLiveState: async (id) => {
+        const note = notes.find((n) => n.id === id);
+        if (!note) return { exists: false, deleted: false, requiresQueue: true, queued: false };
+        if (note.deleted_at) return { exists: true, deleted: true, requiresQueue: true, queued: false };
+        return { exists: true, deleted: false, requiresQueue: true, queued: queue.includes(id) };
+      },
+      ensureNoteLive: async (seed) => {
+        const idx = notes.findIndex((n) => n.id === seed.id);
+        const live = { ...seed, deleted_at: null };
+        if (idx >= 0) notes[idx] = live; else notes.push(live);
+        // The row is committed at this point. A throw here is precisely the
+        // committed-write/failed-bookkeeping case.
+        if (failEnqueue()) throw new Error('Injected enqueue failure');
+        if (!queue.includes(seed.id)) queue.push(seed.id);
       },
     };
   }
@@ -1673,10 +1707,10 @@ describe('add a new note as the next recovery week — a two-collection operatio
     let attempts = 0;
     setRecoveryNoteOperations({
       ...base,
-      saveNote: async (note) => {
+      ensureNoteLive: async (seed) => {
         attempts += 1;
         if (attempts === 1) throw new Error('Injected note write failure');
-        return base.saveNote(note);
+        return base.ensureNoteLive(seed);
       },
     });
 
@@ -1766,13 +1800,17 @@ describe('add a new note as the next recovery week — a two-collection operatio
     expect(await readJournalRaw()).toEqual([]);
   });
 
-  test('an ordinal claimed by another device while pending fails closed rather than silently reassigning', async () => {
+  test('an ordinal claimed by another device is durably reassigned, and ONE retry exits the conflict', async () => {
     const { block, notes } = await seedReadyBlock();
     const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
     await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
     spy.mockRestore();
+    const before = await readJournalRaw();
+    expect(before[0].week_seed.week_number).toBe(2);
 
-    // Another device's week 2 arrives through sync before replay.
+    // Another device's week 2 arrives through sync before replay. Retrying the
+    // RECORDED ordinal could never succeed, so retrying it unchanged forever
+    // would lock every recovery action on this block permanently.
     const raw = await loadRecoveryBlockWeeksRaw();
     await replaceRecoveryBlockWeeksRaw([...raw, {
       id: 'rw_remote', block_id: block.id, note_id: 'wn_remote', week_number: 2,
@@ -1781,15 +1819,81 @@ describe('add a new note as the next recovery week — a two-collection operatio
 
     const replay = await reconcileRecoveryOperations();
 
-    expect(replay.ok).toBe(false);
-    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING);
-    expect(await readJournalRaw()).toHaveLength(1);
-    // No duplicate ordinal was created.
-    expect((await loadRecoveryWeeksForBlock(block.id)).filter((w) => w.week_number === 2)).toHaveLength(1);
-    expect(notes.some((n) => n.title === 'Week 2')).toBe(true);
+    // One retry EXITS the conflict rather than reporting it again.
+    expect(replay.ok).toBe(true);
+    expect(await readJournalRaw()).toEqual([]);
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2, 3]);
+    // Gap-free and unique: the remote row keeps 2, ours is renumbered to 3.
+    expect(ordered.find((w) => w.note_id === before[0].note_id).week_number).toBe(3);
+    expect(ordered.filter((w) => w.week_number === 2)).toHaveLength(1);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
   });
 
-  test('a block deleted while the operation is pending retires the record instead of stranding it', async () => {
+  test('the reassignment is recorded on the journal BEFORE the write, so a failure replays the new ordinal', async () => {
+    const { block } = await seedReadyBlock();
+    let failWeeks = true;
+    const original = writeListModule.writeList;
+    const spy = jest.spyOn(writeListModule, 'writeList').mockImplementation(async (key, list) => {
+      if (key === RECOVERY_BLOCK_WEEKS_KEY && failWeeks) throw new Error('Injected membership write failure');
+      return original(key, list);
+    });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    // Seeded through AsyncStorage directly, because the injected failure above
+    // blocks every write to this key.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([...raw, {
+      id: 'rw_remote', block_id: block.id, note_id: 'wn_remote', week_number: 2,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]));
+
+    // Replay reassigns to 3, then the membership write fails again. The new
+    // ordinal must already be on the record, not recomputed at write time.
+    await reconcileRecoveryOperations();
+    const mid = await readJournalRaw();
+    expect(mid).toHaveLength(1);
+    expect(mid[0].week_seed.week_number).toBe(3);
+    expect(mid[0].reassigned_from_week_number).toBe(2);
+    expect(mid[0].reassignments).toBe(1);
+
+    failWeeks = false;
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2, 3]);
+    spy.mockRestore();
+  });
+
+  test('a note claimed by another block is a terminal cancellation that unlocks recovery actions', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    // The seeded note now has a live membership in a DIFFERENT block. One note
+    // cannot be in two blocks, and nothing a retry does can change that.
+    const raw = await loadRecoveryBlockWeeksRaw();
+    await replaceRecoveryBlockWeeksRaw([...raw, {
+      id: 'rw_elsewhere', block_id: 'rb_elsewhere', note_id: journal[0].note_id, week_number: 1,
+      completed_at: null, saved_at: 'x', updated_at: 'x', deleted_at: null,
+    }]);
+
+    const replay = await reconcileRecoveryOperations();
+
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.CONFLICT_CANCELLED);
+    expect(replay.results[0].terminal).toBe(true);
+    expect(replay.results[0].error).toMatch(/different recovery block/i);
+    // Retired, not retried: nothing is pending, so no action stays locked.
+    expect(await readJournalRaw()).toEqual([]);
+    expect(replay.pending).toEqual([]);
+    // A further retry is a clean no-op — the state is genuinely exited.
+    const again = await reconcileRecoveryOperations();
+    expect(again.ok).toBe(true);
+    expect(again.cancelled).toEqual([]);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+  });
+
+  test('a block deleted while the operation is pending is a terminal cancellation, not a stranded record', async () => {
     const { block } = await seedReadyBlock();
     const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
     await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
@@ -1798,10 +1902,93 @@ describe('add a new note as the next recovery week — a two-collection operatio
     await deleteRecoveryBlock(block.id);
     const replay = await reconcileRecoveryOperations();
 
-    expect(replay.ok).toBe(true);
+    expect(replay.code).toBe(RECOVERY_OPERATION_CODES.CONFLICT_CANCELLED);
+    expect(replay.pending).toEqual([]);
     expect(await readJournalRaw()).toEqual([]);
     // No live membership was created under a deleted block.
     expect(await loadRecoveryWeeksForBlock(block.id)).toEqual([]);
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+  });
+
+  test('cloud mode: the note write commits and the enqueue fails — existence alone must not verify', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    const queue = [];
+    let failEnqueue = true;
+    setRecoveryNoteOperations(cloudNoteOpsFor(notes, queue, { failEnqueue: () => failEnqueue }));
+
+    const result = await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+
+    // The row committed; the bookkeeping did not. The note exists but has no
+    // durable upload intent, so the operation must NOT be verified or cleared.
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(RECOVERY_OPERATION_CODES.OPERATION_FAILED);
+    const journal = await readJournalRaw();
+    expect(journal).toHaveLength(1);
+    expect(notes.some((n) => n.id === journal[0].note_id)).toBe(true);
+    expect(queue).toEqual([]);
+    // No membership was published over a note that may never upload.
+    expect(await loadRecoveryWeeksForBlock(block.id)).toHaveLength(1);
+
+    failEnqueue = false;
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(queue).toEqual([journal[0].note_id]);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2]);
+    expect(await readJournalRaw()).toEqual([]);
+  });
+
+  test('cloud mode: a live-but-unqueued note is re-enqueued on replay without a second membership', async () => {
+    const block = await makeBlock();
+    const week = await addRecoveryWeek({ blockId: block.id, noteId: 'wn_w1' });
+    await completeRecoveryWeek(week.id);
+    const notes = [{ id: 'wn_w1', title: 'Week 1' }];
+    const queue = [];
+    setRecoveryNoteOperations(cloudNoteOpsFor(notes, queue));
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    const created = notes.find((n) => n.title === 'Week 2');
+
+    // A sync pass consumed the queue entry, then the record is replayed from a
+    // stale intent: nothing may be duplicated.
+    queue.length = 0;
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([{
+      version: 1, operation_id: 'recop_stale_add', created_at: 'x', updated_at: 'x',
+      stage: 'verify_read', attempts: 1, last_error: null,
+      type: 'add_week_with_new_note', block_id: block.id,
+      week_id: (await loadRecoveryWeeksForBlock(block.id))[1].id, note_id: created.id,
+      requested_created_at: '2026-04-04T00:00:00.000Z',
+      note_seed: created,
+      week_seed: (await loadRecoveryWeeksForBlock(block.id))[1],
+      intended_outcome: 'note live and linked as week 2',
+    }]));
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+    expect(queue).toEqual([created.id]);
+    expect((await loadRecoveryWeeksForBlock(block.id)).map((w) => w.week_number)).toEqual([1, 2]);
+    expect(notes.filter((n) => n.title === 'Week 2')).toHaveLength(1);
+  });
+
+  test('a tombstoned note is not accepted as a valid note: replay restores it live before attaching', async () => {
+    const { block, notes } = await seedReadyBlock();
+    const spy = failWritesFor([RECOVERY_BLOCK_WEEKS_KEY], { times: 1 });
+    await addRecoveryWeekWithNewNoteCore(journalStorage, { blockId: block.id, title: 'Week 2' });
+    spy.mockRestore();
+    const journal = await readJournalRaw();
+
+    // The created note is tombstoned before replay. Existence-only verification
+    // would attach a live membership to a deleted note.
+    const idx = notes.findIndex((n) => n.id === journal[0].note_id);
+    notes[idx] = { ...notes[idx], deleted_at: '2026-04-04T00:00:00.000Z' };
+
+    expect((await reconcileRecoveryOperations()).ok).toBe(true);
+
+    const restored = notes.find((n) => n.id === journal[0].note_id);
+    expect(restored.deleted_at).toBeFalsy();
+    const ordered = await loadRecoveryWeeksForBlock(block.id);
+    expect(ordered.map((w) => w.week_number)).toEqual([1, 2]);
+    expect(ordered[1].note_id).toBe(journal[0].note_id);
+    expect(await readJournalRaw()).toEqual([]);
   });
 });
 

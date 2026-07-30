@@ -604,15 +604,39 @@ tombstoned and note deleted/tombstoned with pending-sync intent", never back to 
 live membership, because restoring one could point a live week at a note that is
 already gone. Block completion converges to block and current week completed at
 one stable timestamp, and never reopens a record or slides a timestamp forward.
-The new-note week converges to "this note id exists and this week id links it at
-this ordinal": both the note id and the ordinal are minted once at intent time and
-stored on the record as seeds, so no replay can mint a second note or a second
-ordinal, and a same-tick double confirm cannot allocate two. If the ordinal has
-since been claimed by another device, or the note has joined another block, replay
-fails closed and stays pending rather than silently choosing a different outcome.
-If the target block is deleted, the record is retired: whatever already landed
-remains an ordinary workout note, because destroying a note the user asked to
-create in order to tidy protocol state is worse than the untidiness.
+The new-note week converges to "this note is durably LIVE and this week id links
+it at this ordinal": both the note id and the ordinal are minted once at intent
+time and stored on the record as seeds, so no replay can mint a second note or a
+second ordinal, and a same-tick double confirm cannot allocate two. The note
+postcondition is deliberately not existence — a tombstoned row exists, and in
+cloud mode `saveWorkoutNoteItem` persists the row before it enqueues, so a failed
+enqueue leaves a note that exists with no durable upload intent. Since memberships
+reach the cloud through the baseline diff, verifying on existence alone would
+publish a membership referencing a note that may never upload. The postcondition is
+therefore `exists && !deleted`, plus queued intent in cloud mode
+(`loadWorkoutNotePresenceState`), repaired idempotently from the recorded seed by
+`ensureWorkoutNoteLive`.
+
+Retention is only honest when a retry can change the result, so conditions no
+retry, restart, or sync can alter get an explicit terminal transition instead of
+permanent pending:
+
+- **ordinal claimed by another device** — a durable reassignment. The next free
+  ordinal (one past the highest live week, the domain's own rule) is written onto
+  the journal record *before* any domain write, so replay and verification both
+  read the reassigned value and the outcome stays single and recorded. One retry
+  exits the conflict.
+- **the seeded note has joined another block**, or **the target block was
+  deleted** — `CONFLICT_CANCELLED`. The record is retired, so nothing stays
+  locked, and the caller receives a terminal non-ok result describing what
+  happened. Anything already persisted remains an ordinary workout note:
+  destroying a note the user asked to create, over a race they did not cause, is
+  worse than the untidiness. If the retiring write itself fails, the result
+  degrades to ordinary pending rather than claiming resolution.
+
+Reconciliation reports `pending` and `cancelled` separately for exactly this
+reason: pending locks conflicting actions, cancelled locks nothing and is shown
+once, without a retry affordance there is nothing left to retry.
 An unreadable, malformed, or unsupported-version journal fails closed with a
 retryable error; it is never read as "no pending work". A verification read that
 cannot determine the outcome retains the record rather than choosing a default.

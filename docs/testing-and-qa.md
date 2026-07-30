@@ -762,9 +762,22 @@ Scenarios pinned beyond the per-boundary sweep:
 - cancellation and validation failures proving zero writes, journal included;
 - new-note week specifics: note-write failure, membership-write failure, a
   membership failure whose journal clear also fails, restart replay between the
-  two writes, an ordinal claimed by another device while pending (fails closed,
-  never silently reassigned), a block deleted while pending, and concurrent
-  confirms — all asserting exactly one note and exactly one ordinal afterwards;
+  two writes, and concurrent confirms — all asserting exactly one note and
+  exactly one ordinal afterwards;
+- new-note week note postcondition: a cloud note whose write committed and whose
+  enqueue then failed must NOT verify on existence alone (the operation stays
+  pending, no membership is published, and a replay re-enqueues it), a
+  live-but-unqueued note is re-enqueued from a stale intent without duplicating
+  anything, and a tombstoned note is restored live before the membership is
+  attached rather than being accepted as valid;
+- new-note week conflict liveness — every conflict must EXIT, not repeat: an
+  ordinal claimed by another device is durably reassigned (recorded on the record
+  before the write, so a failure replays the new ordinal) and one retry converges
+  to a gap-free `[1, 2, 3]`; a note that joined another block and a deleted block
+  both retire as `CONFLICT_CANCELLED` with nothing pending, and a further retry is
+  a clean no-op. `log-screen.test.js` pins the UI half: a terminal cancellation
+  shows its explanation, offers no `Retry recovery` button, and leaves every
+  lifecycle action enabled;
 - storage-mode change mid-operation: a deletion that hard-removed the note in
   local mode and is replayed in cloud mode must reconstruct the tombstone and its
   dirty-queue record before the journal may be cleared, must stay pending while
