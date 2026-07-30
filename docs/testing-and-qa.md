@@ -855,7 +855,20 @@ boundaries below.
   The mirrored case (lifecycle action first) proves the pass observes the verified
   write instead of publishing success over a stale merge. This test was
   negative-controlled against the previous behaviour that released the guard for
-  the pass body: it fails there and passes with the guard held across the whole
+  the pass body: it fails there and passes with the guard held
+- covers the same boundary for cloud bootstrap, which uploads the recovery
+  collections as the account's initial state: a resumable pending operation is
+  reconciled before `bootstrapFromLocal` observes its snapshot (bootstrap sees the
+  converged records, not the mid-flight ones); an unresolvable operation and a
+  corrupt journal each prevent any upload at all; and a lifecycle action started
+  during a gated bootstrap is drained for far more turns than it needs and must
+  still not have run, after which both the uploaded snapshot and the local write
+  are intact. `sync-recovery-ui.test.js` proves the WIRING end to end through the
+  real `runBootstrap` hook — no upload, no ownership claim, no cloud-mode
+  activation, phase failed/retryable, journal intact — and that the same path
+  uploads and completes once the operation converges. Both wiring tests were
+  negative-controlled against the unwrapped bootstrap runner: they fail there and
+  pass with it routed through the boundary across the whole
   sequence
 
 ### `mobile/tests/backup-import.test.js`

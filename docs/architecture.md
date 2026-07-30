@@ -674,9 +674,10 @@ still cannot be verified fails the pass, surfacing through the existing
 failed/retryable sync state with the reconciliation cause rather than a silent
 "Fully synced".
 
-UI actions, retries, and sync share one single-flight queue, and the sync boundary
-holds it across the WHOLE pre-reconcile → pass → post-reconcile sequence
-(`withExclusiveRecoveryAccess`), not merely around each reconciliation. Releasing
+UI actions, retries, sync, and cloud bootstrap share one single-flight queue, and
+that boundary holds it across the WHOLE pre-reconcile → operation →
+post-reconcile sequence (`withExclusiveRecoveryAccess`), not merely around each
+reconciliation. Releasing
 it for the pass body would not be safe: the sync engine and the journal replayers
 both read a complete `recovery_blocks`/`recovery_block_weeks` array and later write
 the whole array back, so a lifecycle action executing during the pass means
@@ -687,6 +688,23 @@ lifecycle writes for the duration of the pass is what actually prevents it. The
 nested pre/post reconciliation runs without re-acquiring the guard, which is what
 keeps that nesting from deadlocking; competing UI actions queue behind the pass and
 run against post-pass state.
+
+Cloud **bootstrap** gets the identical boundary, applied at `makeBootstrapRunner`
+in `syncRecoveryHooks.js` so both upload paths (`runBootstrap` and
+`confirmOwnershipUpload`) are covered by one seam. `buildBootstrapPlan` includes
+`recovery_blocks` and `recovery_block_weeks`, so bootstrap reads and uploads
+exactly the collections the journal rewrites — and it matters more there than for
+an ordinary pass, because there is no earlier cloud state to converge against:
+whatever bootstrap uploads becomes the account's initial truth. An operation still
+pending at sign-in would otherwise be uploaded as a partial transition, and a
+lifecycle action started while the snapshot is being built or uploaded would race a
+whole-list write. Because both callers persist ownership and switch the storage
+mode only after the runner resolves, the post-reconcile always completes first; a
+pending or corrupt journal throws, which `runPhase` turns into a failed/retryable
+BOOTSTRAP phase with the owner unwritten, the mode still local, and the journal
+intact. The pull-only restore path (`downloadAccountData`) needs no boundary of its
+own: it uploads nothing, runs only on a verified-empty device, and its follow-on
+sync already goes through the same guard.
 
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local
