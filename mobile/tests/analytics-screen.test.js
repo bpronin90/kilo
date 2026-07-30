@@ -42,6 +42,7 @@ jest.mock('../hooks/useEntries', () => {
     useWorkoutNotes: jest.fn(),
     useDeloadHistory: jest.fn(),
     useFeatureToggles: jest.fn(),
+    useRecoveryBlockState: jest.fn(),
   };
 });
 
@@ -79,6 +80,11 @@ function setup({ entries = [], hookOverrides = {}, featureToggles = {} } = {}) {
   });
   useEntries.useDeloadHistory.mockReturnValue({
     history: hookOverrides.deloadHistory || [],
+    loading: false,
+  });
+  useEntries.useRecoveryBlockState.mockReturnValue({
+    blocks: hookOverrides.recoveryBlocks || [],
+    weeks: hookOverrides.recoveryWeeks || [],
     loading: false,
   });
 

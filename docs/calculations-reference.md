@@ -127,7 +127,7 @@ Shapes workout data for the Home assessment panel. It mostly reads persisted wor
 
 ### Return-to-Baseline Comparison
 
-> Where you see it: not yet rendered — derived for the recovery-block surfaces
+> Where you see it: the Recovery section on the Analytics tab (#698), for the active recovery block or any completed block selected from its history
 
 A recovery block groups the weekly notes you log while coming back from an injury or layoff, and freezes a snapshot of what you were doing before the layoff. The return-to-baseline comparison answers one question for each exercise in each recovery week: **how does the work you actually completed this week compare to that frozen baseline?**
 
