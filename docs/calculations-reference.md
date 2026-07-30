@@ -125,6 +125,78 @@ Shapes workout data for the Home assessment panel. It mostly reads persisted wor
 - **sessionStatusRows:** filters stored exercise classifications to only Progressing, Steady, and Regressing. Drops Initial, Inconsistent, and null. If no displayable classifications remain, the section hides.
 - **classifications:** count of each classification type across all tracked exercises (progressing, stalled, regressing, inconsistent, initial).
 
+### Return-to-Baseline Comparison
+
+> Where you see it: not yet rendered — derived for the recovery-block surfaces
+
+A recovery block groups the weekly notes you log while coming back from an injury or layoff, and freezes a snapshot of what you were doing before the layoff. The return-to-baseline comparison answers one question for each exercise in each recovery week: **how does the work you actually completed this week compare to that frozen baseline?**
+
+Everything below is derived on read. Nothing here changes your notes, changes the frozen baseline, completes a week or block, or means you are medically recovered. Only you complete a recovery block.
+
+#### The frozen baseline
+
+The baseline is captured once, when the block is created, from the routine you name as your pre-recovery routine. For each exercise it freezes the **last session that recorded real work**, so trailing skipped weeks before you stopped training do not become your baseline. Warmup sections are excluded. The snapshot is never rewritten afterwards — that is what makes progress measurable against a fixed target instead of a moving one.
+
+Each exercise is frozen as one of three families, decided by what you logged:
+
+| Family | Decided when | Frozen values |
+|--------|--------------|---------------|
+| Weighted | any set carries added or assisting load | top working weight, completed volume |
+| Timed | no load, but a held duration | best hold, total duration |
+| Reps-only | no load and no duration, just counted reps | best set, total reps |
+
+#### What each week counts
+
+A recovery week is one ordinary workout note. Every completed non-warmup set in that note counts, including an exercise trained on more than one day — two sessions of the same lift in one week is twice the work. The same lift written with different casing or spacing merges under the app's normal exercise-name rules; no separate naming scheme exists for recovery.
+
+Nothing below is counted:
+
+- warmup sections
+- exercises skipped for that session
+- skipped sets inside a row (`80 4,-` counts only the 4)
+- rows the parser could not read
+- sets with zero or missing reps (or zero duration, for timed work)
+- notes that fail the parser's size or structure contract — those report an error state instead of a comparison
+
+#### The comparisons
+
+| Family | Metric | Formula |
+|--------|--------|---------|
+| Weighted | Top load | heaviest completed working set this week ÷ frozen top working weight |
+| Weighted | Volume | sum of (weight × reps) this week ÷ frozen completed volume |
+| Reps-only | Total reps | completed reps this week ÷ frozen total reps |
+| Timed | Total duration | completed seconds this week ÷ frozen total duration |
+
+Load and volume are kept as separate evidence and are never averaged together. There is no single composite "recovery percentage": lifting your old top weight for one set is a different fact from doing your old total work, and both are worth seeing.
+
+Percentages can exceed 100% — if you came back stronger, the number says so. A display may cap a progress meter at 100%, but the factual value is always retained. Percentages are floored to a whole number so a week at 99.6% of baseline reads as 99%, never as "100%" next to a Rebuilding label.
+
+#### Per-exercise states
+
+| State | Meaning |
+|-------|---------|
+| **Baseline met** | Every metric that applies to that exercise is at or above 100%. A weighted exercise needs **both** top load and volume; either one alone is not enough. |
+| **Rebuilding** | Comparable work exists but at least one metric is still short. The result names exactly which one (top load, volume, total reps, or total duration). |
+| **Not reintroduced** | That baseline exercise has no comparable completed work this week — not logged at all, only warmed up, or skipped. |
+| **Added during recovery** | Logged this week with no baseline counterpart: mobility work, a rehab accessory, or a substitute lift. Listed separately with its real numbers and **no** percentage, because there is nothing to compare it to. |
+| **Not comparable** | Work exists but cannot be measured against the frozen row (see below). Never silently reported as Rebuilding, which would imply a measurement that was never taken. |
+
+A comparison is reported as **Not comparable** when:
+
+- the exercise changed family — bodyweight chin-ups this week against a weighted chin-up baseline, for example. Two different measurements; a ratio across them would be fiction.
+- the week's work carries none of the numbers the baseline family needs, such as assisted-only reps under a weighted baseline.
+- the frozen value is missing or zero, so a ratio would divide by zero. Old snapshots are never rewritten, so this is reported rather than repaired.
+
+Whole-block error states are reported the same explicit way: no snapshot on the block, a snapshot written by a different baseline format, a week whose linked note is missing, and a note that fails the parser contract each produce a named state instead of a comparison against zero.
+
+#### Limitations
+
+- **Exact names only.** Comparison is by exact normalized exercise identity. Kilo never maps a substitute onto the lift it replaced and never infers that two exercises are medically or mechanically equivalent — a leg press logged while your squat is out shows up as Added during recovery, and squat shows up as Not reintroduced.
+- **Baseline is one session, the week is the whole week.** The frozen baseline is your last real session of that exercise; a recovery week aggregates every session in that week's note. For an A/B routine that trains a lift twice a week, the week's total can therefore exceed the frozen single-session volume before you are truly back.
+- **No medical meaning.** These are training numbers. Reaching Baseline met on every exercise does not mean an injury has healed, and nothing here should be read as clearance to train.
+- **Weeks follow membership order.** Results are ordered by the week number you assigned when linking the note, never by note date or title.
+- **Display units do not matter.** Comparisons run on canonical stored values, so switching between lb and kg cannot change a state or a percentage.
+
 ---
 
 ## Weight Analytics
@@ -286,6 +358,9 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | How is my 1k total calculated? | It sums the estimated 1-rep max (Epley formula) of your three selected compound lifts. If any of the three has no logged data, the total shows as "—". |
 | How is estimated 1RM derived? | Using the Epley formula: weight × (1 + reps / 30). It estimates the maximum weight you could lift for a single rep based on a multi-rep set. |
 | What does Kilo Max measure? | It averages all your working-set Epley 1RM estimates for an exercise, then multiplies by a fatigue multiplier (default 1.07). It's a fatigue-adjusted strength estimate, not a true max. |
+| Why does a recovery exercise say Rebuilding when I lifted my old weight? | Weighted exercises need both dimensions: your old top weight **and** your old total volume. Hitting the weight for one set but doing fewer total sets leaves volume short, so it stays Rebuilding and tells you volume is the unmet part. |
+| Why does my substitute exercise have no percentage? | Kilo only compares exact matching exercise names. A leg press logged while your squat is out is listed as Added during recovery with its real numbers; inventing a squat percentage from it would be a made-up number. |
+| Does "Baseline met" mean I'm recovered? | No. It means the training numbers for that exercise reached what you were doing before. It is not a medical judgment, and Kilo never completes a recovery block for you. |
 | Why does my current weight differ from my last weigh-in? | If goal calculations show a different "current weight," it may be using a saved goal start weight (when no recent entries exist) or a user-typed value during editing. The priority is: latest entry → saved start weight → typed value. |
 | How is my goal pace calculated? | Total weight change needed divided by weeks until your target date. Warnings appear if the pace exceeds 1 lb/week (unhealthy) or 2 lb/week (unrealistic). |
 | How are daily calories estimated? | When you have a complete profile (height, date of birth, sex, activity level), the app uses Mifflin-St Jeor BMR × activity multiplier (TDEE), then adds your required daily pace adjustment to produce an absolute daily calorie target. Without a profile it falls back to the 3500 cal/lb convention (weekly pace × 3500 ÷ 7). All values are approximate estimates. |
@@ -297,7 +372,8 @@ Maps each of the three 1k slots (bench, squat, deadlift) to a specific exercise 
 | Lifecycle | Items |
 |-----------|-------|
 | **Derived on save** (stored on note) | exercise_classifications, skip_markers, attendance_flags |
-| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations, session check-in detection |
+| **Derived on read** (recomputed each render) | Weeks In, 1k Total, Kilo Max, Weight Trends, Weight Pace, Weekly Summary shaping, Goal calculations, session check-in detection, return-to-baseline comparison |
+| **Frozen once** (captured at creation, never rewritten) | recovery-block baseline snapshot |
 | **Global persisted** (own AsyncStorage key) | tracked lifts map |
 | **Persisted on note** (user-set) | one_k_exercises, raw_text, session_checkins (check-in responses) |
 
