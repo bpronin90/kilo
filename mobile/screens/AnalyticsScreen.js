@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
-import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles } from '../hooks/useEntries';
+import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState } from '../hooks/useEntries';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -25,6 +25,7 @@ import { AnalyticsWeightTrendsCard } from '../components/AnalyticsWeightTrendsCa
 import { AnalyticsFatigueCard } from '../components/AnalyticsFatigueCard';
 import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection';
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
+import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 
 export function AnalyticsScreen({ multiplier, section }) {
   const { colors } = useTheme();
@@ -36,6 +37,7 @@ export function AnalyticsScreen({ multiplier, section }) {
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
+  const { blocks: recoveryBlocks, weeks: recoveryWeeks } = useRecoveryBlockState();
   const unit = useWeightUnit();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
@@ -245,7 +247,14 @@ export function AnalyticsScreen({ multiplier, section }) {
       handleSelectExercise={handleSelectExercise}
     />,
 
-    <View 
+    <AnalyticsRecoverySection
+      key="recovery-section"
+      blocks={recoveryBlocks}
+      weeks={recoveryWeeks}
+      notes={notes}
+    />,
+
+    <View
       key="sticky-header"
       style={styles.signalStickyHeader} 
       testID="sticky-header"

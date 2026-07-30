@@ -392,9 +392,21 @@ The real native app path now has a modular React Native shell:
   discarded. Signing in between an interrupted attempt and its repair is safe:
   a deletion that only hard-removed the note locally is not treated as finished
   in cloud mode until the tombstone and its pending upload actually exist. A cloud sync pass will not report workout notes or recovery data
-  as synced while such an operation is unresolved. Recovery
-  -specific analytics remain explicitly out of scope until later issues. The
-  read view now also
+  as synced while such an operation is unresolved.
+  A Recovery section on the Analytics tab (#698) renders the #697 return-to
+  -baseline comparison contract read-only: it shows for the active block (or,
+  selected from a collapsible completed-block history, any past one) a
+  factual `X of Y baseline exercises met` hero, an ordered week selector
+  (defaulting to the current/final week), and per-exercise rows carrying
+  independent Load and Volume for weighted lifts or the single applicable
+  metric for reps-only/timed exercises, each with a status (`Baseline met`,
+  `Rebuilding`, `Not reintroduced`, `Not comparable`, or `Added during
+  recovery`). Percentages above 100% stay numerically visible even though the
+  meter fill is capped at 100%, and a missing linked note, a parser-rejected
+  note, or an unsupported/empty baseline snapshot each render a visible
+  explanatory state rather than a hidden or zeroed-out row. Nothing here
+  mutates a block or week, changes normal analytics, or claims medical
+  recovery. The read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render
