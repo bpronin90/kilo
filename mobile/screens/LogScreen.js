@@ -5,6 +5,15 @@
 // (`WorkoutHeading` / `WorkoutSubheading`). No "creative" or opportunistic
 // visual tweaks. Change Log-tab styling ONLY when the repo owner explicitly
 // asks for that specific change.
+//
+// Authorized exceptions (#710), scoped to the routine-card headers in
+// `components/LogActiveRoutineCard.js` and `components/LogPreviousRoutines.js`:
+// `otherNoteHeader.alignItems` `'center'` -> `'flex-start'`; the action
+// container's gap `8` -> `12`; layout-only containment props (`minWidth: 0`,
+// `flexShrink: 1`, `flexWrap: 'wrap'`, `justifyContent: 'flex-end'`);
+// `minHeight: 44` / `justifyContent: 'center'` on `inlineSwitchButton`; and
+// `numberOfLines={2}` / `ellipsizeMode="tail"` on the title `Text`. No other
+// styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';

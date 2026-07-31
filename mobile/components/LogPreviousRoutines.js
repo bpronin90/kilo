@@ -53,7 +53,13 @@ export function LogPreviousRoutines({
                 style={styles.otherNoteHeader}
               >
                 <View style={styles.otherNoteInfo}>
-                  <Text style={styles.otherNoteTitle}>{other.title || 'Untitled Routine'}</Text>
+                  <Text
+                    style={styles.otherNoteTitle}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
+                    {other.title || 'Untitled Routine'}
+                  </Text>
                   {other.updated_at && (
                     <Text style={styles.otherNoteSub}>
                       {viewingNoteId === other.id && viewingHasABWeeks
@@ -78,7 +84,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(other); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel="Start recovery block from this routine"
                     >
@@ -89,7 +95,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); onMarkAsRecoveryWeek(other); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel="Mark as recovery week"
                     >
@@ -100,7 +106,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); handleToggleViewingWeek(); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                       accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
@@ -113,7 +119,7 @@ export function LogPreviousRoutines({
                   <Pressable
                     onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
                     style={styles.inlineSwitchButton}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                   >
                     <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
                   </Pressable>
@@ -169,18 +175,21 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 10,
     paddingHorizontal: 24,
     gap: 12,
   },
   otherNoteInfo: {
     flex: 1,
+    minWidth: 0,
   },
   headerActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 12,
   },
   otherNoteTitle: {
     fontSize: 20,
@@ -215,6 +224,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.chipBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   inlineSwitchButtonText: {
     fontSize: 12,

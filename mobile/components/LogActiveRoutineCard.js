@@ -38,7 +38,13 @@ export function LogActiveRoutineCard({
           style={styles.otherNoteHeader}
         >
           <View style={styles.otherNoteInfo}>
-            <Text style={styles.currentNoteTitle}>{workoutNoteTitle || 'Untitled Routine'}</Text>
+            <Text
+              style={styles.currentNoteTitle}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {workoutNoteTitle || 'Untitled Routine'}
+            </Text>
             <Text style={styles.otherNoteSub}>
               {hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine'}
             </Text>
@@ -52,12 +58,12 @@ export function LogActiveRoutineCard({
               </View>
             )}
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={styles.currentHeaderActions}>
             {isEligibleForRecoveryBaseline && onStartRecoveryBlock && (
               <Pressable
                 onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(); }}
                 style={styles.inlineSwitchButton}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel="Start recovery block from this routine"
               >
@@ -68,7 +74,7 @@ export function LogActiveRoutineCard({
               <Pressable
                 onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
                 style={styles.inlineSwitchButton}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               >
                 <Text style={styles.inlineSwitchButtonText}>
                   Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
@@ -78,7 +84,7 @@ export function LogActiveRoutineCard({
             <Pressable
               onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
               style={styles.inlineSwitchButton}
-              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
             >
               <Text style={styles.inlineSwitchButtonText}>Edit</Text>
             </Pressable>
@@ -157,13 +163,21 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 10,
     paddingHorizontal: 24,
     gap: 12,
   },
   otherNoteInfo: {
     flex: 1,
+    minWidth: 0,
+  },
+  currentHeaderActions: {
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 12,
   },
   currentNoteTitle: {
     fontSize: 24,
@@ -198,6 +212,8 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.chipBackground,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   inlineSwitchButtonText: {
     fontSize: 12,
