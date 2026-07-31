@@ -5477,3 +5477,354 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     writeSpy.mockRestore();
   });
 });
+
+// ── Recovery inclusion preference (#699) ────────────────────────────────────
+//
+// The per-block "Include recovery notes in normal analytics" control. Its whole
+// job is to write ONE field on ONE block, so these tests assert against what is
+// actually persisted, not against optimistic UI state.
+
+describe('Recovery inclusion preference', () => {
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const journalModule = require('../storage/entries/recoveryOperationJournal');
+  const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY, RECOVERY_OPERATION_JOURNAL_KEY } =
+    require('../storage/entries/keys');
+  const { RECOVERY_INCLUSION_LABEL } = require('../components/LogRecoverySection');
+
+  const baselineNote = { id: 'baseline1', title: 'Push Day', raw_text: 'Push\n-Bench\n100 5,5,5', updated_at: '2026-01-01T00:00:00.000Z' };
+  const weekNote = { id: 'week1note', title: 'Recovery Week 1 Note', raw_text: 'Push\n-Bench\n60 5,5,5', updated_at: '2026-01-08T00:00:00.000Z' };
+
+  const activeBlock = {
+    id: 'rbActive',
+    baseline_note_id: baselineNote.id,
+    baseline_note_title: 'Push Day',
+    baseline: { version: 1, exercises: [] },
+    include_in_normal_analytics: false,
+    started_at: '2026-05-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z',
+    updated_at: '2026-05-01T00:00:00.000Z',
+  };
+  const completedBlockOn = {
+    ...activeBlock,
+    id: 'rbDoneOn',
+    baseline_note_title: 'Old Legs Day',
+    include_in_normal_analytics: true,
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: '2026-02-01T00:00:00.000Z',
+  };
+  const completedBlockOff = {
+    ...activeBlock,
+    id: 'rbDoneOff',
+    baseline_note_title: 'Older Push Day',
+    include_in_normal_analytics: false,
+    started_at: '2025-11-01T00:00:00.000Z',
+    completed_at: '2025-12-01T00:00:00.000Z',
+  };
+
+  const weeks = [{ id: 'rw1', block_id: 'rbActive', note_id: weekNote.id, week_number: 1, completed_at: null, deleted_at: null }];
+
+  const setup = async ({ blocks = [activeBlock], pendingRecovery = [] } = {}) => {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [baselineNote, weekNote], currentId: baselineNote.id, currentNote: baselineNote,
+      deloadNotes: [], loading: false, error: null, refresh: jest.fn(),
+      selectCurrent: jest.fn(), update: jest.fn(), add: jest.fn(), remove: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: null, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      activeBlock: blocks.find(b => !b.completed_at) || null,
+      blocks,
+      weeks,
+      recoveryWeekNumberByNoteId: { [weekNote.id]: 1 },
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      pendingRecovery,
+      recoveryPendingError: null,
+      retryRecovery: jest.fn(),
+    });
+    useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock: jest.fn() });
+
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify(blocks));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+    await AsyncStorage.setItem(RECOVERY_OPERATION_JOURNAL_KEY, JSON.stringify([]));
+  };
+
+  const renderScreen = async () => {
+    let component;
+    await render.act(async () => { component = render.create(<ControlledLogScreen />); });
+    return component;
+  };
+
+  const switchesFor = (root) =>
+    root.findAll(n => n.props && n.props.accessibilityLabel === RECOVERY_INCLUSION_LABEL && n.props.onValueChange);
+
+  const persistedBlocks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)) || '[]');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    AsyncStorage.__store.clear();
+    journalModule.__resetRecoveryOperationJournal();
+  });
+
+  test('the active block exposes the control with the exact label, switch role, and unchecked state', async () => {
+    await setup();
+    const component = await renderScreen();
+    const [control] = switchesFor(component.root);
+
+    expect(control).toBeTruthy();
+    expect(control.props.accessibilityRole).toBe('switch');
+    expect(control.props.accessibilityLabel).toBe('Include recovery notes in normal analytics');
+    // Default off (#692): the control must report the authored preference.
+    expect(control.props.value).toBe(false);
+    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false });
+    // The label is shared across blocks, so the hint is what disambiguates them.
+    expect(control.props.accessibilityHint).toContain('Push Day');
+  });
+
+  test('toggling it on persists exactly that field and nothing else', async () => {
+    await setup();
+    const component = await renderScreen();
+    const [control] = switchesFor(component.root);
+
+    await render.act(async () => { await control.props.onValueChange(true); });
+
+    const [stored] = await persistedBlocks();
+    expect(stored.include_in_normal_analytics).toBe(true);
+    // The frozen baseline and lifecycle state are untouched by the patch.
+    expect(stored.baseline).toEqual(activeBlock.baseline);
+    expect(stored.started_at).toBe(activeBlock.started_at);
+    expect(stored.completed_at).toBeNull();
+  });
+
+  test('the change reaches mounted analytics subscribers live, without a remount', async () => {
+    const { useRecoveryAnalyticsFilter, _resetRecoveryAnalyticsFilterCache } =
+      require('../hooks/entries/recoveryBlockHooks');
+    _resetRecoveryAnalyticsFilterCache();
+    await setup();
+
+    // A stand-in for Home/Analytics: it subscribes to the same boundary those
+    // screens read, and must repopulate off the toggle alone.
+    const seen = [];
+    function FilterProbe() {
+      seen.push(useRecoveryAnalyticsFilter());
+      return null;
+    }
+
+    let component;
+    await render.act(async () => {
+      component = render.create(
+        <React.Fragment>
+          <FilterProbe />
+          <ControlledLogScreen />
+        </React.Fragment>
+      );
+    });
+
+    // Default off: the linked note is out of ordinary analytics.
+    expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
+
+    const [control] = switchesFor(component.root);
+    await render.act(async () => { await control.props.onValueChange(true); });
+
+    // Same mounted subscriber, no remount: the note is back in.
+    expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(false);
+
+    await render.act(async () => { await control.props.onValueChange(false); });
+    expect(seen[seen.length - 1].isNoteExcluded(weekNote.id)).toBe(true);
+
+    await render.act(async () => { component.unmount(); });
+    _resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('toggling it back off restores exclusion, and the persisted note records are never rewritten', async () => {
+    await setup({ blocks: [{ ...activeBlock, include_in_normal_analytics: true }] });
+    const component = await renderScreen();
+    const [control] = switchesFor(component.root);
+    expect(control.props.value).toBe(true);
+    expect(control.props.accessibilityState.checked).toBe(true);
+
+    const weeksBefore = await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY);
+    await render.act(async () => { await control.props.onValueChange(false); });
+
+    const [stored] = await persistedBlocks();
+    expect(stored.include_in_normal_analytics).toBe(false);
+    expect(await AsyncStorage.getItem(RECOVERY_BLOCK_WEEKS_KEY)).toBe(weeksBefore);
+  });
+
+  test('completed blocks keep their own stored preference and toggle independently', async () => {
+    await setup({ blocks: [activeBlock, completedBlockOn, completedBlockOff] });
+    const component = await renderScreen();
+    const controls = switchesFor(component.root);
+
+    // One control per block: the active card plus both completed history rows.
+    expect(controls.length).toBe(3);
+    const byBlock = Object.fromEntries(
+      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
+    );
+    expect(byBlock.rbActive.props.value).toBe(false);
+    expect(byBlock.rbDoneOn.props.value).toBe(true);
+    expect(byBlock.rbDoneOff.props.value).toBe(false);
+
+    // Flipping one completed block leaves the other two exactly as stored.
+    await render.act(async () => { await byBlock.rbDoneOff.props.onValueChange(true); });
+
+    const stored = await persistedBlocks();
+    const byId = Object.fromEntries(stored.map(b => [b.id, b]));
+    expect(byId.rbDoneOff.include_in_normal_analytics).toBe(true);
+    expect(byId.rbDoneOn.include_in_normal_analytics).toBe(true);
+    expect(byId.rbActive.include_in_normal_analytics).toBe(false);
+  });
+
+  test('a pending recovery operation disables the control rather than letting it race', async () => {
+    await setup({
+      pendingRecovery: [{ operation_id: 1, block_id: 'rbActive', error: 'A recovery change is still being applied on this device.' }],
+    });
+    const component = await renderScreen();
+    const [control] = switchesFor(component.root);
+
+    expect(control.props.disabled).toBe(true);
+    expect(control.props.accessibilityState).toEqual({ checked: false, disabled: true });
+  });
+
+  test('a rejected write surfaces an honest error and leaves the stored preference alone', async () => {
+    await setup();
+    const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
+      .mockRejectedValue(Object.assign(new Error('Recovery block rbActive is deleted.'), { code: 'BLOCK_NOT_FOUND' }));
+    const component = await renderScreen();
+    const [control] = switchesFor(component.root);
+
+    await render.act(async () => { await control.props.onValueChange(true); });
+
+    const texts = component.root.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+    expect(texts).toContain('Recovery block rbActive is deleted.');
+    const [stored] = await persistedBlocks();
+    expect(stored.include_in_normal_analytics).toBe(false);
+    // The switch still reports the PERSISTED value, not the attempted one.
+    expect(switchesFor(component.root)[0].props.value).toBe(false);
+
+    updateSpy.mockRestore();
+  });
+});
+
+// ── Save-time classification and the recovery boundary (#699) ───────────────
+//
+// `exercise_classifications` is a cross-note aggregate cached onto the saved
+// note, and Home renders the stored value back as its session-status rows. If
+// the save path used a different population from the render path, an excluded
+// recovery week would leak into Home through this cache. These tests drive the
+// real editor hook against real persisted recovery records.
+
+describe('save-time exercise classifications respect the recovery boundary', () => {
+  const { useLogCurrentRoutineEditor } = require('../screens/log/useLogCurrentRoutineEditor');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
+
+  // Two logged sessions of the same lift. The ordinary note progresses; the
+  // recovery week is far lighter, which flips the classification the moment it
+  // is admitted.
+  const CURRENT_RAW = 'Monday\n+Lifting\n-Squat\n- 315 5,5\n- 320 5,5';
+  const RECOVERY_RAW = 'Monday\n+Lifting\n-Squat\n- 45 5,5';
+
+  const currentNote = { id: 'note1', title: 'Push Day', raw_text: CURRENT_RAW };
+  const recoveryNote = { id: 'recoverynote', title: 'Recovery Week 1', raw_text: RECOVERY_RAW };
+
+  const block = (include) => ({
+    id: 'rb1',
+    baseline_note_id: 'note1',
+    baseline_note_title: 'Push Day',
+    baseline: { version: 1, exercises: [] },
+    include_in_normal_analytics: include,
+    started_at: '2026-05-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z',
+    updated_at: '2026-05-01T00:00:00.000Z',
+  });
+  const weeks = [{
+    id: 'rw1', block_id: 'rb1', note_id: 'recoverynote', week_number: 1,
+    completed_at: null, deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
+  }];
+
+  const mounted = [];
+  afterEach(() => {
+    render.act(() => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    AsyncStorage.__store.clear();
+  });
+
+  async function saveOnce() {
+    const update = jest.fn(async (_id, patch) => ({ id: 'note1', title: patch.title || 'Push Day', raw_text: CURRENT_RAW }));
+    let latest = null;
+    function Harness() {
+      const [text, setText] = React.useState(CURRENT_RAW);
+      const [title, setTitle] = React.useState('Push Day');
+      latest = useLogCurrentRoutineEditor({
+        workoutNoteText: text, setWorkoutNoteText: setText,
+        workoutNoteTitle: title, setWorkoutNoteTitle: setTitle,
+        currentId: 'note1', currentNote, notes: [currentNote, recoveryNote],
+        trackedLifts: [], update, add: jest.fn(), selectCurrent: jest.fn(),
+        fatigueTrackingEnabled: false, onCheckInPrompt: jest.fn(), isActive: true,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+        readScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<Harness />)); });
+    await render.act(async () => { await latest.handleSave({}); });
+    return update;
+  }
+
+  test('an excluded recovery week never enters the classifications written to the note', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block(false)]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+
+    const update = await saveOnce();
+    const excludedPatch = update.mock.calls[0][1];
+
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block(true)]));
+    const includedUpdate = await saveOnce();
+    const includedPatch = includedUpdate.mock.calls[0][1];
+
+    // Both saves wrote a classification map — the boundary decides its content,
+    // not whether it exists.
+    expect(excludedPatch.exercise_classifications).toBeTruthy();
+    expect(includedPatch.exercise_classifications).toBeTruthy();
+    // Admitting the light rehab session changes what the lift is classified as,
+    // which is exactly the leak this boundary prevents when the preference is off.
+    expect(excludedPatch.exercise_classifications.squat).toBe('progressing');
+    expect(includedPatch.exercise_classifications.squat).toBe('regressing');
+  });
+
+  test('a recovery read failure saves the text but writes no classification at all', async () => {
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('storage unavailable'));
+
+    const update = await saveOnce();
+    const patch = update.mock.calls[0][1];
+
+    // The user's writing is never lost to an analytics read.
+    expect(patch.raw_text).toBe(CURRENT_RAW);
+    expect(patch.title).toBe('Push Day');
+    // But no aggregate is written, so a possibly-leaky value cannot replace the
+    // stored one. The next successful save repairs it.
+    expect('exercise_classifications' in patch).toBe(false);
+  });
+});

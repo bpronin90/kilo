@@ -836,6 +836,28 @@ what a lifter's log actually produces:
   derivation is identical, and switching the lb/kg display preference cannot
   change a state or a percentage.
 
+### `mobile/tests/home-screen.test.js`
+
+Covers the recovery/normal-analytics boundary (#699) as a CROSS-surface
+contract, which is the only level at which it can be pinned: one fixture
+(ordinary routine, deload note, an excluded block's week, an included completed
+block's week, and a baseline routine) is run through Home's and Analytics'
+real derivation entry points together, so a regression that filtered only one
+surface fails here. It asserts default exclusion, 1K agreeing exactly between
+the two screens, a live toggle moving Kilo Max and non-weighted metrics on both
+at once, a round-trip toggle restoring every aggregate exactly (no double
+counting), independent per-block memberships, deload exclusion unchanged in
+both preference states, an excluded week still producing full Recovery
+Analytics evidence, and a missing linked note leaving unrelated ordinary notes
+alone.
+
+The per-block filter rules themselves (tombstoned membership, orphaned or
+tombstoned block, malformed `note_id`, baseline notes never being members) are
+unit-tested in `data.test.js`; the switch's UI, persistence, per-block
+independence, locking, error surface, and live subscriber refresh are in
+`log-screen.test.js`, alongside save-time classification honoring the same
+boundary and omitting the classification entirely when the recovery read fails.
+
 ### `mobile/tests/sync-recovery.test.js`
 
 - drives the confirmed #522 claim-4 lifecycle end to end against the real

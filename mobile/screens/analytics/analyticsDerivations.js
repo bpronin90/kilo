@@ -8,9 +8,21 @@ import {
   deriveNonWeightedTrackedExerciseMetrics,
 } from '../../lib/data';
 import { normalizeExerciseKey } from '../../lib/parser';
+import { filterNotesForNormalAnalytics } from '../../lib/data/recoveryAnalyticsFilter';
 
-export function deriveParsedSections(notes, currentNote) {
-  const noteSectionsList = notes.map(n => getNoteSections(n));
+// `excludedNoteIds` (#699) is the set of recovery-linked note ids whose block
+// keeps `include_in_normal_analytics` off. It is applied ONCE here, so every
+// ordinary population below (1K series, signals, aggregate sections) is derived
+// from the same filtered note list and the surfaces cannot disagree. Recovery
+// Analytics does not come through here — AnalyticsScreen hands it the unfiltered
+// notes, because a block's own analytics always read its linked notes.
+//
+// `currentSections` is deliberately NOT filtered: it is the routine the user is
+// looking at, not an aggregate, and a recovery week must stay readable and
+// editable while excluded.
+export function deriveParsedSections(notes, currentNote, excludedNoteIds = null) {
+  const normalNotes = filterNotesForNormalAnalytics(notes || [], excludedNoteIds);
+  const noteSectionsList = normalNotes.map(n => getNoteSections(n));
   const allSections = noteSectionsList.flat();
   // Deload sessions are intentionally light (see DELOAD_NOTE_PREFIX). They must
   // not feed the progression/strength signal derivation — most visibly the
@@ -19,11 +31,15 @@ export function deriveParsedSections(notes, currentNote) {
   // downward. signalSections is the deload-excluded section list used for those
   // signals. The 1K series intentionally keeps deload as its own point (#396),
   // so noteSectionsList/allSections are left untouched.
-  const signalSections = (notes || [])
+  //
+  // Deload exclusion composes with, and is independent of, the recovery filter:
+  // it runs over the already-recovery-filtered list, so turning recovery
+  // inclusion ON re-admits recovery notes only and never a deload note.
+  const signalSections = normalNotes
     .filter(n => !n.title?.startsWith(DELOAD_NOTE_PREFIX))
     .flatMap(n => getNoteSections(n));
   const currentSections = getNoteSections(currentNote);
-  return { allSections, signalSections, currentSections, noteSectionsList };
+  return { allSections, signalSections, currentSections, noteSectionsList, normalNotes };
 }
 
 export function deriveNoteExerciseNames(currentSections) {

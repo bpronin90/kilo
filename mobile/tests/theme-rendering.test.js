@@ -577,8 +577,8 @@ describe('no production surface can hold a stale palette', () => {
     // The two brand-orange wordmark accents are the single sanctioned
     // exception; anything else appearing here is a missed token.
     expect(leaks).toEqual([
-      'screens/HomeScreen.js:39 "#FF5C00"',
-      'screens/HomeScreen.js:43 "#FF5C00"',
+      'screens/HomeScreen.js:40 "#FF5C00"',
+      'screens/HomeScreen.js:44 "#FF5C00"',
     ]);
   });
 });

@@ -406,7 +406,30 @@ The real native app path now has a modular React Native shell:
   note, or an unsupported/empty baseline snapshot each render a visible
   explanatory state rather than a hidden or zeroed-out row. Nothing here
   mutates a block or week, changes normal analytics, or claims medical
-  recovery. The read view now also
+  recovery.
+
+  Whether a block's linked notes reach Kilo's ORDINARY analytics is a separate,
+  explicit per-block choice (#699). Each active and completed block carries an
+  accessible `Include recovery notes in normal analytics` switch in the Log
+  tab's Recovery and Recovery History surfaces, off by default. While it is
+  off, every note linked to that block is excluded from exercise
+  classifications, progressive-overload signals, Kilo Max / fatigue-adjusted
+  strength, non-weighted tracked metrics, the 1K history and headline, and the
+  Home summaries derived from aggregated notes — but stays fully visible and
+  editable, keeps its own read view, and still feeds Recovery Analytics.
+  Turning it on routes those notes back through the same aggregation paths as
+  ordinary notes, with no recovery-specific weighting. Membership is decided
+  only by live recovery-week records, never by title, date, content, or the
+  current selection, and the block's frozen baseline routine is not a member,
+  so it always stays in normal analytics. Each block filters only its own
+  memberships, so two completed blocks may disagree. Home, Analytics, and the
+  save-time exercise classifications cached onto a note all read the same
+  filtered population, so the surfaces cannot disagree; the save path re-reads
+  the boundary from storage at write time and, if that read fails, saves the
+  note text while writing no classification rather than a possibly-leaky one.
+  Deload exclusions are unchanged and independent: turning recovery inclusion
+  on never re-admits a deload note to a signal that already excludes it. The
+  read view now also
   routes parsed `SetLine` rows plus fallback unparsed/skip rows through one
   shared set-row typography token so Log-tab rows render at a uniform size
   without the earlier stray italics, while unresolved lifting fallbacks render

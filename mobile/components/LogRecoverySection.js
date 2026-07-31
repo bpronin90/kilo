@@ -10,16 +10,62 @@
 // already enforce.
 
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { findActiveBlock, isLiveRecord, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
+import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
+
+// The exact control label, shared by the active card and every completed-block
+// row. Exported so tests assert against one string rather than a copy of it.
+export const RECOVERY_INCLUSION_LABEL = 'Include recovery notes in normal analytics';
+const RECOVERY_INCLUSION_HELP =
+  'Off by default. When off, this block’s linked notes stay out of classifications, overload signals, Kilo Max, 1K, and Home summaries — they remain visible, editable, and in Recovery Analytics.';
 
 function _noteTitle(notesById, noteId) {
   const note = notesById.get(noteId);
   return note?.title || 'Untitled Routine';
+}
+
+// Per-block inclusion control (#699). One block, one preference: the switch
+// reads and writes `include_in_normal_analytics` on THIS block only, so two
+// completed blocks with different preferences never affect each other's linked
+// notes.
+//
+// The switch is driven by the persisted record, never by optimistic local
+// state — a write that failed must not leave the control claiming a setting the
+// stored block does not have.
+function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle, styles }) {
+  const checked = block.include_in_normal_analytics === true;
+  return (
+    <View style={styles.inclusionGroup}>
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </View>
+      ) : null}
+      <View style={styles.inclusionRow}>
+        <View style={styles.inclusionInfo}>
+          <Text style={styles.inclusionLabel}>{RECOVERY_INCLUSION_LABEL}</Text>
+          <Text style={styles.inclusionHelp}>{RECOVERY_INCLUSION_HELP}</Text>
+        </View>
+        <Switch
+          testID={`recovery-inclusion-switch-${block.id}`}
+          value={checked}
+          disabled={disabled}
+          onValueChange={(next) => onToggle(block, next)}
+          accessibilityRole="switch"
+          accessibilityLabel={RECOVERY_INCLUSION_LABEL}
+          // The label is intentionally identical on every block, so the hint is
+          // what tells a screen-reader user WHICH block this switch belongs to.
+          accessibilityHint={`Recovery block baselined from ${block.baseline_note_title || 'Untitled Routine'}.${busy ? ' Saving.' : ''}`}
+          accessibilityState={{ checked, disabled: !!disabled }}
+        />
+      </View>
+    </View>
+  );
 }
 
 export function LogRecoverySection({
@@ -53,6 +99,15 @@ export function LogRecoverySection({
   const styles = useThemedStyles(createStyles);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [actionError, setActionError] = useState(null);
+  // The inclusion preference (#699) is the one recovery mutation this component
+  // owns directly rather than receiving as a handler from LogScreen. It changes
+  // no week, no note, and no baseline — only a single field on one block — so
+  // there is no cross-record state for LogScreen to serialize, and it carries
+  // its own in-flight key. It is still disabled by `actionsLocked` below, so it
+  // can never race a journaled lifecycle operation over the same block.
+  const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
+  const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
+  const [inclusionError, setInclusionError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
   // Two distinct states. A PENDING operation locks conflicting actions, because a
@@ -126,6 +181,28 @@ export function LogRecoverySection({
       ]
     );
   };
+
+  // A failure is reported against the block it happened on, so a completed
+  // block's rejected toggle never posts an error over the active block's card.
+  const handleToggleInclusion = async (block, include) => {
+    if (inclusionBusyBlockId) return;
+    setInclusionError(null);
+    setInclusionBusyBlockId(block.id);
+    try {
+      const result = await setIncludeInNormalAnalytics({ blockId: block.id, include });
+      if (!result || result.ok === false) {
+        setInclusionError({
+          blockId: block.id,
+          message: (result && result.error) || 'That setting could not be saved.',
+        });
+      }
+    } finally {
+      setInclusionBusyBlockId(null);
+    }
+  };
+
+  const inclusionErrorFor = (blockId) =>
+    (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
 
   const pendingBanner = (
     <View
@@ -246,6 +323,15 @@ export function LogRecoverySection({
                 </Text>
               </Pressable>
             </View>
+
+            <RecoveryInclusionToggle
+              block={activeBlock}
+              disabled={actionsLocked || inclusionBusyBlockId === activeBlock.id}
+              busy={inclusionBusyBlockId === activeBlock.id}
+              error={inclusionErrorFor(activeBlock.id)}
+              onToggle={handleToggleInclusion}
+              styles={styles}
+            />
           </Card>
         </View>
       )}
@@ -311,6 +397,17 @@ export function LogRecoverySection({
                       </Pressable>
                     ))
                   )}
+                  <RecoveryInclusionToggle
+                    block={block}
+                    // A completed block's preference stays editable — reviewing a
+                    // finished recovery and deciding it should count is the whole
+                    // point — but never while a journaled operation is unresolved.
+                    disabled={actionsLocked || inclusionBusyBlockId === block.id}
+                    busy={inclusionBusyBlockId === block.id}
+                    error={inclusionErrorFor(block.id)}
+                    onToggle={handleToggleInclusion}
+                    styles={styles}
+                  />
                 </View>
               );
             })}
@@ -460,6 +557,32 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.onAccent,
+  },
+  inclusionGroup: {
+    gap: 8,
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  inclusionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  inclusionInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  inclusionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  inclusionHelp: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   historyPanel: {
     borderRadius: 24,

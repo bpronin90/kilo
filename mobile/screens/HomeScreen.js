@@ -5,6 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
+import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import { deriveHomeDashboardData } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
@@ -75,9 +76,22 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
   const unit = useWeightUnit();
 
+  // Ordinary-analytics boundary (#699). Home's aggregated populations (1K,
+  // overload signals, tracked-lift visibility) drop recovery-linked notes whose
+  // block keeps `include_in_normal_analytics` off, using the same filter
+  // Analytics and save-time classification use so the surfaces cannot disagree.
+  // `workoutNote` — the routine the card is about — is deliberately untouched:
+  // an excluded recovery week stays visible and editable.
+  const recoveryFilter = useRecoveryAnalyticsFilter();
+
+  const normalNotes = useMemo(
+    () => recoveryFilter.filterNotes(notes || []),
+    [notes, recoveryFilter]
+  );
+
   const noteSectionsList = useMemo(
-    () => (notes || []).map(n => getNoteSections(n)),
-    [notes]
+    () => normalNotes.map(n => getNoteSections(n)),
+    [normalNotes]
   );
 
   const allSections = useMemo(

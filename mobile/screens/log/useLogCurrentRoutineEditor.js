@@ -11,6 +11,7 @@ import {
   deriveSessionCheckIn,
   computeWeeksIn,
 } from '../../lib/data';
+import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
 import { AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 
@@ -348,15 +349,47 @@ export function useLogCurrentRoutineEditor({
         ...defaultNames,
         ...explicitTrackedNames.filter(n => !normalizedDefaults.has(normalizeLiftName(n))),
       ];
-      const allSections = [
-        ...notes.flatMap(n => {
-          const text = n.id === currentId ? textToSave : n.raw_text;
-          return text ? parseWorkoutNote(text).sections : [];
-        }),
-        ...(currentId ? [] : savedSections),
-      ];
-      const { classifications: exercise_classifications } =
-        deriveWorkoutNoteAnalytics(allSections, trackedNames);
+      // Ordinary-analytics boundary (#699). Exercise classifications are a
+      // cross-note aggregate cached onto the saved note, and Home reads the
+      // stored value back (computeWeeklySummary -> sessionStatusRows). They must
+      // therefore be derived from the SAME recovery-filtered population Home and
+      // Analytics derive at render time, or an excluded recovery week would leak
+      // back into Home through this cache.
+      //
+      // Read from storage here rather than from a render-time snapshot: autosave
+      // timers and async callbacks can fire long after the render that scheduled
+      // them, and a background sync can land new memberships in that window. The
+      // Week 2+ lifecycle cores make the same choice for the same reason.
+      //
+      // A failed read means the boundary is UNKNOWN. The note's text still
+      // saves — losing the user's writing over an analytics read would be far
+      // worse — but no classification value is written at all, leaving the
+      // previously stored one untouched rather than replacing it with an
+      // aggregate that might include excluded recovery work. The next successful
+      // save repairs it.
+      let excludedNoteIds = null;
+      let recoveryBoundaryKnown = true;
+      try {
+        excludedNoteIds = await loadRecoveryExcludedNoteIds();
+      } catch {
+        recoveryBoundaryKnown = false;
+      }
+
+      let classificationsPatch = {};
+      if (recoveryBoundaryKnown) {
+        // A brand-new note (no currentId) has no id yet, so it cannot hold a
+        // recovery membership and its own sections are always in scope.
+        const allSections = [
+          ...notes.flatMap(n => {
+            if (n.id && excludedNoteIds.has(n.id)) return [];
+            const text = n.id === currentId ? textToSave : n.raw_text;
+            return text ? parseWorkoutNote(text).sections : [];
+          }),
+          ...(currentId ? [] : savedSections),
+        ];
+        const { classifications } = deriveWorkoutNoteAnalytics(allSections, trackedNames);
+        classificationsPatch = { exercise_classifications: classifications };
+      }
       const { exercise_skips, day_skips, attendance_flags } = deriveSkipData(savedSections);
       const resolvedUniversalSkipCount = Math.max(
         0,
@@ -368,7 +401,7 @@ export function useLogCurrentRoutineEditor({
         result = await update(currentId, {
           title: titleToSave,
           raw_text: textToSave,
-          exercise_classifications,
+          ...classificationsPatch,
           skip_markers,
           attendance_flags,
           ...(sessionCheckins !== undefined ? { session_checkins: sessionCheckins } : {}),
@@ -379,7 +412,7 @@ export function useLogCurrentRoutineEditor({
         await selectCurrent(result.id);
         if (result) {
           await update(result.id, {
-            exercise_classifications,
+            ...classificationsPatch,
             skip_markers,
             attendance_flags,
             ...activeWeekPatch,

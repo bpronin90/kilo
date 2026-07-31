@@ -10,6 +10,17 @@ import {
   computeWeeklySummary,
 } from '../../lib/data';
 
+// `allSections` / `noteSectionsList` are the AGGREGATED note populations and
+// arrive already filtered for the recovery/normal-analytics boundary (#699):
+// HomeScreen applies lib/data/recoveryAnalyticsFilter before deriving them, the
+// same filter Analytics and save-time classification use. Nothing here re-derives
+// that decision, so Home cannot disagree with the other surfaces.
+//
+// `workoutNote` is the routine the current-routine card is ABOUT, not an
+// aggregate, and is passed through unfiltered — an excluded recovery week is
+// still fully readable. Its `exercise_classifications` are the save-time cache
+// written by useLogCurrentRoutineEditor, which derives them from the same
+// filtered population.
 export function deriveHomeDashboardData({ weightEntries, workoutNote, weightGoal, allSections, noteSectionsList, trackedLifts }) {
   let oneK = null;
   let sections = null;

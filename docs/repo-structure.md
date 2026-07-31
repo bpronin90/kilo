@@ -239,7 +239,7 @@ These files define the current real native app path.
 | `mobile/hooks/useWeightGoalForm.js` | Weight goal form state and validation hook used by `WeightScreen`. |
 | `mobile/hooks/entries/` | Domain implementations for weight entries and goals, workout notes, tracked lifts, deloads, feature toggles, profile, storage-mode routing, and sync recovery/export. |
 | `mobile/lib/data.js` | Compatibility barrel preserving the public shared-data exports used by native consumers. |
-| `mobile/lib/data/` | Domain implementations for the exercise catalog and entry factories, weight goals, routine status, fatigue, skip data, workout analytics, 1K totals, non-weighted metrics, recovery blocks with their frozen baseline capture, and per-exercise return-to-baseline analytics. |
+| `mobile/lib/data/` | Domain implementations for the exercise catalog and entry factories, weight goals, routine status, fatigue, skip data, workout analytics, 1K totals, non-weighted metrics, recovery blocks with their frozen baseline capture, per-exercise return-to-baseline analytics, and the recovery/normal-analytics membership filter that decides which notes reach ordinary cross-note calculations. |
 | `mobile/lib/parser.js` | Compatibility barrel preserving the public parser and derived-analytics exports used by native consumers. |
 | `mobile/lib/parser/` | Domain implementations for weight entries, workout rows and notes, session construction and counting, exercise-name normalization, progression analytics, and deload history/generation. |
 | `mobile/lib/supabaseClient.js` | Single authorized Supabase client construction point; auth via `useAuthSession`, cloud storage via the storage adapter. Stores sessions in 2000-byte SecureStore chunks with high-water-mark protection. |
