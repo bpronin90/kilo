@@ -63,7 +63,7 @@ export function LogActiveRoutineCard({
               <Pressable
                 onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(); }}
                 style={styles.inlineSwitchButton}
-                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                 accessibilityRole="button"
                 accessibilityLabel="Start recovery block from this routine"
               >
@@ -74,7 +74,7 @@ export function LogActiveRoutineCard({
               <Pressable
                 onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
                 style={styles.inlineSwitchButton}
-                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <Text style={styles.inlineSwitchButtonText}>
                   Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
@@ -84,7 +84,7 @@ export function LogActiveRoutineCard({
             <Pressable
               onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
               style={styles.inlineSwitchButton}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             >
               <Text style={styles.inlineSwitchButtonText}>Edit</Text>
             </Pressable>
@@ -170,7 +170,14 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteInfo: {
     flex: 1,
-    minWidth: 0,
+    // A hard floor, not 0: flex:1 gives this a zero flex-basis, so with an
+    // unbounded sibling action row the shrink algorithm hands the title 0dp
+    // before ever touching the action row's width (#710 review). Freezing
+    // the title at this floor forces the remaining deficit onto the action
+    // row instead. 96 clears the widest word in a routine title like
+    // "Return (ease the back) rehab" at both title font sizes, so it never
+    // degrades to per-letter wrapping.
+    minWidth: 96,
   },
   currentHeaderActions: {
     flexDirection: 'row',
@@ -214,6 +221,10 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
+    // Lets a single pill shrink (its Text wraps) rather than overflow past
+    // the card's clipped right edge once the action row is squeezed below
+    // the pill's natural width (#710 review).
+    flexShrink: 1,
   },
   inlineSwitchButtonText: {
     fontSize: 12,

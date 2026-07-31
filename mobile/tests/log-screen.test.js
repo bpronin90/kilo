@@ -2583,13 +2583,22 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
 
 // #710: both routine-card headers place a `flex: 1` title column next to an
 // action container that (on main) declared no flex properties, so the title
-// column absorbed the full width deficit and collapsed to zero width. These
-// pin the containment contract: the title column can shrink and truncates
-// instead of collapsing, the action row wraps instead of overflowing, and
-// every action pill keeps a real touch target. Jest's renderer cannot measure
-// actual Yoga layout or on-screen touch-target overlap, so this only asserts
-// the style/props contract that produces that layout; the acceptance
-// criteria's multi-width visual checks require manual verification.
+// column absorbed the full width deficit and collapsed to zero width. A first
+// pass gave the title `minWidth: 0`, which does shrink-and-truncate instead of
+// collapsing when the action row's own content fits — but with `flex: 1` the
+// title's flex-basis is 0, so the shrink algorithm still hands it 0dp before
+// ever touching the unbounded action row once the action row's natural width
+// alone exceeds the header (review feedback on #710). The title now carries a
+// nonzero `minWidth` floor so it freezes there and the deficit falls to the
+// action row instead; the pills also get `flexShrink: 1` so a single pill
+// narrower than its own natural width wraps its text rather than overflowing
+// past the card's clipped edge. These pin that containment contract: the
+// title column truncates instead of collapsing, the action row wraps instead
+// of overflowing, and every action pill keeps a real, non-overlapping touch
+// target. Jest's renderer cannot measure actual Yoga layout or on-screen
+// touch-target overlap, so this only asserts the style/props contract that
+// produces that layout; the acceptance criteria's multi-width visual checks
+// require manual verification.
 describe('Routine-card header containment (#710)', () => {
   const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
   const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
@@ -2641,7 +2650,10 @@ describe('Routine-card header containment (#710)', () => {
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
     expect(infoColumn.length).toBeGreaterThan(0);
-    expect(infoColumn[0].props.style.minWidth ?? Object.assign({}, ...infoColumn[0].props.style).minWidth).toBe(0);
+    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
+      ? Object.assign({}, ...infoColumn[0].props.style)
+      : infoColumn[0].props.style;
+    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
 
     const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
     expect(actionRow.length).toBeGreaterThan(0);
@@ -2656,10 +2668,13 @@ describe('Routine-card header containment (#710)', () => {
     for (const pill of pills) {
       const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
       expect(style.justifyContent).toBe('center');
+      expect(style.flexShrink).toBe(1);
     }
 
+    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
+    // effective separation between two pills stacked on wrapped lines.
     const editPill = pressableAround(root, t => t.includes('Edit'));
-    expect(editPill.props.hitSlop).toEqual({ top: 8, bottom: 8, left: 4, right: 4 });
+    expect(editPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
   });
 
   test('LogPreviousRoutines: title truncates, action row wraps, pills keep a real touch target', () => {
@@ -2693,6 +2708,10 @@ describe('Routine-card header containment (#710)', () => {
 
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
     expect(infoColumn.length).toBeGreaterThan(0);
+    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
+      ? Object.assign({}, ...infoColumn[0].props.style)
+      : infoColumn[0].props.style;
+    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
 
     const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
     expect(actionRow.length).toBeGreaterThan(0);
@@ -2707,10 +2726,13 @@ describe('Routine-card header containment (#710)', () => {
     for (const pill of pills) {
       const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
       expect(style.justifyContent).toBe('center');
+      expect(style.flexShrink).toBe(1);
     }
 
+    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
+    // effective separation between two pills stacked on wrapped lines.
     const setCurrentPill = pressableAround(root, t => t.includes('Set as current routine'));
-    expect(setCurrentPill.props.hitSlop).toEqual({ top: 8, bottom: 8, left: 4, right: 4 });
+    expect(setCurrentPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
   });
 });
 

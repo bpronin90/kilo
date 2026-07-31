@@ -84,7 +84,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(other); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel="Start recovery block from this routine"
                     >
@@ -95,7 +95,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); onMarkAsRecoveryWeek(other); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel="Mark as recovery week"
                     >
@@ -106,7 +106,7 @@ export function LogPreviousRoutines({
                     <Pressable
                       onPress={(e) => { e.stopPropagation(); handleToggleViewingWeek(); }}
                       style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                       accessibilityRole="button"
                       accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
                       accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
@@ -119,7 +119,7 @@ export function LogPreviousRoutines({
                   <Pressable
                     onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
                     style={styles.inlineSwitchButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   >
                     <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
                   </Pressable>
@@ -182,7 +182,10 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteInfo: {
     flex: 1,
-    minWidth: 0,
+    // See LogActiveRoutineCard.js's otherNoteInfo comment: a hard floor, not
+    // 0, so the unbounded action row absorbs the shrink deficit first (#710
+    // review) instead of collapsing the title to zero width.
+    minWidth: 96,
   },
   headerActions: {
     flexDirection: 'row',
@@ -226,6 +229,8 @@ const createStyles = (colors) => StyleSheet.create({
     borderColor: colors.cardBorder,
     minHeight: 44,
     justifyContent: 'center',
+    // See LogActiveRoutineCard.js's inlineSwitchButton comment (#710 review).
+    flexShrink: 1,
   },
   inlineSwitchButtonText: {
     fontSize: 12,
