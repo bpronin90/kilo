@@ -2581,6 +2581,161 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
   });
 });
 
+// #710: both routine-card headers place a `flex: 1` title column next to an
+// action container that (on main) declared no flex properties, so the title
+// column absorbed the full width deficit and collapsed to zero width. A first
+// pass gave the title `minWidth: 0`, which does shrink-and-truncate instead of
+// collapsing when the action row's own content fits — but with `flex: 1` the
+// title's flex-basis is 0, so the shrink algorithm still hands it 0dp before
+// ever touching the unbounded action row once the action row's natural width
+// alone exceeds the header (review feedback on #710). The title now carries a
+// nonzero `minWidth` floor so it freezes there and the deficit falls to the
+// action row instead; the pills also get `flexShrink: 1` so a single pill
+// narrower than its own natural width wraps its text rather than overflowing
+// past the card's clipped edge. These pin that containment contract: the
+// title column truncates instead of collapsing, the action row wraps instead
+// of overflowing, and every action pill keeps a real, non-overlapping touch
+// target. Jest's renderer cannot measure actual Yoga layout or on-screen
+// touch-target overlap, so this only asserts the style/props contract that
+// produces that layout; the acceptance criteria's multi-width visual checks
+// require manual verification.
+describe('Routine-card header containment (#710)', () => {
+  const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  const LONG_TITLE = 'Return (ease the back) rehab';
+
+  function findTitleText(root, title) {
+    return root.find(n => n.type === 'Text' && n.props.children === title);
+  }
+
+  function findStyled(root, predicate) {
+    return root.findAll(
+      n => n.props && n.props.style && predicate(
+        Array.isArray(n.props.style) ? Object.assign({}, ...n.props.style) : n.props.style
+      )
+    );
+  }
+
+  test('LogActiveRoutineCard: title truncates, action row wraps, pills keep a real touch target', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogActiveRoutineCard
+          workoutNoteTitle={LONG_TITLE}
+          hasABWeeks={true}
+          effectiveActiveWeek="A"
+          handleToggleWeek={jest.fn()}
+          enterCurrentEditor={jest.fn()}
+          handleNoteBodyPress={jest.fn()}
+          toggleCollapsed={jest.fn()}
+          isCollapsed={false}
+          dayGroups={[]}
+          trackedLifts={{}}
+          handleToggleTrack={jest.fn()}
+          roughNoteId="n1"
+          currentId="n1"
+          roughFlaggedNames={new Set()}
+          activeEditText=""
+          isEligibleForRecoveryBaseline={true}
+          onStartRecoveryBlock={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+
+    const title = findTitleText(root, LONG_TITLE);
+    expect(title.props.numberOfLines).toBe(2);
+    expect(title.props.ellipsizeMode).toBe('tail');
+
+    const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
+    expect(infoColumn.length).toBeGreaterThan(0);
+    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
+      ? Object.assign({}, ...infoColumn[0].props.style)
+      : infoColumn[0].props.style;
+    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
+
+    const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
+    expect(actionRow.length).toBeGreaterThan(0);
+    const actionRowStyle = Array.isArray(actionRow[0].props.style)
+      ? Object.assign({}, ...actionRow[0].props.style)
+      : actionRow[0].props.style;
+    expect(actionRowStyle.flexShrink).toBe(1);
+    expect(actionRowStyle.justifyContent).toBe('flex-end');
+
+    const pills = findStyled(root, s => s.minHeight === 44);
+    expect(pills.length).toBeGreaterThan(0);
+    for (const pill of pills) {
+      const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
+      expect(style.justifyContent).toBe('center');
+      expect(style.flexShrink).toBe(1);
+    }
+
+    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
+    // effective separation between two pills stacked on wrapped lines.
+    const editPill = pressableAround(root, t => t.includes('Edit'));
+    expect(editPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+  });
+
+  test('LogPreviousRoutines: title truncates, action row wraps, pills keep a real touch target', () => {
+    const note = { id: 'r1', title: LONG_TITLE, raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n' };
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogPreviousRoutines
+          otherNotes={[note]}
+          handleViewOtherNote={jest.fn()}
+          viewingNoteId="r1"
+          viewingNote={note}
+          viewingNoteDayGroups={[]}
+          viewingHasABWeeks={true}
+          viewingEffectiveWeek="A"
+          handleToggleViewingWeek={jest.fn()}
+          handleSwitchCurrent={jest.fn()}
+          handleEditViewedNote={jest.fn()}
+          handleDeleteRoutine={jest.fn()}
+          handleCreateRoutine={jest.fn()}
+          onStartRecoveryBlock={jest.fn()}
+          eligibleBaselineNoteIds={new Set(['r1'])}
+        />
+      );
+    });
+    const root = component.root;
+
+    const title = findTitleText(root, LONG_TITLE);
+    expect(title.props.numberOfLines).toBe(2);
+    expect(title.props.ellipsizeMode).toBe('tail');
+
+    const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
+    expect(infoColumn.length).toBeGreaterThan(0);
+    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
+      ? Object.assign({}, ...infoColumn[0].props.style)
+      : infoColumn[0].props.style;
+    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
+
+    const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
+    expect(actionRow.length).toBeGreaterThan(0);
+    const actionRowStyle = Array.isArray(actionRow[0].props.style)
+      ? Object.assign({}, ...actionRow[0].props.style)
+      : actionRow[0].props.style;
+    expect(actionRowStyle.flexShrink).toBe(1);
+    expect(actionRowStyle.justifyContent).toBe('flex-end');
+
+    const pills = findStyled(root, s => s.minHeight === 44);
+    expect(pills.length).toBeGreaterThan(0);
+    for (const pill of pills) {
+      const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
+      expect(style.justifyContent).toBe('center');
+      expect(style.flexShrink).toBe(1);
+    }
+
+    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
+    // effective separation between two pills stacked on wrapped lines.
+    const setCurrentPill = pressableAround(root, t => t.includes('Set as current routine'));
+    expect(setCurrentPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+  });
+});
+
 // Regression #5: the extracted viewed-note body handler was stubbed to a no-op,
 // killing double-tap-to-edit on saved routines. This pins the restored 300ms
 // double-tap that opens the routine in the editor.

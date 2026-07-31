@@ -534,38 +534,42 @@ cell. Goal History extras: End Weight outcome coloring, Target Date column.
 
 ## Log Screen (STYLE LOCKED)
 
-Source: `mobile/screens/LogScreen.js`
+Source: `mobile/screens/LogScreen.js`, and the extracted
+`mobile/components/LogActiveRoutineCard.js`, `LogPreviousRoutines.js`, and
+`LogScreenEditorCard.js`. The Log style lock spans all of these, not
+`LogScreen.js` alone.
 
-Style lock header at lines 1-14: do not change Log styling unless the repo owner explicitly asks.
+Style lock header at lines 1-7 (`mobile/screens/LogScreen.js`): do not change
+Log styling unless the repo owner explicitly asks.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Current note title | fontSize | `24` | `857` |
-| | fontWeight | `800` | `858` |
-| | color | `colors.accent` | `859` |
-| Current routine card | borderWidth | `4` | `781` |
-| | padding | `0` | `779` |
-| Other note title | fontSize | `20` | `852` |
-| | fontWeight | `800` | `853` |
-| Other note subtitle | fontSize | `12` | `862` |
-| | color | `colors.textMuted` | `863` |
-| WorkoutHeading (UI.js) | fontSize | `22` | UI.js:256 |
-| | fontWeight | `800` | UI.js:257 |
-| | textTransform | `capitalize` | UI.js:260 |
-| WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:271 |
-| | fontWeight | `700` | UI.js:272 |
-| | color | `colors.accent` | UI.js:273 |
-| | textTransform | `uppercase` | UI.js:274 |
-| Exercise name (UI.js) | fontSize | `17` | UI.js:294 |
-| | fontWeight | `700` | UI.js:295 |
-| Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:5 |
-| Mode toggle ("Done") | fontSize | `14` | `739` |
-| | fontWeight | `700` | `740` |
-| | color | `colors.accent` | `741` |
-| | bg | `colors.chipBackground` | `736` |
-| | borderRadius | `12` | `735` |
-| Input field | fontSize | `16` | `761` |
-| | borderRadius | `16` | `756` |
+| Current note title | fontSize | `24` | `LogActiveRoutineCard.js:183` |
+| | fontWeight | `800` | `LogActiveRoutineCard.js:184` |
+| | color | `colors.accent` | `LogActiveRoutineCard.js:185` |
+| Current routine card | borderWidth | `4` | `LogActiveRoutineCard.js:161` |
+| | padding | `0` | `LogActiveRoutineCard.js:159` |
+| Other note title | fontSize | `20` | `LogPreviousRoutines.js:195` |
+| | fontWeight | `800` | `LogPreviousRoutines.js:196` |
+| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:200` |
+| | color | `colors.textMuted` | `LogPreviousRoutines.js:201` |
+| WorkoutHeading (UI.js) | fontSize | `22` | UI.js:640 |
+| | fontWeight | `800` | UI.js:641 |
+| | textTransform | `capitalize` | UI.js:645 |
+| WorkoutSubheading (UI.js) | fontSize | `14` | UI.js:655 |
+| | fontWeight | `700` | UI.js:656 |
+| | color | `colors.accent` | UI.js:657 |
+| | textTransform | `uppercase` | UI.js:658 |
+| Exercise name (UI.js) | fontSize | `17` | UI.js:678 |
+| | fontWeight | `700` | UI.js:679 |
+| Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:8 |
+| Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:733` |
+| | fontWeight | `700` | `LogScreen.js:734` |
+| | color | `colors.accent` | `LogScreen.js:735` |
+| | bg | `colors.chipBackground` | `LogScreen.js:730` |
+| | borderRadius | `12` | `LogScreen.js:729` |
+| Input field | fontSize | `16` | `LogScreenEditorCard.js:270` |
+| | borderRadius | `16` | `LogScreenEditorCard.js:265` |
 
 ---
 
