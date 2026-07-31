@@ -270,3 +270,33 @@ change must work in both palettes. Concrete values live in
 
 Do not assign new UI implementation issues to `agent:gemini` until the repo
 owner states the ownership pause is lifted.
+
+## 14. Card headers carry identity; actions live in the body or an action strip (#711)
+
+- **A card header holds identity only:** title, subtitle, and a status badge. It
+  does not host action controls. The header row itself may still be the
+  expand/collapse press target — that is the card's own disclosure, not an
+  action competing with the title for width.
+- **Actions belong in one of two places:** the card's expanded body (for
+  occasional actions, reached by the expand-on-tap disclosure the app already
+  ships), or a single dedicated action strip directly under the header (for
+  actions needed every session). Do not use both for the same card.
+- **A collapsed list shows zero buttons.** Scanning a list of records is a
+  reading task; nothing in it should be pressable except the records themselves.
+- **Place a control by frequency, not by convenience.** An action performed once
+  per training block does not belong on every card. If N cards each open the
+  same modal, and that modal can already choose its own subject, the N entry
+  points are duplicates — replace them with one entry point in the section that
+  owns the feature.
+- **A state-dependent action renders in exactly one form at a time.** Two
+  opposite controls (`Skip week` / `Remove skip`) must not both sit on screen
+  with one dimmed; render the one that applies. Opacity over already-muted text
+  is not a legible disabled state (see §13 contrast).
+- **Do not introduce a `•••` overflow menu, bottom sheet, or action sheet** to
+  solve a crowded header. No such pattern exists in `mobile/components/`, and
+  adopting one is a separate design decision, not an implementation detail.
+
+Anti-pattern this replaces: a header row where a `flex: 1` title column competes
+with an unbounded action container, so the title collapses or truncates to make
+room for controls that were never everyday actions (#709 Stage 2 §5 Issue B;
+contained in #710, removed in #711).

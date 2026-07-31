@@ -1,3 +1,8 @@
+// The active routine card (#711 information hierarchy): the header carries
+// identity only — title, `Week X · Current routine`, recovery badge — and every
+// action lives in the one action strip directly under it. The header stays a
+// press target for collapse/expand; it hosts no controls of its own, so a
+// header can never win a width fight with its own title.
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from './UI';
@@ -26,8 +31,6 @@ export function LogActiveRoutineCard({
   roughFlaggedNames,
   activeEditText,
   recoveryWeekNumber = null,
-  isEligibleForRecoveryBaseline = false,
-  onStartRecoveryBlock,
 }) {
   const styles = useThemedStyles(createStyles);
   return (
@@ -58,72 +61,74 @@ export function LogActiveRoutineCard({
               </View>
             )}
           </View>
-          <View style={styles.currentHeaderActions}>
-            {isEligibleForRecoveryBaseline && onStartRecoveryBlock && (
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(); }}
-                style={styles.inlineSwitchButton}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                accessibilityRole="button"
-                accessibilityLabel="Start recovery block from this routine"
-              >
-                <Text style={styles.inlineSwitchButtonText}>Start recovery block</Text>
-              </Pressable>
-            )}
-            {hasABWeeks && (
-              <Pressable
-                onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
-                style={styles.inlineSwitchButton}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              >
-                <Text style={styles.inlineSwitchButtonText}>
-                  Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
-              style={styles.inlineSwitchButton}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            >
-              <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-            </Pressable>
-          </View>
         </Pressable>
 
-        <Pressable 
+        <Pressable
           onPress={handleNoteBodyPress}
           style={[styles.currentNoteContent, isCollapsed ? { display: 'none' } : null]}
         >
-          <View style={styles.editHintRow}>
-            <Text style={styles.editHint}>Double-tap to edit</Text>
-            <View style={styles.skipWeekActions}>
-              {handleSkipWeek && (
+          {/* The card's one action strip. `Double-tap to edit` used to live on
+              the left of this row; the explicit `Edit` control supersedes it as
+              the advertised path. handleNoteBodyPress stays wired on the body
+              above, so the double-tap gesture still works for users who know
+              it — it is simply no longer the only way in. */}
+          <View style={styles.actionStrip}>
+            <View style={styles.actionStripPrimary}>
+              <Pressable
+                onPress={(e) => { e.stopPropagation(); enterCurrentEditor(); }}
+                style={styles.inlineSwitchButton}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel="Edit routine"
+              >
+                <Text style={styles.inlineSwitchButtonText}>Edit</Text>
+              </Pressable>
+              {hasABWeeks && (
                 <Pressable
-                  onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityLabel="Skip week"
+                  onPress={(e) => { e.stopPropagation(); handleToggleWeek(); }}
+                  style={styles.inlineSwitchButton}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
                   accessibilityRole="button"
+                  accessibilityLabel={`Switch to Week ${effectiveActiveWeek === 'B' ? 'A' : 'B'}`}
+                  accessibilityState={{ selected: effectiveActiveWeek === 'B' }}
                 >
-                  <Text style={styles.skipWeekText}>Skip week</Text>
-                </Pressable>
-              )}
-              {handleUnskipWeek && (
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); handleUnskipWeek(); }}
-                  disabled={!canUnskipWeek}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityLabel="Remove skip"
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !canUnskipWeek }}
-                >
-                  {/* Deliberately not "Undo skip": that text collides with the
-                      unrelated editor-header "Undo" button substring-matched
-                      by tests elsewhere in this screen tree. */}
-                  <Text style={[styles.skipWeekText, !canUnskipWeek && styles.skipWeekTextDisabled]}>
-                    Remove skip
+                  <Text style={styles.inlineSwitchButtonText}>
+                    Week {effectiveActiveWeek === 'B' ? 'A' : 'B'}
                   </Text>
                 </Pressable>
+              )}
+            </View>
+            {/* One skip control, never two (#711). Previously both rendered and
+                `canUnskipWeek` only dimmed `Remove skip` to opacity 0.4 over
+                already-muted text — two contradictory-looking controls, with the
+                disabled state carried by opacity alone (ui-design-rules §13
+                contrast). The state now decides which single control exists. */}
+            <View style={styles.skipWeekActions}>
+              {canUnskipWeek ? (
+                handleUnskipWeek && (
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation(); handleUnskipWeek(); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Remove skip"
+                    accessibilityRole="button"
+                  >
+                    {/* Deliberately not "Undo skip": that text collides with the
+                        unrelated editor-header "Undo" button substring-matched
+                        by tests elsewhere in this screen tree. */}
+                    <Text style={styles.skipWeekText}>Remove skip</Text>
+                  </Pressable>
+                )
+              ) : (
+                handleSkipWeek && (
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation(); handleSkipWeek(); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Skip week"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.skipWeekText}>Skip week</Text>
+                  </Pressable>
+                )
               )}
             </View>
           </View>
@@ -170,21 +175,13 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteInfo: {
     flex: 1,
-    // A hard floor, not 0: flex:1 gives this a zero flex-basis, so with an
-    // unbounded sibling action row the shrink algorithm hands the title 0dp
-    // before ever touching the action row's width (#710 review). Freezing
-    // the title at this floor forces the remaining deficit onto the action
-    // row instead. 96 clears the widest word in a routine title like
-    // "Return (ease the back) rehab" at both title font sizes, so it never
-    // degrades to per-letter wrapping.
+    // A hard floor, not 0 (#710 review). The header no longer has an action
+    // row to lose width to (#711), but flex:1 still gives this column a zero
+    // flex-basis, so the floor is what keeps the title from being handed 0dp
+    // by anything placed beside it. 96 clears the widest word in a routine
+    // title like "Return (ease the back) rehab" at both title font sizes, so
+    // it never degrades to per-letter wrapping.
     minWidth: 96,
-  },
-  currentHeaderActions: {
-    flexDirection: 'row',
-    flexShrink: 1,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 12,
   },
   currentNoteTitle: {
     fontSize: 24,
@@ -238,15 +235,24 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
-  editHintRow: {
+  // The card's single action strip (#711), grown out of the former
+  // `editHintRow`: same row, same position, same 8px separation from the
+  // content below. `flexWrap` + `gap` are the containment props the header
+  // action row used to carry — the strip is now the only row that has to hold
+  // more than one control, so the wrap behavior belongs here.
+  actionStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
     marginBottom: 8,
   },
-  editHint: {
-    fontSize: 11,
-    color: colors.textMuted,
+  actionStripPrimary: {
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: 12,
   },
   skipWeekActions: {
     flexDirection: 'row',
@@ -255,9 +261,6 @@ const createStyles = (colors) => StyleSheet.create({
   skipWeekText: {
     fontSize: 11,
     color: colors.textMuted,
-  },
-  skipWeekTextDisabled: {
-    opacity: 0.4,
   },
   skipWeekStatusText: {
     fontSize: 11,

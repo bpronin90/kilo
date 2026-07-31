@@ -74,8 +74,13 @@ export function RecoveryBlockStartModal({
   // A note picked as baseline can never also be the week-1 note.
   const weekChoices = eligibleWeekNotes.filter(n => n.id !== baselineNoteId);
 
-  const weekNoteFixed = mode === 'note';
-  const baselineFixed = mode === 'routine';
+  // Gated on the preset itself, not on `mode` (#711). A side is "fixed" only
+  // when a note was actually handed in to fix it — opening with no preset (the
+  // Recovery entry point) renders the pickers that already existed here, and
+  // the preset paths are unchanged. `mode` still distinguishes WHICH side a
+  // preset fixes; it just no longer implies that one was supplied.
+  const weekNoteFixed = mode === 'note' && !!presetNote;
+  const baselineFixed = mode === 'routine' && !!presetNote;
 
   const canConfirm = !blockingMessage && !!baselineNoteId && (
     (weekChoice === 'existing' && !!weekNoteId) ||
