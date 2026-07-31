@@ -3678,3 +3678,160 @@ describe('makeWorkoutNoteItem: activeWeek field', () => {
     expect(note.activeWeek).toBeNull();
   });
 });
+
+// ── recovery / normal-analytics boundary (#699) ──────────────────────────────
+//
+// The pure filter that decides which notes reach ORDINARY cross-note analytics.
+// Every surface (Home, Analytics, save-time classification) runs this one
+// module, so these tests pin the membership rules the surfaces inherit.
+
+describe('recoveryAnalyticsFilter: which notes reach normal analytics', () => {
+  const {
+    deriveRecoveryExcludedNoteIds,
+    buildRecoveryAnalyticsFilter,
+    filterNotesForNormalAnalytics,
+    EMPTY_RECOVERY_ANALYTICS_FILTER,
+  } = require('../lib/data/recoveryAnalyticsFilter');
+
+  const block = (over = {}) => ({
+    id: 'rb1',
+    baseline_note_id: 'baseline',
+    include_in_normal_analytics: false,
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+    ...over,
+  });
+  const week = (over = {}) => ({
+    id: 'rw1',
+    block_id: 'rb1',
+    note_id: 'w1',
+    week_number: 1,
+    deleted_at: null,
+    ...over,
+  });
+
+  test('default (#692): a block with the preference off excludes every linked note', () => {
+    const excluded = deriveRecoveryExcludedNoteIds(
+      [block()],
+      [week(), week({ id: 'rw2', note_id: 'w2', week_number: 2 })]
+    );
+    expect([...excluded].sort()).toEqual(['w1', 'w2']);
+  });
+
+  test('the block’s frozen baseline note is never a member, so it stays in normal analytics', () => {
+    const excluded = deriveRecoveryExcludedNoteIds([block()], [week()]);
+    expect(excluded.has('baseline')).toBe(false);
+  });
+
+  test('preference on: the same linked notes are admitted with no other change', () => {
+    const excluded = deriveRecoveryExcludedNoteIds(
+      [block({ include_in_normal_analytics: true })],
+      [week(), week({ id: 'rw2', note_id: 'w2', week_number: 2 })]
+    );
+    expect(excluded.size).toBe(0);
+  });
+
+  test('two completed blocks with different preferences filter their own memberships only', () => {
+    const excluded = deriveRecoveryExcludedNoteIds(
+      [
+        block({ id: 'rbOff', completed_at: '2026-02-01T00:00:00.000Z', include_in_normal_analytics: false }),
+        block({ id: 'rbOn', completed_at: '2026-03-01T00:00:00.000Z', include_in_normal_analytics: true }),
+      ],
+      [
+        week({ id: 'w-off', block_id: 'rbOff', note_id: 'offNote' }),
+        week({ id: 'w-on', block_id: 'rbOn', note_id: 'onNote' }),
+      ]
+    );
+    expect([...excluded]).toEqual(['offNote']);
+  });
+
+  test('a tombstoned membership is not a membership: the note returns to normal analytics', () => {
+    const excluded = deriveRecoveryExcludedNoteIds(
+      [block()],
+      [week({ deleted_at: '2026-02-01T00:00:00.000Z' })]
+    );
+    expect(excluded.size).toBe(0);
+  });
+
+  test('fail-safe: a live membership whose block is missing or tombstoned keeps the off-by-default stance', () => {
+    const orphaned = deriveRecoveryExcludedNoteIds([], [week()]);
+    expect([...orphaned]).toEqual(['w1']);
+
+    // Even an "included" block that has since been tombstoned cannot admit its
+    // notes — a deleted record is not authority for anything.
+    const tombstoned = deriveRecoveryExcludedNoteIds(
+      [block({ include_in_normal_analytics: true, deleted_at: '2026-02-01T00:00:00.000Z' })],
+      [week()]
+    );
+    expect([...tombstoned]).toEqual(['w1']);
+  });
+
+  test('fail-safe: a malformed membership excludes nothing, never an unrelated note', () => {
+    const excluded = deriveRecoveryExcludedNoteIds(
+      [block()],
+      [week({ note_id: null }), week({ id: 'rw2', note_id: undefined }), null]
+    );
+    expect(excluded.size).toBe(0);
+  });
+
+  test('membership is exact: title, date, and content are never consulted', () => {
+    const notes = [
+      { id: 'ordinary', title: 'Recovery Week 3' },
+      { id: 'w1', title: 'Push Day' },
+    ];
+    const filter = buildRecoveryAnalyticsFilter([block()], [week()]);
+    expect(filter.filterNotes(notes).map(n => n.id)).toEqual(['ordinary']);
+  });
+
+  test('no exclusions yields the shared empty filter, so consumers keep a stable identity', () => {
+    expect(buildRecoveryAnalyticsFilter([], [])).toBe(EMPTY_RECOVERY_ANALYTICS_FILTER);
+    expect(buildRecoveryAnalyticsFilter([block({ include_in_normal_analytics: true })], [week()]))
+      .toBe(EMPTY_RECOVERY_ANALYTICS_FILTER);
+  });
+
+  test('filterNotesForNormalAnalytics returns the input list untouched when nothing is excluded', () => {
+    const notes = [{ id: 'a' }, { id: 'b' }];
+    expect(filterNotesForNormalAnalytics(notes, null)).toBe(notes);
+    expect(filterNotesForNormalAnalytics(notes, new Set())).toBe(notes);
+    expect(filterNotesForNormalAnalytics(notes, new Set(['a'])).map(n => n.id)).toEqual(['b']);
+  });
+});
+
+// ── #699 review: the boundary must be VERIFIED before it is published ────────
+
+describe('recoveryAnalyticsFilter: unverified boundary', () => {
+  const {
+    buildRecoveryAnalyticsFilter,
+    EMPTY_RECOVERY_ANALYTICS_FILTER,
+    PENDING_RECOVERY_ANALYTICS_FILTER,
+  } = require('../lib/data/recoveryAnalyticsFilter');
+
+  test('a verified read with no exclusions is ready; an unverified one is not', () => {
+    expect(buildRecoveryAnalyticsFilter([], []).ready).toBe(true);
+    expect(buildRecoveryAnalyticsFilter([], [], { ready: false }).ready).toBe(false);
+  });
+
+  test('"not read yet" and "nothing excluded" are the same empty inputs and must not be conflated', () => {
+    // Identical arguments, opposite meaning — only the flag separates them, so
+    // a consumer can tell "verified: nothing is excluded" from "unknown".
+    expect(buildRecoveryAnalyticsFilter([], [])).toBe(EMPTY_RECOVERY_ANALYTICS_FILTER);
+    expect(buildRecoveryAnalyticsFilter([], [], { ready: false }))
+      .toBe(PENDING_RECOVERY_ANALYTICS_FILTER);
+  });
+
+  test('an unverified filter hides nothing, so it can never remove an unrelated ordinary note', () => {
+    const notes = [{ id: 'a' }, { id: 'b' }];
+    const pending = buildRecoveryAnalyticsFilter([], [], { ready: false });
+    expect(pending.filterNotes(notes)).toBe(notes);
+    expect(pending.isNoteExcluded('a')).toBe(false);
+    expect(pending.excludedNoteIds.size).toBe(0);
+  });
+
+  test('ready: false wins over records that would otherwise resolve', () => {
+    const blocks = [{ id: 'rb1', include_in_normal_analytics: false, deleted_at: null }];
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'w1', deleted_at: null }];
+    expect(buildRecoveryAnalyticsFilter(blocks, weeks).hasExclusions).toBe(true);
+    expect(buildRecoveryAnalyticsFilter(blocks, weeks, { ready: false }).ready).toBe(false);
+  });
+});

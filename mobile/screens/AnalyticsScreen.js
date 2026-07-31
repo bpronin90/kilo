@@ -6,6 +6,7 @@ import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../compo
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState } from '../hooks/useEntries';
+import { useRecoveryAnalyticsFilter } from '../hooks/entries/recoveryBlockHooks';
 import {
   deriveParsedSections,
   deriveNoteExerciseNames,
@@ -38,6 +39,10 @@ export function AnalyticsScreen({ multiplier, section }) {
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
   const { blocks: recoveryBlocks, weeks: recoveryWeeks } = useRecoveryBlockState();
+  // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
+  // `include_in_normal_analytics` off are dropped from every ordinary population
+  // below. AnalyticsRecoverySection still receives the unfiltered `notes`.
+  const recoveryFilter = useRecoveryAnalyticsFilter();
   const unit = useWeightUnit();
 
   const [activeSlot, setActiveSlot] = useState(null); // 'bench' | 'squat' | 'deadlift'
@@ -55,7 +60,13 @@ export function AnalyticsScreen({ multiplier, section }) {
   }, [hookWeightEntries]);
 
   const isWeightLoading = loadingWeight && weightEntries.length === 0;
-  const isNotesLoading = loadingNotes && notes.length === 0;
+  // An unverified recovery boundary (#699) counts as notes-not-ready: the 1K
+  // card and the Progressive Overload list are both derived from a note
+  // population that is not yet known to be correct, so they hold their loading
+  // state rather than painting aggregates that may include excluded work. The
+  // Recovery, weight, and fatigue sections do not depend on the boundary and are
+  // deliberately left alone.
+  const isNotesLoading = (loadingNotes && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
   useEffect(() => {
@@ -124,7 +135,10 @@ export function AnalyticsScreen({ multiplier, section }) {
     ...(currentNote?.one_k_exercises || {}),
   }), [currentNote]);
 
-  const parsedSections = useMemo(() => deriveParsedSections(notes, currentNote), [notes, currentNote]);
+  const parsedSections = useMemo(
+    () => deriveParsedSections(notes, currentNote, recoveryFilter.excludedNoteIds),
+    [notes, currentNote, recoveryFilter]
+  );
 
   const noteExerciseNames = useMemo(() => deriveNoteExerciseNames(parsedSections.currentSections), [parsedSections]);
 
@@ -178,7 +192,10 @@ export function AnalyticsScreen({ multiplier, section }) {
   }
 
   const oneKChartData = useMemo(() => {
-    const boundaries = deriveRoutineStartBoundaries(notes, oneKSelections);
+    // Boundaries are session ordinals INTO the 1K series, which is built from
+    // parsedSections.noteSectionsList — so they must be counted over the same
+    // recovery-filtered note population or the markers would slide.
+    const boundaries = deriveRoutineStartBoundaries(parsedSections.normalNotes, oneKSelections);
     const series = deriveOneKChartData(analytics.oneKSeries, boundaries);
     if (unit !== 'kg') return series;
     // Display-space conversion for kg (#441): per-lift breakdown values ride
@@ -191,7 +208,7 @@ export function AnalyticsScreen({ multiplier, section }) {
       squat: p.squat != null ? lbToKg(p.squat) : p.squat,
       deadlift: p.deadlift != null ? lbToKg(p.deadlift) : p.deadlift,
     }));
-  }, [analytics.oneKSeries, notes, oneKSelections, unit]);
+  }, [analytics.oneKSeries, parsedSections.normalNotes, oneKSelections, unit]);
 
   // 1K card values in display space (identity in lb mode). The 1,000 lb club
   // itself stays lb-defined; AnalyticsStrengthSection converts its progress

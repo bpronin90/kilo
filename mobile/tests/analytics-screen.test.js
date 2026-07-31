@@ -1352,3 +1352,134 @@ describe('deload_session_ordinal: ordinal-based sessions-since-deload (#284)', (
     expect(status.sessionsSinceDeload).toBe(1);
   });
 });
+
+// ── recovery / normal-analytics boundary on Analytics (#699) ─────────────────
+//
+// deriveParsedSections owns the boundary for every ordinary Analytics
+// population. These tests pin what it filters, what it deliberately does not,
+// and that the screen actually wires it and still hands Recovery Analytics the
+// unfiltered notes.
+
+describe('AnalyticsScreen: excluded recovery notes and ordinary populations', () => {
+  const HEAVY = 'Monday\n+Lifting\n-Bench Press\n- 225 5,5';
+  const LIGHT = 'Monday\n+Lifting\n-Bench Press\n- 45 5';
+  const DELOAD_TITLE = 'Deload · Push Day';
+
+  const ordinary = { id: 'ordinary', title: 'Push Day', raw_text: HEAVY, one_k_exercises: null };
+  const recovery = { id: 'recovery', title: 'Recovery Week 1', raw_text: LIGHT, one_k_exercises: null };
+  const deload = { id: 'deload', title: DELOAD_TITLE, raw_text: LIGHT, one_k_exercises: null };
+  const notes = [ordinary, deload, recovery];
+
+  test('an excluded note leaves every ordinary population, including allSections', () => {
+    const parsed = deriveParsedSections(notes, ordinary, new Set(['recovery']));
+    expect(parsed.normalNotes.map(n => n.id)).toEqual(['ordinary', 'deload']);
+    // allSections and noteSectionsList are the 1K/aggregate populations.
+    expect(parsed.noteSectionsList.length).toBe(2);
+    expect(parsed.allSections.length).toBe(2);
+  });
+
+  test('deload exclusion composes with, and survives, the recovery filter', () => {
+    // With recovery INCLUDED, the deload note must still be absent from signals.
+    const included = deriveParsedSections(notes, ordinary, new Set());
+    expect(included.normalNotes.map(n => n.id)).toEqual(['ordinary', 'deload', 'recovery']);
+    expect(included.allSections.length).toBe(3);
+    // signalSections drops only the deload note, never the re-admitted recovery one.
+    expect(included.signalSections.length).toBe(2);
+
+    const excluded = deriveParsedSections(notes, ordinary, new Set(['recovery']));
+    expect(excluded.signalSections.length).toBe(1);
+  });
+
+  test('the current note is never filtered — an excluded recovery week still renders', () => {
+    const parsed = deriveParsedSections(notes, recovery, new Set(['recovery']));
+    expect(parsed.currentSections.length).toBeGreaterThan(0);
+    expect(parsed.normalNotes.map(n => n.id)).not.toContain('recovery');
+  });
+
+  test('omitting the exclusion set filters nothing (legacy callers keep working)', () => {
+    const parsed = deriveParsedSections(notes, ordinary);
+    expect(parsed.normalNotes.map(n => n.id)).toEqual(['ordinary', 'deload', 'recovery']);
+  });
+
+  test('the screen wires the filter: the exclusion set reaches deriveParsedSections, and Recovery Analytics still gets every note', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const derivations = require('../screens/analytics/analyticsDerivations');
+    const blocks = [{
+      id: 'rb1',
+      baseline_note_id: 'ordinary',
+      baseline_note_title: 'Push Day',
+      baseline: { version: 1, exercises: [] },
+      include_in_normal_analytics: false,
+      started_at: '2026-05-01T00:00:00.000Z',
+      completed_at: null,
+      deleted_at: null,
+    }];
+    const weeks = [{
+      id: 'rw1', block_id: 'rb1', note_id: 'recovery', week_number: 1,
+      completed_at: null, deleted_at: null,
+    }];
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks') return JSON.stringify(blocks);
+      if (key === 'kilo_recovery_block_weeks') return JSON.stringify(weeks);
+      return null;
+    });
+    const parsedSpy = jest.spyOn(derivations, 'deriveParsedSections');
+
+    const component = setup({
+      hookOverrides: {
+        notes,
+        currentNote: ordinary,
+        recoveryBlocks: blocks,
+        recoveryWeeks: weeks,
+        trackedLifts: { 'Bench Press': true },
+      },
+    });
+    // Let the filter's storage read resolve and re-render the screen.
+    await render.act(async () => { await Promise.resolve(); });
+
+    const lastCall = parsedSpy.mock.calls[parsedSpy.mock.calls.length - 1];
+    expect(lastCall[0]).toBe(notes);
+    expect([...lastCall[2]]).toEqual(['recovery']);
+
+    // Recovery Analytics is handed the UNFILTERED notes on purpose: a block's
+    // own analytics always read its linked notes, whatever the preference says.
+    const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
+    const recoverySection = component.root.findByType(AnalyticsRecoverySection);
+    expect(recoverySection.props.notes).toBe(notes);
+    expect(recoverySection.props.weeks).toBe(weeks);
+
+    parsedSpy.mockRestore();
+    AsyncStorage.getItem.mockReset();
+  });
+
+  test('an unverified recovery boundary holds the loading state instead of publishing unfiltered aggregates', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const hooks = require('../hooks/entries/recoveryBlockHooks');
+    // Cold start: nothing has verified the boundary in this process yet.
+    hooks._resetRecoveryAnalyticsFilterCache();
+    // Recovery storage is unreadable while workout notes load fine — the exact
+    // cold-start case where an empty snapshot would silently admit every
+    // recovery note.
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') {
+        throw new Error('storage unavailable');
+      }
+      return null;
+    });
+
+    const component = setup({
+      hookOverrides: { notes, currentNote: ordinary, trackedLifts: { 'Bench Press': true } },
+    });
+    await render.act(async () => { await Promise.resolve(); });
+
+    // The Progressive Overload list and the 1K card both hold their spinner
+    // rather than painting numbers derived from an unverified population.
+    const { ActivityIndicator } = require('react-native');
+    const { AnalyticsStrengthSection } = require('../components/AnalyticsStrengthSection');
+    expect(component.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0);
+    expect(component.root.findByType(AnalyticsStrengthSection).props.isNotesLoading).toBe(true);
+
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+});

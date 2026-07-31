@@ -198,6 +198,30 @@ Whole-block error states are reported the same explicit way: no snapshot on the 
 - **Weeks follow membership order.** Results are ordered by the week number you assigned when linking the note, never by note date or title.
 - **Display units do not matter.** Comparisons run on canonical stored values, so switching between lb and kg cannot change a state or a percentage.
 
+#### Whether recovery weeks count toward your normal analytics
+
+> Where you see it: the `Include recovery notes in normal analytics` switch on each active and completed block, in the Log tab's Recovery and Recovery History surfaces (#699)
+
+Everything above is *recovery* analytics, and it always reads your linked recovery weeks. Separately, each block decides whether those same notes feed Kilo's **ordinary** analytics. The switch is **off by default**, because rehab loads mixed into ordinary progression read as a months-long regression.
+
+While it is off, every note linked to that block is left out of:
+
+- Exercise Classifications (both the save-time value stored on a note and the read-time signals)
+- Progressive-overload signals and trends
+- Kilo Max and fatigue-adjusted strength
+- Non-weighted tracked-exercise metrics
+- 1k Total — the headline and every point of its history
+- The Home summaries derived from aggregated notes
+
+The note itself is untouched: it stays visible, editable, searchable, and it still appears in full in the return-to-baseline comparison above. Turning the switch on feeds it back through the *same* aggregation paths as any ordinary note — there is no recovery-specific weighting, and no double counting when you toggle back and forth.
+
+Three rules keep this predictable:
+
+- **Membership only.** A note is a recovery note because a live recovery-week record names it, never because of its title, its date, its contents, or what is currently selected. The block's frozen baseline routine is not a member, so your pre-recovery routine always counts.
+- **Per block.** Each block filters only its own linked notes. Two completed blocks may hold different settings, and neither affects the other.
+- **Deload rules are separate.** Deload sessions are excluded from progression signals by their own long-standing rule. Turning recovery inclusion on re-admits recovery weeks only; it never re-admits a deload session to a signal that already excludes it.
+- **Unknown is not "nothing".** If the recovery records cannot be read, Kilo does not fall back to counting everything. Home and the affected Analytics sections keep loading until a read succeeds, so a storage problem can never quietly show you numbers that include work you chose to exclude.
+
 ---
 
 ## Weight Analytics

@@ -5,7 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
-import { deriveHomeDashboardData } from './home/homeDashboardData';
+import { deriveHomeDashboardData, useHomeNormalNotes } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
@@ -75,9 +75,16 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
   const unit = useWeightUnit();
 
+  // Ordinary-analytics boundary (#699). Home's aggregated populations (1K,
+  // overload signals, tracked-lift visibility) drop recovery-linked notes whose
+  // block keeps `include_in_normal_analytics` off. `workoutNote` — the routine
+  // the current-routine card is about — is deliberately untouched: an excluded
+  // recovery week stays visible and editable.
+  const { normalNotes, recoveryBoundaryReady } = useHomeNormalNotes(notes);
+
   const noteSectionsList = useMemo(
-    () => (notes || []).map(n => getNoteSections(n)),
-    [notes]
+    () => normalNotes.map(n => getNoteSections(n)),
+    [normalNotes]
   );
 
   const allSections = useMemo(
@@ -100,7 +107,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // weight/notes: weight goal and tracked lifts feed the dashboard too, so
   // including their loading prevents those sections from popping in after
   // first paint.
-  const isLoading = loading || goalLoading || trackedLiftsLoading;
+  // `!recoveryBoundaryReady` belongs here for the same reason the others do: the
+  // dashboard's aggregates are derived from a note population that is not yet
+  // known to be correct, so painting them would show numbers that can include
+  // work the user chose to exclude (#699).
+  const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady;
 
   const isEmptyState = useMemo(() => {
     if (isLoading) return false;

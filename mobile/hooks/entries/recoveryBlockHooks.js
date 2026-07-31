@@ -11,7 +11,7 @@
 // one exception: the pre-existing deload-note convention (title prefix) is
 // reused as-is rather than re-derived, since it is not a recovery inference.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import {
   RECOVERY_OPERATION_CODES,
@@ -30,6 +30,10 @@ import {
   nextWeekNumber,
   orderedLiveWeeks,
 } from '../../lib/data/recoveryBlocks';
+import {
+  buildRecoveryAnalyticsFilter,
+  deriveRecoveryExcludedNoteIds,
+} from '../../lib/data/recoveryAnalyticsFilter';
 import { makeWorkoutNoteItem } from '../../lib/data';
 import { safeNotify } from './shared';
 import { SYNC_PHASE, SYNC_STATUS, subscribeSyncState } from '../../storage/syncRecovery';
@@ -132,6 +136,168 @@ export function useRecoveryBlockState() {
     // separate repair algorithm to keep in step.
     retryRecovery: refresh,
   };
+}
+
+// ── normal-analytics membership filter (#699) ─────────────────────────────────
+
+// Last successfully loaded recovery records, shared by every mounted
+// `useRecoveryAnalyticsFilter`. Recovery notes are excluded from ordinary
+// analytics by default, so a hook that started from an empty snapshot would
+// briefly ADMIT them on every remount (tab switch, screen push) until its own
+// read resolved. Seeding from the last known-good snapshot removes that window
+// for every mount after the first.
+let lastRecoverySnapshot = { blocks: [], weeks: [] };
+let lastRecoverySignature = '';
+// False until the recovery records have been read successfully at least once in
+// this process. Until then the empty snapshot above is a PLACEHOLDER, not
+// evidence that nothing is excluded — publishing ordinary analytics from it
+// would admit every recovery note in exactly the case the off-by-default
+// boundary exists for (a corrupt or temporarily unreadable recovery key on cold
+// start, while workout notes load fine). Consumers read `filter.ready` and keep
+// their loading state instead.
+let recoverySnapshotVerified = false;
+
+// Retry cadence for a failed read, capped. A cold-start failure would otherwise
+// wait for an unrelated recovery mutation or a cloud sync to clear, which a
+// local-only user may never produce, leaving the screens loading forever.
+const RECOVERY_READ_RETRY_MS = [500, 1500, 4000, 10000];
+
+// Everything the boundary decision depends on, and nothing else. A reload that
+// produces the same signature republishes the SAME snapshot object, so the
+// functional `setSnapshot` below bails out instead of re-rendering Home,
+// Analytics, and the Log editor. That matters beyond performance: the common
+// case (no recovery records at all) would otherwise force one extra render of
+// three screens on every mount, sync completion, and recovery notification.
+function _recoverySignature(blocks, weeks) {
+  const blockPart = (blocks || []).map(
+    b => `${b.id}|${b.updated_at}|${b.include_in_normal_analytics === true ? 1 : 0}|${b.deleted_at ? 1 : 0}`
+  );
+  const weekPart = (weeks || []).map(
+    w => `${w.id}|${w.block_id}|${w.note_id}|${w.updated_at}|${w.deleted_at ? 1 : 0}`
+  );
+  return `${blockPart.join(',')}~${weekPart.join(',')}`;
+}
+
+// Read-only subscriber for the ordinary-analytics boundary.
+//
+// Deliberately NOT `useRecoveryBlockState`: that hook reconciles the recovery
+// operation journal before every read, which is correct for a surface that is
+// about to mutate recovery records, and wrong for Home/Analytics/save-time
+// classification, which only ever ask "which notes are excluded right now".
+// Mounting the reconciling hook on those surfaces would replay journaled
+// operations from screens that never asked to.
+//
+// Refreshes on the signals that can change the boundary out from under a
+// mounted screen: the private `recoveryListeners` notification (any local
+// recovery mutation, including the inclusion toggle and a restored local
+// backup), a completed cloud sync (another device's records), mount, and — only
+// while the boundary is still unverified — a bounded retry.
+export function useRecoveryAnalyticsFilter() {
+  const [state, setState] = useState(
+    () => ({ snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified })
+  );
+  const retryTimerRef = useRef(null);
+  const retryAttemptRef = useRef(0);
+  const unmountedRef = useRef(false);
+
+  const refresh = useCallback(() => {
+    return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
+      .then(([blocks, weeks]) => {
+        const signature = _recoverySignature(blocks, weeks);
+        if (signature !== lastRecoverySignature || !recoverySnapshotVerified) {
+          lastRecoverySignature = signature;
+          lastRecoverySnapshot = { blocks, weeks };
+        }
+        recoverySnapshotVerified = true;
+        retryAttemptRef.current = 0;
+        setState(prev => (
+          prev.snapshot === lastRecoverySnapshot && prev.verified
+            ? prev
+            : { snapshot: lastRecoverySnapshot, verified: true }
+        ));
+      })
+      .catch(() => {
+        // A failed read never publishes "nothing is excluded". If a good
+        // snapshot was already read in this process it stays authoritative; if
+        // none ever was, the boundary stays unverified and every consumer holds
+        // its loading state rather than admitting recovery work.
+        setState(prev => (
+          prev.snapshot === lastRecoverySnapshot && prev.verified === recoverySnapshotVerified
+            ? prev
+            : { snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified }
+        ));
+        if (recoverySnapshotVerified || unmountedRef.current) return;
+        const attempt = retryAttemptRef.current;
+        if (attempt >= RECOVERY_READ_RETRY_MS.length) return;
+        retryAttemptRef.current = attempt + 1;
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          if (!unmountedRef.current) refresh();
+        }, RECOVERY_READ_RETRY_MS[attempt]);
+      });
+  }, []);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    refresh();
+    recoveryListeners.push(refresh);
+
+    let lastSyncStatus = null;
+    const handleSyncState = (syncState) => {
+      const sync = syncState?.[SYNC_PHASE.SYNC];
+      if (sync && sync.status === SYNC_STATUS.COMPLETE && lastSyncStatus !== SYNC_STATUS.COMPLETE) {
+        refresh();
+      }
+      lastSyncStatus = sync ? sync.status : null;
+    };
+    const unsubscribeSync = subscribeSyncState(handleSyncState);
+
+    return () => {
+      unmountedRef.current = true;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      recoveryListeners = recoveryListeners.filter(l => l !== refresh);
+      unsubscribeSync();
+    };
+  }, [refresh]);
+
+  return useMemo(
+    () => buildRecoveryAnalyticsFilter(state.snapshot.blocks, state.snapshot.weeks, { ready: state.verified }),
+    [state]
+  );
+}
+
+// Module-level broadcast for recovery records that changed outside the hook
+// mutations above — today, a restored local backup, which replaces both
+// collections wholesale without going through any lifecycle action. Mirrors
+// `reloadWorkoutNotes` in workoutNoteHooks.js: every mounted subscriber re-reads
+// so a mounted Home/Analytics cannot keep serving the pre-import memberships and
+// preferences.
+export function reloadRecoveryBlocks() {
+  notifyRecoveryBlocks();
+}
+
+// Test seam: drop the shared snapshot so one test's recovery records cannot
+// seed the next test's first render.
+export function _resetRecoveryAnalyticsFilterCache() {
+  lastRecoverySnapshot = { blocks: [], weeks: [] };
+  lastRecoverySignature = '';
+  recoverySnapshotVerified = false;
+}
+
+// One-shot read of the ordinary-analytics exclusion set, straight from storage.
+//
+// For callers that act asynchronously rather than render — save-time exercise
+// classification is the one today. They must decide against what is actually
+// persisted at the moment they write, not against a snapshot captured by the
+// render that scheduled them, so they deliberately do NOT subscribe. Rejects on
+// a storage failure; the caller decides what an unknown boundary means for its
+// own write.
+export async function loadRecoveryExcludedNoteIds(storage = Storage) {
+  const [blocks, weeks] = await Promise.all([
+    storage.loadRecoveryBlocks(),
+    storage.loadRecoveryBlockWeeks(),
+  ]);
+  return deriveRecoveryExcludedNoteIds(blocks, weeks);
 }
 
 // True when `note` may serve as a NEW block's frozen baseline: not a deload
@@ -449,6 +615,36 @@ export function unlinkNoteForDeleteCore(storage, { noteId }) {
     : result));
 }
 
+// Set one block's `include_in_normal_analytics` preference (#699).
+//
+// Guarded like every other recovery mutation so a toggle cannot land while a
+// journaled operation over the same block is still unresolved. It writes no
+// journal record of its own: this is a single-field patch on a single
+// collection, so there is no second record whose partial write would need
+// rolling forward.
+//
+// `updateRecoveryBlock` strips every immutable field (BLOCK_IMMUTABLE_FIELDS),
+// so the frozen baseline, lifecycle timestamps, and record identity are
+// untouched — and no workout note is rewritten. Completed blocks are patchable
+// on purpose: reviewing a finished recovery and deciding it should count is a
+// legitimate action.
+export function setRecoveryNormalAnalyticsInclusionCore(storage, { blockId, include }) {
+  return runGuardedRecoveryAction({ blockId }, async () => {
+    try {
+      const block = await storage.updateRecoveryBlock(blockId, {
+        include_in_normal_analytics: include === true,
+      });
+      return { ok: true, block };
+    } catch (e) {
+      return {
+        ok: false,
+        code: e?.code || null,
+        error: e?.message || 'Could not change this block’s analytics setting.',
+      };
+    }
+  });
+}
+
 export function useRecoveryBlockLifecycle() {
   const completeCurrentWeek = useCallback(async (params) => {
     const result = await completeCurrentWeekCore(RecoveryStorage, params);
@@ -501,5 +697,15 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
 
-  return { completeCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, retryRecovery };
+  // Toggling inclusion changes no note and no baseline, so the notebook is not
+  // reloaded — only the recovery subscribers (including every mounted
+  // `useRecoveryAnalyticsFilter`) refresh, which is what makes Home/Analytics
+  // repopulate immediately.
+  const setIncludeInNormalAnalytics = useCallback(async (params) => {
+    const result = await setRecoveryNormalAnalyticsInclusionCore(RecoveryStorage, params);
+    if (result.ok) notifyRecoveryBlocks();
+    return result;
+  }, []);
+
+  return { completeCurrentWeek, addWeek, addWeekWithNewNote, completeBlock, unlinkWeek, unlinkNoteForDelete, setIncludeInNormalAnalytics, retryRecovery };
 }

@@ -836,6 +836,41 @@ what a lifter's log actually produces:
   derivation is identical, and switching the lb/kg display preference cannot
   change a state or a percentage.
 
+### `mobile/tests/home-screen.test.js`
+
+Covers the recovery/normal-analytics boundary (#699) as a CROSS-surface
+contract, which is the only level at which it can be pinned: one fixture
+(ordinary routine, deload note, an excluded block's week, an included completed
+block's week, and a baseline routine) is run through Home's and Analytics'
+real derivation entry points together, so a regression that filtered only one
+surface fails here. It asserts default exclusion, 1K agreeing exactly between
+the two screens, a live toggle moving Kilo Max and non-weighted metrics on both
+at once, a round-trip toggle restoring every aggregate exactly (no double
+counting), independent per-block memberships, deload exclusion unchanged in
+both preference states, an excluded week still producing full Recovery
+Analytics evidence, and a missing linked note leaving unrelated ordinary notes
+alone.
+
+It also pins the fail-closed contract at the screen level: with the recovery
+store unreadable, Home paints neither its dashboard nor its empty state, because
+"no records read" and "nothing is excluded" are the same empty snapshot and only
+one of them is true. `analytics-screen.test.js` pins the matching Analytics gate
+(the 1K card and Progressive Overload list hold their spinner while the Recovery,
+weight, and fatigue sections, which do not depend on the boundary, are left
+alone).
+
+The per-block filter rules themselves (tombstoned membership, orphaned or
+tombstoned block, malformed `note_id`, baseline notes never being members, and
+verified-versus-unknown) are unit-tested in `data.test.js`; the switch's UI,
+persistence, per-block independence, locking, error surface, and live subscriber
+refresh are in `log-screen.test.js`, alongside save-time classification honoring
+the same boundary and omitting the classification entirely when the recovery read
+fails. `log-screen.test.js` also covers the subscriber's freshness and failure
+behavior directly: a restored local backup refreshing every mounted subscriber, a
+cold-start read failure reporting an unverified boundary that still hides nothing,
+its bounded self-retry publishing once storage recovers, and a later failure
+keeping the last verified boundary instead of reverting to unfiltered.
+
 ### `mobile/tests/sync-recovery.test.js`
 
 - drives the confirmed #522 claim-4 lifecycle end to end against the real
