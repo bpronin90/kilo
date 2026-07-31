@@ -11,7 +11,7 @@
 // one exception: the pre-existing deload-note convention (title prefix) is
 // reused as-is rather than re-derived, since it is not a recovery inference.
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as Storage from '../../storage/entries';
 import {
   RECOVERY_OPERATION_CODES,
@@ -148,6 +148,19 @@ export function useRecoveryBlockState() {
 // for every mount after the first.
 let lastRecoverySnapshot = { blocks: [], weeks: [] };
 let lastRecoverySignature = '';
+// False until the recovery records have been read successfully at least once in
+// this process. Until then the empty snapshot above is a PLACEHOLDER, not
+// evidence that nothing is excluded — publishing ordinary analytics from it
+// would admit every recovery note in exactly the case the off-by-default
+// boundary exists for (a corrupt or temporarily unreadable recovery key on cold
+// start, while workout notes load fine). Consumers read `filter.ready` and keep
+// their loading state instead.
+let recoverySnapshotVerified = false;
+
+// Retry cadence for a failed read, capped. A cold-start failure would otherwise
+// wait for an unrelated recovery mutation or a cloud sync to clear, which a
+// local-only user may never produce, leaving the screens loading forever.
+const RECOVERY_READ_RETRY_MS = [500, 1500, 4000, 10000];
 
 // Everything the boundary decision depends on, and nothing else. A reload that
 // produces the same signature republishes the SAME snapshot object, so the
@@ -174,31 +187,58 @@ function _recoverySignature(blocks, weeks) {
 // Mounting the reconciling hook on those surfaces would replay journaled
 // operations from screens that never asked to.
 //
-// Refreshes on the same three signals the lifecycle surface uses: the private
-// `recoveryListeners` notification (any local recovery mutation, including the
-// inclusion toggle), a completed cloud sync (another device's records), and
-// mount.
+// Refreshes on the signals that can change the boundary out from under a
+// mounted screen: the private `recoveryListeners` notification (any local
+// recovery mutation, including the inclusion toggle and a restored local
+// backup), a completed cloud sync (another device's records), mount, and — only
+// while the boundary is still unverified — a bounded retry.
 export function useRecoveryAnalyticsFilter() {
-  const [snapshot, setSnapshot] = useState(lastRecoverySnapshot);
+  const [state, setState] = useState(
+    () => ({ snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified })
+  );
+  const retryTimerRef = useRef(null);
+  const retryAttemptRef = useRef(0);
+  const unmountedRef = useRef(false);
 
   const refresh = useCallback(() => {
     return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
       .then(([blocks, weeks]) => {
         const signature = _recoverySignature(blocks, weeks);
-        if (signature !== lastRecoverySignature) {
+        if (signature !== lastRecoverySignature || !recoverySnapshotVerified) {
           lastRecoverySignature = signature;
           lastRecoverySnapshot = { blocks, weeks };
         }
-        setSnapshot(prev => (prev === lastRecoverySnapshot ? prev : lastRecoverySnapshot));
+        recoverySnapshotVerified = true;
+        retryAttemptRef.current = 0;
+        setState(prev => (
+          prev.snapshot === lastRecoverySnapshot && prev.verified
+            ? prev
+            : { snapshot: lastRecoverySnapshot, verified: true }
+        ));
       })
       .catch(() => {
-        // A failed read keeps the last known-good snapshot rather than falling
-        // back to "exclude nothing", which would leak recovery work into
-        // ordinary analytics precisely when storage is unhealthy.
+        // A failed read never publishes "nothing is excluded". If a good
+        // snapshot was already read in this process it stays authoritative; if
+        // none ever was, the boundary stays unverified and every consumer holds
+        // its loading state rather than admitting recovery work.
+        setState(prev => (
+          prev.snapshot === lastRecoverySnapshot && prev.verified === recoverySnapshotVerified
+            ? prev
+            : { snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified }
+        ));
+        if (recoverySnapshotVerified || unmountedRef.current) return;
+        const attempt = retryAttemptRef.current;
+        if (attempt >= RECOVERY_READ_RETRY_MS.length) return;
+        retryAttemptRef.current = attempt + 1;
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          if (!unmountedRef.current) refresh();
+        }, RECOVERY_READ_RETRY_MS[attempt]);
       });
   }, []);
 
   useEffect(() => {
+    unmountedRef.current = false;
     refresh();
     recoveryListeners.push(refresh);
 
@@ -213,15 +253,27 @@ export function useRecoveryAnalyticsFilter() {
     const unsubscribeSync = subscribeSyncState(handleSyncState);
 
     return () => {
+      unmountedRef.current = true;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       recoveryListeners = recoveryListeners.filter(l => l !== refresh);
       unsubscribeSync();
     };
   }, [refresh]);
 
   return useMemo(
-    () => buildRecoveryAnalyticsFilter(snapshot.blocks, snapshot.weeks),
-    [snapshot]
+    () => buildRecoveryAnalyticsFilter(state.snapshot.blocks, state.snapshot.weeks, { ready: state.verified }),
+    [state]
   );
+}
+
+// Module-level broadcast for recovery records that changed outside the hook
+// mutations above — today, a restored local backup, which replaces both
+// collections wholesale without going through any lifecycle action. Mirrors
+// `reloadWorkoutNotes` in workoutNoteHooks.js: every mounted subscriber re-reads
+// so a mounted Home/Analytics cannot keep serving the pre-import memberships and
+// preferences.
+export function reloadRecoveryBlocks() {
+  notifyRecoveryBlocks();
 }
 
 // Test seam: drop the shared snapshot so one test's recovery records cannot
@@ -229,6 +281,7 @@ export function useRecoveryAnalyticsFilter() {
 export function _resetRecoveryAnalyticsFilterCache() {
   lastRecoverySnapshot = { blocks: [], weeks: [] };
   lastRecoverySignature = '';
+  recoverySnapshotVerified = false;
 }
 
 // One-shot read of the ordinary-analytics exclusion set, straight from storage.

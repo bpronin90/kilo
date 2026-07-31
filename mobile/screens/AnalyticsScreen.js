@@ -60,7 +60,13 @@ export function AnalyticsScreen({ multiplier, section }) {
   }, [hookWeightEntries]);
 
   const isWeightLoading = loadingWeight && weightEntries.length === 0;
-  const isNotesLoading = loadingNotes && notes.length === 0;
+  // An unverified recovery boundary (#699) counts as notes-not-ready: the 1K
+  // card and the Progressive Overload list are both derived from a note
+  // population that is not yet known to be correct, so they hold their loading
+  // state rather than painting aggregates that may include excluded work. The
+  // Recovery, weight, and fatigue sections do not depend on the boundary and are
+  // deliberately left alone.
+  const isNotesLoading = (loadingNotes && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
   useEffect(() => {

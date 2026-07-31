@@ -5683,6 +5683,40 @@ describe('Recovery inclusion preference', () => {
     expect(byId.rbActive.include_in_normal_analytics).toBe(false);
   });
 
+  test('an in-flight write disables EVERY inclusion switch, not just the one being written', async () => {
+    // Two completed blocks plus the active one: without this, the other two
+    // switches stay enabled to sighted and accessibility clients while
+    // `handleToggleInclusion` silently discards their presses.
+    await setup({ blocks: [activeBlock, completedBlockOn, completedBlockOff] });
+    let resolveWrite;
+    const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
+      .mockImplementation(() => new Promise((resolve) => { resolveWrite = resolve; }));
+
+    const component = await renderScreen();
+    const byBlock = () => Object.fromEntries(
+      switchesFor(component.root).map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
+    );
+    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+
+    // Start a write on one block and leave it in flight: the guarded action
+    // reaches storage after a few microtasks, and the mock never settles.
+    await render.act(async () => { byBlock().rbActive.props.onValueChange(true); });
+
+    for (const [id, control] of Object.entries(byBlock())) {
+      expect(control.props.disabled).toBe(true);
+      expect(control.props.accessibilityState.disabled).toBe(true);
+      expect(id).toBeTruthy();
+    }
+
+    await render.act(async () => {
+      resolveWrite({ ...activeBlock, include_in_normal_analytics: true });
+    });
+
+    // Every switch is interactive again once the write settles.
+    expect(Object.values(byBlock()).every(c => c.props.disabled === false)).toBe(true);
+    updateSpy.mockRestore();
+  });
+
   test('a pending recovery operation disables the control rather than letting it race', async () => {
     await setup({
       pendingRecovery: [{ operation_id: 1, block_id: 'rbActive', error: 'A recovery change is still being applied on this device.' }],
@@ -5826,5 +5860,120 @@ describe('save-time exercise classifications respect the recovery boundary', () 
     // But no aggregate is written, so a possibly-leaky value cannot replace the
     // stored one. The next successful save repairs it.
     expect('exercise_classifications' in patch).toBe(false);
+  });
+});
+
+// ── #699 review: the boundary subscriber's freshness and failure behavior ────
+
+describe('useRecoveryAnalyticsFilter freshness and fail-closed reads', () => {
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
+
+  const block = {
+    id: 'rb1', baseline_note_id: 'baseline', baseline_note_title: 'Push Day',
+    baseline: { version: 1, exercises: [] }, include_in_normal_analytics: false,
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
+  };
+  const week = {
+    id: 'rw1', block_id: 'rb1', note_id: 'recoverynote', week_number: 1,
+    completed_at: null, deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
+  };
+
+  const mounted = [];
+  const seen = [];
+
+  function Probe() {
+    seen.push(hooks.useRecoveryAnalyticsFilter());
+    return null;
+  }
+  const latest = () => seen[seen.length - 1];
+
+  const mountProbe = async () => {
+    await render.act(async () => { mounted.push(render.create(<Probe />)); });
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    AsyncStorage.__store.clear();
+    seen.length = 0;
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  afterEach(async () => {
+    await render.act(async () => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+    jest.restoreAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('a restored local backup refreshes every mounted subscriber', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([]));
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    expect(latest().isNoteExcluded('recoverynote')).toBe(false);
+
+    // Stand-in for importBackup's `replace` path: it rewrites both collections
+    // directly, with no lifecycle action and no sync to announce it.
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([week]));
+    // Mounted screens are still serving the pre-import boundary until told.
+    expect(latest().isNoteExcluded('recoverynote')).toBe(false);
+
+    await render.act(async () => { hooks.reloadRecoveryBlocks(); });
+
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+  });
+
+  test('a cold-start read failure reports an UNVERIFIED boundary instead of "nothing excluded"', async () => {
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('storage unavailable'));
+
+    await mountProbe();
+
+    // The empty snapshot is a placeholder, not evidence. Consumers see this and
+    // hold their loading state rather than publishing ordinary analytics.
+    expect(latest().ready).toBe(false);
+    // And it still hides nothing, so a bad read can never remove an unrelated
+    // ordinary note from the population.
+    const notes = [{ id: 'ordinary' }, { id: 'recoverynote' }];
+    expect(latest().filterNotes(notes)).toBe(notes);
+  });
+
+  test('a failed cold-start read retries on its own and publishes once storage recovers', async () => {
+    const spy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('storage unavailable'));
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([week]));
+
+    await mountProbe();
+    expect(latest().ready).toBe(false);
+
+    // Storage comes back. Nothing else in the app needs to notice: the hook's
+    // own bounded retry is what clears the loading state for a local-only user
+    // who may never produce a recovery mutation or a sync.
+    spy.mockRestore();
+    await render.act(async () => { await new Promise(r => setTimeout(r, 600)); });
+
+    expect(latest().ready).toBe(true);
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+  });
+
+  test('a later read failure keeps the last verified boundary rather than reverting to unfiltered', async () => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify([block]));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify([week]));
+    await mountProbe();
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
+
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('storage unavailable'));
+    await render.act(async () => { hooks.reloadRecoveryBlocks(); });
+
+    expect(latest().ready).toBe(true);
+    expect(latest().isNoteExcluded('recoverynote')).toBe(true);
   });
 });

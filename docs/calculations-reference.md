@@ -220,6 +220,7 @@ Three rules keep this predictable:
 - **Membership only.** A note is a recovery note because a live recovery-week record names it, never because of its title, its date, its contents, or what is currently selected. The block's frozen baseline routine is not a member, so your pre-recovery routine always counts.
 - **Per block.** Each block filters only its own linked notes. Two completed blocks may hold different settings, and neither affects the other.
 - **Deload rules are separate.** Deload sessions are excluded from progression signals by their own long-standing rule. Turning recovery inclusion on re-admits recovery weeks only; it never re-admits a deload session to a signal that already excludes it.
+- **Unknown is not "nothing".** If the recovery records cannot be read, Kilo does not fall back to counting everything. Home and the affected Analytics sections keep loading until a read succeeds, so a storage problem can never quietly show you numbers that include work you chose to exclude.
 
 ---
 

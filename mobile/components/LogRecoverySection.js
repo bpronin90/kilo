@@ -204,6 +204,13 @@ export function LogRecoverySection({
   const inclusionErrorFor = (blockId) =>
     (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
 
+  // EVERY inclusion switch is disabled while ANY inclusion write is in flight,
+  // not just the one being written. `handleToggleInclusion` refuses a second
+  // concurrent write, so leaving the other blocks' switches enabled would
+  // present an affordance — to sighted and screen-reader users alike — that
+  // silently discards the interaction.
+  const inclusionLocked = actionsLocked || !!inclusionBusyBlockId;
+
   const pendingBanner = (
     <View
       style={styles.pendingBanner}
@@ -326,7 +333,7 @@ export function LogRecoverySection({
 
             <RecoveryInclusionToggle
               block={activeBlock}
-              disabled={actionsLocked || inclusionBusyBlockId === activeBlock.id}
+              disabled={inclusionLocked}
               busy={inclusionBusyBlockId === activeBlock.id}
               error={inclusionErrorFor(activeBlock.id)}
               onToggle={handleToggleInclusion}
@@ -402,7 +409,7 @@ export function LogRecoverySection({
                     // A completed block's preference stays editable — reviewing a
                     // finished recovery and deciding it should count is the whole
                     // point — but never while a journaled operation is unresolved.
-                    disabled={actionsLocked || inclusionBusyBlockId === block.id}
+                    disabled={inclusionLocked}
                     busy={inclusionBusyBlockId === block.id}
                     error={inclusionErrorFor(block.id)}
                     onToggle={handleToggleInclusion}

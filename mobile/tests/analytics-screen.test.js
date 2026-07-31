@@ -1451,4 +1451,35 @@ describe('AnalyticsScreen: excluded recovery notes and ordinary populations', ()
     parsedSpy.mockRestore();
     AsyncStorage.getItem.mockReset();
   });
+
+  test('an unverified recovery boundary holds the loading state instead of publishing unfiltered aggregates', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    const hooks = require('../hooks/entries/recoveryBlockHooks');
+    // Cold start: nothing has verified the boundary in this process yet.
+    hooks._resetRecoveryAnalyticsFilterCache();
+    // Recovery storage is unreadable while workout notes load fine — the exact
+    // cold-start case where an empty snapshot would silently admit every
+    // recovery note.
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') {
+        throw new Error('storage unavailable');
+      }
+      return null;
+    });
+
+    const component = setup({
+      hookOverrides: { notes, currentNote: ordinary, trackedLifts: { 'Bench Press': true } },
+    });
+    await render.act(async () => { await Promise.resolve(); });
+
+    // The Progressive Overload list and the 1K card both hold their spinner
+    // rather than painting numbers derived from an unverified population.
+    const { ActivityIndicator } = require('react-native');
+    const { AnalyticsStrengthSection } = require('../components/AnalyticsStrengthSection');
+    expect(component.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0);
+    expect(component.root.findByType(AnalyticsStrengthSection).props.isNotesLoading).toBe(true);
+
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
 });

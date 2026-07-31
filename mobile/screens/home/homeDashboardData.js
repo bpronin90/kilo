@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { getNoteSections } from '../../hooks/useEntries';
+import { useRecoveryAnalyticsFilter } from '../../hooks/entries/recoveryBlockHooks';
 import { normalizeExerciseKey, countWorkoutSessionsFromSections } from '../../lib/parser';
 import {
   deriveWeightGoalAnalytics,
@@ -10,10 +12,30 @@ import {
   computeWeeklySummary,
 } from '../../lib/data';
 
+// Home's ordinary-analytics population (#699). This module owns the decision end
+// to end — which notes count, and whether that is even knowable yet — so the
+// screen consumes a population rather than reassembling one.
+//
+// `normalNotes` drops every note linked to a recovery block whose
+// `include_in_normal_analytics` is off, using the same
+// lib/data/recoveryAnalyticsFilter that Analytics and save-time classification
+// use, so the surfaces cannot disagree.
+//
+// `recoveryBoundaryReady` is false until the recovery records have been read
+// successfully at least once. Home folds it into its loading gate: an
+// unverified boundary must not publish aggregates, because "no records read"
+// and "nothing is excluded" are the same empty snapshot and only one of them is
+// true.
+export function useHomeNormalNotes(notes) {
+  const filter = useRecoveryAnalyticsFilter();
+  return useMemo(() => ({
+    normalNotes: filter.filterNotes(notes || []),
+    recoveryBoundaryReady: filter.ready,
+  }), [notes, filter]);
+}
+
 // `allSections` / `noteSectionsList` are the AGGREGATED note populations and
-// arrive already filtered for the recovery/normal-analytics boundary (#699):
-// HomeScreen applies lib/data/recoveryAnalyticsFilter before deriving them, the
-// same filter Analytics and save-time classification use. Nothing here re-derives
+// arrive already filtered by `useHomeNormalNotes` above. Nothing here re-derives
 // that decision, so Home cannot disagree with the other surfaces.
 //
 // `workoutNote` is the routine the current-routine card is ABOUT, not an

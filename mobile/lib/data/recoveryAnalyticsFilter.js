@@ -30,14 +30,32 @@
 
 import { isLiveRecord } from './recoveryBlocks';
 
-// A filter that excludes nothing. Shared frozen instance so consumers can use it
-// as a stable default (e.g. before recovery records have loaded) without
-// invalidating their own memoization every render.
+const _NO_EXCLUSIONS = Object.freeze(new Set());
+
+// A verified filter that excludes nothing: the recovery records were read and
+// no block is withholding anything. Shared frozen instance so consumers can use
+// it without invalidating their own memoization every render.
 export const EMPTY_RECOVERY_ANALYTICS_FILTER = Object.freeze({
-  excludedNoteIds: Object.freeze(new Set()),
+  excludedNoteIds: _NO_EXCLUSIONS,
   isNoteExcluded: () => false,
   filterNotes: (notes) => notes || [],
   hasExclusions: false,
+  // The boundary is KNOWN — every consumer may publish ordinary analytics.
+  ready: true,
+});
+
+// The boundary is NOT known yet: the recovery records have not been read
+// successfully even once (first paint, or a cold-start read that failed).
+//
+// It excludes nothing, because with no records there is no membership to name —
+// guessing would be exactly the "hide unrelated ordinary notes" failure the
+// module exists to prevent. `ready: false` is what makes that safe: consumers
+// must not publish ordinary analytics derived from an unverified population,
+// and instead keep showing their loading state until a read succeeds. Save-time
+// callers fail closed the same way, by writing no classification at all.
+export const PENDING_RECOVERY_ANALYTICS_FILTER = Object.freeze({
+  ...EMPTY_RECOVERY_ANALYTICS_FILTER,
+  ready: false,
 });
 
 // Note ids that must not reach ordinary analytics, given the live recovery
@@ -80,7 +98,12 @@ export function deriveRecoveryExcludedNoteIds(blocks, weeks) {
 // (save-time classification in the Log editor, Home's aggregated dashboard, and
 // the Analytics derivations) runs the SAME object over the SAME note list, which
 // is what keeps the surfaces from disagreeing.
-export function buildRecoveryAnalyticsFilter(blocks, weeks) {
+//
+// `ready: false` means the caller has not verified the records yet and must be
+// reported as such regardless of what the (necessarily empty) inputs say.
+export function buildRecoveryAnalyticsFilter(blocks, weeks, { ready = true } = {}) {
+  if (!ready) return PENDING_RECOVERY_ANALYTICS_FILTER;
+
   const excludedNoteIds = deriveRecoveryExcludedNoteIds(blocks, weeks);
   if (excludedNoteIds.size === 0) return EMPTY_RECOVERY_ANALYTICS_FILTER;
 
@@ -90,6 +113,7 @@ export function buildRecoveryAnalyticsFilter(blocks, weeks) {
     isNoteExcluded,
     filterNotes: (notes) => (notes || []).filter(note => !isNoteExcluded(note?.id)),
     hasExclusions: true,
+    ready: true,
   };
 }
 

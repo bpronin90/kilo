@@ -36,6 +36,7 @@ const MemoWeightScreen = React.memo(WeightScreen);
 const MemoAnalyticsScreen = React.memo(AnalyticsScreen);
 
 import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
+import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/productMeasurement';
@@ -473,6 +474,14 @@ function AppShell() {
     if (result.ok) {
       weightHook.refresh();
       noteHook.refresh();
+      // A restored backup replaces the recovery blocks and week memberships
+      // wholesale without going through any recovery lifecycle action, so
+      // nothing else broadcasts the change (#699). Without this, a mounted Home
+      // or Analytics keeps filtering ordinary analytics by the PRE-import
+      // memberships and inclusion preferences until an unrelated recovery
+      // mutation, a cloud sync, or a restart — indefinitely for a local-only
+      // user.
+      reloadRecoveryBlocks();
     }
     return result;
   // weightHook.refresh/noteHook.refresh, not the whole hook objects (#592

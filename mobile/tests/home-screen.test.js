@@ -33,6 +33,47 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(),
 }));
 
+// Presentation-only mocks for the HomeScreen render describe at the end of this
+// file. The derivation tests above do not touch any of them.
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ children }) => React.createElement(View, null, children),
+    Path: () => null,
+    Rect: () => null,
+  };
+});
+
+jest.mock('../components/ScreenShell', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    ScreenShell: ({ children }) => React.createElement(View, null, children),
+    ScrollContext: React.createContext({ onScroll: () => {} }),
+  };
+});
+
+jest.mock('../components/UI', () => {
+  const React = require('react');
+  const { View, Text } = require('react-native');
+  return {
+    Card: ({ children, style }) => React.createElement(View, { style }, children),
+    HeroMetric: { hero: {} },
+    LineChart: () => null,
+    getSessionTone: () => 'neutral',
+    Button: ({ title, onPress }) => React.createElement(Text, { onPress }, title),
+  };
+});
+
+jest.mock('../lib/unitPreference', () => ({ useWeightUnit: () => 'lbs' }));
+
+jest.mock('../hooks/useEntries', () => {
+  const actual = jest.requireActual('../hooks/useEntries');
+  return { ...actual, useWeightGoal: jest.fn(), useTrackedLifts: jest.fn() };
+});
+
 const ONE_K = { bench: 'Bench Press', squat: 'Squat', deadlift: 'Deadlift' };
 
 // Heavy ordinary work.
@@ -321,5 +362,92 @@ describe('#699 recovery notes and the ordinary-analytics population', () => {
     // over and make the assertions above vacuous.
     expect(DEFAULT_1K_EXERCISES.bench).toBeDefined();
     expect(home.oneK.total).not.toBeNull();
+  });
+});
+
+// ── #699 review: Home must not publish an unverified population ─────────────
+
+describe('HomeScreen holds its loading state while the recovery boundary is unverified', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const props = (over = {}) => ({
+    weightEntries: [],
+    workoutNote: null,
+    notes: [],
+    successMessage: '',
+    onNavigate: jest.fn(),
+    loading: false,
+    ...over,
+  });
+
+  const hasText = (root, needle) => root.findAll(n => {
+    if (n.type !== 'Text') return false;
+    const flat = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
+    return flat.includes(needle);
+  }).length > 0;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+  });
+
+  afterEach(() => {
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('an unreadable recovery store paints nothing, rather than a dashboard that includes excluded work', async () => {
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === 'kilo_recovery_blocks' || key === 'kilo_recovery_block_weeks') {
+        throw new Error('storage unavailable');
+      }
+      return null;
+    });
+
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props()} />); });
+
+    // Neither the empty state nor any dashboard content: the population is not
+    // known to be correct yet, so Home stays in its existing loading branch.
+    expect(hasText(component.root, 'Welcome to Kilo')).toBe(false);
+    expect(hasText(component.root, 'Week')).toBe(false);
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('once the recovery read succeeds, Home paints as usual', async () => {
+    AsyncStorage.getItem.mockImplementation(async () => null);
+
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props()} />); });
+
+    expect(hasText(component.root, 'Welcome to Kilo')).toBe(true);
+
+    await render.act(async () => { component.unmount(); });
+  });
+});
+
+// The App-level call site for the same boundary. `importBackup` replaces the
+// recovery collections wholesale with no lifecycle action and no sync to
+// announce it, so the broadcast has to be explicit — its behavior is covered in
+// log-screen.test.js ("a restored local backup refreshes every mounted
+// subscriber"); this pins that App actually makes the call.
+describe('App.handleImport broadcasts the recovery reload', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  test('a successful import reloads recovery records alongside notes and weights', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
+    expect(src).toMatch(/import \{ reloadRecoveryBlocks \} from '\.\/hooks\/entries\/recoveryBlockHooks'/);
+    expect(src).toMatch(
+      /if \(result\.ok\) \{[\s\S]*?weightHook\.refresh\(\);[\s\S]*?noteHook\.refresh\(\);[\s\S]*?reloadRecoveryBlocks\(\);[\s\S]*?\}/
+    );
   });
 });

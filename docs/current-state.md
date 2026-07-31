@@ -427,6 +427,14 @@ The real native app path now has a modular React Native shell:
   filtered population, so the surfaces cannot disagree; the save path re-reads
   the boundary from storage at write time and, if that read fails, saves the
   note text while writing no classification rather than a possibly-leaky one.
+  The boundary is never published unverified: until the recovery records have
+  been read successfully at least once, Home and the Analytics 1K/overload
+  sections hold their existing loading state instead of painting aggregates
+  from an unread population, and a failed cold-start read retries on a bounded
+  schedule rather than waiting for an unrelated mutation. A restored local
+  backup replaces both recovery collections without any lifecycle action, so
+  import now broadcasts the same reload the lifecycle actions do and mounted
+  screens repopulate immediately.
   Deload exclusions are unchanged and independent: turning recovery inclusion
   on never re-admits a deload note to a signal that already excludes it. The
   read view now also

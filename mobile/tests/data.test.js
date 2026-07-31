@@ -3797,3 +3797,41 @@ describe('recoveryAnalyticsFilter: which notes reach normal analytics', () => {
     expect(filterNotesForNormalAnalytics(notes, new Set(['a'])).map(n => n.id)).toEqual(['b']);
   });
 });
+
+// ── #699 review: the boundary must be VERIFIED before it is published ────────
+
+describe('recoveryAnalyticsFilter: unverified boundary', () => {
+  const {
+    buildRecoveryAnalyticsFilter,
+    EMPTY_RECOVERY_ANALYTICS_FILTER,
+    PENDING_RECOVERY_ANALYTICS_FILTER,
+  } = require('../lib/data/recoveryAnalyticsFilter');
+
+  test('a verified read with no exclusions is ready; an unverified one is not', () => {
+    expect(buildRecoveryAnalyticsFilter([], []).ready).toBe(true);
+    expect(buildRecoveryAnalyticsFilter([], [], { ready: false }).ready).toBe(false);
+  });
+
+  test('"not read yet" and "nothing excluded" are the same empty inputs and must not be conflated', () => {
+    // Identical arguments, opposite meaning — only the flag separates them, so
+    // a consumer can tell "verified: nothing is excluded" from "unknown".
+    expect(buildRecoveryAnalyticsFilter([], [])).toBe(EMPTY_RECOVERY_ANALYTICS_FILTER);
+    expect(buildRecoveryAnalyticsFilter([], [], { ready: false }))
+      .toBe(PENDING_RECOVERY_ANALYTICS_FILTER);
+  });
+
+  test('an unverified filter hides nothing, so it can never remove an unrelated ordinary note', () => {
+    const notes = [{ id: 'a' }, { id: 'b' }];
+    const pending = buildRecoveryAnalyticsFilter([], [], { ready: false });
+    expect(pending.filterNotes(notes)).toBe(notes);
+    expect(pending.isNoteExcluded('a')).toBe(false);
+    expect(pending.excludedNoteIds.size).toBe(0);
+  });
+
+  test('ready: false wins over records that would otherwise resolve', () => {
+    const blocks = [{ id: 'rb1', include_in_normal_analytics: false, deleted_at: null }];
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: 'w1', deleted_at: null }];
+    expect(buildRecoveryAnalyticsFilter(blocks, weeks).hasExclusions).toBe(true);
+    expect(buildRecoveryAnalyticsFilter(blocks, weeks, { ready: false }).ready).toBe(false);
+  });
+});
