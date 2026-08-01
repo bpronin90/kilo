@@ -197,10 +197,15 @@ The real native app path now has a modular React Native shell:
   live `Progressing`, `Steady`, and `Regressing` overload counts mirrored from
   the current Analytics row contract, and a quiet `Full history and insights`
   link into Analytics. Since #717 the steady-state hero is also the entry point
-  for four cross-screen handoffs: the week label opens Log, the latest-weight
-  value opens Weight, the sparkline strip opens Analytics at its weight section,
-  and the `Exercise Progress` band opens Analytics at its strength section. The
-  `Full history and insights` link keeps its existing no-section behavior. The Home cards now share a consistent 24px internal
+  for four cross-screen handoffs, each carried by a visibly labeled control
+  rather than a silently pressable value: a `Log workout` action beside the week
+  label opens Log, a `Log weight` action under the latest-weight value opens
+  Weight, the `7-day rolling avg` sublabel beneath the sparkline opens Analytics
+  at its weight section, and the `Exercise Progress` band opens Analytics at its
+  strength section. The latest-weight value itself stays a plain non-pressable
+  hero metric, and the sparkline chart keeps sole ownership of its own
+  point-selection press handling. The `Full history and insights` link keeps its
+  existing no-section behavior. The Home cards now share a consistent 24px internal
   padding baseline while preserving the intentional visual hierarchy between
   the hero, goal, and 1K sections. The Weight Goal card renders only when a goal is set
   (`dashboardData.goalInfo !== null`) and now uses a `Goal: Bulking` /
@@ -958,15 +963,18 @@ also now preserves multiple
 titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with a responsive Kilo wordmark
-header, `Current Routine Progress` subtitle copy, a latest-weight summary that
-opens the Weight tab, a compact non-pressable `1k Club Progress` card, and a
-line-chart view of the 7-day rolling-average weight trend that opens the
-Analytics weight section. Alongside the "Full history and insights" CTA, which
-still opens Analytics at its default landing view with no section argument,
-Home→Analytics navigation now also includes the sparkline (weight section) and
-the `Exercise Progress` band (strength section). Analytics section targeting is
-delivered as a `section` plus a monotonic `sectionNonce`, so repeating the same
-handoff re-targets the section rather than being swallowed as an unchanged prop.
+header, `Current Routine Progress` subtitle copy, a latest-weight hero value with
+a labeled `Log weight` action beneath it, a compact non-pressable `1k Club
+Progress` card, and a line-chart view of the 7-day rolling-average weight trend
+whose `7-day rolling avg` sublabel opens the Analytics weight section. Alongside
+the "Full history and insights" CTA, which still opens Analytics at its default
+landing view with no section argument, Home→Analytics navigation now also
+includes the sparkline sublabel (weight section) and the `Exercise Progress`
+band (strength section). Analytics section targeting is delivered as a `section`
+plus a monotonic `sectionNonce`, so repeating the same handoff re-targets the
+section rather than being swallowed as an unchanged prop; the nonce advances
+only for explicit Analytics section requests, so unrelated tab navigation does
+not disturb the always-mounted memoized Analytics tree.
 The Weight tab's Trends card carries a `See full trends` link into the same
 Analytics weight section, and the Analytics no-tracked-exercises empty state
 carries a `Go to Log` link into Log. The native Log read

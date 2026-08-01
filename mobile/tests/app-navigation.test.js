@@ -359,6 +359,22 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     expect(second.sectionNonce).not.toBe(first.sectionNonce);
   });
 
+  test('unrelated tab navigation does not disturb the memoized Analytics tree', () => {
+    // Render isolation (#717 review): the nonce exists only to re-target a
+    // section. If it moved on every tab press it would change a prop on the
+    // always-mounted Analytics screen during navigation that has nothing to do
+    // with Analytics, forcing the hidden expensive subtree to reconcile.
+    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
+    const settled = lastAnalyticsRender();
+
+    renderer.act(() => { capturedTabPress('Weight'); });
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('More'); });
+    renderer.act(() => { capturedTabPress('Home'); });
+
+    expect(lastAnalyticsRender().sectionNonce).toBe(settled.sectionNonce);
+  });
+
   test('a tab press without a section target clears any previous section', () => {
     renderer.act(() => { capturedTabPress('Analytics', 'strength'); });
     expect(lastAnalyticsRender().section).toBe('strength');

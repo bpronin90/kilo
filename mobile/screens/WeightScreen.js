@@ -462,6 +462,7 @@ export function WeightScreen({
         testID="weight-see-full-trends"
         onPress={() => onNavigate?.('Analytics', 'weight')}
         style={styles.fullTrendsLink}
+        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel="See full trends"
         accessibilityHint="Opens the weight section of the Analytics tab"

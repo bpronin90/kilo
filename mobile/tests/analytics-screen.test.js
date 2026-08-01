@@ -703,6 +703,27 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenNthCalledWith(1, 'Log');
     expect(onNavigate).toHaveBeenCalledTimes(2);
   });
+
+  test.each([320, 375, 448])('at %idp the empty-state link keeps a >=44pt target', (width) => {
+    const rn = require('react-native');
+    const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({
+      width, height: 800, scale: 2, fontScale: 1,
+    });
+
+    const { component } = setupTargeting({ onNavigate: jest.fn() });
+    const link = component.root.findByProps({ testID: 'analytics-empty-log-link' });
+    const style = [].concat(link.props.style ?? []).reduce(
+      (acc, s) => (s ? Object.assign(acc, s) : acc),
+      {}
+    );
+
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
+    expect(link.props.hitSlop).not.toBeUndefined();
+    expect(style.height).toBeUndefined();
+    expect(link.findAll(n => n !== link && typeof n.props?.onPress === 'function')).toHaveLength(0);
+
+    spy.mockRestore();
+  });
 });
 
 // ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────

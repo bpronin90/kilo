@@ -361,7 +361,14 @@ function AppShell() {
     setSaveError('');
     setSaveSuccess('');
     setAnalyticsSection(section);
-    setAnalyticsSectionNonce((n) => n + 1);
+    // Only an explicit Analytics section request bumps the nonce. Bumping it on
+    // every tab press would change a prop on the always-mounted memoized
+    // Analytics tree during unrelated navigation (Home → Weight, Log → More),
+    // forcing that hidden and comparatively expensive subtree to reconcile and
+    // defeating the render isolation the memoized screens exist to provide.
+    if (tab === 'Analytics' && section) {
+      setAnalyticsSectionNonce((n) => n + 1);
+    }
     setActiveTab(tab);
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {

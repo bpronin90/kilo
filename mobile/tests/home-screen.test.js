@@ -530,6 +530,145 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
+  // --- Roadmap acceptance evidence: geometry, reading order, press ownership ---
+
+  const flatStyle = (node) => [].concat(node.props.style ?? []).reduce(
+    (acc, s) => (s ? Object.assign(acc, s) : acc),
+    {}
+  );
+
+  const HANDOFF_IDS = [
+    'home-current-routine-link',
+    'home-weight-action',
+    'home-strength-summary-link',
+    'home-weight-trend-link',
+  ];
+
+  // The three quiet inline controls, which carry an explicit 44pt minimum.
+  const INLINE_ACTION_IDS = [
+    'home-current-routine-link',
+    'home-weight-action',
+    'home-weight-trend-link',
+  ];
+
+  test.each([320, 375, 448])(
+    'at %idp every Home handoff renders with a >=44pt target',
+    async (width) => {
+      // HomeScreen's hero is width-agnostic by construction (flex + wrap, no
+      // fixed pixel widths), so the widths are driven through the window
+      // dimensions to prove no affordance drops out or shrinks its target.
+      const rn = require('react-native');
+      const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({
+        width, height: 800, scale: 2, fontScale: 1,
+      });
+
+      let local;
+      await render.act(async () => {
+        local = render.create(<HomeScreen {...populatedProps(jest.fn())} />);
+      });
+
+      for (const testID of INLINE_ACTION_IDS) {
+        const node = local.root.findByProps({ testID });
+        expect(node.props.accessibilityRole).toBe('button');
+        const style = flatStyle(node);
+        expect(style.minHeight).toBeGreaterThanOrEqual(44);
+        expect(node.props.hitSlop).not.toBeUndefined();
+      }
+
+      // The strength band is a large multi-row region rather than an inline
+      // control, so it clears the target through its own block geometry.
+      const band = local.root.findByProps({ testID: 'home-strength-summary-link' });
+      expect(band.props.accessibilityRole).toBe('button');
+      expect(band.findAllByType('Text').length).toBeGreaterThan(3);
+
+      await render.act(async () => { local.unmount(); });
+      spy.mockRestore();
+    }
+  );
+
+  test('the hero week row wraps rather than clipping under large text', () => {
+    // Large-text safety is structural: the label may shrink and the row may wrap
+    // the action to a second line, and no control declares a fixed height that
+    // would clip a scaled-up label.
+    const row = component.root.findByProps({ testID: 'home-current-routine-link' }).parent;
+    const rowStyle = flatStyle(row);
+    expect(rowStyle.flexWrap).toBe('wrap');
+
+    for (const testID of ['home-current-routine-link', 'home-weight-action', 'home-weight-trend-link']) {
+      const style = flatStyle(component.root.findByProps({ testID }));
+      expect(style.height).toBeUndefined();
+      expect(style.minHeight).toBe(44);
+    }
+  });
+
+  test('each handoff owns its press region exclusively — no nested press owners', () => {
+    // The sparkline chart owns an inner Pressable for point selection, so the
+    // Analytics-weight handoff must not wrap it (#717 review finding 1).
+    const { LineChart } = require('../components/UI');
+    const trendLink = component.root.findByProps({ testID: 'home-weight-trend-link' });
+    expect(trendLink.findAllByType(LineChart)).toHaveLength(0);
+
+    for (const testID of HANDOFF_IDS) {
+      const node = component.root.findByProps({ testID });
+      // No descendant of a handoff may itself be a press owner.
+      const nestedPressOwners = node.findAll(
+        n => n !== node && typeof n.props?.onPress === 'function'
+      );
+      expect(nestedPressOwners).toHaveLength(0);
+    }
+  });
+
+  test('screen-reader reading order follows the visual hero order', () => {
+    // A Pressable surfaces as both a composite and its host view, so collapse
+    // consecutive duplicates to get the accessibility focus sequence.
+    const order = component.root
+      .findAll(n => n.props?.accessibilityRole === 'button' && n.props?.testID)
+      .map(n => n.props.testID)
+      .filter(id => HANDOFF_IDS.includes(id))
+      .filter((id, i, all) => id !== all[i - 1]);
+
+    expect(order).toEqual([
+      'home-current-routine-link',
+      'home-weight-action',
+      'home-weight-trend-link',
+      'home-strength-summary-link',
+    ]);
+  });
+
+  test('every handoff exposes a visible label, not a silent press target', () => {
+    // Discoverability for sighted users (#717 review finding 4): the routine and
+    // weigh-in actions must read as actions on screen, not as inert captions.
+    const visibleText = (node) => node.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim())
+      .filter(Boolean);
+
+    expect(visibleText(component.root.findByProps({ testID: 'home-current-routine-link' })))
+      .toContain('Log workout');
+    expect(visibleText(component.root.findByProps({ testID: 'home-weight-action' })))
+      .toContain('Log weight');
+    expect(visibleText(component.root.findByProps({ testID: 'home-weight-trend-link' })))
+      .toContain('7-day rolling avg');
+    expect(visibleText(component.root.findByProps({ testID: 'home-strength-summary-link' })))
+      .toContain('Exercise Progress');
+  });
+
+  test('the hero keeps a single dominant metric alongside the new actions', () => {
+    // §8: the new controls are quiet inline actions; the latest-weight value
+    // remains the only hero-sized element and is no longer itself a press owner.
+    const heroValues = component.root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const style = flatStyle(n);
+      return style.fontWeight === '800' || style.fontSize >= 40;
+    });
+    for (const value of heroValues) {
+      let node = value.parent;
+      while (node) {
+        expect(node.props?.testID).not.toBe('home-weight-action');
+        node = node.parent;
+      }
+    }
+  });
+
   test('the existing full-insights link still reaches Analytics with no section', () => {
     const matches = component.root.findAll(n => {
       if (n.type !== 'Text') return false;

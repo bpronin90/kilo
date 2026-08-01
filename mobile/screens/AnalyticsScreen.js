@@ -415,6 +415,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
           testID="analytics-empty-log-link"
           onPress={() => onNavigate?.('Log')}
           style={styles.emptyTrackedLink}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Go to Log"
           accessibilityHint="Opens the Log tab so you can write a workout note"

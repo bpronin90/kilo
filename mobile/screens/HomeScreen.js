@@ -181,41 +181,56 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         <>
           {/* ══ TIER 1: Weekly Summary ══ */}
           <Card style={styles.weeklyHero}>
-            {/* #2 inline week label — also the current-routine handoff to Log (#717) */}
-            <Pressable
-              testID="home-current-routine-link"
-              onPress={() => onNavigate('Log')}
-              accessibilityRole="button"
-              accessibilityLabel="Log workout"
-              accessibilityHint="Opens the Log tab for your current routine"
-            >
+            {/* #2 inline week label, paired with a visible current-routine action
+                (#717 review): the week label states context, the labeled control
+                next to it is the actual press target, so the Log handoff is
+                discoverable to sighted users rather than a silently tappable
+                caption. The label itself is deliberately not a press owner. */}
+            <View style={styles.heroWeekRow}>
               <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
                 {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
               </Text>
-            </Pressable>
+              <Pressable
+                testID="home-current-routine-link"
+                onPress={() => onNavigate('Log')}
+                style={styles.heroInlineAction}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Log workout"
+                accessibilityHint="Opens the Log tab for your current routine"
+              >
+                <Text style={styles.heroInlineActionText}>Log workout</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
 
-            <Pressable
-              testID="home-weight-action"
-              onPress={() => onNavigate('Weight')}
-              accessibilityRole="button"
-              accessibilityLabel="Log weight"
-              accessibilityHint="Opens the Weight tab to log a weigh-in"
-            >
-              <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-                {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
-                {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
-              </Text>
-            </Pressable>
+            {/* The hero metric stays a plain, non-pressable value (§8): the
+                weigh-in action is the labeled control below it. */}
+            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
+              {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
+              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
+            </Text>
 
-            {/* #4 sparkline strip below weight — handoff to Analytics weight (#717) */}
-            <Pressable
-              testID="home-weight-trend-link"
-              onPress={() => onNavigate('Analytics', 'weight')}
-              style={styles.heroSparklineStrip}
-              accessibilityRole="button"
-              accessibilityLabel="See weight trends"
-              accessibilityHint="Opens the weight section of the Analytics tab"
-            >
+            <View style={styles.heroActionRow}>
+              <Pressable
+                testID="home-weight-action"
+                onPress={() => onNavigate('Weight')}
+                style={styles.heroInlineAction}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Log weight"
+                accessibilityHint="Opens the Weight tab to log a weigh-in"
+              >
+                <Text style={styles.heroInlineActionText}>Log weight</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
+
+            {/* #4 sparkline strip below weight. LineChart owns its own Pressable
+                for point selection, so the Analytics-weight handoff lives on the
+                labeled sublabel beneath it rather than wrapping the chart — one
+                press owner per region, no nested responders (#717 review). */}
+            <View style={styles.heroSparklineStrip}>
               <LineChart
                 data={displayChartSeries(dashboardData.weightSeries, unit)}
                 color={colors.textMuted}
@@ -223,8 +238,19 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 paddingHorizontal={0}
                 hideHeader
               />
-              <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
-            </Pressable>
+              <Pressable
+                testID="home-weight-trend-link"
+                onPress={() => onNavigate('Analytics', 'weight')}
+                style={styles.heroSparklineLink}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="See weight trends"
+                accessibilityHint="Opens the weight section of the Analytics tab"
+              >
+                <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
 
             {/* Classification band — strength-summary handoff to Analytics strength (#717) */}
             <Pressable
@@ -237,6 +263,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             >
               <View style={styles.classifSectionHeader}>
                 <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
               <View style={styles.classifRow}>
                 {[
@@ -347,11 +374,49 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 0,
     marginTop: 12,
   },
+  heroWeekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    // Narrow widths (320dp) with large text wrap the action under the label
+    // rather than letting either side clip.
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
   heroWeekLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
-    marginBottom: 12,
+    flexShrink: 1,
+  },
+  heroActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  // Quiet inline action shared by the routine and weigh-in handoffs. 44pt
+  // minimum target per the mobile touch-target rule, kept visually quiet so the
+  // hero metric remains the only dominant element (§8).
+  heroInlineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  heroInlineActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  heroSparklineLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 4,
   },
   heroWeightValue: {
     ...HeroMetric.hero,
@@ -375,8 +440,6 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
-    textAlign: 'right',
-    marginTop: 2,
   },
   classifSection: {
     borderTopWidth: 1,
@@ -385,6 +448,9 @@ const createStyles = (colors) => StyleSheet.create({
     marginBottom: 16,
   },
   classifSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   classifSectionLabel: {
