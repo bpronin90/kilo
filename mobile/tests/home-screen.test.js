@@ -705,16 +705,60 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     await render.act(async () => { local.unmount(); });
   });
 
-  test('chevrons mark explicit actions only, not the strength band', () => {
-    // Five chevrons in one card stopped signalling "action" (#717 review
-    // round 3). The strength band keeps its button role without one.
-    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+  test('every press target carries a visible affordance', () => {
+    // Owner override: dropping the strength band's chevron in an earlier round
+    // recreated the "silently pressable" defect, so both strength destinations
+    // now carry a filled pill. Every handoff must show something.
     const Svg = require('react-native-svg').default;
-    expect(band.findAllByType(Svg)).toHaveLength(0);
-    expect(band.props.accessibilityRole).toBe('button');
+    for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
+      const node = component.root.findByProps({ testID });
+      expect(node.props.accessibilityRole).toBe('button');
+      expect(node.findAllByType(Svg).length).toBeGreaterThan(0);
+    }
+  });
 
-    for (const testID of INLINE_ACTION_IDS) {
-      expect(component.root.findByProps({ testID }).findAllByType(Svg).length).toBeGreaterThan(0);
+  test('the two strength destinations share one affordance treatment', () => {
+    const visibleText = (node) => node.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim());
+
+    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+
+    // Same pill style on both, so they read as one family.
+    const pillStyle = (node) => {
+      const pill = node.findAll(n => {
+        const s = flatStyle(n);
+        return s.borderRadius === 999 && s.backgroundColor;
+      })[0];
+      return pill ? flatStyle(pill) : null;
+    };
+    expect(pillStyle(band)).not.toBeNull();
+    expect(pillStyle(oneK)).not.toBeNull();
+    expect(pillStyle(band).backgroundColor).toBe(pillStyle(oneK).backgroundColor);
+
+    // §12: each accessible label matches its own visible label exactly, and the
+    // two names stay distinct so a screen reader can tell them apart.
+    expect(visibleText(band)).toContain('See strength');
+    expect(band.props.accessibilityLabel).toBe('See strength');
+    expect(visibleText(oneK)).toContain('See 1K progress');
+    expect(oneK.props.accessibilityLabel).toBe('See 1K progress');
+  });
+
+  test('the 1K card reaches the Analytics strength section, repeatably', () => {
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+    render.act(() => { oneK.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+    render.act(() => { oneK.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
+  });
+
+  test('neither strength destination nests a press owner', () => {
+    // The pills are presentational; the band and the card stay the single press
+    // owners, which also keeps their hit areas large.
+    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
+      const node = component.root.findByProps({ testID });
+      expect(node.findAll(n => n !== node && typeof n.props?.onPress === 'function')).toHaveLength(0);
     }
   });
 

@@ -203,8 +203,11 @@ The real native app path now has a modular React Native shell:
   state and open Log and Weight respectively, a
   `See weight trends` action beneath the sparkline opens Analytics at its weight
   section, and the `Exercise Progress` band opens Analytics at its strength
-  section. Chevrons mark those explicit actions only; the `Exercise Progress`
-  band carries none. The latest-weight value itself stays a plain non-pressable
+  section, reached through a filled `See strength` pill in the band header. The
+  `1K Progress` card is likewise a handoff into the same Analytics strength
+  section, carrying a matching `See 1K progress` pill so the two strength
+  destinations read as one family; in both cases the pill is presentational and
+  the surrounding band or card is the single press owner. The latest-weight value itself stays a plain non-pressable
   hero metric, and the sparkline chart keeps sole ownership of its own
   point-selection press handling. With no weigh-ins recorded the hero slot reads
   `No weigh-in yet` and the empty sparkline is suppressed rather than leaving a
@@ -969,13 +972,14 @@ compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with a responsive Kilo wordmark
 header, `Current Routine Progress` subtitle copy, a latest-weight hero value with
 a dedicated row beneath it for the labeled `Log workout` and `Log weight`
-actions, a compact non-pressable `1k Club Progress` card, and a line-chart view
+actions, a compact `1k Club Progress` card that opens the Analytics strength
+section, and a line-chart view
 of the 7-day rolling-average weight trend
 followed by a labeled `See weight trends` action that opens the Analytics weight
 section. Alongside the "Full history and insights" CTA, which still opens
 Analytics at its default landing view with no section argument, Home→Analytics
-navigation now also includes that weight-trends action (weight section) and the
-`Exercise Progress` band (strength section). Analytics section targeting is delivered as a `section`
+navigation now also includes that weight-trends action (weight section), the
+`Exercise Progress` band, and the `1K Progress` card (both strength section). Analytics section targeting is delivered as a `section`
 plus a monotonic `sectionNonce`, so repeating the same handoff re-targets the
 section rather than being swallowed as an unchanged prop; the nonce advances
 only for explicit Analytics section requests, so unrelated tab navigation does

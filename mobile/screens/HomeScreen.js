@@ -281,14 +281,20 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               onPress={() => onNavigate('Analytics', 'strength')}
               style={styles.classifSection}
               accessibilityRole="button"
-              accessibilityLabel="See strength analytics"
+              accessibilityLabel="See strength"
               accessibilityHint="Opens the strength section of the Analytics tab"
             >
               <View style={styles.classifSectionHeader}>
-                {/* No chevron here: chevrons are reserved for the explicitly
-                    labeled actions, so they keep signalling "this is an action"
-                    instead of appearing five times in one card (#717 review). */}
                 <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
+                {/* Filled pill, not a quiet hint: this band is a live press
+                    target, so it needs an unmistakable visual affordance or it
+                    reproduces the "silently pressable" defect. The pill is
+                    presentational — the whole band stays the single press owner,
+                    so there is no nested responder and the hit area is the band. */}
+                <View style={styles.sectionActionPill}>
+                  <Text style={styles.sectionActionPillText}>See strength</Text>
+                  <Svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={colors.chipText} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                </View>
               </View>
               <View style={styles.classifRow}>
                 {[
@@ -359,8 +365,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           })() : null}
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
+          {/* Handoff to the Analytics strength section, which is where the 1K
+              detail lives (owner scope override on #717). Same pill treatment as
+              the Exercise Progress band so the two strength destinations read as
+              one family; the card is the single press owner. */}
+          <Pressable
+            testID="home-one-k-link"
+            onPress={() => onNavigate('Analytics', 'strength')}
+            accessibilityRole="button"
+            accessibilityLabel="See 1K progress"
+            accessibilityHint="Opens the strength section of the Analytics tab"
+          >
           <Card style={styles.oneKCard}>
-            <Text style={styles.oneKLabel}>1K Progress</Text>
+            <View style={styles.oneKHeader}>
+              <Text style={styles.oneKLabel}>1K Progress</Text>
+              <View style={styles.sectionActionPill}>
+                <Text style={styles.sectionActionPillText}>See 1K progress</Text>
+                <Svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={colors.chipText} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
+            </View>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
@@ -388,6 +411,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </View>
             </View>
           </Card>
+          </Pressable>
         </>
       )}
     </ScreenShell>
@@ -500,7 +524,28 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    rowGap: 8,
+    columnGap: 12,
     marginBottom: 12,
+  },
+  // Shared affordance for the two strength destinations (Exercise Progress and
+  // 1K Progress) so they read as one family. Filled chip tokens carry documented
+  // contrast in both appearance modes; it stays a chip rather than a hero-scale
+  // element so it cannot compete with the card's dominant metric (§8).
+  sectionActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.chipBackground,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  sectionActionPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.chipText,
   },
   classifSectionLabel: {
     fontSize: 12,
@@ -616,12 +661,21 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 24,
     alignItems: 'center',
   },
+  oneKHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    rowGap: 8,
+    columnGap: 12,
+  },
   oneKLabel: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
+    flexShrink: 1,
   },
   oneKHero: {
     alignItems: 'center',
