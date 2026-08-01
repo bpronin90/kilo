@@ -1403,12 +1403,9 @@ describe('WeightScreen "See full trends" handoff (#717)', () => {
     expect(labels).toContain('See full trends');
   });
 
-  test.each([320, 375, 448])('at %idp the link keeps a >=44pt target and no nested press owner', (width) => {
-    const rn = require('react-native');
-    const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({
-      width, height: 800, scale: 2, fontScale: 1,
-    });
-
+  test('the link declares a >=44pt target and owns its press region', () => {
+    // Structural guard only; react-test-renderer runs no layout. Rendered
+    // validation at 320/375/448dp with enlarged text is in artifacts/717-d4/.
     const link = renderWithNavigate(jest.fn());
     const style = [].concat(link.props.style ?? []).reduce(
       (acc, s) => (s ? Object.assign(acc, s) : acc),
@@ -1420,8 +1417,6 @@ describe('WeightScreen "See full trends" handoff (#717)', () => {
     // No fixed height, so a scaled-up label grows rather than clipping.
     expect(style.height).toBeUndefined();
     expect(link.findAll(n => n !== link && typeof n.props?.onPress === 'function')).toHaveLength(0);
-
-    spy.mockRestore();
   });
 
   test('without a navigation handler the link is inert rather than throwing', () => {

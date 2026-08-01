@@ -103,6 +103,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     : weekTone === 'success' ? colors.success
     : null;
 
+  // Whether there is any rolling-average series to plot at all.
+  const hasWeightSeries = Array.isArray(dashboardData.weightSeries)
+    && dashboardData.weightSeries.length > 0;
+
   // Gate the whole first paint on every data source Home renders, not just
   // weight/notes: weight goal and tracked lifts feed the dashboard too, so
   // including their loading prevents those sections from popping in after
@@ -204,14 +208,19 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </Pressable>
             </View>
 
-            {/* The hero metric stays a plain, non-pressable value (§8): the
-                weigh-in action is the labeled control below it. */}
-            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-              {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
-              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
-            </Text>
-
-            <View style={styles.heroActionRow}>
+            {/* The hero metric stays a plain, non-pressable value (§8), with the
+                weigh-in action adjacent to it rather than stranded on the far
+                side of a stretched row. With no weigh-in yet the slot reads as a
+                short muted sentence instead of a bare dash over dead space. */}
+            <View style={styles.heroWeightRow}>
+              {dashboardData.latestWeight ? (
+                <Text style={styles.heroWeightValue}>
+                  {formatBodyweightValue(dashboardData.latestWeight, unit)}
+                  <Text style={styles.heroWeightUnit}> {unit}</Text>
+                </Text>
+              ) : (
+                <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
+              )}
               <Pressable
                 testID="home-weight-action"
                 onPress={() => onNavigate('Weight')}
@@ -227,27 +236,38 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             </View>
 
             {/* #4 sparkline strip below weight. LineChart owns its own Pressable
-                for point selection, so the Analytics-weight handoff lives on the
-                labeled sublabel beneath it rather than wrapping the chart — one
-                press owner per region, no nested responders (#717 review). */}
+                for point selection, so the Analytics-weight handoff is a separate
+                explicit control beneath the chart — one press owner per region,
+                no nested responders. The chart caption stays a plain caption; the
+                handoff reads as an action ("See weight trends") so it is not
+                mistaken for chart furniture (#717 review). */}
             <View style={styles.heroSparklineStrip}>
-              <LineChart
-                data={displayChartSeries(dashboardData.weightSeries, unit)}
-                color={colors.textMuted}
-                height={44}
-                paddingHorizontal={0}
-                hideHeader
-              />
+              {/* With no weigh-ins there is no trend to draw, so the caption and
+                  the chart's own "Not enough data" placeholder are suppressed
+                  rather than left as dead space in the primary card. The handoff
+                  itself stays available. */}
+              {hasWeightSeries ? (
+                <>
+                  <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+                  <LineChart
+                    data={displayChartSeries(dashboardData.weightSeries, unit)}
+                    color={colors.textMuted}
+                    height={44}
+                    paddingHorizontal={0}
+                    hideHeader
+                  />
+                </>
+              ) : null}
               <Pressable
                 testID="home-weight-trend-link"
                 onPress={() => onNavigate('Analytics', 'weight')}
-                style={styles.heroSparklineLink}
+                style={styles.heroInlineAction}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="See weight trends"
                 accessibilityHint="Opens the weight section of the Analytics tab"
               >
-                <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+                <Text style={styles.heroInlineActionText}>See weight trends</Text>
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
@@ -262,8 +282,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               accessibilityHint="Opens the strength section of the Analytics tab"
             >
               <View style={styles.classifSectionHeader}>
+                {/* No chevron here: chevrons are reserved for the explicitly
+                    labeled actions, so they keep signalling "this is an action"
+                    instead of appearing five times in one card (#717 review). */}
                 <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
               <View style={styles.classifRow}>
                 {[
@@ -374,15 +396,17 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 0,
     marginTop: 12,
   },
+  // Label and its action sit next to each other. `space-between` stretched them
+  // to opposite edges of the card, so on a wide viewport `Week 4` and
+  // `Log workout` read as two unrelated things (#717 review round 3).
   heroWeekRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    // Narrow widths (320dp) with large text wrap the action under the label
-    // rather than letting either side clip.
+    // Narrow widths with large text wrap the action under the label rather than
+    // letting either side clip.
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    columnGap: 12,
+    marginBottom: 4,
   },
   heroWeekLabel: {
     fontSize: 12,
@@ -390,10 +414,13 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     flexShrink: 1,
   },
-  heroActionRow: {
+  heroWeightRow: {
     flexDirection: 'row',
+    // Baseline would misalign a 48px value against a 13px action, so the action
+    // is centered against the value's box.
     alignItems: 'center',
-    marginTop: 4,
+    flexWrap: 'wrap',
+    columnGap: 12,
   },
   // Quiet inline action shared by the routine and weigh-in handoffs. 44pt
   // minimum target per the mobile touch-target rule, kept visually quiet so the
@@ -410,21 +437,19 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
   },
-  heroSparklineLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    minHeight: 44,
-    paddingHorizontal: 4,
-  },
   heroWeightValue: {
     ...HeroMetric.hero,
     color: colors.accent,
+    // Allow the value to give up width inside the row so an enlarged metric on a
+    // 320dp screen stays inside the card instead of painting past its edge.
+    flexShrink: 1,
+    minWidth: 0,
   },
+  // The no-data hero is a short muted sentence, not a hero-sized dash: at hero
+  // scale a lone glyph left a visible hole in the card's dominant slot.
   heroWeightPlaceholder: {
-    ...HeroMetric.hero,
-    fontWeight: '400',
+    fontSize: 20,
+    fontWeight: '600',
     color: colors.textMuted,
   },
   heroWeightUnit: {
@@ -433,13 +458,14 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
   },
   heroSparklineStrip: {
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: 4,
+    marginBottom: 12,
   },
   heroSparklineSublabel: {
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+    marginBottom: 2,
   },
   classifSection: {
     borderTopWidth: 1,
@@ -462,9 +488,22 @@ const createStyles = (colors) => StyleSheet.create({
   },
   classifRow: {
     flexDirection: 'row',
+    // At 320dp with an enlarged text setting, `Progressing` / `Regressing` are
+    // single words wider than a one-third column, so fixed thirds made the three
+    // labels collide. Wrapping lets a column drop to the next line instead
+    // (verified by rendered capture at 320/375/448dp, #717 review round 2).
+    flexWrap: 'wrap',
+    rowGap: 12,
   },
   classifCol: {
-    flex: 1,
+    // Content-sized rather than fixed thirds. A static basis cannot tell default
+    // text from enlarged text: sized for the large case it wrapped at default
+    // 375dp, sized for the default case the enlarged label overran its column.
+    // Sizing to content keeps all three on one row whenever they fit and wraps
+    // only when they genuinely do not (verified by rendered capture).
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
     alignItems: 'center',
     gap: 5,
   },
@@ -483,7 +522,8 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 14,
+    // No fixed lineHeight: a scaled-up label must grow its own line box rather
+    // than overflow a 14px one.
   },
   heroFooter: {
     alignItems: 'center',

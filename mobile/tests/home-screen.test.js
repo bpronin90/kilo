@@ -530,7 +530,14 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  // --- Roadmap acceptance evidence: geometry, reading order, press ownership ---
+  // --- Static style/structure guards ---
+  //
+  // Scope note: react-test-renderer does not run React Native layout, so these
+  // are regression guards on the declared style and structure contract, NOT
+  // rendered validation. Actual rendered validation at 320/375/448dp with an
+  // enlarged text setting — real geometry, clipping/overlap detection,
+  // screenshots, and browser accessibility/focus order — is produced by the
+  // capture harness against the Expo web build; see artifacts/717-d4/.
 
   const flatStyle = (node) => [].concat(node.props.style ?? []).reduce(
     (acc, s) => (s ? Object.assign(acc, s) : acc),
@@ -551,17 +558,9 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     'home-weight-trend-link',
   ];
 
-  test.each([320, 375, 448])(
-    'at %idp every Home handoff renders with a >=44pt target',
-    async (width) => {
-      // HomeScreen's hero is width-agnostic by construction (flex + wrap, no
-      // fixed pixel widths), so the widths are driven through the window
-      // dimensions to prove no affordance drops out or shrinks its target.
-      const rn = require('react-native');
-      const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({
-        width, height: 800, scale: 2, fontScale: 1,
-      });
-
+  test(
+    'every Home handoff declares a >=44pt minimum target and a button role',
+    async () => {
       let local;
       await render.act(async () => {
         local = render.create(<HomeScreen {...populatedProps(jest.fn())} />);
@@ -582,14 +581,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       expect(band.findAllByType('Text').length).toBeGreaterThan(3);
 
       await render.act(async () => { local.unmount(); });
-      spy.mockRestore();
     }
   );
 
-  test('the hero week row wraps rather than clipping under large text', () => {
-    // Large-text safety is structural: the label may shrink and the row may wrap
-    // the action to a second line, and no control declares a fixed height that
-    // would clip a scaled-up label.
+  test('no handoff declares a fixed height that a scaled label could overflow', () => {
+    // Structural guard only — the rendered proof that nothing actually clips at
+    // 320/375/448dp under enlarged text is in artifacts/717-d4/.
     const row = component.root.findByProps({ testID: 'home-current-routine-link' }).parent;
     const rowStyle = flatStyle(row);
     expect(rowStyle.flexWrap).toBe('wrap');
@@ -618,9 +615,12 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('screen-reader reading order follows the visual hero order', () => {
+  test('handoffs appear in the intended order in the rendered tree', () => {
+    // Structural guard. Real screen-reader evidence — Chromium accessibility
+    // tree plus actual keyboard focus traversal — is in
+    // artifacts/717-d4/ax-order-375.json.
     // A Pressable surfaces as both a composite and its host view, so collapse
-    // consecutive duplicates to get the accessibility focus sequence.
+    // consecutive duplicates.
     const order = component.root
       .findAll(n => n.props?.accessibilityRole === 'button' && n.props?.testID)
       .map(n => n.props.testID)
@@ -646,8 +646,10 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       .toContain('Log workout');
     expect(visibleText(component.root.findByProps({ testID: 'home-weight-action' })))
       .toContain('Log weight');
+    // An explicit action label, not the chart caption: "7-day rolling avg" read
+    // as chart furniture rather than something tappable (#717 review round 3).
     expect(visibleText(component.root.findByProps({ testID: 'home-weight-trend-link' })))
-      .toContain('7-day rolling avg');
+      .toContain('See weight trends');
     expect(visibleText(component.root.findByProps({ testID: 'home-strength-summary-link' })))
       .toContain('Exercise Progress');
   });
@@ -667,6 +669,60 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
         node = node.parent;
       }
     }
+  });
+
+  test('with no weigh-ins the hero degrades to a labeled state, not an empty slot', async () => {
+    // The owner reported a bare "—" hero over dead space. With no weigh-ins the
+    // hero reads as a short sentence and the empty sparkline is suppressed,
+    // while the weigh-in handoff stays available.
+    let local;
+    await render.act(async () => {
+      local = render.create(
+        <HomeScreen {...populatedProps(jest.fn())} weightEntries={[]} />
+      );
+    });
+
+    // Scoped to the hero row: the unrelated 1K card legitimately shows em-dashes
+    // for untracked lifts.
+    const heroRow = local.root.findByProps({ testID: 'home-weight-action' }).parent;
+    const heroTexts = heroRow.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim());
+    expect(heroTexts).toContain('No weigh-in yet');
+    expect(heroTexts).not.toContain('—');
+
+    // Chart caption suppressed when there is no series to plot.
+    const allTexts = local.root.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim());
+    expect(allTexts).not.toContain('7-day rolling avg');
+    // The handoffs are still reachable in the no-data state.
+    expect(local.root.findByProps({ testID: 'home-weight-action' })).toBeTruthy();
+    expect(local.root.findByProps({ testID: 'home-weight-trend-link' })).toBeTruthy();
+
+    await render.act(async () => { local.unmount(); });
+  });
+
+  test('chevrons mark explicit actions only, not the strength band', () => {
+    // Five chevrons in one card stopped signalling "action" (#717 review
+    // round 3). The strength band keeps its button role without one.
+    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+    const Svg = require('react-native-svg').default;
+    expect(band.findAllByType(Svg)).toHaveLength(0);
+    expect(band.props.accessibilityRole).toBe('button');
+
+    for (const testID of INLINE_ACTION_IDS) {
+      expect(component.root.findByProps({ testID }).findAllByType(Svg).length).toBeGreaterThan(0);
+    }
+  });
+
+  test('each label sits in the same row as the action that acts on it', () => {
+    // `space-between` stretched label and action to opposite card edges on wide
+    // viewports, so they read as unrelated. Rendered proof of the 12px pairing
+    // gap at 320/375/448/800dp is in artifacts/717-d4/geometry.json.
+    const weekRow = component.root.findByProps({ testID: 'home-current-routine-link' }).parent;
+    expect(flatStyle(weekRow).justifyContent).toBeUndefined();
+    const weightRow = component.root.findByProps({ testID: 'home-weight-action' }).parent;
+    expect(flatStyle(weightRow).justifyContent).toBeUndefined();
+    expect(flatStyle(weightRow).flexDirection).toBe('row');
   });
 
   test('the existing full-insights link still reaches Analytics with no section', () => {

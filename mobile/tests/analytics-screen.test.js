@@ -704,12 +704,9 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(onNavigate).toHaveBeenCalledTimes(2);
   });
 
-  test.each([320, 375, 448])('at %idp the empty-state link keeps a >=44pt target', (width) => {
-    const rn = require('react-native');
-    const spy = jest.spyOn(rn, 'useWindowDimensions').mockReturnValue({
-      width, height: 800, scale: 2, fontScale: 1,
-    });
-
+  test('the empty-state link declares a >=44pt target and owns its press region', () => {
+    // Structural guard only; react-test-renderer runs no layout. Rendered
+    // validation at 320/375/448dp with enlarged text is in artifacts/717-d4/.
     const { component } = setupTargeting({ onNavigate: jest.fn() });
     const link = component.root.findByProps({ testID: 'analytics-empty-log-link' });
     const style = [].concat(link.props.style ?? []).reduce(
@@ -721,8 +718,6 @@ describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
     expect(link.props.hitSlop).not.toBeUndefined();
     expect(style.height).toBeUndefined();
     expect(link.findAll(n => n !== link && typeof n.props?.onPress === 'function')).toHaveLength(0);
-
-    spy.mockRestore();
   });
 });
 
