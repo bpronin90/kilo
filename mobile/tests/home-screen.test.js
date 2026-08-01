@@ -566,19 +566,15 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
         local = render.create(<HomeScreen {...populatedProps(jest.fn())} />);
       });
 
-      for (const testID of INLINE_ACTION_IDS) {
+      // Every handoff is now a compact labeled row, so they all declare the
+      // same minimum target rather than one relying on block geometry.
+      for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
         const node = local.root.findByProps({ testID });
         expect(node.props.accessibilityRole).toBe('button');
         const style = flatStyle(node);
         expect(style.minHeight).toBeGreaterThanOrEqual(44);
         expect(node.props.hitSlop).not.toBeUndefined();
       }
-
-      // The strength band is a large multi-row region rather than an inline
-      // control, so it clears the target through its own block geometry.
-      const band = local.root.findByProps({ testID: 'home-strength-summary-link' });
-      expect(band.props.accessibilityRole).toBe('button');
-      expect(band.findAllByType('Text').length).toBeGreaterThan(3);
 
       await render.act(async () => { local.unmount(); });
     }
@@ -717,31 +713,50 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('the two strength destinations share one affordance treatment', () => {
+  test('the two strength destinations use the established chevron treatment', () => {
     const visibleText = (node) => node.findAllByType('Text')
       .map(t => String(t.props.children ?? '').trim());
 
     const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
     const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
 
-    // Same pill style on both, so they read as one family.
-    const pillStyle = (node) => {
-      const pill = node.findAll(n => {
+    // No filled-pill treatment: a chip background read as noisy, so these match
+    // the plain `Full history and insights ›` control already on this screen.
+    for (const node of [band, oneK]) {
+      const filled = node.findAll(n => {
         const s = flatStyle(n);
-        return s.borderRadius === 999 && s.backgroundColor;
-      })[0];
-      return pill ? flatStyle(pill) : null;
-    };
-    expect(pillStyle(band)).not.toBeNull();
-    expect(pillStyle(oneK)).not.toBeNull();
-    expect(pillStyle(band).backgroundColor).toBe(pillStyle(oneK).backgroundColor);
+        return s.backgroundColor !== undefined || s.borderRadius === 999;
+      });
+      expect(filled).toHaveLength(0);
+      expect(flatStyle(node).minHeight).toBe(44);
+      expect(node.props.hitSlop).not.toBeUndefined();
+    }
 
     // §12: each accessible label matches its own visible label exactly, and the
     // two names stay distinct so a screen reader can tell them apart.
-    expect(visibleText(band)).toContain('See strength');
-    expect(band.props.accessibilityLabel).toBe('See strength');
-    expect(visibleText(oneK)).toContain('See 1K progress');
-    expect(oneK.props.accessibilityLabel).toBe('See 1K progress');
+    expect(visibleText(band)).toContain('Exercise Progress');
+    expect(band.props.accessibilityLabel).toBe('Exercise Progress');
+    expect(visibleText(oneK)).toContain('1K Progress');
+    expect(oneK.props.accessibilityLabel).toBe('1K Progress');
+  });
+
+  test('only the section header row is tappable, not the metrics beneath', () => {
+    // Making the whole band and the whole 1K card tappable was too much
+    // clickable area: the counts, chart, and per-lift grid are data, not
+    // controls.
+    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+    const bandText = band.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
+    expect(bandText).toContain('Exercise Progress');
+    for (const label of ['Progressing', 'Steady', 'Regressing']) {
+      expect(bandText).not.toContain(label);
+    }
+
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+    const oneKText = oneK.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
+    expect(oneKText).toContain('1K Progress');
+    for (const label of ['Squats', 'Bench', 'Deadlifts']) {
+      expect(oneKText).not.toContain(label);
+    }
   });
 
   test('the 1K card reaches the Analytics strength section, repeatably', () => {

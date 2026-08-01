@@ -275,27 +275,25 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </Pressable>
             </View>
 
-            {/* Classification band — strength-summary handoff to Analytics strength (#717) */}
-            <Pressable
-              testID="home-strength-summary-link"
-              onPress={() => onNavigate('Analytics', 'strength')}
-              style={styles.classifSection}
-              accessibilityRole="button"
-              accessibilityLabel="See strength"
-              accessibilityHint="Opens the strength section of the Analytics tab"
-            >
-              <View style={styles.classifSectionHeader}>
+            {/* Classification band — strength-summary handoff to Analytics
+                strength (#717). Only the header row is the press target: the
+                counts beneath are data, not a control, so making the whole band
+                tappable was too much clickable area. The affordance is the plain
+                chevron already used by `Full history and insights` on this same
+                screen — no fill, no border. */}
+            <View style={styles.classifSection}>
+              <Pressable
+                testID="home-strength-summary-link"
+                onPress={() => onNavigate('Analytics', 'strength')}
+                style={styles.sectionHeaderAction}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="Exercise Progress"
+                accessibilityHint="Opens the strength section of the Analytics tab"
+              >
                 <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
-                {/* Filled pill, not a quiet hint: this band is a live press
-                    target, so it needs an unmistakable visual affordance or it
-                    reproduces the "silently pressable" defect. The pill is
-                    presentational — the whole band stays the single press owner,
-                    so there is no nested responder and the hit area is the band. */}
-                <View style={styles.sectionActionPill}>
-                  <Text style={styles.sectionActionPillText}>See strength</Text>
-                  <Svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={colors.chipText} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
-                </View>
-              </View>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
               <View style={styles.classifRow}>
                 {[
                   { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
@@ -309,7 +307,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                   </View>
                 ))}
               </View>
-            </Pressable>
+            </View>
 
             {/* #7 quiet CTA */}
             <View style={styles.heroFooter}>
@@ -366,24 +364,23 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
           {/* Handoff to the Analytics strength section, which is where the 1K
-              detail lives (owner scope override on #717). Same pill treatment as
-              the Exercise Progress band so the two strength destinations read as
-              one family; the card is the single press owner. */}
-          <Pressable
-            testID="home-one-k-link"
-            onPress={() => onNavigate('Analytics', 'strength')}
-            accessibilityRole="button"
-            accessibilityLabel="See 1K progress"
-            accessibilityHint="Opens the strength section of the Analytics tab"
-          >
+              detail lives (owner scope override on #717). The header row alone
+              is the press target — the total, progress bar, and per-lift grid
+              stay plain data — and it uses the same quiet chevron affordance as
+              the Exercise Progress header. */}
           <Card style={styles.oneKCard}>
-            <View style={styles.oneKHeader}>
+            <Pressable
+              testID="home-one-k-link"
+              onPress={() => onNavigate('Analytics', 'strength')}
+              style={styles.sectionHeaderAction}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel="1K Progress"
+              accessibilityHint="Opens the strength section of the Analytics tab"
+            >
               <Text style={styles.oneKLabel}>1K Progress</Text>
-              <View style={styles.sectionActionPill}>
-                <Text style={styles.sectionActionPillText}>See 1K progress</Text>
-                <Svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={colors.chipText} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
-              </View>
-            </View>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+            </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
@@ -411,7 +408,6 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </View>
             </View>
           </Card>
-          </Pressable>
         </>
       )}
     </ScreenShell>
@@ -520,32 +516,20 @@ const createStyles = (colors) => StyleSheet.create({
     paddingTop: 16,
     marginBottom: 16,
   },
-  classifSectionHeader: {
+  // Shared affordance for the two strength destinations (Exercise Progress and
+  // 1K Progress): the section label plus the same plain chevron that
+  // `Full history and insights` already uses on this screen. No fill and no
+  // border — a filled pill read as noisy, and no chevron at all read as not
+  // pressable. The row itself is the press target, so the metrics beneath stay
+  // untappable.
+  sectionHeaderAction: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    rowGap: 8,
+    rowGap: 4,
     columnGap: 12,
-    marginBottom: 12,
-  },
-  // Shared affordance for the two strength destinations (Exercise Progress and
-  // 1K Progress) so they read as one family. Filled chip tokens carry documented
-  // contrast in both appearance modes; it stays a chip rather than a hero-scale
-  // element so it cannot compete with the card's dominant metric (§8).
-  sectionActionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.chipBackground,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  sectionActionPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.chipText,
+    minHeight: 44,
   },
   classifSectionLabel: {
     fontSize: 12,
@@ -660,14 +644,6 @@ const createStyles = (colors) => StyleSheet.create({
   oneKCard: {
     padding: 24,
     alignItems: 'center',
-  },
-  oneKHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    rowGap: 8,
-    columnGap: 12,
   },
   oneKLabel: {
     fontSize: 12,
