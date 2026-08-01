@@ -77,7 +77,9 @@ Log answers: **What am I doing in the gym right now?**
 - The active routine remains the hero.
 - Other routines collapse to a count plus latest-summary row and expand in place.
 - `+ New routine` and `Start recovery block` live inside expanded routine management.
-- A user who has never used Recovery sees no Recovery UI.
+- A user who has never used Recovery sees no Recovery lifecycle/history section;
+  eligible users can still find `Start recovery block` inside expanded routine
+  management.
 - A user with only completed Recovery history sees no Recovery UI on Log.
 - An active, pending, failed, or stale Recovery state remains visible because
   it affects the current workout.
@@ -273,9 +275,11 @@ week still opens its exact note.
   double-tap hints while preserving the gesture.
 - **Out of scope:** completed-history deletion, Analytics controls, Deload
   header action relocation, Recovery semantics, or tab behavior.
-- **Acceptance:** non-adopters see no Recovery UI; active/pending/error/stale
-  states remain visible; history remains until D1b; primary actions remain one
-  tap; collapsed routine management exposes no actions.
+- **Acceptance:** non-adopters see no Recovery lifecycle/history section;
+  eligible users retain the `Start recovery block` entry point inside expanded
+  routine management; active/pending/error/stale states remain visible; history
+  remains until D1b; primary actions remain one tap; collapsed routine
+  management exposes no actions.
 - **Verification:** every D0 Recovery state; 0/1/many routines; active/completed
   combinations; confirmation re-check; responsive, large-text, collapse, and
   screen-reader state.
