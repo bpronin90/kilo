@@ -106,6 +106,11 @@ function AppShell() {
   const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
+  // Section targeting must re-fire even when the same section is requested twice
+  // in a row (#717). `section` alone is a stable prop, so a second "Analytics →
+  // weight" handoff would not re-run Analytics' scroll effect. This monotonic
+  // nonce makes every navigation request distinct without changing tab behavior.
+  const [analyticsSectionNonce, setAnalyticsSectionNonce] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
@@ -356,6 +361,7 @@ function AppShell() {
     setSaveError('');
     setSaveSuccess('');
     setAnalyticsSection(section);
+    setAnalyticsSectionNonce((n) => n + 1);
     setActiveTab(tab);
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {
@@ -602,11 +608,17 @@ function AppShell() {
             saving={weightSaving}
             weightDateEditEnabled={weightDateEditEnabled}
             isActive={activeTab === 'Weight'}
+            onNavigate={handleTabPress}
             registerBackConsumer={registerBackConsumer}
           />
         </View>
         <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
-          <MemoAnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
+          <MemoAnalyticsScreen
+            multiplier={fatigueMultiplier}
+            section={analyticsSection}
+            sectionNonce={analyticsSectionNonce}
+            onNavigate={handleTabPress}
+          />
         </View>
         <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MemoMoreScreen

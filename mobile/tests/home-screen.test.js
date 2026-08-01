@@ -434,6 +434,116 @@ describe('HomeScreen holds its loading state while the recovery boundary is unve
   });
 });
 
+// Home's four cross-screen handoffs (#717). The populated dashboard already shows
+// the information a user needs to continue; these press targets carry them to the
+// destination instead of making them re-find it by tab.
+describe('HomeScreen daily-loop handoffs (#717)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+
+  const populatedProps = (onNavigate) => ({
+    weightEntries: [
+      { id: 'w1', date: '2026-05-30', logged_at: '2026-05-30T08:00:00Z', weight_value: 185, weight_unit: 'lb', note: '' },
+      { id: 'w2', date: '2026-05-31', logged_at: '2026-05-31T08:00:00Z', weight_value: 184, weight_unit: 'lb', note: '' },
+    ],
+    workoutNote: NOTE,
+    notes: [NOTE],
+    successMessage: '',
+    onNavigate,
+    loading: false,
+  });
+
+  const byTestID = (root, testID) => root.findByProps({ testID });
+
+  let onNavigate;
+  let component;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+    onNavigate = jest.fn();
+    await render.act(async () => {
+      component = render.create(<HomeScreen {...populatedProps(onNavigate)} />);
+    });
+  });
+
+  afterEach(async () => {
+    if (component) await render.act(async () => { component.unmount(); });
+    component = null;
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('the current-routine header goes to Log', () => {
+    render.act(() => { byTestID(component.root, 'home-current-routine-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Log');
+  });
+
+  test('the weight action goes to Weight', () => {
+    render.act(() => { byTestID(component.root, 'home-weight-action').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Weight');
+  });
+
+  test('the strength summary goes to the Analytics strength section', () => {
+    render.act(() => { byTestID(component.root, 'home-strength-summary-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+  });
+
+  test('the weight sparkline goes to the Analytics weight section', () => {
+    render.act(() => { byTestID(component.root, 'home-weight-trend-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'weight');
+  });
+
+  test('repeating a handoff issues it again', () => {
+    const link = byTestID(component.root, 'home-weight-trend-link');
+    render.act(() => { link.props.onPress(); });
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'weight');
+  });
+
+  test('each handoff exposes a button role and an accessible label', () => {
+    for (const testID of [
+      'home-current-routine-link',
+      'home-weight-action',
+      'home-strength-summary-link',
+      'home-weight-trend-link',
+    ]) {
+      const node = byTestID(component.root, testID);
+      expect(node.props.accessibilityRole).toBe('button');
+      expect(typeof node.props.accessibilityLabel).toBe('string');
+      expect(node.props.accessibilityLabel.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('the existing full-insights link still reaches Analytics with no section', () => {
+    const matches = component.root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const flat = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
+      return flat.includes('Full history and insights');
+    });
+    expect(matches.length).toBeGreaterThan(0);
+    let node = matches[0].parent;
+    while (node && typeof node.props?.onPress !== 'function') node = node.parent;
+    render.act(() => { node.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics');
+  });
+});
+
 // The App-level call site for the same boundary. `importBackup` replaces the
 // recovery collections wholesale with no lifecycle action and no sync to
 // announce it, so the broadcast has to be explicit — its behavior is covered in

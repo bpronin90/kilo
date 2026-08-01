@@ -42,10 +42,19 @@ jest.mock('../screens/HomeScreen', () => {
   const { View } = require('react-native');
   return { HomeScreen: () => React.createElement(View) };
 });
+// Section-targeting handoffs (#717): the shell owns which Analytics section a
+// handoff requests, so record every props render to assert both the section and
+// that a repeated same-section request is still delivered as a distinct request.
+const analyticsRenders = [];
 jest.mock('../screens/AnalyticsScreen', () => {
   const React = require('react');
   const { View } = require('react-native');
-  return { AnalyticsScreen: () => React.createElement(View) };
+  return {
+    AnalyticsScreen: (props) => {
+      analyticsRenders.push({ section: props.section, sectionNonce: props.sectionNonce });
+      return React.createElement(View);
+    },
+  };
 });
 jest.mock('../screens/MoreScreen', () => {
   const React = require('react');
@@ -184,6 +193,7 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     // Scope fake timers to test execution only (see MOCK_NOW note above).
     jest.useFakeTimers().setSystemTime(MOCK_NOW);
     capturedTabPress = null;
+    analyticsRenders.length = 0;
     mockUpdateNote = jest.fn().mockResolvedValue({});
 
     useEntries.useWeightEntries.mockReturnValue({
@@ -318,6 +328,45 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     // Back on the now-active Log tab must not reach into the hidden Weight tab's
     // goal-edit state; the goal edit is untouched (still mounted with Save goal).
     expect(findPressableByText(withinTab(component, 'Weight'), 'Save goal')).toBeTruthy();
+  });
+
+  // --- Analytics section targeting (#717) ---
+
+  const lastAnalyticsRender = () => analyticsRenders[analyticsRenders.length - 1];
+
+  test('a section-targeted handoff activates Analytics and forwards the requested section', () => {
+    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
+
+    expect(getTabStyle(component, 'Analytics').display).not.toBe('none');
+    expect(lastAnalyticsRender().section).toBe('weight');
+
+    renderer.act(() => { capturedTabPress('Analytics', 'strength'); });
+    expect(lastAnalyticsRender().section).toBe('strength');
+  });
+
+  test('repeating the same section handoff re-issues it as a distinct request', () => {
+    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
+    const first = lastAnalyticsRender();
+
+    // Leave Analytics and come back to the same section, the way a user repeating
+    // the Home sparkline or Weight "See full trends" handoff would.
+    renderer.act(() => { capturedTabPress('Home'); });
+    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
+    const second = lastAnalyticsRender();
+
+    expect(second.section).toBe('weight');
+    // Same section value, so only the nonce can prove the second request landed.
+    expect(second.sectionNonce).not.toBe(first.sectionNonce);
+  });
+
+  test('a tab press without a section target clears any previous section', () => {
+    renderer.act(() => { capturedTabPress('Analytics', 'strength'); });
+    expect(lastAnalyticsRender().section).toBe('strength');
+
+    renderer.act(() => { capturedTabPress('Analytics'); });
+
+    expect(lastAnalyticsRender().section).toBe(null);
+    expect(getTabStyle(component, 'Analytics').display).not.toBe('none');
   });
 
   test('with no active in-tab state on any tab, Back still returns a non-Home tab to Home', () => {

@@ -601,6 +601,110 @@ describe('AnalyticsScreen empty state copy — no tracked exercises', () => {
   });
 });
 
+// ── Cross-screen handoffs into and out of Analytics (#717) ───────────────────
+
+describe('AnalyticsScreen daily-loop handoffs (#717)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  // The scroll target lives on the ScrollView ref inside ScreenShell. Under
+  // react-test-renderer that instance performs no real scrolling, so stub its
+  // scrollTo to make section targeting observable.
+  function setupTargeting({ section = null, sectionNonce = 0, onNavigate } = {}) {
+    useEntries.useFeatureToggles.mockReturnValue({
+      fatigueTrackingEnabled: true,
+      deloadModeEnabled: true,
+      setFatigueTrackingEnabled: jest.fn(),
+      setDeloadModeEnabled: jest.fn(),
+    });
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], loading: false, error: null });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    useEntries.useWorkoutNotes.mockReturnValue({ notes: [], currentNote: null, loading: false, update: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: false });
+
+    const scrollTo = jest.fn();
+    let component;
+    render.act(() => {
+      component = render.create(
+        <AnalyticsScreen
+          multiplier={1.07}
+          section={section}
+          sectionNonce={sectionNonce}
+          onNavigate={onNavigate}
+        />
+      );
+    });
+    const { ScrollView } = require('react-native');
+    const inst = component.root.findAllByType(ScrollView)[0]?.instance;
+    if (inst) inst.scrollTo = scrollTo;
+    return { component, scrollTo };
+  }
+
+  const layoutHandler = (root, propName) => root.findAll(
+    n => typeof n.props?.[propName] === 'function'
+  )[0].props[propName];
+
+  const fireLayout = (root, propName, y) => {
+    const handler = layoutHandler(root, propName);
+    render.act(() => { handler({ nativeEvent: { layout: { y } } }); });
+  };
+
+  test('a weight-section request scrolls to the weight section once its layout is known', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'weight', sectionNonce: 1 });
+    fireLayout(component.root, 'handleWeightLayout', 420);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 420 }));
+  });
+
+  test('a strength-section request scrolls to the strength section once its layout is known', () => {
+    const { component, scrollTo } = setupTargeting({ section: 'strength', sectionNonce: 1 });
+    fireLayout(component.root, 'handleStrengthLayout', 900);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: 900 }));
+  });
+
+  test('repeating the same section request re-scrolls to it', () => {
+    for (const [section, prop, y] of [
+      ['weight', 'handleWeightLayout', 420],
+      ['strength', 'handleStrengthLayout', 900],
+    ]) {
+      const { component, scrollTo } = setupTargeting({ section, sectionNonce: 1 });
+      fireLayout(component.root, prop, y);
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+
+      // Same section value, new request: only the nonce distinguishes it, and the
+      // layout position is already known so the scroll happens immediately.
+      render.act(() => {
+        component.update(
+          <AnalyticsScreen multiplier={1.07} section={section} sectionNonce={2} />
+        );
+      });
+
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ y }));
+    }
+  });
+
+  test('no section request leaves the scroll position alone', () => {
+    const { component, scrollTo } = setupTargeting({ section: null, sectionNonce: 1 });
+    fireLayout(component.root, 'handleWeightLayout', 420);
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  test('the no-tracked-exercises empty state offers a labeled handoff to Log', () => {
+    const onNavigate = jest.fn();
+    const { component } = setupTargeting({ onNavigate });
+    const link = component.root.findByProps({ testID: 'analytics-empty-log-link' });
+
+    expect(link.props.accessibilityRole).toBe('button');
+    expect(link.props.accessibilityLabel).toBe('Go to Log');
+
+    render.act(() => { link.props.onPress(); });
+    render.act(() => { link.props.onPress(); });
+
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'Log');
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ── Weight Trends — split 7-day / 30-day charts ───────────────────────────────
 
 describe('AnalyticsScreen Weight Trends — two rolling charts', () => {

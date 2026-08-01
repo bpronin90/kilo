@@ -28,7 +28,7 @@ import { AnalyticsStrengthSection } from '../components/AnalyticsStrengthSection
 import { CrossDayComparison, formatOverload } from '../components/AnalyticsCrossDayComparison';
 import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection';
 
-export function AnalyticsScreen({ multiplier, section }) {
+export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
@@ -81,7 +81,9 @@ export function AnalyticsScreen({ multiplier, section }) {
       scrollRef.current?.scrollTo({ y: strengthSectionY.current, animated: true });
       hasScrolled.current = true;
     }
-  }, [section]);
+    // `sectionNonce` changes on every navigation request, so repeating the same
+    // handoff (weight → weight) re-targets the section instead of no-op'ing.
+  }, [section, sectionNonce]);
 
   function handleWeightLayout(e) {
     const y = e.nativeEvent.layout.y;
@@ -405,9 +407,21 @@ export function AnalyticsScreen({ multiplier, section }) {
         <Text style={styles.emptyText}>No matches for "{searchQuery}"</Text>
       </View>
     ) : (
-      <Text key="empty-tracked" style={styles.emptyText}>
-        Tap Track on any exercise in your note to track it here.
-      </Text>
+      <View key="empty-tracked" style={styles.emptyTracked}>
+        <Text style={styles.emptyText}>
+          Tap Track on any exercise in your note to track it here.
+        </Text>
+        <Pressable
+          testID="analytics-empty-log-link"
+          onPress={() => onNavigate?.('Log')}
+          style={styles.emptyTrackedLink}
+          accessibilityRole="button"
+          accessibilityLabel="Go to Log"
+          accessibilityHint="Opens the Log tab so you can write a workout note"
+        >
+          <Text style={styles.emptyTrackedLinkText}>Go to Log</Text>
+        </Pressable>
+      </View>
     )
   ]);
 
@@ -565,5 +579,19 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     marginTop: 20,
     fontSize: 15,
+  },
+  emptyTracked: {
+    alignItems: 'center',
+  },
+  emptyTrackedLink: {
+    marginTop: 12,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  emptyTrackedLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
   },
 });

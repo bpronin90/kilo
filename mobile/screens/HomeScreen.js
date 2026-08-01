@@ -181,18 +181,41 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         <>
           {/* ══ TIER 1: Weekly Summary ══ */}
           <Card style={styles.weeklyHero}>
-            {/* #2 inline week label */}
-            <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
-              {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
-            </Text>
+            {/* #2 inline week label — also the current-routine handoff to Log (#717) */}
+            <Pressable
+              testID="home-current-routine-link"
+              onPress={() => onNavigate('Log')}
+              accessibilityRole="button"
+              accessibilityLabel="Log workout"
+              accessibilityHint="Opens the Log tab for your current routine"
+            >
+              <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
+                {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
+              </Text>
+            </Pressable>
 
-            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-              {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
-              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
-            </Text>
+            <Pressable
+              testID="home-weight-action"
+              onPress={() => onNavigate('Weight')}
+              accessibilityRole="button"
+              accessibilityLabel="Log weight"
+              accessibilityHint="Opens the Weight tab to log a weigh-in"
+            >
+              <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
+                {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
+                {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
+              </Text>
+            </Pressable>
 
-            {/* #4 sparkline strip below weight */}
-            <View style={styles.heroSparklineStrip}>
+            {/* #4 sparkline strip below weight — handoff to Analytics weight (#717) */}
+            <Pressable
+              testID="home-weight-trend-link"
+              onPress={() => onNavigate('Analytics', 'weight')}
+              style={styles.heroSparklineStrip}
+              accessibilityRole="button"
+              accessibilityLabel="See weight trends"
+              accessibilityHint="Opens the weight section of the Analytics tab"
+            >
               <LineChart
                 data={displayChartSeries(dashboardData.weightSeries, unit)}
                 color={colors.textMuted}
@@ -201,10 +224,17 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 hideHeader
               />
               <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
-            </View>
+            </Pressable>
 
-            {/* Classification band */}
-            <View style={styles.classifSection}>
+            {/* Classification band — strength-summary handoff to Analytics strength (#717) */}
+            <Pressable
+              testID="home-strength-summary-link"
+              onPress={() => onNavigate('Analytics', 'strength')}
+              style={styles.classifSection}
+              accessibilityRole="button"
+              accessibilityLabel="See strength analytics"
+              accessibilityHint="Opens the strength section of the Analytics tab"
+            >
               <View style={styles.classifSectionHeader}>
                 <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
               </View>
@@ -221,7 +251,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                   </View>
                 ))}
               </View>
-            </View>
+            </Pressable>
 
             {/* #7 quiet CTA */}
             <View style={styles.heroFooter}>
