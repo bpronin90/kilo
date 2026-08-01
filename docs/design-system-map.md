@@ -540,19 +540,47 @@ Source: `mobile/screens/LogScreen.js`, and the extracted
 `LogScreen.js` alone.
 
 Style lock header at lines 1-7 (`mobile/screens/LogScreen.js`): do not change
-Log styling unless the repo owner explicitly asks.
+Log styling unless the repo owner explicitly asks. The authorized layout
+exceptions for #710 and #711 are enumerated in that same header block.
+
+### Action hierarchy (#711)
+
+Routine-card headers carry identity only (`ui-design-rules.md` §14). Every
+action is placed by how often it is used:
+
+| Tier | Actions | Location |
+|---|---|---|
+| Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
+| Secondary — occasional | `Set as current routine`, `Edit routine`, `Delete routine`, viewed-card `Week A/B` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`) |
+| Rare — once per training block | `Start recovery block` | One entry point in the Recovery section (`LogRecoverySection.js`) |
+
+Consequences to preserve:
+
+- A collapsed **More Routines** list renders zero buttons; a card header's only
+  press target is the header itself (expand/collapse).
+- The active card's strip renders `Skip week` **or** `Remove skip`, never both.
+  There is no opacity-dimmed disabled variant.
+- The `Double-tap to edit` hint is retired in the active card (the explicit
+  `Edit` control supersedes it); the double-tap gesture itself still works.
+- The Recovery entry point renders when a baseline note is eligible and no block
+  is active, and opens `RecoveryBlockStartModal` with `{ mode: 'routine', note:
+  null }` so the modal's own baseline/Week 1 pickers choose the subject. It is
+  disabled by the same `actionsLocked` flag as every other recovery action.
+- Relocated controls keep their existing style objects — the pill
+  (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
+  (`switchButton` / `deleteButton`) are unchanged.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Current note title | fontSize | `24` | `LogActiveRoutineCard.js:183` |
-| | fontWeight | `800` | `LogActiveRoutineCard.js:184` |
-| | color | `colors.accent` | `LogActiveRoutineCard.js:185` |
-| Current routine card | borderWidth | `4` | `LogActiveRoutineCard.js:161` |
-| | padding | `0` | `LogActiveRoutineCard.js:159` |
-| Other note title | fontSize | `20` | `LogPreviousRoutines.js:195` |
-| | fontWeight | `800` | `LogPreviousRoutines.js:196` |
-| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:200` |
-| | color | `colors.textMuted` | `LogPreviousRoutines.js:201` |
+| Current note title | fontSize | `24` | `LogActiveRoutineCard.js:187` |
+| | fontWeight | `800` | `LogActiveRoutineCard.js:188` |
+| | color | `colors.accent` | `LogActiveRoutineCard.js:189` |
+| Current routine card | borderWidth | `4` | `LogActiveRoutineCard.js:166` |
+| | padding | `0` | `LogActiveRoutineCard.js:164` |
+| Other note title | fontSize | `20` | `LogPreviousRoutines.js:173` |
+| | fontWeight | `800` | `LogPreviousRoutines.js:174` |
+| Other note subtitle | fontSize | `12` | `LogPreviousRoutines.js:178` |
+| | color | `colors.textMuted` | `LogPreviousRoutines.js:179` |
 | WorkoutHeading (UI.js) | fontSize | `22` | UI.js:640 |
 | | fontWeight | `800` | UI.js:641 |
 | | textTransform | `capitalize` | UI.js:645 |
@@ -563,11 +591,11 @@ Log styling unless the repo owner explicitly asks.
 | Exercise name (UI.js) | fontSize | `17` | UI.js:678 |
 | | fontWeight | `700` | UI.js:679 |
 | Set row font size (UI.js) | fontSize | `14` (`SET_ROW_FONT_SIZE`) | UI.js:8 |
-| Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:733` |
-| | fontWeight | `700` | `LogScreen.js:734` |
-| | color | `colors.accent` | `LogScreen.js:735` |
-| | bg | `colors.chipBackground` | `LogScreen.js:730` |
-| | borderRadius | `12` | `LogScreen.js:729` |
+| Mode toggle ("Done") | fontSize | `14` | `LogScreen.js:744` |
+| | fontWeight | `700` | `LogScreen.js:745` |
+| | color | `colors.accent` | `LogScreen.js:746` |
+| | bg | `colors.chipBackground` | `LogScreen.js:741` |
+| | borderRadius | `12` | `LogScreen.js:740` |
 | Input field | fontSize | `16` | `LogScreenEditorCard.js:270` |
 | | borderRadius | `16` | `LogScreenEditorCard.js:265` |
 

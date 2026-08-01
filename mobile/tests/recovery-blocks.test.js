@@ -2043,6 +2043,151 @@ describe('serialization and pre-action gating', () => {
 
 // ── isolation from existing domains ───────────────────────────────────────────
 
+// ── The Recovery entry point (#711) ─────────────────────────────────────────
+//
+// #711 replaced N per-routine-card `Start recovery block` / `Mark as recovery
+// week` pills with ONE entry point in this section. The pills were duplicate
+// openings of a modal that already contains its own baseline and Week 1
+// pickers; the entry point opens that same modal with no subject.
+//
+// The state model this section inherited from #696/#699 must survive that
+// addition intact, so these cover the full matrix: when the entry point is and
+// is not offered, that it never displaces the pending/terminal/active/history
+// states, and that it obeys the same lock every other recovery write does.
+
+describe('LogRecoverySection: the single Recovery entry point', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+
+  const noteA = { id: 'n1', title: 'Push Day', raw_text: '' };
+  const noteB = { id: 'n2', title: 'Pull Day', raw_text: '' };
+
+  const activeBlock = {
+    id: 'rb-active', baseline_note_id: 'n9', baseline_note_title: 'Legs Day',
+    started_at: '2026-01-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+  };
+  const completedBlock = {
+    id: 'rb-done', baseline_note_id: 'n8', baseline_note_title: 'Old Split',
+    started_at: '2025-12-01T00:00:00.000Z', completed_at: '2025-12-20T00:00:00.000Z', deleted_at: null,
+  };
+
+  const renderSection = (props = {}) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        React.createElement(LogRecoverySection, {
+          blocks: [], weeks: [], notes: [noteA, noteB],
+          onViewNote: jest.fn(), onCompleteWeek: jest.fn(), onOpenAddWeek: jest.fn(),
+          onCompleteBlock: jest.fn(), onUnlinkWeek: jest.fn(), onRetryRecovery: jest.fn(),
+          ...props,
+        })
+      );
+    });
+    return component;
+  };
+
+  const startControl = (root) =>
+    root.findAll(n => n.props && n.props.accessibilityLabel === 'Start recovery block' && typeof n.props.onPress === 'function')[0] || null;
+
+  const textCount = (root, exact) =>
+    root.findAll(n => n.type === 'Text' && n.props.children === exact).length;
+
+  test('an eligible baseline and no active block renders the entry-point state', () => {
+    const onStartRecoveryBlock = jest.fn();
+    const root = renderSection({ eligibleBaselineNotes: [noteA, noteB], onStartRecoveryBlock }).root;
+
+    expect(textCount(root, 'Recovery')).toBe(1);
+    const btn = startControl(root);
+    expect(btn).toBeTruthy();
+    expect(btn.props.accessibilityRole).toBe('button');
+    expect(btn.props.accessibilityState).toEqual({ disabled: false });
+
+    // The callback takes no note argument: the modal chooses its own subject.
+    render.act(() => { btn.props.onPress(); });
+    expect(onStartRecoveryBlock).toHaveBeenCalledTimes(1);
+    expect(onStartRecoveryBlock.mock.calls[0].length).toBe(0);
+  });
+
+  test('nothing eligible still renders nothing at all', () => {
+    const component = renderSection({ eligibleBaselineNotes: [], onStartRecoveryBlock: jest.fn() });
+    expect(component.toJSON()).toBeNull();
+  });
+
+  test('an omitted callback or collection never fabricates an entry point', () => {
+    expect(renderSection({ eligibleBaselineNotes: [noteA] }).toJSON()).toBeNull();
+    expect(renderSection({ onStartRecoveryBlock: jest.fn() }).toJSON()).toBeNull();
+  });
+
+  test('an active block owns the section; no start control is offered', () => {
+    const root = renderSection({
+      blocks: [activeBlock],
+      weeks: [{ id: 'w1', block_id: activeBlock.id, note_id: noteA.id, week_number: 1, completed_at: null, deleted_at: null }],
+      // LogScreen empties the collection while a block is active; the section
+      // refuses on its own state too, so neither side alone can offer a start
+      // that would only be refused after Confirm.
+      eligibleBaselineNotes: [noteB],
+      onStartRecoveryBlock: jest.fn(),
+    }).root;
+
+    expect(startControl(root)).toBeNull();
+    expect(textCount(root, 'Complete recovery block')).toBe(1);
+    expect(textCount(root, 'Legs Day')).toBe(1);
+  });
+
+  test('completing a block does not remove the way to start the next one', () => {
+    const root = renderSection({
+      blocks: [completedBlock],
+      weeks: [{ id: 'w0', block_id: completedBlock.id, note_id: noteA.id, week_number: 1, completed_at: '2025-12-10T00:00:00.000Z', deleted_at: null }],
+      eligibleBaselineNotes: [noteB],
+      onStartRecoveryBlock: jest.fn(),
+    }).root;
+
+    expect(startControl(root)).toBeTruthy();
+    expect(textCount(root, 'Recovery History')).toBe(1);
+    expect(textCount(root, '1 completed block')).toBe(1);
+  });
+
+  test('a pending operation and the entry point share one Recovery section, and the lock disables the start', () => {
+    const root = renderSection({
+      pendingRecovery: [{ id: 'op1', code: 'COMPLETE_BLOCK_WITH_CURRENT_WEEK' }],
+      eligibleBaselineNotes: [noteA],
+      onStartRecoveryBlock: jest.fn(),
+    }).root;
+
+    expect(textCount(root, 'Recovery')).toBe(1);
+    expect(textCount(root, 'A recovery change is still being applied on this device.')).toBe(1);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Retry recovery').length).toBeGreaterThan(0);
+
+    const btn = startControl(root);
+    expect(btn).toBeTruthy();
+    expect(btn.props.disabled).toBe(true);
+    expect(btn.props.accessibilityState).toEqual({ disabled: true });
+  });
+
+  test('a terminal error explains itself, offers no retry, and locks nothing — the start stays live', () => {
+    const root = renderSection({
+      pendingRecovery: [],
+      pendingRecoveryError: 'That recovery change was cancelled.',
+      eligibleBaselineNotes: [noteA],
+      onStartRecoveryBlock: jest.fn(),
+    }).root;
+
+    expect(textCount(root, 'That recovery change was cancelled.')).toBe(1);
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Retry recovery').length).toBe(0);
+    expect(startControl(root).props.disabled).toBe(false);
+  });
+
+  test('an in-flight lifecycle action disables the start control', () => {
+    const root = renderSection({
+      busy: 'block',
+      eligibleBaselineNotes: [noteA],
+      onStartRecoveryBlock: jest.fn(),
+    }).root;
+    expect(startControl(root).props.disabled).toBe(true);
+  });
+});
+
 describe('isolation', () => {
   test('recovery storage never writes workout-note or parser state', async () => {
     const block = await makeBlock();

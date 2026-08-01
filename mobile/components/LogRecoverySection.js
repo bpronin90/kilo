@@ -94,6 +94,14 @@ export function LogRecoverySection({
   pendingRecovery = [],
   pendingRecoveryError = null,
   onRetryRecovery,
+  // The single Recovery entry point (#711). It replaced N per-card
+  // `Start recovery block` / `Mark as recovery week` pills, which were N
+  // duplicate openings of a modal that already contains its own baseline and
+  // Week 1 pickers. This component does not decide eligibility: LogScreen hands
+  // it the already-filtered collection (empty while a block is active), and the
+  // callback takes no note argument — the modal chooses its own subject.
+  eligibleBaselineNotes = [],
+  onStartRecoveryBlock,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -128,10 +136,18 @@ export function LogRecoverySection({
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
 
+  // The entry-point state (#711): the only way to start a recovery block now
+  // that the per-card pills are gone. It is offered exactly when one could
+  // actually be started — no block already active, and at least one note
+  // eligible to be frozen as a baseline — so it never advertises an action that
+  // would only fail after Confirm. Completed-block history is irrelevant to it:
+  // finishing one block must not remove the way to start the next.
+  const showStartEntryPoint = !activeBlock && !!onStartRecoveryBlock && eligibleBaselineNotes.length > 0;
+
   // A pending recovery operation must stay visible even when neither an active
   // block nor any completed block renders — otherwise the retry affordance
   // would disappear with the records it is trying to repair.
-  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice) return null;
+  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !showStartEntryPoint) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -236,10 +252,30 @@ export function LogRecoverySection({
 
   return (
     <View style={styles.container}>
-      {!activeBlock && showRecoveryNotice && (
+      {!activeBlock && (showRecoveryNotice || showStartEntryPoint) && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
-          <Card style={styles.card}>{pendingBanner}</Card>
+          <Card style={styles.card}>
+            {showRecoveryNotice ? pendingBanner : null}
+            {showStartEntryPoint && (
+              <View style={styles.actionsRow}>
+                <Pressable
+                  onPress={() => onStartRecoveryBlock()}
+                  // The entry point is a recovery write like any other, so it
+                  // obeys the same lock: an unresolved journaled operation or an
+                  // in-flight lifecycle action must not be able to start a block
+                  // underneath itself.
+                  disabled={actionsLocked}
+                  style={[styles.actionButton, styles.actionButtonPrimary]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Start recovery block"
+                  accessibilityState={{ disabled: actionsLocked }}
+                >
+                  <Text style={styles.actionButtonPrimaryText}>Start recovery block</Text>
+                </Pressable>
+              </View>
+            )}
+          </Card>
         </View>
       )}
       {activeBlock && (

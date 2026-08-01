@@ -74,13 +74,33 @@ export function RecoveryBlockStartModal({
   // A note picked as baseline can never also be the week-1 note.
   const weekChoices = eligibleWeekNotes.filter(n => n.id !== baselineNoteId);
 
-  const weekNoteFixed = mode === 'note';
-  const baselineFixed = mode === 'routine';
+  // Gated on the preset itself, not on `mode` (#711). A side is "fixed" only
+  // when a note was actually handed in to fix it — opening with no preset (the
+  // Recovery entry point) renders the pickers that already existed here, and
+  // the preset paths are unchanged. `mode` still distinguishes WHICH side a
+  // preset fixes; it just no longer implies that one was supplied.
+  const weekNoteFixed = mode === 'note' && !!presetNote;
+  const baselineFixed = mode === 'routine' && !!presetNote;
 
-  const canConfirm = !blockingMessage && !!baselineNoteId && (
-    (weekChoice === 'existing' && !!weekNoteId) ||
-    (weekChoice === 'new' && newNoteTitle.trim().length > 0)
-  );
+  // Picking a baseline must also retire a Week 1 selection of that same note.
+  // `weekChoices` only removes it from the LIST; without this the id stays in
+  // state — selected, no longer visible, and no longer clearable — and Confirm
+  // submits the same note as both sides, which can then only fail as
+  // NOTE_IS_BASELINE after the fact. Only reachable since #711 let both pickers
+  // be live at once (before, one side was always fixed by a preset).
+  const handleSelectBaseline = (id) => {
+    setBaselineNoteId(id);
+    setWeekNoteId(prev => (prev === id ? null : prev));
+  };
+
+  // Belt and braces alongside the clearing above: the two sides must be
+  // distinct, not merely both chosen. Confirm is never enabled for a
+  // combination the domain would reject.
+  const weekSelectionValid = weekChoice === 'existing'
+    ? (!!weekNoteId && weekNoteId !== baselineNoteId)
+    : newNoteTitle.trim().length > 0;
+
+  const canConfirm = !blockingMessage && !!baselineNoteId && weekSelectionValid;
 
   const handleConfirm = async () => {
     if (!canConfirm || submitting) return;
@@ -159,7 +179,7 @@ export function RecoveryBlockStartModal({
               baselineChoices.map(n => (
                 <Pressable
                   key={n.id}
-                  onPress={() => setBaselineNoteId(n.id)}
+                  onPress={() => handleSelectBaseline(n.id)}
                   style={[styles.optionRow, baselineNoteId === n.id && styles.optionRowSelected]}
                   accessibilityRole="radio"
                   accessibilityLabel={`Use ${n.title || 'Untitled Routine'} as the frozen baseline`}

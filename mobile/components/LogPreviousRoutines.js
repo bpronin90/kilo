@@ -1,3 +1,8 @@
+// Non-current routine cards (#711 information hierarchy): every action on these
+// cards is occasional, so the card header carries identity only — title, date,
+// recovery badge — and a collapsed More Routines list therefore shows zero
+// buttons. Tapping a card expands it, and the expanded body is where Week A/B,
+// Set as current routine, Edit routine, and Delete routine live.
 import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, Button, SectionTitle } from './UI';
@@ -19,10 +24,6 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
   recoveryWeekNumberByNoteId = {},
-  eligibleBaselineNoteIds = null,
-  eligibleWeekNoteIds = null,
-  onStartRecoveryBlock,
-  onMarkAsRecoveryWeek,
 }) {
   const styles = useThemedStyles(createStyles);
   // Double-tap the viewed routine body to open it in the editor (matches main).
@@ -79,51 +80,6 @@ export function LogPreviousRoutines({
                     </View>
                   )}
                 </View>
-                <View style={styles.headerActions}>
-                  {onStartRecoveryBlock && eligibleBaselineNoteIds && eligibleBaselineNoteIds.has(other.id) && (
-                    <Pressable
-                      onPress={(e) => { e.stopPropagation(); onStartRecoveryBlock(other); }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Start recovery block from this routine"
-                    >
-                      <Text style={styles.inlineSwitchButtonText}>Start recovery block</Text>
-                    </Pressable>
-                  )}
-                  {onMarkAsRecoveryWeek && eligibleWeekNoteIds && eligibleWeekNoteIds.has(other.id) && (
-                    <Pressable
-                      onPress={(e) => { e.stopPropagation(); onMarkAsRecoveryWeek(other); }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Mark as recovery week"
-                    >
-                      <Text style={styles.inlineSwitchButtonText}>Mark as recovery week</Text>
-                    </Pressable>
-                  )}
-                  {viewingNoteId === other.id && viewingHasABWeeks && (
-                    <Pressable
-                      onPress={(e) => { e.stopPropagation(); handleToggleViewingWeek(); }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                      accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                    >
-                      <Text style={styles.inlineSwitchButtonText}>
-                        Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  <Pressable
-                    onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
-                    style={styles.inlineSwitchButton}
-                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                  >
-                    <Text style={styles.inlineSwitchButtonText}>Set as current routine</Text>
-                  </Pressable>
-                </View>
               </Pressable>
               {viewingNoteId === other.id && viewingNote && (
                 <>
@@ -135,9 +91,36 @@ export function LogPreviousRoutines({
                     />
                   </Pressable>
                   <View style={styles.inlineActions}>
+                    {/* The viewed card's Week A/B switch (#711). It keeps the
+                        pill form — it changes which week you are READING, not a
+                        routine-lifecycle action like the buttons below — and
+                        keeps the exact role/label/selected state it had in the
+                        header it moved out of. */}
+                    {viewingHasABWeeks && (
+                      <View style={styles.viewActions}>
+                        <Pressable
+                          onPress={handleToggleViewingWeek}
+                          style={styles.inlineSwitchButton}
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                          accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                        >
+                          <Text style={styles.inlineSwitchButtonText}>
+                            Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
                     <Button
                       onPress={handleEditViewedNote}
                       title="Edit routine"
+                      style={styles.switchButton}
+                      textStyle={styles.switchButtonText}
+                    />
+                    <Button
+                      onPress={() => handleSwitchCurrent(other.id)}
+                      title="Set as current routine"
                       style={styles.switchButton}
                       textStyle={styles.switchButtonText}
                     />
@@ -182,17 +165,9 @@ const createStyles = (colors) => StyleSheet.create({
   },
   otherNoteInfo: {
     flex: 1,
-    // See LogActiveRoutineCard.js's otherNoteInfo comment: a hard floor, not
-    // 0, so the unbounded action row absorbs the shrink deficit first (#710
-    // review) instead of collapsing the title to zero width.
+    // See LogActiveRoutineCard.js's otherNoteInfo comment: a hard floor, not 0
+    // (#710 review), retained now that the header holds identity only (#711).
     minWidth: 96,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    flexShrink: 1,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 12,
   },
   otherNoteTitle: {
     fontSize: 20,
@@ -252,6 +227,13 @@ const createStyles = (colors) => StyleSheet.create({
   inlineActions: {
     paddingHorizontal: 16,
     paddingBottom: 16,
+    gap: 12,
+  },
+  // Holds the Week A/B pill at its natural width inside the otherwise
+  // full-width button stack (a column container would stretch it edge to edge).
+  viewActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
   },
   switchButton: {

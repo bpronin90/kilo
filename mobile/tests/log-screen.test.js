@@ -2516,8 +2516,11 @@ describe('#615: WorkoutContentRenderer renders marks and comments', () => {
   });
 });
 
-// Walk up from a matching Text node to its nearest Pressable (onPress) ancestor.
-function pressableAround(root, predicate) {
+// Walk up from a matching Text node to its Nth Pressable (onPress) ancestor,
+// nearest first. `depth` defaults to the nearest one; pass 2 to reach the
+// enclosing container Pressable when the matched text sits inside its own
+// button (e.g. the skip control inside the active card's body).
+function pressableAround(root, predicate, depth = 1) {
   const matches = root.findAll(
     n => n.type === 'Text' && predicate(
       Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '')
@@ -2525,8 +2528,12 @@ function pressableAround(root, predicate) {
   );
   for (const match of matches) {
     let node = match.parent;
+    let seen = 0;
     while (node) {
-      if (node.props && typeof node.props.onPress === 'function') return node;
+      if (node.props && typeof node.props.onPress === 'function') {
+        seen += 1;
+        if (seen === depth) return node;
+      }
       node = node.parent;
     }
   }
@@ -2572,34 +2579,44 @@ describe('LogActiveRoutineCard: header collapses, body edits (separate handlers)
     expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
   });
 
+  // #711 removed the advertised "Double-tap to edit" hint in favour of an
+  // explicit Edit control, but deliberately kept handleNoteBodyPress wired so
+  // the gesture still works for users who know it. The body is now located via
+  // the skip control it contains rather than the retired hint text.
   test('tapping the body calls the body handler, not toggleCollapsed', () => {
-    const { root, props } = renderCard();
-    const body = pressableAround(root, t => t.includes('Double-tap to edit'));
+    const { root, props } = renderCard({ handleSkipWeek: jest.fn() });
+    const body = pressableAround(root, t => t.includes('Skip week'), 2);
     render.act(() => { body.props.onPress(); });
     expect(props.handleNoteBodyPress).toHaveBeenCalledTimes(1);
     expect(props.toggleCollapsed).not.toHaveBeenCalled();
   });
+
+  test('the explicit Edit control in the action strip enters the editor', () => {
+    const { root, props } = renderCard();
+    const editBtn = pressableAround(root, t => t === 'Edit');
+    expect(editBtn.props.accessibilityRole).toBe('button');
+    expect(editBtn.props.accessibilityLabel).toBe('Edit routine');
+    render.act(() => { editBtn.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(props.enterCurrentEditor).toHaveBeenCalledTimes(1);
+    expect(props.toggleCollapsed).not.toHaveBeenCalled();
+    expect(props.handleNoteBodyPress).not.toHaveBeenCalled();
+  });
 });
 
-// #710: both routine-card headers place a `flex: 1` title column next to an
-// action container that (on main) declared no flex properties, so the title
-// column absorbed the full width deficit and collapsed to zero width. A first
-// pass gave the title `minWidth: 0`, which does shrink-and-truncate instead of
-// collapsing when the action row's own content fits — but with `flex: 1` the
-// title's flex-basis is 0, so the shrink algorithm still hands it 0dp before
-// ever touching the unbounded action row once the action row's natural width
-// alone exceeds the header (review feedback on #710). The title now carries a
-// nonzero `minWidth` floor so it freezes there and the deficit falls to the
-// action row instead; the pills also get `flexShrink: 1` so a single pill
-// narrower than its own natural width wraps its text rather than overflowing
-// past the card's clipped edge. These pin that containment contract: the
-// title column truncates instead of collapsing, the action row wraps instead
-// of overflowing, and every action pill keeps a real, non-overlapping touch
-// target. Jest's renderer cannot measure actual Yoga layout or on-screen
-// touch-target overlap, so this only asserts the style/props contract that
-// produces that layout; the acceptance criteria's multi-width visual checks
-// require manual verification.
-describe('Routine-card header containment (#710)', () => {
+// #710 established the header containment contract: a `flex: 1` title column
+// next to an action container that could not shrink, so the title absorbed the
+// full width deficit and collapsed to zero width. #711 removes the cause rather
+// than only containing it — the routine-card headers now hold identity only, so
+// there is no sibling action row left to fight the title for width. These pin
+// both halves of that: the headers render zero controls, the title still
+// truncates rather than collapsing, and the containment props (`flexWrap`,
+// `flexShrink`, a real 44dp touch target) followed the controls into the active
+// card's action strip and the non-current card's expanded body — the two rows
+// that now have to hold more than one control. Jest's renderer cannot measure
+// actual Yoga layout or on-screen touch-target overlap, so this asserts the
+// style/props contract that produces that layout; the acceptance criteria's
+// multi-width visual checks require manual verification.
+describe('Routine-card header/action containment (#710, #711)', () => {
   const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
   const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
 
@@ -2609,15 +2626,25 @@ describe('Routine-card header containment (#710)', () => {
     return root.find(n => n.type === 'Text' && n.props.children === title);
   }
 
+  function flatStyle(node) {
+    return Array.isArray(node.props.style) ? Object.assign({}, ...node.props.style) : node.props.style;
+  }
+
+  // Host nodes only: a Pressable renders a host View carrying the same style,
+  // so an unfiltered walk counts every styled element twice.
   function findStyled(root, predicate) {
     return root.findAll(
-      n => n.props && n.props.style && predicate(
-        Array.isArray(n.props.style) ? Object.assign({}, ...n.props.style) : n.props.style
-      )
+      n => typeof n.type === 'string' && n.props && n.props.style && predicate(flatStyle(n))
     );
   }
 
-  test('LogActiveRoutineCard: title truncates, action row wraps, pills keep a real touch target', () => {
+  // The header Pressable is the collapse/expand target itself, so "no controls
+  // in the header" means: no *nested* onPress anywhere beneath it.
+  function nestedPressablesUnder(headerNode) {
+    return headerNode.findAll(n => n !== headerNode && n.props && typeof n.props.onPress === 'function');
+  }
+
+  test('LogActiveRoutineCard: the header holds identity only; the action strip carries the controls', () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -2628,6 +2655,9 @@ describe('Routine-card header containment (#710)', () => {
           handleToggleWeek={jest.fn()}
           enterCurrentEditor={jest.fn()}
           handleNoteBodyPress={jest.fn()}
+          handleSkipWeek={jest.fn()}
+          handleUnskipWeek={jest.fn()}
+          canUnskipWeek={false}
           toggleCollapsed={jest.fn()}
           isCollapsed={false}
           dayGroups={[]}
@@ -2637,8 +2667,7 @@ describe('Routine-card header containment (#710)', () => {
           currentId="n1"
           roughFlaggedNames={new Set()}
           activeEditText=""
-          isEligibleForRecoveryBaseline={true}
-          onStartRecoveryBlock={jest.fn()}
+          recoveryWeekNumber={2}
         />
       );
     });
@@ -2648,37 +2677,36 @@ describe('Routine-card header containment (#710)', () => {
     expect(title.props.numberOfLines).toBe(2);
     expect(title.props.ellipsizeMode).toBe('tail');
 
+    // Identity only: title, subtitle, badge — and not one nested control.
+    const header = pressableAround(root, t => t.includes('Current routine'));
+    expect(nestedPressablesUnder(header).length).toBe(0);
+    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
+      .toBeGreaterThan(0);
+
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
     expect(infoColumn.length).toBeGreaterThan(0);
-    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
-      ? Object.assign({}, ...infoColumn[0].props.style)
-      : infoColumn[0].props.style;
-    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
+    expect(flatStyle(infoColumn[0]).minWidth).toBeGreaterThan(0);
 
-    const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
-    expect(actionRow.length).toBeGreaterThan(0);
-    const actionRowStyle = Array.isArray(actionRow[0].props.style)
-      ? Object.assign({}, ...actionRow[0].props.style)
-      : actionRow[0].props.style;
-    expect(actionRowStyle.flexShrink).toBe(1);
-    expect(actionRowStyle.justifyContent).toBe('flex-end');
+    // The wrap/shrink containment now lives on the action strip.
+    const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
+    expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBeGreaterThan(0);
+    expect(pills.length).toBe(2); // Edit + Week A/B, nothing else
     for (const pill of pills) {
-      const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
+      const style = flatStyle(pill);
       expect(style.justifyContent).toBe('center');
       expect(style.flexShrink).toBe(1);
     }
 
     // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
     // effective separation between two pills stacked on wrapped lines.
-    const editPill = pressableAround(root, t => t.includes('Edit'));
+    const editPill = pressableAround(root, t => t === 'Edit');
     expect(editPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
   });
 
-  test('LogPreviousRoutines: title truncates, action row wraps, pills keep a real touch target', () => {
-    const note = { id: 'r1', title: LONG_TITLE, raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n' };
+  test('LogPreviousRoutines: the header holds identity only; the expanded body carries the controls', () => {
+    const note = { id: 'r1', title: LONG_TITLE, raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' };
     let component;
     render.act(() => {
       component = render.create(
@@ -2695,8 +2723,7 @@ describe('Routine-card header containment (#710)', () => {
           handleEditViewedNote={jest.fn()}
           handleDeleteRoutine={jest.fn()}
           handleCreateRoutine={jest.fn()}
-          onStartRecoveryBlock={jest.fn()}
-          eligibleBaselineNoteIds={new Set(['r1'])}
+          recoveryWeekNumberByNoteId={{ r1: 2 }}
         />
       );
     });
@@ -2706,33 +2733,243 @@ describe('Routine-card header containment (#710)', () => {
     expect(title.props.numberOfLines).toBe(2);
     expect(title.props.ellipsizeMode).toBe('tail');
 
+    const header = pressableAround(root, t => t.includes(LONG_TITLE));
+    expect(nestedPressablesUnder(header).length).toBe(0);
+    expect(header.findAll(n => n.type === 'Text' && String(n.props.children).includes('Recovery Week')).length)
+      .toBeGreaterThan(0);
+
     const infoColumn = findStyled(root, s => s.flex === 1 && 'minWidth' in s);
     expect(infoColumn.length).toBeGreaterThan(0);
-    const infoColumnStyle = Array.isArray(infoColumn[0].props.style)
-      ? Object.assign({}, ...infoColumn[0].props.style)
-      : infoColumn[0].props.style;
-    expect(infoColumnStyle.minWidth).toBeGreaterThan(0);
+    expect(flatStyle(infoColumn[0]).minWidth).toBeGreaterThan(0);
 
-    const actionRow = findStyled(root, s => s.flexWrap === 'wrap');
-    expect(actionRow.length).toBeGreaterThan(0);
-    const actionRowStyle = Array.isArray(actionRow[0].props.style)
-      ? Object.assign({}, ...actionRow[0].props.style)
-      : actionRow[0].props.style;
-    expect(actionRowStyle.flexShrink).toBe(1);
-    expect(actionRowStyle.justifyContent).toBe('flex-end');
+    // The one relocated pill (Week A/B) keeps its wrapping row and touch target.
+    const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
+    expect(wrapRows.length).toBeGreaterThan(0);
 
     const pills = findStyled(root, s => s.minHeight === 44);
-    expect(pills.length).toBeGreaterThan(0);
-    for (const pill of pills) {
-      const style = Array.isArray(pill.props.style) ? Object.assign({}, ...pill.props.style) : pill.props.style;
-      expect(style.justifyContent).toBe('center');
-      expect(style.flexShrink).toBe(1);
-    }
+    expect(pills.length).toBe(1);
+    const pillStyle = flatStyle(pills[0]);
+    expect(pillStyle.justifyContent).toBe('center');
+    expect(pillStyle.flexShrink).toBe(1);
+    expect(pressableAround(root, t => t === 'Week B').props.hitSlop)
+      .toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+  });
 
-    // gap:12 minus hitSlop's top+bottom (or left+right) must leave >=4dp of
-    // effective separation between two pills stacked on wrapped lines.
-    const setCurrentPill = pressableAround(root, t => t.includes('Set as current routine'));
-    expect(setCurrentPill.props.hitSlop).toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
+  test('LogPreviousRoutines: a collapsed More Routines list renders zero buttons', () => {
+    const notes = [
+      { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', updated_at: '2026-01-02T00:00:00.000Z' },
+    ];
+    let component;
+    render.act(() => {
+      component = render.create(
+        <LogPreviousRoutines
+          otherNotes={notes}
+          handleViewOtherNote={jest.fn()}
+          viewingNoteId={null}
+          viewingNote={null}
+          viewingNoteDayGroups={[]}
+          viewingHasABWeeks={false}
+          viewingEffectiveWeek={null}
+          handleToggleViewingWeek={jest.fn()}
+          handleSwitchCurrent={jest.fn()}
+          handleEditViewedNote={jest.fn()}
+          handleDeleteRoutine={jest.fn()}
+          handleCreateRoutine={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+
+    // Every card header is itself pressable (that is how a card expands), but
+    // nothing inside one is. The only other control is "+ New routine".
+    for (const note of notes) {
+      const header = pressableAround(root, t => t.includes(note.title));
+      expect(header).toBeTruthy();
+      expect(nestedPressablesUnder(header).length).toBe(0);
+    }
+    expect(root.findAll(
+      n => typeof n.type === 'string' && n.props && n.props.accessibilityRole === 'button'
+    ).length).toBe(1);
+    expect(pressableAround(root, t => t.includes('+ New routine'))).toBeTruthy();
+  });
+});
+
+// #711: the two behavior changes, and the relocation contract for the
+// non-current card. Everything else in this issue moves controls without
+// changing what they do.
+describe('Log action hierarchy (#711)', () => {
+  const { LogActiveRoutineCard } = require('../components/LogActiveRoutineCard');
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  const renderActiveCard = (overrides = {}) => {
+    const props = {
+      workoutNoteTitle: 'My Routine',
+      hasABWeeks: false,
+      effectiveActiveWeek: 'A',
+      handleToggleWeek: jest.fn(),
+      enterCurrentEditor: jest.fn(),
+      handleNoteBodyPress: jest.fn(),
+      handleSkipWeek: jest.fn(),
+      handleUnskipWeek: jest.fn(),
+      canUnskipWeek: false,
+      toggleCollapsed: jest.fn(),
+      isCollapsed: false,
+      dayGroups: [],
+      trackedLifts: {},
+      handleToggleTrack: jest.fn(),
+      roughNoteId: 'n1',
+      currentId: 'n1',
+      roughFlaggedNames: new Set(),
+      activeEditText: '',
+      ...overrides,
+    };
+    let component;
+    render.act(() => { component = render.create(<LogActiveRoutineCard {...props} />); });
+    return { root: component.root, props };
+  };
+
+  const textNodes = (root, exact) =>
+    root.findAll(n => n.type === 'Text' && n.props.children === exact);
+
+  // Behavior change 1. Both controls used to render unconditionally, with
+  // `canUnskipWeek` only dimming "Remove skip" to opacity 0.4 over already-muted
+  // text — two contradictory-looking controls, and a disabled state carried by
+  // opacity alone. The state now decides which single control exists.
+  describe('mutually exclusive skip control', () => {
+    test('with nothing to unskip, only "Skip week" is on screen', () => {
+      const { root, props } = renderActiveCard({ canUnskipWeek: false });
+      expect(textNodes(root, 'Skip week').length).toBe(1);
+      expect(textNodes(root, 'Remove skip').length).toBe(0);
+
+      const skipBtn = pressableAround(root, t => t === 'Skip week');
+      expect(skipBtn.props.accessibilityRole).toBe('button');
+      expect(skipBtn.props.accessibilityState).toBeUndefined();
+      render.act(() => { skipBtn.props.onPress({ stopPropagation: jest.fn() }); });
+      expect(props.handleSkipWeek).toHaveBeenCalledTimes(1);
+      expect(props.handleUnskipWeek).not.toHaveBeenCalled();
+    });
+
+    test('with a trailing skip present, only "Remove skip" is on screen', () => {
+      const { root, props } = renderActiveCard({ canUnskipWeek: true });
+      expect(textNodes(root, 'Remove skip').length).toBe(1);
+      expect(textNodes(root, 'Skip week').length).toBe(0);
+
+      const unskipBtn = pressableAround(root, t => t === 'Remove skip');
+      // No opacity-only disabled state left to carry: the control is either
+      // present and live, or absent.
+      const style = Array.isArray(unskipBtn.props.style)
+        ? Object.assign({}, ...unskipBtn.props.style)
+        : (unskipBtn.props.style || {});
+      expect(style.opacity).toBeUndefined();
+      expect(unskipBtn.props.disabled).toBeFalsy();
+      render.act(() => { unskipBtn.props.onPress({ stopPropagation: jest.fn() }); });
+      expect(props.handleUnskipWeek).toHaveBeenCalledTimes(1);
+      expect(props.handleSkipWeek).not.toHaveBeenCalled();
+    });
+
+    test('neither control renders when the screen supplies no skip handlers', () => {
+      const { root } = renderActiveCard({ handleSkipWeek: undefined, handleUnskipWeek: undefined, canUnskipWeek: true });
+      expect(textNodes(root, 'Skip week').length).toBe(0);
+      expect(textNodes(root, 'Remove skip').length).toBe(0);
+    });
+  });
+
+  describe('active card action strip', () => {
+    test('the Week A/B switch moved out of the header into the strip and still toggles', () => {
+      const { root, props } = renderActiveCard({ hasABWeeks: true, effectiveActiveWeek: 'A' });
+      const header = pressableAround(root, t => t.includes('Current routine'));
+      expect(header.findAll(n => n !== header && n.props && typeof n.props.onPress === 'function').length).toBe(0);
+
+      const weekBtn = pressableAround(root, t => t === 'Week B');
+      expect(weekBtn.props.accessibilityLabel).toBe('Switch to Week B');
+      expect(weekBtn.props.accessibilityState).toEqual({ selected: false });
+      render.act(() => { weekBtn.props.onPress({ stopPropagation: jest.fn() }); });
+      expect(props.handleToggleWeek).toHaveBeenCalledTimes(1);
+      expect(props.toggleCollapsed).not.toHaveBeenCalled();
+    });
+
+    test('a routine with no A/B weeks shows no week switch', () => {
+      const { root } = renderActiveCard({ hasABWeeks: false });
+      expect(pressableAround(root, t => t === 'Week B')).toBeNull();
+      expect(pressableAround(root, t => t === 'Week A')).toBeNull();
+    });
+
+    test('the retired "Double-tap to edit" hint is gone but the gesture is still wired', () => {
+      const { root, props } = renderActiveCard();
+      expect(root.findAll(n => n.type === 'Text' && String(n.props.children).includes('Double-tap')).length).toBe(0);
+      const body = pressableAround(root, t => t === 'Skip week', 2);
+      render.act(() => { body.props.onPress(); });
+      expect(props.handleNoteBodyPress).toHaveBeenCalledTimes(1);
+    });
+
+    test('the strip is hidden with the body when the card is collapsed', () => {
+      const { root } = renderActiveCard({ isCollapsed: true, hasABWeeks: true });
+      const body = pressableAround(root, t => t === 'Skip week', 2);
+      const style = Array.isArray(body.props.style)
+        ? Object.assign({}, ...body.props.style.filter(Boolean))
+        : body.props.style;
+      expect(style.display).toBe('none');
+    });
+  });
+
+  describe('non-current card: secondary actions live in the expanded body', () => {
+    const note = { id: 'r1', title: 'Routine 1', raw_text: 'MONDAY\n-Squat 3x5\n---\nMONDAY\n-Deadlift 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' };
+
+    const renderList = (overrides = {}) => {
+      const props = {
+        otherNotes: [note],
+        handleViewOtherNote: jest.fn(),
+        viewingNoteId: 'r1',
+        viewingNote: note,
+        viewingNoteDayGroups: [],
+        viewingHasABWeeks: true,
+        viewingEffectiveWeek: 'A',
+        handleToggleViewingWeek: jest.fn(),
+        handleSwitchCurrent: jest.fn(),
+        handleEditViewedNote: jest.fn(),
+        handleDeleteRoutine: jest.fn(),
+        handleCreateRoutine: jest.fn(),
+        ...overrides,
+      };
+      let component;
+      render.act(() => { component = render.create(<LogPreviousRoutines {...props} />); });
+      return { root: component.root, props };
+    };
+
+    test('every relocated action is reachable once the card is expanded, and calls its own handler', () => {
+      const { root, props } = renderList();
+
+      const setCurrent = pressableAround(root, t => t === 'Set as current routine');
+      expect(setCurrent).toBeTruthy();
+      render.act(() => { setCurrent.props.onPress(); });
+      expect(props.handleSwitchCurrent).toHaveBeenCalledWith('r1');
+
+      const weekBtn = pressableAround(root, t => t === 'Week B');
+      expect(weekBtn.props.accessibilityLabel).toBe('Switch to Week B');
+      expect(weekBtn.props.accessibilityState).toEqual({ selected: false });
+      render.act(() => { weekBtn.props.onPress(); });
+      expect(props.handleToggleViewingWeek).toHaveBeenCalledTimes(1);
+
+      render.act(() => { pressableAround(root, t => t === 'Edit routine').props.onPress(); });
+      expect(props.handleEditViewedNote).toHaveBeenCalledTimes(1);
+
+      render.act(() => { pressableAround(root, t => t === 'Delete routine').props.onPress(); });
+      expect(props.handleDeleteRoutine).toHaveBeenCalledWith('r1', 'Routine 1', false);
+    });
+
+    test('a collapsed card exposes none of them', () => {
+      const { root } = renderList({ viewingNoteId: null, viewingNote: null });
+      for (const label of ['Set as current routine', 'Week B', 'Edit routine', 'Delete routine']) {
+        expect(pressableAround(root, t => t === label)).toBeNull();
+      }
+    });
+
+    test('an expanded routine with no A/B weeks shows no week switch among its actions', () => {
+      const { root } = renderList({ viewingHasABWeeks: false, viewingEffectiveWeek: null });
+      expect(pressableAround(root, t => t === 'Week B')).toBeNull();
+      expect(pressableAround(root, t => t === 'Set as current routine')).toBeTruthy();
+    });
   });
 });
 
@@ -4357,46 +4594,105 @@ describe('Recovery Block start flow', () => {
     useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
   });
 
-  test('entry point: "Start recovery block" on the active routine card opens the modal with the baseline preset', () => {
-    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
-    let component;
-    render.act(() => { component = render.create(<ControlledLogScreen />); });
-    const root = component.root;
-
+  // #711: the entry point is no longer a per-card pill. It is the single
+  // control in the Recovery section, and it opens the modal with NO subject —
+  // the modal's own pickers (which always existed) choose the baseline and
+  // Week 1. `openEntryPoint` is how every test below reaches the flow.
+  const openEntryPoint = (root) => {
     const startBtn = findPressableByText(root, 'Start recovery block');
     expect(startBtn).toBeTruthy();
-    render.act(() => { startBtn.props.onPress({ stopPropagation: jest.fn() }); });
+    render.act(() => { startBtn.props.onPress(); });
+  };
+  const chooseBaseline = (root, title) => {
+    const option = findByAccessibilityLabel(root, `Use ${title} as the frozen baseline`);
+    expect(option).toBeTruthy();
+    render.act(() => { option.props.onPress(); });
+  };
 
-    expect(findPressableByText(root, 'Confirm')).toBeTruthy();
-    // The baseline is preset from the routine card entry point: its title
-    // appears fixed (not one of many selectable rows) in the baseline section.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Push Day').length).toBeGreaterThan(0);
-  });
-
-  test('entry point: "Mark as recovery week" on a previous-routine card opens the same modal asking for a baseline', () => {
+  test('entry point: the Recovery section start control opens the modal with both pickers and no preset', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    const markBtn = findPressableByText(root, 'Mark as recovery week');
-    expect(markBtn).toBeTruthy();
-    render.act(() => { markBtn.props.onPress({ stopPropagation: jest.fn() }); });
+    // No routine card carries a recovery control any more.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(1);
+
+    openEntryPoint(root);
 
     expect(findPressableByText(root, 'Confirm')).toBeTruthy();
-    // Baseline must still be an explicit choice: the only other eligible note
-    // (the current routine) is offered as a selectable baseline option.
-    const baselineOption = findPressableByText(root, 'Push Day');
-    expect(baselineOption).toBeTruthy();
+    // Nothing is fixed: both eligible notes are offered as selectable baselines,
+    // and the Week 1 chooser renders its Existing/New toggle.
+    expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeTruthy();
+    expect(findPressableByText(root, 'Existing note')).toBeTruthy();
+    expect(findPressableByText(root, 'New note')).toBeTruthy();
   });
 
-  test('existing-note path: selecting an eligible note and confirming calls startBlock with both ids, no new note created', async () => {
+  test('entry point: no eligible baseline note means no Recovery section at all', () => {
+    // The only note is already linked to a block, so nothing can be frozen as a
+    // baseline — the section returns null rather than advertising a dead start.
+    const weeks = [{ id: 'rw0', block_id: 'rbX', note_id: linkedNote.id, week_number: 1, deleted_at: null }];
+    const blocks = [{ id: 'rbX', baseline_note_id: 'gone', started_at: '2026-01-01T00:00:00.000Z', completed_at: '2026-01-05T00:00:00.000Z', deleted_at: null }];
+    setupCommonMocks({ notes: [linkedNote], currentId: linkedNote.id, currentNote: linkedNote, blocks, weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+  });
+
+  test('entry point: an active block withholds the start control entirely', () => {
+    const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: otherNote.id, week_number: 1, deleted_at: null }];
+    const blocks = [{ id: 'rb1', baseline_note_id: baselineNote.id, baseline_note_title: 'Push Day', started_at: '2026-01-01T00:00:00.000Z', completed_at: null, deleted_at: null }];
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote, activeBlock: blocks[0], blocks, weeks });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // The active block's own card renders instead; starting a second block is
+    // not offered anywhere, which is exactly what recoveryBlockingMessage
+    // would have refused after the fact.
+    expect(findPressableByText(root, 'Complete recovery block')).toBeTruthy();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
+  });
+
+  test('the action lock rejects a second concurrent start from the entry point', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let releaseStart;
+    startBlock.mockImplementation(() => new Promise(resolve => { releaseStart = resolve; }));
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    render.act(() => { confirmBtn.props.onPress(); });
+    // In flight: the control reports itself busy and refuses a second press.
+    const busyBtn = findPressableByText(root, 'Starting…');
+    expect(busyBtn.props.accessibilityState.disabled).toBe(true);
+    render.act(() => { busyBtn.props.onPress(); });
+    expect(startBlock).toHaveBeenCalledTimes(1);
+
+    await render.act(async () => {
+      releaseStart({ ok: true, block: { id: 'rb1' }, week: { id: 'rw1', week_number: 1 } });
+    });
+    expect(startBlock).toHaveBeenCalledTimes(1);
+  });
+
+  test('existing-note path: selecting a baseline and an eligible note calls startBlock with both ids, no new note created', async () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     render.act(() => { findPressableByText(root, 'Existing note').props.onPress(); });
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
 
@@ -4418,7 +4714,8 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     // Defaults to "Existing note"; switch to "New note" and type a title.
     render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
     const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
@@ -4442,13 +4739,70 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
     const confirmBtn = findPressableByText(root, 'Confirm');
-    // Baseline is preset from the entry point, but no Week 1 note is chosen yet.
+    // Nothing is preset from the generic entry point, so both sides must be
+    // chosen before Confirm becomes reachable.
+    expect(confirmBtn.props.accessibilityState.disabled).toBe(true);
+
+    chooseBaseline(root, 'Push Day');
     expect(confirmBtn.props.accessibilityState.disabled).toBe(true);
 
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
     expect(confirmBtn.props.accessibilityState.disabled).toBe(false);
+  });
+
+  // #713 review: the no-preset entry point is the first path on which BOTH
+  // pickers are live at once (a preset always fixed one side before), so it is
+  // the first path on which a Week 1 choice can be invalidated by a LATER
+  // baseline choice. `weekChoices` drops the note from the visible list, but the
+  // id stayed selected in state — invisible and unclearable — and Confirm
+  // submitted the same note as both sides, failing only as NOTE_IS_BASELINE.
+  test('choosing a note as the baseline AFTER picking it for Week 1 retires that Week 1 selection', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    // Week 1 first, baseline second — the order that reproduces it.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    chooseBaseline(root, 'Pull Day');
+
+    // The note is gone from the Week 1 list AND no longer held in state, so
+    // Confirm is not reachable with two identical ids.
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1')).toBeNull();
+    expect(findPressableByText(root, 'Confirm').props.accessibilityState.disabled).toBe(true);
+
+    // Picking the other eligible note re-enables it, with two distinct ids.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Push Day as Recovery Week 1').props.onPress(); });
+    expect(findPressableByText(root, 'Confirm').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('the same note is never submitted as both baseline and Week 1', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    chooseBaseline(root, 'Pull Day');
+
+    // Pressing the disabled Confirm writes nothing at all.
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    expect(startBlock).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+
+    // Completing the pair the valid way submits two distinct ids.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Push Day as Recovery Week 1').props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    expect(startBlock).toHaveBeenCalledWith({
+      baselineNoteId: 'routine2',
+      baselineNoteTitle: 'Pull Day',
+      baselineNoteText: otherNote.raw_text,
+      weekNoteId: 'routine1',
+    });
   });
 
   test('cancel flow: closing the modal makes no storage calls and leaves the current selection untouched', () => {
@@ -4457,7 +4811,8 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
     render.act(() => { findPressableByText(root, 'Cancel').props.onPress(); });
 
@@ -4475,15 +4830,16 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
     // The note itself still renders as an ordinary previous-routine card in
     // the background, but it must never appear as a selectable Week 1 option
-    // inside the modal — structurally excluded, never inferred from title.
+    // (nor as a baseline) inside the modal — structurally excluded, never
+    // inferred from title.
     expect(findByAccessibilityLabel(root, 'Use Legs Day as Recovery Week 1')).toBeNull();
-    // The still-eligible "Pull Day" card gets exactly one "Mark as recovery
-    // week" affordance in the background; the linked "Legs Day" card gets none.
-    const markButtons = root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week');
-    expect(markButtons.length).toBe(1);
+    expect(findByAccessibilityLabel(root, 'Use Legs Day as the frozen baseline')).toBeNull();
+    // The still-eligible notes remain selectable on both sides.
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1')).toBeTruthy();
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeTruthy();
   });
 
   test('duplicate active block rejection: startBlock failure surfaces truthful error copy and keeps the modal open', async () => {
@@ -4494,7 +4850,8 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
     await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
 
@@ -4523,7 +4880,7 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
     render.act(() => { findPressableByText(root, 'Cancel').props.onPress(); });
 
     expect(selectCurrent).not.toHaveBeenCalled();
@@ -4534,20 +4891,58 @@ describe('Recovery Block start flow', () => {
     expect(findPressableByText(root, 'Start recovery block')).toBeTruthy();
   });
 
-  test('mark-as-recovery-week mode never offers the preset Week 1 note as its own baseline', () => {
-    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
-    let component;
-    render.act(() => { component = render.create(<ControlledLogScreen />); });
-    const root = component.root;
+  // #711 removed the per-card callers that opened this modal with a preset, but
+  // NOT the preset contract itself: `baselineFixed`/`weekNoteFixed` now gate on
+  // `presetNote` rather than `mode`, so both preset paths must keep behaving
+  // exactly as they did. Exercised directly against the component, since the
+  // screen no longer has a control that supplies a preset.
+  describe('preset compatibility: the modal still fixes a supplied note', () => {
+    const { RecoveryBlockStartModal } = require('../components/RecoveryBlockStartModal');
 
-    // "Mark as recovery week" on otherNote ("Pull Day") presets it as Week 1;
-    // it must never also be selectable as its own baseline (would otherwise
-    // only fail later as NOTE_IS_BASELINE after Confirm).
-    render.act(() => { findPressableByText(root, 'Mark as recovery week').props.onPress({ stopPropagation: jest.fn() }); });
+    const renderModal = (props) => {
+      let component;
+      render.act(() => {
+        component = render.create(
+          <RecoveryBlockStartModal
+            visible
+            eligibleBaselineNotes={[baselineNote, otherNote]}
+            eligibleWeekNotes={[baselineNote, otherNote]}
+            onConfirm={jest.fn()}
+            onClose={jest.fn()}
+            {...props}
+          />
+        );
+      });
+      return component.root;
+    };
 
-    expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeNull();
-    // The other eligible note ("Push Day") remains a valid baseline choice.
-    expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+    test("mode 'routine' with a preset fixes that baseline and offers no baseline choices", () => {
+      const root = renderModal({ mode: 'routine', presetNote: baselineNote });
+      expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeNull();
+      expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeNull();
+      // Week 1 is still an open choice on this path.
+      expect(findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1')).toBeTruthy();
+    });
+
+    test("mode 'note' with a preset fixes Week 1 and never offers it as its own baseline", () => {
+      // Presetting "Pull Day" as Week 1 must exclude it from the baseline
+      // choices (it would otherwise only fail as NOTE_IS_BASELINE after
+      // Confirm); the other eligible note remains a valid baseline.
+      const root = renderModal({ mode: 'note', presetNote: otherNote });
+      expect(findByAccessibilityLabel(root, 'Use Pull Day as the frozen baseline')).toBeNull();
+      expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+      // Week 1 is fixed: no Existing/New chooser at all.
+      expect(findPressableByText(root, 'Existing note')).toBeNull();
+      expect(findPressableByText(root, 'New note')).toBeNull();
+    });
+
+    test('a null preset in either mode renders both pickers', () => {
+      for (const mode of ['routine', 'note']) {
+        const root = renderModal({ mode, presetNote: null });
+        expect(findByAccessibilityLabel(root, 'Use Push Day as the frozen baseline')).toBeTruthy();
+        expect(findPressableByText(root, 'Existing note')).toBeTruthy();
+      }
+    });
   });
 
   test('onConfirm rejecting (e.g. the new-note write itself failing) clears "Starting…" and shows an error instead of getting stuck', async () => {
@@ -4557,7 +4952,8 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
     const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
     render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
@@ -4578,7 +4974,8 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
     render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
     const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
     render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
@@ -4602,7 +4999,7 @@ describe('Recovery Block start flow', () => {
       );
     });
     const root = component.root;
-    render.act(() => { findPressableByText(root, 'Start recovery block').props.onPress({ stopPropagation: jest.fn() }); });
+    openEntryPoint(root);
     expect(findPressableByText(root, 'Confirm')).toBeTruthy();
   });
 });

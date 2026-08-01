@@ -12,8 +12,15 @@
 // container's gap `8` -> `12`; layout-only containment props (`minWidth: 0`,
 // `flexShrink: 1`, `flexWrap: 'wrap'`, `justifyContent: 'flex-end'`);
 // `minHeight: 44` / `justifyContent: 'center'` on `inlineSwitchButton`; and
-// `numberOfLines={2}` / `ellipsizeMode="tail"` on the title `Text`. No other
-// styling exception is authorized.
+// `numberOfLines={2}` / `ellipsizeMode="tail"` on the title `Text`.
+//
+// Authorized exceptions (#711), which relocates controls without restyling
+// them: the header action containers are deleted outright; the active card's
+// former `editHintRow` becomes `actionStrip` and gains `flexWrap: 'wrap'` +
+// `gap: 12`, with a `gap: 12` `actionStripPrimary` row inside it; the
+// non-current card's expanded body gains a `gap: 12` `viewActions` row for the
+// relocated Week A/B pill. Every relocated control keeps its existing style
+// object. No other styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -245,24 +252,21 @@ export function LogScreen({
   const recoveryEligibilityCtx = { blocks: recoveryBlocks, weeks: recoveryWeeks, deloadNotePrefix: DELOAD_NOTE_PREFIX };
   const eligibleBaselineNotes = notes.filter(n => isEligibleBaselineNote(n, recoveryEligibilityCtx));
   const eligibleWeekNotes = notes.filter(n => isEligibleRecoveryWeekNote(n, recoveryEligibilityCtx));
-  const eligibleBaselineNoteIds = new Set(eligibleBaselineNotes.map(n => n.id));
-  const eligibleWeekNoteIds = new Set(eligibleWeekNotes.map(n => n.id));
 
-  const currentIsEligibleRecoveryBaseline = !activeRecoveryBlock && !!currentNote && eligibleBaselineNoteIds.has(currentNote.id);
   const currentRecoveryWeekNumber = currentNote ? (recoveryWeekNumberByNoteId[currentNote.id] ?? null) : null;
 
   const recoveryBlockingMessage = activeRecoveryBlock
     ? `A recovery block baselined from "${activeRecoveryBlock.baseline_note_title || 'Untitled Routine'}" is already active. Complete or delete it before starting another.`
     : null;
 
-  const openStartRecoveryFromRoutine = (note) => {
-    if (!note) return;
-    setRecoveryModal({ mode: 'routine', note });
-  };
-  const openMarkAsRecoveryWeek = (note) => {
-    if (!note) return;
-    setRecoveryModal({ mode: 'note', note });
-  };
+  // The one recovery entry point (#711), opened from LogRecoverySection with no
+  // subject: `presetNote: null` makes RecoveryBlockStartModal render its own
+  // baseline and Week 1 pickers over the same eligible collections it already
+  // receives, and both paths reach the unchanged handleConfirmRecoveryBlock.
+  // Deliberately NOT the old per-card opener, which returns early without a
+  // note — the preset-note modal contract itself is untouched and still
+  // supported, it simply has no per-card caller left on this screen.
+  const openStartRecoveryBlock = () => setRecoveryModal({ mode: 'routine', note: null });
   const closeRecoveryModal = () => setRecoveryModal(null);
 
   const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle }) => {
@@ -548,8 +552,6 @@ export function LogScreen({
                 roughFlaggedNames={currentEditor.roughFlaggedNames}
                 activeEditText={currentEditor.activeEditText}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
-                isEligibleForRecoveryBaseline={currentIsEligibleRecoveryBaseline}
-                onStartRecoveryBlock={() => openStartRecoveryFromRoutine(currentNote)}
               />
             )}
 
@@ -567,6 +569,10 @@ export function LogScreen({
                 pendingRecovery={pendingRecovery}
                 pendingRecoveryError={recoveryPendingError}
                 onRetryRecovery={handleRetryRecovery}
+                // Empty while a block is active, so the entry point is never
+                // offered for a start that recoveryBlockingMessage would refuse.
+                eligibleBaselineNotes={activeRecoveryBlock ? [] : eligibleBaselineNotes}
+                onStartRecoveryBlock={openStartRecoveryBlock}
               />
             )}
 
@@ -585,10 +591,6 @@ export function LogScreen({
                 handleDeleteRoutine={guardedHandleDeleteRoutine}
                 handleCreateRoutine={otherEditor.handleCreateRoutine}
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
-                eligibleBaselineNoteIds={activeRecoveryBlock ? null : eligibleBaselineNoteIds}
-                eligibleWeekNoteIds={activeRecoveryBlock ? null : eligibleWeekNoteIds}
-                onStartRecoveryBlock={openStartRecoveryFromRoutine}
-                onMarkAsRecoveryWeek={openMarkAsRecoveryWeek}
               />
             )}
           </>
