@@ -4752,6 +4752,59 @@ describe('Recovery Block start flow', () => {
     expect(confirmBtn.props.accessibilityState.disabled).toBe(false);
   });
 
+  // #713 review: the no-preset entry point is the first path on which BOTH
+  // pickers are live at once (a preset always fixed one side before), so it is
+  // the first path on which a Week 1 choice can be invalidated by a LATER
+  // baseline choice. `weekChoices` drops the note from the visible list, but the
+  // id stayed selected in state — invisible and unclearable — and Confirm
+  // submitted the same note as both sides, failing only as NOTE_IS_BASELINE.
+  test('choosing a note as the baseline AFTER picking it for Week 1 retires that Week 1 selection', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    // Week 1 first, baseline second — the order that reproduces it.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    chooseBaseline(root, 'Pull Day');
+
+    // The note is gone from the Week 1 list AND no longer held in state, so
+    // Confirm is not reachable with two identical ids.
+    expect(findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1')).toBeNull();
+    expect(findPressableByText(root, 'Confirm').props.accessibilityState.disabled).toBe(true);
+
+    // Picking the other eligible note re-enables it, with two distinct ids.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Push Day as Recovery Week 1').props.onPress(); });
+    expect(findPressableByText(root, 'Confirm').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('the same note is never submitted as both baseline and Week 1', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
+    chooseBaseline(root, 'Pull Day');
+
+    // Pressing the disabled Confirm writes nothing at all.
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    expect(startBlock).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+
+    // Completing the pair the valid way submits two distinct ids.
+    render.act(() => { findByAccessibilityLabel(root, 'Use Push Day as Recovery Week 1').props.onPress(); });
+    await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
+    expect(startBlock).toHaveBeenCalledWith({
+      baselineNoteId: 'routine2',
+      baselineNoteTitle: 'Pull Day',
+      baselineNoteText: otherNote.raw_text,
+      weekNoteId: 'routine1',
+    });
+  });
+
   test('cancel flow: closing the modal makes no storage calls and leaves the current selection untouched', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
