@@ -44,6 +44,7 @@ docs/
   ui-design-rules.md   ← adopted UI design rules; companion to design-system-map.md
   design-system-map.md ← cross-screen style audit: every color, font, spacing token with file and line
   calculations-reference.md
+  contain-and-connect-roadmap.md ← active product-cohesion roadmap
   phone-runbook.md
   play-store-readiness.md ← Google Play production-readiness checklist
   tester-guide.md      ← tester-facing preview install guide
@@ -331,6 +332,7 @@ npm --prefix mobile test
 | `docs/current-state.md` | Single source of truth for MVP status: what is implemented, known gaps, and the launch prerequisite checklist. Read this first. |
 | `docs/architecture.md` | Script load order, screen routing, parser paths, persistence model, entry shapes, global state map. |
 | `docs/testing-and-qa.md` | Automated coverage inventory and the full manual smoke checklist with **[BLOCKER]** steps for launch. |
+| `docs/contain-and-connect-roadmap.md` | Active roadmap for the approved Contain and Connect product-cohesion pass. |
 | `docs/archive/backend-roadmap.md` | Archived public self-serve roadmap for the web-first Supabase transition: note-first cloud schema, RLS/auth isolation, offline sync, account export/deletion, web distribution, and ordered implementation issues. |
 | `docs/backend-activation.md` | Backend activation runbook: env config, schema application, and cloud-mode verification steps. |
 | `docs/backend-schema.md` | Cloud `kilo` schema documentation and source-of-truth policy. |
