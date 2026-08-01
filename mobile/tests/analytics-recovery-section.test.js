@@ -504,3 +504,99 @@ describe('AnalyticsRecoverySection — light/dark appearance', () => {
     expect(hasText(darkComponent.root, '2 of 2')).toBe(true);
   });
 });
+
+// ── #716: unverified Recovery state is never rendered as an empty result ─────
+
+describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () => {
+  const {
+    RECOVERY_LOADING_MESSAGE,
+    RECOVERY_STALE_MESSAGE,
+    RECOVERY_UNVERIFIED_MESSAGE,
+  } = require('../hooks/entries/recoveryBlockHooks');
+
+  function setupState(props) {
+    let component;
+    act(() => {
+      component = render.create(
+        <ThemeContext.Provider value={{ colors: LightColors, mode: 'light', preference: 'light', setPreference: () => {} }}>
+          <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
+        </ThemeContext.Provider>
+      );
+    });
+    return component;
+  }
+
+  const texts = (component) =>
+    component.root.findAll(n => typeof n.type === 'string' && n.props.children)
+      .map(n => n.props.children)
+      .filter(c => typeof c === 'string');
+
+  const retryButton = (component) =>
+    component.root.findAll(n => n.props && n.props.accessibilityLabel === 'Retry recovery' && n.props.onPress)[0];
+
+  test('a cold load renders explicit progress instead of nothing', () => {
+    const component = setupState({ stateReady: false, stateLoading: true });
+    expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
+    // Progress is not an error: there is nothing to retry yet.
+    expect(retryButton(component)).toBeUndefined();
+  });
+
+  test('a terminal first-load failure renders the unknown state and a retry path, not an empty section', () => {
+    const onRetry = jest.fn();
+    const component = setupState({
+      stateReady: false,
+      stateLoading: false,
+      stateError: new Error('unreadable'),
+      onRetry,
+    });
+
+    // Without this the failed read would be indistinguishable from "this user
+    // has never recovered" — the section would simply not render at all.
+    expect(texts(component)).toContain(RECOVERY_UNVERIFIED_MESSAGE);
+    const button = retryButton(component);
+    expect(button).toBeTruthy();
+    act(() => { button.props.onPress(); });
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  test('a terminal failure wins over in-flight progress', () => {
+    const component = setupState({
+      stateReady: false,
+      stateLoading: true,
+      stateRefreshing: true,
+      stateError: new Error('unreadable'),
+      onRetry: jest.fn(),
+    });
+    expect(texts(component)).toContain(RECOVERY_UNVERIFIED_MESSAGE);
+    expect(texts(component)).not.toContain(RECOVERY_LOADING_MESSAGE);
+  });
+
+  test('a stale snapshot keeps last-known-good evidence on screen and says it is stale', () => {
+    const b = block();
+    const w = week(1, 'note-w1');
+    const component = setupState({
+      blocks: [b],
+      weeks: [w],
+      notes: [{ id: 'note-w1', title: 'Week 1', raw_text: BASELINE_TEXT }],
+      stateStale: true,
+      onRetry: jest.fn(),
+    });
+
+    const rendered = texts(component);
+    expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
+    // The block's own evidence is still rendered, not replaced by the notice.
+    expect(rendered).toContain('Push Pull Legs');
+    expect(retryButton(component)).toBeTruthy();
+  });
+
+  test('a stale snapshot with no blocks still offers the retry path', () => {
+    const component = setupState({ stateStale: true, onRetry: jest.fn() });
+    expect(texts(component)).toContain(RECOVERY_STALE_MESSAGE);
+    expect(retryButton(component)).toBeTruthy();
+  });
+
+  test('a verified empty snapshot still renders nothing at all', () => {
+    const component = setupState({ stateReady: true });
+    expect(component.toJSON()).toBeNull();
+  });
+});

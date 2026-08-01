@@ -6529,3 +6529,324 @@ describe('useRecoveryAnalyticsFilter freshness and fail-closed reads', () => {
     expect(latest().isNoteExcluded('recoverynote')).toBe(true);
   });
 });
+
+// ── #716: one authoritative Recovery read-and-reconcile contract ─────────────
+
+describe('authoritative Recovery state contract (#716)', () => {
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
+
+  const block = {
+    id: 'rb716', baseline_note_id: 'baseline', baseline_note_title: 'Push Day',
+    baseline: { version: 1, exercises: [] }, include_in_normal_analytics: false,
+    started_at: '2026-05-01T00:00:00.000Z', completed_at: null, deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
+  };
+  const week = {
+    id: 'rw716', block_id: 'rb716', note_id: 'recoverynote', week_number: 1,
+    completed_at: null, deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z', updated_at: '2026-05-01T00:00:00.000Z',
+  };
+
+  const mounted = [];
+  const seen = [];
+
+  function Probe({ bucket }) {
+    bucket.push(hooks.useRecoveryBlockState());
+    return null;
+  }
+  const latestOf = (bucket) => bucket[bucket.length - 1];
+  const latest = () => latestOf(seen);
+
+  const mountProbe = async (bucket = seen) => {
+    await render.act(async () => {
+      mounted.push(render.create(<Probe bucket={bucket} />));
+    });
+  };
+
+  const seedRecords = async (blocks, weeks) => {
+    await AsyncStorage.setItem(RECOVERY_BLOCKS_KEY, JSON.stringify(blocks));
+    await AsyncStorage.setItem(RECOVERY_BLOCK_WEEKS_KEY, JSON.stringify(weeks));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    AsyncStorage.__store.clear();
+    seen.length = 0;
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  afterEach(async () => {
+    await render.act(async () => { mounted.forEach(c => c.unmount()); });
+    mounted.length = 0;
+    jest.restoreAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('a successful cold load reports ready, allows mutations, and is not stale', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.READY);
+    expect(latest().ready).toBe(true);
+    expect(latest().loading).toBe(false);
+    expect(latest().stale).toBe(false);
+    expect(latest().error).toBe(null);
+    expect(latest().mutationsAllowed).toBe(true);
+    expect(latest().activeBlock.id).toBe('rb716');
+  });
+
+  test('a terminal first-load failure is an error state, never a verified-empty one', async () => {
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('recovery key unreadable'));
+    await mountProbe();
+
+    // The arrays are empty, but nothing may treat that as "no recovery blocks":
+    // `ready` is what separates a verified empty result from an unknown one.
+    expect(latest().blocks).toEqual([]);
+    expect(latest().ready).toBe(false);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.ERROR);
+    expect(latest().error).toBeTruthy();
+    // A terminal failure is distinguishable from initial progress: it is not
+    // loading, so the UI shows a retry path instead of an endless spinner.
+    expect(latest().loading).toBe(false);
+    expect(latest().refreshing).toBe(false);
+    expect(latest().mutationsAllowed).toBe(false);
+  });
+
+  test('retry after a terminal first-load failure reaches the verified state', async () => {
+    const loadSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValueOnce(new Error('recovery key unreadable'));
+    await mountProbe();
+    expect(latest().ready).toBe(false);
+
+    await seedRecords([block], [week]);
+    loadSpy.mockRestore();
+    await render.act(async () => { await latest().retryRecovery(); });
+
+    expect(latest().ready).toBe(true);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.READY);
+    expect(latest().error).toBe(null);
+    expect(latest().activeBlock.id).toBe('rb716');
+  });
+
+  test('a refresh failure keeps last-known-good data visible and marks it stale', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    const goodBlocks = latest().blocks;
+    expect(latest().ready).toBe(true);
+
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('transient read failure'));
+    await render.act(async () => { await latest().refresh(); });
+
+    // Last-known-good survives the failure, identity included, and is labelled.
+    expect(latest().blocks).toBe(goodBlocks);
+    expect(latest().activeBlock.id).toBe('rb716');
+    expect(latest().ready).toBe(true);
+    expect(latest().stale).toBe(true);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.STALE);
+    expect(latest().staleError).toBeTruthy();
+    // A stale snapshot is still verified persisted state, so it is not an
+    // unverified read and does not have to freeze mutations.
+    expect(latest().mutationsAllowed).toBe(true);
+  });
+
+  test('two simultaneously mounted consumers share one snapshot and never reconcile concurrently', async () => {
+    await seedRecords([block], [week]);
+
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const real = recoveryStorageModule.loadRecoveryBlocks;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      try {
+        return await real();
+      } finally {
+        concurrent -= 1;
+      }
+    });
+
+    const logBucket = [];
+    const analyticsBucket = [];
+    await render.act(async () => {
+      mounted.push(render.create(<Probe bucket={logBucket} />));
+      mounted.push(render.create(<Probe bucket={analyticsBucket} />));
+    });
+
+    expect(maxConcurrent).toBe(1);
+    // Not merely equal — the SAME published object, which is what makes
+    // divergent reconciliation results structurally impossible.
+    expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
+    expect(latestOf(logBucket).weeks).toBe(latestOf(analyticsBucket).weeks);
+    expect(latestOf(logBucket).ready).toBe(latestOf(analyticsBucket).ready);
+    expect(latestOf(logBucket).status).toBe(latestOf(analyticsBucket).status);
+  });
+
+  test('a mutation is rejected at confirm time while state is unverified', async () => {
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('recovery key unreadable'));
+    const weeksForBlockSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryWeeksForBlock');
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECOVERY_STATE_UNVERIFIED');
+    // Refused before any domain read or write: the mutation never decided
+    // anything against the unverified placeholder snapshot.
+    expect(weeksForBlockSpy).not.toHaveBeenCalled();
+  });
+
+  test('the confirm-time recheck re-establishes verified state and then allows the mutation', async () => {
+    const loadSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValueOnce(new Error('recovery key unreadable'));
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+    await mountProbe();
+    expect(latest().ready).toBe(false);
+
+    // The storage failure clears while the confirmation dialog is open.
+    await seedRecords([block], [week]);
+    loadSpy.mockRestore();
+
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.week.id).toBe('rw716');
+    expect(latest().ready).toBe(true);
+  });
+});
+
+// ── #716: the Log Recovery section never renders unverified state as empty ───
+
+describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
+  const { LogRecoverySection } = require('../components/LogRecoverySection');
+  const {
+    RECOVERY_LOADING_MESSAGE,
+    RECOVERY_STALE_MESSAGE,
+    RECOVERY_UNVERIFIED_MESSAGE,
+  } = require('../hooks/entries/recoveryBlockHooks');
+
+  const activeBlock = {
+    id: 'rbActive716',
+    baseline_note_id: 'baseline716',
+    baseline_note_title: 'Push Day',
+    baseline: { version: 1, exercises: [] },
+    include_in_normal_analytics: false,
+    started_at: '2026-05-01T00:00:00.000Z',
+    completed_at: null,
+    deleted_at: null,
+    saved_at: '2026-05-01T00:00:00.000Z',
+    updated_at: '2026-05-01T00:00:00.000Z',
+  };
+  const activeWeek = {
+    id: 'rw716', block_id: 'rbActive716', note_id: 'weeknote716', week_number: 1,
+    completed_at: null, deleted_at: null,
+  };
+
+  const renderSection = async (props) => {
+    let component;
+    await render.act(async () => {
+      component = render.create(<LogRecoverySection notes={[]} {...props} />);
+    });
+    return component;
+  };
+
+  const texts = (component) =>
+    component.root.findAll(n => typeof n.type === 'string' && n.props.children)
+      .map(n => n.props.children)
+      .filter(c => typeof c === 'string');
+
+  const retryButton = (component) =>
+    component.root.findAll(n => n.props && n.props.accessibilityLabel === 'Retry recovery' && n.props.onPress)[0];
+
+  test('a cold load renders explicit initial progress rather than an empty section', async () => {
+    const component = await renderSection({ stateReady: false, stateLoading: true });
+    expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
+    expect(retryButton(component)).toBeUndefined();
+  });
+
+  test('a terminal first-load failure renders the unknown state with the Retry recovery control', async () => {
+    const onRetryRecovery = jest.fn();
+    const component = await renderSection({
+      stateReady: false,
+      stateError: new Error('unreadable'),
+      onRetryRecovery,
+    });
+
+    expect(texts(component)).toContain(RECOVERY_UNVERIFIED_MESSAGE);
+    const button = retryButton(component);
+    expect(button).toBeTruthy();
+    // ui-design-rules §12: the copy names the control by its exact accessible
+    // name, so a screen-reader user searching for it finds it.
+    expect(RECOVERY_UNVERIFIED_MESSAGE).toContain('Retry recovery');
+    await render.act(async () => { await button.props.onPress(); });
+    expect(onRetryRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  test('a refresh failure keeps the active block visible and marks it stale', async () => {
+    const component = await renderSection({
+      blocks: [activeBlock],
+      weeks: [activeWeek],
+      stateStale: true,
+      onRetryRecovery: jest.fn(),
+    });
+
+    const rendered = texts(component);
+    expect(rendered).toContain('Push Day');
+    expect(rendered).toContain(RECOVERY_STALE_MESSAGE);
+    expect(retryButton(component)).toBeTruthy();
+  });
+
+  test('unverified state disables every lifecycle control', async () => {
+    const component = await renderSection({
+      blocks: [activeBlock],
+      weeks: [activeWeek],
+      mutationsAllowed: false,
+      onCompleteWeek: jest.fn(),
+      onOpenAddWeek: jest.fn(),
+      onCompleteBlock: jest.fn(),
+      onUnlinkWeek: jest.fn(),
+    });
+
+    const controls = component.root.findAll(
+      // Composite Pressables only: React Native's own host View mirrors an
+      // accessibilityState with an undefined `disabled`, which is noise here.
+      n => typeof n.type !== 'string'
+        && n.props && n.props.accessibilityRole === 'button'
+        && n.props.accessibilityState
+        && typeof n.props.accessibilityState.disabled === 'boolean'
+        && n.props.accessibilityLabel !== 'Retry recovery'
+    );
+    expect(controls.length).toBeGreaterThan(0);
+    for (const control of controls) {
+      expect(control.props.accessibilityState.disabled).toBe(true);
+    }
+  });
+
+  test('a verified snapshot with nothing to show still renders nothing', async () => {
+    const component = await renderSection({ stateReady: true });
+    expect(component.toJSON()).toBeNull();
+  });
+});

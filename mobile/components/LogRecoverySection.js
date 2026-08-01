@@ -16,7 +16,12 @@ import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { findActiveBlock, isLiveRecord, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
-import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
+import {
+  RECOVERY_LOADING_MESSAGE,
+  RECOVERY_STALE_MESSAGE,
+  RECOVERY_UNVERIFIED_MESSAGE,
+  useRecoveryBlockLifecycle,
+} from '../hooks/entries/recoveryBlockHooks';
 
 // The exact control label, shared by the active card and every completed-block
 // row. Exported so tests assert against one string rather than a copy of it.
@@ -102,6 +107,19 @@ export function LogRecoverySection({
   // callback takes no note argument — the modal chooses its own subject.
   eligibleBaselineNotes = [],
   onStartRecoveryBlock,
+  // Authoritative Recovery read state (#716). Defaults describe a verified,
+  // current snapshot so a caller that does not yet supply them is unchanged.
+  //
+  // `stateReady` is what separates "verified empty" from "unknown". While it is
+  // false, `blocks`/`weeks` are placeholders, so this component must never fall
+  // through to its "nothing to show" return — it renders the initial-loading or
+  // error/retry state instead.
+  stateReady = true,
+  stateLoading = false,
+  stateRefreshing = false,
+  stateStale = false,
+  stateError = null,
+  mutationsAllowed = true,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -128,9 +146,12 @@ export function LogRecoverySection({
   const pendingMessage = pendingRecoveryError
     || pendingRecovery?.[0]?.error
     || 'A recovery change is still being applied on this device.';
-  // One flag for every lifecycle control: a pending operation and an in-flight
-  // action are both reasons no second write may start.
-  const actionsLocked = !!busy || hasPendingRecovery;
+  // One flag for every lifecycle control. Unverified state is a third reason no
+  // write may start (#716): a mutation decided against a placeholder snapshot is
+  // exactly what the authoritative contract exists to refuse, and the lifecycle
+  // hooks reject it at confirm time anyway — disabling here keeps the UI from
+  // advertising an action that would only fail after Confirm.
+  const actionsLocked = !!busy || hasPendingRecovery || !mutationsAllowed;
   const noticeIsTerminal = !hasPendingRecovery && !!pendingRecoveryError;
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
@@ -144,10 +165,53 @@ export function LogRecoverySection({
   // finishing one block must not remove the way to start the next.
   const showStartEntryPoint = !activeBlock && !!onStartRecoveryBlock && eligibleBaselineNotes.length > 0;
 
+  // Unverified Recovery state is never rendered as "no recovery blocks" (#716).
+  // A cold load shows explicit initial progress; a terminal first-load failure
+  // shows the failure and the same `Retry recovery` control the pending-operation
+  // banner uses. Falling through to the "nothing to show" return below would
+  // present a failed read as a verified empty result.
+  if (!stateReady) {
+    // A terminal first-load error wins over any in-flight progress: once a read
+    // has failed with nothing verified, the user needs the retry path, not a
+    // spinner that may never resolve.
+    const isInitialLoad = !stateError && (stateLoading || stateRefreshing);
+    const message = isInitialLoad ? RECOVERY_LOADING_MESSAGE : RECOVERY_UNVERIFIED_MESSAGE;
+    return (
+      <View style={styles.container}>
+        <View style={styles.activeGroup}>
+          <SectionTitle>Recovery</SectionTitle>
+          <Card style={styles.card}>
+            <View
+              style={styles.pendingBanner}
+              accessible
+              accessibilityRole={isInitialLoad ? 'text' : 'alert'}
+              accessibilityLabel={message}
+            >
+              <Text style={styles.pendingBannerText}>{message}</Text>
+              {!isInitialLoad && (
+                <Pressable
+                  onPress={() => onRetryRecovery?.()}
+                  disabled={!!busy}
+                  style={styles.pendingRetryButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry recovery"
+                  accessibilityState={{ disabled: !!busy }}
+                >
+                  <Text style={styles.pendingRetryText}>Retry recovery</Text>
+                </Pressable>
+              )}
+            </View>
+          </Card>
+        </View>
+      </View>
+    );
+  }
+
   // A pending recovery operation must stay visible even when neither an active
   // block nor any completed block renders — otherwise the retry affordance
-  // would disappear with the records it is trying to repair.
-  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !showStartEntryPoint) return null;
+  // would disappear with the records it is trying to repair. The same is true of
+  // a stale snapshot: hiding it would hide the retry path with it.
+  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !showStartEntryPoint && !stateStale) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -227,6 +291,31 @@ export function LogRecoverySection({
   // silently discards the interaction.
   const inclusionLocked = actionsLocked || !!inclusionBusyBlockId;
 
+  // A verified snapshot whose latest refresh failed (#716). Last-known-good
+  // blocks and weeks stay on screen — they are still the truth as of the last
+  // successful read — and this says so plainly rather than letting the user
+  // assume the view is current.
+  const staleBanner = (
+    <View
+      style={styles.pendingBanner}
+      accessible
+      accessibilityRole="alert"
+      accessibilityLabel={RECOVERY_STALE_MESSAGE}
+    >
+      <Text style={styles.pendingBannerText}>{RECOVERY_STALE_MESSAGE}</Text>
+      <Pressable
+        onPress={() => onRetryRecovery?.()}
+        disabled={!!busy || stateRefreshing}
+        style={styles.pendingRetryButton}
+        accessibilityRole="button"
+        accessibilityLabel="Retry recovery"
+        accessibilityState={{ disabled: !!busy || stateRefreshing }}
+      >
+        <Text style={styles.pendingRetryText}>Retry recovery</Text>
+      </Pressable>
+    </View>
+  );
+
   const pendingBanner = (
     <View
       style={styles.pendingBanner}
@@ -256,6 +345,7 @@ export function LogRecoverySection({
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
+            {stateStale ? staleBanner : null}
             {showRecoveryNotice ? pendingBanner : null}
             {showStartEntryPoint && (
               <View style={styles.actionsRow}>
@@ -285,6 +375,7 @@ export function LogRecoverySection({
             <Text style={styles.baselineLabel}>Baseline routine</Text>
             <Text style={styles.baselineTitle}>{activeBlock.baseline_note_title || 'Untitled Routine'}</Text>
 
+            {stateStale ? staleBanner : null}
             {showRecoveryNotice ? pendingBanner : null}
 
             {actionError ? (

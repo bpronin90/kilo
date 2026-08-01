@@ -15,6 +15,11 @@ import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
 import {
+  RECOVERY_LOADING_MESSAGE,
+  RECOVERY_STALE_MESSAGE,
+  RECOVERY_UNVERIFIED_MESSAGE,
+} from '../hooks/entries/recoveryBlockHooks';
+import {
   deriveRecoveryComparison,
   RECOVERY_COMPARISON_STATUS,
   RECOVERY_WEEK_STATUS,
@@ -304,7 +309,20 @@ function BlockEvidence({ block, weeks, notes, unit }) {
   );
 }
 
-export function AnalyticsRecoverySection({ blocks = [], weeks = [], notes = [] }) {
+export function AnalyticsRecoverySection({
+  blocks = [],
+  weeks = [],
+  notes = [],
+  // Authoritative Recovery read state (#716), from the same shared store the Log
+  // screen renders. Defaults describe a verified, current snapshot so a caller
+  // that does not supply them is unchanged.
+  stateReady = true,
+  stateLoading = false,
+  stateRefreshing = false,
+  stateStale = false,
+  stateError = null,
+  onRetry,
+}) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const unit = useWeightUnit();
@@ -316,7 +334,72 @@ export function AnalyticsRecoverySection({ blocks = [], weeks = [], notes = [] }
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
 
-  if (!activeBlock && completedBlocks.length === 0) return null;
+  // Unverified state is not "this user has never recovered" (#716). Rendering
+  // nothing here would silently retract an entire evidence surface on a failed
+  // read, so an unverified snapshot states its own condition instead.
+  if (!stateReady) {
+    const isInitialLoad = !stateError && (stateLoading || stateRefreshing);
+    const message = isInitialLoad ? RECOVERY_LOADING_MESSAGE : RECOVERY_UNVERIFIED_MESSAGE;
+    return (
+      <View style={styles.container}>
+        <SectionTitle>Recovery</SectionTitle>
+        <View
+          style={styles.stateBanner}
+          accessible
+          accessibilityRole={isInitialLoad ? 'text' : 'alert'}
+          accessibilityLabel={message}
+        >
+          <Text style={styles.stateBannerText}>{message}</Text>
+          {!isInitialLoad && !!onRetry && (
+            <Pressable
+              onPress={() => onRetry()}
+              style={styles.stateRetryButton}
+              accessibilityRole="button"
+              accessibilityLabel="Retry recovery"
+            >
+              <Text style={styles.stateRetryText}>Retry recovery</Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  const staleBanner = stateStale ? (
+    <View
+      style={styles.stateBanner}
+      accessible
+      accessibilityRole="alert"
+      accessibilityLabel={RECOVERY_STALE_MESSAGE}
+    >
+      <Text style={styles.stateBannerText}>{RECOVERY_STALE_MESSAGE}</Text>
+      {!!onRetry && (
+        <Pressable
+          onPress={() => onRetry()}
+          disabled={stateRefreshing}
+          style={styles.stateRetryButton}
+          accessibilityRole="button"
+          accessibilityLabel="Retry recovery"
+          accessibilityState={{ disabled: stateRefreshing }}
+        >
+          <Text style={styles.stateRetryText}>Retry recovery</Text>
+        </Pressable>
+      )}
+    </View>
+  ) : null;
+
+  // A stale snapshot with no blocks in it still has something to say: the last
+  // good read is what is on screen and it may be out of date. Hiding the section
+  // would hide the retry path with it.
+  if (!activeBlock && completedBlocks.length === 0) {
+    if (!stateStale) return null;
+    return (
+      <View style={styles.container}>
+        <SectionTitle>Recovery</SectionTitle>
+        {staleBanner}
+      </View>
+    );
+  }
 
   const focusedBlock =
     (focusedBlockId && [activeBlock, ...completedBlocks].find(b => b && b.id === focusedBlockId)) ||
@@ -328,6 +411,8 @@ export function AnalyticsRecoverySection({ blocks = [], weeks = [], notes = [] }
   return (
     <View style={styles.container}>
       <SectionTitle>Recovery</SectionTitle>
+
+      {staleBanner}
 
       {activeBlock && focusedBlock.id !== activeBlock.id && (
         <Pressable
@@ -401,6 +486,36 @@ export function AnalyticsRecoverySection({ blocks = [], weeks = [], notes = [] }
 const createStyles = (colors) => StyleSheet.create({
   container: {
     gap: 16,
+  },
+  // Same tokens as LogRecoverySection's pending/stale banner, so the identical
+  // condition reads identically on both tabs (docs/design-system-map.md).
+  stateBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.subtleBg,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    gap: 8,
+  },
+  stateBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  stateRetryButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.chipBackground,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  stateRetryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
   card: {
     gap: 12,

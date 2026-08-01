@@ -49,45 +49,194 @@ const RecoveryStorage = Storage;
 let recoveryListeners = [];
 const notifyRecoveryBlocks = () => safeNotify(recoveryListeners);
 
-// Read-model for the Log screen: the active block (if any), every live week
-// membership, and a note-id -> week-number lookup for the active block's own
-// weeks (badge display never reaches into a completed/other block).
-export function useRecoveryBlockState() {
-  const [blocks, setBlocks] = useState([]);
-  const [weeks, setWeeks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+// ── one authoritative Recovery read-and-reconcile contract (#716) ─────────────
+//
+// Log and Analytics used to run `useRecoveryBlockState` independently: each
+// mount held its own `blocks`/`weeks`/`loading`/`error` state and its own
+// reconcile-then-read pass. Two consequences made the boundary unsafe.
+//
+// 1. A FAILED read was indistinguishable from a VERIFIED EMPTY one. `blocks`
+//    stayed `[]` and `loading` flipped to false, so a corrupt or temporarily
+//    unreadable recovery key rendered exactly like "this user has no recovery
+//    blocks" — and every eligibility and mutation gate derived from that empty
+//    array said yes.
+// 2. Two mounted consumers could reconcile the same journal concurrently and
+//    then disagree, because nothing tied their reads together.
+//
+// The store below fixes both. It is the single owner of the verified snapshot
+// and of the lifecycle status around it, and every read goes through one
+// coalescing entry point, so simultaneously mounted consumers observe the same
+// snapshot and can never run two concurrent reconciliations.
+export const RECOVERY_STATUS = Object.freeze({
+  // No authoritative read has been attempted yet in this process.
+  IDLE: 'idle',
+  // First authoritative read in flight; nothing is verified yet.
+  LOADING: 'loading',
+  // A verified snapshot is published and current.
+  READY: 'ready',
+  // A verified snapshot is published and a newer read is in flight.
+  REFRESHING: 'refreshing',
+  // A verified snapshot is published but the latest read FAILED. Last-known-good
+  // data stays visible and a retry path is offered.
+  STALE: 'stale',
+  // The first read failed and nothing was ever verified. This is NOT an empty
+  // result: consumers must render an error/retry state, never an empty one.
+  ERROR: 'error',
+});
+
+// User-facing copy for the three non-ready conditions, owned by the state
+// contract rather than by either screen so Log and Analytics cannot describe the
+// same condition differently. Each states what is actually true right now and,
+// where one exists, names the control that resolves it — `Retry recovery` is the
+// exact accessible name of the button rendered beside them (ui-design-rules §12).
+export const RECOVERY_LOADING_MESSAGE = 'Loading recovery data…';
+export const RECOVERY_UNVERIFIED_MESSAGE =
+  'Recovery data could not be read, so recovery status is unknown. Tap Retry recovery.';
+export const RECOVERY_STALE_MESSAGE =
+  'Showing the last recovery data that loaded successfully. The latest refresh failed. Tap Retry recovery.';
+
+let recoveryLifecycle = {
+  status: RECOVERY_STATUS.IDLE,
+  // Terminal first-load failure. Only ever set while nothing is verified.
+  error: null,
+  // Latest refresh failure over an already-verified snapshot.
+  refreshError: null,
   // Journaled operations that are not yet verified (#696). Recovery lifecycle
   // state is not considered ready until reconciliation has run, so a resumed
   // operation converges before the user can act on the records it touches.
-  const [pendingRecovery, setPendingRecovery] = useState([]);
-  const [recoveryPendingError, setRecoveryPendingError] = useState(null);
+  pendingRecovery: [],
+  recoveryPendingError: null,
+};
 
-  const refresh = useCallback(() => {
-    setError(null);
-    // Reconciliation first, reads second: replaying a pending operation can
-    // change what these two reads return, and publishing the pre-replay values
-    // would show the user a transition that is about to be completed anyway.
-    return reconcileRecoveryOperations()
-      .then((reconciliation) => {
-        // `pending` locks conflicting actions; `cancelled` does not. A terminal
-        // cancellation has already retired its record, so it must unlock
-        // everything while still explaining itself once.
-        setPendingRecovery(reconciliation.pending || []);
-        setRecoveryPendingError(reconciliation.error || null);
-        return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
-      })
-      .then(([b, w]) => {
-        setBlocks(b);
-        setWeeks(w);
-      })
-      .catch(e => setError(e))
-      .finally(() => setLoading(false));
+let recoveryStateListeners = [];
+
+function setRecoveryLifecycle(patch) {
+  recoveryLifecycle = { ...recoveryLifecycle, ...patch };
+  safeNotify(recoveryStateListeners);
+}
+
+// The single in-flight authoritative read, plus at most one coalesced
+// follow-up. A request that arrives while a read is running does NOT reuse that
+// read's result — it may have started before the mutation the caller is
+// refreshing for — but it also never starts a second concurrent reconciliation.
+// Every such caller shares one queued follow-up instead.
+let recoveryReadInFlight = null;
+let recoveryReadQueued = null;
+
+function runAuthoritativeRecoveryRead() {
+  setRecoveryLifecycle({
+    status: recoverySnapshotVerified ? RECOVERY_STATUS.REFRESHING : RECOVERY_STATUS.LOADING,
+  });
+  let pending = [];
+  let pendingError = null;
+  // Reconciliation first, reads second: replaying a pending operation can
+  // change what these two reads return, and publishing the pre-replay values
+  // would show the user a transition that is about to be completed anyway.
+  return reconcileRecoveryOperations()
+    .then((reconciliation) => {
+      // `pending` locks conflicting actions; `cancelled` does not. A terminal
+      // cancellation has already retired its record, so it must unlock
+      // everything while still explaining itself once.
+      pending = reconciliation.pending || [];
+      pendingError = reconciliation.error || null;
+      return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()]);
+    })
+    .then(([blocks, weeks]) => {
+      publishRecoverySnapshot(blocks, weeks);
+      setRecoveryLifecycle({
+        status: RECOVERY_STATUS.READY,
+        error: null,
+        refreshError: null,
+        pendingRecovery: pending,
+        recoveryPendingError: pendingError,
+      });
+    })
+    .catch((e) => {
+      // A failed read never publishes "nothing is recovering". A previously
+      // verified snapshot stays authoritative and is marked stale; an
+      // unverified one becomes a terminal error with a retry path. In neither
+      // case is the empty placeholder promoted to a result.
+      if (recoverySnapshotVerified) {
+        setRecoveryLifecycle({ status: RECOVERY_STATUS.STALE, refreshError: e });
+      } else {
+        setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e });
+      }
+    });
+}
+
+export function refreshRecoveryState() {
+  if (!recoveryReadInFlight) {
+    recoveryReadInFlight = runAuthoritativeRecoveryRead().finally(() => {
+      recoveryReadInFlight = null;
+    });
+    return recoveryReadInFlight;
+  }
+  if (!recoveryReadQueued) {
+    recoveryReadQueued = recoveryReadInFlight.then(() => {
+      recoveryReadQueued = null;
+      return refreshRecoveryState();
+    });
+  }
+  return recoveryReadQueued;
+}
+
+// Confirm-time authoritative precondition recheck.
+//
+// The render-time `mutationsAllowed` gate is necessary but not sufficient: a
+// native confirmation dialog can sit open indefinitely, and the verified
+// snapshot behind the button can go stale or fail in that window. Every
+// lifecycle mutation therefore re-establishes a verified state at the moment it
+// is confirmed, and refuses rather than writing against unverified state.
+export async function ensureVerifiedRecoveryState() {
+  if (recoverySnapshotVerified && recoveryLifecycle.status !== RECOVERY_STATUS.ERROR) {
+    return { ok: true };
+  }
+  await refreshRecoveryState();
+  if (recoverySnapshotVerified) return { ok: true };
+  return {
+    ok: false,
+    code: 'RECOVERY_STATE_UNVERIFIED',
+    error: 'Recovery data could not be read, so this change was not made. Try again.',
+  };
+}
+
+// Read-model for the Log screen and Analytics: the active block (if any), every
+// live week membership, a note-id -> week-number lookup for the active block's
+// own weeks (badge display never reaches into a completed/other block), and the
+// explicit lifecycle status around all of it.
+export function useRecoveryBlockState() {
+  const [view, setView] = useState(() => ({
+    snapshot: lastRecoverySnapshot,
+    verified: recoverySnapshotVerified,
+    lifecycle: recoveryLifecycle,
+  }));
+
+  const sync = useCallback(() => {
+    setView(prev => (
+      prev.snapshot === lastRecoverySnapshot
+        && prev.verified === recoverySnapshotVerified
+        && prev.lifecycle === recoveryLifecycle
+        ? prev
+        : {
+          snapshot: lastRecoverySnapshot,
+          verified: recoverySnapshotVerified,
+          lifecycle: recoveryLifecycle,
+        }
+    ));
   }, []);
 
+  const refresh = useCallback(() => refreshRecoveryState(), []);
+
   useEffect(() => {
-    refresh();
+    sync();
+    refreshRecoveryState();
     recoveryListeners.push(refresh);
+    // Subscribing to the shared snapshot as well as the lifecycle status is what
+    // makes Log and Analytics agree while mounted together: a publish from
+    // either one's read (or from `useRecoveryAnalyticsFilter`) re-renders both
+    // against the SAME object.
+    recoverySnapshotSubscribers.push(sync);
+    recoveryStateListeners.push(sync);
 
     // A completed cloud sync (bootstrap or ongoing) can bring in another
     // device's active block/week records without any local
@@ -99,43 +248,61 @@ export function useRecoveryBlockState() {
     // App.js to know about recovery state) keeps the fix inside this hook.
     let lastSyncStatus = null;
     const handleSyncState = (syncState) => {
-      const sync = syncState?.[SYNC_PHASE.SYNC];
-      if (sync && sync.status === SYNC_STATUS.COMPLETE && lastSyncStatus !== SYNC_STATUS.COMPLETE) {
-        refresh();
+      const s = syncState?.[SYNC_PHASE.SYNC];
+      if (s && s.status === SYNC_STATUS.COMPLETE && lastSyncStatus !== SYNC_STATUS.COMPLETE) {
+        refreshRecoveryState();
       }
-      lastSyncStatus = sync ? sync.status : null;
+      lastSyncStatus = s ? s.status : null;
     };
     const unsubscribeSync = subscribeSyncState(handleSyncState);
 
     return () => {
       recoveryListeners = recoveryListeners.filter(l => l !== refresh);
+      recoverySnapshotSubscribers = recoverySnapshotSubscribers.filter(l => l !== sync);
+      recoveryStateListeners = recoveryStateListeners.filter(l => l !== sync);
       unsubscribeSync();
     };
-  }, [refresh]);
+  }, [refresh, sync]);
 
-  const activeBlock = findActiveBlock(blocks);
-  const recoveryWeekNumberByNoteId = {};
-  if (activeBlock) {
-    for (const w of weeks) {
-      if (w.block_id === activeBlock.id) recoveryWeekNumberByNoteId[w.note_id] = w.week_number;
+  return useMemo(() => {
+    const { blocks, weeks } = view.snapshot;
+    const { status, error, refreshError, pendingRecovery, recoveryPendingError } = view.lifecycle;
+    const activeBlock = findActiveBlock(blocks);
+    const recoveryWeekNumberByNoteId = {};
+    if (activeBlock) {
+      for (const w of weeks) {
+        if (w.block_id === activeBlock.id) recoveryWeekNumberByNoteId[w.note_id] = w.week_number;
+      }
     }
-  }
-
-  return {
-    blocks,
-    weeks,
-    activeBlock,
-    recoveryWeekNumberByNoteId,
-    loading,
-    error,
-    refresh,
-    pendingRecovery,
-    recoveryPendingError,
-    // The `Retry recovery` affordance is deliberately the SAME call the initial
-    // mount, the sync boundary, and every pre-action gate make. There is no
-    // separate repair algorithm to keep in step.
-    retryRecovery: refresh,
-  };
+    return {
+      blocks,
+      weeks,
+      activeBlock,
+      recoveryWeekNumberByNoteId,
+      status,
+      // `ready` is the only safe basis for treating an empty `blocks` array as
+      // "no recovery blocks exist". Until it is true the arrays are placeholders.
+      ready: view.verified,
+      // Initial load only. A terminal first-load failure is NOT loading — it has
+      // its own error/retry state — and a refresh over verified data is
+      // `refreshing`, so the two progress kinds stay distinguishable.
+      loading: !view.verified && status !== RECOVERY_STATUS.ERROR,
+      refreshing: status === RECOVERY_STATUS.REFRESHING,
+      stale: status === RECOVERY_STATUS.STALE,
+      staleError: refreshError,
+      error,
+      // Recovery eligibility and every mutation stay closed until persisted
+      // state is verified.
+      mutationsAllowed: view.verified && status !== RECOVERY_STATUS.ERROR,
+      refresh,
+      pendingRecovery,
+      recoveryPendingError,
+      // The `Retry recovery` affordance is deliberately the SAME call the initial
+      // mount, the sync boundary, and every pre-action gate make. There is no
+      // separate repair algorithm to keep in step.
+      retryRecovery: refresh,
+    };
+  }, [view, refresh]);
 }
 
 // ── normal-analytics membership filter (#699) ─────────────────────────────────
@@ -156,6 +323,27 @@ let lastRecoverySignature = '';
 // start, while workout notes load fine). Consumers read `filter.ready` and keep
 // their loading state instead.
 let recoverySnapshotVerified = false;
+
+// Everyone who renders from the shared snapshot: every mounted
+// `useRecoveryAnalyticsFilter` AND every mounted `useRecoveryBlockState`. One
+// publish re-renders all of them against the same object, which is what makes
+// "Log and Analytics see the same authoritative snapshot" structural rather
+// than coincidental.
+let recoverySnapshotSubscribers = [];
+
+// The single write path for the shared verified snapshot. Called by both the
+// authoritative read above and the read-only filter refresh below, so neither
+// can hold a snapshot the other has not seen.
+function publishRecoverySnapshot(blocks, weeks) {
+  const signature = _recoverySignature(blocks, weeks);
+  if (signature !== lastRecoverySignature || !recoverySnapshotVerified) {
+    lastRecoverySignature = signature;
+    lastRecoverySnapshot = { blocks, weeks };
+  }
+  recoverySnapshotVerified = true;
+  safeNotify(recoverySnapshotSubscribers);
+  return lastRecoverySnapshot;
+}
 
 // Retry cadence for a failed read, capped. A cold-start failure would otherwise
 // wait for an unrelated recovery mutation or a cloud sync to clear, which a
@@ -200,32 +388,27 @@ export function useRecoveryAnalyticsFilter() {
   const retryAttemptRef = useRef(0);
   const unmountedRef = useRef(false);
 
+  const syncFromShared = useCallback(() => {
+    setState(prev => (
+      prev.snapshot === lastRecoverySnapshot && prev.verified === recoverySnapshotVerified
+        ? prev
+        : { snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified }
+    ));
+  }, []);
+
   const refresh = useCallback(() => {
     return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
       .then(([blocks, weeks]) => {
-        const signature = _recoverySignature(blocks, weeks);
-        if (signature !== lastRecoverySignature || !recoverySnapshotVerified) {
-          lastRecoverySignature = signature;
-          lastRecoverySnapshot = { blocks, weeks };
-        }
-        recoverySnapshotVerified = true;
+        publishRecoverySnapshot(blocks, weeks);
         retryAttemptRef.current = 0;
-        setState(prev => (
-          prev.snapshot === lastRecoverySnapshot && prev.verified
-            ? prev
-            : { snapshot: lastRecoverySnapshot, verified: true }
-        ));
+        syncFromShared();
       })
       .catch(() => {
         // A failed read never publishes "nothing is excluded". If a good
         // snapshot was already read in this process it stays authoritative; if
         // none ever was, the boundary stays unverified and every consumer holds
         // its loading state rather than admitting recovery work.
-        setState(prev => (
-          prev.snapshot === lastRecoverySnapshot && prev.verified === recoverySnapshotVerified
-            ? prev
-            : { snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified }
-        ));
+        syncFromShared();
         if (recoverySnapshotVerified || unmountedRef.current) return;
         const attempt = retryAttemptRef.current;
         if (attempt >= RECOVERY_READ_RETRY_MS.length) return;
@@ -235,12 +418,16 @@ export function useRecoveryAnalyticsFilter() {
           if (!unmountedRef.current) refresh();
         }, RECOVERY_READ_RETRY_MS[attempt]);
       });
-  }, []);
+  }, [syncFromShared]);
 
   useEffect(() => {
     unmountedRef.current = false;
     refresh();
     recoveryListeners.push(refresh);
+    // A publish from the authoritative `useRecoveryBlockState` read must move
+    // this hook too, or Log and Analytics could render two different snapshots
+    // while mounted together.
+    recoverySnapshotSubscribers.push(syncFromShared);
 
     let lastSyncStatus = null;
     const handleSyncState = (syncState) => {
@@ -256,9 +443,10 @@ export function useRecoveryAnalyticsFilter() {
       unmountedRef.current = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       recoveryListeners = recoveryListeners.filter(l => l !== refresh);
+      recoverySnapshotSubscribers = recoverySnapshotSubscribers.filter(l => l !== syncFromShared);
       unsubscribeSync();
     };
-  }, [refresh]);
+  }, [refresh, syncFromShared]);
 
   return useMemo(
     () => buildRecoveryAnalyticsFilter(state.snapshot.blocks, state.snapshot.weeks, { ready: state.verified }),
@@ -276,12 +464,22 @@ export function reloadRecoveryBlocks() {
   notifyRecoveryBlocks();
 }
 
-// Test seam: drop the shared snapshot so one test's recovery records cannot
-// seed the next test's first render.
+// Test seam: drop the shared snapshot AND the lifecycle state built on it, so
+// one test's recovery records or failed read cannot seed the next test's first
+// render.
 export function _resetRecoveryAnalyticsFilterCache() {
   lastRecoverySnapshot = { blocks: [], weeks: [] };
   lastRecoverySignature = '';
   recoverySnapshotVerified = false;
+  recoveryLifecycle = {
+    status: RECOVERY_STATUS.IDLE,
+    error: null,
+    refreshError: null,
+    pendingRecovery: [],
+    recoveryPendingError: null,
+  };
+  recoveryReadInFlight = null;
+  recoveryReadQueued = null;
 }
 
 // One-shot read of the ordinary-analytics exclusion set, straight from storage.
@@ -355,7 +553,15 @@ export async function startRecoveryBlockCore(storage, { baselineNoteId, baseline
 }
 
 export function useStartRecoveryBlock() {
-  const startBlock = useCallback((params) => startRecoveryBlockCore(Storage, params), []);
+  // Same confirm-time recheck as every other recovery mutation: the start modal
+  // can sit open while the authoritative read goes stale, and freezing a
+  // baseline against unverified state is exactly the write this boundary exists
+  // to prevent.
+  const startBlock = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
+    return startRecoveryBlockCore(Storage, params);
+  }, []);
   return { startBlock };
 }
 
@@ -647,16 +853,22 @@ export function setRecoveryNormalAnalyticsInclusionCore(storage, { blockId, incl
 
 export function useRecoveryBlockLifecycle() {
   const completeCurrentWeek = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await completeCurrentWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const addWeek = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await addRecoveryWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const addWeekWithNewNote = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await addRecoveryWeekWithNewNoteCore(RecoveryStorage, params);
     if (result.ok) {
       notifyRecoveryBlocks();
@@ -667,16 +879,22 @@ export function useRecoveryBlockLifecycle() {
     return result;
   }, []);
   const completeBlock = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await completeRecoveryBlockCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const unlinkWeek = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await unlinkRecoveryWeekCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
   }, []);
   const unlinkNoteForDelete = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await unlinkNoteForDeleteCore(RecoveryStorage, params);
     if (result.ok) {
       notifyRecoveryBlocks();
@@ -702,6 +920,8 @@ export function useRecoveryBlockLifecycle() {
   // `useRecoveryAnalyticsFilter`) refresh, which is what makes Home/Analytics
   // repopulate immediately.
   const setIncludeInNormalAnalytics = useCallback(async (params) => {
+    const gate = await ensureVerifiedRecoveryState();
+    if (!gate.ok) return gate;
     const result = await setRecoveryNormalAnalyticsInclusionCore(RecoveryStorage, params);
     if (result.ok) notifyRecoveryBlocks();
     return result;
