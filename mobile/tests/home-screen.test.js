@@ -585,11 +585,14 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   );
 
   test('no handoff declares a fixed height that a scaled label could overflow', () => {
-    // Structural guard only — the rendered proof that nothing actually clips at
-    // 320/375/448dp under enlarged text is in artifacts/717-d4/.
-    const row = component.root.findByProps({ testID: 'home-current-routine-link' }).parent;
-    const rowStyle = flatStyle(row);
-    expect(rowStyle.flexWrap).toBe('wrap');
+    // Structural guard: both primary controls get equal flexible width, while
+    // all labeled handoffs can grow vertically under enlarged text.
+    const routineAction = component.root.findByProps({ testID: 'home-current-routine-link' });
+    const weightAction = component.root.findByProps({ testID: 'home-weight-action' });
+    expect(routineAction.parent).toBe(weightAction.parent);
+    expect(flatStyle(routineAction.parent).flexDirection).toBe('row');
+    expect(flatStyle(routineAction).flex).toBe(1);
+    expect(flatStyle(weightAction).flex).toBe(1);
 
     for (const testID of ['home-current-routine-link', 'home-weight-action', 'home-weight-trend-link']) {
       const style = flatStyle(component.root.findByProps({ testID }));
@@ -655,7 +658,7 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   });
 
   test('the hero keeps a single dominant metric alongside the new actions', () => {
-    // §8: the new controls are quiet inline actions; the latest-weight value
+    // §8: the new controls are quiet primary actions; the latest-weight value
     // remains the only hero-sized element and is no longer itself a press owner.
     const heroValues = component.root.findAll(n => {
       if (n.type !== 'Text') return false;
@@ -682,13 +685,14 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       );
     });
 
-    // Scoped to the hero row: the unrelated 1K card legitimately shows em-dashes
-    // for untracked lifts.
-    const heroRow = local.root.findByProps({ testID: 'home-weight-action' }).parent;
-    const heroTexts = heroRow.findAllByType('Text')
-      .map(t => String(t.props.children ?? '').trim());
-    expect(heroTexts).toContain('No weigh-in yet');
-    expect(heroTexts).not.toContain('—');
+    // The weight state remains visible above the dedicated action row. The
+    // unrelated 1K card legitimately shows em-dashes for untracked lifts.
+    const noWeighIn = local.root.findAllByType('Text')
+      .find(t => t.props.children === 'No weigh-in yet');
+    expect(noWeighIn).toBeTruthy();
+    expect(noWeighIn.parent).not.toBe(
+      local.root.findByProps({ testID: 'home-weight-action' }).parent
+    );
 
     // Chart caption suppressed when there is no series to plot.
     const allTexts = local.root.findAllByType('Text')
@@ -714,15 +718,16 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     }
   });
 
-  test('each label sits in the same row as the action that acts on it', () => {
-    // `space-between` stretched label and action to opposite card edges on wide
-    // viewports, so they read as unrelated. Rendered proof of the 12px pairing
-    // gap at 320/375/448/800dp is in artifacts/717-d4/geometry.json.
-    const weekRow = component.root.findByProps({ testID: 'home-current-routine-link' }).parent;
-    expect(flatStyle(weekRow).justifyContent).toBeUndefined();
-    const weightRow = component.root.findByProps({ testID: 'home-weight-action' }).parent;
-    expect(flatStyle(weightRow).justifyContent).toBeUndefined();
-    expect(flatStyle(weightRow).flexDirection).toBe('row');
+  test('the two daily-loop actions share one stable primary-action row', () => {
+    const routineAction = component.root.findByProps({ testID: 'home-current-routine-link' });
+    const weightAction = component.root.findByProps({ testID: 'home-weight-action' });
+    const actionRow = routineAction.parent;
+
+    expect(actionRow).toBe(weightAction.parent);
+    expect(flatStyle(actionRow).flexDirection).toBe('row');
+    expect(flatStyle(actionRow).backgroundColor).toBeDefined();
+    expect(flatStyle(routineAction).flex).toBe(1);
+    expect(flatStyle(weightAction).flex).toBe(1);
   });
 
   test('the existing full-insights link still reaches Analytics with no section', () => {

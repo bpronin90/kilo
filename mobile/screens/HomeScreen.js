@@ -185,33 +185,18 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         <>
           {/* ══ TIER 1: Weekly Summary ══ */}
           <Card style={styles.weeklyHero}>
-            {/* #2 inline week label, paired with a visible current-routine action
-                (#717 review): the week label states context, the labeled control
-                next to it is the actual press target, so the Log handoff is
-                discoverable to sighted users rather than a silently tappable
-                caption. The label itself is deliberately not a press owner. */}
+            {/* #2 inline week label. The two primary daily-loop actions live in
+                one stable row below the hero state instead of being scattered
+                beside the values they act on (#717 review). */}
             <View style={styles.heroWeekRow}>
               <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
                 {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
               </Text>
-              <Pressable
-                testID="home-current-routine-link"
-                onPress={() => onNavigate('Log')}
-                style={styles.heroInlineAction}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Log workout"
-                accessibilityHint="Opens the Log tab for your current routine"
-              >
-                <Text style={styles.heroInlineActionText}>Log workout</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
-              </Pressable>
             </View>
 
-            {/* The hero metric stays a plain, non-pressable value (§8), with the
-                weigh-in action adjacent to it rather than stranded on the far
-                side of a stretched row. With no weigh-in yet the slot reads as a
-                short muted sentence instead of a bare dash over dead space. */}
+            {/* The hero metric stays a plain, non-pressable value (§8). With no
+                weigh-in yet the slot reads as a short muted sentence instead of
+                a bare dash over dead space. */}
             <View style={styles.heroWeightRow}>
               {dashboardData.latestWeight ? (
                 <Text style={styles.heroWeightValue}>
@@ -221,16 +206,34 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               ) : (
                 <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
               )}
+            </View>
+
+            <View style={styles.heroPrimaryActions}>
+              <Pressable
+                testID="home-current-routine-link"
+                onPress={() => onNavigate('Log')}
+                style={styles.heroPrimaryAction}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="Log workout"
+                accessibilityHint="Opens the Log tab for your current routine"
+              >
+                <Text style={styles.heroPrimaryActionText}>Log workout</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+
+              <View style={styles.heroPrimaryActionDivider} />
+
               <Pressable
                 testID="home-weight-action"
                 onPress={() => onNavigate('Weight')}
-                style={styles.heroInlineAction}
-                hitSlop={8}
+                style={styles.heroPrimaryAction}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                 accessibilityRole="button"
                 accessibilityLabel="Log weight"
                 accessibilityHint="Opens the Weight tab to log a weigh-in"
               >
-                <Text style={styles.heroInlineActionText}>Log weight</Text>
+                <Text style={styles.heroPrimaryActionText}>Log weight</Text>
                 <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
@@ -396,16 +399,7 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 0,
     marginTop: 12,
   },
-  // Label and its action sit next to each other. `space-between` stretched them
-  // to opposite edges of the card, so on a wide viewport `Week 4` and
-  // `Log workout` read as two unrelated things (#717 review round 3).
   heroWeekRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // Narrow widths with large text wrap the action under the label rather than
-    // letting either side clip.
-    flexWrap: 'wrap',
-    columnGap: 12,
     marginBottom: 4,
   },
   heroWeekLabel: {
@@ -415,16 +409,45 @@ const createStyles = (colors) => StyleSheet.create({
     flexShrink: 1,
   },
   heroWeightRow: {
-    flexDirection: 'row',
-    // Baseline would misalign a 48px value against a 13px action, so the action
-    // is centered against the value's box.
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    columnGap: 12,
+    minWidth: 0,
   },
-  // Quiet inline action shared by the routine and weigh-in handoffs. 44pt
-  // minimum target per the mobile touch-target rule, kept visually quiet so the
-  // hero metric remains the only dominant element (§8).
+  // The two highest-frequency actions share one stable strip at every width,
+  // keeping them visually distinct from the surrounding summary and Analytics
+  // handoffs while preserving the single hero metric.
+  heroPrimaryActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.subtleBg,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  heroPrimaryAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  heroPrimaryActionText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  heroPrimaryActionDivider: {
+    width: 1,
+    marginVertical: 8,
+    backgroundColor: colors.cardBorder,
+  },
+  // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
+  // the mobile touch-target rule, kept visually quiet so the hero metric remains
+  // the only dominant element (§8).
   heroInlineAction: {
     flexDirection: 'row',
     alignItems: 'center',

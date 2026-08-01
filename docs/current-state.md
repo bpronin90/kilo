@@ -198,9 +198,9 @@ The real native app path now has a modular React Native shell:
   the current Analytics row contract, and a quiet `Full history and insights`
   link into Analytics. Since #717 the steady-state hero is also the entry point
   for four cross-screen handoffs, each carried by a visibly labeled control
-  sitting immediately beside the value it acts on rather than a silently
-  pressable value: a `Log workout` action next to the week label opens Log, a
-  `Log weight` action next to the latest-weight value opens Weight, a
+  rather than a silently pressable value: the primary `Log workout` and
+  `Log weight` actions share a dedicated quiet action row beneath the hero
+  state and open Log and Weight respectively, a
   `See weight trends` action beneath the sparkline opens Analytics at its weight
   section, and the `Exercise Progress` band opens Analytics at its strength
   section. Chevrons mark those explicit actions only; the `Exercise Progress`
@@ -968,8 +968,9 @@ titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with a responsive Kilo wordmark
 header, `Current Routine Progress` subtitle copy, a latest-weight hero value with
-a labeled `Log weight` action beside it, a compact non-pressable `1k Club
-Progress` card, and a line-chart view of the 7-day rolling-average weight trend
+a dedicated row beneath it for the labeled `Log workout` and `Log weight`
+actions, a compact non-pressable `1k Club Progress` card, and a line-chart view
+of the 7-day rolling-average weight trend
 followed by a labeled `See weight trends` action that opens the Analytics weight
 section. Alongside the "Full history and insights" CTA, which still opens
 Analytics at its default landing view with no section argument, Home→Analytics
