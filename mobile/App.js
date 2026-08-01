@@ -1,6 +1,8 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, Alert, StatusBar } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, StatusBar } from 'react-native';
+import { Alert } from './lib/platformAlert';
+import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 
@@ -634,6 +636,10 @@ function AppShell() {
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
+        {/* Mounted at the app root, not per-screen: Alert.alert is called
+            imperatively from hooks all over the app, so the single host has
+            to outlive any one screen. */}
+        <WebAlertHost />
         <SafeAreaView style={styles.topSafeArea} />
         {/* Dark chrome needs light status-bar glyphs and vice versa. */}
         <ExpoStatusBar style={mode === 'dark' ? 'light' : 'dark'} />

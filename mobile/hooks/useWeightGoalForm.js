@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Alert } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 
 export function useWeightGoalForm(goal, saveGoal, clearGoal, archiveGoal, isActive = true, registerBackConsumer) {
   const [goalEditing, setGoalEditing] = useState(false);

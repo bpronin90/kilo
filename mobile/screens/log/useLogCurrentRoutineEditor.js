@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Alert, Keyboard, Platform } from 'react-native';
+import { Keyboard, Platform } from 'react-native';
+import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, countWorkoutSessionsFromSections, applyWeekSkipToText } from '../../lib/parser';
 import { removeWeekSkipFromText } from '../../lib/parser/workoutNote.js';
 import {

@@ -10,7 +10,8 @@
 // already enforce.
 
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';

@@ -25,7 +25,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
-import { WebAlertHost } from '../components/WebAlertHost';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';
@@ -471,7 +470,6 @@ export function LogScreen({
 
   return (
     <>
-      <WebAlertHost />
       <ScreenShell
         ref={readScrollRef}
         onScroll={currentEditor.handleReadScroll}
