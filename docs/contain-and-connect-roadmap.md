@@ -152,6 +152,8 @@ intents can target Analytics sections, an exact Log note, and More > Cloud Sync.
 
 ### D0 — Build one shared Recovery state foundation
 
+- **Issue:** [#716](https://github.com/bpronin90/kilo/issues/716)
+
 - **Suggested title:** `Contain and Connect / D0: centralize verified Recovery state`
 - **Goal:** give Log and Analytics one authoritative Recovery read/reconcile
   contract so neither interprets failed reads as valid empty state.
@@ -186,6 +188,8 @@ intents can target Analytics sections, an exact Log note, and More > Cloud Sync.
 
 ### D4 — Connect the six existing-contract handoffs
 
+- **Issue:** [#717](https://github.com/bpronin90/kilo/issues/717)
+
 - **Suggested title:** `Contain and Connect / D4: connect daily loops and Analytics sections`
 - **Goal:** remove dead ends using the navigation contract that already exists.
 - **Depends on:** none.
@@ -207,6 +211,8 @@ intents can target Analytics sections, an exact Log note, and More > Cloud Sync.
   `area:ui`, `area:architecture`.
 
 ### D13 — Add typed cross-screen navigation intents
+
+- **Issue:** [#718](https://github.com/bpronin90/kilo/issues/718)
 
 - **Suggested title:** `Contain and Connect / D13: add typed cross-screen navigation intents`
 - **Goal:** express precise cross-screen destinations without replacing the
