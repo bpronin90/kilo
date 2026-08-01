@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Alert } from 'react-native';
+import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote } from '../../lib/parser';
 import {
   findMatchingExerciseNames,
