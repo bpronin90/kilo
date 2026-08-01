@@ -41,6 +41,10 @@ intended for Play closed testing is built.
 
 Roadmap status:
 
+- The active product-cohesion pass is tracked in
+  `docs/contain-and-connect-roadmap.md`. It implements the approved "Contain
+  and Connect" direction from issue #714 without changing the five-tab shell
+  or tab-bar behavior.
 - MVP4.0 through MVP4.5 are complete roadmap passes. Their roadmap documents
   are archived under `docs/archive/`.
 - The MVP-Refine pass (`docs/archive/mvp-refine-roadmap.md`) ran after MVP4.5

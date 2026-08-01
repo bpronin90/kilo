@@ -78,7 +78,7 @@ npm --prefix mobile test
 | [`docs/architecture.md`](docs/architecture.md) | Script load order, parser paths, persistence model, and global state |
 | [`docs/testing-and-qa.md`](docs/testing-and-qa.md) | Automated coverage inventory and manual smoke checklist |
 | [`docs/repo-structure.md`](docs/repo-structure.md) | File map, structural verdict, and repo-orientation notes |
-| [`docs/backend-roadmap.md`](docs/backend-roadmap.md) | Active roadmap for the web-first Supabase transition |
+| [`docs/contain-and-connect-roadmap.md`](docs/contain-and-connect-roadmap.md) | Active roadmap for the Contain and Connect product-cohesion pass |
 | [`docs/tester-guide.md`](docs/tester-guide.md) | Tester-facing guide for installing and exercising preview builds |
 
 Start with `docs/current-state.md` if you need the fastest accurate snapshot of
