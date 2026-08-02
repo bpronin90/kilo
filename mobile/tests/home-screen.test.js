@@ -434,6 +434,405 @@ describe('HomeScreen holds its loading state while the recovery boundary is unve
   });
 });
 
+// Home's four cross-screen handoffs (#717). The populated dashboard already shows
+// the information a user needs to continue; these press targets carry them to the
+// destination instead of making them re-find it by tab.
+describe('HomeScreen daily-loop handoffs (#717)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+
+  const populatedProps = (onNavigate) => ({
+    weightEntries: [
+      { id: 'w1', date: '2026-05-30', logged_at: '2026-05-30T08:00:00Z', weight_value: 185, weight_unit: 'lb', note: '' },
+      { id: 'w2', date: '2026-05-31', logged_at: '2026-05-31T08:00:00Z', weight_value: 184, weight_unit: 'lb', note: '' },
+    ],
+    workoutNote: NOTE,
+    notes: [NOTE],
+    successMessage: '',
+    onNavigate,
+    loading: false,
+  });
+
+  const byTestID = (root, testID) => root.findByProps({ testID });
+
+  let onNavigate;
+  let component;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+    onNavigate = jest.fn();
+    await render.act(async () => {
+      component = render.create(<HomeScreen {...populatedProps(onNavigate)} />);
+    });
+  });
+
+  afterEach(async () => {
+    if (component) await render.act(async () => { component.unmount(); });
+    component = null;
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('the current-routine header goes to Log', () => {
+    render.act(() => { byTestID(component.root, 'home-current-routine-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Log');
+  });
+
+  test('the weight action goes to Weight', () => {
+    render.act(() => { byTestID(component.root, 'home-weight-action').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Weight');
+  });
+
+  test('the strength summary goes to the Analytics strength section', () => {
+    render.act(() => { byTestID(component.root, 'home-strength-summary-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+  });
+
+  test('the weight sparkline goes to the Analytics weight section', () => {
+    render.act(() => { byTestID(component.root, 'home-weight-trend-link').props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'weight');
+  });
+
+  test('repeating a handoff issues it again', () => {
+    const link = byTestID(component.root, 'home-weight-trend-link');
+    render.act(() => { link.props.onPress(); });
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'weight');
+  });
+
+  test('each handoff exposes a button role and an accessible label', () => {
+    for (const testID of [
+      'home-current-routine-link',
+      'home-weight-action',
+      'home-strength-summary-link',
+      'home-weight-trend-link',
+    ]) {
+      const node = byTestID(component.root, testID);
+      expect(node.props.accessibilityRole).toBe('button');
+      expect(typeof node.props.accessibilityLabel).toBe('string');
+      expect(node.props.accessibilityLabel.length).toBeGreaterThan(0);
+    }
+  });
+
+  // --- Static style/structure guards ---
+  //
+  // Scope note: react-test-renderer does not run React Native layout, so these
+  // are regression guards on the declared style and structure contract, NOT
+  // rendered validation. Actual rendered validation at 320/375/448dp with an
+  // enlarged text setting — real geometry, clipping/overlap detection,
+  // screenshots, and browser accessibility/focus order — is produced by the
+  // capture harness against the Expo web build; see artifacts/717-d4/.
+
+  const flatStyle = (node) => [].concat(node.props.style ?? []).reduce(
+    (acc, s) => (s ? Object.assign(acc, s) : acc),
+    {}
+  );
+
+  const HANDOFF_IDS = [
+    'home-current-routine-link',
+    'home-weight-action',
+    'home-strength-summary-link',
+    'home-weight-trend-link',
+  ];
+
+  // The three quiet inline controls, which carry an explicit 44pt minimum.
+  const INLINE_ACTION_IDS = [
+    'home-current-routine-link',
+    'home-weight-action',
+    'home-weight-trend-link',
+  ];
+
+  test(
+    'every Home handoff declares a >=44pt minimum target and a button role',
+    async () => {
+      let local;
+      await render.act(async () => {
+        local = render.create(<HomeScreen {...populatedProps(jest.fn())} />);
+      });
+
+      // Every handoff is now a compact labeled row, so they all declare the
+      // same minimum target rather than one relying on block geometry.
+      for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
+        const node = local.root.findByProps({ testID });
+        expect(node.props.accessibilityRole).toBe('button');
+        const style = flatStyle(node);
+        expect(style.minHeight).toBeGreaterThanOrEqual(44);
+        expect(node.props.hitSlop).not.toBeUndefined();
+      }
+
+      await render.act(async () => { local.unmount(); });
+    }
+  );
+
+  test('no handoff declares a fixed height that a scaled label could overflow', () => {
+    // Structural guard: both primary controls get equal flexible width, while
+    // all labeled handoffs can grow vertically under enlarged text.
+    const routineAction = component.root.findByProps({ testID: 'home-current-routine-link' });
+    const weightAction = component.root.findByProps({ testID: 'home-weight-action' });
+    expect(routineAction.parent).toBe(weightAction.parent);
+    expect(flatStyle(routineAction.parent).flexDirection).toBe('row');
+    expect(flatStyle(routineAction).flex).toBe(1);
+    expect(flatStyle(weightAction).flex).toBe(1);
+
+    for (const testID of ['home-current-routine-link', 'home-weight-action', 'home-weight-trend-link']) {
+      const style = flatStyle(component.root.findByProps({ testID }));
+      expect(style.height).toBeUndefined();
+      expect(style.minHeight).toBe(44);
+    }
+  });
+
+  test('each handoff owns its press region exclusively — no nested press owners', () => {
+    // The sparkline chart owns an inner Pressable for point selection, so the
+    // Analytics-weight handoff must not wrap it (#717 review finding 1).
+    const { LineChart } = require('../components/UI');
+    const trendLink = component.root.findByProps({ testID: 'home-weight-trend-link' });
+    expect(trendLink.findAllByType(LineChart)).toHaveLength(0);
+
+    for (const testID of HANDOFF_IDS) {
+      const node = component.root.findByProps({ testID });
+      // No descendant of a handoff may itself be a press owner.
+      const nestedPressOwners = node.findAll(
+        n => n !== node && typeof n.props?.onPress === 'function'
+      );
+      expect(nestedPressOwners).toHaveLength(0);
+    }
+  });
+
+  test('handoffs appear in the intended order in the rendered tree', () => {
+    // Structural guard. Real screen-reader evidence — Chromium accessibility
+    // tree plus actual keyboard focus traversal — is in
+    // artifacts/717-d4/ax-order-375.json.
+    // A Pressable surfaces as both a composite and its host view, so collapse
+    // consecutive duplicates.
+    const order = component.root
+      .findAll(n => n.props?.accessibilityRole === 'button' && n.props?.testID)
+      .map(n => n.props.testID)
+      .filter(id => HANDOFF_IDS.includes(id))
+      .filter((id, i, all) => id !== all[i - 1]);
+
+    expect(order).toEqual([
+      'home-current-routine-link',
+      'home-weight-action',
+      'home-weight-trend-link',
+      'home-strength-summary-link',
+    ]);
+  });
+
+  test('every handoff exposes a visible label, not a silent press target', () => {
+    // Discoverability for sighted users (#717 review finding 4): the routine and
+    // weigh-in actions must read as actions on screen, not as inert captions.
+    const visibleText = (node) => node.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim())
+      .filter(Boolean);
+
+    expect(visibleText(component.root.findByProps({ testID: 'home-current-routine-link' })))
+      .toContain('Log workout');
+    expect(visibleText(component.root.findByProps({ testID: 'home-weight-action' })))
+      .toContain('Log weight');
+    // An explicit action label, not the chart caption: "7-day rolling avg" read
+    // as chart furniture rather than something tappable (#717 review round 3).
+    expect(visibleText(component.root.findByProps({ testID: 'home-weight-trend-link' })))
+      .toContain('See weight trends');
+    expect(visibleText(component.root.findByProps({ testID: 'home-strength-summary-link' })))
+      .toContain('Exercise Progress');
+  });
+
+  test('the hero keeps a single dominant metric alongside the new actions', () => {
+    // §8: the new controls are quiet primary actions; the latest-weight value
+    // remains the only hero-sized element and is no longer itself a press owner.
+    const heroValues = component.root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const style = flatStyle(n);
+      return style.fontWeight === '800' || style.fontSize >= 40;
+    });
+    for (const value of heroValues) {
+      let node = value.parent;
+      while (node) {
+        expect(node.props?.testID).not.toBe('home-weight-action');
+        node = node.parent;
+      }
+    }
+  });
+
+  test('with no weigh-ins the hero degrades to a labeled state, not an empty slot', async () => {
+    // The owner reported a bare "—" hero over dead space. With no weigh-ins the
+    // hero reads as a short sentence and the empty sparkline is suppressed,
+    // while the weigh-in handoff stays available.
+    let local;
+    await render.act(async () => {
+      local = render.create(
+        <HomeScreen {...populatedProps(jest.fn())} weightEntries={[]} />
+      );
+    });
+
+    // The weight state remains visible above the dedicated action row. The
+    // unrelated 1K card legitimately shows em-dashes for untracked lifts.
+    const noWeighIn = local.root.findAllByType('Text')
+      .find(t => t.props.children === 'No weigh-in yet');
+    expect(noWeighIn).toBeTruthy();
+    expect(noWeighIn.parent).not.toBe(
+      local.root.findByProps({ testID: 'home-weight-action' }).parent
+    );
+
+    // Chart caption suppressed when there is no series to plot.
+    const allTexts = local.root.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim());
+    expect(allTexts).not.toContain('7-day rolling avg');
+    // The handoffs are still reachable in the no-data state.
+    expect(local.root.findByProps({ testID: 'home-weight-action' })).toBeTruthy();
+    expect(local.root.findByProps({ testID: 'home-weight-trend-link' })).toBeTruthy();
+
+    await render.act(async () => { local.unmount(); });
+  });
+
+  test('every press target carries a visible affordance', () => {
+    // Dropping the strength band's chevron in an earlier round recreated the
+    // "silently pressable" defect, so every handoff must show a chevron.
+    const Svg = require('react-native-svg').default;
+    for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
+      const node = component.root.findByProps({ testID });
+      expect(node.props.accessibilityRole).toBe('button');
+      expect(node.findAllByType(Svg).length).toBeGreaterThan(0);
+    }
+  });
+
+  test('the two strength destinations use the established chevron treatment', () => {
+    const visibleText = (node) => node.findAllByType('Text')
+      .map(t => String(t.props.children ?? '').trim());
+
+    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+
+    // No filled-pill treatment: a chip background read as noisy, so these match
+    // the plain `Full history and insights ›` control already on this screen.
+    for (const node of [band, oneK]) {
+      const filled = node.findAll(n => {
+        const s = flatStyle(n);
+        return s.backgroundColor !== undefined || s.borderRadius === 999;
+      });
+      expect(filled).toHaveLength(0);
+      expect(flatStyle(node).minHeight).toBe(44);
+      expect(node.props.hitSlop).not.toBeUndefined();
+    }
+
+    // §12: each accessible label matches its own visible label exactly, and the
+    // two names stay distinct so a screen reader can tell them apart.
+    expect(visibleText(band)).toContain('Exercise Progress');
+    expect(band.props.accessibilityLabel).toBe('Exercise Progress');
+    expect(visibleText(oneK)).toContain('1K Progress');
+    expect(oneK.props.accessibilityLabel).toBe('1K Progress');
+  });
+
+  test('the section-header chevron cannot orphan onto its own line', () => {
+    // As independent children of a wrapping full-width row, the chevron dropped
+    // alone below the label at 320px with enlarged text. The row now hugs its
+    // content and does not wrap; the label shrinks instead.
+    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
+      const style = flatStyle(component.root.findByProps({ testID }));
+      expect(style.flexWrap).not.toBe('wrap');
+      expect(style.justifyContent).not.toBe('space-between');
+    }
+  });
+
+  test('each section header keeps its own card alignment', () => {
+    // The shared header style must not carry cross-axis alignment: baking
+    // `flex-start` into it dragged the centered 1K header to the left edge while
+    // that card's total and breakdown stayed centered.
+    const band = flatStyle(component.root.findByProps({ testID: 'home-strength-summary-link' }));
+    expect(band.alignSelf).toBe('flex-start');
+
+    const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
+    expect(oneK.alignSelf).toBe('center');
+  });
+
+  test('the classification columns keep horizontal separation', () => {
+    // Content-sized columns with no gap could exactly fill the row, so the three
+    // labels ran together as one string at 375px with enlarged text.
+    const row = component.root.findByProps({ testID: 'home-strength-summary-link' })
+      .parent.findAll(n => flatStyle(n).flexWrap === 'wrap' && flatStyle(n).columnGap)[0];
+    expect(row).toBeTruthy();
+    expect(flatStyle(row).columnGap).toBeGreaterThanOrEqual(12);
+  });
+
+  test('only the section header row is tappable, not the metrics beneath', () => {
+    // Making the whole band and the whole 1K card tappable was too much
+    // clickable area: the counts, chart, and per-lift grid are data, not
+    // controls.
+    const band = component.root.findByProps({ testID: 'home-strength-summary-link' });
+    const bandText = band.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
+    expect(bandText).toContain('Exercise Progress');
+    for (const label of ['Progressing', 'Steady', 'Regressing']) {
+      expect(bandText).not.toContain(label);
+    }
+
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+    const oneKText = oneK.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
+    expect(oneKText).toContain('1K Progress');
+    for (const label of ['Squats', 'Bench', 'Deadlifts']) {
+      expect(oneKText).not.toContain(label);
+    }
+  });
+
+  test('the 1K card reaches the Analytics strength section, repeatably', () => {
+    const oneK = component.root.findByProps({ testID: 'home-one-k-link' });
+    render.act(() => { oneK.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'strength');
+    render.act(() => { oneK.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'strength');
+  });
+
+  test('neither strength destination nests a press owner', () => {
+    // The chevron is presentational; each section header row is the single
+    // press owner, so there is no nested responder.
+    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
+      const node = component.root.findByProps({ testID });
+      expect(node.findAll(n => n !== node && typeof n.props?.onPress === 'function')).toHaveLength(0);
+    }
+  });
+
+  test('the two daily-loop actions share one stable primary-action row', () => {
+    const routineAction = component.root.findByProps({ testID: 'home-current-routine-link' });
+    const weightAction = component.root.findByProps({ testID: 'home-weight-action' });
+    const actionRow = routineAction.parent;
+
+    expect(actionRow).toBe(weightAction.parent);
+    expect(flatStyle(actionRow).flexDirection).toBe('row');
+    expect(flatStyle(actionRow).backgroundColor).toBeDefined();
+    expect(flatStyle(routineAction).flex).toBe(1);
+    expect(flatStyle(weightAction).flex).toBe(1);
+  });
+
+  test('the existing full-insights link still reaches Analytics with no section', () => {
+    const matches = component.root.findAll(n => {
+      if (n.type !== 'Text') return false;
+      const flat = Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '');
+      return flat.includes('Full history and insights');
+    });
+    expect(matches.length).toBeGreaterThan(0);
+    let node = matches[0].parent;
+    while (node && typeof node.props?.onPress !== 'function') node = node.parent;
+    render.act(() => { node.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics');
+  });
+});
+
 // The App-level call site for the same boundary. `importBackup` replaces the
 // recovery collections wholesale with no lifecycle action and no sync to
 // announce it, so the broadcast has to be explicit — its behavior is covered in

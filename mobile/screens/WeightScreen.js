@@ -128,6 +128,7 @@ export function WeightScreen({
   saving,
   weightDateEditEnabled,
   isActive,
+  onNavigate,
   registerBackConsumer,
 }) {
   const { colors } = useTheme();
@@ -458,6 +459,18 @@ export function WeightScreen({
         ))}
       </Card>
 
+      <Pressable
+        testID="weight-see-full-trends"
+        onPress={() => onNavigate?.('Analytics', 'weight')}
+        style={styles.fullTrendsLink}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="See full trends"
+        accessibilityHint="Opens the weight section of the Analytics tab"
+      >
+        <Text style={styles.fullTrendsLinkText}>See full trends</Text>
+      </Pressable>
+
       {sortedArchivedGoals.length > 0 && (
         <GoalHistoryPanel
           sortedArchivedGoals={sortedArchivedGoals}
@@ -630,6 +643,18 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 0,
     gap: 0,
     overflow: 'hidden',
+  },
+  fullTrendsLink: {
+    alignSelf: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    marginTop: 4,
+  },
+  fullTrendsLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   archivedContainer: {
     gap: 16,
