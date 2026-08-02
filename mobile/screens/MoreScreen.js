@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ScreenShell } from '../components/ScreenShell';
 import { SectionTitle } from '../components/UI';
@@ -14,6 +14,15 @@ import { AccountScreen } from './more/AccountScreen';
 export { AccountScreen } from './more/AccountScreen';
 export { AccountLifecycle } from './more/AccountLifecycle';
 
+// The sub-view vocabulary a typed `{ kind: 'subview', view }` intent may target
+// (#718). This screen owns these names, so it — not the app shell — is the one
+// place that validates them: App.js's normalizer checks only that `view` is a
+// non-empty string, which keeps the shell out of every destination's internal
+// view model. 'menu' is deliberately absent: "navigate to the More menu" is
+// just an ordinary More tab press, and accepting it as a target would let a
+// stray intent yank the user out of a sub-view they are already using.
+const NAV_SUBVIEWS = new Set(['help', 'about', 'backup', 'settings', 'profile', 'account']);
+
 export function MoreScreen({
   isActive = true,
   auth,
@@ -27,6 +36,9 @@ export function MoreScreen({
   onUpdateWeightDateEditEnabled,
   deloadDateEditEnabled,
   onUpdateDeloadDateEditEnabled,
+  navSubviewView = null,
+  navSubviewAnchor = null,
+  navSubviewKey = 0,
 }) {
   const styles = useThemedStyles(createStyles);
   const [activeView, setActiveView] = useState('menu');
@@ -45,6 +57,27 @@ export function MoreScreen({
       setActiveView('account');
     }
   }, [auth?.passwordRecovery, auth?.recoveryError]);
+
+  // Typed sub-view navigation intent (#718). Keyed so a repeated request for a
+  // sub-view the user has since left still re-applies, and consumed exactly
+  // once per key so an unrelated re-render never re-opens it. 0 is the shell's
+  // initial key, i.e. "no intent has ever been issued".
+  //
+  // `navSubviewAnchor` is accepted by the contract (e.g. More > Account > Cloud
+  // Sync) but not consumed yet: no sub-screen exposes an anchor/scroll-to
+  // target today, and AccountScreen is out of scope here. Anchored intents
+  // therefore land on the right sub-view rather than being rejected, and the
+  // anchor becomes meaningful when a sub-screen gains one.
+  const appliedSubviewKeyRef = useRef(0);
+  useEffect(() => {
+    if (navSubviewKey === appliedSubviewKeyRef.current) return;
+    appliedSubviewKeyRef.current = navSubviewKey;
+    // An absent target preserves whatever this screen is already showing, and
+    // an unknown view name is ignored the same way rather than dumping the user
+    // on the menu.
+    if (!navSubviewView || !NAV_SUBVIEWS.has(navSubviewView)) return;
+    setActiveView(navSubviewView);
+  }, [navSubviewKey, navSubviewView]);
 
   const inSubView = activeView !== 'menu';
 
