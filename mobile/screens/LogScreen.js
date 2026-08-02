@@ -23,7 +23,8 @@
 // object. No other styling exception is authorized.
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
 import { ErrorBanner } from '../components/UI';

@@ -1,6 +1,8 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, Alert, StatusBar } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, View, BackHandler, StatusBar } from 'react-native';
+import { Alert } from './lib/platformAlert';
+import { WebAlertHost } from './components/WebAlertHost';
 import * as Updates from 'expo-updates';
 import { useUpdates } from 'expo-updates';
 
@@ -80,9 +82,10 @@ export function emitMeasurement(name, properties = {}) {
 }
 
 // Map the free-form Analytics navigation section to the sanitizer's bounded
-// analytics_viewed variant list. No current call site passes a section, so the
-// reachable value today is 'overview'; 'strength'/'weight' cover the
-// AnalyticsScreen's supported deep-link targets and anything else is 'other'.
+// analytics_viewed variant list. Home and Weight both pass a section today
+// (#717): the weight-trend handoffs request 'weight' and the Exercise Progress
+// and 1K Progress headers request 'strength', while a plain tab press passes
+// none and resolves to 'overview'. Anything else is 'other'.
 export function analyticsSectionVariant(section) {
   if (section === 'strength' || section === 'weight') return section;
   if (section == null) return 'overview';
@@ -106,6 +109,11 @@ function AppShell() {
   const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState('Home');
   const [analyticsSection, setAnalyticsSection] = useState(null);
+  // Section targeting must re-fire even when the same section is requested twice
+  // in a row (#717). `section` alone is a stable prop, so a second "Analytics →
+  // weight" handoff would not re-run Analytics' scroll effect. This monotonic
+  // nonce makes every navigation request distinct without changing tab behavior.
+  const [analyticsSectionNonce, setAnalyticsSectionNonce] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
@@ -356,6 +364,14 @@ function AppShell() {
     setSaveError('');
     setSaveSuccess('');
     setAnalyticsSection(section);
+    // Only an explicit Analytics section request bumps the nonce. Bumping it on
+    // every tab press would change a prop on the always-mounted memoized
+    // Analytics tree during unrelated navigation (Home → Weight, Log → More),
+    // forcing that hidden and comparatively expensive subtree to reconcile and
+    // defeating the render isolation the memoized screens exist to provide.
+    if (tab === 'Analytics' && section) {
+      setAnalyticsSectionNonce((n) => n + 1);
+    }
     setActiveTab(tab);
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {
@@ -602,11 +618,17 @@ function AppShell() {
             saving={weightSaving}
             weightDateEditEnabled={weightDateEditEnabled}
             isActive={activeTab === 'Weight'}
+            onNavigate={handleTabPress}
             registerBackConsumer={registerBackConsumer}
           />
         </View>
         <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
-          <MemoAnalyticsScreen multiplier={fatigueMultiplier} section={analyticsSection} />
+          <MemoAnalyticsScreen
+            multiplier={fatigueMultiplier}
+            section={analyticsSection}
+            sectionNonce={analyticsSectionNonce}
+            onNavigate={handleTabPress}
+          />
         </View>
         <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
           <MemoMoreScreen
@@ -634,6 +656,10 @@ function AppShell() {
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
+        {/* Mounted at the app root, not per-screen: Alert.alert is called
+            imperatively from hooks all over the app, so the single host has
+            to outlive any one screen. */}
+        <WebAlertHost />
         <SafeAreaView style={styles.topSafeArea} />
         {/* Dark chrome needs light status-bar glyphs and vice versa. */}
         <ExpoStatusBar style={mode === 'dark' ? 'light' : 'dark'} />
