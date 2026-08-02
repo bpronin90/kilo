@@ -132,7 +132,7 @@ let recoveryReadQueued = null;
 
 function runAuthoritativeRecoveryRead() {
   setRecoveryLifecycle({
-    status: recoverySnapshotVerified ? RECOVERY_STATUS.REFRESHING : RECOVERY_STATUS.LOADING,
+    status: lastRecoverySnapshot.verified ? RECOVERY_STATUS.REFRESHING : RECOVERY_STATUS.LOADING,
   });
   let pending = [];
   let pendingError = null;
@@ -181,7 +181,7 @@ function runAuthoritativeRecoveryRead() {
       // case is the empty placeholder promoted to a result. A corrupt journal
       // additionally blocks mutations regardless of which of those two states
       // applies (see `journalCorrupt` above).
-      if (recoverySnapshotVerified) {
+      if (lastRecoverySnapshot.verified) {
         setRecoveryLifecycle({ status: RECOVERY_STATUS.STALE, refreshError: e, journalCorrupt: !!e?.corrupt });
       } else {
         setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e, journalCorrupt: !!e?.corrupt });
@@ -222,7 +222,7 @@ export async function ensureVerifiedRecoveryState() {
   // reconciliation.
   await refreshRecoveryState();
   if (
-    recoverySnapshotVerified
+    lastRecoverySnapshot.verified
     && recoveryLifecycle.status !== RECOVERY_STATUS.ERROR
     && !recoveryLifecycle.journalCorrupt
   ) {
@@ -249,19 +249,16 @@ export async function ensureVerifiedRecoveryState() {
 export function useRecoveryBlockState() {
   const [view, setView] = useState(() => ({
     snapshot: lastRecoverySnapshot,
-    verified: recoverySnapshotVerified,
     lifecycle: recoveryLifecycle,
   }));
 
   const sync = useCallback(() => {
     setView(prev => (
       prev.snapshot === lastRecoverySnapshot
-        && prev.verified === recoverySnapshotVerified
         && prev.lifecycle === recoveryLifecycle
         ? prev
         : {
           snapshot: lastRecoverySnapshot,
-          verified: recoverySnapshotVerified,
           lifecycle: recoveryLifecycle,
         }
     ));
@@ -271,7 +268,21 @@ export function useRecoveryBlockState() {
 
   useEffect(() => {
     sync();
-    refreshRecoveryState();
+    // Single shared subscription/reconciliation pass (#711 review finding 3):
+    // the FIRST consumer to mount (in this process, or after every previous
+    // one has unmounted) is the one that kicks off the authoritative read.
+    // Any consumer mounting while the subscriber base is already non-empty
+    // just subscribes to whatever pass is already in flight or already
+    // published — it does NOT request its own. This is what makes two (or
+    // more) simultaneously-mounted consumers cost exactly one storage read,
+    // not one-plus-a-coalesced-follow-up. An explicit `refresh()`/
+    // `retryRecovery()` call (user action, post-mutation recheck, sync
+    // completion) still always performs its own fresh read — only the
+    // automatic mount-time kickoff is deduplicated.
+    recoveryBlockStateConsumerCount += 1;
+    if (recoveryBlockStateConsumerCount === 1) {
+      refreshRecoveryState();
+    }
     recoveryListeners.push(refresh);
     // Subscribing to the shared snapshot as well as the lifecycle status is what
     // makes Log and Analytics agree while mounted together: a publish from
@@ -299,6 +310,7 @@ export function useRecoveryBlockState() {
     const unsubscribeSync = subscribeSyncState(handleSyncState);
 
     return () => {
+      recoveryBlockStateConsumerCount -= 1;
       recoveryListeners = recoveryListeners.filter(l => l !== refresh);
       recoverySnapshotSubscribers = recoverySnapshotSubscribers.filter(l => l !== sync);
       recoveryStateListeners = recoveryStateListeners.filter(l => l !== sync);
@@ -307,7 +319,7 @@ export function useRecoveryBlockState() {
   }, [refresh, sync]);
 
   return useMemo(() => {
-    const { blocks, weeks } = view.snapshot;
+    const { blocks, weeks, verified } = view.snapshot;
     const { status, error, refreshError, journalCorrupt, pendingRecovery, recoveryPendingError } = view.lifecycle;
     const activeBlock = findActiveBlock(blocks);
     const recoveryWeekNumberByNoteId = {};
@@ -324,11 +336,15 @@ export function useRecoveryBlockState() {
       status,
       // `ready` is the only safe basis for treating an empty `blocks` array as
       // "no recovery blocks exist". Until it is true the arrays are placeholders.
-      ready: view.verified,
+      // Read directly off the CURRENTLY PUBLISHED snapshot's own `verified`
+      // flag — not a separately-tracked module boolean — so a later publish
+      // of different, less-trusted data cannot leave a stale "verified" bit
+      // pointing at content it never actually verified (#711 review finding 1).
+      ready: !!verified,
       // Initial load only. A terminal first-load failure is NOT loading — it has
       // its own error/retry state — and a refresh over verified data is
       // `refreshing`, so the two progress kinds stay distinguishable.
-      loading: !view.verified && status !== RECOVERY_STATUS.ERROR,
+      loading: !verified && status !== RECOVERY_STATUS.ERROR,
       refreshing: status === RECOVERY_STATUS.REFRESHING,
       stale: status === RECOVERY_STATUS.STALE,
       staleError: refreshError,
@@ -338,7 +354,7 @@ export function useRecoveryBlockState() {
       // corrupt even over an otherwise-verified (STALE) snapshot, since the
       // journal contract says recovery actions are paused in that case
       // (#711 review finding 2).
-      mutationsAllowed: view.verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt,
+      mutationsAllowed: !!verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt,
       refresh,
       pendingRecovery,
       recoveryPendingError,
@@ -350,6 +366,11 @@ export function useRecoveryBlockState() {
   }, [view, refresh]);
 }
 
+// Consumer refcount backing the single-shared-pass behavior above. Module
+// scope (not a ref) because it must be shared across every simultaneously
+// mounted `useRecoveryBlockState` instance, not per-component.
+let recoveryBlockStateConsumerCount = 0;
+
 // ── normal-analytics membership filter (#699) ─────────────────────────────────
 
 // Last successfully loaded recovery records, shared by every mounted
@@ -358,28 +379,27 @@ export function useRecoveryBlockState() {
 // briefly ADMIT them on every remount (tab switch, screen push) until its own
 // read resolved. Seeding from the last known-good snapshot removes that window
 // for every mount after the first.
-let lastRecoverySnapshot = { blocks: [], weeks: [] };
-let lastRecoverySignature = '';
-// False until the recovery records have been read successfully at least once in
-// this process. Until then the empty snapshot above is a PLACEHOLDER, not
-// evidence that nothing is excluded — publishing ordinary analytics from it
-// would admit every recovery note in exactly the case the off-by-default
-// boundary exists for (a corrupt or temporarily unreadable recovery key on cold
-// start, while workout notes load fine). Consumers read `filter.ready` and keep
-// their loading state instead.
+// `verified` is carried ON the snapshot object itself, not tracked as a
+// separate module boolean (#711 review finding 1). Splitting the flag from
+// the data it describes was the earlier, insufficient fix: a boolean that
+// lives apart from the snapshot it is supposed to describe can be left
+// pointing at the WRONG data the moment anything else republishes different
+// content, because nothing forces the two to change together. Binding
+// `verified` onto the published record itself makes that structurally
+// impossible — there is no snapshot to read `blocks`/`weeks` off of without
+// also reading the trust level that came with THAT exact publish.
 //
-// This gates `useRecoveryBlockState`'s `ready`/`mutationsAllowed` ONLY, and is
-// set ONLY by the authoritative reconcile-then-read pass
-// (`runAuthoritativeRecoveryRead`). A plain filter read (below) is never
-// reconciled against the operation journal, so it must never be able to
-// establish the mutation-authorizing verified state — doing so would let Log
-// become mutation-capable, or stay mutation-capable past a failed
-// reconciliation, off the back of an ordinary Analytics filter read (#711
-// review finding 1).
-let recoverySnapshotVerified = false;
-// Gates `useRecoveryAnalyticsFilter`'s own `ready` only. Set by either the
-// authoritative pass OR a plain filter read — both are equally valid evidence
-// that the exclusion boundary itself (not the mutation precondition) is known.
+// `verified: null` is the "never published anything yet" sentinel, distinct
+// from `false` ("published, but not by the authoritative pass") — see
+// `publishSnapshot` below.
+let lastRecoverySnapshot = { blocks: [], weeks: [], verified: null };
+let lastRecoverySignature = '';
+// Gates `useRecoveryAnalyticsFilter`'s own `ready` only — true once EITHER
+// the authoritative pass or a plain filter read has produced a real
+// (possibly unreconciled) result at least once in this process. This is
+// deliberately NOT what gates Log's mutations; that lives entirely on
+// `lastRecoverySnapshot.verified` above, which only the authoritative pass
+// can set true.
 let recoveryFilterVerified = false;
 
 // Everyone who renders from the shared snapshot: every mounted
@@ -389,35 +409,48 @@ let recoveryFilterVerified = false;
 // than coincidental.
 let recoverySnapshotSubscribers = [];
 
-// The write path for the shared snapshot DATA, shared by both publish
-// functions below so neither can hold snapshot records the other has not
-// seen. Which verified flag(s) get set is the caller's decision — that is what
-// keeps the mutation-authorizing bit reconcile-only (finding 1 above).
-function _writeRecoverySnapshot(blocks, weeks) {
+// The single write path for the shared snapshot record — used by both the
+// authoritative publish and the filter-only publish below, with `verified`
+// passed in as part of the SAME object write, never as a side assignment.
+//
+// Trust can only move UP for identical content, never down: if the newly
+// read data is byte-identical (by signature) to what is already published,
+// a less-trusted read confirming it changes nothing, and a more-trusted read
+// confirming it upgrades `verified` in place. Only when the data actually
+// DIFFERS does the new publish's own `verified` value take over outright —
+// which is exactly what stops a later unreconciled filter read from
+// inheriting an earlier authoritative read's trust for content it never
+// itself verified.
+function publishSnapshot(blocks, weeks, verified) {
   const signature = _recoverySignature(blocks, weeks);
-  if (signature !== lastRecoverySignature || !(recoverySnapshotVerified || recoveryFilterVerified)) {
+  const sameData = signature === lastRecoverySignature && lastRecoverySnapshot.verified !== null;
+  if (sameData) {
+    if (verified && !lastRecoverySnapshot.verified) {
+      lastRecoverySnapshot = { blocks: lastRecoverySnapshot.blocks, weeks: lastRecoverySnapshot.weeks, verified: true };
+    }
+  } else {
     lastRecoverySignature = signature;
-    lastRecoverySnapshot = { blocks, weeks };
+    lastRecoverySnapshot = { blocks, weeks, verified };
   }
   safeNotify(recoverySnapshotSubscribers);
   return lastRecoverySnapshot;
 }
 
-// Authoritative publish: called ONLY by the reconcile-then-read pass. Sets
-// BOTH verified flags — reconciled data is strictly better evidence than a
-// plain filter read, so it satisfies the filter boundary too.
+// Authoritative publish: called ONLY by the reconcile-then-read pass.
+// Publishes with `verified: true` and also satisfies the filter boundary —
+// reconciled data is strictly better evidence than a plain filter read.
 function publishRecoverySnapshot(blocks, weeks) {
-  const result = _writeRecoverySnapshot(blocks, weeks);
-  recoverySnapshotVerified = true;
+  const result = publishSnapshot(blocks, weeks, true);
   recoveryFilterVerified = true;
   return result;
 }
 
 // Filter-only publish: called by the read-only `useRecoveryAnalyticsFilter`
-// refresh. Deliberately does NOT set `recoverySnapshotVerified` — an ordinary
-// filter read must never make Log's mutations mutation-capable.
+// refresh. Always publishes with `verified: false` — an ordinary,
+// unreconciled filter read can never carry the mutation-authorizing trust
+// level, no matter what was verified before it.
 function publishRecoveryFilterSnapshot(blocks, weeks) {
-  const result = _writeRecoverySnapshot(blocks, weeks);
+  const result = publishSnapshot(blocks, weeks, false);
   recoveryFilterVerified = true;
   return result;
 }
@@ -574,9 +607,8 @@ export function reloadRecoveryBlocks() {
 // one test's recovery records or failed read cannot seed the next test's first
 // render.
 export function _resetRecoveryAnalyticsFilterCache() {
-  lastRecoverySnapshot = { blocks: [], weeks: [] };
+  lastRecoverySnapshot = { blocks: [], weeks: [], verified: null };
   lastRecoverySignature = '';
-  recoverySnapshotVerified = false;
   recoveryFilterVerified = false;
   recoveryLifecycle = {
     status: RECOVERY_STATUS.IDLE,
@@ -589,6 +621,7 @@ export function _resetRecoveryAnalyticsFilterCache() {
   recoveryReadInFlight = null;
   recoveryReadQueued = null;
   recoveryFilterReadInFlight = null;
+  recoveryBlockStateConsumerCount = 0;
 }
 
 // One-shot read of the ordinary-analytics exclusion set, straight from storage.
@@ -666,10 +699,51 @@ export function useStartRecoveryBlock() {
   // can sit open while the authoritative read goes stale, and freezing a
   // baseline against unverified state is exactly the write this boundary exists
   // to prevent.
-  const startBlock = useCallback(async (params) => {
+  //
+  // `createWeekNote` (optional): when the caller has no existing `weekNoteId`
+  // yet — the "New note" Week-1 path — it supplies an async factory instead
+  // of creating the note itself beforehand. The note write happens IN HERE,
+  // strictly after the gate above resolves, and there is exactly one gate:
+  // nothing downstream re-checks or can reject after a write has already
+  // landed (#711 review finding 2). Previously the caller created the note
+  // BEFORE calling `startBlock`, which itself re-gated — so a second,
+  // independent rejection could arrive after the note was already persisted,
+  // relying on a best-effort rollback. Folding note creation into this single
+  // gated call makes that ordering structurally impossible: there is no path
+  // to `createWeekNote` that does not first pass this gate, because nothing
+  // outside this function ever calls it.
+  //
+  // `removeWeekNote` (optional): rollback for a note this call itself
+  // created, used only when the subsequent block/week write fails.
+  const startBlock = useCallback(async ({
+    baselineNoteId, baselineNoteTitle = null, baselineNoteText = '', weekNoteId = null,
+    createWeekNote, removeWeekNote,
+  } = {}) => {
     const gate = await ensureVerifiedRecoveryState();
     if (!gate.ok) return gate;
-    return startRecoveryBlockCore(Storage, params);
+
+    let finalWeekNoteId = weekNoteId;
+    let createdNoteId = null;
+    if (!finalWeekNoteId && createWeekNote) {
+      const created = await createWeekNote();
+      finalWeekNoteId = created?.id || null;
+      createdNoteId = finalWeekNoteId;
+    }
+    if (!finalWeekNoteId) {
+      return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
+    }
+
+    const result = await startRecoveryBlockCore(Storage, {
+      baselineNoteId, baselineNoteTitle, baselineNoteText, weekNoteId: finalWeekNoteId,
+    });
+    if (!result.ok && createdNoteId && removeWeekNote) {
+      try {
+        await removeWeekNote(createdNoteId);
+      } catch (_rollbackError) {
+        // Best-effort: the original failure is what the caller needs to see.
+      }
+    }
+    return result;
   }, []);
   return { startBlock };
 }

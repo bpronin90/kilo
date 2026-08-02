@@ -4545,14 +4545,6 @@ describe('Recovery Block start flow', () => {
   const linkedNote = { id: 'routine3', title: 'Legs Day', raw_text: 'Legs\n-Squat\n100 5,5,5', updated_at: '2026-01-03T00:00:00.000Z' };
 
   let add, update, remove, selectCurrent, startBlock, refresh;
-  // LogScreen now rechecks the authoritative confirm-time gate directly
-  // (`ensureVerifiedRecoveryState`, not the mocked `useStartRecoveryBlock`)
-  // BEFORE any write, including the new-note creation below (#711 review
-  // finding 3). Stubbed to succeed by default so the existing flow tests below
-  // stay deterministic; the dedicated tests further down override it to prove
-  // the gate precedes the write.
-  const recoveryHooksModule = require('../hooks/entries/recoveryBlockHooks');
-  let ensureVerifiedSpy;
 
   // Some note titles (e.g. "Pull Day") appear both as an ordinary previous-
   // routine card in the background and as a selectable option inside the
@@ -4565,7 +4557,31 @@ describe('Recovery Block start flow', () => {
     update = jest.fn();
     remove = jest.fn();
     selectCurrent = jest.fn();
-    startBlock = jest.fn().mockResolvedValue({ ok: true, block: { id: 'rb1' }, week: { id: 'rw1', week_number: 1 } });
+    // Mirrors the real `useStartRecoveryBlock().startBlock` contract: the
+    // caller no longer creates the Week-1 note itself, it supplies
+    // `createWeekNote`/`removeWeekNote` and this call orchestrates them (gate
+    // -> optional note creation -> block/week write -> rollback on failure).
+    // The real gate itself is exercised separately, against the real hook,
+    // in the "authoritative Recovery state contract (#716)" describe below —
+    // here `startBlock` stands in for an already-passed gate so these flow
+    // tests stay focused on the screen's own wiring.
+    startBlock = jest.fn().mockImplementation(async ({ weekNoteId, createWeekNote, removeWeekNote } = {}) => {
+      let finalWeekNoteId = weekNoteId;
+      let createdNoteId = null;
+      if (!finalWeekNoteId && createWeekNote) {
+        const created = await createWeekNote();
+        finalWeekNoteId = created?.id || null;
+        createdNoteId = finalWeekNoteId;
+      }
+      if (!finalWeekNoteId) {
+        return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
+      }
+      const result = { ok: true, block: { id: 'rb1' }, week: { id: 'rw1', week_number: 1 } };
+      if (!result.ok && createdNoteId && removeWeekNote) {
+        try { await removeWeekNote(createdNoteId); } catch (_e) { /* best-effort */ }
+      }
+      return result;
+    });
     refresh = jest.fn();
 
     useEntries.useWorkoutNotes.mockReturnValue({
@@ -4592,7 +4608,6 @@ describe('Recovery Block start flow', () => {
       refresh,
     });
     useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock });
-    ensureVerifiedSpy = jest.spyOn(recoveryHooksModule, 'ensureVerifiedRecoveryState').mockResolvedValue({ ok: true });
   };
 
   beforeEach(() => {
@@ -4601,10 +4616,6 @@ describe('Recovery Block start flow', () => {
     // module — only the storage-backed hooks are mocked above.
     useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
     useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
-  });
-
-  afterEach(() => {
-    if (ensureVerifiedSpy) ensureVerifiedSpy.mockRestore();
   });
 
   // #711: the entry point is no longer a per-card pill. It is the single
@@ -4685,10 +4696,6 @@ describe('Recovery Block start flow', () => {
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
 
     const confirmBtn = findPressableByText(root, 'Confirm');
-    // The confirm-time authoritative precondition (`ensureVerifiedRecoveryState`,
-    // mocked to resolve immediately) now runs BEFORE `startBlock` is reached, so
-    // an `act`-flushed microtask tick is needed for the call to land — the busy
-    // ("Starting…") state itself still flips synchronously on press.
     await render.act(async () => { confirmBtn.props.onPress(); });
     // In flight: the control reports itself busy and refuses a second press.
     const busyBtn = findPressableByText(root, 'Starting…');
@@ -4717,12 +4724,13 @@ describe('Recovery Block start flow', () => {
     await render.act(async () => { confirmBtn.props.onPress(); });
 
     expect(add).not.toHaveBeenCalled();
-    expect(startBlock).toHaveBeenCalledWith({
+    expect(startBlock).toHaveBeenCalledWith(expect.objectContaining({
       baselineNoteId: 'routine1',
       baselineNoteTitle: 'Push Day',
       baselineNoteText: baselineNote.raw_text,
       weekNoteId: 'routine2',
-    });
+      createWeekNote: undefined,
+    }));
   });
 
   test('new-note path: choosing "New note" creates the note first, then starts the block with its id', async () => {
@@ -4742,48 +4750,24 @@ describe('Recovery Block start flow', () => {
     await render.act(async () => { confirmBtn.props.onPress(); });
 
     expect(add).toHaveBeenCalledWith('Recovery Week 1', '');
-    expect(startBlock).toHaveBeenCalledWith({
+    expect(startBlock).toHaveBeenCalledWith(expect.objectContaining({
       baselineNoteId: 'routine1',
       baselineNoteTitle: 'Push Day',
       baselineNoteText: baselineNote.raw_text,
-      weekNoteId: 'newnote1',
-    });
+      weekNoteId: null,
+      createWeekNote: expect.any(Function),
+    }));
   });
 
-  // #711 review finding 3: the confirm-time authoritative precondition must be
-  // rechecked BEFORE any write, including the new-note note creation on the
-  // "New note" Week 1 path — not only before the block/week writes inside
-  // `startBlock`. Previously the note was persisted first and only rolled back
-  // (best-effort) after `startBlock` itself rejected.
-  test('new-note path: a failed confirm-time precondition rejects before the note is created', async () => {
-    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
-    ensureVerifiedSpy.mockResolvedValue({
-      ok: false,
-      code: 'RECOVERY_STATE_UNVERIFIED',
-      error: 'Recovery data could not be read, so this change was not made. Try again.',
-    });
-
-    let component;
-    render.act(() => { component = render.create(<ControlledLogScreen />); });
-    const root = component.root;
-
-    openEntryPoint(root);
-    chooseBaseline(root, 'Push Day');
-    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
-    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
-    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
-
-    const confirmBtn = findPressableByText(root, 'Confirm');
-    await render.act(async () => { confirmBtn.props.onPress(); });
-
-    // No note was ever persisted, and `startBlock` — the block/week writer —
-    // was never reached either. Nothing needed a rollback because nothing was
-    // written.
-    expect(add).not.toHaveBeenCalled();
-    expect(startBlock).not.toHaveBeenCalled();
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery data could not be read, so this change was not made. Try again.').length).toBe(1);
-  });
-
+  // #711 review finding 2 (round 2): the confirm-time gate, the new-note
+  // creation, and the block/week write are now ALL sequenced inside
+  // `startRecoveryBlock` itself — this screen has no code path that reaches
+  // storage independently of that one call, so there is nothing left here to
+  // race or bypass. The gate-precedes-every-write guarantee itself (including
+  // a corrupt-journal gate failure specifically) is exercised directly
+  // against the REAL `useStartRecoveryBlock` hook in the "authoritative
+  // Recovery state contract (#716)" describe block below, where it can prove
+  // `createWeekNote` is never invoked when the gate rejects.
   test('confirm requires an explicit selection: the Confirm button is disabled until both sides are chosen', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
@@ -4848,12 +4832,12 @@ describe('Recovery Block start flow', () => {
     // Completing the pair the valid way submits two distinct ids.
     render.act(() => { findByAccessibilityLabel(root, 'Use Push Day as Recovery Week 1').props.onPress(); });
     await render.act(async () => { findPressableByText(root, 'Confirm').props.onPress(); });
-    expect(startBlock).toHaveBeenCalledWith({
+    expect(startBlock).toHaveBeenCalledWith(expect.objectContaining({
       baselineNoteId: 'routine2',
       baselineNoteTitle: 'Pull Day',
       baselineNoteText: otherNote.raw_text,
       weekNoteId: 'routine1',
-    });
+    }));
   });
 
   test('cancel flow: closing the modal makes no storage calls and leaves the current selection untouched', () => {
@@ -5019,7 +5003,16 @@ describe('Recovery Block start flow', () => {
 
   test('new-note path rollback: startBlock failing after note creation deletes the orphaned note', async () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
-    startBlock.mockResolvedValue({ ok: false, code: 'ACTIVE_BLOCK_EXISTS', error: 'Recovery block rbX is still active; complete or delete it first.' });
+    // Exercises LogScreen's wiring of `createWeekNote`/`removeWeekNote` into
+    // `startRecoveryBlock`: this override simulates the real hook's own
+    // rollback behavior (note created, then the block/week write fails, then
+    // the note is removed) rather than testing the hook itself — that lives
+    // in the "authoritative Recovery state contract (#716)" describe below.
+    startBlock.mockImplementation(async ({ createWeekNote, removeWeekNote }) => {
+      const created = await createWeekNote();
+      if (removeWeekNote && created?.id) await removeWeekNote(created.id);
+      return { ok: false, code: 'ACTIVE_BLOCK_EXISTS', error: 'Recovery block rbX is still active; complete or delete it first.' };
+    });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
@@ -6706,13 +6699,15 @@ describe('authoritative Recovery state contract (#716)', () => {
     expect(latest().mutationsAllowed).toBe(true);
   });
 
-  test('two simultaneously mounted consumers share one snapshot and never reconcile concurrently', async () => {
+  test('two simultaneously mounted consumers share exactly one reconciliation pass, not a coalesced follow-up', async () => {
     await seedRecords([block], [week]);
 
+    let readCount = 0;
     let concurrent = 0;
     let maxConcurrent = 0;
     const real = recoveryStorageModule.loadRecoveryBlocks;
     jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      readCount += 1;
       concurrent += 1;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       try {
@@ -6730,12 +6725,200 @@ describe('authoritative Recovery state contract (#716)', () => {
     });
 
     expect(maxConcurrent).toBe(1);
+    // Not merely "never concurrent" — genuinely ONE shared pass. The second
+    // mount, joining the subscriber base while the first mount's pass is
+    // already in flight, must NOT trigger its own coalesced follow-up read;
+    // it subscribes to the SAME pass instead (#711 review finding 3, round 2).
+    expect(readCount).toBe(1);
     // Not merely equal — the SAME published object, which is what makes
     // divergent reconciliation results structurally impossible.
     expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
     expect(latestOf(logBucket).weeks).toBe(latestOf(analyticsBucket).weeks);
     expect(latestOf(logBucket).ready).toBe(latestOf(analyticsBucket).ready);
     expect(latestOf(logBucket).status).toBe(latestOf(analyticsBucket).status);
+  });
+
+  // #711 review finding 1 (round 2): reproduces the reviewer's exact scenario
+  // — a successful authoritative read, followed by a LATER raw filter read
+  // that returns DIFFERENT (unreconciled) records — and proves the fix binds
+  // `verified` onto the published snapshot itself, so the new data cannot
+  // inherit the old data's trust.
+  test('a later unreconciled filter read that returns DIFFERENT records downgrades the shared snapshot instead of staying verified', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    expect(latest().mutationsAllowed).toBe(true);
+
+    // Different content from what was authoritatively verified — e.g. another
+    // device's write landed between the authoritative read and this one.
+    const changedBlock = { ...block, updated_at: '2026-05-02T00:00:00.000Z' };
+    await seedRecords([changedBlock], [week]);
+
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+
+    // The filter itself is satisfied — a raw read is adequate evidence for
+    // its own exclusion-boundary purpose.
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
+    // But the shared authoritative consumer must now report the NEW,
+    // unreconciled data as UNVERIFIED — not the old verified snapshot frozen
+    // in place (that would just hide the update) and not the new data
+    // silently inheriting verified status (the original defect).
+    expect(latest().blocks[0].updated_at).toBe('2026-05-02T00:00:00.000Z');
+    expect(latest().ready).toBe(false);
+    expect(latest().mutationsAllowed).toBe(false);
+  });
+
+  test('a later unreconciled filter read that returns the SAME records does not downgrade an already-verified consumer', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
+    // Identical content: nothing was actually unverified, so there is nothing
+    // to lose trust over — this is the steady-state case (Log and Analytics
+    // both mounted, nothing changed) and must not flicker Log unready.
+    expect(latest().ready).toBe(true);
+    expect(latest().mutationsAllowed).toBe(true);
+  });
+
+  // #711 review finding 2 (round 2): the earlier fix added a gate call before
+  // note creation in LogScreen, but `startBlock` ran its OWN second gate
+  // afterward — so a gate failure discovered on that second call still
+  // arrived after the note had already been persisted. The fix folds note
+  // creation inside `useStartRecoveryBlock.startBlock` itself, behind exactly
+  // one gate, so there is no second decision point left to bypass. These
+  // tests exercise the REAL hook end-to-end (not LogScreen's mocked
+  // `startBlock`) to prove that.
+  describe('useStartRecoveryBlock: the gate precedes the new-note write, not just the block write', () => {
+    test('an unverified read gate rejects before the Week-1 note is ever created', async () => {
+      jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+        .mockRejectedValue(new Error('recovery key unreadable'));
+      const createWeekNote = jest.fn().mockResolvedValue({ id: 'shouldNeverExist' });
+
+      const startSeen = [];
+      function StartProbe() {
+        startSeen.push(hooks.useStartRecoveryBlock());
+        return null;
+      }
+      await render.act(async () => { mounted.push(render.create(<StartProbe />)); });
+
+      let result;
+      await render.act(async () => {
+        result = await startSeen[startSeen.length - 1].startBlock({
+          baselineNoteId: 'baseline', baselineNoteTitle: 'Push Day', baselineNoteText: '',
+          weekNoteId: null, createWeekNote,
+        });
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('RECOVERY_STATE_UNVERIFIED');
+      expect(createWeekNote).not.toHaveBeenCalled();
+    });
+
+    test('a corrupt journal discovered by the gate rejects before the Week-1 note is ever created', async () => {
+      const corruptResult = {
+        ok: false, code: 'JOURNAL_CORRUPT', corrupt: true, pending: [], cancelled: [], results: [],
+        error: 'Recovery operations could not be read from this device. Recovery actions are paused until this is retried.',
+        cause: null,
+      };
+      const reconcileSpy = jest.spyOn(journalModule, 'reconcileRecoveryOperations').mockResolvedValue(corruptResult);
+      const createWeekNote = jest.fn().mockResolvedValue({ id: 'shouldNeverExist' });
+
+      const startSeen = [];
+      function StartProbe() {
+        startSeen.push(hooks.useStartRecoveryBlock());
+        return null;
+      }
+      await render.act(async () => { mounted.push(render.create(<StartProbe />)); });
+
+      let result;
+      await render.act(async () => {
+        result = await startSeen[startSeen.length - 1].startBlock({
+          baselineNoteId: 'baseline', baselineNoteTitle: 'Push Day', baselineNoteText: '',
+          weekNoteId: null, createWeekNote,
+        });
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.code).toBe('RECOVERY_JOURNAL_CORRUPT');
+      expect(createWeekNote).not.toHaveBeenCalled();
+      reconcileSpy.mockRestore();
+    });
+
+    test('a passing gate creates the note exactly once, then starts the block with its id', async () => {
+      await seedRecords([], []);
+      const createWeekNote = jest.fn().mockResolvedValue({ id: 'newnote-x' });
+      const createSpy = jest.spyOn(recoveryStorageModule, 'createRecoveryBlock').mockResolvedValue({ id: 'rbX' });
+      const addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek')
+        .mockResolvedValue({ id: 'rwX', block_id: 'rbX', note_id: 'newnote-x', week_number: 1 });
+
+      const startSeen = [];
+      function StartProbe() {
+        startSeen.push(hooks.useStartRecoveryBlock());
+        return null;
+      }
+      await render.act(async () => { mounted.push(render.create(<StartProbe />)); });
+
+      let result;
+      await render.act(async () => {
+        result = await startSeen[startSeen.length - 1].startBlock({
+          baselineNoteId: 'baseline', baselineNoteTitle: 'Push Day', baselineNoteText: '',
+          weekNoteId: null, createWeekNote,
+        });
+      });
+
+      expect(createWeekNote).toHaveBeenCalledTimes(1);
+      expect(result.ok).toBe(true);
+      expect(addWeekSpy).toHaveBeenCalledWith({ blockId: 'rbX', noteId: 'newnote-x' });
+      createSpy.mockRestore();
+      addWeekSpy.mockRestore();
+    });
+
+    test('a note created under a passing gate is rolled back if the block/week write then fails', async () => {
+      await seedRecords([], []);
+      const createWeekNote = jest.fn().mockResolvedValue({ id: 'newnote-y' });
+      const removeWeekNote = jest.fn().mockResolvedValue(undefined);
+      const createSpy = jest.spyOn(recoveryStorageModule, 'createRecoveryBlock').mockResolvedValue({ id: 'rbY' });
+      const addWeekSpy = jest.spyOn(recoveryStorageModule, 'addRecoveryWeek')
+        .mockRejectedValue(Object.assign(new Error('Week-1 write failed'), { code: 'WEEK_WRITE_FAILED' }));
+      const deleteSpy = jest.spyOn(recoveryStorageModule, 'deleteRecoveryBlock').mockResolvedValue({ id: 'rbY' });
+
+      const startSeen = [];
+      function StartProbe() {
+        startSeen.push(hooks.useStartRecoveryBlock());
+        return null;
+      }
+      await render.act(async () => { mounted.push(render.create(<StartProbe />)); });
+
+      let result;
+      await render.act(async () => {
+        result = await startSeen[startSeen.length - 1].startBlock({
+          baselineNoteId: 'baseline', baselineNoteTitle: 'Push Day', baselineNoteText: '',
+          weekNoteId: null, createWeekNote, removeWeekNote,
+        });
+      });
+
+      expect(result.ok).toBe(false);
+      expect(deleteSpy).toHaveBeenCalledWith('rbY');
+      // The orphaned note this call itself created is rolled back too — not
+      // just the orphaned block.
+      expect(removeWeekNote).toHaveBeenCalledWith('newnote-y');
+      createSpy.mockRestore();
+      addWeekSpy.mockRestore();
+      deleteSpy.mockRestore();
+    });
   });
 
   test('a mutation is rejected at confirm time while state is unverified', async () => {
@@ -6962,13 +7145,12 @@ describe('authoritative Recovery state contract (#716)', () => {
     });
 
     expect(maxConcurrent).toBe(1);
-    // Two `useRecoveryBlockState` consumers alone already produce two reads
-    // (the second mount's coalesced follow-up reconciles again after the
-    // first completes, by design — see `refreshRecoveryState`). What this
-    // proves is that adding the analytics filter as a THIRD mounted consumer
-    // contributes ZERO extra reads: it piggybacked on the in-flight
-    // authoritative pass instead of starting its own separate storage call.
-    expect(readCount).toBe(2);
+    // All three mounted consumers — two `useRecoveryBlockState` instances
+    // (Log, Analytics) plus the analytics filter — share exactly ONE storage
+    // read. Neither the second `useRecoveryBlockState` mount nor the filter
+    // mount triggers its own separate pass (#711 review finding 3, round 2;
+    // finding 4's filter-piggyback still holds on top of that).
+    expect(readCount).toBe(1);
     expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
     expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
   });

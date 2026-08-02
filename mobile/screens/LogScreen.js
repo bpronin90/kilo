@@ -43,7 +43,7 @@ import {
   isEligibleBaselineNote,
   isEligibleRecoveryWeekNote,
 } from '../hooks/useEntries';
-import { useRecoveryBlockLifecycle, ensureVerifiedRecoveryState } from '../hooks/entries/recoveryBlockHooks';
+import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
@@ -297,44 +297,27 @@ export function LogScreen({
     if (!baselineNote) {
       return { ok: false, error: 'Select a baseline routine first.' };
     }
-    // Recheck the authoritative mutation precondition BEFORE any write —
-    // including the new-note creation below. The confirm modal can sit open
-    // long enough for the verified snapshot to go stale or the journal to turn
-    // corrupt, and rejection must happen before a note is persisted, not after
-    // (best-effort rollback is not equivalent to never having written it)
-    // (#711 review finding 3).
-    const precondition = await ensureVerifiedRecoveryState();
-    if (!precondition.ok) return precondition;
-    let finalWeekNoteId = weekNoteId;
-    let createdNoteId = null;
-    if (weekChoice === 'new') {
-      const created = await add(newNoteTitle, '');
-      finalWeekNoteId = created?.id;
-      createdNoteId = created?.id || null;
-    }
-    if (!finalWeekNoteId) {
-      return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
-    }
+    // The confirm-time authoritative precondition, the new-note creation (on
+    // the "New note" Week 1 path), and the block/week write are now ALL
+    // sequenced inside `startRecoveryBlock` itself, behind exactly one gate
+    // check — this screen no longer creates the note or re-checks anything
+    // on its own. That is what makes "no persisted write can precede the
+    // authoritative decision" structural rather than merely ordered: there is
+    // no code path here that reaches storage without going through the one
+    // gated call below (#711 review finding 2).
     const result = await startRecoveryBlock({
       baselineNoteId: baselineNote.id,
       baselineNoteTitle: baselineNote.title || null,
       baselineNoteText: baselineNote.raw_text || '',
-      weekNoteId: finalWeekNoteId,
+      weekNoteId: weekChoice === 'new' ? null : weekNoteId,
+      createWeekNote: weekChoice === 'new' ? () => add(newNoteTitle, '') : undefined,
+      // New-note path only: if the note this call created is left orphaned by
+      // a later block/week failure, `startRecoveryBlock` rolls it back
+      // through this — "no partial changes" covers the note it created too.
+      removeWeekNote: (noteId) => remove(noteId),
     });
     if (result?.ok) {
       refreshRecoveryState?.();
-      return result;
-    }
-    // New-note path: the note itself was persisted before the block/week
-    // writes were attempted. A failure here (active block appeared mid-flow,
-    // Week-1 storage error) must not leave that note behind as an orphan
-    // routine — "no partial changes" covers the note it created, too.
-    if (createdNoteId) {
-      try {
-        await remove(createdNoteId);
-      } catch (_rollbackError) {
-        // Best-effort: the original failure is what the caller needs to see.
-      }
     }
     return result;
   };
