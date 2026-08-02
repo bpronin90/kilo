@@ -4545,6 +4545,14 @@ describe('Recovery Block start flow', () => {
   const linkedNote = { id: 'routine3', title: 'Legs Day', raw_text: 'Legs\n-Squat\n100 5,5,5', updated_at: '2026-01-03T00:00:00.000Z' };
 
   let add, update, remove, selectCurrent, startBlock, refresh;
+  // LogScreen now rechecks the authoritative confirm-time gate directly
+  // (`ensureVerifiedRecoveryState`, not the mocked `useStartRecoveryBlock`)
+  // BEFORE any write, including the new-note creation below (#711 review
+  // finding 3). Stubbed to succeed by default so the existing flow tests below
+  // stay deterministic; the dedicated tests further down override it to prove
+  // the gate precedes the write.
+  const recoveryHooksModule = require('../hooks/entries/recoveryBlockHooks');
+  let ensureVerifiedSpy;
 
   // Some note titles (e.g. "Pull Day") appear both as an ordinary previous-
   // routine card in the background and as a selectable option inside the
@@ -4584,6 +4592,7 @@ describe('Recovery Block start flow', () => {
       refresh,
     });
     useEntries.useStartRecoveryBlock.mockReturnValue({ startBlock });
+    ensureVerifiedSpy = jest.spyOn(recoveryHooksModule, 'ensureVerifiedRecoveryState').mockResolvedValue({ ok: true });
   };
 
   beforeEach(() => {
@@ -4592,6 +4601,10 @@ describe('Recovery Block start flow', () => {
     // module — only the storage-backed hooks are mocked above.
     useEntries.isEligibleBaselineNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleBaselineNote);
     useEntries.isEligibleRecoveryWeekNote.mockImplementation(jest.requireActual('../hooks/entries/recoveryBlockHooks').isEligibleRecoveryWeekNote);
+  });
+
+  afterEach(() => {
+    if (ensureVerifiedSpy) ensureVerifiedSpy.mockRestore();
   });
 
   // #711: the entry point is no longer a per-card pill. It is the single
@@ -4672,11 +4685,15 @@ describe('Recovery Block start flow', () => {
     render.act(() => { findByAccessibilityLabel(root, 'Use Pull Day as Recovery Week 1').props.onPress(); });
 
     const confirmBtn = findPressableByText(root, 'Confirm');
-    render.act(() => { confirmBtn.props.onPress(); });
+    // The confirm-time authoritative precondition (`ensureVerifiedRecoveryState`,
+    // mocked to resolve immediately) now runs BEFORE `startBlock` is reached, so
+    // an `act`-flushed microtask tick is needed for the call to land — the busy
+    // ("Starting…") state itself still flips synchronously on press.
+    await render.act(async () => { confirmBtn.props.onPress(); });
     // In flight: the control reports itself busy and refuses a second press.
     const busyBtn = findPressableByText(root, 'Starting…');
     expect(busyBtn.props.accessibilityState.disabled).toBe(true);
-    render.act(() => { busyBtn.props.onPress(); });
+    await render.act(async () => { busyBtn.props.onPress(); });
     expect(startBlock).toHaveBeenCalledTimes(1);
 
     await render.act(async () => {
@@ -4731,6 +4748,40 @@ describe('Recovery Block start flow', () => {
       baselineNoteText: baselineNote.raw_text,
       weekNoteId: 'newnote1',
     });
+  });
+
+  // #711 review finding 3: the confirm-time authoritative precondition must be
+  // rechecked BEFORE any write, including the new-note note creation on the
+  // "New note" Week 1 path — not only before the block/week writes inside
+  // `startBlock`. Previously the note was persisted first and only rolled back
+  // (best-effort) after `startBlock` itself rejected.
+  test('new-note path: a failed confirm-time precondition rejects before the note is created', async () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    ensureVerifiedSpy.mockResolvedValue({
+      ok: false,
+      code: 'RECOVERY_STATE_UNVERIFIED',
+      error: 'Recovery data could not be read, so this change was not made. Try again.',
+    });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    openEntryPoint(root);
+    chooseBaseline(root, 'Push Day');
+    render.act(() => { findPressableByText(root, 'New note').props.onPress(); });
+    const titleInput = root.findAll(n => n.props && n.props.accessibilityLabel === 'Recovery Week 1 note title')[0];
+    render.act(() => { titleInput.props.onChangeText('Recovery Week 1'); });
+
+    const confirmBtn = findPressableByText(root, 'Confirm');
+    await render.act(async () => { confirmBtn.props.onPress(); });
+
+    // No note was ever persisted, and `startBlock` — the block/week writer —
+    // was never reached either. Nothing needed a rollback because nothing was
+    // written.
+    expect(add).not.toHaveBeenCalled();
+    expect(startBlock).not.toHaveBeenCalled();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery data could not be read, so this change was not made. Try again.').length).toBe(1);
   });
 
   test('confirm requires an explicit selection: the Confirm button is disabled until both sides are chosen', () => {
@@ -6535,6 +6586,7 @@ describe('useRecoveryAnalyticsFilter freshness and fail-closed reads', () => {
 describe('authoritative Recovery state contract (#716)', () => {
   const hooks = require('../hooks/entries/recoveryBlockHooks');
   const recoveryStorageModule = require('../storage/entries/recoveryStorage');
+  const journalModule = require('../storage/entries/recoveryOperationJournal');
   const AsyncStorage = require('@react-native-async-storage/async-storage');
   const { RECOVERY_BLOCKS_KEY, RECOVERY_BLOCK_WEEKS_KEY } = require('../storage/entries/keys');
 
@@ -6735,6 +6787,190 @@ describe('authoritative Recovery state contract (#716)', () => {
     expect(result.ok).toBe(true);
     expect(result.week.id).toBe('rw716');
     expect(latest().ready).toBe(true);
+  });
+
+  // #711 review finding 2: a corrupt operation journal must never resolve like
+  // an ordinary reconciliation with nothing pending. It must block mutations
+  // even when a previously-verified snapshot keeps the read-only view "stale"
+  // rather than "error".
+  test('a corrupt journal read blocks mutations, whether or not a snapshot was previously verified', async () => {
+    const corruptResult = {
+      ok: false,
+      code: 'JOURNAL_CORRUPT',
+      corrupt: true,
+      pending: [],
+      cancelled: [],
+      results: [],
+      error: 'Recovery operations could not be read from this device. Recovery actions are paused until this is retried.',
+      cause: null,
+    };
+    const reconcileSpy = jest.spyOn(journalModule, 'reconcileRecoveryOperations')
+      .mockResolvedValue(corruptResult);
+
+    // Case 1: nothing was ever verified. A corrupt journal is a terminal
+    // error, not a verified-empty result.
+    await mountProbe();
+    expect(latest().ready).toBe(false);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.ERROR);
+    expect(latest().mutationsAllowed).toBe(false);
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECOVERY_JOURNAL_CORRUPT');
+
+    reconcileSpy.mockRestore();
+  });
+
+  test('a corrupt journal read on a previously-verified snapshot goes stale AND stays mutation-blocked', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    expect(latest().mutationsAllowed).toBe(true);
+
+    const corruptResult = {
+      ok: false, code: 'JOURNAL_CORRUPT', corrupt: true, pending: [], cancelled: [], results: [],
+      error: 'Recovery operations could not be read from this device. Recovery actions are paused until this is retried.',
+      cause: null,
+    };
+    const reconcileSpy = jest.spyOn(journalModule, 'reconcileRecoveryOperations')
+      .mockResolvedValue(corruptResult);
+    await render.act(async () => { await latest().refresh(); });
+
+    // Last-known-good data still renders (stale), but — unlike an ordinary
+    // transient read failure — mutations must stay blocked, because the
+    // journal contract itself says recovery actions are paused while it is
+    // unreadable.
+    expect(latest().ready).toBe(true);
+    expect(latest().stale).toBe(true);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.STALE);
+    expect(latest().mutationsAllowed).toBe(false);
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECOVERY_JOURNAL_CORRUPT');
+
+    reconcileSpy.mockRestore();
+  });
+
+  // #711 review finding 1: an ordinary (unreconciled) filter read must never
+  // be able to establish the mutation-authorizing verified state.
+  // `useRecoveryAnalyticsFilter` reads records directly, without running the
+  // journal reconciliation `useRecoveryBlockState` always runs first.
+  test('a plain analytics filter read never establishes the mutation-verified state for a not-yet-reconciled consumer', async () => {
+    await seedRecords([block], [week]);
+
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+    // The filter itself becomes ready (it read real records)...
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
+
+    // ...now mount an authoritative consumer whose OWN read is held open. If
+    // the filter's raw read had (incorrectly) set the shared mutation-verified
+    // bit, this consumer would report `ready`/`mutationsAllowed` true
+    // immediately, without ever completing its own reconcile-then-read pass.
+    let releaseRead;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(
+      () => new Promise((resolve) => { releaseRead = () => resolve([block]); })
+    );
+    await mountProbe();
+
+    expect(latest().ready).toBe(false);
+    expect(latest().loading).toBe(true);
+    expect(latest().mutationsAllowed).toBe(false);
+
+    await render.act(async () => { releaseRead(); await Promise.resolve(); });
+  });
+
+  test('a plain analytics filter success does not paper over a real authoritative read failure', async () => {
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    // The filter succeeds first — an empty snapshot is a legitimate empty
+    // read for the filter boundary.
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
+
+    // The authoritative pass then genuinely fails. If the two verified flags
+    // were still one shared bit, the filter's earlier success would leak into
+    // this consumer and hide the failure.
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockRejectedValue(new Error('boom'));
+    await mountProbe();
+
+    expect(latest().ready).toBe(false);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.ERROR);
+    expect(latest().mutationsAllowed).toBe(false);
+  });
+
+  // #711 review finding 4: strengthen the existing max-concurrency assertion
+  // to prove a single shared reconciliation pass — not merely that two
+  // `useRecoveryBlockState` consumers never run concurrently, but that a
+  // simultaneously-mounted `useRecoveryAnalyticsFilter` reuses that same pass
+  // instead of issuing its own separate read.
+  test('Log, Analytics, and the analytics filter share exactly one storage read on cold mount', async () => {
+    await seedRecords([block], [week]);
+
+    let readCount = 0;
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const real = recoveryStorageModule.loadRecoveryBlocks;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      readCount += 1;
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      try {
+        return await real();
+      } finally {
+        concurrent -= 1;
+      }
+    });
+
+    const logBucket = [];
+    const analyticsBucket = [];
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => {
+      mounted.push(render.create(<Probe bucket={logBucket} />));
+      mounted.push(render.create(<Probe bucket={analyticsBucket} />));
+      mounted.push(render.create(<FilterProbe />));
+    });
+
+    expect(maxConcurrent).toBe(1);
+    // Two `useRecoveryBlockState` consumers alone already produce two reads
+    // (the second mount's coalesced follow-up reconciles again after the
+    // first completes, by design — see `refreshRecoveryState`). What this
+    // proves is that adding the analytics filter as a THIRD mounted consumer
+    // contributes ZERO extra reads: it piggybacked on the in-flight
+    // authoritative pass instead of starting its own separate storage call.
+    expect(readCount).toBe(2);
+    expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
   });
 });
 

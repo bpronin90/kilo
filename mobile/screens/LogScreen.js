@@ -43,7 +43,7 @@ import {
   isEligibleBaselineNote,
   isEligibleRecoveryWeekNote,
 } from '../hooks/useEntries';
-import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
+import { useRecoveryBlockLifecycle, ensureVerifiedRecoveryState } from '../hooks/entries/recoveryBlockHooks';
 
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
@@ -297,6 +297,14 @@ export function LogScreen({
     if (!baselineNote) {
       return { ok: false, error: 'Select a baseline routine first.' };
     }
+    // Recheck the authoritative mutation precondition BEFORE any write —
+    // including the new-note creation below. The confirm modal can sit open
+    // long enough for the verified snapshot to go stale or the journal to turn
+    // corrupt, and rejection must happen before a note is persisted, not after
+    // (best-effort rollback is not equivalent to never having written it)
+    // (#711 review finding 3).
+    const precondition = await ensureVerifiedRecoveryState();
+    if (!precondition.ok) return precondition;
     let finalWeekNoteId = weekNoteId;
     let createdNoteId = null;
     if (weekChoice === 'new') {

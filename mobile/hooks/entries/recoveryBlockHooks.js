@@ -101,6 +101,13 @@ let recoveryLifecycle = {
   error: null,
   // Latest refresh failure over an already-verified snapshot.
   refreshError: null,
+  // True only while the most recent reconciliation pass found the operation
+  // journal itself unreadable/corrupt (#711 review finding 2). This is
+  // orthogonal to `status`: a previously-verified snapshot goes STALE rather
+  // than ERROR on any failed refresh, but a corrupt journal must block
+  // mutations even in that STALE state, because the journal contract itself
+  // says recovery actions are paused until it can be read again.
+  journalCorrupt: false,
   // Journaled operations that are not yet verified (#696). Recovery lifecycle
   // state is not considered ready until reconciliation has run, so a resumed
   // operation converges before the user can act on the records it touches.
@@ -134,6 +141,21 @@ function runAuthoritativeRecoveryRead() {
   // would show the user a transition that is about to be completed anyway.
   return reconcileRecoveryOperations()
     .then((reconciliation) => {
+      // A corrupt journal is NOT a normal reconciliation result: `ok`/`pending`
+      // describe conflicting-action locks over a journal that was actually
+      // readable. When the journal itself could not be read, the contract is
+      // "recovery actions are paused" — this must resolve as a failed read
+      // (never a READY snapshot with `mutationsAllowed` true), so it is routed
+      // into the same catch path as a storage read failure below (#711 review
+      // finding 2).
+      if (reconciliation.corrupt) {
+        const corruptError = new Error(
+          reconciliation.error || 'Recovery operations could not be read from this device.'
+        );
+        corruptError.code = reconciliation.code;
+        corruptError.corrupt = true;
+        throw corruptError;
+      }
       // `pending` locks conflicting actions; `cancelled` does not. A terminal
       // cancellation has already retired its record, so it must unlock
       // everything while still explaining itself once.
@@ -147,6 +169,7 @@ function runAuthoritativeRecoveryRead() {
         status: RECOVERY_STATUS.READY,
         error: null,
         refreshError: null,
+        journalCorrupt: false,
         pendingRecovery: pending,
         recoveryPendingError: pendingError,
       });
@@ -155,11 +178,13 @@ function runAuthoritativeRecoveryRead() {
       // A failed read never publishes "nothing is recovering". A previously
       // verified snapshot stays authoritative and is marked stale; an
       // unverified one becomes a terminal error with a retry path. In neither
-      // case is the empty placeholder promoted to a result.
+      // case is the empty placeholder promoted to a result. A corrupt journal
+      // additionally blocks mutations regardless of which of those two states
+      // applies (see `journalCorrupt` above).
       if (recoverySnapshotVerified) {
-        setRecoveryLifecycle({ status: RECOVERY_STATUS.STALE, refreshError: e });
+        setRecoveryLifecycle({ status: RECOVERY_STATUS.STALE, refreshError: e, journalCorrupt: !!e?.corrupt });
       } else {
-        setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e });
+        setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e, journalCorrupt: !!e?.corrupt });
       }
     });
 }
@@ -188,11 +213,28 @@ export function refreshRecoveryState() {
 // lifecycle mutation therefore re-establishes a verified state at the moment it
 // is confirmed, and refuses rather than writing against unverified state.
 export async function ensureVerifiedRecoveryState() {
-  if (recoverySnapshotVerified && recoveryLifecycle.status !== RECOVERY_STATUS.ERROR) {
+  // Always perform a fresh authoritative read here — including when a snapshot
+  // is already verified. REFRESHING and STALE are both "verified" in the
+  // render-time sense, but neither has necessarily reconciled since the
+  // confirmation dialog opened, which is exactly the window this recheck
+  // exists to close (#711 review finding 3). `refreshRecoveryState` coalesces
+  // with any read already in flight, so this never starts a second concurrent
+  // reconciliation.
+  await refreshRecoveryState();
+  if (
+    recoverySnapshotVerified
+    && recoveryLifecycle.status !== RECOVERY_STATUS.ERROR
+    && !recoveryLifecycle.journalCorrupt
+  ) {
     return { ok: true };
   }
-  await refreshRecoveryState();
-  if (recoverySnapshotVerified) return { ok: true };
+  if (recoveryLifecycle.journalCorrupt) {
+    return {
+      ok: false,
+      code: 'RECOVERY_JOURNAL_CORRUPT',
+      error: 'Recovery actions are paused until recovery data can be read again. Try again.',
+    };
+  }
   return {
     ok: false,
     code: 'RECOVERY_STATE_UNVERIFIED',
@@ -266,7 +308,7 @@ export function useRecoveryBlockState() {
 
   return useMemo(() => {
     const { blocks, weeks } = view.snapshot;
-    const { status, error, refreshError, pendingRecovery, recoveryPendingError } = view.lifecycle;
+    const { status, error, refreshError, journalCorrupt, pendingRecovery, recoveryPendingError } = view.lifecycle;
     const activeBlock = findActiveBlock(blocks);
     const recoveryWeekNumberByNoteId = {};
     if (activeBlock) {
@@ -292,8 +334,11 @@ export function useRecoveryBlockState() {
       staleError: refreshError,
       error,
       // Recovery eligibility and every mutation stay closed until persisted
-      // state is verified.
-      mutationsAllowed: view.verified && status !== RECOVERY_STATUS.ERROR,
+      // state is verified — and stay closed while the journal itself is
+      // corrupt even over an otherwise-verified (STALE) snapshot, since the
+      // journal contract says recovery actions are paused in that case
+      // (#711 review finding 2).
+      mutationsAllowed: view.verified && status !== RECOVERY_STATUS.ERROR && !journalCorrupt,
       refresh,
       pendingRecovery,
       recoveryPendingError,
@@ -322,7 +367,20 @@ let lastRecoverySignature = '';
 // boundary exists for (a corrupt or temporarily unreadable recovery key on cold
 // start, while workout notes load fine). Consumers read `filter.ready` and keep
 // their loading state instead.
+//
+// This gates `useRecoveryBlockState`'s `ready`/`mutationsAllowed` ONLY, and is
+// set ONLY by the authoritative reconcile-then-read pass
+// (`runAuthoritativeRecoveryRead`). A plain filter read (below) is never
+// reconciled against the operation journal, so it must never be able to
+// establish the mutation-authorizing verified state — doing so would let Log
+// become mutation-capable, or stay mutation-capable past a failed
+// reconciliation, off the back of an ordinary Analytics filter read (#711
+// review finding 1).
 let recoverySnapshotVerified = false;
+// Gates `useRecoveryAnalyticsFilter`'s own `ready` only. Set by either the
+// authoritative pass OR a plain filter read — both are equally valid evidence
+// that the exclusion boundary itself (not the mutation precondition) is known.
+let recoveryFilterVerified = false;
 
 // Everyone who renders from the shared snapshot: every mounted
 // `useRecoveryAnalyticsFilter` AND every mounted `useRecoveryBlockState`. One
@@ -331,18 +389,67 @@ let recoverySnapshotVerified = false;
 // than coincidental.
 let recoverySnapshotSubscribers = [];
 
-// The single write path for the shared verified snapshot. Called by both the
-// authoritative read above and the read-only filter refresh below, so neither
-// can hold a snapshot the other has not seen.
-function publishRecoverySnapshot(blocks, weeks) {
+// The write path for the shared snapshot DATA, shared by both publish
+// functions below so neither can hold snapshot records the other has not
+// seen. Which verified flag(s) get set is the caller's decision — that is what
+// keeps the mutation-authorizing bit reconcile-only (finding 1 above).
+function _writeRecoverySnapshot(blocks, weeks) {
   const signature = _recoverySignature(blocks, weeks);
-  if (signature !== lastRecoverySignature || !recoverySnapshotVerified) {
+  if (signature !== lastRecoverySignature || !(recoverySnapshotVerified || recoveryFilterVerified)) {
     lastRecoverySignature = signature;
     lastRecoverySnapshot = { blocks, weeks };
   }
-  recoverySnapshotVerified = true;
   safeNotify(recoverySnapshotSubscribers);
   return lastRecoverySnapshot;
+}
+
+// Authoritative publish: called ONLY by the reconcile-then-read pass. Sets
+// BOTH verified flags — reconciled data is strictly better evidence than a
+// plain filter read, so it satisfies the filter boundary too.
+function publishRecoverySnapshot(blocks, weeks) {
+  const result = _writeRecoverySnapshot(blocks, weeks);
+  recoverySnapshotVerified = true;
+  recoveryFilterVerified = true;
+  return result;
+}
+
+// Filter-only publish: called by the read-only `useRecoveryAnalyticsFilter`
+// refresh. Deliberately does NOT set `recoverySnapshotVerified` — an ordinary
+// filter read must never make Log's mutations mutation-capable.
+function publishRecoveryFilterSnapshot(blocks, weeks) {
+  const result = _writeRecoverySnapshot(blocks, weeks);
+  recoveryFilterVerified = true;
+  return result;
+}
+
+// The single in-flight filter read, plus reuse of any authoritative
+// reconcile-then-read pass that is already running. Two things this fixes
+// together (#711 review finding 4):
+//
+// 1. Multiple mounted `useRecoveryAnalyticsFilter` instances (e.g. more than
+//    one Analytics surface) share ONE storage read instead of each issuing
+//    its own.
+// 2. When Log and Analytics are mounted together, `useRecoveryBlockState`'s
+//    authoritative pass loads the exact same `recovery_blocks`/
+//    `recovery_block_weeks` records this filter needs. Piggybacking on that
+//    in-flight pass instead of starting a second concurrent read means only
+//    ONE read reaches storage, not two.
+let recoveryFilterReadInFlight = null;
+
+function runRecoveryFilterRead() {
+  if (!recoveryFilterReadInFlight) {
+    recoveryFilterReadInFlight = (
+      recoveryReadInFlight
+        // The authoritative pass already publishes (and reconciles) the
+        // shared snapshot; just wait for it rather than re-reading.
+        ? recoveryReadInFlight
+        : Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
+          .then(([blocks, weeks]) => publishRecoveryFilterSnapshot(blocks, weeks))
+    ).finally(() => {
+      recoveryFilterReadInFlight = null;
+    });
+  }
+  return recoveryFilterReadInFlight;
 }
 
 // Retry cadence for a failed read, capped. A cold-start failure would otherwise
@@ -382,7 +489,7 @@ function _recoverySignature(blocks, weeks) {
 // while the boundary is still unverified — a bounded retry.
 export function useRecoveryAnalyticsFilter() {
   const [state, setState] = useState(
-    () => ({ snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified })
+    () => ({ snapshot: lastRecoverySnapshot, verified: recoveryFilterVerified })
   );
   const retryTimerRef = useRef(null);
   const retryAttemptRef = useRef(0);
@@ -390,16 +497,15 @@ export function useRecoveryAnalyticsFilter() {
 
   const syncFromShared = useCallback(() => {
     setState(prev => (
-      prev.snapshot === lastRecoverySnapshot && prev.verified === recoverySnapshotVerified
+      prev.snapshot === lastRecoverySnapshot && prev.verified === recoveryFilterVerified
         ? prev
-        : { snapshot: lastRecoverySnapshot, verified: recoverySnapshotVerified }
+        : { snapshot: lastRecoverySnapshot, verified: recoveryFilterVerified }
     ));
   }, []);
 
   const refresh = useCallback(() => {
-    return Promise.all([Storage.loadRecoveryBlocks(), Storage.loadRecoveryBlockWeeks()])
-      .then(([blocks, weeks]) => {
-        publishRecoverySnapshot(blocks, weeks);
+    return runRecoveryFilterRead()
+      .then(() => {
         retryAttemptRef.current = 0;
         syncFromShared();
       })
@@ -409,7 +515,7 @@ export function useRecoveryAnalyticsFilter() {
         // none ever was, the boundary stays unverified and every consumer holds
         // its loading state rather than admitting recovery work.
         syncFromShared();
-        if (recoverySnapshotVerified || unmountedRef.current) return;
+        if (recoveryFilterVerified || unmountedRef.current) return;
         const attempt = retryAttemptRef.current;
         if (attempt >= RECOVERY_READ_RETRY_MS.length) return;
         retryAttemptRef.current = attempt + 1;
@@ -471,15 +577,18 @@ export function _resetRecoveryAnalyticsFilterCache() {
   lastRecoverySnapshot = { blocks: [], weeks: [] };
   lastRecoverySignature = '';
   recoverySnapshotVerified = false;
+  recoveryFilterVerified = false;
   recoveryLifecycle = {
     status: RECOVERY_STATUS.IDLE,
     error: null,
     refreshError: null,
+    journalCorrupt: false,
     pendingRecovery: [],
     recoveryPendingError: null,
   };
   recoveryReadInFlight = null;
   recoveryReadQueued = null;
+  recoveryFilterReadInFlight = null;
 }
 
 // One-shot read of the ordinary-analytics exclusion set, straight from storage.
