@@ -103,6 +103,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     : weekTone === 'success' ? colors.success
     : null;
 
+  // Whether there is any rolling-average series to plot at all.
+  const hasWeightSeries = Array.isArray(dashboardData.weightSeries)
+    && dashboardData.weightSeries.length > 0;
+
   // Gate the whole first paint on every data source Home renders, not just
   // weight/notes: weight goal and tracked lifts feed the dashboard too, so
   // including their loading prevents those sections from popping in after
@@ -181,33 +185,117 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
         <>
           {/* ══ TIER 1: Weekly Summary ══ */}
           <Card style={styles.weeklyHero}>
-            {/* #2 inline week label */}
-            <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
-              {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
-            </Text>
-
-            <Text style={dashboardData.latestWeight ? styles.heroWeightValue : styles.heroWeightPlaceholder}>
-              {dashboardData.latestWeight ? formatBodyweightValue(dashboardData.latestWeight, unit) : '—'}
-              {dashboardData.latestWeight ? <Text style={styles.heroWeightUnit}> {unit}</Text> : null}
-            </Text>
-
-            {/* #4 sparkline strip below weight */}
-            <View style={styles.heroSparklineStrip}>
-              <LineChart
-                data={displayChartSeries(dashboardData.weightSeries, unit)}
-                color={colors.textMuted}
-                height={44}
-                paddingHorizontal={0}
-                hideHeader
-              />
-              <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+            {/* #2 inline week label. The two primary daily-loop actions live in
+                one stable row below the hero state instead of being scattered
+                beside the values they act on (#717 review). */}
+            <View style={styles.heroWeekRow}>
+              <Text style={[styles.heroWeekLabel, weekToneColor ? { color: weekToneColor } : null]}>
+                {dashboardData.weeksIn !== null ? `Week ${dashboardData.weeksIn}` : 'Week —'}
+              </Text>
             </View>
 
-            {/* Classification band */}
+            {/* The hero metric stays a plain, non-pressable value (§8). With no
+                weigh-in yet the slot reads as a short muted sentence instead of
+                a bare dash over dead space. */}
+            <View style={styles.heroWeightRow}>
+              {dashboardData.latestWeight ? (
+                <Text style={styles.heroWeightValue}>
+                  {formatBodyweightValue(dashboardData.latestWeight, unit)}
+                  <Text style={styles.heroWeightUnit}> {unit}</Text>
+                </Text>
+              ) : (
+                <Text style={styles.heroWeightPlaceholder}>No weigh-in yet</Text>
+              )}
+            </View>
+
+            <View style={styles.heroPrimaryActions}>
+              <Pressable
+                testID="home-current-routine-link"
+                onPress={() => onNavigate('Log')}
+                style={styles.heroPrimaryAction}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="Log workout"
+                accessibilityHint="Opens the Log tab for your current routine"
+              >
+                <Text style={styles.heroPrimaryActionText}>Log workout</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+
+              <View style={styles.heroPrimaryActionDivider} />
+
+              <Pressable
+                testID="home-weight-action"
+                onPress={() => onNavigate('Weight')}
+                style={styles.heroPrimaryAction}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="Log weight"
+                accessibilityHint="Opens the Weight tab to log a weigh-in"
+              >
+                <Text style={styles.heroPrimaryActionText}>Log weight</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
+
+            {/* #4 sparkline strip below weight. LineChart owns its own Pressable
+                for point selection, so the Analytics-weight handoff is a separate
+                explicit control beneath the chart — one press owner per region,
+                no nested responders. The chart caption stays a plain caption; the
+                handoff reads as an action ("See weight trends") so it is not
+                mistaken for chart furniture (#717 review). */}
+            <View style={styles.heroSparklineStrip}>
+              {/* With no weigh-ins there is no trend to draw, so the caption and
+                  the chart's own "Not enough data" placeholder are suppressed
+                  rather than left as dead space in the primary card. The handoff
+                  itself stays available. */}
+              {hasWeightSeries ? (
+                <>
+                  <Text style={styles.heroSparklineSublabel}>7-day rolling avg</Text>
+                  <LineChart
+                    data={displayChartSeries(dashboardData.weightSeries, unit)}
+                    color={colors.textMuted}
+                    height={44}
+                    paddingHorizontal={0}
+                    hideHeader
+                  />
+                </>
+              ) : null}
+              <Pressable
+                testID="home-weight-trend-link"
+                onPress={() => onNavigate('Analytics', 'weight')}
+                style={styles.heroInlineAction}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="See weight trends"
+                accessibilityHint="Opens the weight section of the Analytics tab"
+              >
+                <Text style={styles.heroInlineActionText}>See weight trends</Text>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </Pressable>
+            </View>
+
+            {/* Classification band — strength-summary handoff to Analytics
+                strength (#717). Only the header row is the press target: the
+                counts beneath are data, not a control, so making the whole band
+                tappable was too much clickable area. The affordance is the plain
+                chevron already used by `Full history and insights` on this same
+                screen — no fill, no border. */}
             <View style={styles.classifSection}>
-              <View style={styles.classifSectionHeader}>
-                <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
-              </View>
+              <Pressable
+                testID="home-strength-summary-link"
+                onPress={() => onNavigate('Analytics', 'strength')}
+                style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+                hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityLabel="Exercise Progress"
+                accessibilityHint="Opens the strength section of the Analytics tab"
+              >
+                <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
+                <View style={styles.sectionHeaderChevron}>
+                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                </View>
+              </Pressable>
               <View style={styles.classifRow}>
                 {[
                   { label: 'Progressing', count: dashboardData.weeklySummary.classifications?.progressing ?? 0, color: colors.success },
@@ -277,8 +365,26 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           })() : null}
 
           {/* ══ TIER 3: 1k Club Progress ══ */}
+          {/* Handoff to the Analytics strength section, which is where the 1K
+              detail lives (owner scope override on #717). The header row alone
+              is the press target — the total, progress bar, and per-lift grid
+              stay plain data — and it uses the same quiet chevron affordance as
+              the Exercise Progress header. */}
           <Card style={styles.oneKCard}>
-            <Text style={styles.oneKLabel}>1K Progress</Text>
+            <Pressable
+              testID="home-one-k-link"
+              onPress={() => onNavigate('Analytics', 'strength')}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionCenter]}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel="1K Progress"
+              accessibilityHint="Opens the strength section of the Analytics tab"
+            >
+              <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
+              <View style={styles.sectionHeaderChevron}>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
+            </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
               <Text style={styles.oneKHeroUnit}> {unit}</Text>
@@ -317,19 +423,80 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 0,
     marginTop: 12,
   },
+  heroWeekRow: {
+    marginBottom: 4,
+  },
   heroWeekLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
-    marginBottom: 12,
+    flexShrink: 1,
+  },
+  heroWeightRow: {
+    minWidth: 0,
+  },
+  // The two highest-frequency actions share one stable strip at every width,
+  // keeping them visually distinct from the surrounding summary and Analytics
+  // handoffs while preserving the single hero metric.
+  heroPrimaryActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.subtleBg,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  heroPrimaryAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  heroPrimaryActionText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  heroPrimaryActionDivider: {
+    width: 1,
+    marginVertical: 8,
+    backgroundColor: colors.cardBorder,
+  },
+  // Quiet Analytics handoff attached to the sparkline. 44pt minimum target per
+  // the mobile touch-target rule, kept visually quiet so the hero metric remains
+  // the only dominant element (§8).
+  heroInlineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 4,
+  },
+  heroInlineActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   heroWeightValue: {
     ...HeroMetric.hero,
     color: colors.accent,
+    // Allow the value to give up width inside the row so an enlarged metric on a
+    // 320dp screen stays inside the card instead of painting past its edge.
+    flexShrink: 1,
+    minWidth: 0,
   },
+  // The no-data hero is a short muted sentence, not a hero-sized dash: at hero
+  // scale a lone glyph left a visible hole in the card's dominant slot.
   heroWeightPlaceholder: {
-    ...HeroMetric.hero,
-    fontWeight: '400',
+    fontSize: 20,
+    fontWeight: '600',
     color: colors.textMuted,
   },
   heroWeightUnit: {
@@ -338,15 +505,14 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
   },
   heroSparklineStrip: {
-    marginTop: 8,
-    marginBottom: 24,
+    marginTop: 4,
+    marginBottom: 12,
   },
   heroSparklineSublabel: {
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
-    textAlign: 'right',
-    marginTop: 2,
+    marginBottom: 2,
   },
   classifSection: {
     borderTopWidth: 1,
@@ -354,8 +520,38 @@ const createStyles = (colors) => StyleSheet.create({
     paddingTop: 16,
     marginBottom: 16,
   },
-  classifSectionHeader: {
-    marginBottom: 12,
+  // Shared affordance for the two strength destinations (Exercise Progress and
+  // 1K Progress): the section label plus the same plain chevron that
+  // `Full history and insights` already uses on this screen. No fill and no
+  // border — a filled pill read as noisy, and no chevron at all read as not
+  // pressable. The row itself is the press target, so the metrics beneath stay
+  // untappable.
+  sectionHeaderAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    // No wrap and no space-between: as independent flex children on a wrapping
+    // full-width row, the chevron orphaned onto its own line at 320px with
+    // enlarged text. Kept adjacent like `Full history and insights ›`, the row
+    // hugs its content and the label absorbs narrow widths by wrapping itself.
+    maxWidth: '100%',
+  },
+  // Cross-axis alignment is deliberately NOT in the shared style: it differs per
+  // card, and baking `flex-start` into the shared rule silently overrode the 1K
+  // card's centered layout and dragged its header to the left edge while the
+  // total and breakdown stayed centered.
+  sectionHeaderActionStart: {
+    alignSelf: 'flex-start',
+  },
+  sectionHeaderActionCenter: {
+    alignSelf: 'center',
+  },
+  sectionHeaderLabel: {
+    flexShrink: 1,
+  },
+  sectionHeaderChevron: {
+    flexShrink: 0,
   },
   classifSectionLabel: {
     fontSize: 12,
@@ -366,9 +562,27 @@ const createStyles = (colors) => StyleSheet.create({
   },
   classifRow: {
     flexDirection: 'row',
+    // At 320dp with an enlarged text setting, `Progressing` / `Regressing` are
+    // single words wider than a one-third column, so fixed thirds made the three
+    // labels collide. Wrapping lets a column drop to the next line instead
+    // (verified by rendered capture at 320/375/448dp, #717 review round 2).
+    flexWrap: 'wrap',
+    rowGap: 12,
+    // Content-sized columns with no gap could exactly fill the row, so at 375px
+    // with enlarged text the three labels touched and read as one continuous
+    // string. A real horizontal gap both separates them when they fit and forces
+    // the wrap one column earlier when they no longer do.
+    columnGap: 16,
   },
   classifCol: {
-    flex: 1,
+    // Content-sized rather than fixed thirds. A static basis cannot tell default
+    // text from enlarged text: sized for the large case it wrapped at default
+    // 375dp, sized for the default case the enlarged label overran its column.
+    // Sizing to content keeps all three on one row whenever they fit and wraps
+    // only when they genuinely do not (verified by rendered capture).
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
     alignItems: 'center',
     gap: 5,
   },
@@ -387,7 +601,8 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 14,
+    // No fixed lineHeight: a scaled-up label must grow its own line box rather
+    // than overflow a 14px one.
   },
   heroFooter: {
     alignItems: 'center',
@@ -463,6 +678,7 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
+    flexShrink: 1,
   },
   oneKHero: {
     alignItems: 'center',

@@ -1352,6 +1352,79 @@ describe('Trends section label rename (#406, M-5)', () => {
   });
 });
 
+// The Weight tab's Trends card is a summary; the full weight history lives in
+// Analytics. This link carries the user there instead of making them re-find the
+// weight section by tab (#717).
+describe('WeightScreen "See full trends" handoff (#717)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY],
+      remove: jest.fn(),
+      update: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  const renderWithNavigate = (onNavigate) => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen
+          onSaveWeight={jest.fn()}
+          errorMessage=""
+          saving={false}
+          onNavigate={onNavigate}
+        />
+      );
+    });
+    return component.root.findByProps({ testID: 'weight-see-full-trends' });
+  };
+
+  test('the link targets the Analytics weight section and is reusable', () => {
+    const onNavigate = jest.fn();
+    const link = renderWithNavigate(onNavigate);
+
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics', 'weight');
+
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Analytics', 'weight');
+  });
+
+  test('the link is an accessible button whose label matches its visible text', () => {
+    const link = renderWithNavigate(jest.fn());
+    expect(link.props.accessibilityRole).toBe('button');
+    expect(link.props.accessibilityLabel).toBe('See full trends');
+
+    const labels = link.findAllByType('Text').map(t => String(t.props.children ?? '').trim());
+    expect(labels).toContain('See full trends');
+  });
+
+  test('the link declares a >=44pt target and owns its press region', () => {
+    // Structural guard only; react-test-renderer runs no layout. Rendered
+    // validation at 320/375/448dp with enlarged text is in artifacts/717-d4/.
+    const link = renderWithNavigate(jest.fn());
+    const style = [].concat(link.props.style ?? []).reduce(
+      (acc, s) => (s ? Object.assign(acc, s) : acc),
+      {}
+    );
+
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
+    expect(link.props.hitSlop).not.toBeUndefined();
+    // No fixed height, so a scaled-up label grows rather than clipping.
+    expect(style.height).toBeUndefined();
+    expect(link.findAll(n => n !== link && typeof n.props?.onPress === 'function')).toHaveLength(0);
+  });
+
+  test('without a navigation handler the link is inert rather than throwing', () => {
+    const link = renderWithNavigate(undefined);
+    expect(() => render.act(() => { link.props.onPress(); })).not.toThrow();
+  });
+});
+
 describe('TrendSection goal-direction aware colors (#406, H-3)', () => {
   const renderSection = (props) => {
     let component;

@@ -196,7 +196,24 @@ The real native app path now has a modular React Native shell:
   `Exercise Progress` with three semantic color dots (green/yellow/red) for
   live `Progressing`, `Steady`, and `Regressing` overload counts mirrored from
   the current Analytics row contract, and a quiet `Full history and insights`
-  link into Analytics. The Home cards now share a consistent 24px internal
+  link into Analytics. Since #717 the steady-state hero is also the entry point
+  for four cross-screen handoffs, each carried by a visibly labeled control
+  rather than a silently pressable value: the primary `Log workout` and
+  `Log weight` actions share a dedicated quiet action row beneath the hero
+  state and open Log and Weight respectively, a
+  `See weight trends` action beneath the sparkline opens Analytics at its weight
+  section, and the `Exercise Progress` band opens Analytics at its strength
+  section, and the `1K Progress` card header opens the same Analytics strength
+  section. Both use the screen's established quiet affordance — the section label
+  plus a plain `›` chevron, matching `Full history and insights` — rather than a
+  filled control. In both cases the press target is the header row only: the
+  classification counts, the 1K total, its progress bar, and the per-lift grid
+  are data and stay untappable. The latest-weight value itself stays a plain non-pressable
+  hero metric, and the sparkline chart keeps sole ownership of its own
+  point-selection press handling. With no weigh-ins recorded the hero slot reads
+  `No weigh-in yet` and the empty sparkline is suppressed rather than leaving a
+  dash over dead space. The `Full history and insights` link keeps its existing
+  no-section behavior. The Home cards now share a consistent 24px internal
   padding baseline while preserving the intentional visual hierarchy between
   the hero, goal, and 1K sections. The Weight Goal card renders only when a goal is set
   (`dashboardData.goalInfo !== null`) and now uses a `Goal: Bulking` /
@@ -954,11 +971,23 @@ also now preserves multiple
 titled workout notes plus the current-workout selection, and remains backward
 compatible with older weight-only v1 backups. The native Home tab is
 now a dashboard rather than a static blurb, with a responsive Kilo wordmark
-header, `Current Routine Progress` subtitle copy, a single non-navigating
-latest-weight summary card, a compact non-pressable `1k Club Progress` card, and a plain (non-navigating)
-line-chart view of the 7-day rolling-average weight trend. The only Home→Analytics
-navigation is a "Full history and insights" CTA that opens the Analytics tab at
-its default landing view with no section argument. The native Log read
+header, `Current Routine Progress` subtitle copy, a latest-weight hero value with
+a dedicated row beneath it for the labeled `Log workout` and `Log weight`
+actions, a compact `1k Club Progress` card whose header opens the Analytics
+strength section, and a line-chart view
+of the 7-day rolling-average weight trend
+followed by a labeled `See weight trends` action that opens the Analytics weight
+section. Alongside the "Full history and insights" CTA, which still opens
+Analytics at its default landing view with no section argument, Home→Analytics
+navigation now also includes that weight-trends action (weight section), the
+`Exercise Progress` band, and the `1K Progress` card (both strength section). Analytics section targeting is delivered as a `section`
+plus a monotonic `sectionNonce`, so repeating the same handoff re-targets the
+section rather than being swallowed as an unchanged prop; the nonce advances
+only for explicit Analytics section requests, so unrelated tab navigation does
+not disturb the always-mounted memoized Analytics tree.
+The Weight tab's Trends card carries a `See full trends` link into the same
+Analytics weight section, and the Analytics no-tracked-exercises empty state
+carries a `Go to Log` link into Log. The native Log read
 view now also lets the user explicitly mark parsed exercises as tracked or not
 tracked without editing note syntax, and that selection now persists globally
 by normalized lift name so `Bench Press`, `bench press`, and ` Bench  Press `
