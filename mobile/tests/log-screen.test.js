@@ -7718,3 +7718,178 @@ describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
     expect(component.toJSON()).toBeNull();
   });
 });
+
+// ── typed note navigation intents (#718) ──────────────────────────────────────
+
+describe('typed note navigation intents (#718)', () => {
+  const CURRENT = {
+    id: 'note1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const OTHER = {
+    id: 'r1',
+    title: 'Routine B',
+    raw_text: 'Tuesday\n+Lifting\n-Squat\n225 5,5,5',
+    saved_at: '2026-05-01T12:00:00.000Z',
+  };
+
+  let alertSpy;
+
+  function mockNotes({ notes = [CURRENT, OTHER], loading = false } = {}) {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId: 'note1',
+      currentNote: CURRENT,
+      deloadNotes: [],
+      loading,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockNotes();
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+  });
+
+  // LogPreviousRoutines only renders the viewed-note body (and its
+  // `Double-tap to edit` hint) for the note whose id matches viewingNoteId, so
+  // this is the screen-level signal that a note is actually being shown.
+  const isShowingViewedNote = (component) =>
+    component.root.findAll(
+      n => n.type === 'Text'
+        && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '')
+          .includes('Double-tap to edit')
+    ).length > 0;
+
+  function mount(props) {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen {...props} />); });
+    return component;
+  }
+
+  test('an absent target opens nothing and leaves the screen untouched', () => {
+    const component = mount({ navNoteId: null, navNoteKey: 0 });
+    expect(isShowingViewedNote(component)).toBe(false);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a note target shows the requested non-current note', () => {
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    expect(isShowingViewedNote(component)).toBe(true);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a target for the current routine is a no-op: it is already the active card', () => {
+    // The previous-routines viewer only ever lists NON-current notes, so opening
+    // the current note there would be wrong; it is already on screen above.
+    const component = mount({ navNoteId: 'note1', navNoteKey: 1 });
+    expect(isShowingViewedNote(component)).toBe(false);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a missing target is refused out loud and opens nothing else', () => {
+    const component = mount({ navNoteId: 'deleted-note', navNoteKey: 1 });
+
+    expect(isShowingViewedNote(component)).toBe(false);
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Note not found',
+      expect.stringContaining('deleted')
+    );
+  });
+
+  test('a note target that arrives while notes are loading is applied once loading resolves', () => {
+    mockNotes({ notes: [], loading: true });
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    expect(isShowingViewedNote(component)).toBe(false);
+    // Deferred, not refused: the note is not "missing", it is not loaded yet.
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    mockNotes({ notes: [CURRENT, OTHER], loading: false });
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={1} />); });
+
+    expect(isShowingViewedNote(component)).toBe(true);
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a repeated render under the same key does not re-apply a consumed intent', () => {
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    expect(isShowingViewedNote(component)).toBe(true);
+
+    // The user collapses the note themselves, then an unrelated re-render
+    // arrives carrying the same already-consumed key.
+    const header = pressableAround(component.root, t => t.includes('Routine B'));
+    render.act(() => { header.props.onPress(); });
+    expect(isShowingViewedNote(component)).toBe(false);
+
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={1} />); });
+
+    expect(isShowingViewedNote(component)).toBe(false);
+  });
+
+  test('a later key for the same note re-applies the intent', () => {
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    const header = pressableAround(component.root, t => t.includes('Routine B'));
+    render.act(() => { header.props.onPress(); });
+    expect(isShowingViewedNote(component)).toBe(false);
+
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={2} />); });
+
+    expect(isShowingViewedNote(component)).toBe(true);
+  });
+
+  test('a note target is refused while an editor is open, and leaves the editor alone', () => {
+    const component = mount({ navNoteId: null, navNoteKey: 0 });
+    render.act(() => {
+      findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
+    });
+    // The read view's inline Edit control disappears in edit mode.
+    expect(findPressableByText(component.root, 'Edit')).toBeNull();
+
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={1} />); });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Finish your edit first',
+      // §12: the copy names the editor's real "Done" control.
+      expect.stringContaining('Tap Done')
+    );
+    expect(isShowingViewedNote(component)).toBe(false);
+    // Still in the current-routine editor: the intent touched no editor state.
+    expect(findPressableByText(component.root, 'Edit')).toBeNull();
+  });
+
+  test('a refusal is terminal for its key and is not replayed once the editor closes', () => {
+    const component = mount({ navNoteId: null, navNoteKey: 0 });
+    render.act(() => {
+      findPressableByText(component.root, 'Edit').props.onPress({ stopPropagation: jest.fn() });
+    });
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={1} />); });
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    // Leaving the editor must not silently perform the navigation the user was
+    // already told did not happen.
+    render.act(() => {
+      findPressableByText(component.root, 'Done').props.onPress({ stopPropagation: jest.fn() });
+    });
+
+    expect(isShowingViewedNote(component)).toBe(false);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+  });
+});

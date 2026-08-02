@@ -209,7 +209,7 @@ These files define the current real native app path.
 
 | File | Role |
 |------|------|
-| `mobile/App.js` | Root native app shell. Owns five-tab routing (`Home`, `Log`, `Weight`, `Analytics`, `More`), calls native parser/save hooks, and adapts persisted entries for the Home and Analytics screens. |
+| `mobile/App.js` | Root native app shell. Owns five-tab routing (`Home`, `Log`, `Weight`, `Analytics`, `More`) and the typed cross-screen navigation-intent contract (`normalizeNavTarget`, plus one target/key pair per destination), calls native parser/save hooks, and adapts persisted entries for the Home and Analytics screens. |
 | `mobile/components/ScreenShell.js` | Shared native screen wrapper with the common header, version badge, scroll container, and shared tab-bar scroll signaling. |
 | `mobile/components/TabBar.js` | Shared native bottom tab bar. |
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |

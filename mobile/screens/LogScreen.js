@@ -70,6 +70,8 @@ export function LogScreen({
   onCheckInPrompt,
   isActive,
   registerBackConsumer,
+  navNoteId = null,
+  navNoteKey = 0,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -219,6 +221,64 @@ export function LogScreen({
     hasUnsavedCurrent: currentEditor.hasUnsavedCurrent,
     editorScrollRef,
   });
+
+  // Typed note navigation intent (#718). The shell says WHICH note a cross-screen
+  // handoff wants shown and nothing more: it never reads or owns this screen's
+  // editor state, so the decision about whether opening that note is safe right
+  // now has to live here, where the three editors are already owned.
+  //
+  // The applied key is a ref, not an effect dependency alone. The effect also
+  // depends on `notes`/`notesLoading`/editor state so a request that arrives
+  // while notes are still loading can be re-attempted once they resolve, and
+  // that re-run must not also replay an already-consumed key off some unrelated
+  // state change. Stamping the ref at each terminal outcome makes every keyed
+  // intent apply exactly once per key, while a later key for the same note
+  // re-applies by design.
+  // 0 is the shell's initial key, i.e. "no intent has ever been issued", so a
+  // key that is already non-zero at mount is a real pending intent to consume.
+  const appliedNoteKeyRef = useRef(0);
+  useEffect(() => {
+    if (navNoteKey === appliedNoteKeyRef.current) return; // already consumed
+    if (!navNoteId) {
+      // Absent target: preserve whatever this screen is currently showing.
+      appliedNoteKeyRef.current = navNoteKey;
+      return;
+    }
+    if (notesLoading) return; // stay pending; notesLoading is a dependency below
+
+    // Refusals are terminal for this key rather than queued: silently opening
+    // the note later, after the user finished an unrelated edit, would be a
+    // surprise navigation. A caller that still wants it issues a new key.
+    if (currentEditor.mode === 'edit' || otherEditor.editingNoteId || deloadEditor.deloadMode === 'edit') {
+      appliedNoteKeyRef.current = navNoteKey;
+      // Copy names the real control (#ui-design-rules §12): the editor's own
+      // header action is labelled "Done" on all three editor paths.
+      Alert.alert(
+        'Finish your edit first',
+        'Tap Done to close the note you are editing, then try opening that note again.'
+      );
+      return;
+    }
+
+    const note = notes.find(n => n.id === navNoteId);
+    appliedNoteKeyRef.current = navNoteKey;
+    if (!note) {
+      // Missing target (e.g. the note was deleted since the link was rendered):
+      // say so instead of opening unrelated content.
+      Alert.alert('Note not found', 'This routine note may have been deleted.');
+      return;
+    }
+    // Current destination: the active routine is already the card at the top of
+    // this screen's read view, and the previous-routines viewer only ever shows
+    // NON-current notes, so opening it there would be wrong. Nothing to do.
+    if (note.id === currentId) return;
+    // Set-only, and deliberately NOT handleViewOtherNote, which toggles the
+    // viewer closed when the same note is already open. A navigation intent is
+    // "ensure this note is shown", so it must be idempotent, and it touches only
+    // the viewer — never editingNoteId/editingText or any other editor state.
+    otherEditor.setViewingNoteId(note.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navNoteKey, navNoteId, notesLoading, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
   const handleAndroidBack = () => {
     if (deloadEditor.deloadMode === 'edit') {

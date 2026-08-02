@@ -323,7 +323,28 @@ navigates the user back to Home. The weight save handler validates and persists
 but keeps the user on the Weight screen. The More tab now also owns a local
 Settings & Algorithm sub-screen that updates a persisted fatigue-multiplier
 value in `App.js` state and immediately re-derives Analytics through a
-prop-driven recomputation path. For nested navigation, `App.js` exposes one
+prop-driven recomputation path.
+
+Cross-screen handoffs use a typed navigation-intent contract rather than ad hoc
+per-destination arguments. A request is `{ tab, target, key }`: callers pass the
+tab and an optional target to `handleTabPress`, and the shell mints the
+monotonic `key` itself. The target vocabulary is
+`{ kind: 'section', id: 'weight' | 'strength' }` for Analytics,
+`{ kind: 'note', noteId }` for Log, and `{ kind: 'subview', view, anchor? }` for
+More. One exported normalizer in `App.js` validates target *shape* and the
+tab/kind pairing only; each destination's internal vocabulary stays with the
+destination, so `MoreScreen` — not the shell — decides which sub-view names are
+real. Malformed, unknown-kind, and wrong-tab targets normalize away and the tab
+press proceeds unchanged. The shell keeps one independent (target, key) pair per
+destination and advances a key only for an intent that addresses that
+destination, so ordinary navigation never invalidates another tab's memoized
+tree. An absent target preserves the destination's current internal state; a
+later key re-applies an identical target; each destination consumes a key
+exactly once. Log's note target is set-only: the shell says which note to show
+and never reads or owns Log's editor state, so `LogScreen` itself decides the
+current/loading/missing/editing outcomes and announces its refusals.
+
+For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only
 while an active child is visible. The shell consults that consumer before its
 Android Home/exit fallback, and the same child-ownership signal suppresses the

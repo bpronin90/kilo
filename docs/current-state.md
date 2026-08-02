@@ -999,6 +999,19 @@ plus a monotonic `sectionNonce`, so repeating the same handoff re-targets the
 section rather than being swallowed as an unchanged prop; the nonce advances
 only for explicit Analytics section requests, so unrelated tab navigation does
 not disturb the always-mounted memoized Analytics tree.
+That section handoff is now one case of a general typed navigation-intent
+contract carried by the shell: `{ tab, target, key }`, where `target` is
+`{ kind: 'section', id }` for Analytics, `{ kind: 'note', noteId }` for Log, or
+`{ kind: 'subview', view, anchor? }` for More. Every destination keeps its own
+target and monotonic key, so a plain tab press preserves whatever that screen
+was already showing, a later key re-applies an identical target, and each key is
+consumed once. Malformed targets, unknown kinds, and targets addressed to the
+wrong tab are ignored and the tab press still happens. Log's note target is
+set-only and refuses out loud rather than acting when the requested note is
+missing or an editor is open; More's sub-view target is validated against
+More's own sub-view names, and its optional anchor is carried but has no
+consuming sub-screen yet. Only the existing Analytics section handoffs issue
+intents today; the note and sub-view kinds are shell plumbing for later work.
 The Weight tab's Trends card carries a `See full trends` link into the same
 Analytics weight section, and the Analytics no-tracked-exercises empty state
 carries a `Go to Log` link into Log. The native Log read
