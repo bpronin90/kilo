@@ -285,7 +285,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               <Pressable
                 testID="home-strength-summary-link"
                 onPress={() => onNavigate('Analytics', 'strength')}
-                style={styles.sectionHeaderAction}
+                style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
                 hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
                 accessibilityRole="button"
                 accessibilityLabel="Exercise Progress"
@@ -374,7 +374,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             <Pressable
               testID="home-one-k-link"
               onPress={() => onNavigate('Analytics', 'strength')}
-              style={styles.sectionHeaderAction}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionCenter]}
               hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
               accessibilityRole="button"
               accessibilityLabel="1K Progress"
@@ -535,8 +535,17 @@ const createStyles = (colors) => StyleSheet.create({
     // full-width row, the chevron orphaned onto its own line at 320px with
     // enlarged text. Kept adjacent like `Full history and insights ›`, the row
     // hugs its content and the label absorbs narrow widths by wrapping itself.
-    alignSelf: 'flex-start',
     maxWidth: '100%',
+  },
+  // Cross-axis alignment is deliberately NOT in the shared style: it differs per
+  // card, and baking `flex-start` into the shared rule silently overrode the 1K
+  // card's centered layout and dragged its header to the left edge while the
+  // total and breakdown stayed centered.
+  sectionHeaderActionStart: {
+    alignSelf: 'flex-start',
+  },
+  sectionHeaderActionCenter: {
+    alignSelf: 'center',
   },
   sectionHeaderLabel: {
     flexShrink: 1,

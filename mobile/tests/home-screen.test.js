@@ -747,8 +747,18 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
       const style = flatStyle(component.root.findByProps({ testID }));
       expect(style.flexWrap).not.toBe('wrap');
       expect(style.justifyContent).not.toBe('space-between');
-      expect(style.alignSelf).toBe('flex-start');
     }
+  });
+
+  test('each section header keeps its own card alignment', () => {
+    // The shared header style must not carry cross-axis alignment: baking
+    // `flex-start` into it dragged the centered 1K header to the left edge while
+    // that card's total and breakdown stayed centered.
+    const band = flatStyle(component.root.findByProps({ testID: 'home-strength-summary-link' }));
+    expect(band.alignSelf).toBe('flex-start');
+
+    const oneK = flatStyle(component.root.findByProps({ testID: 'home-one-k-link' }));
+    expect(oneK.alignSelf).toBe('center');
   });
 
   test('the classification columns keep horizontal separation', () => {
