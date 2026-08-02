@@ -342,7 +342,12 @@ tree. An absent target preserves the destination's current internal state; a
 later key re-applies an identical target; each destination consumes a key
 exactly once. Log's note target is set-only: the shell says which note to show
 and never reads or owns Log's editor state, so `LogScreen` itself decides the
-current/loading/missing/editing outcomes and announces its refusals.
+current/loading/missing/editing outcomes and announces its refusals. Because
+Log's Routine and Deload views are mutually exclusive and render disjoint sets
+of notes off one shared viewer id, consuming a note intent also selects the view
+that owns the resolved note. Absence counts as "deleted" only after a successful
+read: while the note list is loading or a read has failed, the intent stays
+pending so the existing Retry can still fulfill it.
 
 For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only

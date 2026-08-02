@@ -228,12 +228,13 @@ export function LogScreen({
   // now has to live here, where the three editors are already owned.
   //
   // The applied key is a ref, not an effect dependency alone. The effect also
-  // depends on `notes`/`notesLoading`/editor state so a request that arrives
-  // while notes are still loading can be re-attempted once they resolve, and
-  // that re-run must not also replay an already-consumed key off some unrelated
-  // state change. Stamping the ref at each terminal outcome makes every keyed
-  // intent apply exactly once per key, while a later key for the same note
-  // re-applies by design.
+  // depends on `notes`/`notesLoading`/`notesError`/editor state so a request
+  // that arrives while the note list is still loading — or while a failed read
+  // is waiting on Retry — can be re-attempted once it resolves, and that re-run
+  // must not also replay an already-consumed key off some unrelated state
+  // change. Stamping the ref at each terminal outcome makes every keyed intent
+  // apply exactly once per key, while a later key for the same note re-applies
+  // by design.
   // 0 is the shell's initial key, i.e. "no intent has ever been issued", so a
   // key that is already non-zero at mount is a real pending intent to consume.
   const appliedNoteKeyRef = useRef(0);
@@ -244,7 +245,16 @@ export function LogScreen({
       appliedNoteKeyRef.current = navNoteKey;
       return;
     }
+    // Resolvability gates come first, before any user-state refusal: never
+    // announce an outcome that cannot actually be determined yet.
     if (notesLoading) return; // stay pending; notesLoading is a dependency below
+    // A failed notes read is NOT evidence that the note is gone (#718 review
+    // finding 2). useWorkoutNotes clears `loading` after a failed read while
+    // surfacing `error` and leaving `notes` empty or stale, so treating absence
+    // as a deletion here would both lie to the user and stamp the key —
+    // permanently defeating the ErrorBanner's own Retry, which has no way to
+    // reissue the intent. Absence is authoritative only after a successful read.
+    if (notesError) return; // stay pending until a Retry lands a clean read
 
     // Refusals are terminal for this key rather than queued: silently opening
     // the note later, after the user finished an unrelated edit, would be a
@@ -268,9 +278,23 @@ export function LogScreen({
       Alert.alert('Note not found', 'This routine note may have been deleted.');
       return;
     }
+    // Select the view that OWNS this note before consuming the intent (#718
+    // review finding 1). Routine and Deload are mutually exclusive — only the
+    // effectiveTabView branch is mounted — and they render disjoint sets of
+    // notes off the SAME viewingNoteId: LogPreviousRoutines filters deload
+    // notes out of otherNotes, and LogDeloadSection is the only place they
+    // render. Setting viewingNoteId alone would therefore leave a correctly
+    // resolved note invisible whenever the screen happens to be on the other
+    // view. Unconditional because effectiveTabView ignores tabView entirely
+    // while deload mode is off, so this is inert in that configuration.
+    const isDeloadTarget = !!note.title?.startsWith(DELOAD_NOTE_PREFIX);
+    setTabView(isDeloadTarget ? 'deload' : 'routine');
+
     // Current destination: the active routine is already the card at the top of
     // this screen's read view, and the previous-routines viewer only ever shows
-    // NON-current notes, so opening it there would be wrong. Nothing to do.
+    // NON-current notes, so opening it there would be wrong. The view switch
+    // above still applies — that is the whole point of doing it before this
+    // early return, since the current card is itself hidden while Deload is up.
     if (note.id === currentId) return;
     // Set-only, and deliberately NOT handleViewOtherNote, which toggles the
     // viewer closed when the same note is already open. A navigation intent is
@@ -278,7 +302,7 @@ export function LogScreen({
     // the viewer — never editingNoteId/editingText or any other editor state.
     otherEditor.setViewingNoteId(note.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navNoteKey, navNoteId, notesLoading, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
+  }, [navNoteKey, navNoteId, notesLoading, notesError, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
   const handleAndroidBack = () => {
     if (deloadEditor.deloadMode === 'edit') {

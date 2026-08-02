@@ -1007,8 +1007,11 @@ target and monotonic key, so a plain tab press preserves whatever that screen
 was already showing, a later key re-applies an identical target, and each key is
 consumed once. Malformed targets, unknown kinds, and targets addressed to the
 wrong tab are ignored and the tab press still happens. Log's note target is
-set-only and refuses out loud rather than acting when the requested note is
-missing or an editor is open; More's sub-view target is validated against
+set-only; it switches Log to the Routine or Deload view that owns the requested
+note, and refuses out loud rather than acting when the note is genuinely gone or
+an editor is open. While the note list is loading or a read has failed the
+request simply stays pending, so the existing `Retry` still fulfills it instead
+of the note being reported as deleted. More's sub-view target is validated against
 More's own sub-view names, and its optional anchor is carried but has no
 consuming sub-screen yet. Only the existing Analytics section handoffs issue
 intents today; the note and sub-view kinds are shell plumbing for later work.
