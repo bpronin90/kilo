@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
-import { Alert } from 'react-native';
+import { Alert } from '../../lib/platformAlert';
 import { parseWorkoutNote, generateDeloadNote } from '../../lib/parser';
 import { buildDayGroups } from './logScreenHelpers';
 

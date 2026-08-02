@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, Platform, Share, StyleSheet, Text, TextInput } from 'react-native';
+import { Platform, Share, StyleSheet, Text, TextInput } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import { ScreenShell } from './ScreenShell';
 import { Card, SectionTitle, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';

@@ -1406,7 +1406,8 @@ describe('Undo escape hatch: integration tests', () => {
 // ── Routine switch: progress rollover (#295) ──────────────────────────────────
 
 import { findMatchingExerciseNames, rolloverOneKExercises, DEFAULT_1K_EXERCISES } from '../lib/data';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import { WebAlertHost } from '../components/WebAlertHost';
 
 describe('routine switch: rollover helper behavior (#295)', () => {
   const OLD_RAW = 'MONDAY — Push\n-DB Bench Press 3x8\n-Squat 3x6\n';
@@ -1562,6 +1563,157 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
     await render.act(async () => {
       component.unmount();
     });
+  });
+
+  test('web dialog cancel leaves the routine unchanged and confirm completes the switch (#721)', async () => {
+    const originalOS = Platform.OS;
+    const selectCurrent = jest.fn().mockResolvedValue(undefined);
+    const currentNote = {
+      id: 'note1',
+      title: 'Gym Routine',
+      raw_text: 'MONDAY\n-DB Bench Press 3x8\n',
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    const disjointNote = {
+      id: 'note3',
+      title: 'Cardio Routine',
+      raw_text: 'MONDAY\n-Treadmill 30 min\n',
+      saved_at: '2026-06-03T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote, disjointNote],
+      currentId: currentNote.id,
+      currentNote,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent,
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+
+    let component;
+    try {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+      await render.act(async () => {
+        component = render.create(
+          <>
+            <WebAlertHost />
+            <ControlledLogScreen workoutNoteText={currentNote.raw_text} />
+          </>
+        );
+      });
+
+      const root = component.root;
+      render.act(() => { findPressableByText(root, 'Cardio Routine').props.onPress(); });
+      render.act(() => {
+        findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} });
+      });
+
+      expect(alertSpy).not.toHaveBeenCalled();
+      const cancel = root.findAll(
+        n => n.props?.accessibilityLabel === 'Cancel' && typeof n.props?.onPress === 'function'
+      ).at(-1);
+      render.act(() => { cancel.props.onPress(); });
+      expect(selectCurrent).not.toHaveBeenCalled();
+
+      render.act(() => {
+        findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} });
+      });
+      const confirm = root.findAll(
+        n => n.props?.accessibilityLabel === 'Set as current routine'
+          && typeof n.props?.onPress === 'function'
+      ).at(-1);
+      await render.act(async () => {
+        confirm.props.onPress();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(selectCurrent).toHaveBeenCalledTimes(1);
+      expect(selectCurrent).toHaveBeenCalledWith(disjointNote.id);
+      await render.act(async () => {
+        jest.runOnlyPendingTimers();
+        await Promise.resolve();
+      });
+    } finally {
+      if (component) await render.act(async () => { component.unmount(); });
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+  });
+
+  test('web dialog preserves the chained progress-rollover choice (#721)', async () => {
+    const originalOS = Platform.OS;
+    const selectCurrent = jest.fn().mockResolvedValue(undefined);
+    const sharedRaw = 'MONDAY — Push\n-DB Bench Press 3x8\n';
+    const note1 = {
+      id: 'note1', title: 'Gym Routine', raw_text: sharedRaw,
+      saved_at: '2026-06-01T12:00:00.000Z',
+    };
+    const note2 = {
+      id: 'note2', title: 'Home Routine', raw_text: sharedRaw,
+      saved_at: '2026-06-02T12:00:00.000Z',
+    };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [note1, note2],
+      currentId: note1.id,
+      currentNote: note1,
+      deloadNotes: [],
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      selectCurrent,
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+
+    let component;
+    try {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+      await render.act(async () => {
+        component = render.create(
+          <>
+            <WebAlertHost />
+            <ControlledLogScreen workoutNoteText={sharedRaw} />
+          </>
+        );
+      });
+
+      const root = component.root;
+      render.act(() => { findPressableByText(root, 'Home Routine').props.onPress(); });
+      render.act(() => {
+        findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} });
+      });
+      const confirm = root.findAll(
+        n => n.props?.accessibilityLabel === 'Set as current routine'
+          && typeof n.props?.onPress === 'function'
+      ).at(-1);
+      render.act(() => { confirm.props.onPress(); });
+
+      const noRollover = root.findAll(
+        n => n.props?.accessibilityLabel === 'No' && typeof n.props?.onPress === 'function'
+      ).at(-1);
+      expect(noRollover).toBeTruthy();
+      expect(selectCurrent).not.toHaveBeenCalled();
+      await render.act(async () => {
+        noRollover.props.onPress();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(selectCurrent).toHaveBeenCalledTimes(1);
+      expect(selectCurrent).toHaveBeenCalledWith(note2.id);
+      await render.act(async () => {
+        jest.runOnlyPendingTimers();
+        await Promise.resolve();
+      });
+    } finally {
+      if (component) await render.act(async () => { component.unmount(); });
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 });
 

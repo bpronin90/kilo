@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button, createInputStyle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';

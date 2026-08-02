@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { Share, StyleSheet, Text, View } from 'react-native';
+import { Alert } from '../../lib/platformAlert';
 import { Button, SectionTitle } from '../../components/UI';
 import { useThemedStyles } from '../../theme/ThemeContext';
 import { LegalLinks } from './LegalLinks';

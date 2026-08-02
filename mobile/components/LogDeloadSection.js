@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert } from '../lib/platformAlert';
 import { Card, Button, SectionTitle } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
