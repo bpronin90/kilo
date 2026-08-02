@@ -706,6 +706,35 @@ intact. The pull-only restore path (`downloadAccountData`) needs no boundary of 
 own: it uploads nothing, runs only on a verified-empty device, and its follow-on
 sync already goes through the same guard.
 
+### Authoritative Recovery read state
+
+`hooks/entries/recoveryBlockHooks.js` owns one shared, module-scoped Recovery
+snapshot plus the lifecycle status around it. `useRecoveryBlockState` is a
+subscriber to that store, not an owner of its own copy, so the Log and Analytics
+tabs cannot hold divergent snapshots while mounted together, and
+`useRecoveryAnalyticsFilter` publishes into and reads from the same snapshot.
+Every read goes through `refreshRecoveryState()`, which runs at most one
+reconcile-then-read at a time and coalesces concurrent requests into a single
+queued follow-up, so two mounted consumers can never reconcile the journal
+concurrently.
+
+The store distinguishes `idle`, `loading`, `ready`, `refreshing`, `stale`, and
+`error` (`RECOVERY_STATUS`). The load-bearing distinction is `ready`: it is true
+only after a read has actually succeeded, so an empty `blocks`/`weeks` array is a
+verified result only when `ready` is true and a placeholder otherwise. A failed
+read is never promoted to a result — a refresh failure over a verified snapshot
+keeps last-known-good blocks and weeks visible and marks them `stale` with a
+retry path, and a first-load failure produces `error`, not an empty state.
+
+Recovery eligibility and every recovery mutation stay closed until the snapshot
+is verified. `LogScreen` derives no eligible baseline or week notes while
+`ready` is false (both predicates mean "no live membership blocks this note", so
+an unverified empty snapshot would call every note eligible), and every mutation
+in `useRecoveryBlockLifecycle`/`useStartRecoveryBlock` calls
+`ensureVerifiedRecoveryState()` at confirmation time — re-establishing a verified
+read then, not trusting the render that opened the dialog — and returns
+`RECOVERY_STATE_UNVERIFIED` without touching storage if it cannot.
+
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local
 state projection is empty and no dirty sync work is queued, an unclaimed device

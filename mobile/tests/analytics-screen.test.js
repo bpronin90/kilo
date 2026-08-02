@@ -1603,3 +1603,68 @@ describe('AnalyticsScreen: excluded recovery notes and ordinary populations', ()
     hooks._resetRecoveryAnalyticsFilterCache();
   });
 });
+
+// ── #716: Analytics renders from the same authoritative Recovery state ───────
+
+describe('AnalyticsScreen — authoritative Recovery state (#716)', () => {
+  const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
+  const {
+    RECOVERY_UNVERIFIED_MESSAGE,
+    RECOVERY_STALE_MESSAGE,
+  } = require('../hooks/entries/recoveryBlockHooks');
+
+  const renderWithRecoveryState = (state) => {
+    useEntries.useFeatureToggles.mockReturnValue({
+      fatigueTrackingEnabled: true, deloadModeEnabled: true,
+      setFatigueTrackingEnabled: jest.fn(), setDeloadModeEnabled: jest.fn(),
+    });
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], loading: false, error: null });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [], currentNote: null, loading: false, update: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], ...state });
+
+    let component;
+    render.act(() => {
+      component = render.create(<AnalyticsScreen multiplier={1.07} section={null} />);
+    });
+    return component;
+  };
+
+  const section = (component) => component.root.findByType(AnalyticsRecoverySection);
+
+  test('the unverified read state is forwarded to the Recovery section, not flattened to empty', () => {
+    const retryRecovery = jest.fn();
+    const error = new Error('unreadable');
+    const component = renderWithRecoveryState({
+      ready: false, loading: false, refreshing: false, stale: false, error, retryRecovery,
+    });
+
+    const props = section(component).props;
+    expect(props.stateReady).toBe(false);
+    expect(props.stateError).toBe(error);
+    expect(props.onRetry).toBe(retryRecovery);
+    // The failed read is visible on this tab too, rather than silently
+    // retracting the whole evidence surface.
+    expect(hasText(component.root, RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
+  });
+
+  test('a stale snapshot is labelled on Analytics as well as Log', () => {
+    const component = renderWithRecoveryState({
+      ready: true, loading: false, stale: true, error: null, retryRecovery: jest.fn(),
+    });
+    expect(section(component).props.stateStale).toBe(true);
+    expect(hasText(component.root, RECOVERY_STALE_MESSAGE)).toBe(true);
+  });
+
+  test('a verified snapshot renders the Recovery section exactly as before', () => {
+    const component = renderWithRecoveryState({ ready: true, loading: false, stale: false, error: null });
+    const props = section(component).props;
+    expect(props.stateReady).toBe(true);
+    expect(props.stateStale).toBe(false);
+    expect(hasText(component.root, RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
+    expect(hasText(component.root, RECOVERY_STALE_MESSAGE)).toBe(false);
+  });
+});

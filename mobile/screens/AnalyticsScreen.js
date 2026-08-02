@@ -38,7 +38,20 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
-  const { blocks: recoveryBlocks, weeks: recoveryWeeks } = useRecoveryBlockState();
+  // Same authoritative Recovery snapshot the Log screen renders from (#716).
+  // The hook is backed by one shared store, so while both tabs are mounted they
+  // cannot disagree, and `recoveryReady` keeps an unread snapshot from being
+  // presented here as "no recovery blocks".
+  const {
+    blocks: recoveryBlocks = [],
+    weeks: recoveryWeeks = [],
+    ready: recoveryReady = true,
+    loading: recoveryStateLoading = false,
+    refreshing: recoveryRefreshing = false,
+    stale: recoveryStale = false,
+    error: recoveryStateError = null,
+    retryRecovery: retryRecoveryState,
+  } = useRecoveryBlockState() || {};
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
   // `include_in_normal_analytics` off are dropped from every ordinary population
   // below. AnalyticsRecoverySection still receives the unfiltered `notes`.
@@ -271,6 +284,12 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       blocks={recoveryBlocks}
       weeks={recoveryWeeks}
       notes={notes}
+      stateReady={recoveryReady}
+      stateLoading={recoveryStateLoading}
+      stateRefreshing={recoveryRefreshing}
+      stateStale={recoveryStale}
+      stateError={recoveryStateError}
+      onRetry={retryRecoveryState}
     />,
 
     <View

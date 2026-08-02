@@ -95,6 +95,15 @@ export function LogScreen({
     pendingRecovery = [],
     recoveryPendingError = null,
     retryRecovery,
+    // Explicit authoritative-state contract (#716). `recoveryReady` is the only
+    // thing that makes an empty `recoveryBlocks` mean "no recovery blocks":
+    // until it is true the arrays are placeholders, not a verified result.
+    ready: recoveryReady = true,
+    loading: recoveryLoading = false,
+    refreshing: recoveryRefreshing = false,
+    stale: recoveryStale = false,
+    error: recoveryStateError = null,
+    mutationsAllowed: recoveryMutationsAllowed = true,
   } = useRecoveryBlockState() || {};
   const { startBlock: startRecoveryBlock } = useStartRecoveryBlock() || {};
   const recoveryLifecycle = useRecoveryBlockLifecycle() || {};
@@ -250,9 +259,20 @@ export function LogScreen({
   // Recovery-block eligibility (#695). Purely structural — never inferred from
   // title/date/content, except the pre-existing deload-note title convention,
   // which is reused as-is.
+  //
+  // Eligibility stays UNKNOWN until the authoritative read is verified (#716).
+  // Both predicates are "no live membership blocks this note", so an unverified
+  // empty `recoveryBlocks`/`recoveryWeeks` would declare every note eligible —
+  // the exact failure mode where a note already linked on disk could be frozen
+  // as a second block's baseline. Unknown is expressed as no eligible notes,
+  // which withdraws the affordance rather than offering an unsafe one.
   const recoveryEligibilityCtx = { blocks: recoveryBlocks, weeks: recoveryWeeks, deloadNotePrefix: DELOAD_NOTE_PREFIX };
-  const eligibleBaselineNotes = notes.filter(n => isEligibleBaselineNote(n, recoveryEligibilityCtx));
-  const eligibleWeekNotes = notes.filter(n => isEligibleRecoveryWeekNote(n, recoveryEligibilityCtx));
+  const eligibleBaselineNotes = recoveryReady
+    ? notes.filter(n => isEligibleBaselineNote(n, recoveryEligibilityCtx))
+    : [];
+  const eligibleWeekNotes = recoveryReady
+    ? notes.filter(n => isEligibleRecoveryWeekNote(n, recoveryEligibilityCtx))
+    : [];
 
   const currentRecoveryWeekNumber = currentNote ? (recoveryWeekNumberByNoteId[currentNote.id] ?? null) : null;
 
@@ -278,36 +298,27 @@ export function LogScreen({
     if (!baselineNote) {
       return { ok: false, error: 'Select a baseline routine first.' };
     }
-    let finalWeekNoteId = weekNoteId;
-    let createdNoteId = null;
-    if (weekChoice === 'new') {
-      const created = await add(newNoteTitle, '');
-      finalWeekNoteId = created?.id;
-      createdNoteId = created?.id || null;
-    }
-    if (!finalWeekNoteId) {
-      return { ok: false, error: 'Select or create a note for Recovery Week 1.' };
-    }
+    // The confirm-time authoritative precondition, the new-note creation (on
+    // the "New note" Week 1 path), and the block/week write are now ALL
+    // sequenced inside `startRecoveryBlock` itself, behind exactly one gate
+    // check — this screen no longer creates the note or re-checks anything
+    // on its own. That is what makes "no persisted write can precede the
+    // authoritative decision" structural rather than merely ordered: there is
+    // no code path here that reaches storage without going through the one
+    // gated call below (#711 review finding 2).
     const result = await startRecoveryBlock({
       baselineNoteId: baselineNote.id,
       baselineNoteTitle: baselineNote.title || null,
       baselineNoteText: baselineNote.raw_text || '',
-      weekNoteId: finalWeekNoteId,
+      weekNoteId: weekChoice === 'new' ? null : weekNoteId,
+      createWeekNote: weekChoice === 'new' ? () => add(newNoteTitle, '') : undefined,
+      // New-note path only: if the note this call created is left orphaned by
+      // a later block/week failure, `startRecoveryBlock` rolls it back
+      // through this — "no partial changes" covers the note it created too.
+      removeWeekNote: (noteId) => remove(noteId),
     });
     if (result?.ok) {
       refreshRecoveryState?.();
-      return result;
-    }
-    // New-note path: the note itself was persisted before the block/week
-    // writes were attempted. A failure here (active block appeared mid-flow,
-    // Week-1 storage error) must not leave that note behind as an orphan
-    // routine — "no partial changes" covers the note it created, too.
-    if (createdNoteId) {
-      try {
-        await remove(createdNoteId);
-      } catch (_rollbackError) {
-        // Best-effort: the original failure is what the caller needs to see.
-      }
     }
     return result;
   };
@@ -570,6 +581,12 @@ export function LogScreen({
                 pendingRecovery={pendingRecovery}
                 pendingRecoveryError={recoveryPendingError}
                 onRetryRecovery={handleRetryRecovery}
+                stateReady={recoveryReady}
+                stateLoading={recoveryLoading}
+                stateRefreshing={recoveryRefreshing}
+                stateStale={recoveryStale}
+                stateError={recoveryStateError}
+                mutationsAllowed={recoveryMutationsAllowed}
                 // Empty while a block is active, so the entry point is never
                 // offered for a start that recoveryBlockingMessage would refuse.
                 eligibleBaselineNotes={activeRecoveryBlock ? [] : eligibleBaselineNotes}

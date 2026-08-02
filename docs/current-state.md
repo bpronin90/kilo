@@ -459,6 +459,17 @@ The real native app path now has a modular React Native shell:
   backup replaces both recovery collections without any lifecycle action, so
   import now broadcasts the same reload the lifecycle actions do and mounted
   screens repopulate immediately.
+  The Recovery surfaces themselves read from one shared authoritative snapshot
+  (#716), so Log and Analytics show the same blocks and weeks while both tabs
+  are mounted and never reconcile the operation journal concurrently. A failed
+  read is no longer shown as "no recovery blocks": a cold load shows explicit
+  progress, a first-load failure shows that recovery status is unknown with a
+  `Retry recovery` control, and a failed refresh keeps the last data that loaded
+  successfully on screen and labels it as such. Until a read has succeeded, no
+  note is offered as a recovery baseline or week and every recovery lifecycle
+  control is disabled; each mutation also rechecks the authoritative state at
+  the moment it is confirmed and refuses rather than writing against an unread
+  snapshot.
   Deload exclusions are unchanged and independent: turning recovery inclusion
   on never re-admits a deload note to a signal that already excludes it. The
   read view now also
