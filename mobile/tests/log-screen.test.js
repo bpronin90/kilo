@@ -7124,6 +7124,116 @@ describe('authoritative Recovery state contract (#716)', () => {
     expect(latest().ready).toBe(true);
   });
 
+  // #711 review finding (round 4): the confirm-time gate must require SUCCESS
+  // FROM THE EXACT AUTHORITATIVE PASS IT AWAITED, not merely "a prior
+  // snapshot exists and display status isn't ERROR". Round 3 correctly made a
+  // confirm-time read failure over an already-verified snapshot degrade
+  // DISPLAY to STALE-with-last-known-good rather than ERROR — but
+  // `ensureVerifiedRecoveryState` then read that same STALE status back and
+  // treated "not ERROR" as "safe to mutate", which is wrong: STALE means the
+  // recheck this call just awaited FAILED. These three tests are the ones the
+  // reviewer specifically requested.
+  test('a transient confirm-time read failure over an already-verified snapshot: display goes STALE with last-known-good, but the mutation is rejected', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    const verifiedBlocks = latest().blocks;
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+
+    // The confirm-time recheck's own read fails — a transient error, not a
+    // corrupt journal.
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('transient confirm-time read failure'));
+    const weeksForBlockSpy = jest.spyOn(recoveryStorageModule, 'loadRecoveryWeeksForBlock');
+
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+
+    // Display: STALE, with the last-known-good data still visible — this is
+    // finding 1 of the prior round and must not regress.
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.STALE);
+    expect(latest().blocks).toBe(verifiedBlocks);
+    expect(latest().ready).toBe(true);
+    // The mutation itself: rejected. THIS recheck failed, so the domain write
+    // never proceeds — the storage layer's own week-lookup was never reached.
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECOVERY_STATE_UNVERIFIED');
+    expect(weeksForBlockSpy).not.toHaveBeenCalled();
+  });
+
+  test('a reconciliation that resolves ok:false with pending operations rejects the mutation even though display is READY', async () => {
+    await seedRecords([block], [week]);
+
+    const pendingRecord = {
+      id: 'op-pending-1', type: 'ADD_WEEK_WITH_NEW_NOTE', block_id: 'rb716',
+      status: 'pending', code: 'RECONCILIATION_PENDING',
+    };
+    const reconcileSpy = jest.spyOn(journalModule, 'reconcileRecoveryOperations').mockResolvedValue({
+      ok: false,
+      code: 'RECONCILIATION_PENDING',
+      corrupt: false,
+      pending: [pendingRecord],
+      cancelled: [],
+      results: [pendingRecord],
+      error: null,
+      cause: null,
+    });
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+    await mountProbe();
+
+    // Display: READY (the read itself succeeded, nothing is corrupt) — this
+    // is deliberate and must not regress: a pending operation is surfaced via
+    // `pendingRecovery`, not by refusing to render.
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.READY);
+    expect(latest().ready).toBe(true);
+    expect(latest().pendingRecovery).toEqual([pendingRecord]);
+
+    // But the confirm-time gate must reject: THIS pass's own reconciliation
+    // outcome was ok:false with a non-zero pending count, regardless of the
+    // READY display status.
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('RECONCILIATION_PENDING');
+
+    reconcileSpy.mockRestore();
+  });
+
+  test('the happy path still succeeds: a clean read with no pending operations allows the mutation', async () => {
+    await seedRecords([block], [week]);
+
+    const lifecycleSeen = [];
+    function LifecycleProbe() {
+      lifecycleSeen.push(hooks.useRecoveryBlockLifecycle());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<LifecycleProbe />)); });
+
+    let result;
+    await render.act(async () => {
+      result = await lifecycleSeen[lifecycleSeen.length - 1].completeCurrentWeek({ blockId: 'rb716' });
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.week.id).toBe('rw716');
+  });
+
   // #711 review finding 2: a corrupt operation journal must never resolve like
   // an ordinary reconciliation with nothing pending. It must block mutations
   // even when a previously-verified snapshot keeps the read-only view "stale"

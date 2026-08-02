@@ -130,6 +130,16 @@ function setRecoveryLifecycle(patch) {
 let recoveryReadInFlight = null;
 let recoveryReadQueued = null;
 
+// Resolves with the OUTCOME of this exact pass — `{ ok, pendingCount, corrupt,
+// error }` — in addition to its side effects on the shared lifecycle/snapshot
+// display state. This return value is what `ensureVerifiedRecoveryState`
+// gates mutations on (see below); display state (`recoveryLifecycle.status`,
+// `lastAuthoritativeSnapshot`) is a separate concern that must keep degrading
+// to STALE-with-last-known-good exactly as before (#711 review finding 1,
+// round 3) no matter what this pass's own outcome was (#711 review finding,
+// round 4: a confirm-time recheck that merely FAILED or found operations
+// still pending must never be conflated with "safe to mutate" just because
+// the DISPLAY state resolves to something other than terminal ERROR).
 function runAuthoritativeRecoveryRead() {
   setRecoveryLifecycle({
     status: lastAuthoritativeSnapshot.verified ? RECOVERY_STATUS.REFRESHING : RECOVERY_STATUS.LOADING,
@@ -173,6 +183,11 @@ function runAuthoritativeRecoveryRead() {
         pendingRecovery: pending,
         recoveryPendingError: pendingError,
       });
+      // READY display status does NOT by itself mean "safe to mutate": a
+      // non-zero `pending` count means this exact pass found conflicting
+      // operations still unresolved, so its own outcome is not clean even
+      // though nothing was corrupt and the read itself succeeded.
+      return { ok: pending.length === 0, pendingCount: pending.length, corrupt: false, error: null };
     })
     .catch((e) => {
       // A failed read never publishes "nothing is recovering". A previously
@@ -194,9 +209,20 @@ function runAuthoritativeRecoveryRead() {
       } else {
         setRecoveryLifecycle({ status: RECOVERY_STATUS.ERROR, error: e, journalCorrupt: !!e?.corrupt });
       }
+      // THIS pass failed, full stop — regardless of what the display state
+      // above resolves to (STALE still shows last-known-good; that display
+      // decision is intentionally independent of this outcome).
+      return { ok: false, pendingCount: 0, corrupt: !!e?.corrupt, error: e };
     });
 }
 
+// Resolves with the outcome (`{ ok, pendingCount, corrupt, error }`) of
+// whichever pass actually answers THIS call — the one it started, or the one
+// it coalesced onto/queued behind. A caller that queues behind an in-flight
+// read gets the QUEUED pass's own fresh outcome (never the in-flight one it
+// arrived too late to trust), because the queued branch below awaits the
+// in-flight promise only to sequence itself after it, then explicitly
+// re-invokes and returns a brand new call.
 export function refreshRecoveryState() {
   if (!recoveryReadInFlight) {
     recoveryReadInFlight = runAuthoritativeRecoveryRead().finally(() => {
@@ -220,6 +246,20 @@ export function refreshRecoveryState() {
 // snapshot behind the button can go stale or fail in that window. Every
 // lifecycle mutation therefore re-establishes a verified state at the moment it
 // is confirmed, and refuses rather than writing against unverified state.
+//
+// Decides on the OUTCOME of the exact pass it just awaited (`{ ok,
+// pendingCount, corrupt }` from `refreshRecoveryState`/
+// `runAuthoritativeRecoveryRead`), never on global display state read back
+// afterward. This distinction is the fix for #711 review finding (round 4):
+// `recoveryLifecycle.status`/`lastAuthoritativeSnapshot.verified` are DISPLAY
+// state — a transient confirm-time failure correctly degrades display to
+// STALE-with-last-known-good (round 3's fix, which this must not disturb),
+// and a successful-but-still-pending reconciliation correctly displays READY.
+// Neither of those display outcomes means THIS RECHECK succeeded. Reading
+// global status after the fact conflated the two: a STALE status (not
+// ERROR) let a failed recheck through, and a READY status with pending
+// operations let an incomplete reconciliation through. The gate now looks
+// only at what the pass it awaited actually reported about itself.
 export async function ensureVerifiedRecoveryState() {
   // Always perform a fresh authoritative read here — including when a snapshot
   // is already verified. REFRESHING and STALE are both "verified" in the
@@ -228,19 +268,22 @@ export async function ensureVerifiedRecoveryState() {
   // exists to close (#711 review finding 3). `refreshRecoveryState` coalesces
   // with any read already in flight, so this never starts a second concurrent
   // reconciliation.
-  await refreshRecoveryState();
-  if (
-    lastAuthoritativeSnapshot.verified
-    && recoveryLifecycle.status !== RECOVERY_STATUS.ERROR
-    && !recoveryLifecycle.journalCorrupt
-  ) {
+  const outcome = await refreshRecoveryState();
+  if (outcome && outcome.ok) {
     return { ok: true };
   }
-  if (recoveryLifecycle.journalCorrupt) {
+  if (outcome && outcome.corrupt) {
     return {
       ok: false,
       code: 'RECOVERY_JOURNAL_CORRUPT',
       error: 'Recovery actions are paused until recovery data can be read again. Try again.',
+    };
+  }
+  if (outcome && outcome.pendingCount > 0) {
+    return {
+      ok: false,
+      code: RECOVERY_OPERATION_CODES.RECONCILIATION_PENDING,
+      error: 'A recovery change is still finishing. Try again in a moment.',
     };
   }
   return {
