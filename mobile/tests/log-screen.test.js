@@ -6738,16 +6738,124 @@ describe('authoritative Recovery state contract (#716)', () => {
     expect(latestOf(logBucket).status).toBe(latestOf(analyticsBucket).status);
   });
 
-  // #711 review finding 1 (round 2): reproduces the reviewer's exact scenario
-  // — a successful authoritative read, followed by a LATER raw filter read
-  // that returns DIFFERENT (unreconciled) records — and proves the fix binds
-  // `verified` onto the published snapshot itself, so the new data cannot
-  // inherit the old data's trust.
-  test('a later unreconciled filter read that returns DIFFERENT records downgrades the shared snapshot instead of staying verified', async () => {
+  // #711 review finding 3 (round 2): the earlier fix only deduplicated the
+  // MOUNT-time read. Every mounted `useRecoveryBlockState` instance still
+  // registered its own `recoveryListeners` entry and its own sync-completion
+  // subscription, so a LATER automatic signal (a mutation/import
+  // notification, a completed cloud sync) still invoked one
+  // `refreshRecoveryState()` call per mounted consumer — and since that
+  // function guarantees a fresh follow-up pass for any caller arriving while
+  // one is in flight, two consumers on the same later signal still produced
+  // two full passes. These tests mount Log+Analytics FIRST (past the initial
+  // mount-time read), then fire a signal, and prove exactly one read results.
+  test('a post-mount recovery notification triggers exactly one shared pass across two mounted consumers', async () => {
+    await seedRecords([block], [week]);
+
+    const logBucket = [];
+    const analyticsBucket = [];
+    await render.act(async () => {
+      mounted.push(render.create(<Probe bucket={logBucket} />));
+      mounted.push(render.create(<Probe bucket={analyticsBucket} />));
+    });
+    expect(latestOf(logBucket).ready).toBe(true);
+
+    let readCount = 0;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      readCount += 1;
+      return [block];
+    });
+
+    // `reloadRecoveryBlocks` fires the same private `recoveryListeners`
+    // notification a local recovery mutation or a restored backup would.
+    await render.act(async () => { hooks.reloadRecoveryBlocks(); });
+
+    expect(readCount).toBe(1);
+    expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
+  });
+
+  test('a post-mount cloud-sync completion triggers exactly one shared pass, and only one sync subscription is registered', async () => {
+    await seedRecords([block], [week]);
+    const syncRecoveryModule = require('../storage/syncRecovery');
+
+    let subscribeCallCount = 0;
+    const syncListeners = [];
+    const subscribeSpy = jest.spyOn(syncRecoveryModule, 'subscribeSyncState').mockImplementation((listener) => {
+      subscribeCallCount += 1;
+      syncListeners.push(listener);
+      return () => {};
+    });
+
+    const logBucket = [];
+    const analyticsBucket = [];
+    await render.act(async () => {
+      mounted.push(render.create(<Probe bucket={logBucket} />));
+      mounted.push(render.create(<Probe bucket={analyticsBucket} />));
+    });
+
+    // Exactly one subscription for two simultaneously mounted consumers.
+    expect(subscribeCallCount).toBe(1);
+    expect(syncListeners.length).toBe(1);
+
+    let readCount = 0;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      readCount += 1;
+      return [block];
+    });
+
+    await render.act(async () => {
+      syncListeners[0]({ [syncRecoveryModule.SYNC_PHASE.SYNC]: { status: syncRecoveryModule.SYNC_STATUS.COMPLETE } });
+    });
+
+    expect(readCount).toBe(1);
+    expect(latestOf(logBucket).blocks).toBe(latestOf(analyticsBucket).blocks);
+    subscribeSpy.mockRestore();
+  });
+
+  test('after the shared subscription owner unmounts, a remaining consumer keeps working and a later solo mount resubscribes', async () => {
+    await seedRecords([block], [week]);
+
+    const logBucket = [];
+    const analyticsBucket = [];
+    let logComponent;
+    await render.act(async () => {
+      logComponent = render.create(<Probe bucket={logBucket} />);
+      mounted.push(logComponent);
+      mounted.push(render.create(<Probe bucket={analyticsBucket} />));
+    });
+    expect(latestOf(analyticsBucket).ready).toBe(true);
+
+    // Unmount the FIRST-mounted (subscription-owning) consumer while the
+    // second is still mounted. The shared subscription must transfer, not
+    // disappear — the surviving consumer still reacts to later signals.
+    await render.act(async () => { logComponent.unmount(); });
+    mounted.splice(mounted.indexOf(logComponent), 1);
+
+    let readCount = 0;
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks').mockImplementation(async () => {
+      readCount += 1;
+      return [block];
+    });
+    await render.act(async () => { hooks.reloadRecoveryBlocks(); });
+    expect(readCount).toBe(1);
+    expect(latestOf(analyticsBucket).blocks[0]).toBeTruthy();
+  });
+
+  // #711 review finding 1 (round 3): round 2's fix bound `verified` onto a
+  // SINGLE shared snapshot object, which closed the trust leak but destroyed
+  // last-known-good retention — a later, less-trusted filter read publishing
+  // DIFFERENT content replaced the very record `useRecoveryBlockState`
+  // rendered, so Log immediately stopped showing previously-verified data
+  // (and a subsequent refresh failure then mis-resolved to terminal ERROR
+  // instead of STALE, because it saw that replacement as "never verified").
+  // The structural fix is TWO independent snapshots — `useRecoveryBlockState`
+  // and `useRecoveryAnalyticsFilter` each read their own module-level record,
+  // and a filter-only publish can never touch the one Log renders.
+  test('a later unreconciled filter read that returns DIFFERENT records updates the filter, but never touches what Log renders or its mutation trust', async () => {
     await seedRecords([block], [week]);
     await mountProbe();
     expect(latest().ready).toBe(true);
     expect(latest().mutationsAllowed).toBe(true);
+    const verifiedBlocks = latest().blocks;
 
     // Different content from what was authoritatively verified — e.g. another
     // device's write landed between the authoritative read and this one.
@@ -6761,19 +6869,64 @@ describe('authoritative Recovery state contract (#716)', () => {
     }
     await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
 
-    // The filter itself is satisfied — a raw read is adequate evidence for
-    // its own exclusion-boundary purpose.
+    // The filter itself picks up the new data — a raw read is adequate
+    // evidence for its own exclusion-boundary purpose, and it is free to move
+    // forward on unreconciled data because it never authorizes a mutation.
     expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
-    // But the shared authoritative consumer must now report the NEW,
-    // unreconciled data as UNVERIFIED — not the old verified snapshot frozen
-    // in place (that would just hide the update) and not the new data
-    // silently inheriting verified status (the original defect).
-    expect(latest().blocks[0].updated_at).toBe('2026-05-02T00:00:00.000Z');
-    expect(latest().ready).toBe(false);
-    expect(latest().mutationsAllowed).toBe(false);
+    // But `useRecoveryBlockState` — the authoritative, mutation-gating
+    // consumer — must keep rendering the LAST-KNOWN-GOOD verified data
+    // (same object, even), completely unaffected by the filter's read. This
+    // is the last-known-good retention issue #716 locks in: it must never be
+    // silently evicted by an unrelated, less-trusted read.
+    expect(latest().blocks).toBe(verifiedBlocks);
+    expect(latest().blocks[0].updated_at).toBe('2026-05-01T00:00:00.000Z');
+    expect(latest().ready).toBe(true);
+    expect(latest().mutationsAllowed).toBe(true);
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.READY);
   });
 
-  test('a later unreconciled filter read that returns the SAME records does not downgrade an already-verified consumer', async () => {
+  // The reviewer's specifically requested regression: a refresh FAILURE after
+  // a filter publish must still degrade to STALE with the previously-verified
+  // data visible — never to terminal ERROR. Round 2's shared-object design
+  // broke exactly this, because the filter publish had already overwritten
+  // the "was anything ever verified" record the failure path checks.
+  test('a refresh failure after an intervening filter publish still degrades to STALE with the previously-verified data visible, never ERROR', async () => {
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+    const verifiedBlocks = latest().blocks;
+    const verifiedWeeks = latest().weeks;
+
+    // An unrelated filter mount reads (possibly different) unreconciled data
+    // in between — this must not affect what the failure path below sees.
+    const changedBlock = { ...block, updated_at: '2026-05-02T00:00:00.000Z' };
+    await seedRecords([changedBlock], [week]);
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
+
+    // Now the NEXT authoritative refresh genuinely fails.
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValue(new Error('transient read failure'));
+    await render.act(async () => { await latest().refresh(); });
+
+    // STALE, not ERROR — and the data on screen is still the last GENUINELY
+    // verified snapshot, not the filter's unreconciled one and not an empty
+    // placeholder.
+    expect(latest().status).toBe(hooks.RECOVERY_STATUS.STALE);
+    expect(latest().error).toBe(null);
+    expect(latest().staleError).toBeTruthy();
+    expect(latest().blocks).toBe(verifiedBlocks);
+    expect(latest().weeks).toBe(verifiedWeeks);
+    expect(latest().ready).toBe(true);
+    expect(latest().mutationsAllowed).toBe(true);
+  });
+
+  test('a later unreconciled filter read that returns the SAME records does not affect the already-verified consumer', async () => {
     await seedRecords([block], [week]);
     await mountProbe();
     expect(latest().ready).toBe(true);
@@ -6786,9 +6939,8 @@ describe('authoritative Recovery state contract (#716)', () => {
     await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
 
     expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
-    // Identical content: nothing was actually unverified, so there is nothing
-    // to lose trust over — this is the steady-state case (Log and Analytics
-    // both mounted, nothing changed) and must not flicker Log unready.
+    // Identical content, and this is the steady-state case (Log and Analytics
+    // both mounted, nothing changed) — Log must not flicker unready.
     expect(latest().ready).toBe(true);
     expect(latest().mutationsAllowed).toBe(true);
   });
@@ -7106,6 +7258,42 @@ describe('authoritative Recovery state contract (#716)', () => {
     expect(latest().ready).toBe(false);
     expect(latest().status).toBe(hooks.RECOVERY_STATUS.ERROR);
     expect(latest().mutationsAllowed).toBe(false);
+  });
+
+  // #711 review finding 3 (round 2): `publishRecoverySnapshot` used to notify
+  // subscribers BEFORE `recoveryFilterVerified` was set true, so a
+  // `useRecoveryAnalyticsFilter` that was stuck unverified after a cold
+  // failure and then observed a successful authoritative read (triggered
+  // elsewhere — e.g. Log's `Retry recovery`) would snapshot the new DATA in
+  // that notification while still reading the OLD, unverified boundary flag,
+  // and get no second notification to correct it. Reproduces exactly that
+  // sequence: filter fails first, stays unverified; a later independent
+  // authoritative read (not the filter's own) then succeeds; the filter must
+  // end up ready in that SAME notification, not stuck loading forever.
+  test('a successful authoritative read unblocks an already-unverified filter subscriber in the very same notification', async () => {
+    jest.spyOn(recoveryStorageModule, 'loadRecoveryBlocks')
+      .mockRejectedValueOnce(new Error('cold start failure'));
+
+    const filterSeen = [];
+    function FilterProbe() {
+      filterSeen.push(hooks.useRecoveryAnalyticsFilter());
+      return null;
+    }
+    await render.act(async () => { mounted.push(render.create(<FilterProbe />)); });
+    // The filter's own read failed and nothing was ever verified — it must
+    // report itself unready, not silently admit recovery work.
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(false);
+
+    // Storage recovers, and a SEPARATE authoritative read succeeds (mirrors
+    // Log mounting, or the user pressing "Retry recovery" — never the
+    // filter's own retry loop).
+    await seedRecords([block], [week]);
+    await mountProbe();
+    expect(latest().ready).toBe(true);
+
+    // The filter subscriber must already be unblocked from that same publish
+    // — not left waiting on its own bounded retry timer.
+    expect(filterSeen[filterSeen.length - 1].ready).toBe(true);
   });
 
   // #711 review finding 4: strengthen the existing max-concurrency assertion
