@@ -4,14 +4,14 @@ import { useThemedStyles } from '../theme/ThemeContext';
 import { setWebAlertHandler } from '../lib/platformAlert';
 
 // Renders the dialogs platformAlert.js's Alert.alert queues on web, since
-// react-native-web has no native Alert to back it (#710 follow-up). Native
+// react-native-web has no native Alert to back it (#721). Native
 // platforms never touch this — platformAlert routes them straight to RN's
 // own Alert.alert and this component renders nothing.
 //
-// Mounted once, near the top of LogScreen: Alert.alert is called
-// imperatively from deep inside hooks with no JSX of their own, so the
-// dialog has to live at a stable host the imperative call can always reach
-// through the shared module-level handler in platformAlert.js.
+// Mounted once at the app root: Alert.alert is called imperatively from hooks
+// and screens across the app, so the dialog has to live at a stable host that
+// every call can reach through the shared module-level handler in
+// platformAlert.js.
 export function WebAlertHost() {
   const [dialog, setDialog] = useState(null);
   const styles = useThemedStyles(createStyles);

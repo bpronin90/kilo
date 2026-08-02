@@ -329,7 +329,10 @@ The real native app path now has a modular React Native shell:
   confirmation, offers a save-and-switch or switch-anyway choice when there are
   unsaved edits, and when the destination routine shares exercise names with
   the current one it now asks once whether to carry over matching 1K exercise
-  slot selections before completing the switch. The same screen now also
+  slot selections before completing the switch. Web builds render this and all
+  other app confirmations through one app-root dialog host so cancel/confirm
+  callbacks run reliably; native builds continue delegating to React Native's
+  platform alert unchanged. The same screen now also
   includes a `Routine | Deload` segmented toggle so the user can switch
   between the canonical routine note and a separate generated deload note. The
   Deload view reads and writes only the separate deload-note storage path,

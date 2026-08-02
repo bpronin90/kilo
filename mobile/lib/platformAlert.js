@@ -5,7 +5,7 @@
 // callback, the action is just dropped). This module is a drop-in
 // replacement for `import { Alert } from 'react-native'` that keeps the
 // native behavior unchanged and, on web, renders through WebAlertHost instead
-// (#710 follow-up: "Set as current routine" and other confirmations were
+// (#721: "Set as current routine" and other confirmations were
 // completely dead on web).
 import { Alert as RNAlert, Platform } from 'react-native';
 
