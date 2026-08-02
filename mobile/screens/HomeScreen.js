@@ -291,8 +291,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 accessibilityLabel="Exercise Progress"
                 accessibilityHint="Opens the strength section of the Analytics tab"
               >
-                <Text style={styles.classifSectionLabel}>Exercise Progress</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
+                <View style={styles.sectionHeaderChevron}>
+                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                </View>
               </Pressable>
               <View style={styles.classifRow}>
                 {[
@@ -378,8 +380,10 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               accessibilityLabel="1K Progress"
               accessibilityHint="Opens the strength section of the Analytics tab"
             >
-              <Text style={styles.oneKLabel}>1K Progress</Text>
-              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
+              <View style={styles.sectionHeaderChevron}>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
             </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
@@ -525,11 +529,20 @@ const createStyles = (colors) => StyleSheet.create({
   sectionHeaderAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    rowGap: 4,
-    columnGap: 12,
+    gap: 4,
     minHeight: 44,
+    // No wrap and no space-between: as independent flex children on a wrapping
+    // full-width row, the chevron orphaned onto its own line at 320px with
+    // enlarged text. Kept adjacent like `Full history and insights ›`, the row
+    // hugs its content and the label absorbs narrow widths by wrapping itself.
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  sectionHeaderLabel: {
+    flexShrink: 1,
+  },
+  sectionHeaderChevron: {
+    flexShrink: 0,
   },
   classifSectionLabel: {
     fontSize: 12,
@@ -546,6 +559,11 @@ const createStyles = (colors) => StyleSheet.create({
     // (verified by rendered capture at 320/375/448dp, #717 review round 2).
     flexWrap: 'wrap',
     rowGap: 12,
+    // Content-sized columns with no gap could exactly fill the row, so at 375px
+    // with enlarged text the three labels touched and read as one continuous
+    // string. A real horizontal gap both separates them when they fit and forces
+    // the wrap one column earlier when they no longer do.
+    columnGap: 16,
   },
   classifCol: {
     // Content-sized rather than fixed thirds. A static basis cannot tell default

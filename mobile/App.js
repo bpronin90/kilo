@@ -80,9 +80,10 @@ export function emitMeasurement(name, properties = {}) {
 }
 
 // Map the free-form Analytics navigation section to the sanitizer's bounded
-// analytics_viewed variant list. No current call site passes a section, so the
-// reachable value today is 'overview'; 'strength'/'weight' cover the
-// AnalyticsScreen's supported deep-link targets and anything else is 'other'.
+// analytics_viewed variant list. Home and Weight both pass a section today
+// (#717): the weight-trend handoffs request 'weight' and the Exercise Progress
+// and 1K Progress headers request 'strength', while a plain tab press passes
+// none and resolves to 'overview'. Anything else is 'other'.
 export function analyticsSectionVariant(section) {
   if (section === 'strength' || section === 'weight') return section;
   if (section == null) return 'overview';

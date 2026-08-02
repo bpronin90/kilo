@@ -702,9 +702,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   });
 
   test('every press target carries a visible affordance', () => {
-    // Owner override: dropping the strength band's chevron in an earlier round
-    // recreated the "silently pressable" defect, so both strength destinations
-    // now carry a filled pill. Every handoff must show something.
+    // Dropping the strength band's chevron in an earlier round recreated the
+    // "silently pressable" defect, so every handoff must show a chevron.
     const Svg = require('react-native-svg').default;
     for (const testID of [...INLINE_ACTION_IDS, 'home-strength-summary-link', 'home-one-k-link']) {
       const node = component.root.findByProps({ testID });
@@ -740,6 +739,27 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
     expect(oneK.props.accessibilityLabel).toBe('1K Progress');
   });
 
+  test('the section-header chevron cannot orphan onto its own line', () => {
+    // As independent children of a wrapping full-width row, the chevron dropped
+    // alone below the label at 320px with enlarged text. The row now hugs its
+    // content and does not wrap; the label shrinks instead.
+    for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
+      const style = flatStyle(component.root.findByProps({ testID }));
+      expect(style.flexWrap).not.toBe('wrap');
+      expect(style.justifyContent).not.toBe('space-between');
+      expect(style.alignSelf).toBe('flex-start');
+    }
+  });
+
+  test('the classification columns keep horizontal separation', () => {
+    // Content-sized columns with no gap could exactly fill the row, so the three
+    // labels ran together as one string at 375px with enlarged text.
+    const row = component.root.findByProps({ testID: 'home-strength-summary-link' })
+      .parent.findAll(n => flatStyle(n).flexWrap === 'wrap' && flatStyle(n).columnGap)[0];
+    expect(row).toBeTruthy();
+    expect(flatStyle(row).columnGap).toBeGreaterThanOrEqual(12);
+  });
+
   test('only the section header row is tappable, not the metrics beneath', () => {
     // Making the whole band and the whole 1K card tappable was too much
     // clickable area: the counts, chart, and per-lift grid are data, not
@@ -769,8 +789,8 @@ describe('HomeScreen daily-loop handoffs (#717)', () => {
   });
 
   test('neither strength destination nests a press owner', () => {
-    // The pills are presentational; the band and the card stay the single press
-    // owners, which also keeps their hit areas large.
+    // The chevron is presentational; each section header row is the single
+    // press owner, so there is no nested responder.
     for (const testID of ['home-strength-summary-link', 'home-one-k-link']) {
       const node = component.root.findByProps({ testID });
       expect(node.findAll(n => n !== node && typeof n.props?.onPress === 'function')).toHaveLength(0);
