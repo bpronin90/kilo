@@ -19,6 +19,7 @@ import {
   RECOVERY_LOADING_MESSAGE,
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
+  useRecoveryBlockLifecycle,
 } from '../hooks/entries/recoveryBlockHooks';
 import {
   deriveRecoveryComparison,
@@ -26,6 +27,7 @@ import {
   RECOVERY_WEEK_STATUS,
   RECOVERY_COMPARISON_STATES,
 } from '../lib/data/recoveryAnalytics';
+import { RecoveryInclusionToggle } from './RecoveryInclusionToggle';
 
 const METRIC_LABELS = Object.freeze({
   top_load: 'Load',
@@ -386,6 +388,11 @@ export function AnalyticsRecoverySection({
   stateRefreshing = false,
   stateStale = false,
   stateError = null,
+  // Writes are open only when the shared state has verified eligibility. False
+  // covers terminal-repair-error, journal-corrupt, and every other gate the
+  // authoritative hook enforces (#728).
+  mutationsAllowed = true,
+  pendingRecovery = [],
   onRetry,
   onNavigate,
 }) {
@@ -394,11 +401,43 @@ export function AnalyticsRecoverySection({
   const unit = useWeightUnit();
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [focusedBlockId, setFocusedBlockId] = useState(null);
+  const { setIncludeInNormalAnalytics } = useRecoveryBlockLifecycle();
+  const [inclusionBusyBlockId, setInclusionBusyBlockId] = useState(null);
+  const [inclusionError, setInclusionError] = useState(null);
 
   const activeBlock = findActiveBlock(blocks);
   const completedBlocks = blocks
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
+
+  const handleToggleInclusion = async (block, include) => {
+    if (inclusionBusyBlockId) return;
+    setInclusionError(null);
+    setInclusionBusyBlockId(block.id);
+    try {
+      const result = await setIncludeInNormalAnalytics({ blockId: block.id, include });
+      if (!result || result.ok === false) {
+        setInclusionError({
+          blockId: block.id,
+          message: (result && result.error) || 'That setting could not be saved.',
+        });
+      }
+    } finally {
+      setInclusionBusyBlockId(null);
+    }
+  };
+
+  const inclusionErrorFor = (blockId) =>
+    (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
+
+  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
+  // EVERY inclusion switch is disabled while ANY write is in flight (#728),
+  // not just the one being written — presenting an enabled switch that would
+  // silently discard the interaction is worse than disabling all of them.
+  // Also disabled while reconciliation is pending: the hook rejects those
+  // writes via ensureVerifiedRecoveryState anyway, so the UI must not
+  // advertise an action that can only fail.
+  const inclusionLocked = !mutationsAllowed || hasPendingRecovery || !!inclusionBusyBlockId;
 
   // Unverified state is not "this user has never recovered" (#716). Rendering
   // nothing here would silently retract an entire evidence surface on a failed
@@ -553,6 +592,15 @@ export function AnalyticsRecoverySection({
                     onNavigate={onNavigate}
                   />
                 ))}
+                <View style={styles.historyInclusionWrapper}>
+                  <RecoveryInclusionToggle
+                    block={block}
+                    disabled={inclusionLocked}
+                    busy={inclusionBusyBlockId === block.id}
+                    error={inclusionErrorFor(block.id)}
+                    onToggle={handleToggleInclusion}
+                  />
+                </View>
               </View>
             );
           })}
@@ -840,6 +888,10 @@ const createStyles = (colors) => StyleSheet.create({
   historyDates: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  historyInclusionWrapper: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   weekIndexRow: {
     paddingHorizontal: 16,

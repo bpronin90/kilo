@@ -778,3 +778,123 @@ describe('AnalyticsRecoverySection — authoritative Recovery state (#716)', () 
     expect(component.toJSON()).toBeNull();
   });
 });
+
+describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
+  const { RECOVERY_INCLUSION_LABEL } = require('../components/RecoveryInclusionToggle');
+  let mockSetInclude;
+
+  function completedBlock(id, include = false) {
+    return block({ id, completed_at: '2026-06-01T00:00:00Z', include_in_normal_analytics: include });
+  }
+
+  function setupInclusion(props = {}) {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection blocks={[]} weeks={[]} notes={[]} {...props} />
+      );
+    });
+    return component;
+  }
+
+  function switchesFor(root) {
+    return root.findAll(
+      n => n.props && n.props.accessibilityLabel === RECOVERY_INCLUSION_LABEL && n.props.onValueChange
+    );
+  }
+
+  beforeEach(() => {
+    mockSetInclude = jest.fn().mockResolvedValue({ ok: true });
+    jest.spyOn(require('../hooks/entries/recoveryBlockHooks'), 'useRecoveryBlockLifecycle')
+      .mockReturnValue({ setIncludeInNormalAnalytics: mockSetInclude });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('completed blocks each expose an inclusion switch reflecting their stored preference', () => {
+    const b1 = completedBlock('rb-a', false);
+    const b2 = completedBlock('rb-b', true);
+    const component = setupInclusion({ blocks: [b1, b2] });
+    const controls = switchesFor(component.root);
+
+    expect(controls.length).toBe(2);
+    const byId = Object.fromEntries(
+      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
+    );
+    expect(byId['rb-a'].props.value).toBe(false);
+    expect(byId['rb-b'].props.value).toBe(true);
+  });
+
+  test('the active block has no inclusion switch in Analytics', () => {
+    const active = block({ id: 'rbActive', completed_at: null });
+    const component = setupInclusion({ blocks: [active] });
+    expect(switchesFor(component.root).length).toBe(0);
+  });
+
+  test('a successful write calls setIncludeInNormalAnalytics with the correct args', async () => {
+    const b = completedBlock('rb1', false);
+    const component = setupInclusion({ blocks: [b] });
+    const [control] = switchesFor(component.root);
+
+    await act(async () => { await control.props.onValueChange(true); });
+    expect(mockSetInclude).toHaveBeenCalledWith({ blockId: 'rb1', include: true });
+  });
+
+  test('a rejected write surfaces an error banner and leaves the switch at the stored value', async () => {
+    const b = completedBlock('rb1', false);
+    mockSetInclude.mockResolvedValue({ ok: false, error: 'Network error.' });
+    const component = setupInclusion({ blocks: [b] });
+    const [control] = switchesFor(component.root);
+
+    await act(async () => { await control.props.onValueChange(true); });
+
+    const allTexts = component.root.findAllByType('Text').map(t => {
+      const c = t.props.children;
+      return Array.isArray(c) ? c.join('') : String(c ?? '');
+    });
+    expect(allTexts).toContain('Network error.');
+    expect(switchesFor(component.root)[0].props.value).toBe(false);
+  });
+
+  test('an in-flight write disables ALL completed-block switches, not just the one being written', async () => {
+    const b1 = completedBlock('rb-a', false);
+    const b2 = completedBlock('rb-b', true);
+    let resolveWrite;
+    mockSetInclude.mockImplementation(() => new Promise(resolve => { resolveWrite = resolve; }));
+    const component = setupInclusion({ blocks: [b1, b2] });
+
+    const byId = () => Object.fromEntries(
+      switchesFor(component.root).map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
+    );
+    expect(Object.values(byId()).every(c => !c.props.disabled)).toBe(true);
+
+    await act(async () => { byId()['rb-a'].props.onValueChange(true); });
+    expect(Object.values(byId()).every(c => c.props.disabled)).toBe(true);
+
+    await act(async () => { resolveWrite({ ok: true }); });
+    expect(Object.values(byId()).every(c => !c.props.disabled)).toBe(true);
+  });
+
+  test('mutationsAllowed=false disables every inclusion switch before any write', () => {
+    const b = completedBlock('rb1', false);
+    const component = setupInclusion({ blocks: [b], mutationsAllowed: false });
+    const [control] = switchesFor(component.root);
+
+    expect(control.props.disabled).toBe(true);
+    expect(control.props.accessibilityState.disabled).toBe(true);
+  });
+
+  test('a pending recovery operation disables inclusion switches rather than letting them race', () => {
+    const b = completedBlock('rb1', false);
+    const component = setupInclusion({
+      blocks: [b],
+      pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }],
+    });
+    const [control] = switchesFor(component.root);
+
+    expect(control.props.disabled).toBe(true);
+    expect(control.props.accessibilityState.disabled).toBe(true);
+  });
+});

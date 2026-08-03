@@ -50,6 +50,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     refreshing: recoveryRefreshing = false,
     stale: recoveryStale = false,
     error: recoveryStateError = null,
+    mutationsAllowed: recoveryMutationsAllowed = true,
+    pendingRecovery: recoveryPendingRecovery = [],
     retryRecovery: retryRecoveryState,
   } = useRecoveryBlockState() || {};
   // Ordinary-analytics boundary (#699). Recovery-linked notes whose block keeps
@@ -289,6 +291,8 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       stateRefreshing={recoveryRefreshing}
       stateStale={recoveryStale}
       stateError={recoveryStateError}
+      mutationsAllowed={recoveryMutationsAllowed}
+      pendingRecovery={recoveryPendingRecovery}
       onRetry={retryRecoveryState}
       onNavigate={onNavigate}
     />,
