@@ -1,7 +1,8 @@
 // Recovery Block lifecycle UI (#696): the active block's baseline, current
-// week, and ordered linked-note history, plus a collapsible completed-block
-// history panel. Week 1 attach/start lives in RecoveryBlockStartModal (#695);
-// this component only ever advances or completes a block that already exists.
+// week, lifecycle actions, and active-block inclusion control. Completed-block
+// history lives in Analytics (#729). Week 1 attach/start lives in
+// RecoveryBlockStartModal (#695); this component only ever advances or
+// completes a block that already exists.
 //
 // All lifecycle mutation (complete week, add week, complete block, unlink
 // week) is delegated to the handlers passed in from LogScreen, which bind to
@@ -10,13 +11,11 @@
 // already enforce.
 
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { formatDate } from '../lib/format';
-import { findActiveBlock, isLiveRecord, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
+import { findActiveBlock, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
@@ -72,7 +71,6 @@ export function LogRecoverySection({
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [actionError, setActionError] = useState(null);
   // The inclusion preference (#699) is the one recovery mutation this component
   // owns directly rather than receiving as a handler from LogScreen. It changes
@@ -102,9 +100,6 @@ export function LogRecoverySection({
   // advertising an action that would only fail after Confirm.
   const actionsLocked = !!busy || hasPendingRecovery || !mutationsAllowed;
   const noticeIsTerminal = !hasPendingRecovery && !!pendingRecoveryError;
-  const completedBlocks = blocks
-    .filter(b => isLiveRecord(b) && b.completed_at)
-    .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
 
   // Unverified Recovery state is never rendered as "no recovery blocks" (#716).
   // A terminal first-load failure shows the failure and the same `Retry
@@ -148,11 +143,10 @@ export function LogRecoverySection({
     );
   }
 
-  // A pending recovery operation must stay visible even when neither an active
-  // block nor any completed block renders — otherwise the retry affordance
-  // would disappear with the records it is trying to repair. The same is true of
-  // a stale snapshot: hiding it would hide the retry path with it.
-  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !stateStale) return null;
+  // A pending recovery operation must stay visible even without an active block
+  // — otherwise the retry affordance would disappear with the records it is
+  // trying to repair. The same is true of a stale snapshot.
+  if (!activeBlock && !showRecoveryNotice && !stateStale) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -308,7 +302,7 @@ export function LogRecoverySection({
             ) : null}
 
             <View style={styles.weekList}>
-              {activeWeeks.map(week => (
+              {activeWeeks.filter(w => !w.completed_at).map(week => (
                 <View key={week.id} style={styles.weekRow}>
                   <Pressable
                     style={styles.weekRowMain}
@@ -320,9 +314,7 @@ export function LogRecoverySection({
                     <Text style={styles.weekNoteTitle} numberOfLines={1}>
                       {_noteTitle(notesById, week.note_id)}
                     </Text>
-                    <Text style={styles.weekStatus}>
-                      {week.completed_at ? `Completed ${formatDate(week.completed_at)}` : 'In progress'}
-                    </Text>
+                    <Text style={styles.weekStatus}>In progress</Text>
                   </Pressable>
                   {week.id === latestWeekId && (
                     <Pressable
@@ -367,6 +359,20 @@ export function LogRecoverySection({
                   <Text style={styles.actionButtonText}>Add week</Text>
                 </Pressable>
               )}
+              {currentWeek && currentWeek.completed_at && (
+                <Pressable
+                  onPress={() => handleUnlinkWeek(currentWeek)}
+                  disabled={actionsLocked}
+                  style={styles.inlineButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
+                  accessibilityState={{ disabled: actionsLocked }}
+                >
+                  <Text style={styles.inlineButtonText}>
+                    {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}`}
+                  </Text>
+                </Pressable>
+              )}
               <Pressable
                 onPress={handleCompleteBlock}
                 disabled={actionsLocked}
@@ -392,73 +398,6 @@ export function LogRecoverySection({
         </View>
       )}
 
-      {completedBlocks.length > 0 && (
-        <View style={styles.historyGroup}>
-          <SectionTitle>Recovery History</SectionTitle>
-          <View style={styles.historyPanel}>
-            <Pressable
-              onPress={() => setHistoryCollapsed(c => !c)}
-              style={[styles.historyHeader, !historyCollapsed && styles.historyHeaderBordered]}
-              accessibilityRole="button"
-              accessibilityLabel={historyCollapsed ? 'Expand recovery history' : 'Collapse recovery history'}
-            >
-              <View style={styles.historyHeaderContent}>
-                <Text style={styles.historySummaryCount}>
-                  {`${completedBlocks.length} completed ${completedBlocks.length === 1 ? 'block' : 'blocks'}`}
-                </Text>
-                {historyCollapsed && (
-                  <Text style={styles.historySummaryLatest} numberOfLines={1}>
-                    {'Latest: '}
-                    <Text style={styles.historySummaryEmphasis}>
-                      {completedBlocks[0].baseline_note_title || 'Untitled Routine'}
-                    </Text>
-                  </Text>
-                )}
-              </View>
-              <MaterialIcons
-                name={historyCollapsed ? 'expand-more' : 'expand-less'}
-                size={18}
-                color={colors.textMuted}
-                accessible={false}
-              />
-            </Pressable>
-
-            {!historyCollapsed && completedBlocks.map((block, index) => {
-              const blockWeeks = orderedLiveWeeks(weeks, block.id);
-              const isLast = index === completedBlocks.length - 1;
-              return (
-                <View key={block.id} style={[styles.historyRow, isLast && styles.historyRowLast]}>
-                  <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
-                  <Text style={styles.historyDates}>
-                    {formatDate(block.started_at)} – {formatDate(block.completed_at)}
-                  </Text>
-                  {blockWeeks.length === 0 ? (
-                    <Text style={styles.historyEmptyText}>No linked weeks.</Text>
-                  ) : (
-                    blockWeeks.map(week => (
-                      <Pressable
-                        key={week.id}
-                        onPress={() => onViewNote?.(notesById.get(week.note_id))}
-                        style={styles.historyWeekRow}
-                        accessibilityRole="button"
-                        accessibilityLabel={`View ${_noteTitle(notesById, week.note_id)}, Recovery Week ${week.week_number}`}
-                      >
-                        <Text style={styles.historyWeekNumber}>Week {week.week_number}</Text>
-                        <Text style={styles.historyWeekNoteTitle} numberOfLines={1}>
-                          {_noteTitle(notesById, week.note_id)}
-                        </Text>
-                        <Text style={styles.historyWeekStatus}>
-                          {week.completed_at ? formatDate(week.completed_at) : 'Not completed'}
-                        </Text>
-                      </Pressable>
-                    ))
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -468,9 +407,6 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 16,
   },
   activeGroup: {
-    gap: 16,
-  },
-  historyGroup: {
     gap: 16,
   },
   card: {
@@ -602,86 +538,5 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.onAccent,
-  },
-  historyPanel: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    overflow: 'hidden',
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: colors.subtleBg,
-  },
-  historyHeaderBordered: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  historyHeaderContent: {
-    flex: 1,
-  },
-  historySummaryCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-  },
-  historySummaryLatest: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  historySummaryEmphasis: {
-    fontWeight: '700',
-    color: colors.text,
-  },
-  historyRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-    gap: 4,
-  },
-  historyRowLast: {
-    borderBottomWidth: 0,
-  },
-  historyBaselineTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  historyDates: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 4,
-  },
-  historyEmptyText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  historyWeekRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  historyWeekNumber: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    width: 56,
-  },
-  historyWeekNoteTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  historyWeekStatus: {
-    fontSize: 11,
-    color: colors.textMuted,
   },
 });

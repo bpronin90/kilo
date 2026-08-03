@@ -2125,17 +2125,18 @@ describe('LogRecoverySection: no in-section Recovery entry point (#724)', () => 
     expect(textCount(root, 'Legs Day')).toBe(1);
   });
 
-  test('completed history renders, still with no start control', () => {
-    const root = renderSection({
+  test('only completed blocks — no active block — renders nothing; history lives in Analytics (#729)', () => {
+    // Completed-block history moved to Analytics. With no active block,
+    // no pending operations, and no stale snapshot, the section returns null.
+    const component = renderSection({
       blocks: [completedBlock],
       weeks: [{ id: 'w0', block_id: completedBlock.id, note_id: noteA.id, week_number: 1, completed_at: '2025-12-10T00:00:00.000Z', deleted_at: null }],
       eligibleBaselineNotes: [noteB],
       onStartRecoveryBlock: jest.fn(),
-    }).root;
+    });
 
-    expect(startControl(root)).toBeNull();
-    expect(textCount(root, 'Recovery History')).toBe(1);
-    expect(textCount(root, '1 completed block')).toBe(1);
+    expect(component.toJSON()).toBeNull();
+    expect(startControl(component.root)).toBeNull();
   });
 
   test('a pending operation renders the banner and retry, but no start control', () => {
