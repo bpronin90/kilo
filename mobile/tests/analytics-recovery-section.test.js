@@ -472,6 +472,184 @@ describe('AnalyticsRecoverySection — completed-block evidence uses that block\
   });
 });
 
+// ── #727: completed Recovery block week index with note navigation ─────────────
+
+describe('AnalyticsRecoverySection — completed-block week index (#727)', () => {
+  function completedBlock(id, completedAt, title) {
+    return block({ id, baseline_note_title: title, completed_at: completedAt });
+  }
+
+  function setupWithNavigate(props, onNavigate) {
+    let component;
+    act(() => {
+      component = render.create(
+        <AnalyticsRecoverySection onNavigate={onNavigate} {...props} />
+      );
+    });
+    return component;
+  }
+
+  test('a completed block with one live week shows the persisted week ordinal and note title', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(3, 'note-w3', { block_id: 'rb-c', id: 'rw-c-3', completed_at: '2026-03-25T00:00:00Z' });
+    const n = note('note-w3', BASELINE_TEXT, 'PPL Week Three');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, jest.fn());
+    const root = component.root;
+
+    expect(hasText(root, 'Week 3')).toBe(true);
+    expect(hasText(root, 'PPL Week Three')).toBe(true);
+  });
+
+  test('an available completed week is pressable and fires onNavigate with the exact note_id', () => {
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'note-w1', { block_id: 'rb-c', id: 'rw-c-1', completed_at: '2026-03-15T00:00:00Z' });
+    const n = note('note-w1', BASELINE_TEXT, 'Week One Note');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const root = component.root;
+
+    const row = root.findAll(
+      inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Week One Note'
+    )[0];
+    expect(row).toBeDefined();
+    expect(typeof row.props.onPress).toBe('function');
+
+    act(() => { row.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w1' });
+
+    act(() => { row.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'Log', { kind: 'note', noteId: 'note-w1' });
+  });
+
+  test('an in-progress available week shows "In progress" and is navigable', () => {
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(2, 'note-w2', { block_id: 'rb-c', id: 'rw-c-2', completed_at: null });
+    const n = note('note-w2', BASELINE_TEXT, 'Week Two Note');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const root = component.root;
+
+    expect(hasText(root, 'In progress')).toBe(true);
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 2, Week Two Note')[0];
+    expect(typeof row.props.onPress).toBe('function');
+    act(() => { row.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Log', { kind: 'note', noteId: 'note-w2' });
+  });
+
+  test('a missing note week shows Unavailable and has no onPress', () => {
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'ghost-note', { block_id: 'rb-c', id: 'rw-c-1' });
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [] }, onNavigate);
+    const root = component.root;
+
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Unavailable')[0];
+    expect(row).toBeDefined();
+    expect(row.props.onPress).toBeUndefined();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('a parser-unavailable note week (size limit) shows its title and Unavailable state, and has no onPress', () => {
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'note-huge', { block_id: 'rb-c', id: 'rw-c-1' });
+    const n = note('note-huge', 'x'.repeat(MAX_RAW_TEXT_LENGTH + 1), 'Huge Note');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const root = component.root;
+
+    // Title is known and must appear; accessible identity uses the note title, not "Unavailable".
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Huge Note')[0];
+    expect(row).toBeDefined();
+    expect(row.props.onPress).toBeUndefined();
+    expect(hasText(root, 'Huge Note')).toBe(true);
+    expect(hasText(root, 'Unavailable')).toBe(true);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('a parser-unavailable note week (set row with no exercise) shows its title and Unavailable state, and has no onPress', () => {
+    // A set row with no preceding exercise header causes parseWorkoutNote to return ok:false
+    // even though the note is well under the size limit.
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'note-bad', { block_id: 'rb-c', id: 'rw-c-1' });
+    const n = note('note-bad', '-135 5,5,5', 'Orphan Sets');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const root = component.root;
+
+    // The note's title is still known and must appear in the row and accessible identity.
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Orphan Sets')[0];
+    expect(row).toBeDefined();
+    expect(row.props.onPress).toBeUndefined();
+    expect(hasText(root, 'Orphan Sets')).toBe(true);
+    expect(hasText(root, 'Unavailable')).toBe(true);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('an unavailable note on a completed week shows Unavailable, not the completion date', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'ghost-note', { block_id: 'rb-c', id: 'rw-c-1', completed_at: '2026-03-15T00:00:00Z' });
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [] }, jest.fn());
+    const root = component.root;
+
+    expect(hasText(root, 'Unavailable')).toBe(true);
+    // The completion date must not appear as the state text when the note is unavailable.
+    expect(hasText(root, 'Mar 15, 2026')).toBe(false);
+  });
+
+  test('non-contiguous persisted week numbers render in ordinal order, not array position', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w1 = week(1, 'note-w1', { block_id: 'rb-c', id: 'rw-c-1', completed_at: '2026-03-08T00:00:00Z' });
+    const w5 = week(5, 'note-w5', { block_id: 'rb-c', id: 'rw-c-5', completed_at: '2026-03-29T00:00:00Z' });
+    const n1 = note('note-w1', BASELINE_TEXT, 'Note One');
+    const n5 = note('note-w5', BASELINE_TEXT, 'Note Five');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w5, w1], notes: [n1, n5] }, jest.fn());
+    const root = component.root;
+
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Note One').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 5, Note Five').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 2, Note One').length).toBe(0);
+  });
+
+  test('accessible identity includes block title, persisted week ordinal, and note title', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(7, 'note-w7', { block_id: 'rb-c', id: 'rw-c-7', completed_at: '2026-03-29T00:00:00Z' });
+    const n = note('note-w7', BASELINE_TEXT, 'Seventh Session');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, jest.fn());
+    const root = component.root;
+
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 7, Seventh Session')[0];
+    expect(row).toBeDefined();
+  });
+
+  test('a completed block with no weeks shows no week rows under it', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const component = setupWithNavigate({ blocks: [b], weeks: [], notes: [] }, jest.fn());
+    const root = component.root;
+
+    expect(hasText(root, '1 completed block')).toBe(true);
+    expect(root.findAll(inst => typeof inst.props.accessibilityLabel === 'string' && inst.props.accessibilityLabel.includes('Recovery Week')).length).toBe(0);
+  });
+
+  test('weeks from one block do not appear under another block in the index', () => {
+    const b1 = completedBlock('rb-1', '2026-03-01T00:00:00Z', 'Block One');
+    const b2 = completedBlock('rb-2', '2026-04-01T00:00:00Z', 'Block Two');
+    const w1 = week(1, 'note-b1-w1', { block_id: 'rb-1', id: 'rw-1-1' });
+    const w2 = week(1, 'note-b2-w1', { block_id: 'rb-2', id: 'rw-2-1' });
+    const n1 = note('note-b1-w1', BASELINE_TEXT, 'Block One Note');
+    const n2 = note('note-b2-w1', BASELINE_TEXT, 'Block Two Note');
+    const component = setupWithNavigate({ blocks: [b1, b2], weeks: [w1, w2], notes: [n1, n2] }, jest.fn());
+    const root = component.root;
+
+    // Each block's week appears with its own block title in the label.
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block One, Recovery Week 1, Block One Note').length).toBeGreaterThan(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block Two, Recovery Week 1, Block Two Note').length).toBeGreaterThan(0);
+    // Block One's note title must not appear under Block Two's label, and vice versa.
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block One, Recovery Week 1, Block Two Note').length).toBe(0);
+    expect(root.findAll(inst => inst.props.accessibilityLabel === 'Block Two, Recovery Week 1, Block One Note').length).toBe(0);
+  });
+});
+
 describe('AnalyticsRecoverySection — light/dark appearance', () => {
   function setupWithColors(colors, { blocks, weeks, notes }) {
     let component;

@@ -1604,6 +1604,35 @@ describe('AnalyticsScreen: excluded recovery notes and ordinary populations', ()
   });
 });
 
+// ── #727: Analytics forwards onNavigate to AnalyticsRecoverySection ──────────
+
+describe('AnalyticsScreen — onNavigate forwarded to Recovery section (#727)', () => {
+  const { AnalyticsRecoverySection } = require('../components/AnalyticsRecoverySection');
+
+  test('onNavigate prop from AnalyticsScreen is forwarded to AnalyticsRecoverySection', () => {
+    useEntries.useFeatureToggles.mockReturnValue({
+      fatigueTrackingEnabled: false, deloadModeEnabled: false,
+      setFatigueTrackingEnabled: jest.fn(), setDeloadModeEnabled: jest.fn(),
+    });
+    useEntries.useWeightEntries.mockReturnValue({ entries: [], loading: false, error: null });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    useEntries.useWorkoutNotes.mockReturnValue({ notes: [], currentNote: null, loading: false, update: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: false });
+
+    const onNavigate = jest.fn();
+    let component;
+    render.act(() => {
+      component = render.create(
+        <AnalyticsScreen multiplier={1.07} section={null} onNavigate={onNavigate} />
+      );
+    });
+
+    const section = component.root.findByType(AnalyticsRecoverySection);
+    expect(section.props.onNavigate).toBe(onNavigate);
+  });
+});
+
 // ── #716: Analytics renders from the same authoritative Recovery state ───────
 
 describe('AnalyticsScreen — authoritative Recovery state (#716)', () => {
