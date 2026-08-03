@@ -18,7 +18,6 @@ import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { findActiveBlock, isLiveRecord, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
-  RECOVERY_LOADING_MESSAGE,
   RECOVERY_STALE_MESSAGE,
   RECOVERY_UNVERIFIED_MESSAGE,
   useRecoveryBlockLifecycle,
@@ -100,14 +99,6 @@ export function LogRecoverySection({
   pendingRecovery = [],
   pendingRecoveryError = null,
   onRetryRecovery,
-  // The single Recovery entry point (#711). It replaced N per-card
-  // `Start recovery block` / `Mark as recovery week` pills, which were N
-  // duplicate openings of a modal that already contains its own baseline and
-  // Week 1 pickers. This component does not decide eligibility: LogScreen hands
-  // it the already-filtered collection (empty while a block is active), and the
-  // callback takes no note argument — the modal chooses its own subject.
-  eligibleBaselineNotes = [],
-  onStartRecoveryBlock,
   // Authoritative Recovery read state (#716). Defaults describe a verified,
   // current snapshot so a caller that does not yet supply them is unchanged.
   //
@@ -158,25 +149,19 @@ export function LogRecoverySection({
     .filter(b => isLiveRecord(b) && b.completed_at)
     .sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at)));
 
-  // The entry-point state (#711): the only way to start a recovery block now
-  // that the per-card pills are gone. It is offered exactly when one could
-  // actually be started — no block already active, and at least one note
-  // eligible to be frozen as a baseline — so it never advertises an action that
-  // would only fail after Confirm. Completed-block history is irrelevant to it:
-  // finishing one block must not remove the way to start the next.
-  const showStartEntryPoint = !activeBlock && !!onStartRecoveryBlock && eligibleBaselineNotes.length > 0;
-
   // Unverified Recovery state is never rendered as "no recovery blocks" (#716).
-  // A cold load shows explicit initial progress; a terminal first-load failure
-  // shows the failure and the same `Retry recovery` control the pending-operation
-  // banner uses. Falling through to the "nothing to show" return below would
-  // present a failed read as a verified empty result.
+  // A terminal first-load failure shows the failure and the same `Retry
+  // recovery` control the pending-operation banner uses. Falling through to the
+  // "nothing to show" return below would present a failed read as a verified
+  // empty result.
   if (!stateReady) {
-    // A terminal first-load error wins over any in-flight progress: once a read
-    // has failed with nothing verified, the user needs the retry path, not a
-    // spinner that may never resolve.
+    // A cold first load stays visually neutral (#724): a non-adopter must not
+    // see a Recovery card flash before the first verified read resolves, so an
+    // in-flight initial read renders nothing at all. Only a terminal first-load
+    // failure — a read that has stopped with nothing verified — earns the
+    // explicit unknown state and its retry path.
     const isInitialLoad = !stateError && (stateLoading || stateRefreshing);
-    const message = isInitialLoad ? RECOVERY_LOADING_MESSAGE : RECOVERY_UNVERIFIED_MESSAGE;
+    if (isInitialLoad) return null;
     return (
       <View style={styles.container}>
         <View style={styles.activeGroup}>
@@ -185,22 +170,20 @@ export function LogRecoverySection({
             <View
               style={styles.pendingBanner}
               accessible
-              accessibilityRole={isInitialLoad ? 'text' : 'alert'}
-              accessibilityLabel={message}
+              accessibilityRole="alert"
+              accessibilityLabel={RECOVERY_UNVERIFIED_MESSAGE}
             >
-              <Text style={styles.pendingBannerText}>{message}</Text>
-              {!isInitialLoad && (
-                <Pressable
-                  onPress={() => onRetryRecovery?.()}
-                  disabled={!!busy}
-                  style={styles.pendingRetryButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry recovery"
-                  accessibilityState={{ disabled: !!busy }}
-                >
-                  <Text style={styles.pendingRetryText}>Retry recovery</Text>
-                </Pressable>
-              )}
+              <Text style={styles.pendingBannerText}>{RECOVERY_UNVERIFIED_MESSAGE}</Text>
+              <Pressable
+                onPress={() => onRetryRecovery?.()}
+                disabled={!!busy}
+                style={styles.pendingRetryButton}
+                accessibilityRole="button"
+                accessibilityLabel="Retry recovery"
+                accessibilityState={{ disabled: !!busy }}
+              >
+                <Text style={styles.pendingRetryText}>Retry recovery</Text>
+              </Pressable>
             </View>
           </Card>
         </View>
@@ -212,7 +195,7 @@ export function LogRecoverySection({
   // block nor any completed block renders — otherwise the retry affordance
   // would disappear with the records it is trying to repair. The same is true of
   // a stale snapshot: hiding it would hide the retry path with it.
-  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !showStartEntryPoint && !stateStale) return null;
+  if (!activeBlock && completedBlocks.length === 0 && !showRecoveryNotice && !stateStale) return null;
 
   const notesById = new Map(notes.map(n => [n.id, n]));
   const activeWeeks = activeBlock ? orderedLiveWeeks(weeks, activeBlock.id) : [];
@@ -342,30 +325,12 @@ export function LogRecoverySection({
 
   return (
     <View style={styles.container}>
-      {!activeBlock && (showRecoveryNotice || showStartEntryPoint) && (
+      {!activeBlock && (showRecoveryNotice || stateStale) && (
         <View style={styles.activeGroup}>
           <SectionTitle>Recovery</SectionTitle>
           <Card style={styles.card}>
             {stateStale ? staleBanner : null}
             {showRecoveryNotice ? pendingBanner : null}
-            {showStartEntryPoint && (
-              <View style={styles.actionsRow}>
-                <Pressable
-                  onPress={() => onStartRecoveryBlock()}
-                  // The entry point is a recovery write like any other, so it
-                  // obeys the same lock: an unresolved journaled operation or an
-                  // in-flight lifecycle action must not be able to start a block
-                  // underneath itself.
-                  disabled={actionsLocked}
-                  style={[styles.actionButton, styles.actionButtonPrimary]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Start recovery block"
-                  accessibilityState={{ disabled: actionsLocked }}
-                >
-                  <Text style={styles.actionButtonPrimaryText}>Start recovery block</Text>
-                </Pressable>
-              </View>
-            )}
           </Card>
         </View>
       )}

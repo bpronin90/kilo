@@ -551,21 +551,44 @@ action is placed by how often it is used:
 | Tier | Actions | Location |
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
-| Secondary — occasional | `Set as current routine`, `Edit routine`, `Delete routine`, viewed-card `Week A/B` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`) |
-| Rare — once per training block | `Start recovery block` | One entry point in the Recovery section (`LogRecoverySection.js`) |
+| Secondary — occasional | `Set as current routine`, `Edit routine`, `Delete routine`, viewed-card `Week A/B` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
+| Rare — once per training block | `Start recovery block`, `+ New routine` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
 
 Consequences to preserve:
 
-- A collapsed **More Routines** list renders zero buttons; a card header's only
-  press target is the header itself (expand/collapse).
+- **More Routines is a collapsed-by-default disclosure (#724).** It follows the
+  shared collapse convention: a whole-header press target (with a `44` `minHeight`
+  touch floor) carrying the `MaterialIcons` `expand-more`/`expand-less` chevron
+  (18, `textMuted`), a collapsed summary of a routine count over a `Latest: …`
+  line, and `accessibilityState={{ expanded }}`. Collapsed, it renders zero
+  actions and mounts no routine-card controls; the routine cards, `+ New
+  routine`, and `Start recovery block` exist only in the expanded body. A card
+  header's only nested press target is still identity. An external request to
+  reveal a non-current routine (typed navigation #718, or a
+  Recovery-history/lifecycle tap) auto-expands the disclosure via a monotonic
+  reveal nonce keyed on the REQUEST, not on `viewingNoteId` — so a repeat request
+  for the already-selected note (a later #718 key, or a re-tap of a hidden
+  Recovery note) reopens it, while an unchanged nonce respects a user's collapse.
+  Recovery-note taps are set-only, so re-tapping a hidden note shows it rather
+  than toggling the selection off.
 - The active card's strip renders `Skip week` **or** `Remove skip`, never both.
   There is no opacity-dimmed disabled variant.
-- The `Double-tap to edit` hint is retired in the active card (the explicit
-  `Edit` control supersedes it); the double-tap gesture itself still works.
-- The Recovery entry point renders when a baseline note is eligible and no block
-  is active, and opens `RecoveryBlockStartModal` with `{ mode: 'routine', note:
-  null }` so the modal's own baseline/Week 1 pickers choose the subject. It is
-  disabled by the same `actionsLocked` flag as every other recovery action.
+- The `Double-tap to edit` hint is retired in both the active card and the
+  non-current card body (#711, #724); the double-tap gesture itself still works.
+- The single Recovery entry point lives in expanded routine management (#724),
+  not the Recovery section. It is **absent** — not merely disabled — whenever a
+  block cannot be started: it renders only when a baseline note is eligible, no
+  block is active, the shared Recovery read is verified and not stale, and no
+  Recovery action is pending/in-flight with `mutationsAllowed` true. When shown
+  it is always live, and opens `RecoveryBlockStartModal` with
+  `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
+  choose the subject; `startRecoveryBlock` rechecks the authoritative
+  precondition at confirm.
+- `LogRecoverySection` renders only when Recovery affects the current workout
+  (active/pending/terminal-error/stale) or completed history remains (#724). A
+  cold first read stays neutral (renders nothing) so a non-adopter never sees a
+  Recovery card flash; a terminal first-read failure still shows the unknown
+  state with `Retry recovery`.
 - Relocated controls keep their existing style objects — the pill
   (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
   (`switchButton` / `deleteButton`) are unchanged.

@@ -1,12 +1,16 @@
-// Non-current routine cards (#711 information hierarchy): every action on these
-// cards is occasional, so the card header carries identity only — title, date,
-// recovery badge — and a collapsed More Routines list therefore shows zero
-// buttons. Tapping a card expands it, and the expanded body is where Week A/B,
-// Set as current routine, Edit routine, and Delete routine live.
-import React, { useRef } from 'react';
+// Routine management (#724): the non-current routines and every routine/recovery
+// management action now live inside a collapsed-by-default disclosure so the
+// active routine stays the dominant Log surface. Collapsed, the section is
+// action-free — it shows only a count + latest-routine summary and the shared
+// chevron. Expanded, it renders the routine cards (#711 information hierarchy:
+// each card's header carries identity only; Week A/B, Set as current, Edit, and
+// Delete live in its own expand-on-tap body) plus the section's two management
+// actions: `Start recovery block` and `+ New routine`.
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, Button, SectionTitle } from './UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -24,8 +28,42 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
   recoveryWeekNumberByNoteId = {},
+  // The one relocated Recovery entry point (#724). `showRecoveryStart` is the
+  // full startability predicate decided by LogScreen from the shared
+  // authoritative Recovery state: no active block, verified, not stale, an
+  // eligible baseline, AND no pending/in-flight action or mutation lock — the
+  // contract requires the control ABSENT (not merely disabled) whenever a block
+  // cannot be started. The callback takes no subject — RecoveryBlockStartModal
+  // picks its own baseline and Week 1 — and the precondition is rechecked at
+  // confirm.
+  onStartRecoveryBlock,
+  showRecoveryStart = false,
+  // A monotonic nonce LogScreen bumps on every external request to reveal a
+  // non-current routine (#724 review). Keying auto-expand on the REQUEST rather
+  // than on `viewingNoteId` is what lets a repeated request for the
+  // already-selected note reopen the disclosure — a later #718 key for the same
+  // note, or a re-tap of an already-selected but hidden Recovery-history note —
+  // while ordinary re-renders under an unchanged key respect a user collapse.
+  externalRevealKey = 0,
 }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  // Collapsed by default (#724): scanning the active routine must not compete
+  // with routine/recovery management. The whole header is the disclosure.
+  const [expanded, setExpanded] = useState(false);
+  // Expand on each NEW external reveal request, so the requested note is never
+  // left unmounted behind the collapsed disclosure. The ref starts at 0 (the
+  // shell's "no request issued" sentinel) rather than the current prop, so an
+  // instance that MOUNTS already carrying a pending request — e.g. a #718 intent
+  // that switches Deload→Routine and mounts this list fresh — still expands. An
+  // unchanged nonce (ordinary re-render) never re-expands, so a later explicit
+  // user collapse stands until the next external request.
+  const prevRevealKeyRef = useRef(0);
+  useEffect(() => {
+    if (externalRevealKey === prevRevealKeyRef.current) return;
+    prevRevealKeyRef.current = externalRevealKey;
+    setExpanded(true);
+  }, [externalRevealKey]);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -39,110 +77,163 @@ export function LogPreviousRoutines({
     }
   };
 
+  const routineCount = otherNotes.length;
+  // ISO timestamps sort lexicographically, so the max updated_at is the latest
+  // routine without parsing a Date. The list order below is left untouched.
+  const latestRoutine = routineCount > 0
+    ? otherNotes.reduce((a, b) => (String(b.updated_at || '') > String(a.updated_at || '') ? b : a))
+    : null;
+
   return (
     <View style={styles.previousRoutines}>
-      {otherNotes.length > 0 && (
-        <>
-          <SectionTitle>More Routines</SectionTitle>
-          {otherNotes.map(other => (
-            <Card
-              key={other.id}
-              style={styles.otherNoteCard}
-            >
-              <Pressable
-                onPress={() => handleViewOtherNote(other)}
-                style={styles.otherNoteHeader}
+      <SectionTitle>More Routines</SectionTitle>
+      <View style={styles.panel}>
+        <Pressable
+          onPress={() => setExpanded(e => !e)}
+          style={[styles.header, expanded && styles.headerBordered]}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
+          accessibilityState={{ expanded }}
+        >
+          <View style={styles.headerContent}>
+            <Text style={styles.summaryCount}>
+              {`${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}`}
+            </Text>
+            {!expanded && latestRoutine && (
+              <Text style={styles.summaryLatest} numberOfLines={1}>
+                {'Latest: '}
+                <Text style={styles.summaryEmphasis}>
+                  {latestRoutine.title || 'Untitled Routine'}
+                </Text>
+              </Text>
+            )}
+          </View>
+          <MaterialIcons
+            name={expanded ? 'expand-less' : 'expand-more'}
+            size={18}
+            color={colors.textMuted}
+            accessible={false}
+          />
+        </Pressable>
+
+        {expanded && (
+          <View style={styles.body}>
+            {otherNotes.map(other => (
+              <Card
+                key={other.id}
+                style={styles.otherNoteCard}
               >
-                <View style={styles.otherNoteInfo}>
-                  <Text
-                    style={styles.otherNoteTitle}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {other.title || 'Untitled Routine'}
-                  </Text>
-                  {other.updated_at && (
-                    <Text style={styles.otherNoteSub}>
-                      {viewingNoteId === other.id && viewingHasABWeeks
-                        ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
-                        : localDate(other.updated_at).toLocaleDateString()}
-                    </Text>
-                  )}
-                  {recoveryWeekNumberByNoteId[other.id] != null && (
-                    <View
-                      style={styles.recoveryBadge}
-                      accessible
-                      accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                <Pressable
+                  onPress={() => handleViewOtherNote(other)}
+                  style={styles.otherNoteHeader}
+                >
+                  <View style={styles.otherNoteInfo}>
+                    <Text
+                      style={styles.otherNoteTitle}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
                     >
-                      <Text style={styles.recoveryBadgeText}>
-                        Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                      {other.title || 'Untitled Routine'}
+                    </Text>
+                    {other.updated_at && (
+                      <Text style={styles.otherNoteSub}>
+                        {viewingNoteId === other.id && viewingHasABWeeks
+                          ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
+                          : localDate(other.updated_at).toLocaleDateString()}
                       </Text>
-                    </View>
-                  )}
-                </View>
-              </Pressable>
-              {viewingNoteId === other.id && viewingNote && (
-                <>
-                  <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-                    <Text style={styles.editHint}>Double-tap to edit</Text>
-                    <WorkoutContentRenderer
-                      dayGroups={viewingNoteDayGroups}
-                      emptyText="No exercises to display."
-                    />
-                  </Pressable>
-                  <View style={styles.inlineActions}>
-                    {/* The viewed card's Week A/B switch (#711). It keeps the
-                        pill form — it changes which week you are READING, not a
-                        routine-lifecycle action like the buttons below — and
-                        keeps the exact role/label/selected state it had in the
-                        header it moved out of. */}
-                    {viewingHasABWeeks && (
-                      <View style={styles.viewActions}>
-                        <Pressable
-                          onPress={handleToggleViewingWeek}
-                          style={styles.inlineSwitchButton}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                          accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                        >
-                          <Text style={styles.inlineSwitchButtonText}>
-                            Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                          </Text>
-                        </Pressable>
+                    )}
+                    {recoveryWeekNumberByNoteId[other.id] != null && (
+                      <View
+                        style={styles.recoveryBadge}
+                        accessible
+                        accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                      >
+                        <Text style={styles.recoveryBadgeText}>
+                          Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                        </Text>
                       </View>
                     )}
-                    <Button
-                      onPress={handleEditViewedNote}
-                      title="Edit routine"
-                      style={styles.switchButton}
-                      textStyle={styles.switchButtonText}
-                    />
-                    <Button
-                      onPress={() => handleSwitchCurrent(other.id)}
-                      title="Set as current routine"
-                      style={styles.switchButton}
-                      textStyle={styles.switchButtonText}
-                    />
-                    <Button
-                      onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-                      title="Delete routine"
-                      style={styles.deleteButton}
-                      textStyle={styles.deleteButtonText}
-                    />
                   </View>
-                </>
-              )}
-            </Card>
-          ))}
-        </>
-      )}
-      <Button
-        onPress={handleCreateRoutine}
-        title="+ New routine"
-        style={styles.createButton}
-        textStyle={styles.createButtonText}
-      />
+                </Pressable>
+                {viewingNoteId === other.id && viewingNote && (
+                  <>
+                    {/* The gesture is preserved; the visible "Double-tap to edit"
+                        hint is gone (#724) — the expanded body's explicit `Edit
+                        routine` control is the advertised path. */}
+                    <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                      <WorkoutContentRenderer
+                        dayGroups={viewingNoteDayGroups}
+                        emptyText="No exercises to display."
+                      />
+                    </Pressable>
+                    <View style={styles.inlineActions}>
+                      {/* The viewed card's Week A/B switch (#711). It keeps the
+                          pill form — it changes which week you are READING, not a
+                          routine-lifecycle action like the buttons below — and
+                          keeps the exact role/label/selected state it had in the
+                          header it moved out of. */}
+                      {viewingHasABWeeks && (
+                        <View style={styles.viewActions}>
+                          <Pressable
+                            onPress={handleToggleViewingWeek}
+                            style={styles.inlineSwitchButton}
+                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                            accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                          >
+                            <Text style={styles.inlineSwitchButtonText}>
+                              Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
+                      <Button
+                        onPress={handleEditViewedNote}
+                        title="Edit routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => handleSwitchCurrent(other.id)}
+                        title="Set as current routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+                        title="Delete routine"
+                        style={styles.deleteButton}
+                        textStyle={styles.deleteButtonText}
+                      />
+                    </View>
+                  </>
+                )}
+              </Card>
+            ))}
+
+            {/* The single `Start recovery block` entry point (#724). Rendered
+                only when a block can actually be started right now (LogScreen
+                folds the pending/busy/mutation lock into `showRecoveryStart`),
+                and absent otherwise — so it is reachable only by opening this
+                disclosure, and never shown as a dead or locked control. */}
+            {showRecoveryStart && (
+              <Button
+                onPress={onStartRecoveryBlock}
+                title="Start recovery block"
+                style={styles.recoveryStartButton}
+                textStyle={styles.recoveryStartButtonText}
+              />
+            )}
+            <Button
+              onPress={handleCreateRoutine}
+              title="+ New routine"
+              style={styles.createButton}
+              textStyle={styles.createButtonText}
+            />
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -150,6 +241,52 @@ export function LogPreviousRoutines({
 const createStyles = (colors) => StyleSheet.create({
   previousRoutines: {
     marginTop: 4,
+    gap: 12,
+  },
+  // Collapse panel (#724), mirroring the Recovery History panel on this same
+  // screen: radius 24, 1px border, clipped, with a `subtleBg` header row that is
+  // the whole-header press target and the shared MaterialIcons chevron.
+  panel: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    // The whole header is the only expand/collapse target, and collapsed-with-
+    // zero-routines or expanded it holds only the 12px count; a 44dp floor keeps
+    // it a legible touch/motor target under large text too (#724 review).
+    minHeight: 44,
+    backgroundColor: colors.subtleBg,
+  },
+  headerBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  summaryCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  summaryLatest: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  summaryEmphasis: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  body: {
+    padding: 16,
     gap: 12,
   },
   otherNoteCard: {
@@ -219,11 +356,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
-  editHint: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginBottom: 8,
-  },
   inlineActions: {
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -252,8 +384,19 @@ const createStyles = (colors) => StyleSheet.create({
   deleteButtonText: {
     color: colors.error,
   },
+  // The relocated recovery entry point keeps the accent-filled primary look it
+  // had in LogRecoverySection. It is only ever rendered when live (the lock is
+  // folded into visibility upstream), so it carries no disabled variant; the
+  // authoritative precondition is rechecked at confirm.
+  recoveryStartButton: {
+    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  recoveryStartButtonText: {
+    color: colors.onAccent,
+  },
   createButton: {
-    marginTop: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: colors.accent,
