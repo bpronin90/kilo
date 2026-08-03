@@ -761,6 +761,15 @@ in `useRecoveryBlockLifecycle`/`useStartRecoveryBlock` calls
 read then, not trusting the render that opened the dialog — and returns
 `RECOVERY_STATE_UNVERIFIED` without touching storage if it cannot.
 
+Surface ownership is deliberately split by lifecycle state. Log owns only the
+active block, current-workout lifecycle actions, and the active block's ordinary
+analytics inclusion control; completed week rows and completed-block history do
+not render there. `AnalyticsRecoverySection` owns completed-block evidence, its
+ordered contextual week index, exact-note navigation through the typed Log
+intent, and each completed block's inclusion control. Both surfaces still read
+and mutate through the same authoritative Recovery store, so moving the controls
+does not introduce a second state owner.
+
 On sign-in, cloud bootstrap is gated solely by `kilo_local_data_owner`.
 Unclaimed non-empty data requires upload confirmation. When the complete local
 state projection is empty and no dirty sync work is queued, an unclaimed device

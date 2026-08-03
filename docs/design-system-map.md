@@ -565,7 +565,8 @@ Consequences to preserve:
   routine`, and `Start recovery block` exist only in the expanded body. A card
   header's only nested press target is still identity. An external request to
   reveal a non-current routine (typed navigation #718, or a
-  Recovery-history/lifecycle tap) auto-expands the disclosure via a monotonic
+  Recovery-history tap from Analytics or an active-lifecycle tap) auto-expands
+  the disclosure via a monotonic
   reveal nonce keyed on the REQUEST, not on `viewingNoteId` — so a repeat request
   for the already-selected note (a later #718 key, or a re-tap of a hidden
   Recovery note) reopens it, while an unchanged nonce respects a user's collapse.
@@ -585,10 +586,11 @@ Consequences to preserve:
   choose the subject; `startRecoveryBlock` rechecks the authoritative
   precondition at confirm.
 - `LogRecoverySection` renders only when Recovery affects the current workout
-  (active/pending/terminal-error/stale) or completed history remains (#724). A
-  cold first read stays neutral (renders nothing) so a non-adopter never sees a
-  Recovery card flash; a terminal first-read failure still shows the unknown
-  state with `Retry recovery`.
+  (active/pending/terminal-error/stale). Completed history and its inclusion
+  controls live in Analytics (#727-729), so completed-only users see no Recovery
+  section on Log. A cold first read stays neutral (renders nothing) so a
+  non-adopter never sees a Recovery card flash; a terminal first-read failure
+  still shows the unknown state with `Retry recovery`.
 - Relocated controls keep their existing style objects — the pill
   (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
   (`switchButton` / `deleteButton`) are unchanged.

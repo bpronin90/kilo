@@ -861,11 +861,13 @@ alone).
 
 The per-block filter rules themselves (tombstoned membership, orphaned or
 tombstoned block, malformed `note_id`, baseline notes never being members, and
-verified-versus-unknown) are unit-tested in `data.test.js`; the switch's UI,
-persistence, per-block independence, locking, error surface, and live subscriber
-refresh are in `log-screen.test.js`, alongside save-time classification honoring
-the same boundary and omitting the classification entirely when the recovery read
-fails. `log-screen.test.js` also covers the subscriber's freshness and failure
+verified-versus-unknown) are unit-tested in `data.test.js`; the active-block
+switch remains covered in `log-screen.test.js`, while completed-block switch UI,
+per-block independence, locking, error handling, contextual week identity, and
+exact-note navigation are covered in `analytics-recovery-section.test.js`.
+Save-time classification honoring the same boundary and omitting the
+classification entirely when the recovery read fails remains in
+`log-screen.test.js`. That file also covers the subscriber's freshness and failure
 behavior directly: a restored local backup refreshing every mounted subscriber, a
 cold-start read failure reporting an unverified boundary that still hides nothing,
 its bounded self-retry publishing once storage recovers, and a later failure
