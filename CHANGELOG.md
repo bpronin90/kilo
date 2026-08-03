@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.102.0 - 2026-08-03
+
+- Issue #710: Fixed the Log routine-card headers so a long title or a full set of action pills no longer collapses the title to zero width; the title now truncates after two lines and the action row wraps instead of overflowing.
+- Issue #711: Moved the Log tab's routine-card actions out of the card headers. Routine cards now show only their title, date, and recovery badge, so a collapsed More Routines list has no buttons in it. Set as current routine, Edit routine, Delete routine, and the Week A/B switch appear when you tap a routine open. The active routine keeps one action row under its header with Edit, Week A/B, and a single skip control — Skip week or Remove skip, whichever applies, instead of both with one greyed out. Starting a recovery block now has one entry point in the Recovery section, which asks you to pick the baseline routine and Recovery Week 1, replacing the per-routine buttons.
+- Issue #716: Recovery status on Log and Analytics now comes from one verified source. A failed read is no longer shown as "no recovery blocks": a first-load failure says recovery status is unknown and offers Retry recovery, and a failed refresh keeps the last data that loaded successfully on screen and labels it as stale. Recovery actions stay disabled until the data has actually been read, and each one rechecks that before it writes.
+- Issue #717: Connected the daily-use handoffs across Home, Weight, and Analytics. Home's hero carries a dedicated row of labeled "Log workout" and "Log weight" actions, a "See weight trends" action opens the Analytics weight section, and the "Exercise Progress" and "1K Progress" section headers each open the Analytics strength section. The Analytics empty state links to Log, and the Weight tab offers "See full trends" into Analytics weight.
+- Issue #721: Fixed web confirmation dialogs app-wide, including `Set as current routine`, where actions were silently dropped because their callbacks never ran.
+- Issue #724: Contained routine and recovery management on the Log tab so the active routine stays the focus. More Routines is now collapsed by default, showing a routine count and the latest routine with an expand chevron; its routine cards, "+ New routine", and "Start recovery block" appear when you expand it. Starting a recovery block now lives inside expanded routine management instead of the Recovery section, and is offered only when one can actually be started. The Recovery section no longer appears at all unless you have an active or recent recovery block, and a first load no longer briefly flashes a Recovery card. The "Double-tap to edit" hint text was removed from saved routines while double-tap editing still works.
+- Issue #727: Analytics now shows a navigable index of completed Recovery weeks under each completed block. Tapping an available week opens its workout note in Log.
+- Issue #728: Moved completed-block `include_in_normal_analytics` switches from Recovery Log to Analytics, where each completed block in history now has its own live inclusion toggle.
+- Issue #729: Removed completed Recovery block history and completed-week rows from Log; this content now lives exclusively in Analytics.
+
 ## 0.101.0 - 2026-07-30
 
 - Issue #694: Backups now carry recovery blocks and their week memberships, so a restore keeps frozen baselines, week order, and completions instead of silently dropping them. Account export includes both, and withdrawing health-data consent or deleting an account now erases them.

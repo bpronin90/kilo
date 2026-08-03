@@ -1,6 +1,6 @@
 # Kilo Contain and Connect Roadmap
 
-Status: active product-cohesion roadmap.
+Status: active product-cohesion roadmap; Phases 1 and 2 are complete.
 
 Source of truth: the approved audit on GitHub issue `#714`, specifically the
 owner direction in comment `5152669329`, the final consolidated audit in comment
@@ -83,8 +83,8 @@ Log answers: **What am I doing in the gym right now?**
 - A user with only completed Recovery history sees no Recovery UI on Log.
 - An active, pending, failed, or stale Recovery state remains visible because
   it affects the current workout.
-- Completed Recovery history stays on Log until Analytics has shipped the full
-  contextual replacement.
+- Completed Recovery history lives only on Analytics, where its contextual
+  replacement is now available.
 
 ### Weight
 
@@ -101,10 +101,9 @@ Weight remains the dedicated daily body-weight surface.
 Analytics answers: **What is changing over time?**
 
 - Existing strength, weight, fatigue, and Recovery evidence remain.
-- Completed Recovery history gains the per-week contextual index currently on
-  Log: block grouping, week ordinal, completion dates, and navigation to the
-  exact workout note.
-- The completed-block inclusion preference moves beside the history it governs.
+- Completed Recovery history owns a per-week contextual index: block grouping,
+  week ordinal, completion dates, and navigation to the exact workout note.
+- The completed-block inclusion preference lives beside the history it governs.
 - Recovery loading, stale, error, pending, busy, and rejected-write states use
   the same shared foundation as Log.
 
@@ -144,6 +143,8 @@ numbers.
 ---
 
 ## Phase 1 — Shared Foundations and Connections
+
+Status: complete.
 
 Phase goal: repair the two live Recovery state defects and establish navigation
 contracts before moving ownership between screens.
@@ -253,6 +254,8 @@ intents can target Analytics sections, an exact Log note, and More > Cloud Sync.
 
 ## Phase 2 — Contain Log and Move Completed Recovery Context
 
+Status: complete as of 2026-08-02.
+
 Phase goal: make the gym-floor surface calm without losing Recovery capability.
 
 Completion condition: Recovery appears on Log only while relevant to the current
@@ -260,6 +263,9 @@ workout; Analytics owns completed Recovery context and inclusion; every complete
 week still opens its exact note.
 
 ### D1 — Contain the Log surface
+
+- **Issue:** [#724](https://github.com/bpronin90/kilo/issues/724)
+- **Status:** complete.
 
 - **Suggested title:** `Contain and Connect / D1: contain Recovery and routine management on Log`
 - **Goal:** keep the active routine dominant and remove permanent Recovery and
@@ -287,6 +293,11 @@ week still opens its exact note.
   `area:ui`, `area:workouts`, `area:architecture`.
 
 ### D1b — Make Analytics the completed Recovery owner
+
+- **Issues:** [#727](https://github.com/bpronin90/kilo/issues/727),
+  [#728](https://github.com/bpronin90/kilo/issues/728), and
+  [#729](https://github.com/bpronin90/kilo/issues/729)
+- **Status:** complete.
 
 - **Suggested title:** `Contain and Connect / D1b: move completed Recovery context to Analytics`
 - **Goal:** place completed Recovery evidence, contextual navigation, and the

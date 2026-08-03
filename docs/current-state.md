@@ -362,10 +362,11 @@ The real native app path now has a modular React Native shell:
   Deleting any past deload recomputes the sessions-since-deload clock off the
   remaining history (resetting to the absolute session count when none remain).
   Log also exposes the first user-visible slice of the recovery-block domain
-  (#692-694): a `Start recovery block` action on an ordinary routine card, or a
-  `Mark as recovery week` action on an eligible unlinked note, opens a
-  confirmation modal that freezes the chosen baseline routine and attaches a
-  new-or-existing note as `Recovery Week 1` (#695). Eligibility is purely
+  (#692-694): the single `Start recovery block` action lives in expanded More
+  Routines management, while a `Mark as recovery week` action remains on an
+  eligible unlinked note. Either path opens a confirmation modal that freezes
+  the chosen baseline routine and attaches a new-or-existing note as `Recovery
+  Week 1` (#695). Eligibility is purely
   structural (not linked to any block, not a baseline, not a deload note) and
   a linked note only gains an accessible `Recovery Week 1` badge — its title,
   raw text, editor, autosave, and analytics projections stay untouched. A
@@ -374,12 +375,13 @@ The real native app path now has a modular React Native shell:
   `Add week` can attach a next new-or-existing note as the next sequential
   ordinal, and only the latest week of an active block can be `Unlink`ed
   (earlier weeks and history stay immutable and gap-free, and any linked note
-  can still be deleted as an ordinary editable note). `Complete recovery
+  can still be deleted as an ordinary editable note). Completed week rows and
+  completed-block history no longer render on Log; Analytics owns that durable
+  context and exact-note navigation (#727, #729). `Complete recovery
   block` is always a manual, confirmed action — advisory exercise targets
   never block it — and completing a block with an open current week completes
-  that week too, without touching the frozen baseline. A collapsible Recovery
-  History panel lists completed blocks with their baseline, duration, and
-  ordered weeks. Deleting a workout note that is a linked recovery week shows
+  that week too, without touching the frozen baseline. Deleting a workout note
+  that is a linked recovery week shows
   an additional unlink/delete confirmation before the standard delete
   confirmation; cancelling either one writes nothing at all.
 
@@ -430,12 +432,16 @@ The real native app path now has a modular React Native shell:
   note, or an unsupported/empty baseline snapshot each render a visible
   explanatory state rather than a hidden or zeroed-out row. Nothing here
   mutates a block or week, changes normal analytics, or claims medical
-  recovery.
+  recovery. Each completed block also owns a contextual week index with the
+  persisted ordinal, note title, completion date, and an exact-note handoff to
+  Log; unavailable notes remain visible as unavailable instead of navigating
+  somewhere unrelated (#727).
 
   Whether a block's linked notes reach Kilo's ORDINARY analytics is a separate,
-  explicit per-block choice (#699). Each active and completed block carries an
-  accessible `Include recovery notes in normal analytics` switch in the Log
-  tab's Recovery and Recovery History surfaces, off by default. While it is
+  explicit per-block choice (#699). The active block carries an accessible
+  `Include recovery notes in normal analytics` switch on Log, while every
+  completed block carries its own switch beside its history in Analytics
+  (#728); all are off by default. While a switch is
   off, every note linked to that block is excluded from exercise
   classifications, progressive-overload signals, Kilo Max / fatigue-adjusted
   strength, non-weighted tracked metrics, the 1K history and headline, and the
@@ -989,10 +995,11 @@ disclosure so the requested note is shown. The `Start recovery block` control is
 present only when a block can actually be started and is absent (not just
 disabled) whenever an active block exists, the read is unverified/stale, no
 baseline is eligible, or another Recovery action is pending/busy. The Recovery
-section itself no longer hosts a start control and, for a verified non-adopter,
-is absent entirely — it appears only when Recovery affects the current workout
-(active/pending/error/stale) or completed history remains, and a cold first read
-stays neutral rather than flashing a Recovery card. The same Log flow now autosaves edits to existing
+section itself no longer hosts a start control and, for a verified non-adopter
+or a user with completed history only, is absent entirely — it appears only
+when Recovery affects the current workout (active/pending/error/stale), and a
+cold first read stays neutral rather than flashing a Recovery card. Completed
+history and its exact-note links live on Analytics. The same Log flow now autosaves edits to existing
 saved routines and note-backed past deloads while preserving explicit-save
 behavior only for never-saved notes. The local backup/import path
 also now preserves multiple
