@@ -6151,6 +6151,33 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Completed ')).length).toBe(0);
   });
 
+  test('Unlink remains reachable as a standalone affordance when the latest week is completed and no next week exists', () => {
+    // The completed latest-week row is hidden, but Unlink must still be
+    // accessible so the user can back out before adding the next week (#729).
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // The completed week row is hidden.
+    const weekRows = root.findAll(n =>
+      n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('View ')
+      && n.props.accessibilityLabel.includes('Recovery Week')
+    );
+    expect(weekRows.length).toBe(0);
+
+    // A standalone Unlink affordance is still present.
+    const unlinkBtn = root.findAll(n =>
+      n.props && n.props.accessibilityLabel === 'Unlink Week 1' && typeof n.props.onPress === 'function'
+    );
+    expect(unlinkBtn.length).toBe(1);
+  });
+
   test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the atomic delete', async () => {
     const weeks = [{ id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: null, deleted_at: null }];
     await setup({ notes: [baselineNote, week1Note], weeks });

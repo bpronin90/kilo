@@ -15,7 +15,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { Card, SectionTitle } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { formatDate } from '../lib/format';
 import { findActiveBlock, orderedLiveWeeks } from '../lib/data/recoveryBlocks';
 import {
   RECOVERY_STALE_MESSAGE,
@@ -303,7 +302,7 @@ export function LogRecoverySection({
             ) : null}
 
             <View style={styles.weekList}>
-              {activeWeeks.filter(w => !w.completed_at || w.id === latestWeekId).map(week => (
+              {activeWeeks.filter(w => !w.completed_at).map(week => (
                 <View key={week.id} style={styles.weekRow}>
                   <Pressable
                     style={styles.weekRowMain}
@@ -315,9 +314,7 @@ export function LogRecoverySection({
                     <Text style={styles.weekNoteTitle} numberOfLines={1}>
                       {_noteTitle(notesById, week.note_id)}
                     </Text>
-                    <Text style={styles.weekStatus}>
-                      {week.completed_at ? `Completed ${formatDate(week.completed_at)}` : 'In progress'}
-                    </Text>
+                    <Text style={styles.weekStatus}>In progress</Text>
                   </Pressable>
                   {week.id === latestWeekId && (
                     <Pressable
@@ -360,6 +357,20 @@ export function LogRecoverySection({
                   accessibilityState={{ disabled: actionsLocked }}
                 >
                   <Text style={styles.actionButtonText}>Add week</Text>
+                </Pressable>
+              )}
+              {currentWeek && currentWeek.completed_at && (
+                <Pressable
+                  onPress={() => handleUnlinkWeek(currentWeek)}
+                  disabled={actionsLocked}
+                  style={styles.inlineButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Unlink Week ${currentWeek.week_number}`}
+                  accessibilityState={{ disabled: actionsLocked }}
+                >
+                  <Text style={styles.inlineButtonText}>
+                    {busy === currentWeek.id ? 'Unlinking…' : `Unlink Week ${currentWeek.week_number}`}
+                  </Text>
                 </Pressable>
               )}
               <Pressable
