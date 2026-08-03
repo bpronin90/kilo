@@ -290,6 +290,7 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
       stateStale={recoveryStale}
       stateError={recoveryStateError}
       onRetry={retryRecoveryState}
+      onNavigate={onNavigate}
     />,
 
     <View

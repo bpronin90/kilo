@@ -14,6 +14,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
+import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote';
 import {
   RECOVERY_LOADING_MESSAGE,
   RECOVERY_STALE_MESSAGE,
@@ -92,6 +93,71 @@ function _rowAccessibilityLabel(row, unit) {
   }
 
   return parts.join('. ');
+}
+
+function _weekNoteStatus(week, notesById) {
+  const note = notesById.get(week.note_id);
+  if (!note) return { kind: 'missing', title: null };
+  if (note.raw_text && note.raw_text.length > MAX_RAW_TEXT_LENGTH) {
+    return { kind: 'unreadable', title: note.title || 'Untitled Routine' };
+  }
+  return { kind: 'ok', title: note.title || 'Untitled Routine' };
+}
+
+function WeekIndexRow({ block, week, notesById, onNavigate }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { kind, title } = _weekNoteStatus(week, notesById);
+  const isAvailable = kind === 'ok';
+
+  const noteTitle = isAvailable ? title : null;
+  const stateText = week.completed_at
+    ? formatDate(week.completed_at)
+    : isAvailable
+      ? 'In progress'
+      : 'Unavailable';
+
+  const a11yLabel = [
+    block.baseline_note_title || 'Untitled Routine',
+    `Recovery Week ${week.week_number}`,
+    noteTitle || 'Unavailable',
+  ].join(', ');
+
+  const rowContent = (
+    <>
+      <View style={styles.weekIndexRowHeader}>
+        <Text style={[styles.weekIndexWeekLabel, !isAvailable && styles.weekIndexMuted]}>
+          {`Week ${week.week_number}`}
+        </Text>
+        {isAvailable && (
+          <MaterialIcons name="chevron-right" size={16} color={colors.accent} accessible={false} />
+        )}
+      </View>
+      {noteTitle != null && (
+        <Text style={styles.weekIndexNoteTitle} numberOfLines={1}>{noteTitle}</Text>
+      )}
+      <Text style={styles.weekIndexStateText}>{stateText}</Text>
+    </>
+  );
+
+  if (isAvailable) {
+    return (
+      <Pressable
+        onPress={() => onNavigate?.('Log', { kind: 'note', noteId: week.note_id })}
+        style={styles.weekIndexRow}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+      >
+        {rowContent}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.weekIndexRow} accessible accessibilityLabel={a11yLabel}>
+      {rowContent}
+    </View>
+  );
 }
 
 function MetricCell({ metric, unit }) {
@@ -322,6 +388,7 @@ export function AnalyticsRecoverySection({
   stateStale = false,
   stateError = null,
   onRetry,
+  onNavigate,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -461,20 +528,33 @@ export function AnalyticsRecoverySection({
           {!historyCollapsed && completedBlocks.map((block, index) => {
             const isLast = index === completedBlocks.length - 1;
             const selected = focusedBlock.id === block.id;
+            const blockWeeks = weeks
+              .filter(w => isLiveRecord(w) && w.block_id === block.id)
+              .sort((a, b) => a.week_number - b.week_number);
             return (
-              <Pressable
-                key={block.id}
-                onPress={() => setFocusedBlockId(block.id)}
-                style={[styles.historyRow, isLast && styles.historyRowLast, selected && styles.historyRowSelected]}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`View recovery evidence for ${block.baseline_note_title || 'Untitled Routine'}, completed ${formatDate(block.completed_at)}`}
-              >
-                <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
-                <Text style={styles.historyDates}>
-                  {formatDate(block.started_at)} – {formatDate(block.completed_at)}
-                </Text>
-              </Pressable>
+              <View key={block.id} style={[styles.historyBlockGroup, !isLast && styles.historyBlockGroupBorder]}>
+                <Pressable
+                  onPress={() => setFocusedBlockId(block.id)}
+                  style={[styles.historyRow, selected && styles.historyRowSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`View recovery evidence for ${block.baseline_note_title || 'Untitled Routine'}, completed ${formatDate(block.completed_at)}`}
+                >
+                  <Text style={styles.historyBaselineTitle}>{block.baseline_note_title || 'Untitled Routine'}</Text>
+                  <Text style={styles.historyDates}>
+                    {formatDate(block.started_at)} – {formatDate(block.completed_at)}
+                  </Text>
+                </Pressable>
+                {blockWeeks.map(w => (
+                  <WeekIndexRow
+                    key={w.id}
+                    block={block}
+                    week={w}
+                    notesById={notesById}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </View>
             );
           })}
         </View>
@@ -739,15 +819,16 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  historyBlockGroup: {
+  },
+  historyBlockGroupBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
   historyRow: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
     gap: 4,
-  },
-  historyRowLast: {
-    borderBottomWidth: 0,
   },
   historyRowSelected: {
     backgroundColor: colors.subtleBg,
@@ -759,6 +840,34 @@ const createStyles = (colors) => StyleSheet.create({
   },
   historyDates: {
     fontSize: 12,
+    color: colors.textMuted,
+  },
+  weekIndexRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: 2,
+  },
+  weekIndexRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weekIndexWeekLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  weekIndexNoteTitle: {
+    fontSize: 13,
+    color: colors.text,
+  },
+  weekIndexStateText: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  weekIndexMuted: {
     color: colors.textMuted,
   },
 });
