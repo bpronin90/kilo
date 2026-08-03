@@ -112,6 +112,17 @@ export function LogScreen({
   const [recoveryModal, setRecoveryModal] = useState(null); // { mode: 'routine'|'note', note } | null
   const [addWeekModalOpen, setAddWeekModalOpen] = useState(false);
 
+  // A monotonic nonce bumped on every EXTERNAL request to reveal a non-current
+  // routine — a typed navigation intent (#718) resolved below, or a
+  // Recovery-history/lifecycle tap. LogPreviousRoutines keys its auto-expand on
+  // this key, not on `viewingNoteId`, so a fresh request re-expands the
+  // collapsed disclosure even when it re-selects the already-selected note (a
+  // later #718 key for the same note, or a re-tap of an already-selected but
+  // hidden recovery note), while ordinary re-renders under an unchanged key
+  // still respect a user's explicit collapse (#724 review).
+  const [routineRevealKey, setRoutineRevealKey] = useState(0);
+  const revealRoutine = () => setRoutineRevealKey(k => k + 1);
+
   // Single lifecycle mutex (#696 review): null | 'week' | 'block' | 'add' |
   // 'delete-unlink' | a week id being unlinked. Every recovery-block write —
   // including the Add Week modal's own confirm, which lives in a sibling
@@ -301,6 +312,10 @@ export function LogScreen({
     // "ensure this note is shown", so it must be idempotent, and it touches only
     // the viewer — never editingNoteId/editingText or any other editor state.
     otherEditor.setViewingNoteId(note.id);
+    // A non-current routine lives inside the collapsed routine-management
+    // disclosure (#724); bump the reveal nonce so it expands for this request
+    // even if the note was already the selected one.
+    revealRoutine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navNoteKey, navNoteId, notesLoading, notesError, notes, currentId, currentEditor.mode, otherEditor.editingNoteId, deloadEditor.deloadMode]);
 
@@ -508,9 +523,15 @@ export function LogScreen({
     return result;
   });
 
+  // A Recovery-history/lifecycle note tap is a "reveal this note" request, so it
+  // is set-only (not the toggling handleViewOtherNote): re-tapping a note that is
+  // already selected but hidden behind a collapsed disclosure must SHOW it, never
+  // toggle the selection off (#724 review). The reveal nonce then expands the
+  // disclosure for this request regardless of whether the selection changed.
   const handleViewRecoveryNote = (note) => {
     if (!note || note.id === currentId) return;
-    otherEditor.handleViewOtherNote(note);
+    otherEditor.setViewingNoteId(note.id);
+    revealRoutine();
   };
 
   // Deleting a linked recovery-week note (any week, active or completed
@@ -708,6 +729,7 @@ export function LogScreen({
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
                 onStartRecoveryBlock={openStartRecoveryBlock}
                 showRecoveryStart={showRecoveryStartInManagement}
+                externalRevealKey={routineRevealKey}
               />
             )}
           </>

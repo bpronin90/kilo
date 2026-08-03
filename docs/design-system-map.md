@@ -563,10 +563,14 @@ Consequences to preserve:
   line, and `accessibilityState={{ expanded }}`. Collapsed, it renders zero
   actions and mounts no routine-card controls; the routine cards, `+ New
   routine`, and `Start recovery block` exist only in the expanded body. A card
-  header's only nested press target is still identity. An externally requested
-  selection (typed navigation #718, or a Recovery-history/lifecycle tap that sets
-  `viewingNoteId` on a non-current routine) auto-expands the disclosure so the
-  target is visible, without re-expanding after a later explicit user collapse.
+  header's only nested press target is still identity. An external request to
+  reveal a non-current routine (typed navigation #718, or a
+  Recovery-history/lifecycle tap) auto-expands the disclosure via a monotonic
+  reveal nonce keyed on the REQUEST, not on `viewingNoteId` — so a repeat request
+  for the already-selected note (a later #718 key, or a re-tap of a hidden
+  Recovery note) reopens it, while an unchanged nonce respects a user's collapse.
+  Recovery-note taps are set-only, so re-tapping a hidden note shows it rather
+  than toggling the selection off.
 - The active card's strip renders `Skip week` **or** `Remove skip`, never both.
   There is no opacity-dimmed disabled variant.
 - The `Double-tap to edit` hint is retired in both the active card and the

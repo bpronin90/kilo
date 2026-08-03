@@ -38,28 +38,32 @@ export function LogPreviousRoutines({
   // confirm.
   onStartRecoveryBlock,
   showRecoveryStart = false,
+  // A monotonic nonce LogScreen bumps on every external request to reveal a
+  // non-current routine (#724 review). Keying auto-expand on the REQUEST rather
+  // than on `viewingNoteId` is what lets a repeated request for the
+  // already-selected note reopen the disclosure — a later #718 key for the same
+  // note, or a re-tap of an already-selected but hidden Recovery-history note —
+  // while ordinary re-renders under an unchanged key respect a user collapse.
+  externalRevealKey = 0,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   // Collapsed by default (#724): scanning the active routine must not compete
   // with routine/recovery management. The whole header is the disclosure.
   const [expanded, setExpanded] = useState(false);
-  // An externally requested selection must be visible even though the disclosure
-  // is collapsed by default (#724 review): a typed navigation intent (#718) or a
-  // Recovery-history/lifecycle tap sets `viewingNoteId` on a non-current
-  // routine, and that note is unmounted while collapsed. Expand for a NEW
-  // external selection, but never re-expand the same still-selected note — so a
-  // later explicit user collapse of the disclosure stands. Clearing the
-  // selection re-arms this, so re-selecting the same note later reopens it.
-  const autoExpandedForRef = useRef(null);
+  // Expand on each NEW external reveal request, so the requested note is never
+  // left unmounted behind the collapsed disclosure. The ref starts at 0 (the
+  // shell's "no request issued" sentinel) rather than the current prop, so an
+  // instance that MOUNTS already carrying a pending request — e.g. a #718 intent
+  // that switches Deload→Routine and mounts this list fresh — still expands. An
+  // unchanged nonce (ordinary re-render) never re-expands, so a later explicit
+  // user collapse stands until the next external request.
+  const prevRevealKeyRef = useRef(0);
   useEffect(() => {
-    if (!viewingNoteId) { autoExpandedForRef.current = null; return; }
-    if (autoExpandedForRef.current === viewingNoteId) return;
-    if (otherNotes.some(n => n.id === viewingNoteId)) {
-      autoExpandedForRef.current = viewingNoteId;
-      setExpanded(true);
-    }
-  }, [viewingNoteId, otherNotes]);
+    if (externalRevealKey === prevRevealKeyRef.current) return;
+    prevRevealKeyRef.current = externalRevealKey;
+    setExpanded(true);
+  }, [externalRevealKey]);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {

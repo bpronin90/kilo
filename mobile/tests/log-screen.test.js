@@ -6124,10 +6124,24 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(findPressableByText(root, 'Set as current routine')).toBeNull();
 
     // The Recovery History "View …" row is the first match and owns the tap.
-    render.act(() => { findPressableByText(root, 'Recovery Week 1 Note').props.onPress(); });
+    const historyRow = () => findPressableByText(root, 'Recovery Week 1 Note');
+    render.act(() => { historyRow().props.onPress(); });
 
     // The disclosure auto-expanded and the requested note is now mounted, so its
     // completed-history note-opening behavior survives the containment (#724).
+    expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
+
+    // #724 review: collapse the disclosure with the note still selected, then
+    // re-tap the SAME hidden history note. The tap is set-only (never toggles the
+    // selection off) and the reveal nonce reopens the disclosure, so the note is
+    // shown again rather than deselected.
+    const collapse = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Collapse routine management' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { collapse.props.onPress(); });
+    expect(findPressableByText(root, 'Set as current routine')).toBeNull();
+
+    render.act(() => { historyRow().props.onPress(); });
     expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
   });
 
@@ -8220,6 +8234,26 @@ describe('typed note navigation intents (#718)', () => {
 
     render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={2} />); });
 
+    expect(isShowingViewedNote(component)).toBe(true);
+  });
+
+  // #724 review: keying auto-expand on the request nonce, not viewingNoteId, so a
+  // later key for the SAME note reopens routine management after the user has
+  // explicitly collapsed the outer disclosure (with the note still selected).
+  test('a later key for the same note re-expands routine management after the user collapsed the disclosure', () => {
+    const component = mount({ navNoteId: 'r1', navNoteKey: 1 });
+    expect(isShowingViewedNote(component)).toBe(true);
+
+    // Collapse the whole routine-management disclosure — not the note — leaving
+    // the note still selected behind it.
+    const collapse = component.root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Collapse routine management' && typeof n.props.onPress === 'function'
+    )[0];
+    render.act(() => { collapse.props.onPress(); });
+    expect(isShowingViewedNote(component)).toBe(false);
+
+    // A new key for the same already-selected note must reopen the disclosure.
+    render.act(() => { component.update(<ControlledLogScreen navNoteId="r1" navNoteKey={2} />); });
     expect(isShowingViewedNote(component)).toBe(true);
   });
 
