@@ -6765,30 +6765,18 @@ describe('Recovery inclusion preference', () => {
     const component = await renderScreen();
     const controls = switchesFor(component.root);
 
-    // One control per block: the active card plus both completed history rows.
-    expect(controls.length).toBe(3);
-    const byBlock = Object.fromEntries(
-      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
-    );
-    expect(byBlock.rbActive.props.value).toBe(false);
-    expect(byBlock.rbDoneOn.props.value).toBe(true);
-    expect(byBlock.rbDoneOff.props.value).toBe(false);
-
-    // Flipping one completed block leaves the other two exactly as stored.
-    await render.act(async () => { await byBlock.rbDoneOff.props.onValueChange(true); });
-
-    const stored = await persistedBlocks();
-    const byId = Object.fromEntries(stored.map(b => [b.id, b]));
-    expect(byId.rbDoneOff.include_in_normal_analytics).toBe(true);
-    expect(byId.rbDoneOn.include_in_normal_analytics).toBe(true);
-    expect(byId.rbActive.include_in_normal_analytics).toBe(false);
+    // Log exposes only the active block's inclusion control; completed-block
+    // controls live on Analytics (#728). Both completed blocks are in storage
+    // but must not produce switches here.
+    expect(controls.length).toBe(1);
+    expect(controls[0].props.testID).toBe('recovery-inclusion-switch-rbActive');
+    expect(controls[0].props.value).toBe(false);
   });
 
   test('an in-flight write disables EVERY inclusion switch, not just the one being written', async () => {
-    // Two completed blocks plus the active one: without this, the other two
-    // switches stay enabled to sighted and accessibility clients while
-    // `handleToggleInclusion` silently discards their presses.
-    await setup({ blocks: [activeBlock, completedBlockOn, completedBlockOff] });
+    // Log shows only the active block; completed-block global serialization is
+    // tested on Analytics (#728).
+    await setup({ blocks: [activeBlock] });
     let resolveWrite;
     const updateSpy = jest.spyOn(recoveryStorageModule, 'updateRecoveryBlock')
       .mockImplementation(() => new Promise((resolve) => { resolveWrite = resolve; }));
