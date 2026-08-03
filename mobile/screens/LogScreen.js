@@ -375,20 +375,21 @@ export function LogScreen({
   const closeRecoveryModal = () => setRecoveryModal(null);
 
   // The relocated `Start recovery block` entry point (#724) now lives inside
-  // expanded routine management, not the Recovery section. Two decisions from
-  // the shared authoritative state drive it:
-  //   - visibility: offered only when a block could actually be started — no
-  //     active block, the read is verified and not stale, and at least one note
-  //     is eligible to be frozen as a baseline (eligibleBaselineNotes is already
-  //     empty until the read is verified). Absent for a non-adopter, so it is
-  //     reachable only by opening the disclosure.
-  //   - lock: disabled while a recovery mutation is unresolved/in-flight or the
-  //     shared contract forbids mutations; startRecoveryBlock rechecks the
-  //     authoritative precondition at confirm regardless.
+  // expanded routine management, not the Recovery section. The contract requires
+  // it ABSENT — not merely disabled — whenever a block cannot be started right
+  // now, so every gate folds into one visibility predicate: no active block, a
+  // verified and non-stale read, at least one eligible baseline
+  // (eligibleBaselineNotes is already empty until the read is verified), and no
+  // pending/in-flight recovery action or mutation lock. startRecoveryBlock
+  // rechecks the authoritative precondition at confirm regardless.
   const showRecoveryStartInManagement =
-    !activeRecoveryBlock && recoveryReady && !recoveryStale && eligibleBaselineNotes.length > 0;
-  const recoveryStartLocked =
-    !!recoveryActionBusy || (pendingRecovery?.length || 0) > 0 || !recoveryMutationsAllowed;
+    !activeRecoveryBlock
+    && recoveryReady
+    && !recoveryStale
+    && !recoveryActionBusy
+    && (pendingRecovery?.length || 0) === 0
+    && recoveryMutationsAllowed
+    && eligibleBaselineNotes.length > 0;
 
   const handleConfirmRecoveryBlock = async ({ baselineNoteId, weekChoice, weekNoteId, newNoteTitle }) => {
     if (!startRecoveryBlock) {
@@ -707,7 +708,6 @@ export function LogScreen({
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
                 onStartRecoveryBlock={openStartRecoveryBlock}
                 showRecoveryStart={showRecoveryStartInManagement}
-                recoveryStartDisabled={recoveryStartLocked}
               />
             )}
           </>

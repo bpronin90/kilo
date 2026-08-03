@@ -2944,7 +2944,9 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     const wrapRows = findStyled(root, s => s.flexWrap === 'wrap');
     expect(wrapRows.length).toBeGreaterThan(0);
 
-    const pills = findStyled(root, s => s.minHeight === 44);
+    // Scope to the pill's 44dp target: the disclosure header now also carries a
+    // 44dp min height (#724 review), but only the pill also shrinks.
+    const pills = findStyled(root, s => s.minHeight === 44 && s.flexShrink === 1);
     expect(pills.length).toBe(1);
     const pillStyle = flatStyle(pills[0]);
     expect(pillStyle.justifyContent).toBe('center');
@@ -3382,6 +3384,21 @@ describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
     expect(findPressableByText(root, '+ New routine')).toBeNull();
     expect(latestValue(root)).toBe('One');
   });
+
+  test('the disclosure header keeps a 44dp touch target when collapsed-empty and when expanded (#724 review)', () => {
+    const flat = (node) => (Array.isArray(node.props.style)
+      ? Object.assign({}, ...node.props.style.filter(Boolean))
+      : node.props.style) || {};
+
+    // Collapsed with zero routines — the sparsest header — still ≥44dp.
+    const empty = renderList({ otherNotes: [] });
+    expect(flat(headerFor(empty)).minHeight).toBeGreaterThanOrEqual(44);
+
+    // Expanded, where the header holds only the count, still ≥44dp.
+    const one = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
+    render.act(() => { headerFor(one).props.onPress(); });
+    expect(flat(headerFor(one)).minHeight).toBeGreaterThanOrEqual(44);
+  });
 });
 
 describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)', () => {
@@ -3423,23 +3440,14 @@ describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)
     expect(onStartRecoveryBlock).toHaveBeenCalledTimes(1);
   });
 
-  test('mutation lock: rendered but disabled and inert while the shared recovery lock is held', () => {
-    const onStartRecoveryBlock = jest.fn();
-    const root = renderList({ showRecoveryStart: true, recoveryStartDisabled: true, onStartRecoveryBlock });
-    expandRoutineManagement(root);
-
-    const btn = buttonByText(root, 'Start recovery block');
-    expect(btn).toBeTruthy();
-    expect(btn.props.accessibilityState.disabled).toBe(true);
-    // The shared Button nulls onPress while disabled, so a press writes nothing.
-    render.act(() => { btn.props.onPress && btn.props.onPress(); });
-    expect(onStartRecoveryBlock).not.toHaveBeenCalled();
-  });
-
-  test('ineligible: absent entirely, even once routine management is expanded', () => {
+  test('not startable: absent entirely, even once routine management is expanded', () => {
+    // The mutation lock (pending/busy/mutations-not-allowed) and every other
+    // not-startable condition fold into `showRecoveryStart` upstream, so the
+    // control is never rendered as a dead or disabled affordance (#724 review).
     const root = renderList({ showRecoveryStart: false });
     expandRoutineManagement(root);
     expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+    expect(buttonByText(root, 'Start recovery block')).toBeNull();
   });
 });
 
@@ -5093,8 +5101,10 @@ describe('Recovery Block start flow', () => {
     expect(findPressableByText(root, 'Start recovery block')).toBeNull();
   });
 
-  test('a pending recovery operation shows the start control but locks it (#724)', () => {
+  test('a pending recovery operation withholds the start control from routine management (#724)', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    // The contract requires the control ABSENT — not merely disabled — while
+    // another Recovery action is pending/busy (#724 review finding 2).
     useEntries.useRecoveryBlockState.mockReturnValue({
       ...useEntries.useRecoveryBlockState(),
       pendingRecovery: [{ id: 'op1', error: null }],
@@ -5104,9 +5114,22 @@ describe('Recovery Block start flow', () => {
     const root = component.root;
 
     expandRoutineManagement(root);
-    const btn = buttonByText(root, 'Start recovery block');
-    expect(btn).toBeTruthy();
-    expect(btn.props.accessibilityState.disabled).toBe(true);
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+    expect(buttonByText(root, 'Start recovery block')).toBeNull();
+  });
+
+  test('mutations-not-allowed withholds the start control from routine management (#724)', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...useEntries.useRecoveryBlockState(),
+      mutationsAllowed: false,
+    });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expandRoutineManagement(root);
+    expect(buttonByText(root, 'Start recovery block')).toBeNull();
   });
 
   test('the action lock rejects a second concurrent start from the entry point', async () => {
@@ -6080,6 +6103,32 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     // needing to tap the collapse control.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBeGreaterThan(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Week 1 Note').length).toBeGreaterThan(0);
+  });
+
+  test('tapping a completed-history note opens it, auto-expanding collapsed routine management (#724)', () => {
+    const completedBlock = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
+    };
+    const historyWeeks = [
+      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+    ];
+    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    // Routine management starts collapsed, so the note's own card (and its
+    // lifecycle actions) are unmounted until the history tap requests it.
+    expect(findPressableByText(root, 'Set as current routine')).toBeNull();
+
+    // The Recovery History "View …" row is the first match and owns the tap.
+    render.act(() => { findPressableByText(root, 'Recovery Week 1 Note').props.onPress(); });
+
+    // The disclosure auto-expanded and the requested note is now mounted, so its
+    // completed-history note-opening behavior survives the containment (#724).
+    expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
   });
 
   test('collapsing recovery history hides detail but keeps a meaningful summary', () => {
@@ -8090,15 +8139,13 @@ describe('typed note navigation intents (#718)', () => {
     alertSpy.mockRestore();
   });
 
-  // LogPreviousRoutines only renders the viewed-note body (and its
-  // `Double-tap to edit` hint) for the note whose id matches viewingNoteId, so
-  // this is the screen-level signal that a note is actually being shown.
+  // Screen-level signal that a note is actually being shown. A viewed
+  // non-current ROUTINE renders its lifecycle actions (`Set as current routine`)
+  // in the expanded routine-management body — the `Double-tap to edit` hint was
+  // retired there (#724) — while a viewed past-DELOAD note still renders that
+  // hint in LogDeloadSection. Either proves the resolved note is mounted.
   const isShowingViewedNote = (component) =>
-    component.root.findAll(
-      n => n.type === 'Text'
-        && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '')
-          .includes('Double-tap to edit')
-    ).length > 0;
+    hasText(component, 'Set as current routine') || hasText(component, 'Double-tap to edit');
 
   function mount(props) {
     let component;

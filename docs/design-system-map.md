@@ -557,23 +557,28 @@ action is placed by how often it is used:
 Consequences to preserve:
 
 - **More Routines is a collapsed-by-default disclosure (#724).** It follows the
-  shared collapse convention: a whole-header press target with the `MaterialIcons`
-  `expand-more`/`expand-less` chevron (18, `textMuted`), a collapsed summary of a
-  routine count over a `Latest: …` line, and `accessibilityState={{ expanded }}`.
-  Collapsed, it renders zero actions and mounts no routine-card controls; the
-  routine cards, `+ New routine`, and `Start recovery block` exist only in the
-  expanded body. A card header's only nested press target is still identity.
+  shared collapse convention: a whole-header press target (with a `44` `minHeight`
+  touch floor) carrying the `MaterialIcons` `expand-more`/`expand-less` chevron
+  (18, `textMuted`), a collapsed summary of a routine count over a `Latest: …`
+  line, and `accessibilityState={{ expanded }}`. Collapsed, it renders zero
+  actions and mounts no routine-card controls; the routine cards, `+ New
+  routine`, and `Start recovery block` exist only in the expanded body. A card
+  header's only nested press target is still identity. An externally requested
+  selection (typed navigation #718, or a Recovery-history/lifecycle tap that sets
+  `viewingNoteId` on a non-current routine) auto-expands the disclosure so the
+  target is visible, without re-expanding after a later explicit user collapse.
 - The active card's strip renders `Skip week` **or** `Remove skip`, never both.
   There is no opacity-dimmed disabled variant.
 - The `Double-tap to edit` hint is retired in both the active card and the
   non-current card body (#711, #724); the double-tap gesture itself still works.
 - The single Recovery entry point lives in expanded routine management (#724),
-  not the Recovery section. It renders only when a baseline note is eligible, no
-  block is active, and the shared Recovery read is verified and not stale; it is
-  disabled while the shared Recovery lock is held (a pending/in-flight action or
-  `mutationsAllowed` false), and opens `RecoveryBlockStartModal` with
+  not the Recovery section. It is **absent** — not merely disabled — whenever a
+  block cannot be started: it renders only when a baseline note is eligible, no
+  block is active, the shared Recovery read is verified and not stale, and no
+  Recovery action is pending/in-flight with `mutationsAllowed` true. When shown
+  it is always live, and opens `RecoveryBlockStartModal` with
   `{ mode: 'routine', note: null }` so the modal's own baseline/Week 1 pickers
-  choose the subject. `startRecoveryBlock` rechecks the authoritative
+  choose the subject; `startRecoveryBlock` rechecks the authoritative
   precondition at confirm.
 - `LogRecoverySection` renders only when Recovery affects the current workout
   (active/pending/terminal-error/stale) or completed history remains (#724). A

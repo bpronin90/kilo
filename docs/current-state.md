@@ -983,11 +983,16 @@ collapsed-by-default disclosure (#724): collapsed it shows only a routine count
 over a latest-routine summary with the shared chevron and no actions, while its
 routine cards, `+ New routine`, and the single `Start recovery block` entry
 point live only in its expanded body, and the visible `Double-tap to edit` hint
-is gone while the gesture remains. The Recovery section itself no longer hosts a
-start control and, for a verified non-adopter, is absent entirely — it appears
-only when Recovery affects the current workout (active/pending/error/stale) or
-completed history remains, and a cold first read stays neutral rather than
-flashing a Recovery card. The same Log flow now autosaves edits to existing
+is gone while the gesture remains. Opening a routine from elsewhere — a typed
+cross-screen navigation intent or a Recovery-history note tap — auto-expands the
+disclosure so the requested note is shown. The `Start recovery block` control is
+present only when a block can actually be started and is absent (not just
+disabled) whenever an active block exists, the read is unverified/stale, no
+baseline is eligible, or another Recovery action is pending/busy. The Recovery
+section itself no longer hosts a start control and, for a verified non-adopter,
+is absent entirely — it appears only when Recovery affects the current workout
+(active/pending/error/stale) or completed history remains, and a cold first read
+stays neutral rather than flashing a Recovery card. The same Log flow now autosaves edits to existing
 saved routines and note-backed past deloads while preserving explicit-save
 behavior only for never-saved notes. The local backup/import path
 also now preserves multiple

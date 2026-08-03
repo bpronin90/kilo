@@ -6,7 +6,7 @@
 // each card's header carries identity only; Week A/B, Set as current, Edit, and
 // Delete live in its own expand-on-tap body) plus the section's two management
 // actions: `Start recovery block` and `+ New routine`.
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, Button, SectionTitle } from './UI';
@@ -28,22 +28,38 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
   recoveryWeekNumberByNoteId = {},
-  // The one relocated Recovery entry point (#724). LogScreen decides both flags
-  // from the shared authoritative Recovery state: `showRecoveryStart` is the
-  // visibility predicate (no active block, verified, not stale, at least one
-  // eligible baseline), and `recoveryStartDisabled` is the shared mutation lock
-  // (a pending/in-flight recovery action, or mutations not yet allowed). The
-  // callback takes no subject — RecoveryBlockStartModal picks its own baseline
-  // and Week 1 — and the authoritative precondition is rechecked at confirm.
+  // The one relocated Recovery entry point (#724). `showRecoveryStart` is the
+  // full startability predicate decided by LogScreen from the shared
+  // authoritative Recovery state: no active block, verified, not stale, an
+  // eligible baseline, AND no pending/in-flight action or mutation lock — the
+  // contract requires the control ABSENT (not merely disabled) whenever a block
+  // cannot be started. The callback takes no subject — RecoveryBlockStartModal
+  // picks its own baseline and Week 1 — and the precondition is rechecked at
+  // confirm.
   onStartRecoveryBlock,
   showRecoveryStart = false,
-  recoveryStartDisabled = false,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   // Collapsed by default (#724): scanning the active routine must not compete
   // with routine/recovery management. The whole header is the disclosure.
   const [expanded, setExpanded] = useState(false);
+  // An externally requested selection must be visible even though the disclosure
+  // is collapsed by default (#724 review): a typed navigation intent (#718) or a
+  // Recovery-history/lifecycle tap sets `viewingNoteId` on a non-current
+  // routine, and that note is unmounted while collapsed. Expand for a NEW
+  // external selection, but never re-expand the same still-selected note — so a
+  // later explicit user collapse of the disclosure stands. Clearing the
+  // selection re-arms this, so re-selecting the same note later reopens it.
+  const autoExpandedForRef = useRef(null);
+  useEffect(() => {
+    if (!viewingNoteId) { autoExpandedForRef.current = null; return; }
+    if (autoExpandedForRef.current === viewingNoteId) return;
+    if (otherNotes.some(n => n.id === viewingNoteId)) {
+      autoExpandedForRef.current = viewingNoteId;
+      setExpanded(true);
+    }
+  }, [viewingNoteId, otherNotes]);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -193,14 +209,14 @@ export function LogPreviousRoutines({
             ))}
 
             {/* The single `Start recovery block` entry point (#724). Rendered
-                only when a block could actually be started; disabled while the
-                shared Recovery lock is held. Absent for a non-adopter who is not
-                eligible, so it is reachable only by opening this disclosure. */}
+                only when a block can actually be started right now (LogScreen
+                folds the pending/busy/mutation lock into `showRecoveryStart`),
+                and absent otherwise — so it is reachable only by opening this
+                disclosure, and never shown as a dead or locked control. */}
             {showRecoveryStart && (
               <Button
                 onPress={onStartRecoveryBlock}
                 title="Start recovery block"
-                disabled={recoveryStartDisabled}
                 style={styles.recoveryStartButton}
                 textStyle={styles.recoveryStartButtonText}
               />
@@ -238,6 +254,10 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    // The whole header is the only expand/collapse target, and collapsed-with-
+    // zero-routines or expanded it holds only the 12px count; a 44dp floor keeps
+    // it a legible touch/motor target under large text too (#724 review).
+    minHeight: 44,
     backgroundColor: colors.subtleBg,
   },
   headerBordered: {
@@ -361,9 +381,9 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.error,
   },
   // The relocated recovery entry point keeps the accent-filled primary look it
-  // had in LogRecoverySection. Its disabled state uses the shared Button's
-  // dim (the app-wide disabled-Button convention), driven by the shared
-  // Recovery lock; the authoritative precondition is rechecked at confirm.
+  // had in LogRecoverySection. It is only ever rendered when live (the lock is
+  // folded into visibility upstream), so it carries no disabled variant; the
+  // authoritative precondition is rechecked at confirm.
   recoveryStartButton: {
     backgroundColor: colors.accent,
     borderWidth: 1,
