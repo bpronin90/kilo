@@ -3427,7 +3427,7 @@ describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)
 
   test('eligible: absent while collapsed, then shown and live in the expanded body', () => {
     const onStartRecoveryBlock = jest.fn();
-    const root = renderList({ showRecoveryStart: true, recoveryStartDisabled: false, onStartRecoveryBlock });
+    const root = renderList({ showRecoveryStart: true, onStartRecoveryBlock });
 
     // Reachable only by opening the disclosure — never on the collapsed surface.
     expect(findPressableByText(root, 'Start recovery block')).toBeNull();
