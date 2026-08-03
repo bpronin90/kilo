@@ -550,7 +550,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  test('a parser-unavailable note week shows Unavailable and has no onPress', () => {
+  test('a parser-unavailable note week (size limit) shows Unavailable and has no onPress', () => {
     const onNavigate = jest.fn();
     const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
     const w = week(1, 'note-huge', { block_id: 'rb-c', id: 'rw-c-1' });
@@ -562,6 +562,33 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     expect(row).toBeDefined();
     expect(row.props.onPress).toBeUndefined();
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('a parser-unavailable note week (set row with no exercise) shows Unavailable and has no onPress', () => {
+    // A set row with no preceding exercise header causes parseWorkoutNote to return ok:false
+    // even though the note is well under the size limit.
+    const onNavigate = jest.fn();
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'note-bad', { block_id: 'rb-c', id: 'rw-c-1' });
+    const n = note('note-bad', '-135 5,5,5', 'Orphan Sets');
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
+    const root = component.root;
+
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Unavailable')[0];
+    expect(row).toBeDefined();
+    expect(row.props.onPress).toBeUndefined();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('an unavailable note on a completed week shows Unavailable, not the completion date', () => {
+    const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
+    const w = week(1, 'ghost-note', { block_id: 'rb-c', id: 'rw-c-1', completed_at: '2026-03-15T00:00:00Z' });
+    const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [] }, jest.fn());
+    const root = component.root;
+
+    expect(hasText(root, 'Unavailable')).toBe(true);
+    // The completion date must not appear as the state text when the note is unavailable.
+    expect(hasText(root, 'Mar 15, 2026')).toBe(false);
   });
 
   test('non-contiguous persisted week numbers render in ordinal order, not array position', () => {

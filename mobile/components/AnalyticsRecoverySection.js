@@ -14,7 +14,7 @@ import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatLiftWeightValue } from '../lib/units';
 import { formatDate, formatDuration } from '../lib/format';
 import { findActiveBlock, isLiveRecord } from '../lib/data/recoveryBlocks';
-import { MAX_RAW_TEXT_LENGTH } from '../lib/parser/workoutNote';
+import { parseWorkoutNote } from '../lib/parser/workoutNote';
 import {
   RECOVERY_LOADING_MESSAGE,
   RECOVERY_STALE_MESSAGE,
@@ -98,9 +98,8 @@ function _rowAccessibilityLabel(row, unit) {
 function _weekNoteStatus(week, notesById) {
   const note = notesById.get(week.note_id);
   if (!note) return { kind: 'missing', title: null };
-  if (note.raw_text && note.raw_text.length > MAX_RAW_TEXT_LENGTH) {
-    return { kind: 'unreadable', title: note.title || 'Untitled Routine' };
-  }
+  const { ok } = parseWorkoutNote(note.raw_text || '');
+  if (!ok) return { kind: 'unreadable', title: note.title || 'Untitled Routine' };
   return { kind: 'ok', title: note.title || 'Untitled Routine' };
 }
 
@@ -111,11 +110,11 @@ function WeekIndexRow({ block, week, notesById, onNavigate }) {
   const isAvailable = kind === 'ok';
 
   const noteTitle = isAvailable ? title : null;
-  const stateText = week.completed_at
-    ? formatDate(week.completed_at)
-    : isAvailable
-      ? 'In progress'
-      : 'Unavailable';
+  const stateText = !isAvailable
+    ? 'Unavailable'
+    : week.completed_at
+      ? formatDate(week.completed_at)
+      : 'In progress';
 
   const a11yLabel = [
     block.baseline_note_title || 'Untitled Routine',
