@@ -6084,7 +6084,10 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Network unavailable').length).toBe(1);
   });
 
-  test('completed-block history renders collapsed with a summary, and expands to show ordered weeks', () => {
+  test('Log renders no Recovery section when only completed blocks exist — one block', () => {
+    // Completed history lives in Analytics (#729). With no active block, no
+    // pending operations, and no stale snapshot, the Recovery section must not
+    // render at all regardless of how many completed blocks are in storage.
     const completedBlock = {
       id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
       started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
@@ -6098,90 +6101,54 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    expect(findPressableByText(root, '1 completed block')).toBeTruthy();
-    // Default expanded: the baseline title and its week both render without
-    // needing to tap the collapse control.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBeGreaterThan(0);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery Week 1 Note').length).toBeGreaterThan(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery').length).toBe(0);
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
+    expect(findPressableByText(root, '1 completed block')).toBeNull();
   });
 
-  test('tapping a completed-history note opens it, auto-expanding collapsed routine management (#724)', () => {
-    const completedBlock = {
-      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
+  test('Log renders no Recovery section when only completed blocks exist — multiple blocks', () => {
+    const block1 = {
+      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline',
+      started_at: '2025-09-01T00:00:00.000Z', completed_at: '2025-10-01T00:00:00.000Z', deleted_at: null,
+    };
+    const block2 = {
+      id: 'rb1x', baseline_note_id: 'oldBaseline2', baseline_note_title: 'Another Baseline',
       started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
     };
-    const historyWeeks = [
-      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
-    ];
-    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+    setup({ notes: [baselineNote], weeks: [], activeBlock: null, blocks: [block1, block2] });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    // Routine management starts collapsed, so the note's own card (and its
-    // lifecycle actions) are unmounted until the history tap requests it.
-    expect(findPressableByText(root, 'Set as current routine')).toBeNull();
-
-    // The Recovery History "View …" row is the first match and owns the tap.
-    const historyRow = () => findPressableByText(root, 'Recovery Week 1 Note');
-    render.act(() => { historyRow().props.onPress(); });
-
-    // The disclosure auto-expanded and the requested note is now mounted, so its
-    // completed-history note-opening behavior survives the containment (#724).
-    expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
-
-    // #724 review: collapse the disclosure with the note still selected, then
-    // re-tap the SAME hidden history note. The tap is set-only (never toggles the
-    // selection off) and the reveal nonce reopens the disclosure, so the note is
-    // shown again rather than deselected.
-    const collapse = root.findAll(
-      n => n.props && n.props.accessibilityLabel === 'Collapse routine management' && typeof n.props.onPress === 'function'
-    )[0];
-    render.act(() => { collapse.props.onPress(); });
-    expect(findPressableByText(root, 'Set as current routine')).toBeNull();
-
-    render.act(() => { historyRow().props.onPress(); });
-    expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Recovery History').length).toBe(0);
+    expect(findPressableByText(root, '2 completed blocks')).toBeNull();
   });
 
-  test('collapsing recovery history hides detail but keeps a meaningful summary', () => {
-    const completedBlock = {
-      id: 'rb0', baseline_note_id: 'oldBaseline', baseline_note_title: 'Old Baseline Routine',
-      started_at: '2025-11-01T00:00:00.000Z', completed_at: '2025-12-01T00:00:00.000Z', deleted_at: null,
-    };
-    const historyWeeks = [
-      { id: 'hw1', block_id: 'rb0', note_id: week1Note.id, week_number: 1, completed_at: '2025-11-08T00:00:00.000Z', deleted_at: null },
+  test('Log hides completed-week rows within the active block, shows only the current in-progress week', () => {
+    // Completed week rows live in Analytics (#729). The active block card must
+    // render only the current (not-yet-completed) week.
+    const weeks = [
+      { id: 'rw1', block_id: 'rb1', note_id: week1Note.id, week_number: 1, completed_at: '2026-01-08T00:00:00.000Z', deleted_at: null },
+      { id: 'rw2', block_id: 'rb1', note_id: week2Note.id, week_number: 2, completed_at: null, deleted_at: null },
     ];
-    setup({ notes: [baselineNote, week1Note], weeks: historyWeeks, activeBlock: null, blocks: [completedBlock] });
+    setup({ notes: [baselineNote, week1Note, week2Note], weeks });
 
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
-    // Expanded: the baseline title renders once (the detail row), no "Latest:"
-    // summary yet, and the linked week's date is visible in the history row.
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(1);
-
-    const collapseBtn = findPressableByText(root, '1 completed block');
-    render.act(() => { collapseBtn.props.onPress(); });
-
-    // Collapsed: the per-week detail (including its completion date) is gone,
-    // but the baseline title survives as the collapsed summary's "Latest: …"
-    // line, not as a bare count. (Collapsed routine management carries its own
-    // "Latest:" summary too (#724), so match the recovery one by its value.)
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(0);
-    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
-    const recoveryLatest = root.findAll(
-      n => n.type === 'Text'
-        && Array.isArray(n.props.children)
-        && n.props.children[0] === 'Latest: '
-        && n.props.children[1]
-        && n.props.children[1].props
-        && n.props.children[1].props.children === 'Old Baseline Routine'
+    // The in-progress week renders as a navigable row; the completed week does not.
+    const weekRows = root.findAll(n =>
+      n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('View ')
+      && n.props.accessibilityLabel.includes('Recovery Week')
+      && typeof n.props.onPress === 'function'
     );
-    expect(recoveryLatest.length).toBe(1);
+    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 2'))).toBe(true);
+    expect(weekRows.some(r => r.props.accessibilityLabel.includes('Week 1'))).toBe(false);
+    // No "Completed …" status text in the Recovery section.
+    expect(root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && n.props.children.startsWith('Completed ')).length).toBe(0);
   });
 
   test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the atomic delete', async () => {
