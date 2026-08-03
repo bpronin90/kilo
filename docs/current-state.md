@@ -363,11 +363,10 @@ The real native app path now has a modular React Native shell:
   remaining history (resetting to the absolute session count when none remain).
   Log also exposes the first user-visible slice of the recovery-block domain
   (#692-694): the single `Start recovery block` action lives in expanded More
-  Routines management, while a `Mark as recovery week` action remains on an
-  eligible unlinked note. Either path opens a confirmation modal that freezes
-  the chosen baseline routine and attaches a new-or-existing note as `Recovery
-  Week 1` (#695). Eligibility is purely
-  structural (not linked to any block, not a baseline, not a deload note) and
+  Routines management and opens a confirmation modal where the user selects the
+  frozen baseline routine, then selects an eligible existing note or creates a
+  new note as `Recovery Week 1` (#695). Existing-note eligibility is purely
+  structural (not linked to any block, not a baseline, not a deload note), and
   a linked note only gains an accessible `Recovery Week 1` badge — its title,
   raw text, editor, autosave, and analytics projections stay untouched. A
   Recovery section on Log (#696) now shows the active block's baseline, its
