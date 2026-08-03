@@ -1,12 +1,16 @@
-// Non-current routine cards (#711 information hierarchy): every action on these
-// cards is occasional, so the card header carries identity only — title, date,
-// recovery badge — and a collapsed More Routines list therefore shows zero
-// buttons. Tapping a card expands it, and the expanded body is where Week A/B,
-// Set as current routine, Edit routine, and Delete routine live.
-import React, { useRef } from 'react';
+// Routine management (#724): the non-current routines and every routine/recovery
+// management action now live inside a collapsed-by-default disclosure so the
+// active routine stays the dominant Log surface. Collapsed, the section is
+// action-free — it shows only a count + latest-routine summary and the shared
+// chevron. Expanded, it renders the routine cards (#711 information hierarchy:
+// each card's header carries identity only; Week A/B, Set as current, Edit, and
+// Delete live in its own expand-on-tap body) plus the section's two management
+// actions: `Start recovery block` and `+ New routine`.
+import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Card, Button, SectionTitle } from './UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -24,8 +28,22 @@ export function LogPreviousRoutines({
   handleDeleteRoutine,
   handleCreateRoutine,
   recoveryWeekNumberByNoteId = {},
+  // The one relocated Recovery entry point (#724). LogScreen decides both flags
+  // from the shared authoritative Recovery state: `showRecoveryStart` is the
+  // visibility predicate (no active block, verified, not stale, at least one
+  // eligible baseline), and `recoveryStartDisabled` is the shared mutation lock
+  // (a pending/in-flight recovery action, or mutations not yet allowed). The
+  // callback takes no subject — RecoveryBlockStartModal picks its own baseline
+  // and Week 1 — and the authoritative precondition is rechecked at confirm.
+  onStartRecoveryBlock,
+  showRecoveryStart = false,
+  recoveryStartDisabled = false,
 }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  // Collapsed by default (#724): scanning the active routine must not compete
+  // with routine/recovery management. The whole header is the disclosure.
+  const [expanded, setExpanded] = useState(false);
   // Double-tap the viewed routine body to open it in the editor (matches main).
   const viewingNoteLastTapRef = useRef(0);
   const handleViewedNoteBodyPress = () => {
@@ -39,110 +57,163 @@ export function LogPreviousRoutines({
     }
   };
 
+  const routineCount = otherNotes.length;
+  // ISO timestamps sort lexicographically, so the max updated_at is the latest
+  // routine without parsing a Date. The list order below is left untouched.
+  const latestRoutine = routineCount > 0
+    ? otherNotes.reduce((a, b) => (String(b.updated_at || '') > String(a.updated_at || '') ? b : a))
+    : null;
+
   return (
     <View style={styles.previousRoutines}>
-      {otherNotes.length > 0 && (
-        <>
-          <SectionTitle>More Routines</SectionTitle>
-          {otherNotes.map(other => (
-            <Card
-              key={other.id}
-              style={styles.otherNoteCard}
-            >
-              <Pressable
-                onPress={() => handleViewOtherNote(other)}
-                style={styles.otherNoteHeader}
+      <SectionTitle>More Routines</SectionTitle>
+      <View style={styles.panel}>
+        <Pressable
+          onPress={() => setExpanded(e => !e)}
+          style={[styles.header, expanded && styles.headerBordered]}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
+          accessibilityState={{ expanded }}
+        >
+          <View style={styles.headerContent}>
+            <Text style={styles.summaryCount}>
+              {`${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}`}
+            </Text>
+            {!expanded && latestRoutine && (
+              <Text style={styles.summaryLatest} numberOfLines={1}>
+                {'Latest: '}
+                <Text style={styles.summaryEmphasis}>
+                  {latestRoutine.title || 'Untitled Routine'}
+                </Text>
+              </Text>
+            )}
+          </View>
+          <MaterialIcons
+            name={expanded ? 'expand-less' : 'expand-more'}
+            size={18}
+            color={colors.textMuted}
+            accessible={false}
+          />
+        </Pressable>
+
+        {expanded && (
+          <View style={styles.body}>
+            {otherNotes.map(other => (
+              <Card
+                key={other.id}
+                style={styles.otherNoteCard}
               >
-                <View style={styles.otherNoteInfo}>
-                  <Text
-                    style={styles.otherNoteTitle}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {other.title || 'Untitled Routine'}
-                  </Text>
-                  {other.updated_at && (
-                    <Text style={styles.otherNoteSub}>
-                      {viewingNoteId === other.id && viewingHasABWeeks
-                        ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
-                        : localDate(other.updated_at).toLocaleDateString()}
-                    </Text>
-                  )}
-                  {recoveryWeekNumberByNoteId[other.id] != null && (
-                    <View
-                      style={styles.recoveryBadge}
-                      accessible
-                      accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                <Pressable
+                  onPress={() => handleViewOtherNote(other)}
+                  style={styles.otherNoteHeader}
+                >
+                  <View style={styles.otherNoteInfo}>
+                    <Text
+                      style={styles.otherNoteTitle}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
                     >
-                      <Text style={styles.recoveryBadgeText}>
-                        Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                      {other.title || 'Untitled Routine'}
+                    </Text>
+                    {other.updated_at && (
+                      <Text style={styles.otherNoteSub}>
+                        {viewingNoteId === other.id && viewingHasABWeeks
+                          ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
+                          : localDate(other.updated_at).toLocaleDateString()}
                       </Text>
-                    </View>
-                  )}
-                </View>
-              </Pressable>
-              {viewingNoteId === other.id && viewingNote && (
-                <>
-                  <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
-                    <Text style={styles.editHint}>Double-tap to edit</Text>
-                    <WorkoutContentRenderer
-                      dayGroups={viewingNoteDayGroups}
-                      emptyText="No exercises to display."
-                    />
-                  </Pressable>
-                  <View style={styles.inlineActions}>
-                    {/* The viewed card's Week A/B switch (#711). It keeps the
-                        pill form — it changes which week you are READING, not a
-                        routine-lifecycle action like the buttons below — and
-                        keeps the exact role/label/selected state it had in the
-                        header it moved out of. */}
-                    {viewingHasABWeeks && (
-                      <View style={styles.viewActions}>
-                        <Pressable
-                          onPress={handleToggleViewingWeek}
-                          style={styles.inlineSwitchButton}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
-                          accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
-                        >
-                          <Text style={styles.inlineSwitchButtonText}>
-                            Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
-                          </Text>
-                        </Pressable>
+                    )}
+                    {recoveryWeekNumberByNoteId[other.id] != null && (
+                      <View
+                        style={styles.recoveryBadge}
+                        accessible
+                        accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                      >
+                        <Text style={styles.recoveryBadgeText}>
+                          Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                        </Text>
                       </View>
                     )}
-                    <Button
-                      onPress={handleEditViewedNote}
-                      title="Edit routine"
-                      style={styles.switchButton}
-                      textStyle={styles.switchButtonText}
-                    />
-                    <Button
-                      onPress={() => handleSwitchCurrent(other.id)}
-                      title="Set as current routine"
-                      style={styles.switchButton}
-                      textStyle={styles.switchButtonText}
-                    />
-                    <Button
-                      onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
-                      title="Delete routine"
-                      style={styles.deleteButton}
-                      textStyle={styles.deleteButtonText}
-                    />
                   </View>
-                </>
-              )}
-            </Card>
-          ))}
-        </>
-      )}
-      <Button
-        onPress={handleCreateRoutine}
-        title="+ New routine"
-        style={styles.createButton}
-        textStyle={styles.createButtonText}
-      />
+                </Pressable>
+                {viewingNoteId === other.id && viewingNote && (
+                  <>
+                    {/* The gesture is preserved; the visible "Double-tap to edit"
+                        hint is gone (#724) — the expanded body's explicit `Edit
+                        routine` control is the advertised path. */}
+                    <Pressable onPress={handleViewedNoteBodyPress} style={styles.currentNoteContent}>
+                      <WorkoutContentRenderer
+                        dayGroups={viewingNoteDayGroups}
+                        emptyText="No exercises to display."
+                      />
+                    </Pressable>
+                    <View style={styles.inlineActions}>
+                      {/* The viewed card's Week A/B switch (#711). It keeps the
+                          pill form — it changes which week you are READING, not a
+                          routine-lifecycle action like the buttons below — and
+                          keeps the exact role/label/selected state it had in the
+                          header it moved out of. */}
+                      {viewingHasABWeeks && (
+                        <View style={styles.viewActions}>
+                          <Pressable
+                            onPress={handleToggleViewingWeek}
+                            style={styles.inlineSwitchButton}
+                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Switch to Week ${viewingEffectiveWeek === 'B' ? 'A' : 'B'}`}
+                            accessibilityState={{ selected: viewingEffectiveWeek === 'B' }}
+                          >
+                            <Text style={styles.inlineSwitchButtonText}>
+                              Week {viewingEffectiveWeek === 'B' ? 'A' : 'B'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      )}
+                      <Button
+                        onPress={handleEditViewedNote}
+                        title="Edit routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => handleSwitchCurrent(other.id)}
+                        title="Set as current routine"
+                        style={styles.switchButton}
+                        textStyle={styles.switchButtonText}
+                      />
+                      <Button
+                        onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
+                        title="Delete routine"
+                        style={styles.deleteButton}
+                        textStyle={styles.deleteButtonText}
+                      />
+                    </View>
+                  </>
+                )}
+              </Card>
+            ))}
+
+            {/* The single `Start recovery block` entry point (#724). Rendered
+                only when a block could actually be started; disabled while the
+                shared Recovery lock is held. Absent for a non-adopter who is not
+                eligible, so it is reachable only by opening this disclosure. */}
+            {showRecoveryStart && (
+              <Button
+                onPress={onStartRecoveryBlock}
+                title="Start recovery block"
+                disabled={recoveryStartDisabled}
+                style={styles.recoveryStartButton}
+                textStyle={styles.recoveryStartButtonText}
+              />
+            )}
+            <Button
+              onPress={handleCreateRoutine}
+              title="+ New routine"
+              style={styles.createButton}
+              textStyle={styles.createButtonText}
+            />
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -150,6 +221,48 @@ export function LogPreviousRoutines({
 const createStyles = (colors) => StyleSheet.create({
   previousRoutines: {
     marginTop: 4,
+    gap: 12,
+  },
+  // Collapse panel (#724), mirroring the Recovery History panel on this same
+  // screen: radius 24, 1px border, clipped, with a `subtleBg` header row that is
+  // the whole-header press target and the shared MaterialIcons chevron.
+  panel: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.subtleBg,
+  },
+  headerBordered: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  summaryCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  summaryLatest: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  summaryEmphasis: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  body: {
+    padding: 16,
     gap: 12,
   },
   otherNoteCard: {
@@ -219,11 +332,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
-  editHint: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginBottom: 8,
-  },
   inlineActions: {
     paddingHorizontal: 16,
     paddingBottom: 16,
@@ -252,8 +360,19 @@ const createStyles = (colors) => StyleSheet.create({
   deleteButtonText: {
     color: colors.error,
   },
+  // The relocated recovery entry point keeps the accent-filled primary look it
+  // had in LogRecoverySection. Its disabled state uses the shared Button's
+  // dim (the app-wide disabled-Button convention), driven by the shared
+  // Recovery lock; the authoritative precondition is rechecked at confirm.
+  recoveryStartButton: {
+    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  recoveryStartButtonText: {
+    color: colors.onAccent,
+  },
   createButton: {
-    marginTop: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: colors.accent,

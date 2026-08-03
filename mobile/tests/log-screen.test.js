@@ -816,6 +816,42 @@ const findPressableByText = (root, text) => {
   return null;
 };
 
+// Routine management is collapsed by default (#724): the routine cards, `+ New
+// routine`, and the relocated `Start recovery block` control render only once
+// the "More Routines" disclosure is expanded. Tests that drive those controls
+// open it first via the whole-header press target.
+const expandRoutineManagement = (root) => {
+  const header = root.findAll(
+    n => n.props
+      && (n.props.accessibilityLabel === 'Expand routine management'
+        || n.props.accessibilityLabel === 'Collapse routine management')
+      && typeof n.props.onPress === 'function'
+  )[0];
+  if (!header) return;
+  if (header.props.accessibilityState && header.props.accessibilityState.expanded) return;
+  render.act(() => { header.props.onPress(); });
+};
+
+// Like findPressableByText, but walks up to the nearest accessibilityRole=button
+// node instead of the nearest onPress. A disabled shared Button nulls its
+// onPress, so findPressableByText would skip past it; this still finds it and
+// exposes its accessibilityState for disabled-state assertions.
+const buttonByText = (root, text) => {
+  const match = root.findAll(n => {
+    if (n.type !== 'Text') return false;
+    const children = n.props.children;
+    const flat = Array.isArray(children) ? children.join('') : String(children ?? '');
+    return flat.includes(text);
+  })[0];
+  if (!match) return null;
+  let node = match.parent;
+  while (node) {
+    if (node.props && node.props.accessibilityRole === 'button') return node;
+    node = node.parent;
+  }
+  return null;
+};
+
 function ControlledLogScreen(props) {
   const [text, setText] = React.useState(props.initialText || 'Monday\n+Lifting\n-Bench\n135 5,5,5');
   const [title, setTitle] = React.useState(props.initialTitle || 'Routine A');
@@ -1126,6 +1162,7 @@ describe('Undo escape hatch: integration tests', () => {
     });
 
     const root = component.root;
+    expandRoutineManagement(root);
 
     // Tap the other note to view it
     const targetPressable = findPressableByText(root, 'Routine B');
@@ -1488,6 +1525,7 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
     });
 
     const root = component.root;
+    expandRoutineManagement(root);
     const homeRoutineCard = findPressableByText(root, 'Home Routine');
     expect(homeRoutineCard).toBeTruthy();
     render.act(() => { homeRoutineCard.props.onPress(); });
@@ -1544,6 +1582,7 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
     });
 
     const root = component.root;
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, 'Cardio Routine').props.onPress(); });
     render.act(() => { findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} }); });
 
@@ -1607,6 +1646,7 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
       });
 
       const root = component.root;
+      expandRoutineManagement(root);
       render.act(() => { findPressableByText(root, 'Cardio Routine').props.onPress(); });
       render.act(() => {
         findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} });
@@ -1683,6 +1723,7 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
       });
 
       const root = component.root;
+      expandRoutineManagement(root);
       render.act(() => { findPressableByText(root, 'Home Routine').props.onPress(); });
       render.act(() => {
         findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} });
@@ -2337,6 +2378,7 @@ describe('LogScreen editor header: editing-week toggle for non-current A/B notes
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
+    expandRoutineManagement(root);
 
     // No toggle before there is any A/B routine open in the editor.
     expect(findPressableByText(root, 'Week B')).toBeNull();
@@ -2396,15 +2438,18 @@ describe('LogScreen editor header: editing-week toggle for non-current A/B notes
     let component;
     render.act(() => {
       // No current-routine content (workoutNoteText: '') so the current-routine
-      // card (which also has a "Double-tap to edit" body) is not rendered, and
-      // the double-tap below unambiguously targets the non-current routine card.
+      // card is not rendered, and the double-tap below unambiguously targets the
+      // non-current routine card's body.
       component = render.create(<ControlledLogScreen workoutNoteText="" setWorkoutNoteText={jest.fn()} />);
     });
     const root = component.root;
+    expandRoutineManagement(root);
 
     // Expand the non-current routine, then open it in the editor via double-tap.
+    // The visible "Double-tap to edit" hint is gone (#724); the body Pressable is
+    // located by its rendered exercise content instead, and the gesture persists.
     render.act(() => { findPressableByText(root, 'Other').props.onPress(); });
-    const body = pressableAround(root, t => t.includes('Double-tap to edit'));
+    const body = pressableAround(root, t => t.includes('DB Bench Press'));
     render.act(() => { body.props.onPress(); });
     render.act(() => { body.props.onPress(); });
 
@@ -2880,6 +2925,7 @@ describe('Routine-card header/action containment (#710, #711)', () => {
       );
     });
     const root = component.root;
+    expandRoutineManagement(root);
 
     const title = findTitleText(root, LONG_TITLE);
     expect(title.props.numberOfLines).toBe(2);
@@ -2933,17 +2979,30 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     });
     const root = component.root;
 
-    // Every card header is itself pressable (that is how a card expands), but
-    // nothing inside one is. The only other control is "+ New routine".
-    for (const note of notes) {
-      const header = pressableAround(root, t => t.includes(note.title));
-      expect(header).toBeTruthy();
-      expect(nestedPressablesUnder(header).length).toBe(0);
-    }
-    expect(root.findAll(
+    // Collapsed routine management is action-free (#724): the only press target
+    // is the whole-header disclosure itself. No routine cards are mounted, and
+    // neither `+ New routine` nor `Start recovery block` exists yet.
+    const buttons = root.findAll(
       n => typeof n.type === 'string' && n.props && n.props.accessibilityRole === 'button'
-    ).length).toBe(1);
-    expect(pressableAround(root, t => t.includes('+ New routine'))).toBeTruthy();
+    );
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].props.accessibilityLabel).toBe('Expand routine management');
+    expect(buttons[0].props.accessibilityState).toEqual({ expanded: false });
+
+    // No routine card is mounted and no management action exists while collapsed.
+    // (The latest title appears only inside the summary line, not as a card.)
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
+    for (const label of ['+ New routine', 'Start recovery block', 'Set as current routine', 'Edit routine', 'Delete routine']) {
+      expect(root.findAll(n => n.type === 'Text' && n.props.children === label).length).toBe(0);
+    }
+
+    // The collapsed summary still carries meaning: a count and the latest name.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '2 routines').length).toBe(1);
+    const latest = root.findAll(
+      n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
+    );
+    expect(latest.length).toBe(1);
+    expect(latest[0].props.children[1].props.children).toBe('Routine Two');
   });
 });
 
@@ -3086,7 +3145,11 @@ describe('Log action hierarchy (#711)', () => {
       };
       let component;
       render.act(() => { component = render.create(<LogPreviousRoutines {...props} />); });
-      return { root: component.root, props };
+      const root = component.root;
+      // Routine management is collapsed by default (#724); open it so the card
+      // and its expanded-body controls are mounted.
+      expandRoutineManagement(root);
+      return { root, props };
     };
 
     test('every relocated action is reachable once the card is expanded, and calls its own handler', () => {
@@ -3149,7 +3212,11 @@ describe('LogPreviousRoutines: double-tap viewed routine opens editor', () => {
         />
       );
     });
-    const body = pressableAround(component.root, t => t.includes('Double-tap to edit'));
+    const root = component.root;
+    expandRoutineManagement(root);
+    // The visible "Double-tap to edit" hint is gone (#724); the body Pressable
+    // is now located by its empty-content text, and the gesture still works.
+    const body = pressableAround(root, t => t.includes('No exercises to display'));
     expect(body).toBeTruthy();
 
     render.act(() => { body.props.onPress(); });
@@ -3185,7 +3252,9 @@ describe('LogPreviousRoutines: Week A/B control on an expanded non-current routi
       );
     });
 
-    const toggle = pressableAround(component.root, t => t.includes('Week B'));
+    const root = component.root;
+    expandRoutineManagement(root);
+    const toggle = pressableAround(root, t => t.includes('Week B'));
     expect(toggle).toBeTruthy();
     expect(toggle.props.accessibilityRole).toBe('button');
     expect(toggle.props.accessibilityLabel).toBe('Switch to Week B');
@@ -3216,10 +3285,161 @@ describe('LogPreviousRoutines: Week A/B control on an expanded non-current routi
       );
     });
 
-    const weekTexts = component.root.findAll(
+    const root = component.root;
+    expandRoutineManagement(root);
+    const weekTexts = root.findAll(
       n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Week '
     );
     expect(weekTexts.length).toBe(0);
+  });
+});
+
+// #724 Contain and Connect: routine management is a collapsed-by-default
+// disclosure (count + latest summary + chevron), and the single Start recovery
+// block entry point lives inside its expanded body. Jest's renderer cannot
+// measure Yoga layout, so these pin the render/props contract; the multi-width
+// and light/dark visual checks in the acceptance criteria require manual review.
+describe('LogPreviousRoutines: collapsed routine management (#724)', () => {
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  const baseProps = {
+    handleViewOtherNote: jest.fn(),
+    viewingNoteId: null,
+    viewingNote: null,
+    viewingNoteDayGroups: [],
+    viewingHasABWeeks: false,
+    viewingEffectiveWeek: null,
+    handleToggleViewingWeek: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleEditViewedNote: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    handleCreateRoutine: jest.fn(),
+  };
+
+  const renderList = (overrides = {}) => {
+    let component;
+    render.act(() => { component = render.create(<LogPreviousRoutines {...baseProps} {...overrides} />); });
+    return component.root;
+  };
+
+  const countText = (root) =>
+    root.findAll(n => n.type === 'Text' && typeof n.props.children === 'string' && / routines?$/.test(n.props.children))
+      .map(n => n.props.children);
+
+  const latestValue = (root) => {
+    const line = root.findAll(
+      n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: '
+    )[0];
+    return line ? line.props.children[1].props.children : null;
+  };
+
+  const headerFor = (root) => root.findAll(
+    n => n.props
+      && (n.props.accessibilityLabel === 'Expand routine management'
+        || n.props.accessibilityLabel === 'Collapse routine management')
+      && typeof n.props.onPress === 'function'
+  )[0];
+
+  test('zero non-current routines: a plural-zero count, no latest line, and creation reachable only after expanding', () => {
+    const root = renderList({ otherNotes: [] });
+    expect(countText(root)).toEqual(['0 routines']);
+    expect(latestValue(root)).toBeNull();
+    // Collapsed management is action-free even with an empty list.
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === '+ New routine').length).toBe(0);
+    expandRoutineManagement(root);
+    expect(findPressableByText(root, '+ New routine')).toBeTruthy();
+  });
+
+  test('one non-current routine reads as a singular count with a latest summary', () => {
+    const root = renderList({ otherNotes: [{ id: 'r1', title: 'Only One', updated_at: '2026-01-01T00:00:00.000Z' }] });
+    expect(countText(root)).toEqual(['1 routine']);
+    expect(latestValue(root)).toBe('Only One');
+  });
+
+  test('many routines: the latest summary names the most recently updated one regardless of list order', () => {
+    const root = renderList({ otherNotes: [
+      { id: 'r1', title: 'Older', updated_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'r2', title: 'Newest', updated_at: '2026-03-01T00:00:00.000Z' },
+      { id: 'r3', title: 'Middle', updated_at: '2026-02-01T00:00:00.000Z' },
+    ] });
+    expect(countText(root)).toEqual(['3 routines']);
+    expect(latestValue(root)).toBe('Newest');
+  });
+
+  test('the whole header toggles expansion, announces its state, and mounts/unmounts the body', () => {
+    const root = renderList({ otherNotes: [{ id: 'r1', title: 'One', updated_at: '2026-01-01T00:00:00.000Z' }] });
+    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(findPressableByText(root, '+ New routine')).toBeNull();
+
+    render.act(() => { headerFor(root).props.onPress(); });
+    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: true });
+    expect(findPressableByText(root, '+ New routine')).toBeTruthy();
+    // Expanded, the collapsed "Latest:" summary is replaced by the detail card.
+    expect(latestValue(root)).toBeNull();
+
+    render.act(() => { headerFor(root).props.onPress(); });
+    expect(headerFor(root).props.accessibilityState).toEqual({ expanded: false });
+    expect(findPressableByText(root, '+ New routine')).toBeNull();
+    expect(latestValue(root)).toBe('One');
+  });
+});
+
+describe('LogPreviousRoutines: relocated Start recovery block entry point (#724)', () => {
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  const baseProps = {
+    otherNotes: [{ id: 'r1', title: 'Routine 1', updated_at: '2026-01-01T00:00:00.000Z' }],
+    handleViewOtherNote: jest.fn(),
+    viewingNoteId: null,
+    viewingNote: null,
+    viewingNoteDayGroups: [],
+    viewingHasABWeeks: false,
+    viewingEffectiveWeek: null,
+    handleToggleViewingWeek: jest.fn(),
+    handleSwitchCurrent: jest.fn(),
+    handleEditViewedNote: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+    handleCreateRoutine: jest.fn(),
+  };
+
+  const renderList = (overrides = {}) => {
+    let component;
+    render.act(() => { component = render.create(<LogPreviousRoutines {...baseProps} {...overrides} />); });
+    return component.root;
+  };
+
+  test('eligible: absent while collapsed, then shown and live in the expanded body', () => {
+    const onStartRecoveryBlock = jest.fn();
+    const root = renderList({ showRecoveryStart: true, recoveryStartDisabled: false, onStartRecoveryBlock });
+
+    // Reachable only by opening the disclosure — never on the collapsed surface.
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+    expandRoutineManagement(root);
+
+    const btn = findPressableByText(root, 'Start recovery block');
+    expect(btn).toBeTruthy();
+    expect(btn.props.accessibilityState.disabled).toBe(false);
+    render.act(() => { btn.props.onPress(); });
+    expect(onStartRecoveryBlock).toHaveBeenCalledTimes(1);
+  });
+
+  test('mutation lock: rendered but disabled and inert while the shared recovery lock is held', () => {
+    const onStartRecoveryBlock = jest.fn();
+    const root = renderList({ showRecoveryStart: true, recoveryStartDisabled: true, onStartRecoveryBlock });
+    expandRoutineManagement(root);
+
+    const btn = buttonByText(root, 'Start recovery block');
+    expect(btn).toBeTruthy();
+    expect(btn.props.accessibilityState.disabled).toBe(true);
+    // The shared Button nulls onPress while disabled, so a press writes nothing.
+    render.act(() => { btn.props.onPress && btn.props.onPress(); });
+    expect(onStartRecoveryBlock).not.toHaveBeenCalled();
+  });
+
+  test('ineligible: absent entirely, even once routine management is expanded', () => {
+    const root = renderList({ showRecoveryStart: false });
+    expandRoutineManagement(root);
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
   });
 });
 
@@ -4775,6 +4995,8 @@ describe('Recovery Block start flow', () => {
   // the modal's own pickers (which always existed) choose the baseline and
   // Week 1. `openEntryPoint` is how every test below reaches the flow.
   const openEntryPoint = (root) => {
+    // #724: the single entry point moved into expanded routine management.
+    expandRoutineManagement(root);
     const startBtn = findPressableByText(root, 'Start recovery block');
     expect(startBtn).toBeTruthy();
     render.act(() => { startBtn.props.onPress(); });
@@ -4785,11 +5007,16 @@ describe('Recovery Block start flow', () => {
     render.act(() => { option.props.onPress(); });
   };
 
-  test('entry point: the Recovery section start control opens the modal with both pickers and no preset', () => {
+  test('entry point: the single start control lives in expanded routine management, opening the modal with both pickers and no preset', () => {
     setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
+
+    // Collapsed routine management is action-free: the entry point is absent
+    // until the disclosure is opened (#724).
+    expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
+    expandRoutineManagement(root);
 
     // No routine card carries a recovery control any more.
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Mark as recovery week').length).toBe(0);
@@ -4816,6 +5043,9 @@ describe('Recovery Block start flow', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    // Even inside expanded routine management, an ineligible non-adopter is
+    // never offered the start control (#724).
+    expandRoutineManagement(root);
     expect(findPressableByText(root, 'Start recovery block')).toBeNull();
   });
 
@@ -4828,10 +5058,55 @@ describe('Recovery Block start flow', () => {
     const root = component.root;
 
     // The active block's own card renders instead; starting a second block is
-    // not offered anywhere, which is exactly what recoveryBlockingMessage
-    // would have refused after the fact.
+    // not offered anywhere — not even inside expanded routine management —
+    // which is exactly what recoveryBlockingMessage would have refused.
     expect(findPressableByText(root, 'Complete recovery block')).toBeTruthy();
+    expandRoutineManagement(root);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Start recovery block').length).toBe(0);
+  });
+
+  test('unverified state withholds the start control from routine management (#724)', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    // A first read still in flight is not a verified empty result, so no note is
+    // treated as eligible and the entry point is withheld even when expanded.
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...useEntries.useRecoveryBlockState(), ready: false, loading: true,
+    });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expandRoutineManagement(root);
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+  });
+
+  test('a stale snapshot withholds the start control from routine management (#724)', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...useEntries.useRecoveryBlockState(), stale: true,
+    });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expandRoutineManagement(root);
+    expect(findPressableByText(root, 'Start recovery block')).toBeNull();
+  });
+
+  test('a pending recovery operation shows the start control but locks it (#724)', () => {
+    setupCommonMocks({ notes: [baselineNote, otherNote], currentId: baselineNote.id, currentNote: baselineNote });
+    useEntries.useRecoveryBlockState.mockReturnValue({
+      ...useEntries.useRecoveryBlockState(),
+      pendingRecovery: [{ id: 'op1', error: null }],
+    });
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    const root = component.root;
+
+    expandRoutineManagement(root);
+    const btn = buttonByText(root, 'Start recovery block');
+    expect(btn).toBeTruthy();
+    expect(btn.props.accessibilityState.disabled).toBe(true);
   });
 
   test('the action lock rejects a second concurrent start from the entry point', async () => {
@@ -5831,10 +6106,19 @@ describe('Recovery Block Week 2+ lifecycle', () => {
 
     // Collapsed: the per-week detail (including its completion date) is gone,
     // but the baseline title survives as the collapsed summary's "Latest: …"
-    // line, not as a bare count.
+    // line, not as a bare count. (Collapsed routine management carries its own
+    // "Latest:" summary too (#724), so match the recovery one by its value.)
     expect(root.findAll(n => n.type === 'Text' && n.props.children === '11-08-2025').length).toBe(0);
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Old Baseline Routine').length).toBe(1);
-    expect(root.findAll(n => n.type === 'Text' && Array.isArray(n.props.children) && n.props.children[0] === 'Latest: ').length).toBe(1);
+    const recoveryLatest = root.findAll(
+      n => n.type === 'Text'
+        && Array.isArray(n.props.children)
+        && n.props.children[0] === 'Latest: '
+        && n.props.children[1]
+        && n.props.children[1].props
+        && n.props.children[1].props.children === 'Old Baseline Routine'
+    );
+    expect(recoveryLatest.length).toBe(1);
   });
 
   test('deleting a linked recovery-week note shows a recovery-aware confirmation, then the standard delete confirmation, and only the final confirm cascades the atomic delete', async () => {
@@ -5845,6 +6129,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
 
@@ -5885,6 +6170,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
     const firstAlertButtons = alertSpy.mock.calls[0][2];
@@ -5912,6 +6198,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
     expect(alertSpy).toHaveBeenCalledWith(
@@ -5940,6 +6227,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
@@ -5970,6 +6258,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
 
+    expandRoutineManagement(root);
     render.act(() => { findPressableByText(root, week1Note.title).props.onPress(); });
     render.act(() => { findPressableByText(root, 'Delete routine').props.onPress(); });
     render.act(() => { alertSpy.mock.calls[0][2].find(b => b.text === 'Continue').onPress(); });
@@ -6057,6 +6346,7 @@ describe('Recovery Block Week 2+ lifecycle', () => {
     let component;
     render.act(() => { component = render.create(<ControlledLogScreen />); });
     const root = component.root;
+    expandRoutineManagement(root);
 
     render.act(() => { findPressableByText(root, otherNote.title).props.onPress(); });
     const deleteBtn = findPressableByText(root, 'Delete routine');
@@ -7611,7 +7901,6 @@ describe('authoritative Recovery state contract (#716)', () => {
 describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
   const { LogRecoverySection } = require('../components/LogRecoverySection');
   const {
-    RECOVERY_LOADING_MESSAGE,
     RECOVERY_STALE_MESSAGE,
     RECOVERY_UNVERIFIED_MESSAGE,
   } = require('../hooks/entries/recoveryBlockHooks');
@@ -7649,9 +7938,12 @@ describe('LogRecoverySection — authoritative Recovery state (#716)', () => {
   const retryButton = (component) =>
     component.root.findAll(n => n.props && n.props.accessibilityLabel === 'Retry recovery' && n.props.onPress)[0];
 
-  test('a cold load renders explicit initial progress rather than an empty section', async () => {
+  test('a cold load stays visually neutral and renders nothing (no Recovery card flash)', async () => {
+    // #724: a first read in flight must not flash a Recovery card for a
+    // non-adopter, so the section renders nothing until the read verifies or
+    // terminally fails.
     const component = await renderSection({ stateReady: false, stateLoading: true });
-    expect(texts(component)).toContain(RECOVERY_LOADING_MESSAGE);
+    expect(component.toJSON()).toBeNull();
     expect(retryButton(component)).toBeUndefined();
   });
 
