@@ -8,7 +8,7 @@
 import React from 'react';
 import renderer from 'react-test-renderer';
 import { BackHandler, Platform } from 'react-native';
-import App from '../App';
+import App, { normalizeNavTarget } from '../App';
 import * as useEntries from '../hooks/useEntries';
 
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
@@ -56,10 +56,25 @@ jest.mock('../screens/AnalyticsScreen', () => {
     },
   };
 });
+// Typed sub-view intents (#718): the shell decides which More sub-view a typed
+// intent addresses and delivers it as flat, value-stable props, so record every
+// props render the same way the Analytics recorder above does. MoreScreen's own
+// consumption of these props (including its sub-view whitelist) is proved
+// against the real screen in app-shell-back.test.js.
+const moreRenders = [];
 jest.mock('../screens/MoreScreen', () => {
   const React = require('react');
   const { View } = require('react-native');
-  return { MoreScreen: () => React.createElement(View) };
+  return {
+    MoreScreen: (props) => {
+      moreRenders.push({
+        view: props.navSubviewView,
+        anchor: props.navSubviewAnchor,
+        key: props.navSubviewKey,
+      });
+      return React.createElement(View);
+    },
+  };
 });
 
 jest.mock('../hooks/entries/weightHooks', () => ({
@@ -194,6 +209,7 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     jest.useFakeTimers().setSystemTime(MOCK_NOW);
     capturedTabPress = null;
     analyticsRenders.length = 0;
+    moreRenders.length = 0;
     mockUpdateNote = jest.fn().mockResolvedValue({});
 
     useEntries.useWeightEntries.mockReturnValue({
@@ -385,6 +401,101 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     expect(getTabStyle(component, 'Analytics').display).not.toBe('none');
   });
 
+  // --- Typed cross-screen navigation intents (#718) ---
+
+  const lastMoreRender = () => moreRenders[moreRenders.length - 1];
+
+  test('a subview intent activates More and forwards the requested view and anchor', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'account', anchor: 'cloud-sync' }); });
+
+    expect(getTabStyle(component, 'More').display).not.toBe('none');
+    expect(lastMoreRender().view).toBe('account');
+    expect(lastMoreRender().anchor).toBe('cloud-sync');
+  });
+
+  test('a subview intent without an anchor forwards a null anchor', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'backup' }); });
+
+    expect(lastMoreRender().view).toBe('backup');
+    expect(lastMoreRender().anchor).toBe(null);
+  });
+
+  test('repeating the same subview intent re-issues it under a later key', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'account', anchor: 'cloud-sync' }); });
+    const first = lastMoreRender();
+
+    renderer.act(() => { capturedTabPress('Home'); });
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'account', anchor: 'cloud-sync' }); });
+    const second = lastMoreRender();
+
+    expect(second.view).toBe('account');
+    // Identical logical target, so only the key can prove the second request landed.
+    expect(second.key).not.toBe(first.key);
+  });
+
+  test('unrelated tab navigation does not disturb the memoized More tree', () => {
+    // Same render-isolation contract the Analytics nonce has (#717, generalized
+    // in #718): the sub-view key must only advance for an intent that actually
+    // addresses More, never for ordinary navigation between other tabs.
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'settings' }); });
+    const settled = lastMoreRender();
+
+    renderer.act(() => { capturedTabPress('Weight'); });
+    renderer.act(() => { capturedTabPress('Log'); });
+    renderer.act(() => { capturedTabPress('Analytics', 'weight'); });
+    renderer.act(() => { capturedTabPress('Home'); });
+
+    expect(lastMoreRender().key).toBe(settled.key);
+  });
+
+  test('a plain More tab press carries no subview target', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview', view: 'settings' }); });
+    expect(lastMoreRender().view).toBe('settings');
+
+    renderer.act(() => { capturedTabPress('More'); });
+
+    expect(lastMoreRender().view).toBe(null);
+    expect(getTabStyle(component, 'More').display).not.toBe('none');
+  });
+
+  test('a target addressed to the wrong tab is ignored by every destination', () => {
+    // A section target is only meaningful on Analytics, so pressing Log with one
+    // must neither leak a section into Analytics nor invent a Log note target.
+    renderer.act(() => { capturedTabPress('Log', { kind: 'section', id: 'weight' }); });
+
+    expect(getTabStyle(component, 'Log').display).not.toBe('none');
+    expect(lastAnalyticsRender().section).toBe(null);
+    expect(lastAnalyticsRender().sectionNonce).toBe(0);
+    expect(lastMoreRender().view).toBe(null);
+    expect(lastMoreRender().key).toBe(0);
+  });
+
+  test('an unknown target kind is safely ignored and still performs the tab press', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'mystery', view: 'account' }); });
+
+    expect(getTabStyle(component, 'More').display).not.toBe('none');
+    expect(lastMoreRender().view).toBe(null);
+    expect(lastMoreRender().key).toBe(0);
+  });
+
+  test('a malformed target of the right kind is ignored rather than half-applied', () => {
+    renderer.act(() => { capturedTabPress('More', { kind: 'subview' }); }); // no view
+    expect(lastMoreRender().view).toBe(null);
+    expect(lastMoreRender().key).toBe(0);
+
+    renderer.act(() => { capturedTabPress('Analytics', { kind: 'section', id: 'mystery' }); });
+    expect(lastAnalyticsRender().section).toBe(null);
+    expect(lastAnalyticsRender().sectionNonce).toBe(0);
+  });
+
+  test('the legacy bare-string Analytics section is still accepted as a typed section target', () => {
+    // HomeScreen and WeightScreen call onNavigate('Analytics', 'weight') (#717)
+    // and are not part of #718, so the bare form must keep working unchanged.
+    renderer.act(() => { capturedTabPress('Analytics', 'strength'); });
+    expect(lastAnalyticsRender().section).toBe('strength');
+    expect(lastAnalyticsRender().sectionNonce).toBe(1);
+  });
+
   test('with no active in-tab state on any tab, Back still returns a non-Home tab to Home', () => {
     renderer.act(() => { capturedTabPress('Weight'); });
 
@@ -395,5 +506,71 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
     expect(result).toBe(true);
     expect(getTabStyle(component, 'Home').display).not.toBe('none');
     expect(getTabStyle(component, 'Weight').display).toBe('none');
+  });
+});
+
+// The typed navigation-intent contract's shape validator, exercised directly
+// (#718). The shell-level tests above prove routing; this block pins the exact
+// accept/reject matrix, including the tab/kind pairings and the deliberate
+// decision to validate shape only — the More sub-view vocabulary belongs to
+// MoreScreen, so any non-empty view string is a well-formed request here.
+describe('normalizeNavTarget: the typed navigation-intent contract (#718)', () => {
+  test('an absent target is null', () => {
+    expect(normalizeNavTarget('Analytics', null)).toBe(null);
+    expect(normalizeNavTarget('Analytics', undefined)).toBe(null);
+    expect(normalizeNavTarget('Log')).toBe(null);
+  });
+
+  test('section targets are accepted only on Analytics and only for known ids', () => {
+    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'weight' }))
+      .toEqual({ kind: 'section', id: 'weight' });
+    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'strength' }))
+      .toEqual({ kind: 'section', id: 'strength' });
+    expect(normalizeNavTarget('Analytics', { kind: 'section', id: 'mystery' })).toBe(null);
+    expect(normalizeNavTarget('Analytics', { kind: 'section' })).toBe(null);
+    expect(normalizeNavTarget('Log', { kind: 'section', id: 'weight' })).toBe(null);
+    expect(normalizeNavTarget('Home', { kind: 'section', id: 'weight' })).toBe(null);
+  });
+
+  test('the legacy bare Analytics section string normalizes into a section target', () => {
+    expect(normalizeNavTarget('Analytics', 'weight')).toEqual({ kind: 'section', id: 'weight' });
+    expect(normalizeNavTarget('Analytics', 'strength')).toEqual({ kind: 'section', id: 'strength' });
+    expect(normalizeNavTarget('Analytics', 'mystery')).toBe(null);
+    expect(normalizeNavTarget('Analytics', '')).toBe(null);
+    // The bare form is an Analytics-only legacy affordance; it means nothing elsewhere.
+    expect(normalizeNavTarget('More', 'weight')).toBe(null);
+  });
+
+  test('note targets are accepted only on Log and only with a non-empty id', () => {
+    expect(normalizeNavTarget('Log', { kind: 'note', noteId: 'n1' }))
+      .toEqual({ kind: 'note', noteId: 'n1' });
+    expect(normalizeNavTarget('Log', { kind: 'note', noteId: '' })).toBe(null);
+    expect(normalizeNavTarget('Log', { kind: 'note' })).toBe(null);
+    expect(normalizeNavTarget('Log', { kind: 'note', noteId: 42 })).toBe(null);
+    expect(normalizeNavTarget('Analytics', { kind: 'note', noteId: 'n1' })).toBe(null);
+  });
+
+  test('subview targets are accepted only on More and carry an optional string anchor', () => {
+    expect(normalizeNavTarget('More', { kind: 'subview', view: 'account' }))
+      .toEqual({ kind: 'subview', view: 'account', anchor: null });
+    expect(normalizeNavTarget('More', { kind: 'subview', view: 'account', anchor: 'cloud-sync' }))
+      .toEqual({ kind: 'subview', view: 'account', anchor: 'cloud-sync' });
+    // Shape only: the shell does not own More's sub-view vocabulary, so an
+    // unknown-but-well-formed name is a valid request that MoreScreen rejects.
+    expect(normalizeNavTarget('More', { kind: 'subview', view: 'not-a-real-view' }))
+      .toEqual({ kind: 'subview', view: 'not-a-real-view', anchor: null });
+    expect(normalizeNavTarget('More', { kind: 'subview', view: '' })).toBe(null);
+    expect(normalizeNavTarget('More', { kind: 'subview' })).toBe(null);
+    expect(normalizeNavTarget('More', { kind: 'subview', view: 'account', anchor: 7 }))
+      .toEqual({ kind: 'subview', view: 'account', anchor: null });
+    expect(normalizeNavTarget('Log', { kind: 'subview', view: 'account' })).toBe(null);
+  });
+
+  test('unknown kinds and non-object targets are rejected', () => {
+    expect(normalizeNavTarget('More', { kind: 'mystery', view: 'account' })).toBe(null);
+    expect(normalizeNavTarget('Analytics', {})).toBe(null);
+    expect(normalizeNavTarget('Analytics', 42)).toBe(null);
+    expect(normalizeNavTarget('Analytics', true)).toBe(null);
+    expect(normalizeNavTarget('Log', () => {})).toBe(null);
   });
 });

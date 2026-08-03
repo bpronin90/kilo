@@ -92,6 +92,53 @@ export function analyticsSectionVariant(section) {
   return 'other';
 }
 
+const ANALYTICS_SECTION_IDS = new Set(['weight', 'strength']);
+
+// Typed cross-screen navigation intents (#718). A navigation request is
+// `{ tab, target, key }`: `handleTabPress(tab, target)` carries the first two
+// and the shell mints the monotonic `key` itself, so an identical intent stays
+// re-consumable. The target vocabulary is:
+//
+//   { kind: 'section', id: 'weight' | 'strength' }   → Analytics
+//   { kind: 'note',    noteId: string }              → Log
+//   { kind: 'subview', view: string, anchor?: string } → More
+//
+// This normalizer is the single place that decides whether a request is a
+// legitimate intent for the destination tab. It validates SHAPE and tab/kind
+// pairing only — never a destination's internal vocabulary. `subview` view
+// names belong to MoreScreen, so the shell deliberately accepts any non-empty
+// string and leaves the whitelist to the one screen that owns those views.
+// Anything malformed, unknown, or addressed to the wrong tab normalizes to
+// null and is safely ignored rather than throwing or half-applying.
+//
+// A bare string is still accepted for Analytics: HomeScreen and WeightScreen
+// call `onNavigate('Analytics', 'weight' | 'strength')` (#717) and are not part
+// of this change, so the legacy form is normalized into the typed section
+// target instead of being rewritten at every call site.
+//
+// Exported for direct unit testing, like analyticsSectionVariant above.
+export function normalizeNavTarget(tab, targetInput) {
+  if (targetInput == null) return null;
+  const target = typeof targetInput === 'string'
+    ? { kind: 'section', id: targetInput }
+    : targetInput;
+  if (typeof target !== 'object') return null;
+  if (target.kind === 'section' && tab === 'Analytics' && ANALYTICS_SECTION_IDS.has(target.id)) {
+    return { kind: 'section', id: target.id };
+  }
+  if (target.kind === 'note' && tab === 'Log' && typeof target.noteId === 'string' && target.noteId) {
+    return { kind: 'note', noteId: target.noteId };
+  }
+  if (target.kind === 'subview' && tab === 'More' && typeof target.view === 'string' && target.view) {
+    return {
+      kind: 'subview',
+      view: target.view,
+      anchor: typeof target.anchor === 'string' && target.anchor ? target.anchor : null,
+    };
+  }
+  return null;
+}
+
 // ThemeProvider wraps the entire shell (#689). It must sit above AppShell, not
 // inside it: AppShell's own container/safe-area/status-bar styling resolves
 // through useTheme, so a provider mounted alongside that markup would leave the
@@ -108,12 +155,24 @@ function AppShell() {
   const { mode } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [activeTab, setActiveTab] = useState('Home');
-  const [analyticsSection, setAnalyticsSection] = useState(null);
-  // Section targeting must re-fire even when the same section is requested twice
-  // in a row (#717). `section` alone is a stable prop, so a second "Analytics →
-  // weight" handoff would not re-run Analytics' scroll effect. This monotonic
-  // nonce makes every navigation request distinct without changing tab behavior.
-  const [analyticsSectionNonce, setAnalyticsSectionNonce] = useState(0);
+  // One (target, key) pair per destination that can receive a typed navigation
+  // intent (#718). They are deliberately independent rather than one shared
+  // `navTarget` object: every mounted screen is memoized (see the note above
+  // MemoHomeScreen), so a single shared object would change identity on every
+  // targeted navigation and force every destination to reconcile for an intent
+  // addressed to one of them. Each destination only ever sees its own kind.
+  //
+  // Targeting must re-fire even when the same target is requested twice in a
+  // row (#717, generalized in #718). The target value alone is a stable prop,
+  // so a second "Analytics → weight" handoff would not re-run Analytics' scroll
+  // effect. The monotonic key makes every navigation request distinct without
+  // changing tab behavior.
+  const [analyticsTarget, setAnalyticsTarget] = useState(null); // { kind: 'section', id } | null
+  const [analyticsTargetKey, setAnalyticsTargetKey] = useState(0);
+  const [logNoteTarget, setLogNoteTarget] = useState(null); // { kind: 'note', noteId } | null
+  const [logNoteTargetKey, setLogNoteTargetKey] = useState(0);
+  const [moreSubviewTarget, setMoreSubviewTarget] = useState(null); // { kind: 'subview', view, anchor } | null
+  const [moreSubviewTargetKey, setMoreSubviewTargetKey] = useState(0);
   const [tabBarHeight, setTabBarHeight] = useState(TAB_BAR_HEIGHT_FALLBACK);
   const scrollListeners = useRef(new Set());
   const isScrollingRef = useRef(false);
@@ -359,24 +418,43 @@ function AppShell() {
   // user corrected before retrying. Cleared only on success.
   const pendingWeightEntryIdRef = useRef(null);
 
-  const handleTabPress = useCallback((tab, section = null) => {
+  // `targetInput` is the intent's `target` (or the legacy bare Analytics
+  // section string); the shell owns the monotonic `key` of the
+  // `{ tab, target, key }` contract, so callers never mint one (#718).
+  const handleTabPress = useCallback((tab, targetInput = null) => {
     Keyboard.dismiss();
     setSaveError('');
     setSaveSuccess('');
-    setAnalyticsSection(section);
-    // Only an explicit Analytics section request bumps the nonce. Bumping it on
-    // every tab press would change a prop on the always-mounted memoized
-    // Analytics tree during unrelated navigation (Home → Weight, Log → More),
-    // forcing that hidden and comparatively expensive subtree to reconcile and
-    // defeating the render isolation the memoized screens exist to provide.
-    if (tab === 'Analytics' && section) {
-      setAnalyticsSectionNonce((n) => n + 1);
-    }
+
+    const target = normalizeNavTarget(tab, targetInput);
+    const sectionTarget = target?.kind === 'section' ? target : null;
+    const noteTarget = target?.kind === 'note' ? target : null;
+    const subviewTarget = target?.kind === 'subview' ? target : null;
+
+    // The target itself is cleared unconditionally so a plain tab press to any
+    // OTHER tab drops a stale pending intent, but only a request that actually
+    // addresses a destination bumps that destination's key. Bumping a key on
+    // every tab press would change a prop on that always-mounted memoized tree
+    // during unrelated navigation (Home → Weight, Log → More), forcing hidden
+    // and comparatively expensive subtrees to reconcile and defeating the
+    // render isolation the memoized screens exist to provide. Clearing to null
+    // is value-stable once cleared, so it costs nothing after the first press.
+    setAnalyticsTarget(sectionTarget);
+    if (sectionTarget) setAnalyticsTargetKey((n) => n + 1);
+    setLogNoteTarget(noteTarget);
+    if (noteTarget) setLogNoteTargetKey((n) => n + 1);
+    setMoreSubviewTarget(subviewTarget);
+    if (subviewTarget) setMoreSubviewTargetKey((n) => n + 1);
+
     setActiveTab(tab);
     emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.TAB_VIEWED, { tab });
     if (tab === 'Analytics') {
+      // The NORMALIZED section, not the raw request: an ignored/malformed
+      // target leaves Analytics on its default landing view, so 'overview' is
+      // what the user actually saw. analyticsSectionVariant keeps its own
+      // 'other' branch for direct callers and the sanitizer allow-list.
       emitMeasurement(PRODUCT_MEASUREMENT_EVENTS.ANALYTICS_VIEWED, {
-        section: analyticsSectionVariant(section),
+        section: analyticsSectionVariant(sectionTarget ? sectionTarget.id : null),
       });
     }
   }, []);
@@ -605,6 +683,11 @@ function AppShell() {
             deloadDateEditEnabled={deloadDateEditEnabled}
             isActive={activeTab === 'Log'}
             registerBackConsumer={registerBackConsumer}
+            // Flattened to primitives, not the target object (#718): a fresh
+            // object literal would change MemoLogScreen's prop identity on
+            // every shell render, defeating its memoization.
+            navNoteId={logNoteTarget ? logNoteTarget.noteId : null}
+            navNoteKey={logNoteTargetKey}
           />
         </View>
         <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
@@ -625,8 +708,11 @@ function AppShell() {
         <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
           <MemoAnalyticsScreen
             multiplier={fatigueMultiplier}
-            section={analyticsSection}
-            sectionNonce={analyticsSectionNonce}
+            // Unchanged external shape (#718): AnalyticsScreen still consumes a
+            // flat section + monotonic nonce, so the typed-intent generalization
+            // is invisible to it and to every existing #717 call site.
+            section={analyticsTarget ? analyticsTarget.id : null}
+            sectionNonce={analyticsTargetKey}
             onNavigate={handleTabPress}
           />
         </View>
@@ -645,6 +731,10 @@ function AppShell() {
             onUpdateWeightDateEditEnabled={handleUpdateWeightDateEditEnabled}
             deloadDateEditEnabled={deloadDateEditEnabled}
             onUpdateDeloadDateEditEnabled={handleUpdateDeloadDateEditEnabled}
+            // Flattened for the same memoization reason as MemoLogScreen above.
+            navSubviewView={moreSubviewTarget ? moreSubviewTarget.view : null}
+            navSubviewAnchor={moreSubviewTarget ? moreSubviewTarget.anchor : null}
+            navSubviewKey={moreSubviewTargetKey}
           />
         </View>
       </>
