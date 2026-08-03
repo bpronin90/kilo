@@ -392,6 +392,7 @@ export function AnalyticsRecoverySection({
   // covers terminal-repair-error, journal-corrupt, and every other gate the
   // authoritative hook enforces (#728).
   mutationsAllowed = true,
+  pendingRecovery = [],
   onRetry,
   onNavigate,
 }) {
@@ -429,10 +430,14 @@ export function AnalyticsRecoverySection({
   const inclusionErrorFor = (blockId) =>
     (inclusionError && inclusionError.blockId === blockId) ? inclusionError.message : null;
 
+  const hasPendingRecovery = (pendingRecovery?.length || 0) > 0;
   // EVERY inclusion switch is disabled while ANY write is in flight (#728),
   // not just the one being written — presenting an enabled switch that would
   // silently discard the interaction is worse than disabling all of them.
-  const inclusionLocked = !mutationsAllowed || !!inclusionBusyBlockId;
+  // Also disabled while reconciliation is pending: the hook rejects those
+  // writes via ensureVerifiedRecoveryState anyway, so the UI must not
+  // advertise an action that can only fail.
+  const inclusionLocked = !mutationsAllowed || hasPendingRecovery || !!inclusionBusyBlockId;
 
   // Unverified state is not "this user has never recovered" (#716). Rendering
   // nothing here would silently retract an entire evidence surface on a failed

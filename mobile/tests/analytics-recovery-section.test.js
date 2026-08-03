@@ -885,4 +885,16 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
     expect(control.props.disabled).toBe(true);
     expect(control.props.accessibilityState.disabled).toBe(true);
   });
+
+  test('a pending recovery operation disables inclusion switches rather than letting them race', () => {
+    const b = completedBlock('rb1', false);
+    const component = setupInclusion({
+      blocks: [b],
+      pendingRecovery: [{ operation_id: 1, block_id: 'rb1', error: null }],
+    });
+    const [control] = switchesFor(component.root);
+
+    expect(control.props.disabled).toBe(true);
+    expect(control.props.accessibilityState.disabled).toBe(true);
+  });
 });
