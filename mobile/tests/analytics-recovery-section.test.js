@@ -550,7 +550,7 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  test('a parser-unavailable note week (size limit) shows Unavailable and has no onPress', () => {
+  test('a parser-unavailable note week (size limit) shows its title and Unavailable state, and has no onPress', () => {
     const onNavigate = jest.fn();
     const b = completedBlock('rb-c', '2026-04-01T00:00:00Z', 'Push Pull Legs');
     const w = week(1, 'note-huge', { block_id: 'rb-c', id: 'rw-c-1' });
@@ -558,13 +558,16 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
     const root = component.root;
 
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Unavailable')[0];
+    // Title is known and must appear; accessible identity uses the note title, not "Unavailable".
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Huge Note')[0];
     expect(row).toBeDefined();
     expect(row.props.onPress).toBeUndefined();
+    expect(hasText(root, 'Huge Note')).toBe(true);
+    expect(hasText(root, 'Unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  test('a parser-unavailable note week (set row with no exercise) shows Unavailable and has no onPress', () => {
+  test('a parser-unavailable note week (set row with no exercise) shows its title and Unavailable state, and has no onPress', () => {
     // A set row with no preceding exercise header causes parseWorkoutNote to return ok:false
     // even though the note is well under the size limit.
     const onNavigate = jest.fn();
@@ -574,9 +577,12 @@ describe('AnalyticsRecoverySection — completed-block week index (#727)', () =>
     const component = setupWithNavigate({ blocks: [b], weeks: [w], notes: [n] }, onNavigate);
     const root = component.root;
 
-    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Unavailable')[0];
+    // The note's title is still known and must appear in the row and accessible identity.
+    const row = root.findAll(inst => inst.props.accessibilityLabel === 'Push Pull Legs, Recovery Week 1, Orphan Sets')[0];
     expect(row).toBeDefined();
     expect(row.props.onPress).toBeUndefined();
+    expect(hasText(root, 'Orphan Sets')).toBe(true);
+    expect(hasText(root, 'Unavailable')).toBe(true);
     expect(onNavigate).not.toHaveBeenCalled();
   });
 

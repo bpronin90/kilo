@@ -109,7 +109,7 @@ function WeekIndexRow({ block, week, notesById, onNavigate }) {
   const { kind, title } = _weekNoteStatus(week, notesById);
   const isAvailable = kind === 'ok';
 
-  const noteTitle = isAvailable ? title : null;
+  const noteTitle = title;
   const stateText = !isAvailable
     ? 'Unavailable'
     : week.completed_at
