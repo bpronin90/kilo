@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert } from '../lib/platformAlert';
 import { Card, Button, SectionTitle } from './UI';
-import { useThemedStyles } from '../theme/ThemeContext';
+import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { localDate, DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutContentRenderer } from './WorkoutContentRenderer';
 
@@ -30,6 +31,7 @@ export function LogDeloadSection({
   handleOpenOtherNote,
   logSessionCount,
 }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [deloadCollapsed, setDeloadCollapsed] = useState(false);
   const [expandedDeloads, setExpandedDeloads] = useState(new Set());
@@ -109,57 +111,69 @@ export function LogDeloadSection({
         <>
           <View style={styles.mirrorContainer}>
             <Card style={styles.currentRoutineCard}>
-              <Pressable onPress={handleDeloadCollapsedToggle} style={styles.otherNoteHeader}>
+              <Pressable
+                onPress={handleDeloadCollapsedToggle}
+                style={styles.otherNoteHeader}
+                accessibilityRole="button"
+                accessibilityLabel={deloadCollapsed ? 'Expand deload week' : 'Collapse deload week'}
+                accessibilityState={{ expanded: !deloadCollapsed }}
+              >
                 <View style={styles.otherNoteInfo}>
                   <Text style={styles.currentNoteTitle}>Deload Week</Text>
                   {deloadNote?.saved_at && (
                     <Text style={styles.otherNoteSub}>{localDate(deloadNote.saved_at).toLocaleDateString()}</Text>
                   )}
                 </View>
-                <Pressable
-                  onPress={(e) => { e.stopPropagation(); enterDeloadEditor(); }}
-                  style={styles.inlineSwitchButton}
-                  hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                >
-                  <Text style={styles.inlineSwitchButtonText}>Edit</Text>
-                </Pressable>
-              </Pressable>
-              <Pressable
-                onPress={handleDeloadBodyPress}
-                style={[styles.currentNoteContent, deloadCollapsed ? { display: 'none' } : null]}
-              >
-                <Text style={styles.editHint}>Double-tap to edit</Text>
-                <WorkoutContentRenderer
-                  dayGroups={deloadDayGroups}
-                  isDeload={true}
-                  mutedUnparsed={true}
-                  emptyText="Deload note is empty."
+                <MaterialIcons
+                  name={deloadCollapsed ? 'expand-more' : 'expand-less'}
+                  size={18}
+                  color={colors.textMuted}
+                  accessible={false}
                 />
               </Pressable>
+              {!deloadCollapsed && (
+                <View style={styles.currentNoteContent}>
+                  <Pressable onPress={handleDeloadBodyPress}>
+                    <Text style={styles.editHint}>Double-tap to edit</Text>
+                    <WorkoutContentRenderer
+                      dayGroups={deloadDayGroups}
+                      isDeload={true}
+                      mutedUnparsed={true}
+                      emptyText="Deload note is empty."
+                    />
+                  </Pressable>
+                  <View style={styles.inlineActions}>
+                    <Button
+                      onPress={enterDeloadEditor}
+                      title="Edit"
+                      style={styles.switchButton}
+                      textStyle={styles.switchButtonText}
+                    />
+                    {deloadMode === 'read' && (
+                      <>
+                        <Button
+                          onPress={handleCompleteDeload}
+                          title="Deload complete"
+                        />
+                        <Button
+                          onPress={handleDeleteActiveDeload}
+                          title="Delete active deload"
+                          style={styles.deleteActiveButton}
+                          textStyle={styles.deleteActiveButtonText}
+                        />
+                      </>
+                    )}
+                    <Button
+                      onPress={handleGenerateDeload}
+                      title={isGenerating ? 'Generating…' : 'Regenerate deload'}
+                      disabled={isGenerating || !workoutNoteText.trim()}
+                      style={styles.generateButton}
+                      textStyle={styles.generateButtonText}
+                    />
+                  </View>
+                </View>
+              )}
             </Card>
-          </View>
-          <View style={styles.previousRoutines}>
-            {deloadMode === 'read' && (
-              <>
-                <Button
-                  onPress={handleCompleteDeload}
-                  title="Deload complete"
-                />
-                <Button
-                  onPress={handleDeleteActiveDeload}
-                  title="Delete active deload"
-                  style={styles.deleteActiveButton}
-                  textStyle={styles.deleteActiveButtonText}
-                />
-              </>
-            )}
-            <Button
-              onPress={handleGenerateDeload}
-              title={isGenerating ? 'Generating…' : 'Regenerate deload'}
-              disabled={isGenerating || !workoutNoteText.trim()}
-              style={styles.generateButton}
-              textStyle={styles.generateButtonText}
-            />
           </View>
         </>
       )}
@@ -177,32 +191,28 @@ export function LogDeloadSection({
                 ? note.title.slice(DELOAD_NOTE_PREFIX.length)
                 : note.saved_at.slice(0, 10);
               const dateStr = rawDate ? localDate(rawDate).toLocaleDateString() : '';
+              const isViewed = viewingNoteId === note.id;
               return (
                 <Card key={note.id} style={styles.otherNoteCard}>
-                  <Pressable onPress={() => handleViewOtherNote(note)} style={styles.otherNoteHeader}>
+                  <Pressable
+                    onPress={() => handleViewOtherNote(note)}
+                    style={styles.otherNoteHeader}
+                    accessibilityRole="button"
+                    accessibilityLabel={isViewed ? `Collapse ${note.title}` : `Expand ${note.title}`}
+                    accessibilityState={{ expanded: isViewed }}
+                  >
                     <View style={styles.otherNoteInfo}>
                       <Text style={styles.otherNoteTitle}>{note.title}</Text>
                       <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
                     </View>
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        Alert.alert(
-                          'Delete deload record?',
-                          'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
-                          ]
-                        );
-                      }}
-                      style={styles.inlineSwitchButton}
-                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                    >
-                      <Text style={styles.pastDeloadDeleteText}>Delete</Text>
-                    </Pressable>
+                    <MaterialIcons
+                      name={isViewed ? 'expand-less' : 'expand-more'}
+                      size={18}
+                      color={colors.textMuted}
+                      accessible={false}
+                    />
                   </Pressable>
-                  {viewingNoteId === note.id && viewingNote && (
+                  {isViewed && viewingNote && (
                     <>
                       <Pressable onPress={() => handleViewedNoteBodyPress(note)} style={styles.currentNoteContent}>
                         <Text style={styles.editHint}>Double-tap to edit</Text>
@@ -218,6 +228,21 @@ export function LogDeloadSection({
                           title="Edit deload record"
                           style={styles.switchButton}
                           textStyle={styles.switchButtonText}
+                        />
+                        <Button
+                          onPress={() => {
+                            Alert.alert(
+                              'Delete deload record?',
+                              'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteDeloadNote(note.id) },
+                              ]
+                            );
+                          }}
+                          title="Delete"
+                          style={styles.deleteActiveButton}
+                          textStyle={styles.deleteActiveButtonText}
                         />
                       </View>
                     </>
@@ -237,31 +262,42 @@ export function LogDeloadSection({
                 <Pressable
                   onPress={() => handleToggleLegacyDeload(record.id)}
                   style={styles.otherNoteHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
+                  accessibilityState={{ expanded: isExpanded }}
                 >
                   <View style={styles.otherNoteInfo}>
                     <Text style={styles.otherNoteTitle}>{title}</Text>
                     <Text style={styles.otherNoteSub}>Completed {dateStr}</Text>
                   </View>
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      Alert.alert(
-                        'Delete deload record?',
-                        'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
-                        ]
-                      );
-                    }}
-                    style={styles.inlineSwitchButton}
-                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.pastDeloadDeleteText}>Delete</Text>
-                  </Pressable>
+                  <MaterialIcons
+                    name={isExpanded ? 'expand-less' : 'expand-more'}
+                    size={18}
+                    color={colors.textMuted}
+                    accessible={false}
+                  />
                 </Pressable>
                 {isExpanded && (
-                  <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                  <>
+                    <Text selectable style={styles.pastDeloadContent}>{record.raw_text}</Text>
+                    <View style={styles.inlineActions}>
+                      <Button
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete deload record?',
+                            'This cannot be undone. The sessions-since-deload clock will reset based on your remaining history.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => deleteDeload(record.id) },
+                            ]
+                          );
+                        }}
+                        title="Delete"
+                        style={styles.deleteActiveButton}
+                        textStyle={styles.deleteActiveButtonText}
+                      />
+                    </View>
+                  </>
                 )}
               </Card>
             );
@@ -371,23 +407,6 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
-  inlineSwitchButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: colors.chipBackground,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  inlineSwitchButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  previousRoutines: {
-    marginTop: 4,
-    gap: 12,
-  },
   generateButton: {
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -421,11 +440,6 @@ const createStyles = (colors) => StyleSheet.create({
   otherNoteCard: {
     padding: 0,
     overflow: 'hidden',
-  },
-  pastDeloadDeleteText: {
-    color: colors.error,
-    fontSize: 14,
-    fontWeight: '600',
   },
   pastDeloadContent: {
     fontSize: 13,
