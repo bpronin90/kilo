@@ -25,10 +25,19 @@ export function useWeightGoal() {
 
   const refresh = useCallback(() => {
     setError(null);
+    // loadWeightGoalResult, not loadWeightGoal: the latter collapses a failed
+    // read into `null`, which is exactly the "no goal set" answer this state
+    // exists to distinguish from. The result variant never rejects, so the
+    // `.catch` below covers only an unexpected throw (or a mocked/alternate
+    // implementation that does reject), not the ordinary failure path.
+    //
     // The previous goal is deliberately left in place on failure: stale but
     // true beats silently reverting the user to "no goal".
-    return Storage.loadWeightGoal()
-      .then(setGoal)
+    return Storage.loadWeightGoalResult()
+      .then(({ ok, goal: next, error: readError }) => {
+        if (ok) setGoal(next);
+        else setError(readError || new Error('Could not read the weight goal.'));
+      })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);

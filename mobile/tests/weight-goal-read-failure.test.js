@@ -8,12 +8,16 @@
 // identical to a verified "no goal set" — and let the rejection escape
 // unhandled. WeightScreen and Home then rendered that failure as an answer.
 //
-// These drive the REAL hook with a rejecting `Storage.loadWeightGoal`, which is
-// the boundary the hook actually owns. Note that the shipped LOCAL
-// implementation of that function swallows its own errors and resolves `null`
-// (see storage/entries/weightGoal.js), so today the local path cannot reach
-// these branches; the hook is nonetheless the correct place for the contract,
-// and it governs any read path that does reject.
+// The local storage read was the other half of the problem:
+// `loadWeightGoal()` catches its own errors and resolves `null`, so the hook
+// could never observe a failure through it. `loadWeightGoalResult()` was added
+// alongside it (additive — `loadWeightGoal()` keeps its never-throws contract
+// for the sync/bootstrap/export callers) and returns `{ ok, goal, error }`; the
+// hook now reads through that.
+//
+// The first group drives the hook against a stubbed result read; the last group
+// drives the whole path for real, against AsyncStorage itself, so the local
+// failure is proven end to end rather than only at a mocked seam.
 
 import React from 'react';
 import render from 'react-test-renderer';
@@ -27,7 +31,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 jest.mock('../storage/entries', () => {
   const actual = jest.requireActual('../storage/entries');
-  return { ...actual, loadWeightGoal: jest.fn() };
+  return { ...actual, loadWeightGoalResult: jest.fn() };
 });
 
 const Storage = require('../storage/entries');
@@ -60,13 +64,13 @@ describe('useWeightGoal read failure (#737 review)', () => {
     jest.clearAllMocks();
   });
 
-  test('a rejected read resolves loading, records the error, and does not leak the rejection', async () => {
+  test('a failed read resolves loading, records the error, and leaks no rejection', async () => {
     // An unhandled rejection is a defect in its own right — the missing
     // `.catch` produced one — so this asserts on it rather than letting it
     // pass as a console warning.
     const onUnhandled = jest.fn();
     process.on('unhandledRejection', onUnhandled);
-    Storage.loadWeightGoal.mockRejectedValue(new Error('storage unavailable'));
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
 
     const component = await mount();
 
@@ -83,7 +87,7 @@ describe('useWeightGoal read failure (#737 review)', () => {
   });
 
   test('a verified empty read is distinct from a failed one', async () => {
-    Storage.loadWeightGoal.mockResolvedValue(null);
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: true, goal: null, error: null });
     const component = await mount();
 
     expect(read(component, 'goal')).toBe('no-goal');
@@ -96,11 +100,11 @@ describe('useWeightGoal read failure (#737 review)', () => {
   });
 
   test('refresh clears the error and adopts the value once the read succeeds', async () => {
-    Storage.loadWeightGoal.mockRejectedValueOnce(new Error('storage unavailable'));
+    Storage.loadWeightGoalResult.mockResolvedValueOnce({ ok: false, goal: null, error: new Error('storage unavailable') });
     const component = await mount();
     expect(read(component, 'error')).toBe('error');
 
-    Storage.loadWeightGoal.mockResolvedValue(GOAL);
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: true, goal: GOAL, error: null });
     await render.act(async () => {
       await component.root.findByProps({ testID: 'refresh' }).props.onPress();
     });
@@ -112,11 +116,11 @@ describe('useWeightGoal read failure (#737 review)', () => {
   });
 
   test('a failed refresh keeps the previously loaded goal instead of reverting to none', async () => {
-    Storage.loadWeightGoal.mockResolvedValue(GOAL);
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: true, goal: GOAL, error: null });
     const component = await mount();
     expect(read(component, 'goal')).toBe('175');
 
-    Storage.loadWeightGoal.mockRejectedValue(new Error('storage unavailable'));
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
     await render.act(async () => {
       await component.root.findByProps({ testID: 'refresh' }).props.onPress();
     });
@@ -131,7 +135,7 @@ describe('useWeightGoal read failure (#737 review)', () => {
   // The error state always reflects the last authoritative READ. A write
   // fans out through notifyGoal(), so the re-read — not the write — decides.
   test('a write while reads still fail leaves the failure visible', async () => {
-    Storage.loadWeightGoal.mockRejectedValue(new Error('storage unavailable'));
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
 
     let hookSave;
     function SaveProbe() {
@@ -152,7 +156,7 @@ describe('useWeightGoal read failure (#737 review)', () => {
   });
 
   test('a write clears the failure once the read that follows it succeeds', async () => {
-    Storage.loadWeightGoal.mockRejectedValue(new Error('storage unavailable'));
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
 
     let hookSave;
     function SaveProbe() {
@@ -169,12 +173,88 @@ describe('useWeightGoal read failure (#737 review)', () => {
     await render.act(async () => { probe = render.create(<SaveProbe />); });
     expect(read(probe, 'probe-error')).toBe('error');
 
-    Storage.loadWeightGoal.mockResolvedValue(GOAL);
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: true, goal: GOAL, error: null });
     await render.act(async () => { await hookSave(GOAL); });
 
     expect(read(probe, 'probe-error')).toBe('none');
     expect(read(probe, 'probe-goal')).toBe('175');
 
     await render.act(async () => { probe.unmount(); });
+  });
+});
+
+// ── the real local read path, end to end (#737 review) ────────────────────────
+//
+// The group above stubs the storage read, which proves the hook's contract but
+// not that the shipped local path can actually produce a failure — the original
+// defect was precisely that it could not. These drive the REAL
+// loadWeightGoalResult against AsyncStorage, so an unreadable record reaches
+// the hook as a failure rather than as `null`.
+describe('local goal read distinguishes failure from absence (#737 review)', () => {
+  const actualWeightGoal = jest.requireActual('../storage/entries/weightGoal');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Storage.loadWeightGoalResult.mockImplementation(actualWeightGoal.loadWeightGoalResult);
+  });
+
+  test('an unreadable record surfaces as a failure, not as "no goal set"', async () => {
+    AsyncStorage.getItem.mockRejectedValue(new Error('storage unavailable'));
+
+    const component = await mount();
+
+    expect(read(component, 'error')).toBe('error');
+    expect(read(component, 'loading')).toBe('false');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('a corrupt record surfaces as a failure rather than silently as absence', async () => {
+    // The JSON.parse throw is inside the same try/catch that used to return
+    // null, so this is the case a user would actually hit.
+    AsyncStorage.getItem.mockResolvedValue('{not valid json');
+
+    const component = await mount();
+
+    expect(read(component, 'error')).toBe('error');
+    expect(read(component, 'goal')).toBe('no-goal');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('a genuinely absent record is still a verified absence', async () => {
+    AsyncStorage.getItem.mockResolvedValue(null);
+
+    const component = await mount();
+
+    expect(read(component, 'error')).toBe('none');
+    expect(read(component, 'goal')).toBe('no-goal');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('a stored record still loads normally', async () => {
+    AsyncStorage.getItem.mockResolvedValue(JSON.stringify(GOAL));
+
+    const component = await mount();
+
+    expect(read(component, 'error')).toBe('none');
+    expect(read(component, 'goal')).toBe('175');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('loadWeightGoal keeps its never-throws contract for sync and export callers', async () => {
+    // The sync pass, bootstrap, and exportBackup all await this and are not
+    // written to handle a rejection; that contract must not have moved.
+    AsyncStorage.getItem.mockRejectedValue(new Error('storage unavailable'));
+    await expect(actualWeightGoal.loadWeightGoal()).resolves.toBeNull();
+
+    AsyncStorage.getItem.mockResolvedValue('{not valid json');
+    await expect(actualWeightGoal.loadWeightGoal()).resolves.toBeNull();
+
+    AsyncStorage.getItem.mockResolvedValue(JSON.stringify(GOAL));
+    await expect(actualWeightGoal.loadWeightGoal()).resolves.toEqual(GOAL);
   });
 });

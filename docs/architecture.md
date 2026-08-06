@@ -385,12 +385,18 @@ matches `useWeightEntries` and `useTrackedLifts`, and a failed refresh keeps the
 previously loaded value rather than reverting to null. Writes never clear
 `error` themselves — `notifyGoal()` re-runs the read, and that read decides.
 
-One gap remains below the hook boundary: `Storage.loadWeightGoal()` in
-`storage/entries/weightGoal.js` catches its own errors and resolves `null`, so
-the LOCAL read path still reports an unreadable goal record as "no goal set".
-The hook-level contract is correct and governs any read path that rejects, but
-closing this fully means changing that loader, which `syncAdapter`,
-`bootstrap`, and `exportBackup` all rely on never throwing.
+That contract reaches the storage layer through a second, additive reader.
+`loadWeightGoal()` in `storage/entries/weightGoal.js` catches its own errors and
+resolves `null`, which collapses "unreadable record" into "no goal set" — and it
+has to keep doing so, because `syncAdapter` (`buildWeightGoalRecords`,
+`applyWeightGoal`), `bootstrap`, `exportBackup`, and `localAdapter` all await it
+and are not written to survive a rejection; making it throw would let a corrupt
+goal record fail a sync pass or an export. So the honest signal is a separate
+`loadWeightGoalResult()` returning `{ ok, goal, error }`, which never rejects
+either: `ok: false` is a failed read and `ok: true` with `goal: null` is a
+verified absence. `useWeightGoal` reads through it; every sync/bootstrap/export
+caller keeps the unchanged `loadWeightGoal()`. New UI reads that must tell
+failure from absence should use the result variant.
 
 For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only

@@ -30,6 +30,7 @@ export {
 
 export {
   loadWeightGoal,
+  loadWeightGoalResult,
   saveWeightGoal,
   clearWeightGoal,
 } from './entries/weightGoal';
