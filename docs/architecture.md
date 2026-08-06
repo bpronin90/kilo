@@ -385,6 +385,16 @@ matches `useWeightEntries` and `useTrackedLifts`, and a failed refresh keeps the
 previously loaded value rather than reverting to null. Writes never clear
 `error` themselves — `notifyGoal()` re-runs the read, and that read decides.
 
+Across every read hook in `hooks/entries`, `error` is cleared **only by a read
+that succeeds**, never on the way into one. Clearing it eagerly reopened the
+exact hole these states close: after a first failure the hook already sits at
+`loading: false` with an empty collection, so dropping `error` at the start of a
+retry left `{ empty, not loading, no error }` — a verified-empty signature — for
+the whole duration of the retry read, and the screen fell back to its
+onboarding/no-data rendering mid-recovery. The last completed read stays the
+truth until a new one replaces it, so a retry holds the failure until it
+resolves and a retry that fails again does not flicker.
+
 That contract reaches the storage layer through a second, additive reader.
 `loadWeightGoal()` in `storage/entries/weightGoal.js` catches its own errors and
 resolves `null`, which collapses "unreadable record" into "no goal set" — and it

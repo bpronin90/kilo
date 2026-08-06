@@ -41,8 +41,13 @@ export function useWorkoutNotes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // `error` is cleared by a read that SUCCEEDS, never on the way in (#737
+  // review). An eager clear made Log's ErrorBanner disappear the moment Retry
+  // was tapped while `notes` was still empty and `loading` already false, so the
+  // screen fell through to "create your first routine" mid-retry — telling a
+  // user with a full notebook that they had none. The last completed read stays
+  // the truth until a new one replaces it.
   const reload = useCallback(() => {
-    setError(null);
     return Promise.all([
       readVia('loadWorkoutNotes', Storage.loadWorkoutNotes),
       Storage.loadCurrentWorkoutId(),
@@ -50,13 +55,15 @@ export function useWorkoutNotes() {
       .then(([ns, id]) => {
         setNotes(ns);
         setCurrentId(id);
+        setError(null);
       })
       .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
 
+  // reload() owns clearing the error, so a sync that succeeds but is followed by
+  // a failing read correctly stays in the failed state.
   const refresh = useCallback(() => {
-    setError(null);
     maybeSyncCloud()
       .then(reload)
       .catch(e => setError(e))

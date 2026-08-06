@@ -258,3 +258,58 @@ describe('local goal read distinguishes failure from absence (#737 review)', () 
     await expect(actualWeightGoal.loadWeightGoal()).resolves.toEqual(GOAL);
   });
 });
+
+// ── the pending-retry window (#737 review) ────────────────────────────────────
+//
+// `refresh()` used to call `setError(null)` on the way in. After an initial
+// failure the hook sits at `{ goal: null, loading: false, error: <err> }`, so
+// clearing the error synchronously left `{ goal: null, loading: false, error:
+// null }` — indistinguishable from a verified "no goal set" — for the whole
+// duration of the retry read. The failed state now survives until a read
+// actually completes.
+describe('useWeightGoal retry keeps the failure visible until it resolves (#737 review)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('the error survives the in-flight retry and clears only on success', async () => {
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
+    const component = await mount();
+    expect(read(component, 'error')).toBe('error');
+
+    // A retry that never settles while we look at the state mid-flight.
+    let releaseRead;
+    Storage.loadWeightGoalResult.mockReturnValue(new Promise((resolve) => {
+      releaseRead = () => resolve({ ok: true, goal: GOAL, error: null });
+    }));
+
+    render.act(() => { component.root.findByProps({ testID: 'refresh' }).props.onPress(); });
+
+    // Mid-retry: still failed, still no goal. This is the whole finding — the
+    // combination `{ error: none, goal: no-goal, loading: false }` would read as
+    // a verified "no goal set" to every consumer.
+    expect(read(component, 'error')).toBe('error');
+    expect(read(component, 'goal')).toBe('no-goal');
+
+    await render.act(async () => { releaseRead(); await Promise.resolve(); });
+
+    expect(read(component, 'error')).toBe('none');
+    expect(read(component, 'goal')).toBe('175');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('a retry that fails again leaves the failure in place rather than flickering', async () => {
+    Storage.loadWeightGoalResult.mockResolvedValue({ ok: false, goal: null, error: new Error('storage unavailable') });
+    const component = await mount();
+    expect(read(component, 'error')).toBe('error');
+
+    await render.act(async () => {
+      await component.root.findByProps({ testID: 'refresh' }).props.onPress();
+    });
+
+    expect(read(component, 'error')).toBe('error');
+
+    await render.act(async () => { component.unmount(); });
+  });
+});

@@ -17,11 +17,17 @@ export function useTrackedLifts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // The mirror of the eager-clear bug in the other read hooks (#737 review):
+  // this one never cleared `error` at all, so once a read failed the flag stayed
+  // set for the life of the hook and a consumer's banner could never come down,
+  // even after a retry succeeded. Clearing it on success — and only on success —
+  // fixes that without reintroducing the mid-retry verified-empty window.
   const refresh = useCallback(() => {
     Storage.loadTrackedLifts()
       .then(data => {
         currentTrackedLifts = data;
         setTrackedLifts(data);
+        setError(null);
       })
       .catch(e => setError(e))
       .finally(() => setLoading(false));

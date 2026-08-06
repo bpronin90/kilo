@@ -8525,3 +8525,63 @@ describe('Log loading and failure states (#737)', () => {
     expect(has(component, 'log-skeleton')).toBe(false);
   });
 });
+
+// ── the pending-retry window on screen (#737 review) ──────────────────────────
+//
+// useWorkoutNotes.reload() used to clear `error` on the way in, so tapping the
+// ErrorBanner's Retry dropped the banner while `notes` was still empty and
+// `loading` already false — and Log fell through to LogEmptyState mid-retry,
+// telling a user with a full notebook that they had none. The hook now holds
+// the failed state until a read completes; this asserts what that looks like.
+describe('Log retry does not flash the empty state (#737 review)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    return component;
+  };
+  const emptyStates = (component) => component.root.findAll(n => n.type === LogEmptyState).length;
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasBanner = (component) => component.root.findAll(
+    n => n.type === 'Text' && String(n.props.children ?? '').includes('Could not load workout notes.')
+  ).length > 0;
+
+  function mockNotes({ notes = [], loading = false, error = null } = {}) {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId: notes.length ? notes[0].id : null,
+      currentNote: notes.length ? notes[0] : null,
+      deloadNotes: [], loading, error,
+      refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}), add: jest.fn(), remove: jest.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  test('a retry still in flight keeps the banner up and the empty state away', () => {
+    // Mid-retry the hook holds the shape it had before the retry: the read has
+    // not completed, so the last completed read is still the truth.
+    mockNotes({ notes: [], loading: false, error: new Error('read failed') });
+    const component = mount();
+
+    expect(hasBanner(component)).toBe(true);
+    expect(emptyStates(component)).toBe(0);
+    expect(has(component, 'log-skeleton')).toBe(false);
+  });
+
+  test('once the retry resolves onto a genuinely empty notebook the empty state appears', () => {
+    mockNotes({ notes: [], loading: false, error: null });
+    const component = mount();
+
+    expect(hasBanner(component)).toBe(false);
+    expect(emptyStates(component)).toBe(1);
+  });
+});
