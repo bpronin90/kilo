@@ -203,9 +203,23 @@ function HomeSkeleton() {
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
-  const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
+  const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
+  const { trackedLifts, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
   const unit = useWeightUnit();
+
+  // The shell owns the weight/note reads and reports their failure through
+  // `loadError`, but Home owns two more of its own — the weight goal and the
+  // tracked-lift map — and both feed tiers on this screen (#737 review). A
+  // failed goal read silently removed the Goal tier and a failed tracked-lift
+  // read zeroed the strength counts, in both cases looking exactly like a user
+  // who has set nothing up. All four sources are one honest failure state here,
+  // with one retry that re-runs everything Home renders from.
+  const hasLoadError = !!loadError || !!goalError || !!trackedLiftsError;
+  const handleRetryLoad = () => {
+    onRetryLoad?.();
+    refreshGoal?.();
+    refreshTrackedLifts?.();
+  };
 
   // Ordinary-analytics boundary (#699). Home's aggregated populations (1K,
   // overload signals, tracked-lift visibility) drop recovery-linked notes whose
@@ -269,24 +283,24 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
     // brand-new account (#737). Presenting the welcome/onboarding card there
     // would tell a user with months of history that they have never logged
     // anything. Empty is only "empty" once the reads actually succeeded.
-    if (loadError) return false;
+    if (hasLoadError) return false;
     const hasTrackedLifts = trackedLifts && Object.values(trackedLifts).some(Boolean);
     return (!weightEntries || weightEntries.length === 0) &&
            (!notes || notes.length === 0) &&
            (!workoutNote?.raw_text || !workoutNote.raw_text.trim()) &&
            !weightGoal &&
            !hasTrackedLifts;
-  }, [isLoading, loadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
+  }, [isLoading, hasLoadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
 
   return (
     <ScreenShell
       title={<KiloWordmark />}
       subtitle="Current routine progress."
     >
-      {loadError ? (
+      {hasLoadError ? (
         <ErrorBanner
           message="Could not load your training data."
-          onRetry={onRetryLoad}
+          onRetry={handleRetryLoad}
         />
       ) : null}
       <CloudSyncNotice />
@@ -295,7 +309,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
           above and nothing else — no fabricated zeroes), and a verified read
           (welcome or dashboard). A failed read that still has cached data keeps
           rendering it under the banner, which is stale but true. */}
-      {isLoading ? <HomeSkeleton /> : (loadError && !hasLoadedData) ? null : isEmptyState ? (
+      {isLoading ? <HomeSkeleton /> : (hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
         <Card style={styles.welcomeCard}>
           <View style={styles.welcomeHeader}>
             <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>

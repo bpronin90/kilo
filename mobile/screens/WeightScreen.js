@@ -135,7 +135,7 @@ export function WeightScreen({
   const styles = useThemedStyles(createStyles);
   const hp = useThemedStyles(createHistoryPanel);
   const { entries, remove, update, loading: entriesLoading, error: entriesError, refresh: refreshEntries } = useWeightEntries();
-  const { goal, loading: goalLoading, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
+  const { goal, loading: goalLoading, error: goalError, refresh: refreshGoal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
   const profile = useUserProfile()?.profile ?? null;
   const unit = useWeightUnit();
@@ -378,10 +378,13 @@ export function WeightScreen({
   // "0 entries, no goal" answer before those resolve. `entries.length === 0`
   // keeps a background refresh from flipping populated sections back to bars.
   const isHistoryFirstLoad = (entriesLoading && entries.length === 0) || (goalLoading && !goal);
-  // A failed read leaves `entries` empty, which the trends/history sections
-  // would present as a verified "no weigh-ins yet". Suppress them and let the
-  // ErrorBanner's Retry be the only claim on screen.
-  const historyUnavailable = !!entriesError && entries.length === 0;
+  // A failed read leaves `entries` empty and `goal` null, which the
+  // goal/trends/history sections would present as a verified "no weigh-ins, no
+  // goal". Suppress them and let the ErrorBanner's Retry be the only claim on
+  // screen. Both sources gate the same block the loading state already gates:
+  // whatever an unresolved read withholds, a failed read withholds too.
+  const historyUnavailable = (!!entriesError && entries.length === 0)
+    || (!!goalError && !goal);
 
   return (
     <ScreenShell
@@ -390,8 +393,14 @@ export function WeightScreen({
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
     >
+      {/* One banner per failed source, each retrying only its own read (#737):
+          a weigh-in read and a goal read fail independently, and merging them
+          would offer a retry for something that never failed. */}
       {entriesError ? (
         <ErrorBanner message="Could not load weight entries." onRetry={refreshEntries} />
+      ) : null}
+      {goalError ? (
+        <ErrorBanner message="Could not load your weight goal." onRetry={refreshGoal} />
       ) : null}
       <Card style={editingId ? styles.editingCard : null}>
         {editingId && (

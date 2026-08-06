@@ -376,6 +376,22 @@ requires a *successful* read before it may render onboarding/empty copy or a
 zeroed dashboard, and withholds derived sections it cannot honestly compute.
 A failed read that still has cached data keeps rendering it under the banner.
 
+Failure state is per read source, not per screen: Weight raises one banner for
+the weigh-in read and one for the goal read, each retrying only its own source,
+and Home folds its two locally-owned reads (`useWeightGoal`, `useTrackedLifts`)
+in with the shell's weight/note reads behind one retry that re-runs all of them.
+`useWeightGoal` was the last read hook without an `error`/`refresh` pair; it now
+matches `useWeightEntries` and `useTrackedLifts`, and a failed refresh keeps the
+previously loaded value rather than reverting to null. Writes never clear
+`error` themselves — `notifyGoal()` re-runs the read, and that read decides.
+
+One gap remains below the hook boundary: `Storage.loadWeightGoal()` in
+`storage/entries/weightGoal.js` catches its own errors and resolves `null`, so
+the LOCAL read path still reports an unreadable goal record as "no goal set".
+The hook-level contract is correct and governs any read path that rejects, but
+closing this fully means changing that loader, which `syncAdapter`,
+`bootstrap`, and `exportBackup` all rely on never throwing.
+
 For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only
 while an active child is visible. The shell consults that consumer before its

@@ -1177,3 +1177,121 @@ describe('Home sync notice and skeleton layout containment (#737)', () => {
     });
   });
 });
+
+// ── Home's own read failures (#737 review) ────────────────────────────────────
+//
+// The shell reports the weight/note reads through `loadError`, but Home owns two
+// more of its own — useWeightGoal and useTrackedLifts — and both feed visible
+// tiers. A failed goal read silently removed the Goal tier and a failed
+// tracked-lift read zeroed the strength counts; in both cases the screen looked
+// exactly like a user who had set nothing up.
+describe('Home local read failures (#737 review)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const ENTRY = { id: 'w1', date: '2026-05-30', logged_at: '2026-05-30T08:00:00Z', weight_value: 185, weight_unit: 'lb', note: '' };
+
+  const props = (overrides = {}) => ({
+    weightEntries: [], workoutNote: null, notes: [], successMessage: '',
+    onNavigate: jest.fn(), loading: false, loadError: false, onRetryLoad: jest.fn(),
+    ...overrides,
+  });
+
+  async function mount(overrides = {}) {
+    let component;
+    await render.act(async () => { component = render.create(React.createElement(HomeScreen, props(overrides))); });
+    return component;
+  }
+
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  let mounted = [];
+  const track = (c) => { mounted.push(c); return c; };
+
+  const goalHook = (over = {}) => ({ goal: null, loading: false, error: null, refresh: jest.fn(), save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(), ...over });
+  const trackedHook = (over = {}) => ({ trackedLifts: {}, loading: false, error: null, refresh: jest.fn(), save: jest.fn(), toggle: jest.fn(), ...over });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    useEntriesModule.useWeightGoal.mockReturnValue(goalHook());
+    useEntriesModule.useTrackedLifts.mockReturnValue(trackedHook());
+  });
+
+  afterEach(async () => {
+    for (const c of mounted) {
+      // eslint-disable-next-line no-await-in-loop
+      await render.act(async () => { c.unmount(); });
+    }
+    mounted = [];
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('a failed goal read is a failure, not a verified "no goal"', async () => {
+    useEntriesModule.useWeightGoal.mockReturnValue(goalHook({ error: new Error('goal read failed') }));
+    const component = track(await mount());
+
+    expect(has(component, 'error-banner')).toBe(true);
+    // With no data at all it must not fall through to the onboarding card.
+    expect(hasText(component, 'Welcome to Kilo')).toBe(false);
+  });
+
+  test('a failed tracked-lift read is a failure, not zeroed progress', async () => {
+    useEntriesModule.useTrackedLifts.mockReturnValue(trackedHook({ error: new Error('tracked read failed') }));
+    const component = track(await mount({ notes: [NOTE], workoutNote: NOTE, weightEntries: [ENTRY] }));
+
+    expect(has(component, 'error-banner')).toBe(true);
+    // Cached data still renders under the banner — stale but true.
+    expect(has(component, 'home-one-k-link')).toBe(true);
+  });
+
+  test('one retry re-runs every read Home renders from, not just the shell pair', async () => {
+    const onRetryLoad = jest.fn();
+    const refreshGoal = jest.fn();
+    const refreshTrackedLifts = jest.fn();
+    useEntriesModule.useWeightGoal.mockReturnValue(goalHook({ error: new Error('boom'), refresh: refreshGoal }));
+    useEntriesModule.useTrackedLifts.mockReturnValue(trackedHook({ refresh: refreshTrackedLifts }));
+
+    const component = track(await mount({ onRetryLoad }));
+    render.act(() => { component.root.findByProps({ testID: 'error-banner-retry' }).props.onPress(); });
+
+    expect(onRetryLoad).toHaveBeenCalledTimes(1);
+    expect(refreshGoal).toHaveBeenCalledTimes(1);
+    expect(refreshTrackedLifts).toHaveBeenCalledTimes(1);
+  });
+
+  test('clean local reads leave the verified empty state reachable', async () => {
+    const component = track(await mount());
+
+    expect(has(component, 'error-banner')).toBe(false);
+    expect(hasText(component, 'Welcome to Kilo')).toBe(true);
+  });
+
+  test('a hook without a refresh function does not break the retry', async () => {
+    // Standalone/legacy mocks return partial hook objects; the retry must stay
+    // inert rather than throwing.
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, error: new Error('boom') });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    const component = track(await mount({ onRetryLoad: undefined }));
+
+    expect(() => render.act(() => {
+      component.root.findByProps({ testID: 'error-banner-retry' }).props.onPress();
+    })).not.toThrow();
+  });
+});

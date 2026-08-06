@@ -15,10 +15,21 @@ const notifyGoal = () => safeNotify(goalListeners);
 export function useWeightGoal() {
   const [goal, setGoal] = useState(null);
   const [loading, setLoading] = useState(true);
+  // A goal read can fail like any other (#737 review). Without this the
+  // `.finally` below cleared `loading` while `goal` stayed null, so a rejected
+  // read was indistinguishable from a verified "no goal set" — and the
+  // rejection itself went unhandled. Matches the error/refresh shape
+  // useWeightEntries and useTrackedLifts already expose, so consumers can keep
+  // loading, failure, and verified-empty apart.
+  const [error, setError] = useState(null);
 
   const refresh = useCallback(() => {
-    Storage.loadWeightGoal()
+    setError(null);
+    // The previous goal is deliberately left in place on failure: stale but
+    // true beats silently reverting the user to "no goal".
+    return Storage.loadWeightGoal()
       .then(setGoal)
+      .catch(e => setError(e))
       .finally(() => setLoading(false));
   }, []);
 
@@ -30,6 +41,11 @@ export function useWeightGoal() {
     };
   }, [refresh]);
 
+  // Writes deliberately do NOT clear `error` themselves. `notifyGoal()` re-runs
+  // refresh on every mounted instance, so the next authoritative READ decides
+  // the error state: it clears when the read recovers and stays put when it does
+  // not. Clearing it here as well would briefly hide a failure that is still
+  // real, which is the exact dishonesty this state exists to prevent.
   const save = useCallback(async (goal_data) => {
     const saved = await Storage.saveWeightGoal(goal_data);
     setGoal(saved);
@@ -68,7 +84,7 @@ export function useWeightGoal() {
     notifyArchivedGoals();
   }, [goal]);
 
-  return { goal, loading, save, clear, archiveGoal };
+  return { goal, loading, error, refresh, save, clear, archiveGoal };
 }
 
 let archivedGoalListeners = [];
