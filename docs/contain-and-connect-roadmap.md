@@ -254,7 +254,8 @@ intents can target Analytics sections, an exact Log note, and More > Cloud Sync.
 
 ## Phase 2 — Contain Log and Move Completed Recovery Context
 
-Status: complete as of 2026-08-02.
+Status: complete as of 2026-08-06. D1 (#724), D1b.1 (#727), D1b.2 (#728), and
+D1b.3 (#729) are merged and included in the current 0.102.0 release.
 
 Phase goal: make the gym-floor surface calm without losing Recovery capability.
 
@@ -326,10 +327,16 @@ week still opens its exact note.
 
 ## Phase 3 — Hierarchy, Accessibility, and State Coverage
 
+Status: active. Cards created for D3 (#736), D5 (#738), and D7 (#737). D3 and
+D7 are ready to triage; D5 remains blocked until D3 is complete.
+
 Phase goal: apply progressive disclosure consistently and make loading, error,
 queued, destructive, and assistive states trustworthy.
 
 ### D3 — Move Deload header actions into expanded bodies
+
+- **Issue:** [#736](https://github.com/bpronin90/kilo/issues/736)
+- **Status:** ready; depends on complete D1 (#724).
 
 - **Suggested title:** `Contain and Connect / D3: apply progressive disclosure to Deload cards`
 - **Goal:** remove configuration/destructive actions from collapsed headers.
@@ -346,6 +353,9 @@ queued, destructive, and assistive states trustworthy.
   `area:ui`, `area:workouts`.
 
 ### D5 — Complete the cross-surface accessibility pass
+
+- **Issue:** [#738](https://github.com/bpronin90/kilo/issues/738)
+- **Status:** blocked until D3 (#736) is complete.
 
 - **Suggested title:** `Contain and Connect / D5: close accessibility gaps across daily surfaces`
 - **Goal:** make affected controls operable through touch, TalkBack, and VoiceOver.
@@ -365,6 +375,9 @@ queued, destructive, and assistive states trustworthy.
   `area:ui`.
 
 ### D7 — Add honest loading, error, queued-sync, and destructive states
+
+- **Issue:** [#737](https://github.com/bpronin90/kilo/issues/737)
+- **Status:** ready; depends on complete D1 (#724), D4 (#717), and D13 (#718).
 
 - **Suggested title:** `Contain and Connect / D7: add shared loading error and sync states`
 - **Goal:** stop screens from rendering nothing or silently losing work-state context.
