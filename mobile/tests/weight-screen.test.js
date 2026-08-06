@@ -1615,3 +1615,98 @@ describe('Android Back routes weight-goal edit through registerBackConsumer, gat
   });
 });
 
+
+// ── honest first-paint and failed-read states (#737) ──────────────────────────
+//
+// The weigh-in form is never gated — logging has to stay available the moment
+// the tab opens — but Goal / Trends / Weight History are derived from `entries`
+// and `goal`, and before this they rendered a confident "no weigh-ins, no goal"
+// answer while those reads were still in flight or after they had failed.
+describe('Weight loading and failure states (#737)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    return component;
+  };
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  test('an unresolved first read paints a placeholder while the form stays usable', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: true, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(true);
+    const skeleton = component.root.find(n => n.props?.testID === 'weight-skeleton');
+    expect(skeleton.props.accessibilityLabel).toBe('Loading your weight history');
+    // The derived sections are withheld, not faked.
+    expect(hasText(component, 'Weight History')).toBe(false);
+    // The entry form is untouched: logging never waits on history.
+    expect(hasText(component, 'Save weigh-in')).toBe(true);
+  });
+
+  test('an unresolved goal read also holds the derived sections', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, loading: true, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(true);
+  });
+
+  test('a refresh over already-loaded entries does not flip back to a placeholder', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: true, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+  });
+
+  test('a failed read shows the retry banner and withholds the derived sections', () => {
+    const refresh = jest.fn();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, error: new Error('read failed'), remove: jest.fn(), update: jest.fn(), refresh,
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load weight entries.')).toBe(true);
+    // Never "0 weigh-ins" as if that were a verified answer.
+    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(has(component, 'weight-skeleton')).toBe(false);
+
+    const retry = component.root.find(
+      n => typeof n.props?.onPress === 'function'
+        && n.findAll(c => c.type === 'Text' && String(c.props.children ?? '') === 'Retry').length > 0
+    );
+    render.act(() => { retry.props.onPress(); });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test('a verified read renders the derived sections as before', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasText(component, 'Trends')).toBe(true);
+  });
+});

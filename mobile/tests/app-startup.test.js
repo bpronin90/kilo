@@ -76,6 +76,12 @@ jest.mock('../components/TabBar', () => {
 });
 
 jest.mock('../hooks/useEntries', () => ({
+  // Shell-owned cloud sync summary (#737). The shell subscribes once and
+  // publishes through this context, so a hand-rolled useEntries mock has to
+  // provide it or AppShell cannot render at all.
+  CloudSyncContext: require('react').createContext(null),
+  useCloudSyncStatus: jest.fn(() => ({ noticeKind: null })),
+  useSyncRecovery: jest.fn(() => ({ retrySync: jest.fn() })),
   useWeightEntries: jest.fn(() => ({
     entries: [],
     loading: false,

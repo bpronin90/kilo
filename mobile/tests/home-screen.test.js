@@ -57,13 +57,22 @@ jest.mock('../components/ScreenShell', () => {
 
 jest.mock('../components/UI', () => {
   const React = require('react');
-  const { View, Text } = require('react-native');
+  const { View, Text, Pressable } = require('react-native');
   return {
     Card: ({ children, style }) => React.createElement(View, { style }, children),
     HeroMetric: { hero: {} },
     LineChart: () => null,
     getSessionTone: () => 'neutral',
     Button: ({ title, onPress }) => React.createElement(Text, { onPress }, title),
+    // Shape-faithful stub (#737): the message and the retry wiring are what
+    // Home is responsible for, so both stay assertable; the real banner's
+    // styling is covered where it lives.
+    ErrorBanner: ({ message, onRetry }) => React.createElement(
+      View,
+      { testID: 'error-banner' },
+      React.createElement(Text, null, message),
+      onRetry ? React.createElement(Pressable, { testID: 'error-banner-retry', onPress: onRetry }) : null
+    ),
   };
 });
 
@@ -848,5 +857,323 @@ describe('App.handleImport broadcasts the recovery reload', () => {
     expect(src).toMatch(
       /if \(result\.ok\) \{[\s\S]*?weightHook\.refresh\(\);[\s\S]*?noteHook\.refresh\(\);[\s\S]*?reloadRecoveryBlocks\(\);[\s\S]*?\}/
     );
+  });
+});
+
+// ── honest first-paint, failure, and queued-sync states (#737) ────────────────
+//
+// Home previously rendered `null` for its entire loading branch and computed
+// "empty" from collections that a FAILED read also leaves empty. So an
+// unresolved read looked broken and a failed read looked like a brand-new
+// account. These lock the three outcomes apart, and cover the shell-published
+// cloud sync notice Home renders above them.
+describe('Home loading, failure, and cloud sync states (#737)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const { CloudSyncContext } = require('../hooks/useEntries');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+
+  const props = (overrides = {}) => ({
+    weightEntries: [],
+    workoutNote: null,
+    notes: [],
+    successMessage: '',
+    onNavigate: jest.fn(),
+    loading: false,
+    loadError: false,
+    onRetryLoad: jest.fn(),
+    ...overrides,
+  });
+
+  async function mount(overrides = {}, cloudSync = undefined) {
+    let component;
+    const element = React.createElement(HomeScreen, props(overrides));
+    await render.act(async () => {
+      component = render.create(
+        cloudSync === undefined
+          ? element
+          : React.createElement(CloudSyncContext.Provider, { value: cloudSync }, element)
+      );
+    });
+    return component;
+  }
+
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  let mounted = [];
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+  });
+
+  afterEach(async () => {
+    for (const c of mounted) {
+      // eslint-disable-next-line no-await-in-loop
+      await render.act(async () => { c.unmount(); });
+    }
+    mounted = [];
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  const track = (component) => { mounted.push(component); return component; };
+
+  test('an unresolved read paints a labelled placeholder instead of nothing', async () => {
+    const component = track(await mount({ loading: true }));
+
+    expect(has(component, 'home-skeleton')).toBe(true);
+    const skeleton = component.root.find(n => n.props?.testID === 'home-skeleton');
+    expect(skeleton.props.accessibilityLabel).toBe('Loading your dashboard');
+    // Loading is not emptiness: the onboarding card must not appear.
+    expect(hasText(component, 'Welcome to Kilo')).toBe(false);
+  });
+
+  test('a failed read shows the banner and never presents itself as a new account', async () => {
+    const onRetryLoad = jest.fn();
+    const component = track(await mount({ loadError: true, onRetryLoad }));
+
+    expect(has(component, 'error-banner')).toBe(true);
+    expect(hasText(component, 'Could not load your training data.')).toBe(true);
+    // The single most damaging confusion: telling a user with history that they
+    // have none.
+    expect(hasText(component, 'Welcome to Kilo')).toBe(false);
+    // And no fabricated dashboard either.
+    expect(has(component, 'home-one-k-link')).toBe(false);
+
+    render.act(() => { component.root.findByProps({ testID: 'error-banner-retry' }).props.onPress(); });
+    expect(onRetryLoad).toHaveBeenCalled();
+  });
+
+  test('a failed read over already-loaded data keeps showing that data under the banner', async () => {
+    const component = track(await mount({
+      loadError: true,
+      notes: [NOTE],
+      workoutNote: NOTE,
+      weightEntries: [{ id: 'w1', date: '2026-05-30', logged_at: '2026-05-30T08:00:00Z', weight_value: 185, weight_unit: 'lb', note: '' }],
+    }));
+
+    expect(has(component, 'error-banner')).toBe(true);
+    // Stale but true beats blank.
+    expect(has(component, 'home-one-k-link')).toBe(true);
+  });
+
+  test('only a verified empty read reaches the welcome card', async () => {
+    const component = track(await mount());
+
+    expect(hasText(component, 'Welcome to Kilo')).toBe(true);
+    expect(has(component, 'home-skeleton')).toBe(false);
+    expect(has(component, 'error-banner')).toBe(false);
+  });
+
+  test('with no shell-published summary there is no sync surface at all', async () => {
+    const component = track(await mount());
+    expect(has(component, 'home-cloud-sync-notice')).toBe(false);
+  });
+
+  test('a clean summary shows nothing; queued work links to Cloud Sync and offers no retry', async () => {
+    const openCloudSync = jest.fn();
+    const clean = track(await mount({}, { summary: { noticeKind: null }, openCloudSync, retrySync: jest.fn() }));
+    expect(has(clean, 'home-cloud-sync-notice')).toBe(false);
+
+    const component = track(await mount({}, {
+      summary: {
+        noticeKind: 'pending',
+        noticeTitle: 'Waiting for Cloud Sync',
+        noticeMessage: '2 changes are saved on this device and waiting for Cloud Sync.',
+      },
+      openCloudSync,
+      retrySync: jest.fn(),
+    }));
+
+    expect(has(component, 'home-cloud-sync-notice')).toBe(true);
+    expect(hasText(component, '2 changes are saved on this device and waiting for Cloud Sync.')).toBe(true);
+    // Retry belongs to a failure, not to work that simply has not been sent yet.
+    expect(has(component, 'home-cloud-sync-retry')).toBe(false);
+
+    render.act(() => { component.root.findByProps({ testID: 'home-cloud-sync-link' }).props.onPress(); });
+    expect(openCloudSync).toHaveBeenCalledTimes(1);
+    // Repeatable: the shell's own key makes a second identical request a real
+    // navigation, so the notice never has to debounce it.
+    render.act(() => { component.root.findByProps({ testID: 'home-cloud-sync-link' }).props.onPress(); });
+    expect(openCloudSync).toHaveBeenCalledTimes(2);
+  });
+
+  test('a failed summary offers retry and surfaces a rejected retry without raw errors', async () => {
+    const retrySync = jest.fn().mockResolvedValue({ ok: false, error: 'Could not sync. Open Cloud Sync for details.' });
+    const component = track(await mount({}, {
+      summary: {
+        noticeKind: 'failed',
+        noticeTitle: 'Cloud Sync did not finish',
+        noticeMessage: 'Your last sync did not finish. Everything you logged is still saved on this device.',
+      },
+      openCloudSync: jest.fn(),
+      retrySync,
+    }));
+
+    expect(hasText(component, 'Your last sync did not finish.')).toBe(true);
+    const retry = component.root.findByProps({ testID: 'home-cloud-sync-retry' });
+    expect(retry.props.accessibilityLabel).toBe('Retry sync');
+
+    await render.act(async () => { retry.props.onPress(); });
+    expect(retrySync).toHaveBeenCalledTimes(1);
+    expect(hasText(component, 'Could not sync. Open Cloud Sync for details.')).toBe(true);
+  });
+
+  test('the notice announces itself as one live region', async () => {
+    const component = track(await mount({}, {
+      summary: {
+        noticeKind: 'pending',
+        noticeTitle: 'Waiting for Cloud Sync',
+        noticeMessage: '1 change is saved on this device and waiting for Cloud Sync.',
+      },
+      openCloudSync: jest.fn(),
+      retrySync: jest.fn(),
+    }));
+
+    // Host elements only: react-test-renderer surfaces RN's composite wrapper
+    // and its host element separately, and both carry the same props.
+    const alerts = component.root.findAll(
+      n => typeof n.type === 'string' && n.props?.accessibilityRole === 'alert'
+    );
+    expect(alerts.length).toBe(1);
+    expect(alerts[0].props.accessibilityLiveRegion).toBe('polite');
+    expect(alerts[0].props.accessibilityLabel).toBe(
+      'Waiting for Cloud Sync. 1 change is saved on this device and waiting for Cloud Sync.'
+    );
+  });
+});
+
+// ── responsive and large-text structure for the new surfaces (#737) ───────────
+//
+// Structural guards only: react-test-renderer runs no layout engine. What they
+// lock is the set of properties that decide whether these surfaces survive
+// 320dp and an enlarged text setting — percentage-based placeholder widths, a
+// wrapping action row, >=44dp press targets, and no fixed line boxes or heights
+// that an enlarged label would overflow.
+describe('Home sync notice and skeleton layout containment (#737)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const { CloudSyncContext } = require('../hooks/useEntries');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const flat = (style) => [].concat(style ?? []).reduce((acc, s) => (s ? Object.assign(acc, s) : acc), {});
+
+  const FAILED = {
+    summary: {
+      noticeKind: 'failed',
+      noticeTitle: 'Cloud Sync did not finish',
+      noticeMessage: 'Your last sync did not finish. Everything you logged is still saved on this device.',
+    },
+    openCloudSync: jest.fn(),
+    retrySync: jest.fn().mockResolvedValue({ ok: true }),
+  };
+
+  let component;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    AsyncStorage.getItem.mockImplementation(async () => null);
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+  });
+
+  afterEach(async () => {
+    if (component) await render.act(async () => { component.unmount(); });
+    component = null;
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  async function mountNotice() {
+    const props = {
+      weightEntries: [], workoutNote: null, notes: [], successMessage: '',
+      onNavigate: jest.fn(), loading: false, loadError: false, onRetryLoad: jest.fn(),
+    };
+    await render.act(async () => {
+      component = render.create(
+        React.createElement(
+          CloudSyncContext.Provider,
+          { value: FAILED },
+          React.createElement(HomeScreen, props)
+        )
+      );
+    });
+    return component;
+  }
+
+  test('both notice actions meet the 44dp target and can grow with the label', async () => {
+    const c = await mountNotice();
+    for (const testID of ['home-cloud-sync-retry', 'home-cloud-sync-link']) {
+      const action = c.root.findByProps({ testID });
+      const style = flat(action.props.style);
+      expect(style.minHeight).toBeGreaterThanOrEqual(44);
+      // A fixed height clips an enlarged label instead of growing for it.
+      expect(style.height).toBeUndefined();
+      expect(action.props.hitSlop).not.toBeUndefined();
+      expect(action.props.accessibilityRole).toBe('button');
+    }
+  });
+
+  test('the action row wraps rather than squeezing two actions onto one narrow line', async () => {
+    const c = await mountNotice();
+    const retry = c.root.findByProps({ testID: 'home-cloud-sync-retry' });
+    const row = retry.parent;
+    const style = flat(row.props.style);
+    expect(style.flexDirection).toBe('row');
+    expect(style.flexWrap).toBe('wrap');
+  });
+
+  test('notice copy sets no fixed line box', async () => {
+    const c = await mountNotice();
+    const texts = c.root.findAll(
+      n => n.type === 'Text' && String(n.props.children ?? '').includes('Your last sync did not finish')
+    );
+    expect(texts.length).toBeGreaterThan(0);
+    texts.forEach((t) => {
+      const style = flat(t.props.style);
+      expect(style.lineHeight).toBeUndefined();
+      expect(style.height).toBeUndefined();
+      // Nothing truncates the explanation.
+      expect(t.props.numberOfLines).toBeUndefined();
+    });
+  });
+
+  test('skeleton bars are width-relative, so they cannot overflow a 320dp card', async () => {
+    const props = {
+      weightEntries: [], workoutNote: null, notes: [], successMessage: '',
+      onNavigate: jest.fn(), loading: true, loadError: false, onRetryLoad: jest.fn(),
+    };
+    await render.act(async () => { component = render.create(React.createElement(HomeScreen, props)); });
+
+    const skeleton = component.root.find(n => n.props?.testID === 'home-skeleton');
+    const bars = skeleton.findAll(
+      n => typeof n.type === 'string' && flat(n.props?.style).borderRadius === 6
+    );
+    expect(bars.length).toBeGreaterThan(0);
+    bars.forEach((bar) => {
+      const style = flat(bar.props.style);
+      expect(typeof style.width).toBe('string');
+      expect(style.width.endsWith('%')).toBe(true);
+    });
   });
 });

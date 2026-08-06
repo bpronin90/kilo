@@ -289,6 +289,52 @@ while collapsed expands the panel and opens the filter row.
 
 Source: `mobile/screens/HomeScreen.js`
 
+### Cloud Sync Notice (#737)
+
+Rendered above every other tier, only when the shell-published summary carries a
+notice. Queued work is informational and reuses the chip tone the shell's update
+banner already uses; only a real failure takes the error surface.
+
+| Element | Property | Value |
+|---|---|---|
+| Notice card (pending) | backgroundColor | `colors.chipBackground` |
+| | borderColor | `colors.cardBorder` |
+| Notice card (failed) | backgroundColor | `colors.errorSurface` |
+| | borderColor | `colors.error` |
+| Card wrapper (both) | padding / marginTop / gap | `16` / `12` / `8` |
+| Title | fontSize / fontWeight | `14` / `700` |
+| | color | `colors.text`, or `colors.error` when failed |
+| Body | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
+| Action row | flexDirection / flexWrap | `row` / `wrap` |
+| | columnGap / rowGap | `16` / `4` |
+| Action (`Retry sync`, `Open Cloud Sync`) | minHeight | `44` (no fixed `height`) |
+| Action label | fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
+
+`Retry sync` renders only for the failed notice. Both actions are ≥44dp and the
+row wraps, so an enlarged label at 320dp drops to a second line rather than
+shrinking the target.
+
+### Loading Placeholders (#737)
+
+Home, Log, and Weight each render a local, **static** placeholder while a first
+read is unresolved — no shimmer, no animation. There is no shared primitive;
+each screen shapes its bars to the tiers it is about to paint.
+
+| Element | Property | Value |
+|---|---|---|
+| Placeholder card | padding | `24` (Home) / `20` (Log, Weight) |
+| | borderRadius | `24` (matches `Card`) |
+| | gap | `12` |
+| Bar | backgroundColor | `colors.cardBorder` |
+| | borderRadius / opacity | `6` / `0.6` |
+| | height | `12`, or `36` for Home's hero bar |
+| | width | `'35%'` / `'75%'` / `'100%'` — always relative, never fixed px |
+
+Each placeholder is one `accessibilityRole="progressbar"` node with a screen-
+specific label (`Loading your dashboard`, `Loading your workout notes`,
+`Loading your weight history`), so a screen reader announces a load in progress
+rather than reading a stack of empty containers.
+
 ### Weekly Summary Hero Card
 
 | Element | Property | Value | Line |

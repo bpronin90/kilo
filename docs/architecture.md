@@ -349,6 +349,33 @@ that owns the resolved note. Absence counts as "deleted" only after a successful
 read: while the note list is loading or a read has failed, the intent stays
 pending so the existing Retry can still fulfill it.
 
+Cloud sync status is a shell-owned subscription, not a per-tab one (#737).
+Because all five tabs stay mounted, a screen-level `useCloudSyncStatus()` would
+mean five permanent subscriptions and five duplicate dirty-queue scans on every
+phase or queue broadcast. `App.js` calls the hook once and publishes
+`{ summary, retrySync, openCloudSync }` through `CloudSyncContext`
+(`mobile/hooks/useEntries.js`); screens read it with `useCloudSyncSummary()` and
+never subscribe. Outside the provider the context is `null`, which consumers
+treat as "no summary was published" and render no sync surface at all. The
+summary derives at most one notice — `failed` or `pending`, with a running pass
+suppressing both so a stale failure never outlives the retry it asks for — and
+its copy describes the local queue only; Kilo does no connectivity detection, so
+nothing in it claims a connection or an in-flight request. `openCloudSync` is an
+ordinary typed intent (`CLOUD_SYNC_NAV_TARGET`, exported from `App.js`) rather
+than a bespoke route, so a repeated request re-applies under a later key like
+any other, and `retrySync` binds the same `useSyncRecovery` runner the Cloud
+Sync panel's own Retry uses — no second sync path exists.
+
+Loading, failure, and verified-empty are distinct outcomes on every mounted
+surface (#737). Home, Log, and Weight paint static (non-animated) placeholder
+cards while a first read is unresolved, and Home, Log, Weight, and Analytics
+surface a retry banner when a read fails. This matters because the entry hooks
+clear `loading` on failure and leave their collection empty, making a failed
+read byte-identical to a genuinely empty account: every screen therefore
+requires a *successful* read before it may render onboarding/empty copy or a
+zeroed dashboard, and withholds derived sections it cannot honestly compute.
+A failed read that still has cached data keeps rendering it under the banner.
+
 For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only
 while an active child is visible. The shell consults that consumer before its

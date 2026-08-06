@@ -37,6 +37,10 @@ jest.mock('../screens/AnalyticsScreen', () => {
   return { AnalyticsScreen: () => React.createElement(View) };
 });
 jest.mock('../hooks/useEntries', () => ({
+  // Shell-owned cloud sync summary (#737) — see app-startup.test.js.
+  CloudSyncContext: require('react').createContext(null),
+  useCloudSyncStatus: () => ({ noticeKind: null }),
+  useSyncRecovery: () => ({ retrySync: jest.fn() }),
   useWeightEntries: () => ({ entries: [], loading: false, refresh: jest.fn() }),
   useWorkoutNotes: () => ({
     notes: [],

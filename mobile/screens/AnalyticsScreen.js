@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, TextInput } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ScreenShell } from '../components/ScreenShell';
-import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel } from '../components/UI';
+import { HeroMetric, SectionTitle, SessionGauge, ArtisanalPanel, ErrorBanner } from '../components/UI';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { deriveWeightGoalAnalytics, DEFAULT_1K_EXERCISES, normalizeLiftName, deriveCheckInHistory, deriveRoutineStatus } from '../lib/data';
 import { useTrackedLifts, useWorkoutNotes, useWeightEntries, useDeloadHistory, useFeatureToggles, useRecoveryBlockState } from '../hooks/useEntries';
@@ -31,10 +31,22 @@ import { AnalyticsRecoverySection } from '../components/AnalyticsRecoverySection
 export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { notes, currentNote, loading: loadingNotes, update: updateNote } = useWorkoutNotes();
+  const {
+    notes,
+    currentNote,
+    loading: loadingNotes,
+    error: notesError,
+    refresh: refreshNotes,
+    update: updateNote,
+  } = useWorkoutNotes();
   const [editPendingCheckIn, setEditPendingCheckIn] = useState(null); // { ci, note }
   const [fatigueExpanded, setFatigueExpanded] = useState(false);
-  const { entries: hookWeightEntries, loading: loadingWeight } = useWeightEntries();
+  const {
+    entries: hookWeightEntries,
+    loading: loadingWeight,
+    error: weightError,
+    refresh: refreshWeightEntries,
+  } = useWeightEntries();
   const { trackedLifts, loading: loadingTracked } = useTrackedLifts();
   const { history: deloadHistory } = useDeloadHistory();
   const { fatigueTrackingEnabled, deloadModeEnabled } = useFeatureToggles();
@@ -74,14 +86,19 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
     return (hookWeightEntries || []).filter(e => e && e.date && e.weight_value != null);
   }, [hookWeightEntries]);
 
-  const isWeightLoading = loadingWeight && weightEntries.length === 0;
+  // A failed read must not be laundered into a permanent loading state (#737).
+  // useWorkoutNotes/useWeightEntries both clear `loading` and leave the
+  // collection empty when a read fails, so without this the affected cards
+  // would sit on their "Not enough data" copy forever with nothing on screen
+  // saying why or offering a retry.
+  const isWeightLoading = loadingWeight && !weightError && weightEntries.length === 0;
   // An unverified recovery boundary (#699) counts as notes-not-ready: the 1K
   // card and the Progressive Overload list are both derived from a note
   // population that is not yet known to be correct, so they hold their loading
   // state rather than painting aggregates that may include excluded work. The
   // Recovery, weight, and fatigue sections do not depend on the boundary and are
   // deliberately left alone.
-  const isNotesLoading = (loadingNotes && notes.length === 0) || !recoveryFilter.ready;
+  const isNotesLoading = (loadingNotes && !notesError && notes.length === 0) || !recoveryFilter.ready;
   const isTrackedLoading = loadingTracked && Object.keys(trackedLifts).length === 0;
 
   useEffect(() => {
@@ -243,6 +260,26 @@ export function AnalyticsScreen({ multiplier, section, sectionNonce, onNavigate 
   }, [analytics.oneK, unit]);
 
   const screenContent = React.Children.toArray([
+    // Load failures first, above every derived card (#737). Analytics is
+    // entirely derived from the note and weight collections, so a failed read
+    // silently turns the whole tab into a plausible-looking "you have no data"
+    // report. One banner per failed source, each retrying only its own read.
+    notesError ? (
+      <ErrorBanner
+        key="notes-error-banner"
+        message="Could not load workout notes. Training analytics are incomplete."
+        onRetry={refreshNotes}
+      />
+    ) : null,
+
+    weightError ? (
+      <ErrorBanner
+        key="weight-error-banner"
+        message="Could not load weight entries. Weight trends are incomplete."
+        onRetry={refreshWeightEntries}
+      />
+    ) : null,
+
     <AnalyticsWeightTrendsCard
       key="weight-trends-card"
       handleWeightLayout={handleWeightLayout}

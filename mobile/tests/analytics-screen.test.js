@@ -1697,3 +1697,110 @@ describe('AnalyticsScreen — authoritative Recovery state (#716)', () => {
     expect(hasText(component.root, RECOVERY_STALE_MESSAGE)).toBe(false);
   });
 });
+
+// ── failed-read banners (#737) ────────────────────────────────────────────────
+//
+// Analytics is entirely derived: every card here is computed from the note and
+// weight collections. A failed read leaves those collections empty with
+// `loading` already cleared, so without a banner the whole tab silently
+// degrades into a plausible-looking "you have no data" report, with no way to
+// tell that apart from a real answer and no way to retry.
+describe('AnalyticsScreen load-failure banners (#737)', () => {
+  function setupWithErrors({ notesError = null, weightError = null, refreshNotes = jest.fn(), refreshWeight = jest.fn() } = {}) {
+    useEntries.useFeatureToggles.mockReturnValue({
+      fatigueTrackingEnabled: true,
+      deloadModeEnabled: true,
+      setFatigueTrackingEnabled: jest.fn(),
+      setDeloadModeEnabled: jest.fn(),
+    });
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, error: weightError, refresh: refreshWeight,
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [], currentNote: null, loading: false, error: notesError, refresh: refreshNotes, update: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: false });
+
+    let component;
+    render.act(() => {
+      component = render.create(<AnalyticsScreen multiplier={1.07} section={null} />);
+    });
+    return component;
+  }
+
+  // The deepest host element that contains both the message and a press target
+  // is the banner itself; everything above it is an ancestor that also matches.
+  const retryFor = (root, message) => {
+    const candidates = root.findAll(
+      n => typeof n.type === 'string'
+        && n.findAll(c => c.type === 'Text' && String(c.props.children ?? '').includes(message)).length > 0
+        && n.findAll(c => typeof c.props?.onPress === 'function').length > 0
+    );
+    const banner = candidates[candidates.length - 1];
+    const presses = banner.findAll(n => typeof n.props?.onPress === 'function');
+    return presses[presses.length - 1];
+  };
+
+  test('a clean read shows no banner', () => {
+    const component = setupWithErrors();
+    expect(hasText(component.root, 'Could not load workout notes')).toBe(false);
+    expect(hasText(component.root, 'Could not load weight entries')).toBe(false);
+  });
+
+  test('a failed notes read is named, scoped, and retryable on its own', () => {
+    const refreshNotes = jest.fn();
+    const component = setupWithErrors({ notesError: new Error('boom'), refreshNotes });
+
+    expect(hasText(component.root, 'Could not load workout notes. Training analytics are incomplete.')).toBe(true);
+    expect(hasText(component.root, 'Could not load weight entries')).toBe(false);
+
+    render.act(() => { retryFor(component.root, 'Could not load workout notes').props.onPress(); });
+    expect(refreshNotes).toHaveBeenCalled();
+  });
+
+  test('a failed weight read is named, scoped, and retryable on its own', () => {
+    const refreshWeight = jest.fn();
+    const component = setupWithErrors({ weightError: new Error('boom'), refreshWeight });
+
+    expect(hasText(component.root, 'Could not load weight entries. Weight trends are incomplete.')).toBe(true);
+    expect(hasText(component.root, 'Could not load workout notes')).toBe(false);
+
+    render.act(() => { retryFor(component.root, 'Could not load weight entries').props.onPress(); });
+    expect(refreshWeight).toHaveBeenCalled();
+  });
+
+  test('both failures are reported independently, not merged into one', () => {
+    const component = setupWithErrors({ notesError: new Error('a'), weightError: new Error('b') });
+    expect(hasText(component.root, 'Could not load workout notes')).toBe(true);
+    expect(hasText(component.root, 'Could not load weight entries')).toBe(true);
+  });
+
+  test('a failed read is not laundered into a permanent loading state', () => {
+    // `loading` stays true while `error` is set — the shape a hook can briefly
+    // hold. The failure wins: a spinner that can never resolve is the exact
+    // dishonest state this replaces.
+    useEntries.useFeatureToggles.mockReturnValue({
+      fatigueTrackingEnabled: false, deloadModeEnabled: false,
+      setFatigueTrackingEnabled: jest.fn(), setDeloadModeEnabled: jest.fn(),
+    });
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: true, error: new Error('boom'), refresh: jest.fn(),
+    });
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false });
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [], currentNote: null, loading: true, error: new Error('boom'), refresh: jest.fn(), update: jest.fn(),
+    });
+    useEntries.useDeloadHistory.mockReturnValue({ history: [], loading: false });
+    useEntries.useRecoveryBlockState.mockReturnValue({ blocks: [], weeks: [], loading: false });
+
+    let component;
+    render.act(() => {
+      component = render.create(<AnalyticsScreen multiplier={1.07} section={null} />);
+    });
+
+    expect(hasText(component.root, 'Could not load workout notes')).toBe(true);
+    expect(component.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  });
+});

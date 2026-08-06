@@ -8,7 +8,7 @@
 import React from 'react';
 import renderer from 'react-test-renderer';
 import { BackHandler, Platform } from 'react-native';
-import App, { normalizeNavTarget } from '../App';
+import App, { normalizeNavTarget, CLOUD_SYNC_NAV_TARGET } from '../App';
 import * as useEntries from '../hooks/useEntries';
 
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
@@ -430,6 +430,32 @@ describe('Android Back handler ownership across tab switches (#527)', () => {
 
     expect(second.view).toBe('account');
     // Identical logical target, so only the key can prove the second request landed.
+    expect(second.key).not.toBe(first.key);
+  });
+
+  // --- Cloud Sync target (#737) ---
+
+  test('the Cloud Sync target is an ordinary typed subview intent, not a bespoke route', () => {
+    expect(CLOUD_SYNC_NAV_TARGET).toEqual({ kind: 'subview', view: 'account', anchor: 'cloud-sync' });
+    // It survives the shell's own normalizer, which is what makes it reach More
+    // at all — nothing about Cloud Sync bypasses the #718 contract.
+    expect(normalizeNavTarget('More', CLOUD_SYNC_NAV_TARGET))
+      .toEqual({ kind: 'subview', view: 'account', anchor: 'cloud-sync' });
+  });
+
+  test('a repeated Cloud Sync request re-applies even without leaving the tab', () => {
+    // The queued-sync notice can be pressed twice in a row from Home while More
+    // is already the active tab and already on Account. The logical target never
+    // changes, so only the shell-minted key can carry the second request — and
+    // it must, or the second press would silently do nothing.
+    renderer.act(() => { capturedTabPress('More', CLOUD_SYNC_NAV_TARGET); });
+    const first = lastMoreRender();
+
+    renderer.act(() => { capturedTabPress('More', CLOUD_SYNC_NAV_TARGET); });
+    const second = lastMoreRender();
+
+    expect(second.view).toBe('account');
+    expect(second.anchor).toBe('cloud-sync');
     expect(second.key).not.toBe(first.key);
   });
 
