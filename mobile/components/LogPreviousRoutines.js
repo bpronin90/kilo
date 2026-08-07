@@ -126,6 +126,13 @@ export function LogPreviousRoutines({
                 <Pressable
                   onPress={() => handleViewOtherNote(other)}
                   style={styles.otherNoteHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    viewingNoteId === other.id
+                      ? `Collapse ${other.title || 'Untitled Routine'}`
+                      : `Expand ${other.title || 'Untitled Routine'}`
+                  }
+                  accessibilityState={{ expanded: viewingNoteId === other.id }}
                 >
                   <View style={styles.otherNoteInfo}>
                     <Text
@@ -203,6 +210,7 @@ export function LogPreviousRoutines({
                       <Button
                         onPress={() => viewingNote && handleDeleteRoutine(viewingNoteId, viewingNote.title || 'Untitled Routine', false)}
                         title="Delete routine"
+                        accessibilityLabel={`Delete routine ${viewingNote?.title || 'Untitled Routine'}`}
                         style={styles.deleteButton}
                         textStyle={styles.deleteButtonText}
                       />
@@ -299,6 +307,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 24,
     gap: 12,
+    minHeight: 44,
   },
   otherNoteInfo: {
     flex: 1,

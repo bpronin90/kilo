@@ -718,7 +718,12 @@ function AppShell() {
   const renderContent = () => {
     return (
       <>
-        <View testID="tab-content-Home" style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}>
+        <View
+          testID="tab-content-Home"
+          style={[styles.tabContent, activeTab === 'Home' && styles.activeTabContent]}
+          accessibilityElementsHidden={activeTab !== 'Home'}
+          importantForAccessibility={activeTab === 'Home' ? 'auto' : 'no-hide-descendants'}
+        >
           <MemoHomeScreen
             weightEntries={weightHook.entries}
             workoutNote={noteHook.currentNote}
@@ -730,7 +735,12 @@ function AppShell() {
             onRetryLoad={handleRetryHomeData}
           />
         </View>
-        <View testID="tab-content-Log" style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
+        <View
+          testID="tab-content-Log"
+          style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}
+          accessibilityElementsHidden={activeTab !== 'Log'}
+          importantForAccessibility={activeTab === 'Log' ? 'auto' : 'no-hide-descendants'}
+        >
           <MemoLogScreen
             workoutNoteText={workoutNoteText}
             setWorkoutNoteText={setWorkoutNoteText}
@@ -749,7 +759,12 @@ function AppShell() {
             navNoteKey={logNoteTargetKey}
           />
         </View>
-        <View testID="tab-content-Weight" style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}>
+        <View
+          testID="tab-content-Weight"
+          style={[styles.tabContent, activeTab === 'Weight' && styles.activeTabContent]}
+          accessibilityElementsHidden={activeTab !== 'Weight'}
+          importantForAccessibility={activeTab === 'Weight' ? 'auto' : 'no-hide-descendants'}
+        >
           <MemoWeightScreen
             weightValue={weightValue}
             setWeightValue={setWeightValue}
@@ -764,7 +779,12 @@ function AppShell() {
             registerBackConsumer={registerBackConsumer}
           />
         </View>
-        <View testID="tab-content-Analytics" style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}>
+        <View
+          testID="tab-content-Analytics"
+          style={[styles.tabContent, activeTab === 'Analytics' && styles.activeTabContent]}
+          accessibilityElementsHidden={activeTab !== 'Analytics'}
+          importantForAccessibility={activeTab === 'Analytics' ? 'auto' : 'no-hide-descendants'}
+        >
           <MemoAnalyticsScreen
             multiplier={fatigueMultiplier}
             // Unchanged external shape (#718): AnalyticsScreen still consumes a
@@ -775,7 +795,12 @@ function AppShell() {
             onNavigate={handleTabPress}
           />
         </View>
-        <View testID="tab-content-More" style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}>
+        <View
+          testID="tab-content-More"
+          style={[styles.tabContent, activeTab === 'More' && styles.activeTabContent]}
+          accessibilityElementsHidden={activeTab !== 'More'}
+          importantForAccessibility={activeTab === 'More' ? 'auto' : 'no-hide-descendants'}
+        >
           <MemoMoreScreen
             isActive={activeTab === 'More'}
             auth={stableAuth}

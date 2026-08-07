@@ -396,7 +396,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 accessibilityHint="Opens the Log tab for your current routine"
               >
                 <Text style={styles.heroPrimaryActionText}>Log workout</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
 
               <View style={styles.heroPrimaryActionDivider} />
@@ -411,7 +411,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 accessibilityHint="Opens the Weight tab to log a weigh-in"
               >
                 <Text style={styles.heroPrimaryActionText}>Log weight</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
 
@@ -448,7 +448,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 accessibilityHint="Opens the weight section of the Analytics tab"
               >
                 <Text style={styles.heroInlineActionText}>See weight trends</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
 
@@ -470,7 +470,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               >
                 <Text style={[styles.classifSectionLabel, styles.sectionHeaderLabel]}>Exercise Progress</Text>
                 <View style={styles.sectionHeaderChevron}>
-                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                  <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
                 </View>
               </Pressable>
               <View style={styles.classifRow}>
@@ -492,7 +492,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             <View style={styles.heroFooter}>
               <Pressable onPress={() => onNavigate('Analytics')} style={styles.insightsLink}>
                 <Text style={styles.insightsLinkText}>Full history and insights</Text>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </Pressable>
             </View>
           </Card>
@@ -523,7 +523,19 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                       <Text style={styles.goalStatUnitLabel}>{unit}</Text>
                     </View>
                   </View>
-                  <View style={styles.goalStatCol}>
+                  <View
+                    style={styles.goalStatCol}
+                    accessible
+                    accessibilityLabel={`Pace: ${
+                      gi.required_weekly_pace !== null
+                        ? `${gi.required_weekly_pace > 0 ? '+' : ''}${displayWeight(gi.required_weekly_pace, unit).toFixed(1)} ${unit} per week`
+                        : 'not available'
+                    }. ${
+                      warnings.includes('unrealistic') ? 'Unrealistic pace.'
+                        : warnings.includes('unhealthy') ? 'Unhealthy pace.'
+                        : 'Healthy pace.'
+                    }`}
+                  >
                     <Text style={styles.goalStatLabel}>Pace</Text>
                     <View style={styles.goalStatValueRow}>
                       <Text style={[styles.goalStatValueLarge, { color: paceColor }]}>
@@ -559,7 +571,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             >
               <Text style={[styles.oneKLabel, styles.sectionHeaderLabel]}>1K Progress</Text>
               <View style={styles.sectionHeaderChevron}>
-                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><Path d="M9 5l7 7-7 7" /></Svg>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
               </View>
             </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>

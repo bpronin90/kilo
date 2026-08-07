@@ -39,6 +39,9 @@ export function LogActiveRoutineCard({
         <Pressable
           onPress={toggleCollapsed} // Tapping the header collapses/expands the card body
           style={styles.otherNoteHeader}
+          accessibilityRole="button"
+          accessibilityLabel={isCollapsed ? 'Expand current routine' : 'Collapse current routine'}
+          accessibilityState={{ expanded: !isCollapsed }}
         >
           <View style={styles.otherNoteInfo}>
             <Text
