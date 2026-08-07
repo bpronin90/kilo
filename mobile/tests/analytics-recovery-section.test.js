@@ -799,7 +799,9 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
 
   function switchesFor(root) {
     return root.findAll(
-      n => n.props && n.props.accessibilityLabel === RECOVERY_INCLUSION_LABEL && n.props.onValueChange
+      n => n.props && typeof n.props.accessibilityLabel === 'string'
+        && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL)
+        && n.props.onValueChange
     );
   }
 
@@ -825,6 +827,20 @@ describe('AnalyticsRecoverySection — inclusion preference (#728)', () => {
     );
     expect(byId['rb-a'].props.value).toBe(false);
     expect(byId['rb-b'].props.value).toBe(true);
+  });
+
+  test('each inclusion switch carries its own block identity in the spoken label', () => {
+    const b1 = { ...completedBlock('rb-a'), baseline_note_title: 'Push Pull Legs' };
+    const b2 = { ...completedBlock('rb-b'), baseline_note_title: 'Upper Lower' };
+    const component = setupInclusion({ blocks: [b1, b2] });
+    const controls = switchesFor(component.root);
+    const byId = Object.fromEntries(
+      controls.map(c => [c.props.testID.replace('recovery-inclusion-switch-', ''), c])
+    );
+
+    expect(byId['rb-a'].props.accessibilityLabel).toContain('Push Pull Legs');
+    expect(byId['rb-b'].props.accessibilityLabel).toContain('Upper Lower');
+    expect(byId['rb-a'].props.accessibilityLabel).not.toBe(byId['rb-b'].props.accessibilityLabel);
   });
 
   test('the active block has no inclusion switch in Analytics', () => {

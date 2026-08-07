@@ -6718,7 +6718,8 @@ describe('Recovery inclusion preference', () => {
   };
 
   const switchesFor = (root) =>
-    root.findAll(n => n.props && n.props.accessibilityLabel === RECOVERY_INCLUSION_LABEL && n.props.onValueChange);
+    root.findAll(n => n.props && typeof n.props.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith(RECOVERY_INCLUSION_LABEL) && n.props.onValueChange);
 
   const persistedBlocks = async () => JSON.parse((await AsyncStorage.getItem(RECOVERY_BLOCKS_KEY)) || '[]');
 
@@ -6735,11 +6736,11 @@ describe('Recovery inclusion preference', () => {
 
     expect(control).toBeTruthy();
     expect(control.props.accessibilityRole).toBe('switch');
-    expect(control.props.accessibilityLabel).toBe('Include recovery notes in normal analytics');
+    expect(control.props.accessibilityLabel).toBe('Include recovery notes in normal analytics: Push Day');
     // Default off (#692): the control must report the authored preference.
     expect(control.props.value).toBe(false);
     expect(control.props.accessibilityState).toEqual({ checked: false, disabled: false });
-    // The label is shared across blocks, so the hint is what disambiguates them.
+    // The label already carries block identity (#738); the hint still disambiguates further.
     expect(control.props.accessibilityHint).toContain('Push Day');
   });
 

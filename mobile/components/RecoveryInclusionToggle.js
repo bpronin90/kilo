@@ -15,6 +15,7 @@ const RECOVERY_INCLUSION_HELP =
 export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle }) {
   const styles = useThemedStyles(createStyles);
   const checked = block.include_in_normal_analytics === true;
+  const blockTitle = block.baseline_note_title || 'Untitled Routine';
   return (
     <View style={styles.inclusionGroup}>
       {error ? (
@@ -33,8 +34,8 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
           disabled={disabled}
           onValueChange={(next) => onToggle(block, next)}
           accessibilityRole="switch"
-          accessibilityLabel={RECOVERY_INCLUSION_LABEL}
-          accessibilityHint={`Recovery block baselined from ${block.baseline_note_title || 'Untitled Routine'}.${busy ? ' Saving.' : ''}`}
+          accessibilityLabel={`${RECOVERY_INCLUSION_LABEL}: ${blockTitle}`}
+          accessibilityHint={`Recovery block baselined from ${blockTitle}.${busy ? ' Saving.' : ''}`}
           accessibilityState={{ checked, disabled: !!disabled }}
         />
       </View>

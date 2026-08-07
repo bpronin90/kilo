@@ -33,12 +33,24 @@ export function LogActiveRoutineCard({
   recoveryWeekNumber = null,
 }) {
   const styles = useThemedStyles(createStyles);
+  // An explicit accessibilityLabel on an accessible ancestor replaces the label VoiceOver
+  // would otherwise derive from its Text descendants (#738 review) — so the routine title,
+  // week, and recovery-week badge that are visibly inside this header must be spelled out
+  // here too, or focusing it announces only "Collapse/Expand current routine".
+  const collapseLabel = [
+    `${isCollapsed ? 'Expand' : 'Collapse'} ${workoutNoteTitle || 'Untitled Routine'}`,
+    hasABWeeks ? `Week ${effectiveActiveWeek} · Current routine` : 'Current routine',
+    recoveryWeekNumber != null ? `Recovery Week ${recoveryWeekNumber}` : null,
+  ].filter(Boolean).join(', ');
   return (
     <View style={styles.mirrorContainer}>
       <Card style={styles.currentRoutineCard}>
         <Pressable
           onPress={toggleCollapsed} // Tapping the header collapses/expands the card body
           style={styles.otherNoteHeader}
+          accessibilityRole="button"
+          accessibilityLabel={collapseLabel}
+          accessibilityState={{ expanded: !isCollapsed }}
         >
           <View style={styles.otherNoteInfo}>
             <Text

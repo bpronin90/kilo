@@ -523,10 +523,11 @@ export function AnalyticsRecoverySection({
         <Pressable
           onPress={() => setFocusedBlockId(activeBlock.id)}
           style={styles.backToActive}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="View active recovery block"
         >
-          <MaterialIcons name="chevron-left" size={16} color={colors.accent} />
+          <MaterialIcons name="chevron-left" size={16} color={colors.accent} accessible={false} />
           <Text style={styles.backToActiveText}>Back to active block</Text>
         </Pressable>
       )}
@@ -667,6 +668,7 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
+    minHeight: 44,
   },
   backToActiveText: {
     fontSize: 13,
@@ -700,6 +702,8 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
     backgroundColor: colors.subtleBg,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   weekChipSelected: {
     backgroundColor: colors.accent,
@@ -843,6 +847,7 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    minHeight: 44,
     backgroundColor: colors.subtleBg,
   },
   historyHeaderBordered: {

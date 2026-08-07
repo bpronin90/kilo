@@ -241,6 +241,7 @@ export function LogDeloadSection({
                             );
                           }}
                           title="Delete"
+                          accessibilityLabel={`Delete ${note.title}`}
                           style={styles.deleteActiveButton}
                           textStyle={styles.deleteActiveButtonText}
                         />
@@ -293,6 +294,7 @@ export function LogDeloadSection({
                           );
                         }}
                         title="Delete"
+                        accessibilityLabel={`Delete ${title}`}
                         style={styles.deleteActiveButton}
                         textStyle={styles.deleteActiveButtonText}
                       />
@@ -327,17 +329,22 @@ export function LogDeloadSection({
               autoCorrect={false}
               autoCapitalize="none"
               spellCheck={false}
+              accessibilityLabel="Deload session number"
             />
             <View style={styles.ordinalButtons}>
               <Pressable
                 style={styles.ordinalCancel}
                 onPress={() => setShowDeloadOrdinalPrompt(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
               >
                 <Text style={styles.ordinalCancelText}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={styles.ordinalConfirm}
                 onPress={handleConfirmDeloadOrdinal}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm deload complete"
               >
                 <Text style={styles.ordinalConfirmText}>Deload complete</Text>
               </Pressable>
@@ -376,6 +383,7 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 24,
     gap: 12,
+    minHeight: 44,
   },
   otherNoteInfo: {
     flex: 1,
