@@ -2443,6 +2443,10 @@ describe('LogScreen editor header: editing-week toggle for non-current A/B notes
     expect(findPressableByText(root, 'Week B')).toBeNull();
 
     render.act(() => { findPressableByText(root, '+ New routine').props.onPress(); });
+    // `+ New routine` now opens the guided scaffold sheet (#748). Its mandatory
+    // plain-text escape opens the same `editingNoteId === 'new'` editor this
+    // test has always exercised, so the A/B behavior under test is unchanged.
+    render.act(() => { findPressableByText(root, 'Write it as text instead').props.onPress(); });
 
     render.act(() => {
       getInput(root).props.onChangeText('MONDAY — Push\n-DB Bench Press 3x8\n---\nMONDAY — Home\n-DB Floor Press 3x8');
