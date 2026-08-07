@@ -118,7 +118,27 @@ export function LogPreviousRoutines({
 
         {expanded && (
           <View style={styles.body}>
-            {otherNotes.map(other => (
+            {otherNotes.map(other => {
+              // Same rule as LogActiveRoutineCard (#738 review): an explicit
+              // accessibilityLabel replaces the label VoiceOver would otherwise derive
+              // from this header's Text descendants. Two routines sharing a title are
+              // permitted by the note-creation path, so the label must also carry the
+              // visible date/week and recovery-week badge that distinguish them.
+              const isViewedOther = viewingNoteId === other.id;
+              const otherDateLabel = other.updated_at
+                ? (isViewedOther && viewingHasABWeeks
+                    ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
+                    : localDate(other.updated_at).toLocaleDateString())
+                : null;
+              const otherRecoveryLabel = recoveryWeekNumberByNoteId[other.id] != null
+                ? `Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`
+                : null;
+              const otherHeaderLabel = [
+                `${isViewedOther ? 'Collapse' : 'Expand'} ${other.title || 'Untitled Routine'}`,
+                otherDateLabel,
+                otherRecoveryLabel,
+              ].filter(Boolean).join(', ');
+              return (
               <Card
                 key={other.id}
                 style={styles.otherNoteCard}
@@ -127,12 +147,8 @@ export function LogPreviousRoutines({
                   onPress={() => handleViewOtherNote(other)}
                   style={styles.otherNoteHeader}
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    viewingNoteId === other.id
-                      ? `Collapse ${other.title || 'Untitled Routine'}`
-                      : `Expand ${other.title || 'Untitled Routine'}`
-                  }
-                  accessibilityState={{ expanded: viewingNoteId === other.id }}
+                  accessibilityLabel={otherHeaderLabel}
+                  accessibilityState={{ expanded: isViewedOther }}
                 >
                   <View style={styles.otherNoteInfo}>
                     <Text
@@ -218,7 +234,8 @@ export function LogPreviousRoutines({
                   </>
                 )}
               </Card>
-            ))}
+              );
+            })}
 
             {/* The single `Start recovery block` entry point (#724). Rendered
                 only when a block can actually be started right now (LogScreen
