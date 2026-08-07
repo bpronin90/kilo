@@ -244,6 +244,21 @@ export function pickDefaultDayGroup(dayGroups, today = new Date()) {
   return match ? match.index : null;
 }
 
+// Says what is actually true about why an exercise has no copyable session,
+// rather than blaming the last entry for all three distinct causes.
+function describeNoSourceReason(entries) {
+  if (entries.every(e => e && e.skipped)) {
+    return 'Every session here is marked skipped — not included';
+  }
+  const hasLoggedSets = entries.some(
+    e => e && !e.skipped && !e.unparsed && (e.sets || []).length > 0
+  );
+  if (hasLoggedSets) {
+    return 'No session here could be rebuilt exactly — not included';
+  }
+  return 'No session here could be read back — not included';
+}
+
 // Per-exercise plan for one day group. Exclusions always carry their reason in
 // text — no meaning is carried by color alone.
 export function buildSessionAutofillPlan({ activeText, dayGroupIndex }) {
@@ -295,25 +310,35 @@ export function buildSessionAutofillPlan({ activeText, dayGroupIndex }) {
       });
       continue;
     }
-    const last = [...entries].reverse().find(
-      e => e && !e.skipped && !e.unparsed && (e.sets || []).length > 0
-    );
-    if (!last) {
-      excluded.push({
-        name: ex.name,
-        reason: 'Last session was skipped or could not be read — not included',
-      });
+    // The most recent entry that is not skipped and whose row parses clean —
+    // walking BACKWARDS, per the contract. There is nothing to copy from a
+    // skipped session, and a lifter who skipped last week means their previous
+    // real session when they say "last session". An exercise is excluded only
+    // when it has no usable entry at all.
+    //
+    // The cost of that rule is that the chosen row may not be the immediately
+    // preceding session, so `sessionsAgo` travels with it and the preview
+    // labels its provenance. Presenting an older row as though it were the last
+    // one would be a silent attribution the app is not entitled to make.
+    let source = null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (!entry || entry.skipped || entry.unparsed || (entry.sets || []).length === 0) continue;
+      const line = formatSetsAsRow(entry.sets);
+      if (!line) continue;
+      source = { line, index: i };
+      break;
+    }
+    if (!source) {
+      excluded.push({ name: ex.name, reason: describeNoSourceReason(entries) });
       continue;
     }
-    const line = formatSetsAsRow(last.sets);
-    if (!line) {
-      excluded.push({
-        name: ex.name,
-        reason: 'This line could not be rebuilt exactly — not included',
-      });
-      continue;
-    }
-    included.push({ name: ex.name, line, occurrence: idx });
+    included.push({
+      name: ex.name,
+      line: source.line,
+      occurrence: idx,
+      sessionsAgo: entries.length - 1 - source.index,
+    });
   }
 
   if (included.length === 0) {
@@ -402,11 +427,15 @@ export function verifySessionAutofill({ beforeText, afterText, additions }) {
 
 // One call the UI can trust: compose, verify, and hand back either the exact
 // next text or a readable reason to withhold. Never touches storage.
-export function buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedNames }) {
+//
+// Selection is keyed on `occurrence`, not on the exercise name: a routine may
+// legitimately hold two exercises with the same name, and a name-keyed
+// selection would silently tie their checkboxes together.
+export function buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedOccurrences }) {
   const plan = buildSessionAutofillPlan({ activeText, dayGroupIndex });
   if (!plan.ok) return plan;
-  const skip = new Set(excludedNames || []);
-  const additions = plan.included.filter(item => !skip.has(item.name));
+  const skip = new Set(excludedOccurrences || []);
+  const additions = plan.included.filter(item => !skip.has(item.occurrence));
   if (additions.length === 0) {
     return { ...plan, ok: false, reason: 'Select at least one exercise to add.' };
   }

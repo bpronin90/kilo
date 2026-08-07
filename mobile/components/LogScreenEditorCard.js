@@ -12,7 +12,11 @@ import { SessionAutofillSheet } from './SessionAutofillSheet';
 // backlog routine and intends to walk away. `Use as current` is the visually
 // primary action so the common answer is one obvious tap, but the question is
 // never removed: saving a routine does not adopt it.
-function RoutineAdoptionPrompt({ prompt, error, busy, hasCurrentRoutine, onAdopt, onDismiss }) {
+// Exported because the same prompt state has two render locations: below the
+// editor's save control, and on the Log root when a routine was saved from the
+// guided sheet and no editor is open. One state, one rule, two places it can be
+// seen — never two different adoption behaviors.
+export function RoutineAdoptionPrompt({ prompt, error, busy, hasCurrentRoutine, onAdopt, onDismiss }) {
   const styles = useThemedStyles(createStyles);
   const title = prompt?.title || 'Untitled Routine';
 

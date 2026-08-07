@@ -394,7 +394,7 @@ describe('session autofill composition (#745 Part 3 §3.2)', () => {
   });
 
   test('only the selected day group is touched; the rest of the note is preserved byte for byte', () => {
-    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedNames: [] });
+    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedOccurrences: [] });
     expect(s.ok).toBe(true);
     expect(s.nextText).toBe([
       'Monday', '+Lifting', '-Bench', '135 5,5,5', '140 5,5 *PR - RPE 9', '140 5,5',
@@ -425,12 +425,53 @@ describe('session autofill composition (#745 Part 3 §3.2)', () => {
     expect(plan.included[0].line).toBe('80 4,-');
   });
 
-  test('an exercise whose last entry is a skip falls back to nothing and is excluded with its reason', () => {
+  test('an exercise whose every session is a skip is excluded, and the copy says exactly that', () => {
     const text = '-Bench\n-\n-Squat\n225 5,5';
     const plan = buildSessionAutofillPlan({ activeText: text, dayGroupIndex: 0 });
     expect(plan.included.map(i => i.name)).toEqual(['Squat']);
-    expect(plan.excluded[0].name).toBe('Bench');
-    expect(plan.excluded[0].reason).toMatch(/skipped or could not be read/);
+    expect(plan.excluded).toEqual([
+      { name: 'Bench', reason: 'Every session here is marked skipped — not included' },
+    ]);
+  });
+
+  test('an exercise whose sessions are unreadable gets the OTHER exclusion reason, not the skipped one', () => {
+    // `oops` is not a set row, so the entry parses as unparsed rather than
+    // skipped. Blaming a skip here would be untrue.
+    const text = '-Bench\n- oops\n-Squat\n225 5,5';
+    const plan = buildSessionAutofillPlan({ activeText: text, dayGroupIndex: 0 });
+    expect(plan.included.map(i => i.name)).toEqual(['Squat']);
+    expect(plan.excluded).toEqual([
+      { name: 'Bench', reason: 'No session here could be read back — not included' },
+    ]);
+  });
+
+  test('a skipped final session is walked past, and the preview says which session it came from', () => {
+    // Contract §3.2 selects the most recent entry that is not skipped and
+    // parses clean, so the source here is two entries back.
+    const text = '-Bench\n135 5,5\n140 5,5\n-';
+    const plan = buildSessionAutofillPlan({ activeText: text, dayGroupIndex: 0 });
+    expect(plan.included[0].line).toBe('140 5,5');
+    expect(plan.included[0].sessionsAgo).toBe(1);
+  });
+
+  test('a clean final session carries no provenance label — there is nothing to disclose', () => {
+    const plan = buildSessionAutofillPlan({ activeText: '-Bench\n135 5,5\n140 5,5', dayGroupIndex: 0 });
+    expect(plan.included[0].line).toBe('140 5,5');
+    expect(plan.included[0].sessionsAgo).toBe(0);
+  });
+
+  test('two exercises with the same name are selected independently, by occurrence', () => {
+    const text = '-Bench\n135 5,5\n-Bench\n95 8,8';
+    const plan = buildSessionAutofillPlan({ activeText: text, dayGroupIndex: 0 });
+    expect(plan.included.map(i => i.occurrence)).toEqual([0, 1]);
+    expect(plan.included.map(i => i.line)).toEqual(['135 5,5', '95 8,8']);
+
+    // Excluding the FIRST must leave the second alone, even though they share
+    // a name — a name-keyed selection would drop both.
+    const s = buildSessionAutofillSuggestion({ activeText: text, dayGroupIndex: 0, excludedOccurrences: [0] });
+    expect(s.ok).toBe(true);
+    expect(s.additions.map(a => a.occurrence)).toEqual([1]);
+    expect(s.nextText).toBe('-Bench\n135 5,5\n-Bench\n95 8,8\n95 8,8');
   });
 
   test('a day group with no logged sessions makes autofill unavailable', () => {
@@ -440,14 +481,14 @@ describe('session autofill composition (#745 Part 3 §3.2)', () => {
   });
 
   test('excluding every candidate withholds the suggestion rather than writing nothing silently', () => {
-    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedNames: ['Bench', 'Squat'] });
+    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedOccurrences: [0, 1] });
     expect(s.ok).toBe(false);
     expect(s.reason).toMatch(/select at least one/i);
   });
 
   test('the composed text is re-parsed and verified: every included exercise gains exactly one entry', () => {
     const before = parseWorkoutNote(NOTE).sections.flatMap(s => s.exercises);
-    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedNames: ['Squat'] });
+    const s = buildSessionAutofillSuggestion({ activeText: NOTE, dayGroupIndex: 0, excludedOccurrences: [1] });
     const after = parseWorkoutNote(s.nextText).sections.flatMap(e => e.exercises);
     expect(after.map(e => e.name)).toEqual(before.map(e => e.name));
     const deltas = after.map((e, i) => e.session_entries.length - before[i].session_entries.length);
@@ -465,7 +506,7 @@ describe('session autofill composition (#745 Part 3 §3.2)', () => {
     const groups = listAutofillDayGroups('Monday\n-Bench\n135 5,5');
     expect(groups).toHaveLength(1);
     // The caller passes only the active slice, so the other week is never seen.
-    const s = buildSessionAutofillSuggestion({ activeText: 'Monday\n-Bench\n135 5,5', dayGroupIndex: 0, excludedNames: [] });
+    const s = buildSessionAutofillSuggestion({ activeText: 'Monday\n-Bench\n135 5,5', dayGroupIndex: 0, excludedOccurrences: [] });
     expect(s.nextText).toBe('Monday\n-Bench\n135 5,5\n135 5,5');
   });
 });
@@ -595,6 +636,48 @@ describe('post-save adoption prompt (#745 Part 4 §A1)', () => {
     expect(findPressableByText(root, 'Set as current routine')).toBeTruthy();
   });
 
+  test('adopting with edits still in the debounce flushes them first — text is never dropped to tidy state', async () => {
+    const calls = mockWorkoutNotes({ initialNotes: [], initialCurrentId: null });
+    let component;
+    render.act(() => { component = render.create(<Harness />); });
+    const root = component.root;
+    openNewRoutineEditor(root);
+    await saveNewRoutine(root, { title: 'Push Day', text: 'Monday\n-Bench' });
+
+    // Keep typing while the prompt is up, then adopt before the debounce fires.
+    const later = 'Monday\n-Bench\n135 5,5,5';
+    render.act(() => { bodyInput(root).props.onChangeText(later); });
+    await render.act(async () => { await findPressableByText(root, 'Use as current').props.onPress(); });
+
+    const contentWrites = calls.update.filter(u => u.patch && u.patch.raw_text);
+    expect(contentWrites.at(-1).patch.raw_text).toBe(later);
+    expect(calls.selectCurrent).toEqual(['added1']);
+  });
+
+  test('when that flush fails, nothing is adopted and the prompt stays retryable', async () => {
+    const calls = mockWorkoutNotes({ initialNotes: [], initialCurrentId: null });
+    let component;
+    render.act(() => { component = render.create(<Harness />); });
+    const root = component.root;
+    openNewRoutineEditor(root);
+    await saveNewRoutine(root, { title: 'Push Day', text: 'Monday\n-Bench' });
+
+    render.act(() => { bodyInput(root).props.onChangeText('Monday\n-Bench\n135 5,5,5'); });
+    calls.control.failUpdate = true;
+    await render.act(async () => { await findPressableByText(root, 'Use as current').props.onPress(); });
+
+    expect(calls.selectCurrent).toHaveLength(0);
+    expect(hasText(root, 'Could not save your latest edits')).toBe(true);
+    expect(promptCount(root)).toBeGreaterThan(0);
+    // The draft is still in the editor, not reverted.
+    expect(bodyInput(root).props.value).toBe('Monday\n-Bench\n135 5,5,5');
+
+    // And it recovers once the write can land again.
+    calls.control.failUpdate = false;
+    await render.act(async () => { await findPressableByText(root, 'Try again').props.onPress(); });
+    expect(calls.selectCurrent).toEqual(['added1']);
+  });
+
   test('an adoption attempt for a routine that is not saved is never a silent no-op', () => {
     mockWorkoutNotes({ initialNotes: [{ id: 'r1', title: 'R1', raw_text: '-Bench\n135 5,5' }], initialCurrentId: 'r1' });
     let component;
@@ -606,6 +689,68 @@ describe('post-save adoption prompt (#745 Part 4 §A1)', () => {
     hook = card.props.handleSwitchCurrent;
     render.act(() => { hook('new'); });
     expect(alertSpy).toHaveBeenCalledWith('Could not set current routine', expect.stringContaining('not saved yet'));
+  });
+});
+
+// ── Guided sheet save converges on the same adoption rule ──────────────────
+
+describe('guided scaffold save offers adoption on both paths', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSupportingHooks();
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const saveViaGuidedSheet = async (root) => {
+    expandRoutineManagement(root);
+    const entry = findPressableByText(root, '+ New routine') || findPressableByText(root, 'New Routine');
+    render.act(() => { entry.props.onPress(); });
+    const nameField = root.findAll(n => n.props && n.props.accessibilityLabel === 'Routine name')[0];
+    render.act(() => { nameField.props.onChangeText('Backlog Day'); });
+    const exerciseField = root.findAll(n => n.props && n.props.accessibilityLabel === 'Exercise 1 name')[0];
+    render.act(() => { exerciseField.props.onChangeText('Bench Press'); });
+    await render.act(async () => { await findPressableByText(root, 'Save routine').props.onPress(); });
+  };
+
+  test('with NO current routine: one write, and the prompt is offered', async () => {
+    const calls = mockWorkoutNotes({ initialNotes: [], initialCurrentId: null });
+    let component;
+    render.act(() => { component = render.create(<Harness />); });
+    const root = component.root;
+    await saveViaGuidedSheet(root);
+
+    expect(calls.add).toHaveLength(1);
+    expect(calls.add[0]).toMatchObject({ title: 'Backlog Day', raw_text: '-Bench Press' });
+    expect(calls.selectCurrent).toHaveLength(0);
+    expect(promptCount(root)).toBeGreaterThan(0);
+    // The prompt supersedes the S1 card rather than competing with it.
+    expect(hasText(root, 'Start logging this routine')).toBe(false);
+    render.act(() => { findPressableByText(root, 'Not now').props.onPress(); });
+    expect(hasText(root, 'Start logging this routine')).toBe(true);
+  });
+
+  test('with an EXISTING current routine the offer is still made — S1 cannot cover this case', async () => {
+    const current = { id: 'cur1', title: 'Current', raw_text: 'Monday\n-Squat\n225 5,5', saved_at: '2026-01-01T00:00:00.000Z' };
+    const calls = mockWorkoutNotes({ initialNotes: [current], initialCurrentId: 'cur1' });
+    let component;
+    render.act(() => { component = render.create(<Harness initialText={current.raw_text} initialTitle="Current" />); });
+    const root = component.root;
+    await saveViaGuidedSheet(root);
+
+    expect(calls.add).toHaveLength(1);
+    expect(calls.selectCurrent).toHaveLength(0);
+    expect(promptCount(root)).toBeGreaterThan(0);
+    expect(hasText(root, 'instead of the one you have now')).toBe(true);
+
+    // And it routes into the unchanged D7 confirmation, not a direct adoption.
+    render.act(() => { findPressableByText(root, 'Use as current').props.onPress(); });
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Set as current routine',
+      expect.stringContaining('will affect your analytics'),
+      expect.any(Array),
+    );
+    expect(calls.selectCurrent).toHaveLength(0);
   });
 });
 

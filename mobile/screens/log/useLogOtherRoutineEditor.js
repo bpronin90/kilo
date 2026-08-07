@@ -642,10 +642,22 @@ export function useLogOtherRoutineEditor({
     clearAdoptionPrompt();
   };
 
+  const ADOPT_FAILED_MESSAGE =
+    'Could not make this your current routine. It is still saved — try again.';
+  const FLUSH_FAILED_MESSAGE =
+    'Could not save your latest edits, so nothing was switched. Your text is still here — try again.';
+
   // Adoption with no current routine: there is nothing to switch from, no
   // analytics to affect, and no old routine to roll 1K selections over from, so
-  // no confirmation and no rollover prompt (#745 Part 3 §2.2). Resolves to
-  // true only when `selectCurrent` actually persisted.
+  // no confirmation and no rollover prompt (#745 Part 3 §2.2).
+  //
+  // Unlike `doSwitch`, this path is reached WITHOUT a confirmation that offered
+  // `Save & Switch` / `Switch Anyway`, so it may not discard anything. Closing
+  // the editor after cancelling the debounce would silently drop text the user
+  // typed while the prompt was on screen, and `selectCurrent` would then reload
+  // the previously saved version — destroying user text to tidy state, which
+  // Part 3 forbids. So pending edits are flushed FIRST, and a failed flush
+  // aborts the adoption entirely rather than proceeding without them.
   const adoptDirectly = async (id) => {
     if (autosaveCurrentTimerRef.current) {
       clearTimeout(autosaveCurrentTimerRef.current);
@@ -655,18 +667,27 @@ export function useLogOtherRoutineEditor({
       clearTimeout(autosaveOtherTimerRef.current);
       autosaveOtherTimerRef.current = null;
     }
+    if (editingNoteId && hasUnsavedOther) {
+      const saved = await handleSaveOtherNote();
+      if (!saved) {
+        // Same treatment as the P6 `Save & Switch` failure: the switch is not
+        // attempted, the save error is surfaced, and the prompt stays
+        // retryable. This is the app failing, not the user cancelling.
+        return { ok: false, reason: FLUSH_FAILED_MESSAGE };
+      }
+    }
     try {
       await selectCurrent(id);
     } catch (err) {
       console.warn('[adoptDirectly] selectCurrent failed', err);
-      return false;
+      return { ok: false, reason: ADOPT_FAILED_MESSAGE };
     }
     setAdoptionPrompt(null);
     setAdoptionError('');
     setEditingNoteId(null);
     setOriginalNoteState(null);
     setViewingNoteId(null);
-    return true;
+    return { ok: true };
   };
 
   // `Use as current` on the post-save prompt, and the S1 card's `Use this
@@ -684,13 +705,23 @@ export function useLogOtherRoutineEditor({
       return;
     }
     setAdoptionBusy(true);
-    const ok = await adoptDirectly(adoptionPrompt.id);
+    const result = await adoptDirectly(adoptionPrompt.id);
     setAdoptionBusy(false);
-    if (!ok) {
+    if (!result.ok) {
       // The saved note is never deleted to tidy state; only the switch half
-      // failed, and the retry calls `selectCurrent` only.
-      setAdoptionError('Could not make this your current routine. It is still saved — try again.');
+      // failed, and the retry re-attempts just that.
+      setAdoptionError(result.reason);
     }
+  };
+
+  // Raises the SAME prompt state `handleSaveOtherNote` sets, so the guided
+  // scaffold's save converges on one adoption rule with the plain editor's
+  // instead of leaving a user who already has a current routine with no offer
+  // at all (the S1 card is gated on `!currentId` and cannot cover them).
+  const showAdoptionPromptFor = (note) => {
+    if (!note?.id) return;
+    setAdoptionError('');
+    setAdoptionPrompt({ id: note.id, title: note.title || 'Untitled Routine' });
   };
 
   const handleDismissAdoptionPrompt = () => {
@@ -720,10 +751,8 @@ export function useLogOtherRoutineEditor({
     // 1K rollover.
     if (!currentId) {
       (async () => {
-        const ok = await adoptDirectly(id);
-        if (!ok) {
-          setAdoptionError('Could not make this your current routine. It is still saved — try again.');
-        }
+        const result = await adoptDirectly(id);
+        if (!result.ok) setAdoptionError(result.reason);
       })();
       return;
     }
@@ -884,5 +913,6 @@ export function useLogOtherRoutineEditor({
     adoptionBusy,
     handleAdoptPromptedRoutine,
     handleDismissAdoptionPrompt,
+    showAdoptionPromptFor,
   };
 }

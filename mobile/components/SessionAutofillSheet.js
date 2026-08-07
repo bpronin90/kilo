@@ -22,10 +22,13 @@ import {
   pickDefaultDayGroup,
 } from '../lib/guidedEntry';
 
+// A routine may legitimately hold two exercises with the same name, so both the
+// selection identity and the React key are the exercise's occurrence index, not
+// its name. Keying on the name tied duplicate rows to one checkbox.
 export function SessionAutofillSheet({ visible, activeText, onClose, onApply }) {
   const styles = useThemedStyles(createStyles);
   const [dayGroupIndex, setDayGroupIndex] = useState(null);
-  const [excludedNames, setExcludedNames] = useState([]);
+  const [excludedOccurrences, setExcludedOccurrences] = useState([]);
   const [applyError, setApplyError] = useState(null);
 
   const dayGroups = useMemo(
@@ -39,7 +42,7 @@ export function SessionAutofillSheet({ visible, activeText, onClose, onApply }) 
   // day a user is training.
   useEffect(() => {
     if (!visible) return;
-    setExcludedNames([]);
+    setExcludedOccurrences([]);
     setApplyError(null);
     setDayGroupIndex(pickDefaultDayGroup(dayGroups));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,23 +52,25 @@ export function SessionAutofillSheet({ visible, activeText, onClose, onApply }) 
     if (!visible || dayGroupIndex == null) return null;
     // Built with every candidate included so the preview can list exclusions
     // even while the user has unchecked something.
-    return buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedNames: [] });
+    return buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedOccurrences: [] });
   }, [visible, activeText, dayGroupIndex]);
 
   if (!visible) return null;
 
   const included = suggestion?.ok ? suggestion.included : [];
   const excluded = suggestion?.excluded || [];
-  const selected = included.filter(item => !excludedNames.includes(item.name));
+  const selected = included.filter(item => !excludedOccurrences.includes(item.occurrence));
 
-  const toggleExcluded = (name) => {
+  const toggleExcluded = (occurrence) => {
     setApplyError(null);
-    setExcludedNames(prev => (prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]));
+    setExcludedOccurrences(prev => (
+      prev.includes(occurrence) ? prev.filter(o => o !== occurrence) : [...prev, occurrence]
+    ));
   };
 
   const handleApply = () => {
     setApplyError(null);
-    const result = buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedNames });
+    const result = buildSessionAutofillSuggestion({ activeText, dayGroupIndex, excludedOccurrences });
     if (!result.ok) {
       // Withheld entirely — never partially applied, and the draft is untouched.
       setApplyError(result.reason || 'Could not build a suggestion from this note.');
@@ -130,15 +135,23 @@ export function SessionAutofillSheet({ visible, activeText, onClose, onApply }) 
               <>
                 <Text style={styles.label}>Lines to add</Text>
                 {included.map((item) => {
-                  const isIncluded = !excludedNames.includes(item.name);
+                  const isIncluded = !excludedOccurrences.includes(item.occurrence);
+                  // The chosen row is not always the immediately preceding
+                  // session — a skipped or unreadable one is walked past. Say so
+                  // rather than letting an older row pass for the last one.
+                  const provenance = item.sessionsAgo > 0
+                    ? `from ${item.sessionsAgo} session${item.sessionsAgo === 1 ? '' : 's'} ago`
+                    : null;
                   return (
                     <Pressable
-                      key={item.name}
-                      onPress={() => toggleExcluded(item.name)}
+                      key={item.occurrence}
+                      onPress={() => toggleExcluded(item.occurrence)}
                       style={styles.previewRow}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: isIncluded }}
-                      accessibilityLabel={`Include ${item.name}, ${item.line.replace(/,/g, ' ')}`}
+                      accessibilityLabel={
+                        `Include ${item.name}, ${item.line.replace(/,/g, ' ')}${provenance ? `, ${provenance}` : ''}`
+                      }
                     >
                       <View style={[styles.checkbox, isIncluded ? styles.checkboxChecked : null]}>
                         <Text style={styles.checkboxMark}>{isIncluded ? '✓' : ''}</Text>
@@ -146,6 +159,7 @@ export function SessionAutofillSheet({ visible, activeText, onClose, onApply }) 
                       <View style={styles.previewTextWrap}>
                         <Text style={styles.previewName}>{item.name}</Text>
                         <Text style={styles.previewLine}>{item.line}</Text>
+                        {provenance ? <Text style={styles.previewProvenance}>{provenance}</Text> : null}
                       </View>
                     </Pressable>
                   );
@@ -328,6 +342,11 @@ const createStyles = (colors) => StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 13,
     lineHeight: 19,
+    color: colors.textMuted,
+  },
+  previewProvenance: {
+    fontSize: 12,
+    lineHeight: 18,
     color: colors.textMuted,
   },
   excludedRow: {

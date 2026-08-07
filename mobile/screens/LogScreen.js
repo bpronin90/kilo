@@ -57,7 +57,7 @@ import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
-import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
+import { LogScreenEditorCard, RoutineAdoptionPrompt } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
@@ -648,7 +648,10 @@ export function LogScreen({
   // state `Not now` deliberately produces. It is the sole surface that makes
   // declining adoption a safe choice rather than a trapdoor (#745 Part 4 §C1),
   // so it ships with the prompt, not later.
-  const adoptableRoutine = firstUseState === FIRST_USE_S1 && !currentId
+  // Suppressed while an adoption prompt is on screen: the prompt is the more
+  // immediate and more specific form of the same offer, and a state never
+  // presents two calls to action of equal weight. `Not now` restores this card.
+  const adoptableRoutine = firstUseState === FIRST_USE_S1 && !currentId && !otherEditor.adoptionPrompt
     ? pickAdoptableRoutine(notes, currentId)
     : null;
 
@@ -668,12 +671,18 @@ export function LogScreen({
     otherEditor.handleCreateRoutine(seed);
   };
   // Exactly one write, `add(title, composedText)`. No other storage key is
-  // touched and the routine is NOT adopted — the S1 card below offers that.
+  // touched and the routine is NOT adopted — but the offer must still be made,
+  // so a successful guided save raises the SAME post-save adoption prompt the
+  // plain editor's `Save` raises (#745 Part 4 §A1, which is unconditioned on
+  // `currentId`). The S1 card cannot stand in for it: S1 is gated on
+  // `!currentId`, so a user who already has a current routine would otherwise
+  // be offered adoption nowhere at all.
   const handleGuidedSave = async ({ title, text }) => {
     try {
       const note = await add(title, text);
       if (!note?.id) return { ok: false, error: 'Could not save this routine. Try again.' };
       setGuidedSheetOpen(false);
+      otherEditor.showAdoptionPromptFor(note);
       return { ok: true };
     } catch {
       return { ok: false, error: 'Could not save this routine. Nothing was written — try again.' };
@@ -768,6 +777,20 @@ export function LogScreen({
                 viewingNoteDayGroups={otherEditor.viewingNoteDayGroups}
                 handleOpenOtherNote={otherEditor.handleOpenOtherNote}
                 logSessionCount={currentEditor.logSessionCount}
+              />
+            )}
+
+            {/* The post-save adoption prompt, when the routine was saved from
+                the guided sheet and there is no open editor to host it. Same
+                state and same handlers as the editor's copy. */}
+            {effectiveTabView === 'routine' && !isEditing && otherEditor.adoptionPrompt && (
+              <RoutineAdoptionPrompt
+                prompt={otherEditor.adoptionPrompt}
+                error={otherEditor.adoptionError}
+                busy={otherEditor.adoptionBusy}
+                hasCurrentRoutine={!!currentId}
+                onAdopt={otherEditor.handleAdoptPromptedRoutine}
+                onDismiss={otherEditor.handleDismissAdoptionPrompt}
               />
             )}
 
