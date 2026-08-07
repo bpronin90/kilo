@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { SYNC_PHASE, SYNC_STATUS, getSyncState, loadLastSuccessfulSyncAt, subscribeSyncState } from '../storage/syncRecovery';
 import { SYNC_TABLES, getDirtyRecords, subscribeDirtyQueue } from '../storage/syncQueue';
 
@@ -13,6 +13,26 @@ function formatSyncTimestamp(value) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+// The two states worth interrupting a screen for (#737). Anything else — idle,
+// running, fully synced — is ordinary background bookkeeping the user does not
+// need to act on, so it produces no notice at all.
+export const CLOUD_SYNC_NOTICE = {
+  FAILED: 'failed',
+  PENDING: 'pending',
+};
+
+// Queued-work copy that describes the QUEUE, never the network (#737). The
+// dirty queue is a local record of writes that have not been sent yet; nothing
+// about it implies a connection, an in-flight request, or an imminent attempt.
+// So the copy says where the work is ("saved on this device") and what will
+// move it ("Cloud Sync", the surface that actually runs a pass) and stops
+// there. Kilo does no connectivity detection, so any "offline"/"reconnecting"
+// wording here would be a claim the app cannot back up.
+function pendingChangeCopy(dirtyCount) {
+  const noun = dirtyCount === 1 ? 'change is' : 'changes are';
+  return `${dirtyCount} ${noun} saved on this device and waiting for Cloud Sync.`;
 }
 
 function summarizeCloudSync(syncState, dirtyCount, lastSuccessfulAt) {
@@ -34,6 +54,31 @@ function summarizeCloudSync(syncState, dirtyCount, lastSuccessfulAt) {
     statusLabel = 'Fully synced';
   }
 
+  // Same precedence as statusLabel, deliberately: a pass that is running right
+  // now supersedes the previous pass's failure, so a stale "did not finish"
+  // never sits on screen while the retry it asks for is already in flight.
+  let noticeKind = null;
+  if (!isRunning && hasFailed) {
+    noticeKind = CLOUD_SYNC_NOTICE.FAILED;
+  } else if (!isRunning && hasDirty) {
+    noticeKind = CLOUD_SYNC_NOTICE.PENDING;
+  }
+
+  let noticeTitle = null;
+  let noticeMessage = null;
+  if (noticeKind === CLOUD_SYNC_NOTICE.FAILED) {
+    noticeTitle = 'Cloud Sync did not finish';
+    // The failure is stated without blaming a cause the app did not observe,
+    // and it leads with the thing the user actually cares about: nothing was
+    // lost. The pending count is appended only when there is one.
+    noticeMessage = hasDirty
+      ? `Your last sync did not finish. ${pendingChangeCopy(dirtyCount)}`
+      : 'Your last sync did not finish. Everything you logged is still saved on this device.';
+  } else if (noticeKind === CLOUD_SYNC_NOTICE.PENDING) {
+    noticeTitle = 'Waiting for Cloud Sync';
+    noticeMessage = pendingChangeCopy(dirtyCount);
+  }
+
   return {
     statusLabel,
     dirtyCount,
@@ -43,6 +88,9 @@ function summarizeCloudSync(syncState, dirtyCount, lastSuccessfulAt) {
     hasFailed,
     hasDirty,
     hasLastSuccess,
+    noticeKind,
+    noticeTitle,
+    noticeMessage,
   };
 }
 
@@ -81,6 +129,24 @@ export function useCloudSyncStatus() {
   }, []);
 
   return summary;
+}
+
+// One shell-owned sync summary for every mounted tab (#737).
+//
+// All five tabs stay mounted under display:none (#527), so a `useCloudSyncStatus()`
+// call inside a screen is not one subscription — it is a permanent one per tab,
+// each with its own duplicate dirty-queue scan, all re-running on every queue
+// and phase broadcast. The app shell subscribes once and publishes the result
+// here; screens read it and never subscribe.
+//
+// The value is `{ summary, retrySync, openCloudSync }`. `null` outside a
+// provider is deliberate and is the standalone-render case (tests, and any
+// screen mounted without the shell): consumers render no sync surface at all
+// rather than inventing a summary the shell never produced.
+export const CloudSyncContext = createContext(null);
+
+export function useCloudSyncSummary() {
+  return useContext(CloudSyncContext);
 }
 
 export { getNoteSections } from './entries/noteSections';

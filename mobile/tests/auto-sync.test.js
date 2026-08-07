@@ -20,8 +20,13 @@ import {
   SYNC_PHASE,
   getSyncState,
   markComplete,
+  markFailed,
+  markRunning,
+  resetPhase,
   __resetSyncQueue,
 } from '../storage/syncRecovery';
+import * as syncRecoveryStore from '../storage/syncRecovery';
+import * as syncQueueStore from '../storage/syncQueue';
 import {
   LOCAL_DATA_OWNER_KEY,
   OWNER_UNCLAIMED,
@@ -48,7 +53,7 @@ import {
 } from '../storage/syncQueue';
 import { setCloudTransport } from '../storage/cloudAdapter';
 import { replaceArchivedWeightGoalsRaw } from '../storage/entries/weightGoal';
-import { useCloudSyncStatus } from '../hooks/useEntries';
+import { CloudSyncContext, useCloudSyncStatus, useCloudSyncSummary } from '../hooks/useEntries';
 
 // Health-data consent (#487) is granted for these suites. They exercise sync,
 // bootstrap, and ownership mechanics, not authorization — consent-gate-client.test.js
@@ -1250,6 +1255,202 @@ describe('useCloudSyncStatus: dirty queue and last sync summary', () => {
     expect(ref.current.statusLabel).toBe('Ready to sync');
     expect(ref.current.lastSuccessfulAt).toBeNull();
     expect(ref.current.lastSuccessfulLabel).toBeNull();
+  });
+});
+
+// ── Honest queued-sync notice (#737) ─────────────────────────────────────────
+//
+// The summary is now what every mounted tab reads through the shell's
+// CloudSyncContext, so these lock the two things a screen is allowed to say:
+// WHICH state it is in (noticeKind) and WHAT it may claim while saying so.
+describe('useCloudSyncStatus: notice state and queued-change copy (#737)', () => {
+  // Any wording that would assert something the app never observed: Kilo does no
+  // connectivity detection and never says a queued pass is in flight.
+  const NETWORK_CLAIMS = /offline|online|no connection|connecting|reconnect|network|uploading|sending|will sync|syncing now/i;
+
+  test('an idle, clean queue produces no notice at all', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    expect(ref.current.noticeKind).toBeNull();
+    expect(ref.current.noticeTitle).toBeNull();
+    expect(ref.current.noticeMessage).toBeNull();
+  });
+
+  test('queued changes describe the queue, never the network', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-notice-1' });
+    });
+    await flush();
+
+    expect(ref.current.noticeKind).toBe('pending');
+    expect(ref.current.noticeMessage).toBe(
+      '1 change is saved on this device and waiting for Cloud Sync.'
+    );
+    expect(ref.current.noticeMessage).not.toMatch(NETWORK_CLAIMS);
+    expect(ref.current.noticeTitle).not.toMatch(NETWORK_CLAIMS);
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-notice-2' });
+    });
+    await flush();
+
+    expect(ref.current.noticeMessage).toBe(
+      '2 changes are saved on this device and waiting for Cloud Sync.'
+    );
+    expect(ref.current.noticeMessage).not.toMatch(NETWORK_CLAIMS);
+
+    await act(async () => {
+      await clearDirty(SYNC_TABLES.WEIGHT_ENTRIES, ['w-notice-1', 'w-notice-2']);
+    });
+    await flush();
+    expect(ref.current.noticeKind).toBeNull();
+  });
+
+  test('a failed phase reports the failure and that local work survived', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    await act(async () => {
+      markFailed(SYNC_PHASE.SYNC, new Error('boom'));
+    });
+    await flush();
+
+    expect(ref.current.noticeKind).toBe('failed');
+    expect(ref.current.noticeMessage).toBe(
+      'Your last sync did not finish. Everything you logged is still saved on this device.'
+    );
+    expect(ref.current.noticeMessage).not.toMatch(NETWORK_CLAIMS);
+    // The raw runner error is never user-facing copy.
+    expect(ref.current.noticeMessage).not.toContain('boom');
+  });
+
+  test('failure outranks queued work and folds the count into one message', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-notice-3' });
+      markFailed(SYNC_PHASE.SYNC, new Error('boom'));
+    });
+    await flush();
+
+    expect(ref.current.noticeKind).toBe('failed');
+    expect(ref.current.noticeMessage).toBe(
+      'Your last sync did not finish. 1 change is saved on this device and waiting for Cloud Sync.'
+    );
+
+    await act(async () => {
+      await clearDirty(SYNC_TABLES.WEIGHT_ENTRIES, ['w-notice-3']);
+    });
+    await flush();
+  });
+
+  test('a running pass suppresses the notice so no stale failure outlives its retry', async () => {
+    const { ref } = renderHook(() => useCloudSyncStatus());
+    await flush();
+
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-notice-4' });
+      markFailed(SYNC_PHASE.SYNC, new Error('boom'));
+    });
+    await flush();
+    expect(ref.current.noticeKind).toBe('failed');
+
+    await act(async () => {
+      markRunning(SYNC_PHASE.SYNC);
+    });
+    await flush();
+
+    expect(ref.current.isRunning).toBe(true);
+    expect(ref.current.noticeKind).toBeNull();
+
+    await act(async () => {
+      resetPhase(SYNC_PHASE.SYNC);
+      await clearDirty(SYNC_TABLES.WEIGHT_ENTRIES, ['w-notice-4']);
+    });
+    await flush();
+  });
+});
+
+// ── One subscription for every mounted tab (#737) ────────────────────────────
+//
+// All five tabs stay mounted under display:none (#527), so "each screen calls
+// the hook" is not five transient subscriptions — it is five permanent ones,
+// each re-scanning every dirty table on every queue and phase broadcast. The
+// contract is that the number of summary subscriptions is a function of the
+// SHELL, not of how many screens read the summary.
+describe('cloud sync summary subscription count (#737)', () => {
+  test('N consumers of the shell-published summary add no subscriptions', async () => {
+    const syncSpy = jest.spyOn(syncRecoveryStore, 'subscribeSyncState');
+    const dirtySpy = jest.spyOn(syncQueueStore, 'subscribeDirtyQueue');
+    const seen = [];
+
+    function Consumer() {
+      seen.push(useCloudSyncSummary());
+      return null;
+    }
+
+    // One publisher (the shell's role) and five readers (the five mounted tabs).
+    function Shell() {
+      const summary = useCloudSyncStatus();
+      const value = React.useMemo(() => ({ summary }), [summary]);
+      return React.createElement(
+        CloudSyncContext.Provider,
+        { value },
+        React.createElement(Consumer),
+        React.createElement(Consumer),
+        React.createElement(Consumer),
+        React.createElement(Consumer),
+        React.createElement(Consumer)
+      );
+    }
+
+    let tree;
+    await act(async () => {
+      tree = renderer.create(React.createElement(Shell));
+    });
+    await flush();
+
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(dirtySpy).toHaveBeenCalledTimes(1);
+    // And every reader saw the same published object, so the tabs cannot
+    // disagree about sync state.
+    expect(seen.length).toBeGreaterThanOrEqual(5);
+    const last5 = seen.slice(-5);
+    last5.forEach((value) => expect(value).toBe(last5[0]));
+
+    // A queue broadcast still reaches all five through that one subscription.
+    await act(async () => {
+      await enqueueDirty(SYNC_TABLES.WEIGHT_ENTRIES, { id: 'w-shared-1' });
+    });
+    await flush();
+    expect(seen[seen.length - 1].summary.noticeKind).toBe('pending');
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(dirtySpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await clearDirty(SYNC_TABLES.WEIGHT_ENTRIES, ['w-shared-1']);
+    });
+    await flush();
+    act(() => { tree.unmount(); });
+    syncSpy.mockRestore();
+    dirtySpy.mockRestore();
+  });
+
+  test('outside the shell there is no summary to read, not an invented one', () => {
+    let received = 'unset';
+    function Standalone() {
+      received = useCloudSyncSummary();
+      return null;
+    }
+    let tree;
+    act(() => { tree = renderer.create(React.createElement(Standalone)); });
+    expect(received).toBeNull();
+    act(() => { tree.unmount(); });
   });
 });
 

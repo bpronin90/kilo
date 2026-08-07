@@ -1615,3 +1615,278 @@ describe('Android Back routes weight-goal edit through registerBackConsumer, gat
   });
 });
 
+
+// ── honest first-paint and failed-read states (#737) ──────────────────────────
+//
+// The weigh-in form is never gated — logging has to stay available the moment
+// the tab opens — but Goal / Trends / Weight History are derived from `entries`
+// and `goal`, and before this they rendered a confident "no weigh-ins, no goal"
+// answer while those reads were still in flight or after they had failed.
+describe('Weight loading and failure states (#737)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    return component;
+  };
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  test('an unresolved first read paints a placeholder while the form stays usable', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: true, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(true);
+    const skeleton = component.root.find(n => n.props?.testID === 'weight-skeleton');
+    expect(skeleton.props.accessibilityLabel).toBe('Loading your weight history');
+    // The derived sections are withheld, not faked.
+    expect(hasText(component, 'Weight History')).toBe(false);
+    // The entry form is untouched: logging never waits on history.
+    expect(hasText(component, 'Save weigh-in')).toBe(true);
+  });
+
+  test('an unresolved goal read also holds the derived sections', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({ goal: null, loading: true, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(true);
+  });
+
+  test('a refresh over already-loaded entries does not flip back to a placeholder', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: true, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+  });
+
+  test('a failed read shows the retry banner and withholds the derived sections', () => {
+    const refresh = jest.fn();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, error: new Error('read failed'), remove: jest.fn(), update: jest.fn(), refresh,
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load weight entries.')).toBe(true);
+    // Never "0 weigh-ins" as if that were a verified answer.
+    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(has(component, 'weight-skeleton')).toBe(false);
+
+    const retry = component.root.find(
+      n => typeof n.props?.onPress === 'function'
+        && n.findAll(c => c.type === 'Text' && String(c.props.children ?? '') === 'Retry').length > 0
+    );
+    render.act(() => { retry.props.onPress(); });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test('a verified read renders the derived sections as before', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    const component = mount();
+
+    expect(has(component, 'weight-skeleton')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+    expect(hasText(component, 'Trends')).toBe(true);
+  });
+});
+
+// ── goal-read failure (#737 review) ───────────────────────────────────────────
+//
+// `useWeightGoal()` previously had no `.catch`: a rejected `loadWeightGoal()`
+// left `goal` null with `loading` already cleared, so Weight rendered
+// Goal/Trends/History as though "no goal set" were a verified answer — and the
+// rejection went unhandled. The hook now carries the failure across the
+// hook/screen boundary the same way useWeightEntries and useTrackedLifts do.
+describe('Weight goal-read failure (#737 review)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    return component;
+  };
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+  const retryFor = (component, message) => {
+    const candidates = component.root.findAll(
+      n => typeof n.type === 'string'
+        && n.findAll(c => c.type === 'Text' && String(c.props.children ?? '').includes(message)).length > 0
+        && n.findAll(c => typeof c.props?.onPress === 'function').length > 0
+    );
+    const banner = candidates[candidates.length - 1];
+    const presses = banner.findAll(n => typeof n.props?.onPress === 'function');
+    return presses[presses.length - 1];
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+  });
+
+  test('a failed goal read is named and retryable, and never reads as "no goal set"', () => {
+    const refreshGoal = jest.fn();
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: new Error('goal read failed'), refresh: refreshGoal,
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
+    // The derived block is withheld rather than presented as a verified answer.
+    expect(hasText(component, 'Goal')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(false);
+    expect(has(component, 'weight-skeleton')).toBe(false);
+    // The weigh-in form is untouched: a goal read has nothing to do with logging.
+    expect(hasText(component, 'Save weigh-in')).toBe(true);
+
+    render.act(() => { retryFor(component, 'Could not load your weight goal.').props.onPress(); });
+    expect(refreshGoal).toHaveBeenCalled();
+  });
+
+  test('the two reads fail independently and each retries only its own source', () => {
+    const refreshGoal = jest.fn();
+    const refreshEntries = jest.fn();
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, error: new Error('entries read failed'),
+      remove: jest.fn(), update: jest.fn(), refresh: refreshEntries,
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: new Error('goal read failed'), refresh: refreshGoal,
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load weight entries.')).toBe(true);
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
+
+    render.act(() => { retryFor(component, 'Could not load your weight goal.').props.onPress(); });
+    expect(refreshGoal).toHaveBeenCalledTimes(1);
+    expect(refreshEntries).not.toHaveBeenCalled();
+  });
+
+  test('a failed goal read that still has a cached goal keeps rendering it under the banner', () => {
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: { target_weight: 180, target_date: '2026-12-01', start_weight: 200, start_date: '2026-01-01' },
+      loading: false, error: new Error('refresh failed'), refresh: jest.fn(),
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
+    // Stale but true beats withholding data the screen actually has.
+    expect(hasText(component, 'Weight History')).toBe(true);
+  });
+
+  test('a clean goal read renders the derived sections with no banner', () => {
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: null, refresh: jest.fn(),
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+  });
+});
+
+// ── the pending-retry window on screen (#737 review) ──────────────────────────
+//
+// The hook-level contract is in tests/weight-goal-read-failure.test.js; this
+// asserts what the user actually sees. The hook states below are the exact
+// shapes the real hook now produces before and during a retry — the point being
+// that Weight must not fall back to its verified-empty rendering in between.
+describe('Weight retry does not flash a verified-empty state (#737 review)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    return component;
+  };
+  const hasText = (component, needle) => component.root.findAll(
+    n => n.type === 'Text'
+      && String(Array.isArray(n.props.children) ? n.props.children.join('') : n.props.children ?? '').includes(needle)
+  ).length > 0;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useUserProfile = jest.fn().mockReturnValue(null);
+  });
+
+  test('a goal retry still in flight keeps the banner up and the sections withheld', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    // Mid-retry the hook holds the SAME shape it had before the retry: the read
+    // has not completed, so the last completed read is still the truth.
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: new Error('goal read failed'), refresh: jest.fn(),
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(true);
+    // The window the finding named: this must not be a verified "no goal set".
+    expect(hasText(component, 'Weight History')).toBe(false);
+  });
+
+  test('an entries retry still in flight keeps the banner up and the sections withheld', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [], loading: false, error: new Error('entries read failed'),
+      remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: null, refresh: jest.fn(),
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load weight entries.')).toBe(true);
+    expect(hasText(component, 'Weight History')).toBe(false);
+  });
+
+  test('once the retry resolves cleanly the sections come back and the banner goes', () => {
+    useEntries.useWeightEntries.mockReturnValue({
+      entries: [ENTRY], loading: false, error: null, remove: jest.fn(), update: jest.fn(), refresh: jest.fn(),
+    });
+    useEntries.useWeightGoal.mockReturnValue({
+      goal: null, loading: false, error: null, refresh: jest.fn(),
+      save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn(),
+    });
+    const component = mount();
+
+    expect(hasText(component, 'Could not load your weight goal.')).toBe(false);
+    expect(hasText(component, 'Weight History')).toBe(true);
+  });
+});

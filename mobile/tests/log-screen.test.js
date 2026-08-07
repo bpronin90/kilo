@@ -1,6 +1,7 @@
 import React from 'react';
 import render from 'react-test-renderer';
 import { LogScreen } from '../screens/LogScreen';
+import { LogEmptyState } from '../components/LogEmptyState';
 import { MoreScreen } from '../screens/MoreScreen';
 import * as useEntries from '../hooks/useEntries';
 import { LightColors } from '../theme/colors';
@@ -1598,6 +1599,64 @@ describe('routine switch: screen-level rollover prompt (#295)', () => {
     // Rollover alert must NOT appear
     const rolloverCall = alertSpy.mock.calls.find(c => c[0] === 'Keep current progress?');
     expect(rolloverCall).toBeUndefined();
+
+    await render.act(async () => {
+      component.unmount();
+    });
+  });
+
+  // #737: switching the current routine re-bases every aggregate on this
+  // screen, on Home, and in Analytics, so it is a destructive action in the
+  // sense that matters — it silently changes what the user's numbers mean.
+  // The press itself must therefore reach no storage function at all, and a
+  // cancelled confirmation must leave the switch un-run.
+  test('Set as current routine writes nothing until the confirmation is accepted', async () => {
+    const selectCurrent = jest.fn().mockResolvedValue(undefined);
+    const update = jest.fn().mockResolvedValue({});
+    const currentNote = { id: 'note1', title: 'Gym Routine', raw_text: 'MONDAY\n-DB Bench Press 3x8\n', saved_at: '2026-06-01T12:00:00.000Z' };
+    const otherNote = { id: 'note3', title: 'Cardio Routine', raw_text: 'MONDAY\n-Treadmill 30 min\n', saved_at: '2026-06-03T12:00:00.000Z' };
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes: [currentNote, otherNote],
+      currentId: 'note1',
+      currentNote,
+      deloadNotes: [], loading: false, error: null, refresh: jest.fn(),
+      selectCurrent, update, add: jest.fn(), remove: jest.fn(),
+    });
+
+    let component;
+    render.act(() => {
+      component = render.create(<ControlledLogScreen workoutNoteText="MONDAY\n-DB Bench Press 3x8\n" />);
+    });
+
+    const root = component.root;
+    expandRoutineManagement(root);
+    render.act(() => { findPressableByText(root, 'Cardio Routine').props.onPress(); });
+    render.act(() => { findPressableByText(root, 'Set as current routine').props.onPress({ stopPropagation: () => {} }); });
+
+    // The press raises a confirmation and nothing else.
+    expect(alertSpy).toHaveBeenCalledWith('Set as current routine', expect.any(String), expect.any(Array));
+    expect(selectCurrent).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+
+    // Cancelling is a real cancel: still no write.
+    const buttons = alertSpy.mock.calls[0][2];
+    const cancelBtn = buttons.find(b => b.text === 'Cancel');
+    expect(cancelBtn).toBeTruthy();
+    expect(cancelBtn.style).toBe('cancel');
+    await render.act(async () => {
+      cancelBtn.onPress?.();
+      await Promise.resolve();
+    });
+    expect(selectCurrent).not.toHaveBeenCalled();
+
+    // Only the explicit confirm performs the switch.
+    const confirmBtn = buttons.find(b => b.text === 'Set as current routine');
+    await render.act(async () => {
+      confirmBtn.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(selectCurrent).toHaveBeenCalledWith('note3');
 
     await render.act(async () => {
       component.unmount();
@@ -8365,5 +8424,164 @@ describe('typed note navigation intents (#718)', () => {
       expect.stringContaining('deleted')
     );
     expect(isShowingViewedNote(component)).toBe(false);
+  });
+});
+
+// ── honest first-paint and failed-read states (#737) ──────────────────────────
+//
+// Before this, an unresolved or failed notes read produced the same thing: an
+// empty body under a populated header. The three outcomes are now distinct —
+// loading paints a placeholder, a failed read paints the retry banner and
+// refuses to claim the notebook is empty, and only a verified empty read
+// reaches LogEmptyState.
+describe('Log loading and failure states (#737)', () => {
+  const NOTE = {
+    id: 'note1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+
+  function mockNotes({ notes = [], loading = false, error = null, refresh = jest.fn() } = {}) {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId: notes.length ? notes[0].id : null,
+      currentNote: notes.length ? notes[0] : null,
+      deloadNotes: [],
+      loading,
+      error,
+      refresh,
+      selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      add: jest.fn(),
+      remove: jest.fn(),
+    });
+    return refresh;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  const mount = () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    return component;
+  };
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const emptyStates = (component) => component.root.findAll(n => n.type === LogEmptyState).length;
+
+  test('an unresolved first read paints a labelled placeholder, not a blank body', () => {
+    mockNotes({ notes: [], loading: true });
+    const component = mount();
+
+    expect(has(component, 'log-skeleton')).toBe(true);
+    // Loading is not emptiness.
+    expect(emptyStates(component)).toBe(0);
+    const skeleton = component.root.find(n => n.props?.testID === 'log-skeleton');
+    expect(skeleton.props.accessibilityLabel).toBe('Loading your workout notes');
+  });
+
+  test('a refresh over already-loaded notes does not throw the screen back to a placeholder', () => {
+    mockNotes({ notes: [NOTE], loading: true });
+    const component = mount();
+
+    expect(has(component, 'log-skeleton')).toBe(false);
+  });
+
+  test('a failed read shows a retry banner and never claims the notebook is empty', () => {
+    const refresh = jest.fn();
+    mockNotes({ notes: [], error: new Error('read failed'), refresh });
+    const component = mount();
+
+    // The banner is present…
+    const banner = component.root.findAll(
+      n => n.type === 'Text' && String(n.props.children ?? '').includes('Could not load workout notes.')
+    );
+    expect(banner.length).toBe(1);
+    // …and the "create your first routine" surface is NOT.
+    expect(emptyStates(component)).toBe(0);
+    expect(has(component, 'log-skeleton')).toBe(false);
+
+    const retry = component.root.find(
+      n => typeof n.props?.onPress === 'function'
+        && n.findAll(c => c.type === 'Text' && String(c.props.children ?? '') === 'Retry').length > 0
+    );
+    render.act(() => { retry.props.onPress(); });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test('only a verified empty read reaches the empty state', () => {
+    mockNotes({ notes: [], loading: false, error: null });
+    const component = mount();
+
+    expect(emptyStates(component)).toBe(1);
+    expect(has(component, 'log-skeleton')).toBe(false);
+  });
+});
+
+// ── the pending-retry window on screen (#737 review) ──────────────────────────
+//
+// useWorkoutNotes.reload() used to clear `error` on the way in, so tapping the
+// ErrorBanner's Retry dropped the banner while `notes` was still empty and
+// `loading` already false — and Log fell through to LogEmptyState mid-retry,
+// telling a user with a full notebook that they had none. The hook now holds
+// the failed state until a read completes; this asserts what that looks like.
+describe('Log retry does not flash the empty state (#737 review)', () => {
+  const mount = () => {
+    let component;
+    render.act(() => { component = render.create(<ControlledLogScreen />); });
+    return component;
+  };
+  const emptyStates = (component) => component.root.findAll(n => n.type === LogEmptyState).length;
+  const has = (component, testID) => component.root.findAll(n => n.props?.testID === testID).length > 0;
+  const hasBanner = (component) => component.root.findAll(
+    n => n.type === 'Text' && String(n.props.children ?? '').includes('Could not load workout notes.')
+  ).length > 0;
+
+  function mockNotes({ notes = [], loading = false, error = null } = {}) {
+    useEntries.useWorkoutNotes.mockReturnValue({
+      notes,
+      currentId: notes.length ? notes[0].id : null,
+      currentNote: notes.length ? notes[0] : null,
+      deloadNotes: [], loading, error,
+      refresh: jest.fn(), selectCurrent: jest.fn(),
+      update: jest.fn().mockResolvedValue({}), add: jest.fn(), remove: jest.fn(),
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useEntries.useTrackedLifts.mockReturnValue({ trackedLifts: [], toggle: jest.fn() });
+    useEntries.useDeloadNote.mockReturnValue({ note: { raw_text: '' }, loading: false, save: jest.fn(), clear: jest.fn() });
+    useEntries.useDeloadHistory.mockReturnValue({
+      history: [], completeDeload: jest.fn(), deleteDeload: jest.fn(), deleteDeloadNote: jest.fn(), updateDeload: jest.fn(),
+    });
+    useEntries.useFeatureToggles.mockReturnValue({ fatigueTrackingEnabled: false, deloadModeEnabled: false });
+  });
+
+  test('a retry still in flight keeps the banner up and the empty state away', () => {
+    // Mid-retry the hook holds the shape it had before the retry: the read has
+    // not completed, so the last completed read is still the truth.
+    mockNotes({ notes: [], loading: false, error: new Error('read failed') });
+    const component = mount();
+
+    expect(hasBanner(component)).toBe(true);
+    expect(emptyStates(component)).toBe(0);
+    expect(has(component, 'log-skeleton')).toBe(false);
+  });
+
+  test('once the retry resolves onto a genuinely empty notebook the empty state appears', () => {
+    mockNotes({ notes: [], loading: false, error: null });
+    const component = mount();
+
+    expect(hasBanner(component)).toBe(false);
+    expect(emptyStates(component)).toBe(1);
   });
 });

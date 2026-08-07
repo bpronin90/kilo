@@ -37,7 +37,7 @@ const MemoLogScreen = React.memo(LogScreen);
 const MemoWeightScreen = React.memo(WeightScreen);
 const MemoAnalyticsScreen = React.memo(AnalyticsScreen);
 
-import { useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
+import { CloudSyncContext, useCloudSyncStatus, useSyncRecovery, useWeightEntries, useWorkoutNotes, useAutoSync, reloadWeightEntries, reloadWorkoutNotes } from './hooks/useEntries';
 import { reloadRecoveryBlocks } from './hooks/entries/recoveryBlockHooks';
 import { useAuthSession } from './hooks/useAuthSession';
 import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
@@ -93,6 +93,13 @@ export function analyticsSectionVariant(section) {
 }
 
 const ANALYTICS_SECTION_IDS = new Set(['weight', 'strength']);
+
+// The single typed intent that reaches Cloud Sync (#737). Cloud Sync is a panel
+// inside More > Account, so the destination sub-view is `account` and the panel
+// itself is the anchor. Built through the ordinary `{ tab, target }` contract
+// (#718) rather than a bespoke route: the shell mints the monotonic key, so
+// asking for Cloud Sync twice in a row still re-applies both times.
+export const CLOUD_SYNC_NAV_TARGET = { kind: 'subview', view: 'account', anchor: 'cloud-sync' };
 
 // Typed cross-screen navigation intents (#718). A navigation request is
 // `{ tab, target, key }`: `handleTabPress(tab, target)` carries the first two
@@ -459,6 +466,43 @@ function AppShell() {
     }
   }, []);
 
+  // ── Shell-owned cloud sync summary (#737) ────────────────────────────────
+  //
+  // Subscribed here, once, and published through CloudSyncContext. Every tab
+  // stays mounted (#527), so a per-screen useCloudSyncStatus() would mean five
+  // permanent subscriptions and five duplicate dirty-queue scans on every
+  // broadcast. Screens read the context instead.
+  const cloudSyncSummary = useCloudSyncStatus();
+  // The same runner CloudSyncRecovery's own Retry uses — bound here rather than
+  // reimplemented, so the retry offered next to the failure copy has exactly
+  // the existing sync semantics (consent check, adapter selection, phase
+  // transitions) and adds none of its own.
+  const { retrySync } = useSyncRecovery(auth.user) || {};
+
+  const openCloudSync = useCallback(() => {
+    handleTabPress('More', CLOUD_SYNC_NAV_TARGET);
+  }, [handleTabPress]);
+
+  const handleRetrySync = useCallback(async () => {
+    if (typeof retrySync !== 'function') {
+      return { ok: false, error: 'Cloud Sync is not available in this build yet.' };
+    }
+    const result = await retrySync();
+    // Generic, like CloudSyncRecovery's own handleRun: a raw runner/Supabase
+    // message is not user-facing copy, and the Cloud Sync panel is where the
+    // detail belongs.
+    if (result?.ok) return { ok: true };
+    return { ok: false, error: 'Could not sync. Open Cloud Sync for details.' };
+  }, [retrySync]);
+
+  // Memoized as one object: it is the context value for a subtree of memoized
+  // screens, so a fresh literal per render would re-render every consumer on
+  // every keystroke anywhere in the shell.
+  const cloudSync = React.useMemo(
+    () => ({ summary: cloudSyncSummary, retrySync: handleRetrySync, openCloudSync }),
+    [cloudSyncSummary, handleRetrySync, openCloudSync]
+  );
+
   // Browser-safe back affordance: web has no Android hardware back button, so a
   // non-Home tab would otherwise have no on-screen way to return to Home short
   // of the tab bar. Render an explicit back control on web when off Home, unless
@@ -658,6 +702,19 @@ function AppShell() {
     await saveDeloadDateEditEnabled(val);
   }, []);
 
+  // Home renders off the shell's own weight/note hooks, so it cannot see their
+  // failures on its own (#737). A failed read leaves both hooks with `loading`
+  // false and an empty collection, which is indistinguishable from a genuinely
+  // empty account — exactly the "blank screen that silently lost context" this
+  // is meant to end. The shell forwards the error flag and one retry that
+  // re-runs both reads.
+  const homeLoadError = !!(weightHook.error || noteHook.error);
+  const handleRetryHomeData = useCallback(() => {
+    weightHook.refresh();
+    noteHook.refresh();
+  // Individual refresh functions, not the hook objects (#592) — see saveWeight.
+  }, [weightHook.refresh, noteHook.refresh]);
+
   const renderContent = () => {
     return (
       <>
@@ -669,6 +726,8 @@ function AppShell() {
             successMessage={saveSuccess}
             onNavigate={handleTabPress}
             loading={weightHook.loading || noteHook.loading}
+            loadError={homeLoadError}
+            onRetryLoad={handleRetryHomeData}
           />
         </View>
         <View testID="tab-content-Log" style={[styles.tabContent, activeTab === 'Log' && styles.activeTabContent]}>
@@ -744,6 +803,7 @@ function AppShell() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics || ZERO_SAFE_AREA_METRICS}>
     <TabBarLayoutContext.Provider value={{ tabBarHeight }}>
+    <CloudSyncContext.Provider value={cloudSync}>
     <ScrollContext.Provider value={{ onScroll: handleScroll }}>
       <View style={styles.appContainer}>
         {/* Mounted at the app root, not per-screen: Alert.alert is called
@@ -865,6 +925,7 @@ function AppShell() {
         ) : null}
       </View>
     </ScrollContext.Provider>
+    </CloudSyncContext.Provider>
     </TabBarLayoutContext.Provider>
     </SafeAreaProvider>
   );

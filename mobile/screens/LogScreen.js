@@ -58,6 +58,32 @@ import { useLogCurrentRoutineEditor } from './log/useLogCurrentRoutineEditor';
 import { useLogOtherRoutineEditor } from './log/useLogOtherRoutineEditor';
 import { useLogDeloadEditor } from './log/useLogDeloadEditor';
 
+// First-paint placeholder for the routine list (#737). Static bars, no motion,
+// matching the routine-card rhythm this screen paints once notes resolve.
+// Styling is layout-only placeholder chrome and introduces no new Log-tab
+// typography or color decisions (see the style lock above).
+function LogSkeleton() {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View
+      testID="log-skeleton"
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading your workout notes"
+    >
+      <View style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarFull]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </View>
+      <View style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </View>
+    </View>
+  );
+}
+
 export function LogScreen({
   workoutNoteText,
   setWorkoutNoteText,
@@ -580,7 +606,17 @@ export function LogScreen({
     </Pressable>
   );
 
-  const isEmpty = !notesLoading && notes.length === 0;
+  // First-paint gate (#737). Before this, a Log tab whose notes had not resolved
+  // rendered neither the empty state nor any routine — a blank body under a
+  // populated header. `notes.length === 0` keeps a refresh over already-loaded
+  // notes from throwing the whole screen back to a skeleton.
+  const isNotesFirstLoad = notesLoading && notes.length === 0;
+  // A failed read is NOT an empty notebook (#737, same reasoning as the
+  // navigation-intent gate above): useWorkoutNotes clears `loading` on failure
+  // and leaves `notes` empty, so without the `!notesError` term the ErrorBanner
+  // would sit directly on top of "create your first routine" — telling a user
+  // with a full notebook that they have none.
+  const isEmpty = !isNotesFirstLoad && !notesError && notes.length === 0;
   const isEditing = !!otherEditor.editingNoteId || currentEditor.mode === 'edit' || deloadEditor.deloadMode === 'edit';
 
   const effectiveTabView = deloadModeEnabled ? tabView : 'routine';
@@ -615,7 +651,9 @@ export function LogScreen({
         {notesError ? (
           <ErrorBanner message="Could not load workout notes." onRetry={refreshNotes} />
         ) : null}
-        {isEmpty ? (
+        {isNotesFirstLoad ? (
+          <LogSkeleton />
+        ) : notesError && notes.length === 0 ? null : isEmpty ? (
           <LogEmptyState onCreateRoutine={otherEditor.handleCreateRoutine} />
         ) : (
           <>
@@ -873,6 +911,30 @@ export function LogScreen({
 }
 
 const createStyles = (colors) => StyleSheet.create({
+  skeletonCard: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 20,
+    marginBottom: 12,
+    gap: 12,
+  },
+  skeletonBar: {
+    backgroundColor: colors.cardBorder,
+    borderRadius: 6,
+    opacity: 0.6,
+    height: 12,
+  },
+  skeletonBarShort: {
+    width: '35%',
+  },
+  skeletonBarFull: {
+    width: '100%',
+  },
+  skeletonBarWide: {
+    width: '75%',
+  },
   modeToggle: {
     paddingHorizontal: 12,
     paddingVertical: 6,

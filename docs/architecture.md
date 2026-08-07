@@ -349,6 +349,65 @@ that owns the resolved note. Absence counts as "deleted" only after a successful
 read: while the note list is loading or a read has failed, the intent stays
 pending so the existing Retry can still fulfill it.
 
+Cloud sync status is a shell-owned subscription, not a per-tab one (#737).
+Because all five tabs stay mounted, a screen-level `useCloudSyncStatus()` would
+mean five permanent subscriptions and five duplicate dirty-queue scans on every
+phase or queue broadcast. `App.js` calls the hook once and publishes
+`{ summary, retrySync, openCloudSync }` through `CloudSyncContext`
+(`mobile/hooks/useEntries.js`); screens read it with `useCloudSyncSummary()` and
+never subscribe. Outside the provider the context is `null`, which consumers
+treat as "no summary was published" and render no sync surface at all. The
+summary derives at most one notice — `failed` or `pending`, with a running pass
+suppressing both so a stale failure never outlives the retry it asks for — and
+its copy describes the local queue only; Kilo does no connectivity detection, so
+nothing in it claims a connection or an in-flight request. `openCloudSync` is an
+ordinary typed intent (`CLOUD_SYNC_NAV_TARGET`, exported from `App.js`) rather
+than a bespoke route, so a repeated request re-applies under a later key like
+any other, and `retrySync` binds the same `useSyncRecovery` runner the Cloud
+Sync panel's own Retry uses — no second sync path exists.
+
+Loading, failure, and verified-empty are distinct outcomes on every mounted
+surface (#737). Home, Log, and Weight paint static (non-animated) placeholder
+cards while a first read is unresolved, and Home, Log, Weight, and Analytics
+surface a retry banner when a read fails. This matters because the entry hooks
+clear `loading` on failure and leave their collection empty, making a failed
+read byte-identical to a genuinely empty account: every screen therefore
+requires a *successful* read before it may render onboarding/empty copy or a
+zeroed dashboard, and withholds derived sections it cannot honestly compute.
+A failed read that still has cached data keeps rendering it under the banner.
+
+Failure state is per read source, not per screen: Weight raises one banner for
+the weigh-in read and one for the goal read, each retrying only its own source,
+and Home folds its two locally-owned reads (`useWeightGoal`, `useTrackedLifts`)
+in with the shell's weight/note reads behind one retry that re-runs all of them.
+`useWeightGoal` was the last read hook without an `error`/`refresh` pair; it now
+matches `useWeightEntries` and `useTrackedLifts`, and a failed refresh keeps the
+previously loaded value rather than reverting to null. Writes never clear
+`error` themselves — `notifyGoal()` re-runs the read, and that read decides.
+
+Across every read hook in `hooks/entries`, `error` is cleared **only by a read
+that succeeds**, never on the way into one. Clearing it eagerly reopened the
+exact hole these states close: after a first failure the hook already sits at
+`loading: false` with an empty collection, so dropping `error` at the start of a
+retry left `{ empty, not loading, no error }` — a verified-empty signature — for
+the whole duration of the retry read, and the screen fell back to its
+onboarding/no-data rendering mid-recovery. The last completed read stays the
+truth until a new one replaces it, so a retry holds the failure until it
+resolves and a retry that fails again does not flicker.
+
+That contract reaches the storage layer through a second, additive reader.
+`loadWeightGoal()` in `storage/entries/weightGoal.js` catches its own errors and
+resolves `null`, which collapses "unreadable record" into "no goal set" — and it
+has to keep doing so, because `syncAdapter` (`buildWeightGoalRecords`,
+`applyWeightGoal`), `bootstrap`, `exportBackup`, and `localAdapter` all await it
+and are not written to survive a rejection; making it throw would let a corrupt
+goal record fail a sync pass or an export. So the honest signal is a separate
+`loadWeightGoalResult()` returning `{ ok, goal, error }`, which never rejects
+either: `ok: false` is a failed read and `ok: true` with `goal: null` is a
+verified absence. `useWeightGoal` reads through it; every sync/bootstrap/export
+caller keeps the unchanged `loadWeightGoal()`. New UI reads that must tell
+failure from absence should use the result variant.
+
 For nested navigation, `App.js` exposes one
 active-tab back-consumer slot; `MoreScreen` registers its menu-pop handler only
 while an active child is visible. The shell consults that consumer before its

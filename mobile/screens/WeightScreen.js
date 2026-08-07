@@ -134,8 +134,8 @@ export function WeightScreen({
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const hp = useThemedStyles(createHistoryPanel);
-  const { entries, remove, update, error: entriesError, refresh: refreshEntries } = useWeightEntries();
-  const { goal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
+  const { entries, remove, update, loading: entriesLoading, error: entriesError, refresh: refreshEntries } = useWeightEntries();
+  const { goal, loading: goalLoading, error: goalError, refresh: refreshGoal, save: saveGoal, clear: clearGoal, archiveGoal } = useWeightGoal();
   const { archivedGoals } = useArchivedWeightGoals();
   const profile = useUserProfile()?.profile ?? null;
   const unit = useWeightUnit();
@@ -372,6 +372,20 @@ export function WeightScreen({
 
   const displayError = localError || errorMessage;
 
+  // Derived-history gate (#737). The weigh-in form is never gated — logging must
+  // stay available the instant the tab opens — but everything below it (goal,
+  // trends, history) is derived from `entries`/`goal` and reads as a real
+  // "0 entries, no goal" answer before those resolve. `entries.length === 0`
+  // keeps a background refresh from flipping populated sections back to bars.
+  const isHistoryFirstLoad = (entriesLoading && entries.length === 0) || (goalLoading && !goal);
+  // A failed read leaves `entries` empty and `goal` null, which the
+  // goal/trends/history sections would present as a verified "no weigh-ins, no
+  // goal". Suppress them and let the ErrorBanner's Retry be the only claim on
+  // screen. Both sources gate the same block the loading state already gates:
+  // whatever an unresolved read withholds, a failed read withholds too.
+  const historyUnavailable = (!!entriesError && entries.length === 0)
+    || (!!goalError && !goal);
+
   return (
     <ScreenShell
       ref={scrollRef}
@@ -379,8 +393,14 @@ export function WeightScreen({
       subtitle="Track your body weight over time."
       keyboardShouldPersistTaps="handled"
     >
+      {/* One banner per failed source, each retrying only its own read (#737):
+          a weigh-in read and a goal read fail independently, and merging them
+          would offer a retry for something that never failed. */}
       {entriesError ? (
         <ErrorBanner message="Could not load weight entries." onRetry={refreshEntries} />
+      ) : null}
+      {goalError ? (
+        <ErrorBanner message="Could not load your weight goal." onRetry={refreshGoal} />
       ) : null}
       <Card style={editingId ? styles.editingCard : null}>
         {editingId && (
@@ -432,6 +452,8 @@ export function WeightScreen({
         />
       </Card>
 
+      {isHistoryFirstLoad ? <WeightSkeleton /> : historyUnavailable ? null : (
+      <>
       <SectionTitle>Goal</SectionTitle>
       <WeightGoalCard
         goal={goal}
@@ -490,7 +512,34 @@ export function WeightScreen({
         getWeightDeltaSeverity={getWeightDeltaSeverity}
         goalInfo={goalInfo}
       />
+      </>
+      )}
     </ScreenShell>
+  );
+}
+
+// First-paint placeholder for the derived sections (#737). Static bars, no
+// motion; the shapes track Goal / Trends / History so nothing shifts when the
+// real cards land.
+function WeightSkeleton() {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View
+      testID="weight-skeleton"
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading your weight history"
+    >
+      <View style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </View>
+      <View style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarFull]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </View>
+    </View>
   );
 }
 
@@ -591,6 +640,30 @@ function GoalHistoryPanel({ sortedArchivedGoals, collapsed, setCollapsed, latest
 }
 
 const createStyles = (colors) => StyleSheet.create({
+  skeletonCard: {
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 20,
+    marginTop: 12,
+    gap: 12,
+  },
+  skeletonBar: {
+    backgroundColor: colors.cardBorder,
+    borderRadius: 6,
+    opacity: 0.6,
+    height: 12,
+  },
+  skeletonBarShort: {
+    width: '35%',
+  },
+  skeletonBarFull: {
+    width: '100%',
+  },
+  skeletonBarWide: {
+    width: '75%',
+  },
   errorText: {
     color: colors.error,
     fontSize: 14,

@@ -1,10 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { ScreenShell } from '../components/ScreenShell';
-import { Card, HeroMetric, LineChart, getSessionTone, Button } from '../components/UI';
+import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
-import { useWeightGoal, useTrackedLifts, getNoteSections } from '../hooks/useEntries';
+import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary } from '../hooks/useEntries';
 import { deriveHomeDashboardData, useHomeNormalNotes } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
@@ -68,12 +68,158 @@ function ScaleIcon({ color, size = 22 }) {
   );
 }
 
-export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading }) {
+// Queued-work / failed-sync notice (#737). Reads the ONE shell-owned summary
+// through CloudSyncContext and never subscribes itself, so this stays free
+// whether Home is the visible tab or one of the four mounted-but-hidden ones.
+//
+// Outside the shell (standalone renders, focused tests) the context is null and
+// this renders nothing: no summary was published, so there is nothing honest to
+// say about sync.
+export function CloudSyncNotice() {
+  const styles = useThemedStyles(createStyles);
+  const cloudSync = useCloudSyncSummary();
+  const [retryError, setRetryError] = useState('');
+  const [retrying, setRetrying] = useState(false);
+
+  const summary = cloudSync?.summary || null;
+  const kind = summary?.noticeKind ?? null;
+
+  // Drop a stale retry failure as soon as the underlying state moves on, so the
+  // message can never outlive the notice it belongs to.
+  useEffect(() => {
+    setRetryError('');
+  }, [kind]);
+
+  if (!kind) return null;
+
+  const isFailure = kind === CLOUD_SYNC_NOTICE.FAILED;
+
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    setRetryError('');
+    try {
+      const result = await cloudSync?.retrySync?.();
+      if (result && result.ok === false) setRetryError(result.error || 'Could not sync.');
+    } catch {
+      setRetryError('Could not sync. Open Cloud Sync for details.');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return (
+    // Wrapped rather than testID'd directly: Card takes only children/style/
+    // tone/onPress and would swallow the prop.
+    <View testID="home-cloud-sync-notice">
+    <Card style={isFailure ? styles.syncNoticeCardFailed : styles.syncNoticeCard}>
+      {/* One live region over title + body: two separate regions announce as two
+          unrelated interruptions. */}
+      <View
+        accessible
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        accessibilityLabel={`${summary.noticeTitle}. ${summary.noticeMessage}`}
+      >
+        <Text style={isFailure ? styles.syncNoticeTitleFailed : styles.syncNoticeTitle}>
+          {summary.noticeTitle}
+        </Text>
+        <Text style={styles.syncNoticeBody}>{summary.noticeMessage}</Text>
+      </View>
+      {retryError ? (
+        <Text style={styles.syncNoticeRetryError} accessibilityLiveRegion="polite">
+          {retryError}
+        </Text>
+      ) : null}
+      <View style={styles.syncNoticeActions}>
+        {/* Retry belongs to the failure only. Offering it on a plain queued
+            state would imply the queue is stuck, which the app has no evidence
+            for — pending work is simply work that has not been sent yet. */}
+        {isFailure ? (
+          <Pressable
+            testID="home-cloud-sync-retry"
+            onPress={handleRetry}
+            disabled={retrying}
+            style={styles.syncNoticeAction}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Retry sync"
+            accessibilityState={{ disabled: retrying }}
+          >
+            <Text style={styles.syncNoticeActionText}>{retrying ? 'Syncing…' : 'Retry sync'}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          testID="home-cloud-sync-link"
+          onPress={() => cloudSync?.openCloudSync?.()}
+          style={styles.syncNoticeAction}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Open Cloud Sync"
+          accessibilityHint="Opens the Cloud Sync panel in More"
+        >
+          <Text style={styles.syncNoticeActionText}>Open Cloud Sync</Text>
+        </Pressable>
+      </View>
+    </Card>
+    </View>
+  );
+}
+
+// First-paint placeholder (#737). Home gates its whole body on every data source
+// it renders, so before this the loading branch painted `null` — an empty tab
+// under a populated header, indistinguishable from a broken screen. The bars
+// mirror the real tier order (hero, goal, 1K) so nothing jumps when data lands.
+//
+// Deliberately static: an animated shimmer is motion the user did not ask for,
+// and this placeholder is usually on screen for a few frames.
+function HomeSkeleton() {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View
+      testID="home-skeleton"
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading your dashboard"
+    >
+      <Card style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarHero]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarFull]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </Card>
+      <Card style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarWide]} />
+      </Card>
+      <Card style={styles.skeletonCard}>
+        <View style={[styles.skeletonBar, styles.skeletonBarShort]} />
+        <View style={[styles.skeletonBar, styles.skeletonBarFull]} />
+      </Card>
+    </View>
+  );
+}
+
+export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { goal: weightGoal, loading: goalLoading } = useWeightGoal();
-  const { trackedLifts, loading: trackedLiftsLoading } = useTrackedLifts();
+  const { goal: weightGoal, loading: goalLoading, error: goalError, refresh: refreshGoal } = useWeightGoal();
+  const { trackedLifts, loading: trackedLiftsLoading, error: trackedLiftsError, refresh: refreshTrackedLifts } = useTrackedLifts();
   const unit = useWeightUnit();
+
+  // The shell owns the weight/note reads and reports their failure through
+  // `loadError`, but Home owns two more of its own — the weight goal and the
+  // tracked-lift map — and both feed tiers on this screen (#737 review). A
+  // failed goal read silently removed the Goal tier and a failed tracked-lift
+  // read zeroed the strength counts, in both cases looking exactly like a user
+  // who has set nothing up. All four sources are one honest failure state here,
+  // with one retry that re-runs everything Home renders from.
+  const hasLoadError = !!loadError || !!goalError || !!trackedLiftsError;
+  const handleRetryLoad = () => {
+    onRetryLoad?.();
+    refreshGoal?.();
+    refreshTrackedLifts?.();
+  };
 
   // Ordinary-analytics boundary (#699). Home's aggregated populations (1K,
   // overload signals, tracked-lift visibility) drop recovery-linked notes whose
@@ -117,22 +263,53 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // work the user chose to exclude (#699).
   const isLoading = loading || goalLoading || trackedLiftsLoading || !recoveryBoundaryReady;
 
+  // Whether Home holds anything real to draw, regardless of why it might not.
+  // Used to keep a failed read from being dressed up as a populated dashboard:
+  // with nothing loaded, the tiers would render Week —, no weigh-in, and zeroed
+  // classification counts, which reads as "you did nothing" rather than "this
+  // did not load".
+  const hasLoadedData = useMemo(() => {
+    const hasTrackedLifts = trackedLifts && Object.values(trackedLifts).some(Boolean);
+    return (weightEntries?.length || 0) > 0
+      || (notes?.length || 0) > 0
+      || !!workoutNote?.raw_text?.trim()
+      || !!weightGoal
+      || !!hasTrackedLifts;
+  }, [weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
+
   const isEmptyState = useMemo(() => {
     if (isLoading) return false;
+    // A failed read leaves every collection empty, which is byte-identical to a
+    // brand-new account (#737). Presenting the welcome/onboarding card there
+    // would tell a user with months of history that they have never logged
+    // anything. Empty is only "empty" once the reads actually succeeded.
+    if (hasLoadError) return false;
     const hasTrackedLifts = trackedLifts && Object.values(trackedLifts).some(Boolean);
     return (!weightEntries || weightEntries.length === 0) &&
            (!notes || notes.length === 0) &&
            (!workoutNote?.raw_text || !workoutNote.raw_text.trim()) &&
            !weightGoal &&
            !hasTrackedLifts;
-  }, [isLoading, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
+  }, [isLoading, hasLoadError, weightEntries, notes, workoutNote, weightGoal, trackedLifts]);
 
   return (
     <ScreenShell
       title={<KiloWordmark />}
       subtitle="Current routine progress."
     >
-      {isLoading ? null : isEmptyState ? (
+      {hasLoadError ? (
+        <ErrorBanner
+          message="Could not load your training data."
+          onRetry={handleRetryLoad}
+        />
+      ) : null}
+      <CloudSyncNotice />
+      {/* Three distinct outcomes, never collapsed into one another: still
+          loading (skeleton), failed with nothing to fall back on (the banner
+          above and nothing else — no fabricated zeroes), and a verified read
+          (welcome or dashboard). A failed read that still has cached data keeps
+          rendering it under the banner, which is stale but true. */}
+      {isLoading ? <HomeSkeleton /> : (hasLoadError && !hasLoadedData) ? null : isEmptyState ? (
         <Card style={styles.welcomeCard}>
           <View style={styles.welcomeHeader}>
             <Text style={styles.welcomeTitle}>Welcome to Kilo</Text>
@@ -418,6 +595,89 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   );
 }
 const createStyles = (colors) => StyleSheet.create({
+  // Cloud sync notice. The queued state is informational, so it uses the same
+  // quiet chip tone as the shell's update banner; only a real failure takes the
+  // error surface.
+  syncNoticeCard: {
+    padding: 16,
+    marginTop: 12,
+    gap: 8,
+    backgroundColor: colors.chipBackground,
+    borderColor: colors.cardBorder,
+  },
+  syncNoticeCardFailed: {
+    padding: 16,
+    marginTop: 12,
+    gap: 8,
+    backgroundColor: colors.errorSurface,
+    borderColor: colors.error,
+  },
+  syncNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  syncNoticeTitleFailed: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.error,
+  },
+  syncNoticeBody: {
+    fontSize: 13,
+    color: colors.textMuted,
+    // No fixed lineHeight: enlarged text must grow its own line box.
+    marginTop: 2,
+  },
+  syncNoticeRetryError: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  syncNoticeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // Wraps at 320dp with enlarged text instead of squeezing both actions
+    // below the 44dp target.
+    flexWrap: 'wrap',
+    columnGap: 16,
+    rowGap: 4,
+  },
+  syncNoticeAction: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  syncNoticeActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  // Static first-paint placeholder bars.
+  skeletonCard: {
+    padding: 24,
+    marginTop: 12,
+    gap: 12,
+  },
+  skeletonBar: {
+    backgroundColor: colors.cardBorder,
+    borderRadius: 6,
+    opacity: 0.6,
+  },
+  skeletonBarShort: {
+    height: 12,
+    width: '35%',
+  },
+  skeletonBarHero: {
+    height: 36,
+    width: '60%',
+  },
+  skeletonBarFull: {
+    height: 12,
+    width: '100%',
+  },
+  skeletonBarWide: {
+    height: 12,
+    width: '75%',
+  },
   weeklyHero: {
     padding: 24,
     gap: 0,
