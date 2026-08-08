@@ -38,6 +38,7 @@ afterEach(() => {
 function makeHarness({
   raw = decliningNote(),
   note = {},
+  editorTitle = 'Routine',
   fatigueTrackingEnabled = true,
   notesLoading = false,
   notesError = null,
@@ -56,7 +57,7 @@ function makeHarness({
 
   function Harness(overrides) {
     const [text, setText] = React.useState(raw);
-    const [title, setTitle] = React.useState('Routine');
+    const [title, setTitle] = React.useState(editorTitle);
     const hook = useLogCurrentRoutineEditor({
       workoutNoteText: text,
       setWorkoutNoteText: setText,
@@ -218,6 +219,31 @@ describe('gates: a prompt is only ever raised over a verified read the user owns
 
   test('row 4 — a deload note never prompts', async () => {
     const h = makeHarness({ note: { title: 'Deload · Routine' } });
+    await h.done();
+    expectFullyWithdrawn(h.get().hook);
+  });
+
+  test('row 4 — renaming the routine to a deload title blocks the prompt in the SAME Done, before the note refreshes', async () => {
+    // The gate has to read the title that was just saved, not the one on the
+    // stored note. `update()` only broadcasts `notifyWorkoutNotes()`, and each
+    // listener refreshes through `maybeSyncCloud().then(reload)` — so the
+    // refreshed note can be a cloud round-trip away. Reading the stale ref
+    // would raise a prompt the user could answer, writing a check-in record
+    // onto what is now a deload note. `currentNote` here still carries the
+    // pre-save title, exactly as it does at that moment in the app.
+    const h = makeHarness({ editorTitle: 'Deload · Routine', note: { title: 'Routine' } });
+    expect(h.get().hook.hasUnsavedCurrent).toBe(true);
+
+    await h.done();
+
+    // The title really was persisted in this same Done.
+    expect(h.update.mock.calls.some(([, p]) => p.title === 'Deload · Routine')).toBe(true);
+    expectFullyWithdrawn(h.get().hook);
+    expect(checkInWrites(h.update)).toHaveLength(0);
+  });
+
+  test('row 4 — a stored deload note still blocks even if the editor title is empty', async () => {
+    const h = makeHarness({ editorTitle: '', note: { title: 'Deload · Routine' } });
     await h.done();
     expectFullyWithdrawn(h.get().hook);
   });

@@ -20,6 +20,10 @@ function isValidActiveWeek(value) {
   return value === 'A' || value === 'B';
 }
 
+function isDeloadTitle(title) {
+  return !!title?.startsWith(DELOAD_NOTE_PREFIX);
+}
+
 // At most one check-in prompt per this many session indices (D10 §4.2). The
 // window is measured from the last session actually ASKED about — every key in
 // session_checkins was produced by a prompt — not from the last rough session,
@@ -172,14 +176,22 @@ export function useLogCurrentRoutineEditor({
   // Whether the check-in is currently blocked from being on screen at all:
   // the feature is off, the read is not verified, another modal owns the
   // screen, or this is a deload note. Deload mode itself is a separate editor
-  // this hook deliberately cannot see, so the note prefix is the only deload
+  // this hook deliberately cannot see, so the note title is the only deload
   // fact available here — and the only one needed.
+  //
+  // Both titles are consulted, because they can disagree. The stored note is
+  // the persisted truth, but it lags: `update()` only broadcasts
+  // `notifyWorkoutNotes()`, and every listener refreshes through
+  // `maybeSyncCloud().then(reload)`, so a title saved a moment ago may be a
+  // cloud round-trip away from reaching `currentNote`. The editor's own title
+  // is what was just written. Either one naming a deload note is enough.
   const checkInBlocked =
     !fatigueTrackingEnabled
     || !!notesLoading
     || !!notesError
     || !!otherModalOwnsScreen
-    || !!currentNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
+    || isDeloadTitle(workoutNoteTitle)
+    || isDeloadTitle(currentNote?.title);
 
   // Withdrawal (D10 §3.3): one state transition, never a visibility change and
   // never a write. Clearing every field is what stops the sheet from
@@ -555,11 +567,20 @@ export function useLogCurrentRoutineEditor({
     // another modal owning the screen. Evaluated here, synchronously, at the
     // moment a prompt would be raised. Nothing is written and nothing is
     // stored, so the session stays eligible at a later Done.
+    //
+    // The deload check reads the title that was just SAVED, not only the one
+    // on the stored note: this runs immediately after an awaited `handleSave`,
+    // and `currentNote` cannot have caught up yet — its refresh goes through
+    // `notifyWorkoutNotes()` and `maybeSyncCloud()`. A user who renames their
+    // routine to a deload title and presses Done would otherwise be prompted
+    // about a session on a note that is already a deload note, and answering
+    // would write a check-in record onto it.
     if (!gates.fatigueTrackingEnabled
       || gates.notesLoading
       || gates.notesError
       || gates.otherModalOwnsScreen
-      || currentNoteRef.current?.title?.startsWith(DELOAD_NOTE_PREFIX)) {
+      || isDeloadTitle(workoutNoteTitleRef.current)
+      || isDeloadTitle(currentNoteRef.current?.title)) {
       withdrawCheckIn();
       return;
     }
