@@ -131,7 +131,13 @@ Current limitation:
   unanswered-check-in alert badge, plus focused `SessionCheckInModal`
   rendered-handler coverage proving backdrop taps and Android `onRequestClose`
   defer without storage writes while the explicit close control writes a
-  `session_checkins` entry, and targeted `WeightScreen` interaction
+  `session_checkins` entry, plus check-in trigger-contract coverage in
+  `session-checkin-trigger.test.js` (the single `Done`-after-save trigger site,
+  each precedence gate proven to block independently, the three-session
+  cooldown at distances 1/2/3, orphan keys above the current session, re-keying
+  after `Remove skip`, and the write-free withdrawal transition that never
+  re-raises) and `session-checkin-tab-blur.test.js` as the regression guard
+  that leaving the Log tab raises nothing, and targeted `WeightScreen` interaction
   coverage for history-row scroll-to-editor behavior, edit/date threading
   through the existing update seam, delete confirmation/refresh behavior, the
   saved-goal target/guidance split, and the active weigh-in/goal

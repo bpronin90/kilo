@@ -13,11 +13,34 @@ import {
   computeWeeksIn,
 } from '../../lib/data';
 import { loadRecoveryExcludedNoteIds } from '../../hooks/entries/recoveryBlockHooks';
-import { AUTOSAVE_DEBOUNCE_MS } from '../../lib/LogScreenHelpers';
+import { AUTOSAVE_DEBOUNCE_MS, DELOAD_NOTE_PREFIX } from '../../lib/LogScreenHelpers';
 import { buildDayGroups } from './logScreenHelpers';
 
 function isValidActiveWeek(value) {
   return value === 'A' || value === 'B';
+}
+
+// At most one check-in prompt per this many session indices (D10 §4.2). The
+// window is measured from the last session actually ASKED about — every key in
+// session_checkins was produced by a prompt — not from the last rough session,
+// so a suppressed session never extends it. Sustained fatigue escalates through
+// Deload/Recovery, not by re-asking a question whose answer changes nothing.
+const CHECKIN_COOLDOWN_SESSIONS = 3;
+
+// True when a prompt for `sessionIndex` falls inside the cooldown window of an
+// existing check-in record. Only keys at or below the current session are
+// consulted: records above it (text cut down or hand-edited) are orphans, and
+// are ignored rather than deleted — deleting them would be a historical-record
+// change.
+function _checkInCooldownActive(checkins, sessionIndex) {
+  if (!checkins || typeof checkins !== 'object') return false;
+  let lastAsked = -1;
+  for (const key of Object.keys(checkins)) {
+    const idx = Number(key);
+    if (!Number.isInteger(idx) || idx < 0 || idx > sessionIndex) continue;
+    if (idx > lastAsked) lastAsked = idx;
+  }
+  return lastAsked >= 0 && sessionIndex - lastAsked < CHECKIN_COOLDOWN_SESSIONS;
 }
 
 export function useLogCurrentRoutineEditor({
@@ -34,7 +57,9 @@ export function useLogCurrentRoutineEditor({
   selectCurrent,
   fatigueTrackingEnabled,
   onCheckInPrompt,
-  isActive,
+  notesLoading,
+  notesError,
+  otherModalOwnsScreen,
   editorScrollRef,
   readScrollRef,
 }) {
@@ -65,12 +90,16 @@ export function useLogCurrentRoutineEditor({
   const workoutNoteTitleRef = useRef(workoutNoteTitle);
   const currentIdRef = useRef(currentId);
   const currentNoteRef = useRef(currentNote);
-  const modeRef = useRef(mode);
   workoutNoteTextRef.current = workoutNoteText;
   workoutNoteTitleRef.current = workoutNoteTitle;
   currentIdRef.current = currentId;
   currentNoteRef.current = currentNote;
-  modeRef.current = mode;
+
+  // Check-in gates, held in a ref for the same reason as the values above:
+  // detection runs after an awaited save, so it must read the gates as they are
+  // at the moment of raise, not as they were when the handler was created.
+  const checkInGatesRef = useRef(null);
+  checkInGatesRef.current = { fatigueTrackingEnabled, notesLoading, notesError, otherModalOwnsScreen };
 
   const noteIdentity = currentNote?.id ?? currentId ?? null;
   const [localActiveWeek, setLocalActiveWeek] = useState(
@@ -135,13 +164,43 @@ export function useLogCurrentRoutineEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentNote?.session_checkins, roughSessionIndex, currentId]);
 
-  // Fire check-in detection when the Log tab loses focus (user switches away while editing).
+  // A check-in prompt is raised at exactly one moment — Done, after a verified
+  // save — so leaving the Log tab no longer runs detection. Blur is an
+  // interruption, not a completion, and it was the only path that could ask
+  // about text the store had not accepted yet.
+
+  // Whether the check-in is currently blocked from being on screen at all:
+  // the feature is off, the read is not verified, another modal owns the
+  // screen, or this is a deload note. Deload mode itself is a separate editor
+  // this hook deliberately cannot see, so the note prefix is the only deload
+  // fact available here — and the only one needed.
+  const checkInBlocked =
+    !fatigueTrackingEnabled
+    || !!notesLoading
+    || !!notesError
+    || !!otherModalOwnsScreen
+    || !!currentNote?.title?.startsWith(DELOAD_NOTE_PREFIX);
+
+  // Withdrawal (D10 §3.3): one state transition, never a visibility change and
+  // never a write. Clearing every field is what stops the sheet from
+  // resurrecting itself when the toggle comes back on or the other modal
+  // closes — the only way back to a prompt is fresh detection at a later Done.
+  // Nothing is stored, so the session stays eligible.
+  const withdrawCheckIn = () => {
+    setShowCheckInModal(false);
+    setRoughCheckInData(null);
+    setRoughSessionIndex(null);
+    setRoughNoteId(null);
+    setRoughFlaggedNames(prev => (prev.size === 0 ? prev : new Set()));
+  };
+
   useEffect(() => {
-    if (isActive === false && modeRef.current === 'edit') {
-      _runCheckInDetection();
-    }
+    if (!checkInBlocked) return;
+    if (!showCheckInModal && roughCheckInData == null && roughSessionIndex == null
+      && roughNoteId == null && roughFlaggedNames.size === 0) return;
+    withdrawCheckIn();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [checkInBlocked, showCheckInModal, roughCheckInData, roughSessionIndex, roughNoteId, roughFlaggedNames]);
 
   const parsed = useMemo(() => parseWorkoutNote(workoutNoteText), [workoutNoteText]);
 
@@ -487,8 +546,23 @@ export function useLogCurrentRoutineEditor({
     });
   };
 
+  // Raises the fatigue check-in, from the single trigger site: Done, after
+  // handleSave has returned true. Precedence is evaluated top-down and the
+  // first matching rule decides.
   const _runCheckInDetection = () => {
-    if (!fatigueTrackingEnabled) return;
+    const gates = checkInGatesRef.current;
+    // Rows 1, 2, 4 and 6 — feature off, unverified read, deload note, or
+    // another modal owning the screen. Evaluated here, synchronously, at the
+    // moment a prompt would be raised. Nothing is written and nothing is
+    // stored, so the session stays eligible at a later Done.
+    if (!gates.fatigueTrackingEnabled
+      || gates.notesLoading
+      || gates.notesError
+      || gates.otherModalOwnsScreen
+      || currentNoteRef.current?.title?.startsWith(DELOAD_NOTE_PREFIX)) {
+      withdrawCheckIn();
+      return;
+    }
     const explicitTrackedNames = listTrackedLifts(trackedLifts);
     const defaultNames = getDefaultTrackedNames();
     const normalizedDefaults = new Set(defaultNames.map(n => normalizeLiftName(n)));
@@ -501,18 +575,29 @@ export function useLogCurrentRoutineEditor({
     const { sections: currentSections } = parseWorkoutNote(latestText);
     const { isRough, sessionIndex, flagged, detectors, metrics } = deriveSessionCheckIn(currentSections, resolvedTrackedNames);
     const checkins = currentNoteRef.current?.session_checkins;
-    if (isRough && sessionIndex != null && !(checkins?.[sessionIndex])) {
-      setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
-      setRoughSessionIndex(sessionIndex);
-      setRoughNoteId(latestId);
-      setRoughCheckInData({ sessionIndex, detectors, flagged, metrics });
-      setShowCheckInModal(true);
-      onCheckInPrompt?.();
-    } else {
+    // Row 9 — no trigger fired. Row 7 — this session already has a record
+    // (answered or dismissed), which suppresses it permanently.
+    if (!isRough || sessionIndex == null || checkins?.[sessionIndex]) {
       setRoughFlaggedNames(new Set());
       setRoughSessionIndex(null);
       setRoughNoteId(null);
+      return;
     }
+    // Row 8 — cooldown. Only the interruption is withheld: the exercises are
+    // still marked inline and the session is still reachable from Analytics.
+    if (_checkInCooldownActive(checkins, sessionIndex)) {
+      setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
+      setRoughSessionIndex(sessionIndex);
+      setRoughNoteId(latestId);
+      return;
+    }
+    // Row 10 — ask.
+    setRoughFlaggedNames(new Set(flagged.map(f => f.normName)));
+    setRoughSessionIndex(sessionIndex);
+    setRoughNoteId(latestId);
+    setRoughCheckInData({ sessionIndex, detectors, flagged, metrics });
+    setShowCheckInModal(true);
+    onCheckInPrompt?.();
   };
 
   const handleDoneCurrent = async () => {
@@ -604,8 +689,11 @@ export function useLogCurrentRoutineEditor({
       setSkipWeekStatus('Could not save skip — try again');
       return;
     }
+    // 'Skip week' is the user declaring what happened. Explicit intent outranks
+    // inference, so the press is a suppression event, not a detection event:
+    // the only feedback is this status line. (Previously the skip it had just
+    // written was read back as a whole-day absence and answered with a prompt.)
     setSkipWeekStatus('Skip applied');
-    _runCheckInDetection();
   };
 
   // Performs the actual removal for handleUnskipWeek once any confirmation
@@ -744,6 +832,7 @@ export function useLogCurrentRoutineEditor({
     roughNoteId,
     showCheckInModal,
     setShowCheckInModal,
+    withdrawCheckIn,
     roughCheckInData,
     hasUnsavedCurrent,
     autosaveCurrentTimerRef,

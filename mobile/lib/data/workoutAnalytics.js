@@ -135,29 +135,58 @@ export function deriveRepDropOffFlags(sections, trackedNames) {
 
 // ── Session check-in detection ────────────────────────────────────────────────
 //
-// Flags when the latest logged session looks "rough" so the UI can ask
-// "you okay?" and highlight the offending exercises. Four detectors:
-//   - skipped:     more exercises skipped at the latest column than the
-//                  historical per-column average + margin (deriveSkipData),
-//                  with an absolute floor
-//   - volume_drop: reps collapsed >REP_DROP_THRESHOLD on ≥MIN_COLLAPSED_SETS
-//                  sets vs the exercise's baseline at that weight (a within-row
-//                  skipped set, rep_count 0, counts as a full collapse)
-//   - collapse:    reps fell apart within the latest session (computeRepDropOff)
-//   - day_skip:    a whole day was skipped at the latest column
-//                  (deriveSkipData().day_skips); independent of the skip trigger
+// Decides whether the latest logged session is worth *asking* the user about.
+// Kilo asks about the shape of the work; it never infers a bodily state, and a
+// silent outcome is always valid. Per the D10 trigger contract (#747) there are
+// exactly TWO triggers and two signals that can never open a prompt:
+//
+//   - volume_drop [TRIGGER]  reps collapsed >REP_DROP_THRESHOLD on
+//                  ≥MIN_COLLAPSED_SETS sets at the latest entry's OWN top
+//                  weight, versus the most recent prior entry that used that
+//                  same weight (a within-row skipped set, rep_count 0, counts
+//                  as a full collapse). Requires ≥MIN_PRIOR_ENTRIES prior
+//                  logged entries for that exercise — one observation is not a
+//                  baseline. Sets below the top weight are never scored, so a
+//                  deliberate back-off session does not read as a decline, and
+//                  because the baseline is looked up at that same top weight,
+//                  adding load can never fire it.
+//   - skipped [TRIGGER, narrowed]  more exercises skipped at the latest column
+//                  than the rounded per-column MEAN of the prior columns plus
+//                  SKIP_MARGIN, with an absolute SKIP_FLOOR, at least two prior
+//                  columns, and at least one non-skipped logged tracked entry
+//                  at the latest column. That last requirement is what keeps
+//                  this rule meaning "attended and cut it short" rather than
+//                  "did not train".
+//   - collapse [reason only]  reps fell apart within the latest session
+//                  (computeRepDropOff). Corroborating evidence only: straight
+//                  sets taken toward failure are numerically identical to a
+//                  session that fell apart, so this never opens a prompt alone.
+//   - day_skip [neither]  a whole skipped column is the user stating that
+//                  nothing happened. Kilo takes that at its word: it is neither
+//                  a trigger nor a reason and never appears in `detectors`.
+//                  deriveSkipData still produces day_skips and the
+//                  repeated_weekday_skip attendance flag for the non-modal
+//                  Analytics surfaces.
+//
+// `isRough` is true only when a TRIGGER fired — not merely when a reason exists.
 //
 // The latest session is the deepest column, lastIdx = computeWeeksIn(sections) - 1,
 // matching the suppression key used by the persistence layer. Multi-day routines
 // share the existing positional-alignment limitation (see classifyExerciseSessions).
 // Pure; operates on parsed sections. Returns:
 //   { sessionIndex, isRough, detectors: string[],
-//     flagged: [{ normName, name, reasons: ('skip'|'volume_drop'|'collapse'|'day_skip')[] }],
+//     flagged: [{ normName, name, reasons: ('skip'|'volume_drop'|'collapse')[] }],
 //     metrics: { exercises_skipped: number, volume_decline_pct: number|null } }
 export const SESSION_CHECKIN_REP_DROP_THRESHOLD = 2; // reps lost vs baseline to call a set "collapsed"
 export const SESSION_CHECKIN_MIN_COLLAPSED_SETS = 2; // collapsed sets needed to flag a volume drop
+export const SESSION_CHECKIN_MIN_PRIOR_ENTRIES = 2;  // prior logged entries needed before a volume drop can be judged
 export const SESSION_CHECKIN_SKIP_FLOOR = 2;         // min skipped exercises before a skip trigger fires
 export const SESSION_CHECKIN_SKIP_MARGIN = 1;        // skips above the historical average to count as "more than usual"
+export const SESSION_CHECKIN_MIN_SKIP_COLUMNS = 2;   // prior columns needed before a mean skip baseline means anything
+
+// The only detectors that may open a prompt. `collapse` is corroboration and
+// `day_skip` is not produced at all.
+const SESSION_CHECKIN_TRIGGERS = ['volume_drop', 'skipped'];
 
 function _checkinTonnage(sets) {
   return (sets || []).reduce(
@@ -203,28 +232,39 @@ export function deriveSessionCheckIn(sections, trackedNames) {
   }
   if (assessments.length === 0) return empty;
 
-  // ── Skip (detector 1) and whole-day skip (detector 4), via deriveSkipData ──
-  // Detector 1 fires when more exercises were skipped at the latest column than
-  // the historical per-column average by a margin (with an absolute floor).
-  // Detector 4 is independent: a whole day skipped at the latest column.
+  // ── Skip trigger, via deriveSkipData ──
+  // Fires only for a PARTIAL skip inside an attended session: more exercises
+  // skipped at the latest column than this user's own per-column mean, by a
+  // margin, above a floor, with enough history for a mean to mean anything, and
+  // with real logged work still present at that column. A whole-column absence
+  // is a declaration, not evidence, and is never a trigger or a reason.
   const skipData = deriveSkipData(sections);
   const skipByIndex = {};
   for (const s of skipData.exercise_skips) {
     skipByIndex[s.session_index] = (skipByIndex[s.session_index] || 0) + 1;
   }
   const latestSkipCount = skipByIndex[sessionIndex] || 0;
+  // Rounded arithmetic MEAN of prior columns, matching what this contract has
+  // always claimed. A minimum would let one clean column pin the baseline at 0
+  // forever, so a user whose honest normal is two skips would be asked every
+  // single session and the rule could never learn their "usual".
   let baselineSkips = 0;
   if (sessionIndex > 0) {
-    let min = Infinity;
-    for (let i = 0; i < sessionIndex; i++) {
-      const v = skipByIndex[i] || 0;
-      if (v < min) min = v;
-    }
-    baselineSkips = min === Infinity ? 0 : min;
+    let total = 0;
+    for (let i = 0; i < sessionIndex; i++) total += skipByIndex[i] || 0;
+    baselineSkips = Math.round(total / sessionIndex);
   }
-  const skipFired = latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
+  // Attendance: at least one tracked exercise logged real, parseable work at the
+  // latest column. Without this, "more skipped than usual" would fire on a day
+  // the user simply did not train.
+  const attendedLatest = assessments.some(a => {
+    const e = a.allEntries[sessionIndex];
+    return !!e && !e.skipped && !e.unparsed && !!e.sets && e.sets.length > 0;
+  });
+  const skipFired = sessionIndex >= SESSION_CHECKIN_MIN_SKIP_COLUMNS
+    && attendedLatest
+    && latestSkipCount >= SESSION_CHECKIN_SKIP_FLOOR
     && latestSkipCount > baselineSkips + SESSION_CHECKIN_SKIP_MARGIN;
-  const dayFired = skipData.day_skips.some(d => d.session_index === sessionIndex);
 
   // ── Per-exercise volume_drop / collapse on the latest entry ──
   const detectorSet = new Set();
@@ -249,46 +289,61 @@ export function deriveSessionCheckIn(sections, trackedNames) {
 
     if (latest.skipped) {
       if (skipFired) addReason(a, 'skip');
-      if (dayFired) addReason(a, 'day_skip');
       continue;
     }
     const latestSets = latest.sets || [];
-    // Distinct working weights in the latest entry.
-    const weights = [...new Set(latestSets.filter(s => s.weight_value > 0).map(s => s.weight_value))];
-    let collapsedSets = 0;
-    for (const w of weights) {
-      // Baseline reps at this weight: most recent prior logged entry that used it.
-      let baseReps = 0;
-      for (let i = priorLogged.length - 1; i >= 0; i--) {
-        const m = _maxRepsAtWeight(priorLogged[i].sets, w);
-        if (m > 0) { baseReps = m; break; }
+    // Two prior logged entries minimum: a single observation is not a baseline,
+    // so a user's second-ever session at a lift is never judged against their
+    // first.
+    if (priorLogged.length >= SESSION_CHECKIN_MIN_PRIOR_ENTRIES) {
+      // Score ONLY the latest entry's own top weight — the thing the user was
+      // actually testing. Back-off and accessory rows below it are ignored, so
+      // changing the shape of a session (heavy top set, then lighter volume)
+      // never reads as a decline. Only working sets define the top weight; a
+      // within-row skipped set (rep_count 0) is scored against it below but
+      // cannot set it.
+      const working = latestSets.filter(s => s.weight_value > 0 && s.rep_count > 0);
+      const topWeight = working.length > 0
+        ? Math.max(...working.map(s => s.weight_value))
+        : null;
+      if (topWeight !== null) {
+        // Baseline reps at that same weight: most recent prior logged entry that
+        // used it. Looking the baseline up AT the top weight is also what makes
+        // added load safe — a heavier top set has no baseline of its own, so
+        // nothing is scored and progression is never called a decline.
+        let baseReps = 0;
+        for (let i = priorLogged.length - 1; i >= 0; i--) {
+          const m = _maxRepsAtWeight(priorLogged[i].sets, topWeight);
+          if (m > 0) { baseReps = m; break; }
+        }
+        if (baseReps > 0) { // otherwise: new weight, nothing to compare against
+          let collapsedSets = 0;
+          for (const s of latestSets) {
+            if (s.weight_value !== topWeight) continue;
+            if (baseReps - s.rep_count > SESSION_CHECKIN_REP_DROP_THRESHOLD) collapsedSets++;
+          }
+          if (collapsedSets >= SESSION_CHECKIN_MIN_COLLAPSED_SETS) {
+            addReason(a, 'volume_drop');
+            anyVolumeDrop = true;
+            sumBaseTon += _checkinTonnage(priorLogged[priorLogged.length - 1].sets);
+            sumLatestTon += _checkinTonnage(latestSets);
+          }
+        }
       }
-      if (baseReps <= 0) continue; // new weight, nothing to compare against
-      for (const s of latestSets) {
-        if (s.weight_value !== w) continue;
-        if (baseReps - s.rep_count > SESSION_CHECKIN_REP_DROP_THRESHOLD) collapsedSets++;
-      }
-    }
-    if (collapsedSets >= SESSION_CHECKIN_MIN_COLLAPSED_SETS) {
-      addReason(a, 'volume_drop');
-      anyVolumeDrop = true;
-      sumBaseTon += _checkinTonnage(priorLogged[priorLogged.length - 1].sets);
-      sumLatestTon += _checkinTonnage(latestSets);
     }
     if (computeRepDropOff(latestSets) === 'hit_wall') {
       addReason(a, 'collapse');
     }
   }
 
-  // Roll up detectors from flagged reasons + session-level skip triggers.
+  // Roll up detectors from flagged reasons + the session-level skip trigger.
   for (const f of flaggedMap.values()) {
     for (const r of f.reasons) detectorSet.add(r === 'skip' ? 'skipped' : r);
   }
   if (skipFired) detectorSet.add('skipped');
-  if (dayFired) detectorSet.add('day_skip');
 
   const flagged = [...flaggedMap.values()].map(f => ({ normName: f.normName, name: f.name, reasons: [...f.reasons] }));
-  const detectorOrder = ['skipped', 'volume_drop', 'collapse', 'day_skip'];
+  const detectorOrder = ['skipped', 'volume_drop', 'collapse'];
   const detectors = detectorOrder.filter(d => detectorSet.has(d));
   const volume_decline_pct = anyVolumeDrop && sumBaseTon > 0
     ? Math.round(((sumBaseTon - sumLatestTon) / sumBaseTon) * 100)
@@ -296,7 +351,9 @@ export function deriveSessionCheckIn(sections, trackedNames) {
 
   return {
     sessionIndex,
-    isRough: detectors.length > 0,
+    // Only a trigger opens a prompt: a lone `collapse` is corroboration with
+    // nothing to corroborate.
+    isRough: detectors.some(d => SESSION_CHECKIN_TRIGGERS.includes(d)),
     detectors,
     flagged,
     metrics: { exercises_skipped: latestSkipCount, volume_decline_pct },

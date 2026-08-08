@@ -62,7 +62,11 @@ function findPressableWithText(root, text) {
 }
 
 function findOkTierButton(root) {
-  return findPressableWithText(root, "I'm okay");
+  return findPressableWithText(root, 'Normal for me');
+}
+
+function findRoughTierButton(root) {
+  return findPressableWithText(root, 'It was a rough one');
 }
 
 function findSubmitButton(root) {
@@ -349,6 +353,149 @@ describe('SessionCheckInModal — dismiss (X button) failure handling', () => {
 });
 
 
+// ── D10 copy contract ────────────────────────────────────────────────────────
+// The header states what was observed about the SESSION and invites a note. It
+// never asks a question about the person, and it never asserts a condition.
+
+describe('SessionCheckInModal — title selection and copy', () => {
+  // Text content in tree order. A Text renders as a composite and a host node
+  // with the same children, so consecutive repeats are collapsed.
+  function allText(root) {
+    const raw = root.findAll(n => typeof n.props?.children === 'string', { deep: true })
+      .map(n => n.props.children);
+    return raw.filter((t, i) => t !== raw[i - 1]);
+  }
+
+  function titleOf(instance) {
+    // The header title is the first Text node in the sheet.
+    return allText(instance.root)[0];
+  }
+
+  async function renderWith(checkInData) {
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...makeProps({ checkInData })} />);
+    });
+    return instance;
+  }
+
+  it('volume_drop names the exercises', async () => {
+    const instance = await renderWith({
+      ...baseCheckInData,
+      detectors: ['volume_drop'],
+      flagged: [{ name: 'Squat', normName: 'squat', reasons: ['volume_drop'] }],
+    });
+    expect(titleOf(instance)).toBe('Lighter than usual — Squat');
+  });
+
+  it('skipped alone states the observation without naming a cause', async () => {
+    const instance = await renderWith({
+      ...baseCheckInData,
+      detectors: ['skipped'],
+      flagged: [
+        { name: 'Row', normName: 'row', reasons: ['skip'] },
+        { name: 'Curl', normName: 'curl', reasons: ['skip'] },
+      ],
+    });
+    expect(titleOf(instance)).toBe('More skipped than usual');
+  });
+
+  it('when both triggers fire, volume_drop wins and no clauses are joined', async () => {
+    const instance = await renderWith({
+      ...baseCheckInData,
+      detectors: ['skipped', 'volume_drop'],
+      flagged: [
+        { name: 'Row', normName: 'row', reasons: ['skip'] },
+        { name: 'Bench', normName: 'bench', reasons: ['volume_drop'] },
+      ],
+    });
+    const title = titleOf(instance);
+    expect(title).toBe('Lighter than usual — Bench');
+    // Selection, not composition: the old ' · ' join is gone.
+    expect(title).not.toContain(' · ');
+  });
+
+  it('the two-name cap with +N overflow is preserved, and the title stays inside the large-text cap', async () => {
+    const instance = await renderWith({
+      ...baseCheckInData,
+      detectors: ['volume_drop'],
+      flagged: [
+        { name: 'Romanian Deadlift', normName: 'a', reasons: ['volume_drop'] },
+        { name: 'Bulgarian Split Squat', normName: 'b', reasons: ['volume_drop'] },
+        { name: 'Bench Press', normName: 'c', reasons: ['volume_drop'] },
+        { name: 'Barbell Row', normName: 'd', reasons: ['volume_drop'] },
+      ],
+    });
+    const title = titleOf(instance);
+    expect(title).toBe('Lighter than usual — Romanian Deadlift, Bulgarian Split Squat +2');
+    expect(title.length).toBeLessThanOrEqual(64);
+  });
+
+  it('no title anywhere asks how the user is, and none mentions a whole day skipped', async () => {
+    for (const detectors of [['volume_drop'], ['skipped'], ['skipped', 'volume_drop']]) {
+      const instance = await renderWith({ ...baseCheckInData, detectors });
+      const title = titleOf(instance);
+      expect(title).not.toMatch(/okay/i);
+      expect(title).not.toMatch(/whole day/i);
+    }
+  });
+
+  it('a historical record whose detectors no longer select a title still renders a neutral header', async () => {
+    // Records written before this contract can carry `collapse` or `day_skip`
+    // alone. Analytics re-opens them for editing; they are history, not
+    // migrated, so the header must still say something and must stay neutral.
+    for (const detectors of [['collapse'], ['day_skip'], []]) {
+      const instance = await renderWith({ ...baseCheckInData, detectors, flagged: [] });
+      const title = titleOf(instance);
+      expect(title).toBe('Session check-in');
+      expect(title).not.toMatch(/okay/i);
+    }
+  });
+
+  it('the invitation is a separate node from the observation, so they announce as two utterances', async () => {
+    const instance = await renderWith(baseCheckInData);
+    const texts = allText(instance.root);
+    expect(texts[0]).toBe('Lighter than usual — Squat');
+    expect(texts[1]).toBe('Want to note why?');
+  });
+
+  it('the tiers assess the session rather than the person, and still map to ok / rough', async () => {
+    const update = jest.fn().mockResolvedValue(true);
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...makeProps({ update })} />);
+    });
+
+    const okBtn = findOkTierButton(instance.root);
+    const roughBtn = findRoughTierButton(instance.root);
+    expect(okBtn.props.accessibilityLabel).toBe('Normal for me');
+    expect(roughBtn.props.accessibilityLabel).toBe('It was a rough one');
+
+    await act(async () => { okBtn.props.onPress(); });
+    await act(async () => { findSubmitButton(instance.root).props.onPress(); });
+
+    expect(update).toHaveBeenCalledWith('note-1', {
+      session_checkins: { 0: expect.objectContaining({ status: 'ok' }) },
+    });
+  });
+
+  it('Done is reachable with zero chips selected', async () => {
+    const update = jest.fn().mockResolvedValue(true);
+    let instance;
+    await act(async () => {
+      instance = render.create(<SessionCheckInModal {...makeProps({ update })} />);
+    });
+    await act(async () => { findRoughTierButton(instance.root).props.onPress(); });
+    const submit = findSubmitButton(instance.root);
+    expect(submit.props.disabled).toBeFalsy();
+
+    await act(async () => { submit.props.onPress(); });
+    expect(update).toHaveBeenCalledWith('note-1', {
+      session_checkins: { 0: expect.objectContaining({ status: 'rough', reasons: [] }) },
+    });
+  });
+});
+
 describe('SessionCheckInModal — accessibility semantics', () => {
   // Every Pressable in the tree that exposes accessibilityRole="checkbox" or
   // "button" must carry a non-empty accessibilityLabel, and any decorative
@@ -424,7 +571,7 @@ describe('SessionCheckInModal — accessibility semantics', () => {
     });
 
     await act(async () => {
-      findPressableWithText(instance.root, 'Not great').props.onPress();
+      findRoughTierButton(instance.root).props.onPress();
     });
 
     const chip = findByRole(instance.root, 'checkbox').find(n => n.props.accessibilityLabel === 'Tired');
@@ -448,7 +595,7 @@ describe('SessionCheckInModal — accessibility semantics', () => {
     });
 
     await act(async () => {
-      findPressableWithText(instance.root, 'Not great').props.onPress();
+      findRoughTierButton(instance.root).props.onPress();
     });
 
     const textInput = instance.root.findByProps({ multiline: true });

@@ -282,9 +282,10 @@ The real native app path now has a modular React Native shell:
   removes one trailing universal skip at a time, confirms before removing
   trailing skips that were entered manually, and removes the matching
   session check-in while preserving the attribution of surviving check-ins.
-  Both actions show visible status, persist the advisory universal-skip count
-  with the note update, and keep the existing fatigue-reason prompt limited to
-  successful `Skip week` saves. The card also includes an explicit `Edit`
+  Both actions show visible status and persist the advisory universal-skip
+  count with the note update. Neither runs fatigue check-in detection: a skip
+  press is an explicit declaration of what happened, so it suppresses the
+  prompt rather than raising one. The card also includes an explicit `Edit`
   button in the current routine card header row (using the same
   `inlineSwitchButton` style as the `Set Current` button on other routine
   cards), and a double-tap on the rendered note body as an alternative
@@ -508,18 +509,31 @@ The real native app path now has a modular React Native shell:
   changing parsing, storage, or workout analytics. Native workout-note
   documents now also persist
   `session_checkins` keyed by session index so fatigue check-ins survive
-  reloads. When the user leaves the current-routine editor via `Done`, Android
-  back, or switching away from the Log tab after a rough detected session, the
-  same Log flow now re-runs the session check-in detector against the current
-  note only, highlights exactly the flagged exercises in red in the rendered
-  routine view, opens a centered
-  `SessionCheckInModal` with a detector-aware title plus flagged exercise names
-  where available, and persists either an `I'm okay`, `Not great`, or
-  explicit dismissed/pending (`status: null`) state back onto that session
-  index. Backdrop taps and Android modal close defer without writing
-  `session_checkins`, so the same session can be rechecked after the next
-  relevant edit/save/close decision point. The highlight and modal prompt both
-  suppress once a matching `session_checkins[sessionIndex]` entry exists. The
+  reloads. The check-in is raised at exactly one moment: `Done` (including
+  Android back, which routes through the same Done path) after the save has
+  returned successfully. Leaving the Log tab and pressing `Skip week` no longer
+  trigger it. Two detectors can open it — `volume_drop`, scored only at the
+  latest entry's own top weight against at least two prior logged entries, and
+  a narrowed `skipped`, which needs a partial skip above the user's own mean
+  per-column rate inside a session that still logged real work. `collapse` is
+  recorded as corroborating evidence but never prompts alone, and a whole
+  skipped column produces neither a trigger nor a reason. The prompt is
+  withheld entirely when fatigue tracking is off, the note read is loading or
+  failed, the note is a deload note, another Log modal owns the screen, the
+  session already has a record, or a check-in was raised within the last three
+  session indices; in the last two cases the flagged exercises are still
+  highlighted in red in the rendered routine view. When it is raised it opens a
+  centered `SessionCheckInModal` titled with the observation (`Lighter than
+  usual — {names}` or `More skipped than usual`) plus a separate `Want to note
+  why?` line, and persists a `Normal for me` (`status: 'ok'`), `It was a rough
+  one` (`status: 'rough'`), or explicit dismissed/pending (`status: null`)
+  state back onto that session index. Backdrop taps and Android modal close
+  defer without writing `session_checkins`. If a gate becomes true while the
+  sheet is open it closes and clears its state without writing anything, and
+  does not reappear when the gate clears — only fresh detection at a later
+  `Done` can raise it again, so the session stays eligible. The highlight and
+  modal prompt both suppress once a matching `session_checkins[sessionIndex]`
+  entry exists. The
   old `rep_drop_off_flags` surface is no longer populated or consumed. The
   legacy `hit_wall` chip/badge and its helper reads are removed from Log and
   Analytics, and within-row skipped sets
