@@ -603,28 +603,33 @@ action is placed by how often it is used:
 
 Consequences to preserve:
 
-- **More Routines is a collapsed-by-default disclosure (#724).** It follows the
-  shared collapse convention: a whole-header press target (with a `44` `minHeight`
-  touch floor) carrying the `MaterialIcons` `expand-more`/`expand-less` chevron
-  (18, `textMuted`), a collapsed summary of a routine count over a `Latest: …`
-  line, and `accessibilityState={{ expanded }}`. Collapsed, the routine cards
-  and `Start recovery block` stay inside the expanded body only — but (#756)
-  the header itself also carries a nested, icon-only `New routine` affordance
-  (`MaterialIcons` `add`, `accessibilityLabel="New routine"`) that is present
-  whether the disclosure is collapsed or expanded, since creating a routine is
-  common enough that it must not require opening the disclosure first. It stops
-  propagation to the header's own toggle press, the same nested-Pressable
-  pattern the active card's action strip uses. A card header's only nested
-  press target is otherwise still identity, with one exception: each
-  non-current card's own collapsed (unopened) row also carries a nested,
-  icon-only `Set as current routine: <title>` affordance (`MaterialIcons`
-  `check-circle-outline`) so switching the current routine never requires
-  opening that row and scrolling to its expand-on-tap body. It disappears once
-  the row is opened, where the existing full `Set as current routine` button in
-  the row's body remains the only instance of that action. Both quick actions
-  call straight through to the same handlers (`handleCreateRoutine`,
-  `handleSwitchCurrent`) the expanded-body controls already used, so every
-  existing confirmation and safeguard is unchanged. An external request to
+- **More Routines is a collapsed-by-default disclosure (#724).** Its header is
+  no longer one whole-header Pressable; it is a plain row of three sibling
+  touch targets — a `headerToggle` Pressable (count/latest summary, `44`
+  `minHeight`), a compact icon-only `New routine` affordance (#756,
+  `MaterialIcons` `add`, `accessibilityLabel="New routine"`), and a
+  `headerChevronButton` Pressable carrying the `MaterialIcons`
+  `expand-more`/`expand-less` chevron (18, `textMuted`) — with the toggle and
+  chevron both wired to the same expand/collapse handler and
+  `accessibilityState={{ expanded }}`, so tapping either still toggles the
+  disclosure. `New routine` is present whether the disclosure is collapsed or
+  expanded, since creating a routine is common enough that it must not require
+  opening the disclosure first. Collapsed, the routine cards and `Start
+  recovery block` stay inside the expanded body only. Each quick action is a
+  **sibling** of the toggle/row Pressable beside it, never nested inside it:
+  VoiceOver groups a nested `Pressable` into its accessible ancestor, which
+  would make the nested control unreachable as its own action (#756 review). A
+  card header's only nested press target is otherwise still identity, with one
+  exception: each non-current card's own collapsed (unopened) row also carries
+  a sibling, icon-only `Set as current routine: <title>` affordance
+  (`MaterialIcons` `check-circle-outline`) so switching the current routine
+  never requires opening that row and scrolling to its expand-on-tap body. It
+  disappears once the row is opened, where the existing full `Set as current
+  routine` button in the row's body remains the only instance of that action.
+  Both quick actions call straight through to the same handlers
+  (`handleCreateRoutine`, `handleSwitchCurrent`) the expanded-body controls
+  already used, so every existing confirmation and safeguard is unchanged. An
+  external request to
   reveal a non-current routine (typed navigation #718, or a
   Recovery-history tap from Analytics or an active-lifecycle tap) auto-expands
   the disclosure via a monotonic
