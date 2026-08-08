@@ -1,6 +1,7 @@
 # Kilo Contain and Connect Roadmap
 
-Status: active product-cohesion roadmap; Phases 1 and 2 are complete.
+Status: active product-cohesion roadmap; Phases 1 through 3 are complete and
+Phase 4 is in follow-up delivery.
 
 Source of truth: the approved audit on GitHub issue `#714`, specifically the
 owner direction in comment `5152669329`, the final consolidated audit in comment
@@ -326,10 +327,16 @@ week still opens its exact note.
 
 ## Phase 3 — Hierarchy, Accessibility, and State Coverage
 
+Status: complete as of 2026-08-08. D3 (#736), D5 (#738), and D7 (#737) are
+merged and included in the current product state.
+
 Phase goal: apply progressive disclosure consistently and make loading, error,
 queued, destructive, and assistive states trustworthy.
 
 ### D3 — Move Deload header actions into expanded bodies
+
+- **Issue:** [#736](https://github.com/bpronin90/kilo/issues/736)
+- **Status:** complete.
 
 - **Suggested title:** `Contain and Connect / D3: apply progressive disclosure to Deload cards`
 - **Goal:** remove configuration/destructive actions from collapsed headers.
@@ -346,6 +353,9 @@ queued, destructive, and assistive states trustworthy.
   `area:ui`, `area:workouts`.
 
 ### D5 — Complete the cross-surface accessibility pass
+
+- **Issue:** [#738](https://github.com/bpronin90/kilo/issues/738)
+- **Status:** complete.
 
 - **Suggested title:** `Contain and Connect / D5: close accessibility gaps across daily surfaces`
 - **Goal:** make affected controls operable through touch, TalkBack, and VoiceOver.
@@ -365,6 +375,9 @@ queued, destructive, and assistive states trustworthy.
   `area:ui`.
 
 ### D7 — Add honest loading, error, queued-sync, and destructive states
+
+- **Issue:** [#737](https://github.com/bpronin90/kilo/issues/737)
+- **Status:** complete.
 
 - **Suggested title:** `Contain and Connect / D7: add shared loading error and sync states`
 - **Goal:** stop screens from rendering nothing or silently losing work-state context.
@@ -388,10 +401,17 @@ queued, destructive, and assistive states trustworthy.
 
 ## Phase 4 — First-Use and Semantics
 
+Status: active. D9a (#745) and D10 (#747) are complete as planning contracts;
+their implementation spin-offs #748 and #751 are merged. D9b follow-up #755 is
+open.
+
 Phase goal: learn why testers fail to start, implement only evidence-backed
 guidance, and lock fatigue semantics before any UI change.
 
 ### D9a — Observe first use and define guided-entry semantics
+
+- **Issue:** [#745](https://github.com/bpronin90/kilo/issues/745)
+- **Status:** contract complete; implemented through [#748](https://github.com/bpronin90/kilo/issues/748).
 
 - **Suggested title:** `Contain and Connect / D9a: observe first use and specify guided entry`
 - **Goal:** replace guesses about tester abandonment with qualitative evidence
@@ -411,6 +431,11 @@ guidance, and lock fatigue semantics before any UI change.
 
 ### D9b — Implement guided first entry and confirmed autofill
 
+- **Issues:** [#746](https://github.com/bpronin90/kilo/issues/746) (superseded
+  without implementation by [#748](https://github.com/bpronin90/kilo/issues/748))
+- **Status:** #748 complete and merged. Follow-up [#755](https://github.com/bpronin90/kilo/issues/755)
+  extends guided entry to ordinary new-note creation and remains open.
+
 - **Suggested title:** `Contain and Connect / D9b: implement approved guided first entry`
 - **Goal:** help a new tester reach the first useful routine without silent decisions.
 - **Depends on:** D9a.
@@ -427,6 +452,10 @@ guidance, and lock fatigue semantics before any UI change.
   `area:ui`, `area:workouts`, `area:architecture`.
 
 ### D10 — Investigate and lock fatigue-trigger semantics
+
+- **Issue:** [#747](https://github.com/bpronin90/kilo/issues/747)
+- **Status:** contract and implementation complete through follow-up
+  [#751](https://github.com/bpronin90/kilo/issues/751) and PR #752.
 
 - **Suggested title:** `Contain and Connect / D10: define fatigue check-in trigger semantics`
 - **Goal:** decide which signals prompt and when before changing UI or stored meaning.
