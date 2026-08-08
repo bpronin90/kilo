@@ -597,8 +597,9 @@ action is placed by how often it is used:
 | Tier | Actions | Location |
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
-| Secondary — occasional | `Set as current routine`, `Edit routine`, `Delete routine`, viewed-card `Week A/B` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
-| Rare — once per training block | `Start recovery block`, `+ New routine` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
+| Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
+| Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
+| Rare — once per training block | `Start recovery block` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
 
 Consequences to preserve:
 
@@ -606,10 +607,24 @@ Consequences to preserve:
   shared collapse convention: a whole-header press target (with a `44` `minHeight`
   touch floor) carrying the `MaterialIcons` `expand-more`/`expand-less` chevron
   (18, `textMuted`), a collapsed summary of a routine count over a `Latest: …`
-  line, and `accessibilityState={{ expanded }}`. Collapsed, it renders zero
-  actions and mounts no routine-card controls; the routine cards, `+ New
-  routine`, and `Start recovery block` exist only in the expanded body. A card
-  header's only nested press target is still identity. An external request to
+  line, and `accessibilityState={{ expanded }}`. Collapsed, the routine cards
+  and `Start recovery block` stay inside the expanded body only — but (#756)
+  the header itself also carries a nested, icon-only `New routine` affordance
+  (`MaterialIcons` `add`, `accessibilityLabel="New routine"`) that is present
+  whether the disclosure is collapsed or expanded, since creating a routine is
+  common enough that it must not require opening the disclosure first. It stops
+  propagation to the header's own toggle press, the same nested-Pressable
+  pattern the active card's action strip uses. A card header's only nested
+  press target is otherwise still identity, with one exception: each
+  non-current card's own collapsed (unopened) row also carries a nested,
+  icon-only `Set as current routine: <title>` affordance (`MaterialIcons`
+  `check-circle-outline`) so switching the current routine never requires
+  opening that row and scrolling to its expand-on-tap body. It disappears once
+  the row is opened, where the existing full `Set as current routine` button in
+  the row's body remains the only instance of that action. Both quick actions
+  call straight through to the same handlers (`handleCreateRoutine`,
+  `handleSwitchCurrent`) the expanded-body controls already used, so every
+  existing confirmation and safeguard is unchanged. An external request to
   reveal a non-current routine (typed navigation #718, or a
   Recovery-history tap from Analytics or an active-lifecycle tap) auto-expands
   the disclosure via a monotonic

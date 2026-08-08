@@ -1,11 +1,15 @@
 // Routine management (#724): the non-current routines and every routine/recovery
 // management action now live inside a collapsed-by-default disclosure so the
-// active routine stays the dominant Log surface. Collapsed, the section is
-// action-free — it shows only a count + latest-routine summary and the shared
-// chevron. Expanded, it renders the routine cards (#711 information hierarchy:
-// each card's header carries identity only; Week A/B, Set as current, Edit, and
-// Delete live in its own expand-on-tap body) plus the section's two management
-// actions: `Start recovery block` and `+ New routine`.
+// active routine stays the dominant Log surface. Collapsed, the section shows
+// a count + latest-routine summary, the shared chevron, and (#756) a compact
+// icon-only `New routine` affordance in the header itself — creating a routine
+// is common enough that it must not require opening the disclosure first.
+// Expanded, it renders the routine cards (#711 information hierarchy: each
+// card's header carries identity only; a compact `Set as current routine` icon
+// sits on every collapsed row (#756) so switching never requires opening the
+// row and scrolling to its body; Week A/B, the full Set as current, Edit, and
+// Delete stay in that row's own expand-on-tap body) plus `Start recovery
+// block`, which remains gated behind expansion (unchanged eligibility/locking).
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -108,6 +112,23 @@ export function LogPreviousRoutines({
               </Text>
             )}
           </View>
+          {/* Compact New Note affordance (#756): the collapsed disclosure used to
+              hide `+ New routine` inside the expanded body, so creating a routine
+              cost an extra tap that scanning the section shouldn't require. This
+              icon-only control sits in the header itself — present collapsed or
+              expanded — so it never competes for space with the count/latest
+              summary or the expanded routine list. It is nested inside the
+              header's own toggle Pressable, so it stops propagation the same way
+              the active card's action-strip buttons do (LogActiveRoutineCard.js). */}
+          <Pressable
+            onPress={(e) => { e.stopPropagation(); handleCreateRoutine(); }}
+            style={styles.headerNewRoutineButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="New routine"
+          >
+            <MaterialIcons name="add" size={18} color={colors.accent} accessible={false} />
+          </Pressable>
           <MaterialIcons
             name={expanded ? 'expand-less' : 'expand-more'}
             size={18}
@@ -177,6 +198,27 @@ export function LogPreviousRoutines({
                       </View>
                     )}
                   </View>
+                  {/* Compact set-current affordance (#756): before this, switching
+                      the current routine required opening this row's expand-on-tap
+                      body and scrolling past its rendered content to the action
+                      strip at the bottom. This quick action calls the same
+                      `handleSwitchCurrent`, which owns every existing confirmation
+                      and safeguard (useLogOtherRoutineEditor.js), so behavior is
+                      unchanged — only reach improves. It only shows while the row
+                      itself is collapsed; once opened, the full action lives in
+                      the body below like before, so the action never appears
+                      twice for the same row. */}
+                  {!isViewedOther && (
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation(); handleSwitchCurrent(other.id); }}
+                      style={styles.rowSetCurrentButton}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Set as current routine: ${other.title || 'Untitled Routine'}`}
+                    >
+                      <MaterialIcons name="check-circle-outline" size={20} color={colors.accent} accessible={false} />
+                    </Pressable>
+                  )}
                 </Pressable>
                 {viewingNoteId === other.id && viewingNote && (
                   <>
@@ -296,6 +338,15 @@ const createStyles = (colors) => StyleSheet.create({
   headerContent: {
     flex: 1,
   },
+  // The compact header-level New Note affordance (#756): icon-only so it never
+  // grows the header past its existing count/latest-summary footprint.
+  headerNewRoutineButton: {
+    marginRight: 8,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryCount: {
     fontSize: 12,
     fontWeight: '600',
@@ -331,6 +382,15 @@ const createStyles = (colors) => StyleSheet.create({
     // See LogActiveRoutineCard.js's otherNoteInfo comment: a hard floor, not 0
     // (#710 review), retained now that the header holds identity only (#711).
     minWidth: 96,
+  },
+  // The compact row-level set-current affordance (#756): icon-only, matching
+  // the header's New Note control, so a collapsed row stays a single compact
+  // line rather than growing a second button-height row.
+  rowSetCurrentButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   otherNoteTitle: {
     fontSize: 20,
