@@ -1,0 +1,16 @@
+{
+  "accepted": [
+    {
+      "id": "GHSA-w3rx-r6r6-pgpr",
+      "package": "image-size",
+      "reviewBy": "2026-09-07",
+      "reason": "No patched release exists: both advisories cover image-size <=2.0.2 and 2.0.2 is the latest published version. It reaches the tree only through metro/@expo/metro/@expo/cli, which run on the build machine and are never bundled into the shipped app, and the impact is a denial of service from a malformed ICNS image the bundler would have to be handed deliberately. npm's only offered fix downgrades react-native to 0.72.17 / expo to 53.0.27, which is a breaking regression far larger than the risk. Revisit when image-size publishes a fix or Expo bumps its metro pin."
+    },
+    {
+      "id": "GHSA-5p2g-fcmc-qvqq",
+      "package": "image-size",
+      "reviewBy": "2026-09-07",
+      "reason": "Same unpatched image-size <=2.0.2 dependency as GHSA-w3rx-r6r6-pgpr, differing only in which parsers loop (JXL and HEIF rather than ICNS). Build-time only, not shipped to devices, and the offered remediation is the same breaking react-native/expo downgrade. Tracked and revisited together."
+    }
+  ]
+}

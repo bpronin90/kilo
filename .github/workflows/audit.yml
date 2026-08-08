@@ -29,9 +29,10 @@ jobs:
         with:
           node-version: 24
 
-      - name: Audit root dependencies
-        run: npm audit --audit-level=high
+      # Fails on any high/critical advisory that is not a reviewed, unexpired
+      # entry in audit-allowlist.json. See that file for the accepted exceptions.
+      - name: Audit root and mobile dependencies
+        run: node scripts/audit-gate.mjs
 
-      - name: Audit mobile dependencies
-        working-directory: mobile
-        run: npm audit --audit-level=high
+      - name: Test the audit gate
+        run: node --test scripts/audit-gate.test.mjs
