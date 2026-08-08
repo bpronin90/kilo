@@ -3048,13 +3048,17 @@ describe('Routine-card header/action containment (#710, #711)', () => {
     // Collapsed routine management (#724) still hides the routine cards and
     // most management actions behind the disclosure, but (#756) the header
     // itself now also carries a compact `New routine` affordance so creating a
-    // routine never requires opening the disclosure first.
+    // routine never requires opening the disclosure first. The toggle is its
+    // own two adjacent buttons (content + chevron), each a sibling of New
+    // Note rather than its parent, so no quick action is grouped away from
+    // VoiceOver under an ancestor Pressable (PR #760 review).
     const buttons = root.findAll(
       n => typeof n.type === 'string' && n.props && n.props.accessibilityRole === 'button'
     );
-    expect(buttons.length).toBe(2);
-    const toggle = buttons.find(b => b.props.accessibilityLabel === 'Expand routine management');
-    expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    expect(buttons.length).toBe(3);
+    const toggles = buttons.filter(b => b.props.accessibilityLabel === 'Expand routine management');
+    expect(toggles.length).toBe(2);
+    for (const toggle of toggles) expect(toggle.props.accessibilityState).toEqual({ expanded: false });
     const newRoutine = root.findAll(
       n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
     )[0];
@@ -3349,6 +3353,42 @@ describe('LogPreviousRoutines: compact New Note and set-current actions (#756)',
       n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
     ).length).toBe(0);
     expect(pressableAround(root, t => t === 'Set as current routine')).toBeTruthy();
+  });
+
+  // PR #760 review: a nested Pressable is grouped into its accessible ancestor
+  // by VoiceOver, making it unreachable as its own action. Both quick actions
+  // must be siblings of the toggle/row Pressable they sit beside, not children
+  // of it.
+  test('neither quick action is nested inside another accessible Pressable', () => {
+    const { root } = renderList();
+    expandRoutineManagement(root);
+
+    const isOwnAncestorButton = (node, ownLabel) => {
+      let ancestor = node.parent;
+      while (ancestor) {
+        if (
+          ancestor.props
+          && ancestor.props.accessibilityRole === 'button'
+          && typeof ancestor.props.onPress === 'function'
+          && ancestor.props.accessibilityLabel !== ownLabel
+        ) {
+          return true;
+        }
+        ancestor = ancestor.parent;
+      }
+      return false;
+    };
+
+    const headerButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(isOwnAncestorButton(headerButton, 'New routine')).toBe(false);
+
+    const rowButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
+        && typeof n.props.onPress === 'function'
+    )[0];
+    expect(isOwnAncestorButton(rowButton, 'Set as current routine: Routine One')).toBe(false);
   });
 });
 
