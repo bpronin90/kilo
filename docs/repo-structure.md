@@ -169,7 +169,8 @@ mobile/
     reminders.test.js  ← reminder decision logic tests
     screen-shell.test.js ← ScreenShell rendering checks
     session-checkin-modal.test.js ← SessionCheckInModal behavior tests
-    session-checkin-tab-blur.test.js ← session check-in tab-blur trigger tests
+    session-checkin-tab-blur.test.js ← check-in is never raised by leaving the Log tab
+    session-checkin-trigger.test.js ← check-in trigger site, gates, cooldown, withdrawal
     storage-adapter.test.js ← storage adapter routing and mode-selection tests
     sync-recovery-ui.test.js ← sync recovery UI state checks
     unit-display-ui.test.js ← unit display (lb/kg) rendering checks
@@ -215,7 +216,7 @@ These files define the current real native app path.
 | `mobile/components/UI.js` | Shared native cards, buttons, chips, section titles, and stat cards. |
 | `mobile/components/LineChart.js` | Shared SVG sparkline / line chart primitive used across Home and Analytics weight displays. |
 | `mobile/components/LogEmptyState.js` | Presentational Log-tab empty state shown when no workout routine exists yet (intro copy, `New Routine` action, example-format card). |
-| `mobile/components/SessionCheckInModal.js` | Centered fatigue check-in prompt modal. Opened from `LogScreen.js` after a rough detected session and reopened from `AnalyticsScreen.js` to edit an existing entry; writes the `I'm okay` / `Not great` / dismissed (`status: null`) response with `responded_at` onto the note's `session_checkins[sessionIndex]`. |
+| `mobile/components/SessionCheckInModal.js` | Centered fatigue check-in prompt modal. Opened from `LogScreen.js` after a rough detected session and reopened from `AnalyticsScreen.js` to edit an existing entry; writes the `Normal for me` (`status: 'ok'`) / `It was a rough one` (`status: 'rough'`) / dismissed (`status: null`) response with `responded_at` onto the note's `session_checkins[sessionIndex]`. |
 | `mobile/components/WorkoutContentRenderer.js` | Shared read-only workout note content renderer; used by Log non-current routine view and other note-display surfaces. |
 | `mobile/components/LogActiveRoutineCard.js` | Log screen active routine card UI component. |
 | `mobile/components/LogDeloadSection.js` | Log screen deload section UI component. |
@@ -306,7 +307,8 @@ These files define the current real native app path.
 | `mobile/tests/reminder-settings-card.test.js` | `ReminderSettingsCard` rendering checks. |
 | `mobile/tests/screen-shell.test.js` | `ScreenShell` rendering and scroll-signaling checks. |
 | `mobile/tests/session-checkin-modal.test.js` | `SessionCheckInModal` behavior tests (prompt, response writing, edit path). |
-| `mobile/tests/session-checkin-tab-blur.test.js` | Session check-in tab-blur trigger tests. |
+| `mobile/tests/session-checkin-tab-blur.test.js` | Regression guard that leaving the Log tab never raises a check-in. |
+| `mobile/tests/session-checkin-trigger.test.js` | Check-in trigger contract: the single Done-after-save trigger site, the precedence gates, the three-session cooldown, and the withdrawal transition. |
 | `mobile/tests/sync-recovery-ui.test.js` | Sync recovery UI state and prompt checks. |
 | `mobile/tests/app-config.test.js` | Expo `app.config.js` correctness checks (preview runtime string, env branching). |
 | `mobile/tests/app-shell-back.test.js` | App shell back-button routing tests (tab ownership slot, Android Home/exit fallback). |

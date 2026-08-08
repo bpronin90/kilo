@@ -66,16 +66,16 @@ Attendance flags are derived on save and stored as `attendance_flags` on the not
 
 > Where you see it: Log screen — check-in prompt after saving a rough session (flagged exercises highlighted); Analytics screen — Fatigue section
 
-The old per-exercise "hit a wall" nudge chip has been removed. In its place, saving the current routine runs `deriveSessionCheckIn` over the latest session column for tracked exercises that have prior history. Four detectors can flag the session as rough:
+The old per-exercise "hit a wall" nudge chip has been removed. In its place, pressing `Done` on the current routine — after the save has succeeded — runs `deriveSessionCheckIn` over the latest session column for tracked exercises that have prior history. Two detectors can open a check-in; two more are recorded or produced but never prompt:
 
-| Detector | Condition |
-|----------|-----------|
-| skipped | 2 or more exercises skipped in the latest session, and more than 1 above the historical per-session minimum |
-| volume_drop | 2 or more sets lost more than 2 reps vs the most recent prior session at the same weight; reports the tonnage decline percentage |
-| collapse | Intra-session rep drop-off: among working sets at the session's heaviest weight, last-set reps fell 2 or more below first-set reps (needs at least 2 sets at that weight) |
-| day_skip | The whole latest session day was skipped |
+| Detector | Opens a prompt | Condition |
+|----------|----------------|-----------|
+| volume_drop | Yes | 2 or more sets lost more than 2 reps vs the most recent prior session **at the latest entry's own top weight**, with at least 2 prior logged sessions for that exercise; reports the tonnage decline percentage. Sets below the top weight are not scored, so back-off work and added load never read as a decline |
+| skipped | Yes | 2 or more exercises skipped in the latest session, more than 1 above the **rounded mean** of the prior columns' skip counts, with at least two prior columns and at least one tracked exercise still logging real work at that column |
+| collapse | No | Intra-session rep drop-off: among working sets at the session's heaviest weight, last-set reps fell 2 or more below first-set reps (needs at least 2 sets at that weight). Recorded as corroborating evidence only — straight sets taken near failure produce the same numbers |
+| day_skip | No | A whole skipped column is the user stating that nothing happened. `deriveSkipData` still produces `day_skips` and `repeated_weekday_skip` for Analytics, but it is neither a trigger nor a flagged reason and never appears in `detectors` |
 
-Brand-new exercises with no logged history are never flagged. If any detector fires, the flagged exercises are highlighted and a check-in prompt asks how the session went: **"I'm okay"** (with quick reasons like No time / Short session) records `status: 'ok'`; **"Not great"** opens reason chips plus optional free text and records `status: 'rough'`; dismissing records `status: null`. The response is persisted on the note as `session_checkins[sessionIndex]` with `reasons`, optional `note`, and `responded_at`.
+Brand-new exercises with no logged history are never flagged. A prompt is additionally withheld when fatigue tracking is off, the note read is loading or failed, the note is a deload note, another Log modal owns the screen, the session already has a `session_checkins` record, or a check-in was raised within the last three session indices. If a trigger fires and nothing withholds it, the flagged exercises are highlighted and the check-in states what was observed (`Lighter than usual — {names}`, or `More skipped than usual` when only the skip trigger fired) and invites a note: **"Normal for me"** (with quick reasons like No time / Short session) records `status: 'ok'`; **"It was a rough one"** opens reason chips plus optional free text and records `status: 'rough'`; dismissing records `status: null`. The response is persisted on the note as `session_checkins[sessionIndex]` with `reasons`, optional `note`, and `responded_at`.
 
 The Analytics screen's Fatigue section renders the check-in history via `deriveCheckInHistory`: date, issues logged, exercises skipped, and volume decline per rough session.
 

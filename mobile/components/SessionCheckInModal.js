@@ -37,8 +37,24 @@ const REASON_GROUPS = [
 
 const OK_CHIPS = ['No time', 'Short session'];
 
+// The question the title never asks. Kept as a separate node so a screen reader
+// announces the observation and the invitation as two utterances, and so no
+// title ever ends in a question about the person.
+const CHECKIN_SUBTITLE = 'Want to note why?';
+
+// Neutral header for a stored record whose detectors select no title — records
+// written before the D10 trigger contract can carry `collapse` or `day_skip`
+// alone, and Analytics re-opens them for editing. Those are read-only history,
+// so they are rendered, not migrated.
+const CHECKIN_FALLBACK_TITLE = 'Session check-in';
+
+// Selects one title by detector NAME (never by array position, so this does not
+// couple to detector ordering). `volume_drop` wins when both triggers fired: it
+// is the more specific observation — it names the exercises and carries the
+// evidence — and one clause keeps the row inside the ~60-character cap that
+// still fits beside the back and close controls at large text.
 function deriveTitle(detectors, flagged) {
-  if (!detectors || detectors.length === 0) return 'You okay?';
+  const fired = detectors || [];
 
   // Group flagged exercise display names by their reason.
   const byReason = {};
@@ -57,29 +73,16 @@ function deriveTitle(detectors, flagged) {
     return shown.join(', ') + (rest > 0 ? ` +${rest}` : '');
   };
 
-  const parts = [];
-
-  if (detectors.includes('skipped')) {
-    const names = nameList(byReason['skip']);
-    parts.push(names ? `${names} skipped` : 'Exercises skipped');
+  if (fired.includes('volume_drop')) {
+    const names = nameList(byReason['volume_drop']);
+    return names ? `Lighter than usual — ${names}` : 'Lighter than usual';
   }
 
-  if (detectors.includes('volume_drop') || detectors.includes('collapse')) {
-    const combined = [
-      ...(byReason['volume_drop'] || []),
-      ...(byReason['collapse'] || []),
-    ];
-    const unique = [...new Set(combined)];
-    const names = nameList(unique);
-    parts.push(names ? `Big drop on ${names}` : 'Big volume drop');
+  if (fired.includes('skipped')) {
+    return 'More skipped than usual';
   }
 
-  if (detectors.includes('day_skip')) {
-    parts.push('Whole day skipped');
-  }
-
-  if (parts.length === 0) return 'You okay?';
-  return parts.join(' · ') + ' — you okay?';
+  return CHECKIN_FALLBACK_TITLE;
 }
 
 export function SessionCheckInModal({ visible, checkInData, currentId, currentNote, update, onClose, isEdit = false }) {
@@ -211,7 +214,10 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 />
               </Pressable>
             ) : null}
-            <Text style={styles.title}>{title}</Text>
+            <View style={styles.titleBlock}>
+              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.subtitle}>{CHECKIN_SUBTITLE}</Text>
+            </View>
             <Pressable
               onPress={handleDismiss}
               hitSlop={12}
@@ -237,17 +243,17 @@ export function SessionCheckInModal({ visible, checkInData, currentId, currentNo
                 style={[styles.tierBtn, styles.tierBtnOk]}
                 onPress={() => setTier('ok')}
                 accessibilityRole="button"
-                accessibilityLabel="I'm okay"
+                accessibilityLabel="Normal for me"
               >
-                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">I'm okay</Text>
+                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">Normal for me</Text>
               </Pressable>
               <Pressable
                 style={[styles.tierBtn, styles.tierBtnRough]}
                 onPress={() => setTier('rough')}
                 accessibilityRole="button"
-                accessibilityLabel="Not great"
+                accessibilityLabel="It was a rough one"
               >
-                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">Not great</Text>
+                <Text style={styles.tierBtnText} accessible={false} importantForAccessibility="no">It was a rough one</Text>
               </Pressable>
             </View>
           )}
@@ -415,11 +421,19 @@ const createStyles = (colors) => StyleSheet.create({
   backBtn: {
     padding: 2,
   },
-  title: {
+  titleBlock: {
     flex: 1,
+    gap: 2,
+  },
+  title: {
     fontSize: 17,
     fontWeight: '700',
     color: colors.text,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
   },
   closeBtn: {
     padding: 4,

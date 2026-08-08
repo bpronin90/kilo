@@ -1298,6 +1298,7 @@ describe('deriveSessionCheckIn', () => {
   test('volume_drop: 80 8,8 → 80 4,- flags the exercise and reports decline %', () => {
     const sections = [dropOffSection('Skullcrusher', [
       [ws(80, 8), ws(80, 8)],
+      [ws(80, 8), ws(80, 8)],
       [ws(80, 4), skset(80)],
     ])];
     const r = deriveSessionCheckIn(sections, ['Skullcrusher']);
@@ -1308,7 +1309,7 @@ describe('deriveSessionCheckIn', () => {
     // base tonnage 1280, latest 320 → 75% decline
     expect(r.metrics.volume_decline_pct).toBe(75);
     expect(r.metrics.exercises_skipped).toBe(0);
-    expect(r.sessionIndex).toBe(1);
+    expect(r.sessionIndex).toBe(2);
   });
 
   test('volume_drop does NOT fire for a small in-range drop (8,8 → 6,6)', () => {
@@ -1320,7 +1321,7 @@ describe('deriveSessionCheckIn', () => {
     expect(r.detectors).not.toContain('volume_drop');
   });
 
-  test('collapse: reps fall apart within the latest session (80 5,5 → 80 8,4)', () => {
+  test('collapse is recorded as a reason but never opens a prompt on its own', () => {
     const sections = [dropOffSection('Bench Press', [
       [ws(80, 5), ws(80, 5)],
       [ws(80, 8), ws(80, 4)],
@@ -1328,7 +1329,23 @@ describe('deriveSessionCheckIn', () => {
     const r = deriveSessionCheckIn(sections, ['Bench Press']);
     expect(r.detectors).toEqual(['collapse']);
     expect(r.flagged[0].reasons).toEqual(['collapse']);
+    // The evidence survives; the interruption does not. Straight sets taken
+    // toward failure produce the same first-minus-last numbers as a session
+    // that fell apart, so `collapse` alone is not something to ask about.
+    expect(r.isRough).toBe(false);
     expect(r.metrics.volume_decline_pct).toBeNull();
+  });
+
+  test('collapse corroborates a volume_drop on the same exercise, and the prompt fires', () => {
+    const sections = [dropOffSection('Bench Press', [
+      [ws(80, 10), ws(80, 10), ws(80, 10)],
+      [ws(80, 10), ws(80, 10), ws(80, 10)],
+      [ws(80, 6), ws(80, 5), ws(80, 4)],
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['volume_drop', 'collapse']);
+    expect(r.flagged[0].reasons.sort()).toEqual(['collapse', 'volume_drop']);
   });
 
   test('skipped: more skips than usual flags the skipped exercises (2 of 3)', () => {
@@ -1380,27 +1397,55 @@ describe('deriveSessionCheckIn', () => {
     expect(r.isRough).toBe(false);
   });
 
-  test('day_skip: a whole day skipped at the latest session', () => {
+  test('skipped does NOT fire before two prior columns exist', () => {
+    // Two skips at column 1: above the floor and above mean(0) + 1, but one
+    // prior column is not enough history for a mean to mean anything.
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], 'skip'] },
+      { name: 'Squat', entries: [[ws(200, 5), ws(200, 5)], [ws(200, 5), ws(200, 5)]] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row', 'Squat']);
+    expect(r.sessionIndex).toBe(1);
+    expect(r.detectors).not.toContain('skipped');
+    expect(r.isRough).toBe(false);
+  });
+
+  test('skipped does NOT fire when nothing was logged at the latest column (an absence, not a short session)', () => {
+    // Every tracked exercise skipped at column 2. The user typed "nothing
+    // happened"; that is a statement, not evidence about how they felt.
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], [ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], [ws(100, 8), ws(100, 8)], 'skip'] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+    expect(r.flagged).toEqual([]);
+    // The absence is still counted and still available to Analytics; it just
+    // never opens a prompt.
+    expect(r.metrics.exercises_skipped).toBe(2);
+  });
+
+  test('day_skip is neither a detector nor a flagged reason', () => {
     const sections = [checkinSection([
       { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], 'skip'] },
       { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], 'skip'] },
     ])];
     const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
-    expect(r.isRough).toBe(true);
-    expect(r.detectors).toEqual(['skipped', 'day_skip']);
-    expect(r.flagged.every(f => f.reasons.includes('day_skip'))).toBe(true);
+    expect(r.detectors).not.toContain('day_skip');
+    expect(r.flagged.some(f => f.reasons.includes('day_skip'))).toBe(false);
+    expect(r.isRough).toBe(false);
   });
 
-  test('day_skip fires independently of the skip trigger', () => {
-    // Whole day skipped at the latest column, but skips are within the usual rate
-    // (skipped is not raised) — day_skip must still fire on its own.
+  test('deriveSkipData still produces day_skips for the non-modal surfaces', () => {
+    // The signal is not discarded — only its power to interrupt is.
     const sections = [checkinSection([
-      { name: 'Bench Press', entries: ['skip', [ws(80, 8), ws(80, 8)], 'skip'] },
-      { name: 'Row', entries: ['skip', 'skip', 'skip'] },
+      { name: 'Bench Press', entries: [[ws(80, 8), ws(80, 8)], 'skip'] },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], 'skip'] },
     ])];
-    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
-    expect(r.detectors).toContain('day_skip');
-    expect(r.detectors).not.toContain('skipped');
+    expect(deriveSkipData(sections).day_skips.map(d => d.session_index)).toEqual([1]);
+    expect(deriveSessionCheckIn(sections, ['Bench Press', 'Row']).detectors).toEqual([]);
   });
 
   // ── Repro cases from issue #270 ────────────────────────────────────────────
@@ -1434,7 +1479,10 @@ describe('deriveSessionCheckIn', () => {
     expect(r.detectors).toContain('volume_drop');
   });
 
-  test('repro #270: single-exercise full-skip fires day_skip', () => {
+  test('repro #270: a single-exercise full skip is silent (was day_skip)', () => {
+    // #270 wanted the whole-day skip surfaced. D10 keeps the signal but takes
+    // the modal away from it: a column with no sets at all carries no evidence
+    // about the session, and it is exactly what pressing 'Skip week' writes.
     const sections = [checkinSection([
       { name: 'Squat', entries: [
         [ws(100, 5), ws(100, 5), ws(100, 5)],
@@ -1444,68 +1492,218 @@ describe('deriveSessionCheckIn', () => {
       ]},
     ])];
     const r = deriveSessionCheckIn(sections, ['Squat']);
-    expect(r.isRough).toBe(true);
-    expect(r.detectors).toContain('day_skip');
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
     expect(r.sessionIndex).toBe(3);
+    expect(deriveSkipData(sections).day_skips.map(d => d.session_index)).toEqual([3]);
   });
 
   // ── Regression: issue #380 ─────────────────────────────────────────────────
   // A qualifying bad session must still trigger even when an earlier session
   // already had an explanation logged (different sessionIndex → no suppression).
 
-  test('repro #380: collapse fires on a 2-rep intra-session drop', () => {
-    // A 3→5 first-to-last rep drop of exactly 2 was previously missed (threshold was ≥3).
+  test('repro #380: a 2-rep intra-session drop is recorded but no longer asks (was collapse)', () => {
     const sections = [dropOffSection('Squat', [
       [ws(135, 5), ws(135, 5), ws(135, 5)],
       [ws(135, 5), ws(135, 5), ws(135, 3)],
     ])];
     const r = deriveSessionCheckIn(sections, ['Squat']);
-    expect(r.isRough).toBe(true);
     expect(r.detectors).toContain('collapse');
+    expect(r.isRough).toBe(false);
     expect(r.sessionIndex).toBe(1);
   });
 
-  test('repro #380: second consecutive bad session still detected at a new sessionIndex', () => {
-    // Session 0 is baseline; sessions 1 and 2 are both bad (2-rep intra-session drops).
-    // The detection must flag session 2 independently — suppression only applies if
-    // checkins[sessionIndex] is set, which is checked by _runCheckInDetection, not here.
+  test('repro #380: a genuinely declining second consecutive session is still detected at its own index', () => {
+    // #380's substance survives: consecutive rough sessions are each detected
+    // independently, and suppression is the caller's business. What changed is
+    // the evidence required — reps lost against the exercise's own history,
+    // rather than a first-minus-last spread inside one session.
+    // Note the baseline is the most recent prior entry at that weight, so each
+    // session is judged against the one before it, not against the best ever.
     const sections = [dropOffSection('Squat', [
-      [ws(135, 5), ws(135, 5), ws(135, 5)],
-      [ws(135, 5), ws(135, 5), ws(135, 3)],
-      [ws(135, 5), ws(135, 5), ws(135, 3)],
+      [ws(135, 8), ws(135, 8), ws(135, 8)],
+      [ws(135, 8), ws(135, 8), ws(135, 8)],
+      [ws(135, 4), ws(135, 4), ws(135, 3)],
+      [ws(135, 1), ws(135, 1), ws(135, 1)],
     ])];
     const r = deriveSessionCheckIn(sections, ['Squat']);
     expect(r.isRough).toBe(true);
-    expect(r.detectors).toContain('collapse');
-    expect(r.sessionIndex).toBe(2);
+    expect(r.detectors).toContain('volume_drop');
+    expect(r.sessionIndex).toBe(3);
   });
 
-  test('repro #380: skip detector fires on third consecutive bad session (min-baseline fix)', () => {
-    // With an average-based baseline, the third bad session (2 skips at index 4)
-    // was no longer > avg(0,0,2,2)/4 + 1 = 2.0 (strict >), so it never fired.
-    // With the minimum-based baseline, min(0,0,2,2)=0 and 2 > 0+1=1 always fires.
+  test('the habitual skipper is no longer asked every session (mean baseline supersedes #380 min-baseline)', () => {
+    // #380 chose a minimum baseline so a third consecutive skipped session kept
+    // firing. D10 reverses that deliberately: with a minimum, one clean column
+    // anywhere in history pins the baseline at 0 forever, so a user whose
+    // honest normal is two skips is asked every single session and the rule can
+    // never learn their usual. Here columns 1-5 each skip the same 2 of 4.
     const sections = [checkinSection([
-      { name: 'Bench Press', entries: [
-        [ws(80, 8), ws(80, 8)],  // session 0: logged
-        [ws(80, 8), ws(80, 8)],  // session 1: logged
-        'skip',                   // session 2: bad
-        'skip',                   // session 3: bad
-        'skip',                   // session 4: bad (would fail with average baseline)
-      ]},
-      { name: 'Row', entries: [
-        [ws(100, 8), ws(100, 8)],
-        [ws(100, 8), ws(100, 8)],
-        'skip',
-        'skip',
-        'skip',
-      ]},
+      { name: 'Bench Press', entries: Array(6).fill([ws(80, 8), ws(80, 8)]) },
+      { name: 'Squat', entries: Array(6).fill([ws(200, 5), ws(200, 5)]) },
+      { name: 'Row', entries: [[ws(100, 8), ws(100, 8)], 'skip', 'skip', 'skip', 'skip', 'skip'] },
+      { name: 'Curl', entries: [[ws(40, 10), ws(40, 10)], 'skip', 'skip', 'skip', 'skip', 'skip'] },
     ])];
-    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Row']);
-    expect(r.isRough).toBe(true);
-    expect(r.detectors).toContain('skipped');
-    expect(r.sessionIndex).toBe(4);
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Squat', 'Row', 'Curl']);
+    expect(r.sessionIndex).toBe(5);
+    // round(mean(0,2,2,2,2)) = 2, so this user's rule needs 4 skips, not 2.
+    expect(r.detectors).not.toContain('skipped');
+    expect(r.isRough).toBe(false);
   });
 
+  test('a genuine step up in skipping still fires for that same user', () => {
+    // Same habitual skipper (baseline round(mean(0,2,2,2,2)) = 2), but the
+    // latest column skips 4 while Bench is still logged: attended, and well
+    // above this user's own usual. That is the case the rule exists for.
+    const logged = (w, reps) => [ws(w, reps), ws(w, reps)];
+    const sections = [checkinSection([
+      { name: 'Bench Press', entries: Array(6).fill(logged(80, 8)) },
+      { name: 'Squat', entries: [
+        logged(200, 5), logged(200, 5), logged(200, 5), logged(200, 5), logged(200, 5), 'skip',
+      ]},
+      { name: 'Fly', entries: [
+        logged(30, 12), logged(30, 12), logged(30, 12), logged(30, 12), logged(30, 12), 'skip',
+      ]},
+      { name: 'Row', entries: [logged(100, 8), 'skip', 'skip', 'skip', 'skip', 'skip'] },
+      { name: 'Curl', entries: [logged(40, 10), 'skip', 'skip', 'skip', 'skip', 'skip'] },
+    ])];
+    const r = deriveSessionCheckIn(sections, ['Bench Press', 'Squat', 'Fly', 'Row', 'Curl']);
+    expect(r.sessionIndex).toBe(5);
+    expect(r.detectors).toEqual(['skipped']);
+    expect(r.metrics.exercises_skipped).toBe(4);
+  });
+
+});
+
+// ── D10 trigger contract: timelines and boundaries over real note text ───────
+//
+// These run the shipped parser, so they assert the behavior a user actually
+// gets rather than a hand-built parse tree. Each name matches the timeline it
+// comes from in the #747 contract.
+
+function checkInFromText(text, trackedNames) {
+  return deriveSessionCheckIn(parseWorkoutNote(text).sections, trackedNames);
+}
+
+describe('deriveSessionCheckIn — D10 timelines (real note text)', () => {
+  test('TL-1 normal completion is silent', () => {
+    const r = checkInFromText('Monday\n-Bench\n135 5,5,5\n140 5,5,5\n140 6,5,5', ['Bench']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('TL-2 straight sets near failure (185 8,8,7 / 8,8,7 / 8,7,6) never asks', () => {
+    const r = checkInFromText('Monday\n-Bench\n185 8,8,7\n185 8,8,7\n185 8,7,6', ['Bench']);
+    expect(r.detectors).toEqual(['collapse']);
+    expect(r.isRough).toBe(false);
+  });
+
+  test('TL-3 a real decline at a held weight asks', () => {
+    const r = checkInFromText('Monday\n-Bench\n185 8,8,8\n185 8,8,7\n185 4,4,3', ['Bench']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['volume_drop']);
+    expect(r.flagged[0]).toMatchObject({ name: 'Bench', reasons: ['volume_drop'] });
+  });
+
+  test('TL-4 the second session ever is not judged against the first', () => {
+    const r = checkInFromText('Monday\n-Bench\n185 8,8,8\n185 4,4,4', ['Bench']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('TL-5 back-off sets below the top weight are not scored', () => {
+    const text = 'Monday\n-Squat\n225 5,5,5 185 8,8\n225 5,5,5 185 8,8\n225 5,5,5 185 5,5';
+    const r = checkInFromText(text, ['Squat']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('TL-6 adding load and losing reps is progression, not decline', () => {
+    const r = checkInFromText('Monday\n-Squat\n275 5,5,5\n275 5,5,5\n295 3,2', ['Squat']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('TL-7 a partial skip inside an attended session asks', () => {
+    const text = 'Monday\n-Bench\n135 5,5,5\n135 5,5,5\n135 5,5,5\n'
+      + '-Squat\n225 5,5,5\n225 5,5,5\n-\n'
+      + '-Row\n95 10,10\n95 10,10\n-';
+    const r = checkInFromText(text, ['Bench', 'Squat', 'Row']);
+    expect(r.isRough).toBe(true);
+    expect(r.detectors).toEqual(['skipped']);
+    expect(r.metrics.exercises_skipped).toBe(2);
+    expect(r.flagged.map(f => f.name).sort()).toEqual(['Row', 'Squat']);
+  });
+
+  test('TL-8 a whole day skipped by hand is silent', () => {
+    const text = 'Monday\n-Bench\n135 5,5,5\n135 5,5,5\n-\n'
+      + '-Squat\n225 5,5,5\n225 5,5,5\n-\n'
+      + '-Row\n95 10,10\n95 10,10\n-';
+    const r = checkInFromText(text, ['Bench', 'Squat', 'Row']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('TL-10 the habitual skipper is silent at their own usual rate', () => {
+    const text = 'Monday\n-Bench\n135 5,5,5\n135 5,5,5\n135 5,5,5\n135 5,5,5\n135 5,5,5\n135 5,5,5\n'
+      + '-Squat\n225 5,5,5\n225 5,5,5\n225 5,5,5\n225 5,5,5\n225 5,5,5\n225 5,5,5\n'
+      + '-Row\n95 10,10\n-\n-\n-\n-\n-\n'
+      + '-Curl\n40 10,10\n-\n-\n-\n-\n-';
+    const r = checkInFromText(text, ['Bench', 'Squat', 'Row', 'Curl']);
+    expect(r.sessionIndex).toBe(5);
+    expect(r.isRough).toBe(false);
+  });
+});
+
+describe('deriveSessionCheckIn — D10 boundary cases', () => {
+  const history = 'Monday\n-Bench\n100 8,8,8\n100 8,8,8\n';
+
+  test('exactly 2 reps lost on 2 sets does not fire (strictly greater than the threshold)', () => {
+    expect(checkInFromText(history + '100 6,6,8', ['Bench']).detectors).not.toContain('volume_drop');
+  });
+
+  test('3 reps lost on exactly 1 set does not fire', () => {
+    expect(checkInFromText(history + '100 5,8,8', ['Bench']).detectors).not.toContain('volume_drop');
+  });
+
+  test('3 reps lost on exactly 2 sets fires', () => {
+    const r = checkInFromText(history + '100 5,5,8', ['Bench']);
+    expect(r.detectors).toEqual(['volume_drop']);
+    expect(r.isRough).toBe(true);
+  });
+
+  test('a within-row skipped set counts as a full collapse', () => {
+    const r = checkInFromText(history + '100 4,-,8', ['Bench']);
+    expect(r.detectors).toContain('volume_drop');
+  });
+
+  test('a weight appearing for the first time is not scored', () => {
+    expect(checkInFromText(history + '120 2,2,2', ['Bench']).detectors).toEqual([]);
+  });
+
+  test('bodyweight rows are never scored, so a bodyweight-only routine never asks', () => {
+    const r = checkInFromText('Monday\n-Pushup\n12,12\n12,12\n4,4', ['Pushup']);
+    expect(r.isRough).toBe(false);
+    expect(r.detectors).toEqual([]);
+  });
+
+  test('an untracked exercise is not scored', () => {
+    const r = checkInFromText('Monday\n-Bench\n185 8,8,8\n185 8,8,8\n185 3,3,3', ['Squat']);
+    expect(r.isRough).toBe(false);
+  });
+
+  test('a single set at the top weight is ambiguous and never collapses', () => {
+    const r = checkInFromText('Monday\n-Bench\n100 8\n100 8\n100 4', ['Bench']);
+    expect(r.detectors).not.toContain('collapse');
+  });
+
+  test('an entry whose every set is a within-row skip has no top weight, so nothing is scored', () => {
+    // Consequence of scoring the latest entry's own top weight, which is
+    // defined over working sets only: a row with no completed set has no
+    // weight to judge. The absence is still visible in the note itself.
+    const r = checkInFromText(history + '100 -,-', ['Bench']);
+    expect(r.detectors).not.toContain('volume_drop');
+  });
 });
 
 // ── detectBig3Asymmetry ───────────────────────────────────────────────────────

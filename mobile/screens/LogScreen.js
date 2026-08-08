@@ -223,6 +223,12 @@ export function LogScreen({
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
 
+  // Modal ownership (D10 §3.4). There is no ownership manager: the check-in,
+  // the recovery-block modal and the add-week modal are sibling <Modal>s each
+  // driven by its own `visible` prop, so ownership is a derived predicate over
+  // the state those two already keep, not a new mechanism.
+  const otherModalOwnsScreen = !!recoveryModal || addWeekModalOpen;
+
   const currentEditor = useLogCurrentRoutineEditor({
     workoutNoteText,
     setWorkoutNoteText,
@@ -237,7 +243,9 @@ export function LogScreen({
     selectCurrent,
     fatigueTrackingEnabled,
     onCheckInPrompt,
-    isActive,
+    notesLoading,
+    notesError,
+    otherModalOwnsScreen,
     editorScrollRef,
     readScrollRef,
   });
@@ -1027,7 +1035,11 @@ export function LogScreen({
         onSave={handleGuidedSave}
       />
       <SessionCheckInModal
-        visible={currentEditor.showCheckInModal}
+        // Gated on the toggle exactly as the Analytics one is. The hook's
+        // withdrawal transition already clears the prompt when the toggle goes
+        // off, so this is the render-side half of a state change, never a
+        // substitute for one.
+        visible={fatigueTrackingEnabled && currentEditor.showCheckInModal}
         checkInData={currentEditor.roughCheckInData}
         currentId={currentEditor.roughNoteId}
         currentNote={currentNote}
