@@ -27,7 +27,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alert } from '../lib/platformAlert';
 import { LogEmptyState } from '../components/LogEmptyState';
 import { ScreenShell } from '../components/ScreenShell';
-import { ErrorBanner } from '../components/UI';
+import { Button, Card, ErrorBanner } from '../components/UI';
+import { GuidedRoutineSheet } from '../components/GuidedRoutineSheet';
+import { countWorkoutSessionsFromSections } from '../lib/parser';
+import {
+  deriveFirstUseState,
+  pickAdoptableRoutine,
+  FIRST_USE_S1,
+  FIRST_USE_S2,
+} from '../lib/guidedEntry';
 import { SessionCheckInModal } from '../components/SessionCheckInModal';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { normalizeLiftName, listTrackedLifts } from '../lib/data';
@@ -49,7 +57,7 @@ import { useRecoveryBlockLifecycle } from '../hooks/entries/recoveryBlockHooks';
 import { LogDeloadSection } from '../components/LogDeloadSection';
 import { LogPreviousRoutines } from '../components/LogPreviousRoutines';
 import { LogActiveRoutineCard } from '../components/LogActiveRoutineCard';
-import { LogScreenEditorCard } from '../components/LogScreenEditorCard';
+import { LogScreenEditorCard, RoutineAdoptionPrompt } from '../components/LogScreenEditorCard';
 import { RecoveryBlockStartModal } from '../components/RecoveryBlockStartModal';
 import { RecoveryBlockWeekModal } from '../components/RecoveryBlockWeekModal';
 import { LogRecoverySection } from '../components/LogRecoverySection';
@@ -210,6 +218,7 @@ export function LogScreen({
   };
 
   const [tabView, setTabView] = useState('routine'); // 'routine' | 'deload'
+  const [guidedSheetOpen, setGuidedSheetOpen] = useState(false);
 
   const editorScrollRef = useRef(null);
   const readScrollRef = useRef(null);
@@ -621,6 +630,76 @@ export function LogScreen({
 
   const effectiveTabView = deloadModeEnabled ? tabView : 'routine';
 
+  // First-use state machine (#748; #745 Part 3 §1). Derived from verified data
+  // on every render — there is no persisted onboarding flag anywhere, so a user
+  // who deletes everything correctly sees the guidance again, and a returning
+  // user stops seeing it because their data says so. Every predicate is gated
+  // on a resolved, non-error read (#737), so the state is UNKNOWN — and nothing
+  // guided renders — while the notebook is still loading or failed.
+  const activeSessionCount = countWorkoutSessionsFromSections(currentEditor.activeWeekParsed.sections);
+  const firstUseState = deriveFirstUseState({
+    notes,
+    currentId,
+    notesLoading,
+    notesError,
+    activeSessionCount,
+  });
+  // S1 is the state finding F7 showed had no call to action anywhere, and the
+  // state `Not now` deliberately produces. It is the sole surface that makes
+  // declining adoption a safe choice rather than a trapdoor (#745 Part 4 §C1),
+  // so it ships with the prompt, not later.
+  // Suppressed while an adoption prompt is on screen: the prompt is the more
+  // immediate and more specific form of the same offer, and a state never
+  // presents two calls to action of equal weight. `Not now` restores this card.
+  const adoptableRoutine = firstUseState === FIRST_USE_S1 && !currentId && !otherEditor.adoptionPrompt
+    ? pickAdoptableRoutine(notes, currentId)
+    : null;
+
+  // Guided entry is hidden while the read is unresolved or failed, and is
+  // unavailable in deload mode; the plain-text editor stays the fallback so the
+  // `New Routine` control is never inert.
+  const guidedEntryAvailable = !notesLoading && !notesError && effectiveTabView === 'routine';
+  const handleCreateRoutineEntry = () => {
+    if (guidedEntryAvailable) {
+      setGuidedSheetOpen(true);
+      return;
+    }
+    otherEditor.handleCreateRoutine();
+  };
+  const handleGuidedWriteAsText = (seed) => {
+    setGuidedSheetOpen(false);
+    otherEditor.handleCreateRoutine(seed);
+  };
+  // Exactly one write, `add(title, composedText)`. No other storage key is
+  // touched and the routine is NOT adopted — but the offer must still be made,
+  // so a successful guided save raises the SAME post-save adoption prompt the
+  // plain editor's `Save` raises (#745 Part 4 §A1, which is unconditioned on
+  // `currentId`). The S1 card cannot stand in for it: S1 is gated on
+  // `!currentId`, so a user who already has a current routine would otherwise
+  // be offered adoption nowhere at all.
+  const handleGuidedSave = async ({ title, text }) => {
+    try {
+      const note = await add(title, text);
+      if (!note?.id) return { ok: false, error: 'Could not save this routine. Try again.' };
+      setGuidedSheetOpen(false);
+      otherEditor.showAdoptionPromptFor(note);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Could not save this routine. Nothing was written — try again.' };
+    }
+  };
+
+  // The `Copy last session` control: current-routine editor only, S2/S3 only,
+  // verified read only, never in deload mode. It reads no Recovery state.
+  const showSessionAutofill =
+    !otherEditor.editingNoteId
+    && currentEditor.mode === 'edit'
+    && deloadEditor.deloadMode !== 'edit'
+    && !!currentId
+    && !notesLoading
+    && !notesError
+    && activeSessionCount >= 1;
+
   const activeSaveError = deloadEditor.deloadMode === 'edit'
     ? deloadEditor.saveError
     : otherEditor.editingNoteId
@@ -654,7 +733,7 @@ export function LogScreen({
         {isNotesFirstLoad ? (
           <LogSkeleton />
         ) : notesError && notes.length === 0 ? null : isEmpty ? (
-          <LogEmptyState onCreateRoutine={otherEditor.handleCreateRoutine} />
+          <LogEmptyState onCreateRoutine={handleCreateRoutineEntry} />
         ) : (
           <>
             {deloadModeEnabled && (
@@ -701,6 +780,43 @@ export function LogScreen({
               />
             )}
 
+            {/* The post-save adoption prompt, when the routine was saved from
+                the guided sheet and there is no open editor to host it. Same
+                state and same handlers as the editor's copy. */}
+            {effectiveTabView === 'routine' && !isEditing && otherEditor.adoptionPrompt && (
+              <RoutineAdoptionPrompt
+                prompt={otherEditor.adoptionPrompt}
+                error={otherEditor.adoptionError}
+                busy={otherEditor.adoptionBusy}
+                hasCurrentRoutine={!!currentId}
+                onAdopt={otherEditor.handleAdoptPromptedRoutine}
+                onDismiss={otherEditor.handleDismissAdoptionPrompt}
+              />
+            )}
+
+            {/* S1 — a routine exists but none is current. Without this card,
+                `Not now` (and any save while `currentId` is null) recreates the
+                F1 dead end: the routine is filed under a collapsed "More
+                Routines" before the user has more than one, with no
+                instruction anywhere. One instruction, one action. */}
+            {effectiveTabView === 'routine' && adoptableRoutine && (
+              <Card style={styles.firstUseCard}>
+                <Text style={styles.firstUseTitle}>Start logging this routine</Text>
+                <Text style={styles.firstUseBody}>
+                  "{adoptableRoutine.title || 'Untitled Routine'}" is saved but is not your current routine yet, so nothing you log will land in it.
+                </Text>
+                {otherEditor.adoptionError ? (
+                  <Text style={styles.firstUseError}>{otherEditor.adoptionError}</Text>
+                ) : null}
+                <Button
+                  onPress={() => otherEditor.handleSwitchCurrent(adoptableRoutine.id)}
+                  title="Use this routine"
+                  style={styles.firstUseAction}
+                  accessibilityLabel={`Use ${adoptableRoutine.title || 'Untitled Routine'} as your current routine`}
+                />
+              </Card>
+            )}
+
             {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent && (
               <LogActiveRoutineCard
                 workoutNoteTitle={workoutNoteTitle}
@@ -725,6 +841,24 @@ export function LogScreen({
                 activeEditText={currentEditor.activeEditText}
                 recoveryWeekNumber={currentRecoveryWeekNumber}
               />
+            )}
+
+            {/* S2 — exactly one logged session. Two facts, once, inline, and
+                dismissed by progressing rather than by a stored flag: the rule
+                the format depends on, and the name of the real control that
+                turns a lift into an Analytics chart (§12: the copy uses the
+                control's actual label, `Track`). */}
+            {effectiveTabView === 'routine' && currentEditor.mode === 'read' && hasContent
+              && firstUseState === FIRST_USE_S2 && (
+              <Card style={styles.firstUseCard}>
+                <Text style={styles.firstUseTitle}>One session logged</Text>
+                <Text style={styles.firstUseBody}>
+                  Each new line under an exercise is a new session — add today's sets on their own line, below the last one.
+                </Text>
+                <Text style={styles.firstUseBody}>
+                  To chart a lift in Analytics, tap Track on that exercise above.
+                </Text>
+              </Card>
             )}
 
             {effectiveTabView === 'routine' && (
@@ -763,7 +897,7 @@ export function LogScreen({
                 handleSwitchCurrent={otherEditor.handleSwitchCurrent}
                 handleEditViewedNote={otherEditor.handleEditViewedNote}
                 handleDeleteRoutine={guardedHandleDeleteRoutine}
-                handleCreateRoutine={otherEditor.handleCreateRoutine}
+                handleCreateRoutine={handleCreateRoutineEntry}
                 recoveryWeekNumberByNoteId={recoveryWeekNumberByNoteId}
                 onStartRecoveryBlock={openStartRecoveryBlock}
                 showRecoveryStart={showRecoveryStartInManagement}
@@ -848,6 +982,7 @@ export function LogScreen({
           handleSaveDeload={deloadEditor.handleSaveDeload}
           isSaving={activeIsSaving}
           saveSuccess={activeSaveSuccess}
+          saveError={activeSaveError}
           editingNoteId={otherEditor.editingNoteId}
           isEditingDeloadNote={otherEditor.isEditingDeloadNote}
           editingTitle={otherEditor.editingTitle}
@@ -874,8 +1009,23 @@ export function LogScreen({
           handleDeleteDeloadNoteFromEditor={otherEditor.handleDeleteDeloadNoteFromEditor}
           handleDeleteRoutine={guardedHandleDeleteRoutine}
           currentId={currentId}
+          adoptionPrompt={otherEditor.adoptionPrompt}
+          adoptionError={otherEditor.adoptionError}
+          adoptionBusy={otherEditor.adoptionBusy}
+          onAdoptPromptedRoutine={otherEditor.handleAdoptPromptedRoutine}
+          onDismissAdoptionPrompt={otherEditor.handleDismissAdoptionPrompt}
+          showSessionAutofill={showSessionAutofill}
+          // Writes into the editor DRAFT, never storage: handleCurrentTextChange
+          // owns A/B splicing and the existing debounced autosave persists it.
+          onApplySessionAutofill={currentEditor.handleCurrentTextChange}
         />
       </ScreenShell>
+      <GuidedRoutineSheet
+        visible={guidedSheetOpen && guidedEntryAvailable}
+        onClose={() => setGuidedSheetOpen(false)}
+        onWriteAsText={handleGuidedWriteAsText}
+        onSave={handleGuidedSave}
+      />
       <SessionCheckInModal
         visible={currentEditor.showCheckInModal}
         checkInData={currentEditor.roughCheckInData}
@@ -969,5 +1119,32 @@ const createStyles = (colors) => StyleSheet.create({
   },
   tabToggleTextActive: {
     color: colors.onAccent,
+  },
+  // First-use guidance cards (S1/S2). Ordinary `Card` chrome and ordinary
+  // text/textMuted ink — no new filled surface + label pairing, so no new
+  // contrast entry is required (#ui-design-rules §13). No fixed heights, so
+  // every line wraps rather than truncating at large text.
+  firstUseCard: {
+    gap: 8,
+  },
+  firstUseTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  firstUseBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+  },
+  firstUseError: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  firstUseAction: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
 });

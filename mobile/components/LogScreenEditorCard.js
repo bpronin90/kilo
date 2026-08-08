@@ -1,10 +1,75 @@
-import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
+import { SessionAutofillSheet } from './SessionAutofillSheet';
+
+// Post-save adoption prompt (#748; #745 Part 4 §A1). Lightweight, non-modal,
+// and dismissible by design — an `Alert` would interrupt a user who saved a
+// backlog routine and intends to walk away. `Use as current` is the visually
+// primary action so the common answer is one obvious tap, but the question is
+// never removed: saving a routine does not adopt it.
+// Exported because the same prompt state has two render locations: below the
+// editor's save control, and on the Log root when a routine was saved from the
+// guided sheet and no editor is open. One state, one rule, two places it can be
+// seen — never two different adoption behaviors.
+export function RoutineAdoptionPrompt({ prompt, error, busy, hasCurrentRoutine, onAdopt, onDismiss }) {
+  const styles = useThemedStyles(createStyles);
+  const title = prompt?.title || 'Untitled Routine';
+
+  // Announced politely on appearance so a screen-reader user learns the routine
+  // saved and that a choice is waiting, without stealing focus.
+  useEffect(() => {
+    if (!prompt) return;
+    AccessibilityInfo.announceForAccessibility?.(
+      `Routine saved. Use "${title}" as your current routine?`
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompt?.id]);
+
+  if (!prompt) return null;
+
+  return (
+    <View
+      style={styles.adoptionPrompt}
+      accessibilityLiveRegion="polite"
+      testID="routine-adoption-prompt"
+    >
+      <Text style={styles.adoptionTitle} accessibilityRole="header">Routine saved.</Text>
+      <Text style={styles.adoptionBody}>
+        {hasCurrentRoutine
+          ? `Use "${title}" as your current routine instead of the one you have now?`
+          : `Use "${title}" as your current routine?`}
+      </Text>
+      {error ? <Text style={styles.adoptionError}>{error}</Text> : null}
+      <View style={styles.adoptionActions}>
+        <Button
+          onPress={onAdopt}
+          title={error ? 'Try again' : 'Use as current'}
+          disabled={busy}
+          loading={busy}
+          loadingTitle="Setting…"
+          style={styles.adoptionPrimary}
+          accessibilityLabel={
+            error
+              ? `Try again — use ${title} as your current routine`
+              : `Use ${title} as your current routine`
+          }
+        />
+        <Button
+          onPress={onDismiss}
+          title="Not now"
+          style={styles.adoptionSecondary}
+          textStyle={styles.adoptionSecondaryText}
+          accessibilityLabel={`Not now — keep ${title} saved without making it current`}
+        />
+      </View>
+    </View>
+  );
+}
 
 function localDateToday() {
   const now = new Date();
@@ -55,6 +120,7 @@ export function LogScreenEditorCard({
   handleSaveDeload,
   isSaving,
   saveSuccess,
+  saveError,
   editingNoteId,
   isEditingDeloadNote,
   editingTitle,
@@ -81,16 +147,33 @@ export function LogScreenEditorCard({
   handleDeleteDeloadNoteFromEditor,
   handleDeleteRoutine,
   currentId,
+  adoptionPrompt,
+  adoptionError,
+  adoptionBusy,
+  onAdoptPromptedRoutine,
+  onDismissAdoptionPrompt,
+  showSessionAutofill = false,
+  onApplySessionAutofill,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [syntaxHelpVisible, setSyntaxHelpVisible] = useState(false);
+  const [autofillVisible, setAutofillVisible] = useState(false);
 
   return (
     <View style={styles.editContainer}>
       <WorkoutSyntaxModal
         visible={syntaxHelpVisible}
         onClose={() => setSyntaxHelpVisible(false)}
+      />
+      <SessionAutofillSheet
+        visible={autofillVisible}
+        activeText={activeEditText}
+        onClose={() => setAutofillVisible(false)}
+        onApply={(nextText) => {
+          setAutofillVisible(false);
+          onApplySessionAutofill?.(nextText);
+        }}
       />
       {deloadMode === 'edit' ? (
         <Card>
@@ -196,14 +279,31 @@ export function LogScreenEditorCard({
                 )}
               </>
             )}
-            <Pressable
-              onPress={() => setSyntaxHelpVisible(true)}
-              style={styles.syntaxHelpButton}
-              accessibilityRole="button"
-              accessibilityLabel="Workout syntax help"
-            >
-              <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
-            </Pressable>
+            <View style={styles.editorToolRow}>
+              <Pressable
+                onPress={() => setSyntaxHelpVisible(true)}
+                style={styles.syntaxHelpButton}
+                accessibilityRole="button"
+                accessibilityLabel="Workout syntax help"
+              >
+                <Text style={styles.syntaxHelpButtonText}>Workout syntax help</Text>
+              </Pressable>
+              {/* Session autofill (#745 Part 3 §3.2): a plain control, never a
+                  prompt, never a modal on open, never a nag. It appears only in
+                  the current-routine editor once the routine has a logged
+                  session, so returning users get the benefit without being
+                  taught anything. */}
+              {showSessionAutofill && (
+                <Pressable
+                  onPress={() => setAutofillVisible(true)}
+                  style={styles.syntaxHelpButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy last session into this routine"
+                >
+                  <Text style={styles.syntaxHelpButtonText}>Copy last session</Text>
+                </Pressable>
+              )}
+            </View>
             <TextInput
               value={editingNoteId ? editingText : activeEditText}
               onChangeText={editingNoteId ? setEditingText : handleCurrentTextChange}
@@ -225,8 +325,28 @@ export function LogScreenEditorCard({
             ) : saveSuccess ? (
               <Text style={styles.autosaveIndicator}>{saveSuccess}</Text>
             ) : null}
+            {/* A failed write must be visible where the write was asked for.
+                Without this the `Save & Switch` save-failure path (#745 Part 6
+                P6) was silent, which reads as a cancelled adoption rather than
+                as the app failing. */}
+            {saveError ? (
+              <Text style={styles.saveErrorText} accessibilityLiveRegion="polite">{saveError}</Text>
+            ) : null}
+            <RoutineAdoptionPrompt
+              prompt={adoptionPrompt}
+              error={adoptionError}
+              busy={adoptionBusy}
+              hasCurrentRoutine={!!currentId}
+              onAdopt={onAdoptPromptedRoutine}
+              onDismiss={onDismissAdoptionPrompt}
+            />
           </Card>
-          {editingNoteId && !isEditingDeloadNote && (
+          {/* Never rendered for an unsaved routine (#745 Part 3 §2.3). The
+              sentinel `'new'` has no note to switch to, so this control was a
+              right-looking, reachable, inert affordance — the worst available
+              failure mode. Adoption for a brand-new routine is offered by the
+              post-save prompt above instead. */}
+          {editingNoteId && editingNoteId !== 'new' && !isEditingDeloadNote && (
             <Button
               onPress={() => handleSwitchCurrent(editingNoteId)}
               title="Set as current routine"
@@ -281,9 +401,17 @@ const createStyles = (colors) => StyleSheet.create({
   saveButton: {
     marginTop: 12,
   },
+  editorToolRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 16,
+  },
   syntaxHelpButton: {
     alignSelf: 'flex-start',
     marginBottom: 8,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   syntaxHelpButtonText: {
     fontSize: 13,
@@ -311,6 +439,67 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'right',
     marginTop: 8,
+  },
+  saveErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.error,
+    marginTop: 8,
+  },
+  // A tinted block, not a nested Card (§4): ordinary `text`/`textMuted` ink on
+  // the shared subtle surface, so it introduces no new filled surface + label
+  // pairing and needs no new contrast entry (§13).
+  adoptionPrompt: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.subtleBg,
+    gap: 6,
+  },
+  adoptionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  adoptionBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textMuted,
+  },
+  adoptionError: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  // Stacks vertically at large text rather than squeezing two pills onto one
+  // line; no fixed heights, so every label wraps instead of truncating.
+  adoptionActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  adoptionPrimary: {
+    flexGrow: 1,
+    flexBasis: 160,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  adoptionSecondary: {
+    flexGrow: 1,
+    flexBasis: 120,
+    minHeight: 44,
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  adoptionSecondaryText: {
+    color: colors.textMuted,
   },
   inputLabel: {
     fontSize: 12,

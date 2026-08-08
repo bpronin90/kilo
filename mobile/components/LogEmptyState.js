@@ -2,25 +2,34 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card, Button } from './UI';
 import { useThemedStyles } from '../theme/ThemeContext';
+import {
+  WORKOUT_SYNTAX_EXAMPLE_LINES,
+  WORKOUT_SYNTAX_EXAMPLE_TEXT,
+  WORKOUT_SYNTAX_ROW_EXPLANATIONS,
+} from './WorkoutSyntaxReference';
 
-// Shared workout syntax example used by the empty state and its regression
-// tests. Exporting a single source keeps the displayed guidance and the
-// parser-tested string from drifting apart. The example must parse into the
-// expected section, exercise, and sets structure.
-export const WORKOUT_SYNTAX_EXAMPLE = 'Monday\n+Lifting\n-Bench\n135 5,5,5\n140 5,5\n-\n145 5';
-
-// Rendered rows are derived from the exact tested string so the on-screen copy
-// cannot diverge from what the parser tests validate.
-export const WORKOUT_SYNTAX_ROWS = WORKOUT_SYNTAX_EXAMPLE.split('\n');
+// The empty state is the THIRD consumer of the shared syntax source (#748;
+// #745 finding F4). It used to hold its own shorter explanation list, which had
+// drifted: it dropped the `140 5,5` row that carries the session semantic
+// ("each new line is a new session") and the bodyweight row, then used the word
+// "session" in the next row to explain skipping. A user reading only the empty
+// state learned "lines are sets" and had no idea how to log a second session.
+//
+// These re-exports keep the module's existing public surface (and its #585
+// regression tests) pointing at exactly one example and one explanation set, so
+// the taught syntax can no longer drift between Help, the editor modal, and the
+// only surface an untaught first-time user actually lands on.
+export const WORKOUT_SYNTAX_EXAMPLE = WORKOUT_SYNTAX_EXAMPLE_TEXT;
+export const WORKOUT_SYNTAX_ROWS = WORKOUT_SYNTAX_EXAMPLE_LINES;
 
 export function LogEmptyState({ onCreateRoutine }) {
   const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container}>
       <Card style={styles.introCard}>
-        <Text style={styles.title}>Get started</Text>
+        <Text style={styles.title}>Write your first routine</Text>
         <Text style={styles.copy}>
-          Kilo uses a simple text format to track your progress. Log your first routine to see your stats come alive.
+          Kilo uses a simple text format to track your progress. Name your routine and list the exercises you plan to do — you can log the actual sets any time after.
         </Text>
         <Button
           onPress={onCreateRoutine}
@@ -40,18 +49,12 @@ export function LogEmptyState({ onCreateRoutine }) {
           <Text style={{ fontWeight: 'bold' }}>How it works:</Text>
         </Text>
         <View style={{ marginTop: 6, gap: 6 }}>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>-Bench</Text>
-            <Text style={styles.formatDesc}>Exercise name (starts with a dash)</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>135 5,5,5</Text>
-            <Text style={styles.formatDesc}>3 sets at 135 lbs for 5 reps</Text>
-          </View>
-          <View style={styles.formatRow}>
-            <Text style={styles.codeText}>-</Text>
-            <Text style={styles.formatDesc}>A dash alone marks a skipped session</Text>
-          </View>
+          {WORKOUT_SYNTAX_ROW_EXPLANATIONS.map((row) => (
+            <View key={row.code} style={styles.formatRow}>
+              <Text style={styles.codeText}>{row.code}</Text>
+              <Text style={styles.formatDesc}>{row.desc}</Text>
+            </View>
+          ))}
         </View>
       </Card>
     </View>

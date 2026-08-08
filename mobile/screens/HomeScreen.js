@@ -326,9 +326,13 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 <BarbellIcon />
               </View>
               <View style={styles.welcomeStepTextContainer}>
-                <Text style={styles.welcomeStepTitle}>1. Log a Workout</Text>
+                {/* Unnumbered (#748; #745 finding F8). The two daily loops are
+                    independent siblings — numbering implied a prerequisite that
+                    does not exist and pushed the easier, more habit-forming
+                    weigh-in loop behind the harder one. */}
+                <Text style={styles.welcomeStepTitle}>Log a Workout</Text>
                 <Text style={styles.welcomeStepDesc}>
-                  Write workouts in plain text: an exercise line like "{WELCOME_EXAMPLE_EXERCISE_LINE}", then its sets like "{WELCOME_EXAMPLE_SETS_LINE}". Kilo automatically parses and tracks your volume.
+                  Write workouts in plain text: an exercise line like "{WELCOME_EXAMPLE_EXERCISE_LINE}", then its sets like "{WELCOME_EXAMPLE_SETS_LINE}". Kilo parses that and totals your volume automatically. Per-lift strength charts need one more step: tap Track on an exercise in your routine to follow it in Analytics.
                 </Text>
               </View>
             </View>
@@ -345,7 +349,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
                 <ScaleIcon />
               </View>
               <View style={styles.welcomeStepTextContainer}>
-                <Text style={styles.welcomeStepTitle}>2. Track Weight & Goals</Text>
+                <Text style={styles.welcomeStepTitle}>Track Weight & Goals</Text>
                 <Text style={styles.welcomeStepDesc}>
                   Set a target weight and log entries to visualize your 7-day average trend and weekly pace.
                 </Text>

@@ -77,6 +77,16 @@ export function useLogOtherRoutineEditor({
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
   const [deloadEditOrdinal, setDeloadEditOrdinal] = useState('');
 
+  // Post-save adoption prompt (#748; #745 Part 4 §A1). Saving a routine NEVER
+  // adopts it — `Save` performs exactly one write, `add(title, text)`. This
+  // lightweight, non-modal, dismissible prompt then offers the choice. It is
+  // deliberately not an `Alert`: a user who saved a backlog routine and intends
+  // to walk away must be able to ignore it. It persists until acted on or the
+  // editor is left, and no dismissal flag is ever written (Part 3 rule 0.3).
+  const [adoptionPrompt, setAdoptionPrompt] = useState(null); // { id, title } | null
+  const [adoptionError, setAdoptionError] = useState('');
+  const [adoptionBusy, setAdoptionBusy] = useState(false);
+
   const autosaveOtherTimerRef = useRef(null);
   const saveOtherNoteInFlightRef = useRef(null);
 
@@ -300,6 +310,7 @@ export function useLogOtherRoutineEditor({
     });
     setSaveError('');
     setSaveSuccess('');
+    clearAdoptionPrompt();
   };
 
   const handleOpenOtherNote = (other) => {
@@ -322,6 +333,7 @@ export function useLogOtherRoutineEditor({
     });
     setSaveError('');
     setSaveSuccess('');
+    clearAdoptionPrompt();
   };
 
   const handleSaveOtherNote = ({ autosave = false } = {}) => {
@@ -346,6 +358,12 @@ export function useLogOtherRoutineEditor({
         if (editingNoteId === 'new') {
           result = await add(titleToSave, editingFullText);
           setEditingNoteId(result.id);
+          // The one write this action performs is the `add` above. Adoption is
+          // offered, never performed here (#748) — see `adoptionPrompt`.
+          if (!isEditingDeloadNote) {
+            setAdoptionError('');
+            setAdoptionPrompt({ id: result.id, title: titleToSave });
+          }
           // add() (useWorkoutNotes) always creates the note with activeWeek:
           // null, so a new note authored with a standalone --- must persist
           // its selected week in a follow-up update — otherwise it silently
@@ -431,6 +449,15 @@ export function useLogOtherRoutineEditor({
     return promise;
   };
 
+  // Leaving the editor is one of exactly three things that removes the adoption
+  // prompt (the others are `Not now` and a completed adoption). It writes
+  // nothing — not even a "already asked" flag — and the offer stays reachable
+  // from the S1 card or `More Routines` afterwards (#745 Part 5 §A1.3).
+  const clearAdoptionPrompt = () => {
+    setAdoptionPrompt(null);
+    setAdoptionError('');
+  };
+
   const handleDoneOther = async () => {
     if (autosaveOtherTimerRef.current) {
       clearTimeout(autosaveOtherTimerRef.current);
@@ -443,6 +470,7 @@ export function useLogOtherRoutineEditor({
       }
       setEditingNoteId(null);
       setOriginalNoteState(null);
+      clearAdoptionPrompt();
       return;
     }
     if (hasUnsavedOther) {
@@ -469,6 +497,7 @@ export function useLogOtherRoutineEditor({
     }
     setEditingNoteId(null);
     setOriginalNoteState(null);
+    clearAdoptionPrompt();
   };
 
   const handleUndoOther = async () => {
@@ -597,19 +626,136 @@ export function useLogOtherRoutineEditor({
     );
   };
 
-  const handleCreateRoutine = () => {
+  // Opens the plain-text editor on a draft. `seed` carries the guided sheet's
+  // `Write it as text instead` escape (#745 Part 3 §3.1): the composed text and
+  // title arrive pre-filled and UNSAVED, i.e. the ordinary `editingNoteId ===
+  // 'new'` path, and follow the normal `Save` flow from there. Manual
+  // note-first entry is never removed or demoted.
+  const handleCreateRoutine = (seed) => {
     setOriginalNoteState(null);
     setEditingNoteId('new');
-    setEditingTitle('');
-    setEditingFullText('');
+    setEditingTitle(seed?.title ?? '');
+    setEditingFullText(seed?.text ?? '');
     setEditingActiveWeek(null);
     setSaveError('');
     setSaveSuccess('');
+    clearAdoptionPrompt();
+  };
+
+  const ADOPT_FAILED_MESSAGE =
+    'Could not make this your current routine. It is still saved — try again.';
+  const FLUSH_FAILED_MESSAGE =
+    'Could not save your latest edits, so nothing was switched. Your text is still here — try again.';
+
+  // Adoption with no current routine: there is nothing to switch from, no
+  // analytics to affect, and no old routine to roll 1K selections over from, so
+  // no confirmation and no rollover prompt (#745 Part 3 §2.2).
+  //
+  // Unlike `doSwitch`, this path is reached WITHOUT a confirmation that offered
+  // `Save & Switch` / `Switch Anyway`, so it may not discard anything. Closing
+  // the editor after cancelling the debounce would silently drop text the user
+  // typed while the prompt was on screen, and `selectCurrent` would then reload
+  // the previously saved version — destroying user text to tidy state, which
+  // Part 3 forbids. So pending edits are flushed FIRST, and a failed flush
+  // aborts the adoption entirely rather than proceeding without them.
+  const adoptDirectly = async (id) => {
+    if (autosaveCurrentTimerRef.current) {
+      clearTimeout(autosaveCurrentTimerRef.current);
+      autosaveCurrentTimerRef.current = null;
+    }
+    if (autosaveOtherTimerRef.current) {
+      clearTimeout(autosaveOtherTimerRef.current);
+      autosaveOtherTimerRef.current = null;
+    }
+    if (editingNoteId && hasUnsavedOther) {
+      const saved = await handleSaveOtherNote();
+      if (!saved) {
+        // Same treatment as the P6 `Save & Switch` failure: the switch is not
+        // attempted, the save error is surfaced, and the prompt stays
+        // retryable. This is the app failing, not the user cancelling.
+        return { ok: false, reason: FLUSH_FAILED_MESSAGE };
+      }
+    }
+    try {
+      await selectCurrent(id);
+    } catch (err) {
+      console.warn('[adoptDirectly] selectCurrent failed', err);
+      return { ok: false, reason: ADOPT_FAILED_MESSAGE };
+    }
+    setAdoptionPrompt(null);
+    setAdoptionError('');
+    setEditingNoteId(null);
+    setOriginalNoteState(null);
+    setViewingNoteId(null);
+    return { ok: true };
+  };
+
+  // `Use as current` on the post-save prompt, and the S1 card's `Use this
+  // routine`. Both route through the SAME two branches as `handleSwitchCurrent`
+  // so there is exactly one adoption rule in the app.
+  const handleAdoptPromptedRoutine = async () => {
+    if (!adoptionPrompt || adoptionBusy) return;
+    setAdoptionError('');
+    if (currentId) {
+      // Replacing an existing current routine keeps the D7/#737 confirmation,
+      // unsaved-changes branch, and 1K rollover prompt entirely unchanged. An
+      // abandoned confirmation leaves this prompt on screen and re-pressable
+      // (#745 Part 6 §A1.1) because only `doSwitch` clears it.
+      handleSwitchCurrent(adoptionPrompt.id);
+      return;
+    }
+    setAdoptionBusy(true);
+    const result = await adoptDirectly(adoptionPrompt.id);
+    setAdoptionBusy(false);
+    if (!result.ok) {
+      // The saved note is never deleted to tidy state; only the switch half
+      // failed, and the retry re-attempts just that.
+      setAdoptionError(result.reason);
+    }
+  };
+
+  // Raises the SAME prompt state `handleSaveOtherNote` sets, so the guided
+  // scaffold's save converges on one adoption rule with the plain editor's
+  // instead of leaving a user who already has a current routine with no offer
+  // at all (the S1 card is gated on `!currentId` and cannot cover them).
+  const showAdoptionPromptFor = (note) => {
+    if (!note?.id) return;
+    setAdoptionError('');
+    setAdoptionPrompt({ id: note.id, title: note.title || 'Untitled Routine' });
+  };
+
+  const handleDismissAdoptionPrompt = () => {
+    // Writes nothing, including no dismissal flag. The choice is deferred,
+    // never lost: the S1 card keeps offering adoption on every Log visit.
+    clearAdoptionPrompt();
   };
 
   const handleSwitchCurrent = (id) => {
     const note = notes.find(n => n.id === id);
-    if (!note) return;
+    if (!note) {
+      // Never a silent no-op (#745 Part 3 §2.3). An `Alert` rather than the
+      // `setSkipWeekStatus` inline-status precedent because this handler is
+      // also invoked from `LogPreviousRoutines`, which has no status surface of
+      // its own — the requirement is that no press is ever inert, and an alert
+      // satisfies it from every call site.
+      Alert.alert(
+        'Could not set current routine',
+        'That routine is not saved yet. Save it first, then set it as your current routine.'
+      );
+      return;
+    }
+
+    // Adoption, not switching. `currentId === null` means there is nothing to
+    // replace: no switch-warning copy (every clause of which would be false),
+    // no unsaved-changes branch against a routine that does not exist, and no
+    // 1K rollover.
+    if (!currentId) {
+      (async () => {
+        const result = await adoptDirectly(id);
+        if (!result.ok) setAdoptionError(result.reason);
+      })();
+      return;
+    }
 
     const hasUnsaved = editingNoteId ? hasUnsavedOther : (currentEditorMode === 'edit' ? hasUnsavedCurrent : false);
 
@@ -639,10 +785,16 @@ export function useLogOtherRoutineEditor({
           console.warn('[doSwitch] rollover failed, continuing with switch', e);
         }
       }
+      // `currentId` changes only here, together with the 1K rollover write
+      // (#745 Part 6). An abandoned confirmation therefore never adopts, never
+      // rolls over, and never dismisses the adoption prompt — this is the only
+      // place that clears it on a completed adoption.
       await selectCurrent(id);
       setEditingNoteId(null);
       setOriginalNoteState(null);
       setViewingNoteId(null);
+      setAdoptionPrompt(null);
+      setAdoptionError('');
     };
 
     const confirmSwitch = () => {
@@ -756,5 +908,11 @@ export function useLogOtherRoutineEditor({
     handleDeleteDeloadNoteFromEditor,
     handleCreateRoutine,
     handleSwitchCurrent,
+    adoptionPrompt,
+    adoptionError,
+    adoptionBusy,
+    handleAdoptPromptedRoutine,
+    handleDismissAdoptionPrompt,
+    showAdoptionPromptFor,
   };
 }
