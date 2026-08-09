@@ -399,12 +399,14 @@ export function useLogOtherRoutineEditor({
             if (deloadEditDateTouched && deloadEditDate) {
               const newDate = deloadEditDate;
               const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-              if (newDate !== savedDate) {
-                if (histRecord) {
-                  deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
-                  patch.saved_at = `${newDate}T12:00:00.000Z`;
-                }
-              } else {
+              // The correctness property is a VALUE change, not mere
+              // interaction: `deloadEditDateTouched` only gates entry to this
+              // block, so opening the picker and restoring the original date
+              // before saving must still leave saved_at untouched (#764
+              // feedback, finding 2 follow-up) — there is deliberately no
+              // `else` branch here anymore.
+              if (newDate !== savedDate && histRecord) {
+                deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
                 patch.saved_at = `${newDate}T12:00:00.000Z`;
               }
             }

@@ -757,6 +757,70 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
     expect(updateDeload).not.toHaveBeenCalled();
   });
 
+  // Second follow-up on #764 finding 2: `deloadEditDateTouched` gates entry
+  // to the date-handling block, but the correctness property is a VALUE
+  // change, not mere interaction. Opening the date control and then
+  // restoring the original date before saving must still leave saved_at
+  // (and the linked record) untouched — this is the case that got through
+  // the first fix, where a stale `else` branch still wrote saved_at whenever
+  // newDate === savedDate.
+  test('opening the deload date row and restoring the original date leaves saved_at untouched', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T09:47:00.000Z';
+    const note = {
+      id: 'd4',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h4', note_id: 'd4', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd4', title: note.title, raw_text: 'body', saved_at: originalSavedAt });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // User opens the date control, picks a different date, then changes their
+    // mind and restores the original date before saving.
+    render.act(() => { latest.hook.setDeloadEditDate('2026-03-03'); });
+    render.act(() => { latest.hook.setDeloadEditDate('2026-01-01'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    expect(update).toHaveBeenCalled();
+    const patch = update.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('saved_at');
+    expect(updateDeload).not.toHaveBeenCalled();
+  });
+
   // Companion case: once the user explicitly opens the row and picks a new
   // date, the existing linked-record save semantics still apply.
   test('an explicitly changed deload date still updates saved_at and the linked record', async () => {
