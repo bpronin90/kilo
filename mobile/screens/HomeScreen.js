@@ -1131,8 +1131,12 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  // Explicit compact-summary override (#763 review) — HeroMetric.hero is
+  // 48/900, the Analytics owner size. Home's total stays visually secondary
+  // to the Weekly hero above it, so it does not spread HeroMetric.hero here.
   oneKHeroValue: {
-    ...HeroMetric.hero,
+    fontSize: 32,
+    fontWeight: '800',
     color: colors.text,
   },
   oneKHeroUnit: {
@@ -1140,18 +1144,22 @@ const createStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
   },
+  // Track color, radius, and vertical rhythm match the Analytics 1K progress
+  // bar (#763) — the bar reads as the same control on both surfaces even
+  // though Home's hero value stays smaller (compact-summary role, see
+  // design-system-map.md).
   progressBarLarge: {
     height: 8,
-    backgroundColor: colors.cardBorder,
-    borderRadius: 6,
+    backgroundColor: colors.divider,
+    borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 28,
+    marginBottom: 16,
     alignSelf: 'stretch',
   },
   progressFillLarge: {
     height: '100%',
     backgroundColor: colors.accent,
-    borderRadius: 6,
+    borderRadius: 4,
   },
   oneKGrid: {
     flexDirection: 'row',
@@ -1167,15 +1175,18 @@ const createStyles = (colors) => StyleSheet.create({
     borderRightWidth: 1,
     borderColor: colors.cardBorder,
   },
+  // Weight and case match the Analytics breakdown item (#763); fontSize
+  // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.text,
   },
   oneKGridLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+    textTransform: 'uppercase',
   },
   placeholderText: {
     fontSize: 48,
