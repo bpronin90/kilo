@@ -48,7 +48,7 @@ export function AnalyticsStrengthSection({
             <>
               <Text style={styles.oneKLabel}>1K Progress</Text>
               <Text style={[styles.oneKValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (displayOneK.total || 0) / oneKTarget)) }]}>
-                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}>{unit}</Text>
+                {displayOneK.total.toFixed(0)}<Text style={styles.oneKUnit}> {unit}</Text>
               </Text>
 
               <View style={styles.oneKProgressBarContainer}>
@@ -210,11 +210,14 @@ const createStyles = (colors) => StyleSheet.create({
     ...HeroMetric.hero,
     color: colors.text,
   },
+  // Literal leading space, not marginLeft — this Text is nested inside the
+  // value Text, and native RN treats a nested Text as an inline attributed
+  // run rather than a Yoga box, so marginLeft is not guaranteed to render
+  // (#763 review; matches Home's oneKHeroUnit).
   oneKUnit: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.textMuted,
-    marginLeft: 4,
   },
   oneKProgressBarContainer: {
     width: '100%',
