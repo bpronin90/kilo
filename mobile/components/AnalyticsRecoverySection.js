@@ -400,6 +400,12 @@ function _summaryLine(weekLabel, summary) {
   return parts.join(' · ');
 }
 
+// Every piece of state below — selected week, disclosure, status filter — is a
+// view onto ONE block, so the caller mounts this keyed by `block.id`. Reusing
+// the instance across a history switch would carry the previous block's filter
+// and open disclosure onto a block that never had them, and a filter that
+// matched there can match nothing here, so a block with real evidence would
+// open on "No exercises match this filter" instead of its summary.
 function BlockEvidence({ block, weeks, notes, unit }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -698,7 +704,7 @@ export function AnalyticsRecoverySection({
         </Pressable>
       )}
 
-      <BlockEvidence block={focusedBlock} weeks={weeks} notes={notes} unit={unit} />
+      <BlockEvidence key={focusedBlock.id} block={focusedBlock} weeks={weeks} notes={notes} unit={unit} />
 
       {completedBlocks.length > 0 && (
         <View style={styles.historyPanel}>

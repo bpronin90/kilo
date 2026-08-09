@@ -1012,6 +1012,48 @@ describe('AnalyticsRecoverySection — progressive disclosure and filters (#758)
     expect(hasText(root, 'Total work')).toBe(false);
   });
 
+  test('switching to another block opens on its own summary, not the previous block\'s disclosure and filter', () => {
+    const active = block({ id: 'rb-active', baseline_note_title: 'Current Routine' });
+    const completed = block({
+      id: 'rb-old',
+      baseline_note_title: 'Old Routine',
+      completed_at: '2026-04-01T00:00:00Z',
+    });
+    const root = setup({
+      blocks: [active, completed],
+      weeks: [
+        week(1, 'note-active-w1', { id: 'rw-active-1', block_id: 'rb-active' }),
+        // The completed block's week has nothing rebuilding in it, so a filter
+        // carried over from the active block would show an empty panel.
+        week(1, 'note-old-w1', { id: 'rw-old-1', block_id: 'rb-old' }),
+      ],
+      notes: [note('note-active-w1', MIXED_TEXT), note('note-old-w1', BASELINE_TEXT)],
+    }).root;
+
+    expandDetails(root);
+    selectFilter(root, 'Rebuilding');
+    expect(rowLabels(root).some(l => l.startsWith('Bench, Rebuilding'))).toBe(true);
+
+    expandHistory(root);
+    const historyRow = root.findAll(
+      inst => typeof inst.props.accessibilityLabel === 'string' &&
+        inst.props.accessibilityLabel.startsWith('View recovery evidence for Old Routine')
+    )[0];
+    act(() => { historyRow.props.onPress(); });
+
+    // Collapsed again, on the new block's own summary.
+    expect(byLabel(root, 'Expand exercise details')).toBeDefined();
+    expect(byLabel(root, 'Collapse exercise details')).toBeUndefined();
+    expect(hasText(root, '2 of 2')).toBe(true);
+    expect(hasText(root, 'No exercises match this filter.')).toBe(false);
+
+    // And the filter is back to All, not the carried-over Rebuilding.
+    expandDetails(root);
+    expect(byLabel(root, 'All, 2').props.accessibilityState).toEqual({ selected: true });
+    expect(byLabel(root, 'Rebuilding, 0').props.accessibilityState).toEqual({ selected: false });
+    expect(rowLabels(root).some(l => l.startsWith('Bench, Baseline met'))).toBe(true);
+  });
+
   test('a week whose note is unreadable states that above the disclosure, with no details to expand', () => {
     const root = setup({
       blocks: [block()],
