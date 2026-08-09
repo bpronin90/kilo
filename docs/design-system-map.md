@@ -597,19 +597,39 @@ action is placed by how often it is used:
 | Tier | Actions | Location |
 |---|---|---|
 | Primary — every session | `Track` a lift, `Edit`, `Week A/B`, skip week | Active card body, plus the one action strip under its header (`LogActiveRoutineCard.js` `actionStrip`) |
-| Secondary — occasional | `Set as current routine`, `Edit routine`, `Delete routine`, viewed-card `Week A/B` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
-| Rare — once per training block | `Start recovery block`, `+ New routine` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
+| Secondary — occasional | `Edit routine`, `Delete routine`, viewed-card `Week A/B`, full `Set as current routine` | Non-current card's expand-on-tap body (`LogPreviousRoutines.js` `inlineActions`), inside expanded routine management |
+| Quick access — reachable without opening (#756) | Compact `New routine` icon, compact `Set as current routine` icon per collapsed row | Panel header (present collapsed or expanded) and each collapsed non-current row's header respectively (`LogPreviousRoutines.js`) |
+| Rare — once per training block | `Start recovery block` | Expanded routine-management body (`LogPreviousRoutines.js`); the Recovery section no longer hosts a start control (#724) |
 
 Consequences to preserve:
 
-- **More Routines is a collapsed-by-default disclosure (#724).** It follows the
-  shared collapse convention: a whole-header press target (with a `44` `minHeight`
-  touch floor) carrying the `MaterialIcons` `expand-more`/`expand-less` chevron
-  (18, `textMuted`), a collapsed summary of a routine count over a `Latest: …`
-  line, and `accessibilityState={{ expanded }}`. Collapsed, it renders zero
-  actions and mounts no routine-card controls; the routine cards, `+ New
-  routine`, and `Start recovery block` exist only in the expanded body. A card
-  header's only nested press target is still identity. An external request to
+- **More Routines is a collapsed-by-default disclosure (#724).** Its header is
+  no longer one whole-header Pressable; it is a plain row of three sibling
+  touch targets — a `headerToggle` Pressable (count/latest summary, `44`
+  `minHeight`), a compact icon-only `New routine` affordance (#756,
+  `MaterialIcons` `add`, `accessibilityLabel="New routine"`), and a
+  `headerChevronButton` Pressable carrying the `MaterialIcons`
+  `expand-more`/`expand-less` chevron (18, `textMuted`) — with the toggle and
+  chevron both wired to the same expand/collapse handler and
+  `accessibilityState={{ expanded }}`, so tapping either still toggles the
+  disclosure. `New routine` is present whether the disclosure is collapsed or
+  expanded, since creating a routine is common enough that it must not require
+  opening the disclosure first. Collapsed, the routine cards and `Start
+  recovery block` stay inside the expanded body only. Each quick action is a
+  **sibling** of the toggle/row Pressable beside it, never nested inside it:
+  VoiceOver groups a nested `Pressable` into its accessible ancestor, which
+  would make the nested control unreachable as its own action (#756 review). A
+  card header's only nested press target is otherwise still identity, with one
+  exception: each non-current card's own collapsed (unopened) row also carries
+  a sibling, icon-only `Set as current routine: <title>` affordance
+  (`MaterialIcons` `check-circle-outline`) so switching the current routine
+  never requires opening that row and scrolling to its expand-on-tap body. It
+  disappears once the row is opened, where the existing full `Set as current
+  routine` button in the row's body remains the only instance of that action.
+  Both quick actions call straight through to the same handlers
+  (`handleCreateRoutine`, `handleSwitchCurrent`) the expanded-body controls
+  already used, so every existing confirmation and safeguard is unchanged. An
+  external request to
   reveal a non-current routine (typed navigation #718, or a
   Recovery-history tap from Analytics or an active-lifecycle tap) auto-expands
   the disclosure via a monotonic

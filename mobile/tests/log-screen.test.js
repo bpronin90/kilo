@@ -3018,11 +3018,12 @@ describe('Routine-card header/action containment (#710, #711)', () => {
       .toEqual({ top: 4, bottom: 4, left: 4, right: 4 });
   });
 
-  test('LogPreviousRoutines: a collapsed More Routines list renders zero buttons', () => {
+  test('LogPreviousRoutines: a collapsed More Routines list renders only the disclosure toggle and a New Note affordance (#756)', () => {
     const notes = [
       { id: 'r1', title: 'Routine One', raw_text: 'MONDAY\n-Squat 3x5\n', updated_at: '2026-01-01T00:00:00.000Z' },
       { id: 'r2', title: 'Routine Two', raw_text: 'MONDAY\n-Bench 3x5\n', updated_at: '2026-01-02T00:00:00.000Z' },
     ];
+    const handleCreateRoutine = jest.fn();
     let component;
     render.act(() => {
       component = render.create(
@@ -3038,24 +3039,42 @@ describe('Routine-card header/action containment (#710, #711)', () => {
           handleSwitchCurrent={jest.fn()}
           handleEditViewedNote={jest.fn()}
           handleDeleteRoutine={jest.fn()}
-          handleCreateRoutine={jest.fn()}
+          handleCreateRoutine={handleCreateRoutine}
         />
       );
     });
     const root = component.root;
 
-    // Collapsed routine management is action-free (#724): the only press target
-    // is the whole-header disclosure itself. No routine cards are mounted, and
-    // neither `+ New routine` nor `Start recovery block` exists yet.
+    // Collapsed routine management (#724) still hides the routine cards and
+    // most management actions behind the disclosure, but (#756) the header
+    // itself now also carries a compact `New routine` affordance so creating a
+    // routine never requires opening the disclosure first. The toggle is its
+    // own two adjacent buttons (content + chevron), each a sibling of New
+    // Note rather than its parent, so no quick action is grouped away from
+    // VoiceOver under an ancestor Pressable (PR #760 review).
     const buttons = root.findAll(
       n => typeof n.type === 'string' && n.props && n.props.accessibilityRole === 'button'
     );
-    expect(buttons.length).toBe(1);
-    expect(buttons[0].props.accessibilityLabel).toBe('Expand routine management');
-    expect(buttons[0].props.accessibilityState).toEqual({ expanded: false });
+    expect(buttons.length).toBe(3);
+    const toggles = buttons.filter(b => b.props.accessibilityLabel === 'Expand routine management');
+    expect(toggles.length).toBe(2);
+    for (const toggle of toggles) expect(toggle.props.accessibilityState).toEqual({ expanded: false });
+    const newRoutine = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(newRoutine).toBeTruthy();
 
-    // No routine card is mounted and no management action exists while collapsed.
-    // (The latest title appears only inside the summary line, not as a card.)
+    // Pressing it neither expands the disclosure nor mounts routine cards —
+    // it calls straight through to handleCreateRoutine.
+    render.act(() => { newRoutine.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(handleCreateRoutine).toHaveBeenCalledTimes(1);
+    expect(root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Collapse routine management'
+    ).length).toBe(0);
+
+    // No routine card is mounted and no other management action exists while
+    // collapsed. (The latest title appears only inside the summary line, not
+    // as a card.)
     expect(root.findAll(n => n.type === 'Text' && n.props.children === 'Routine One').length).toBe(0);
     for (const label of ['+ New routine', 'Start recovery block', 'Set as current routine', 'Edit routine', 'Delete routine']) {
       expect(root.findAll(n => n.type === 'Text' && n.props.children === label).length).toBe(0);
@@ -3250,6 +3269,126 @@ describe('Log action hierarchy (#711)', () => {
       expect(pressableAround(root, t => t === 'Week B')).toBeNull();
       expect(pressableAround(root, t => t === 'Set as current routine')).toBeTruthy();
     });
+  });
+});
+
+// #756: New Note and set-current-routine stop being gated behind expansion.
+// The header's `+ New routine` action gains a compact header-level twin that
+// is present whether the disclosure is collapsed or expanded, and every
+// collapsed (unopened) non-current row gains its own compact `Set as current
+// routine` action, so switching never requires opening a row and scrolling to
+// its expand-on-tap body. Existing safeguards are untouched: both quick
+// actions call straight through to the same handlers (`handleCreateRoutine`,
+// `handleSwitchCurrent`) that already own confirmation/eligibility.
+describe('LogPreviousRoutines: compact New Note and set-current actions (#756)', () => {
+  const { LogPreviousRoutines } = require('../components/LogPreviousRoutines');
+
+  const notes = [
+    { id: 'r1', title: 'Routine One', updated_at: '2026-01-01T00:00:00.000Z' },
+    { id: 'r2', title: 'Routine Two', updated_at: '2026-01-02T00:00:00.000Z' },
+  ];
+
+  const baseProps = {
+    otherNotes: notes,
+    handleViewOtherNote: jest.fn(),
+    viewingNoteId: null,
+    viewingNote: null,
+    viewingNoteDayGroups: [],
+    viewingHasABWeeks: false,
+    viewingEffectiveWeek: null,
+    handleToggleViewingWeek: jest.fn(),
+    handleEditViewedNote: jest.fn(),
+    handleDeleteRoutine: jest.fn(),
+  };
+
+  const renderList = (overrides = {}) => {
+    const props = { ...baseProps, handleSwitchCurrent: jest.fn(), handleCreateRoutine: jest.fn(), ...overrides };
+    let component;
+    render.act(() => { component = render.create(<LogPreviousRoutines {...props} />); });
+    return { root: component.root, props };
+  };
+
+  test('the header New Note affordance calls handleCreateRoutine without toggling the disclosure', () => {
+    const { root, props } = renderList();
+    const headerButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(headerButton).toBeTruthy();
+
+    render.act(() => { headerButton.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(props.handleCreateRoutine).toHaveBeenCalledTimes(1);
+    // Still collapsed: the disclosure toggle was not fired by the nested press.
+    const toggle = root.findAll(n => n.props && n.props.accessibilityLabel === 'Expand routine management')[0];
+    expect(toggle).toBeTruthy();
+  });
+
+  test('every collapsed non-current row exposes its own accessible set-current action', () => {
+    const { root, props } = renderList();
+    expandRoutineManagement(root);
+
+    const rowOne = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
+        && typeof n.props.onPress === 'function'
+    )[0];
+    const rowTwo = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine Two'
+        && typeof n.props.onPress === 'function'
+    )[0];
+    expect(rowOne).toBeTruthy();
+    expect(rowTwo).toBeTruthy();
+
+    render.act(() => { rowOne.props.onPress({ stopPropagation: jest.fn() }); });
+    expect(props.handleSwitchCurrent).toHaveBeenCalledWith('r1');
+    // The row itself was not opened by the nested press — the row's own
+    // header press target is a distinct handler (handleViewOtherNote).
+    expect(props.handleViewOtherNote).not.toHaveBeenCalled();
+  });
+
+  test('an opened row drops the compact action; the full action in its body remains the only one', () => {
+    const note = notes[0];
+    const { root } = renderList({ viewingNoteId: note.id, viewingNote: note });
+    expandRoutineManagement(root);
+
+    expect(root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
+    ).length).toBe(0);
+    expect(pressableAround(root, t => t === 'Set as current routine')).toBeTruthy();
+  });
+
+  // PR #760 review: a nested Pressable is grouped into its accessible ancestor
+  // by VoiceOver, making it unreachable as its own action. Both quick actions
+  // must be siblings of the toggle/row Pressable they sit beside, not children
+  // of it.
+  test('neither quick action is nested inside another accessible Pressable', () => {
+    const { root } = renderList();
+    expandRoutineManagement(root);
+
+    const isOwnAncestorButton = (node, ownLabel) => {
+      let ancestor = node.parent;
+      while (ancestor) {
+        if (
+          ancestor.props
+          && ancestor.props.accessibilityRole === 'button'
+          && typeof ancestor.props.onPress === 'function'
+          && ancestor.props.accessibilityLabel !== ownLabel
+        ) {
+          return true;
+        }
+        ancestor = ancestor.parent;
+      }
+      return false;
+    };
+
+    const headerButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'New routine' && typeof n.props.onPress === 'function'
+    )[0];
+    expect(isOwnAncestorButton(headerButton, 'New routine')).toBe(false);
+
+    const rowButton = root.findAll(
+      n => n.props && n.props.accessibilityLabel === 'Set as current routine: Routine One'
+        && typeof n.props.onPress === 'function'
+    )[0];
+    expect(isOwnAncestorButton(rowButton, 'Set as current routine: Routine One')).toBe(false);
   });
 });
 

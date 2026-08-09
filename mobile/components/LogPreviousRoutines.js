@@ -1,11 +1,15 @@
 // Routine management (#724): the non-current routines and every routine/recovery
 // management action now live inside a collapsed-by-default disclosure so the
-// active routine stays the dominant Log surface. Collapsed, the section is
-// action-free — it shows only a count + latest-routine summary and the shared
-// chevron. Expanded, it renders the routine cards (#711 information hierarchy:
-// each card's header carries identity only; Week A/B, Set as current, Edit, and
-// Delete live in its own expand-on-tap body) plus the section's two management
-// actions: `Start recovery block` and `+ New routine`.
+// active routine stays the dominant Log surface. Collapsed, the section shows
+// a count + latest-routine summary, the shared chevron, and (#756) a compact
+// icon-only `New routine` affordance in the header itself — creating a routine
+// is common enough that it must not require opening the disclosure first.
+// Expanded, it renders the routine cards (#711 information hierarchy: each
+// card's header carries identity only; a compact `Set as current routine` icon
+// sits on every collapsed row (#756) so switching never requires opening the
+// row and scrolling to its body; Week A/B, the full Set as current, Edit, and
+// Delete stay in that row's own expand-on-tap body) plus `Start recovery
+// block`, which remains gated behind expansion (unchanged eligibility/locking).
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -88,33 +92,61 @@ export function LogPreviousRoutines({
     <View style={styles.previousRoutines}>
       <SectionTitle>More Routines</SectionTitle>
       <View style={styles.panel}>
-        <Pressable
-          onPress={() => setExpanded(e => !e)}
-          style={[styles.header, expanded && styles.headerBordered]}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
-          accessibilityState={{ expanded }}
-        >
-          <View style={styles.headerContent}>
-            <Text style={styles.summaryCount}>
-              {`${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}`}
-            </Text>
-            {!expanded && latestRoutine && (
-              <Text style={styles.summaryLatest} numberOfLines={1}>
-                {'Latest: '}
-                <Text style={styles.summaryEmphasis}>
-                  {latestRoutine.title || 'Untitled Routine'}
-                </Text>
+        <View style={[styles.header, expanded && styles.headerBordered]}>
+          <Pressable
+            onPress={() => setExpanded(e => !e)}
+            style={styles.headerToggle}
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
+            accessibilityState={{ expanded }}
+          >
+            <View style={styles.headerContent}>
+              <Text style={styles.summaryCount}>
+                {`${routineCount} ${routineCount === 1 ? 'routine' : 'routines'}`}
               </Text>
-            )}
-          </View>
-          <MaterialIcons
-            name={expanded ? 'expand-less' : 'expand-more'}
-            size={18}
-            color={colors.textMuted}
-            accessible={false}
-          />
-        </Pressable>
+              {!expanded && latestRoutine && (
+                <Text style={styles.summaryLatest} numberOfLines={1}>
+                  {'Latest: '}
+                  <Text style={styles.summaryEmphasis}>
+                    {latestRoutine.title || 'Untitled Routine'}
+                  </Text>
+                </Text>
+              )}
+            </View>
+          </Pressable>
+          {/* Compact New Note affordance (#756): the collapsed disclosure used to
+              hide `+ New routine` inside the expanded body, so creating a routine
+              cost an extra tap that scanning the section shouldn't require. This
+              icon-only control sits in the header — present collapsed or
+              expanded — so it never competes for space with the count/latest
+              summary or the expanded routine list. It is a SIBLING of the toggle
+              Pressable above, not nested inside it: VoiceOver groups a nested
+              Pressable into its accessible ancestor, which would make this
+              unreachable as its own action (PR #760 review). */}
+          <Pressable
+            onPress={handleCreateRoutine}
+            style={styles.headerNewRoutineButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="New routine"
+          >
+            <MaterialIcons name="add" size={18} color={colors.accent} accessible={false} />
+          </Pressable>
+          <Pressable
+            onPress={() => setExpanded(e => !e)}
+            style={styles.headerChevronButton}
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? 'Collapse routine management' : 'Expand routine management'}
+            accessibilityState={{ expanded }}
+          >
+            <MaterialIcons
+              name={expanded ? 'expand-less' : 'expand-more'}
+              size={18}
+              color={colors.textMuted}
+              accessible={false}
+            />
+          </Pressable>
+        </View>
 
         {expanded && (
           <View style={styles.body}>
@@ -143,41 +175,66 @@ export function LogPreviousRoutines({
                 key={other.id}
                 style={styles.otherNoteCard}
               >
-                <Pressable
-                  onPress={() => handleViewOtherNote(other)}
-                  style={styles.otherNoteHeader}
-                  accessibilityRole="button"
-                  accessibilityLabel={otherHeaderLabel}
-                  accessibilityState={{ expanded: isViewedOther }}
-                >
-                  <View style={styles.otherNoteInfo}>
-                    <Text
-                      style={styles.otherNoteTitle}
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                    >
-                      {other.title || 'Untitled Routine'}
-                    </Text>
-                    {other.updated_at && (
-                      <Text style={styles.otherNoteSub}>
-                        {viewingNoteId === other.id && viewingHasABWeeks
-                          ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
-                          : localDate(other.updated_at).toLocaleDateString()}
-                      </Text>
-                    )}
-                    {recoveryWeekNumberByNoteId[other.id] != null && (
-                      <View
-                        style={styles.recoveryBadge}
-                        accessible
-                        accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                <View style={styles.otherNoteHeaderRow}>
+                  <Pressable
+                    onPress={() => handleViewOtherNote(other)}
+                    style={styles.otherNoteHeader}
+                    accessibilityRole="button"
+                    accessibilityLabel={otherHeaderLabel}
+                    accessibilityState={{ expanded: isViewedOther }}
+                  >
+                    <View style={styles.otherNoteInfo}>
+                      <Text
+                        style={styles.otherNoteTitle}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
                       >
-                        <Text style={styles.recoveryBadgeText}>
-                          Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                        {other.title || 'Untitled Routine'}
+                      </Text>
+                      {other.updated_at && (
+                        <Text style={styles.otherNoteSub}>
+                          {viewingNoteId === other.id && viewingHasABWeeks
+                            ? `Week ${viewingEffectiveWeek} · ${localDate(other.updated_at).toLocaleDateString()}`
+                            : localDate(other.updated_at).toLocaleDateString()}
                         </Text>
-                      </View>
-                    )}
-                  </View>
-                </Pressable>
+                      )}
+                      {recoveryWeekNumberByNoteId[other.id] != null && (
+                        <View
+                          style={styles.recoveryBadge}
+                          accessible
+                          accessibilityLabel={`Recovery Week ${recoveryWeekNumberByNoteId[other.id]}`}
+                        >
+                          <Text style={styles.recoveryBadgeText}>
+                            Recovery Week {recoveryWeekNumberByNoteId[other.id]}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </Pressable>
+                  {/* Compact set-current affordance (#756): before this, switching
+                      the current routine required opening this row's expand-on-tap
+                      body and scrolling past its rendered content to the action
+                      strip at the bottom. This quick action calls the same
+                      `handleSwitchCurrent`, which owns every existing confirmation
+                      and safeguard (useLogOtherRoutineEditor.js), so behavior is
+                      unchanged — only reach improves. It only shows while the row
+                      itself is collapsed; once opened, the full action lives in
+                      the body below like before, so the action never appears
+                      twice for the same row. It is a SIBLING of the row's own
+                      Pressable, not nested inside it, for the same VoiceOver
+                      grouping reason as the header's New Note control above. */}
+                  {!isViewedOther && (
+                    <Pressable
+                      onPress={() => handleSwitchCurrent(other.id)}
+                      style={styles.rowSetCurrentButton}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Set as current routine: ${other.title || 'Untitled Routine'}`}
+                    >
+                      <MaterialIcons name="check-circle-outline" size={20} color={colors.accent} accessible={false} />
+                    </Pressable>
+                  )}
+                </View>
                 {viewingNoteId === other.id && viewingNote && (
                   <>
                     {/* The gesture is preserved; the visible "Double-tap to edit"
@@ -283,9 +340,7 @@ const createStyles = (colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    // The whole header is the only expand/collapse target, and collapsed-with-
-    // zero-routines or expanded it holds only the 12px count; a 44dp floor keeps
-    // it a legible touch/motor target under large text too (#724 review).
+    gap: 4,
     minHeight: 44,
     backgroundColor: colors.subtleBg,
   },
@@ -293,8 +348,36 @@ const createStyles = (colors) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.cardBorder,
   },
+  // The disclosure toggle (#756): a sibling of the New Note and chevron
+  // controls below, not their parent — a nested Pressable would be grouped
+  // into its accessible ancestor by VoiceOver, making the nested control
+  // unreachable as its own action (PR #760 review). A 44dp floor keeps it a
+  // legible touch/motor target under large text too (#724 review).
+  headerToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+  },
   headerContent: {
     flex: 1,
+  },
+  // The compact header-level New Note affordance (#756): icon-only so it never
+  // grows the header past its existing count/latest-summary footprint.
+  headerNewRoutineButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The chevron is its own tap target now too (#756), a sibling of the toggle
+  // Pressable rather than a bare icon nested inside it, for the same
+  // VoiceOver-grouping reason as headerNewRoutineButton.
+  headerChevronButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryCount: {
     fontSize: 12,
@@ -318,7 +401,10 @@ const createStyles = (colors) => StyleSheet.create({
     padding: 0,
     overflow: 'hidden',
   },
-  otherNoteHeader: {
+  // The row's outer layout (#756): holds the identity Pressable and the
+  // compact set-current Pressable as siblings, so neither is nested inside
+  // the other (same VoiceOver-grouping reason as the panel header above).
+  otherNoteHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingVertical: 10,
@@ -326,11 +412,23 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 12,
     minHeight: 44,
   },
+  otherNoteHeader: {
+    flex: 1,
+  },
   otherNoteInfo: {
     flex: 1,
     // See LogActiveRoutineCard.js's otherNoteInfo comment: a hard floor, not 0
     // (#710 review), retained now that the header holds identity only (#711).
     minWidth: 96,
+  },
+  // The compact row-level set-current affordance (#756): icon-only, matching
+  // the header's New Note control, so a collapsed row stays a single compact
+  // line rather than growing a second button-height row.
+  rowSetCurrentButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   otherNoteTitle: {
     fontSize: 20,
