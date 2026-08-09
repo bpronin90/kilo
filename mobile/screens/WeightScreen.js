@@ -118,6 +118,30 @@ function DateEntryField({ value, onChangeDate, a11yLabel }) {
   );
 }
 
+// Compact, discoverable "Date · <value>" secondary row (#764). Sits below the
+// primary Save/Update action so the full date control never occupies the
+// default high-frequency layout — tapping it reveals the existing
+// platform-appropriate date control (DateEntryField), and tapping again (or
+// Cancel) collapses it. Replaces the removed Settings "Date Editing" toggles;
+// the date-editing capability itself is unchanged, only its discoverability.
+function DateDisclosureRow({ value, open, onToggle, label, testID }) {
+  const styles = useThemedStyles(createStyles);
+  const displayValue = value ? formatDate(value) : 'Today';
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onToggle}
+      style={styles.dateDisclosureRow}
+      accessibilityRole="button"
+      accessibilityLabel={`Date, ${displayValue}`}
+      accessibilityHint={open ? `Hide the ${label.toLowerCase()} field` : `Change the ${label.toLowerCase()}`}
+      accessibilityState={{ expanded: open }}
+    >
+      <Text style={styles.dateDisclosureText}>{`Date · ${displayValue}`}</Text>
+    </Pressable>
+  );
+}
+
 export function WeightScreen({
   weightValue,
   setWeightValue,
@@ -126,7 +150,6 @@ export function WeightScreen({
   onSaveWeight,
   errorMessage,
   saving,
-  weightDateEditEnabled,
   isActive,
   onNavigate,
   registerBackConsumer,
@@ -143,6 +166,12 @@ export function WeightScreen({
   const [localError, setLocalError] = useState('');
   const [newEntryDate, setNewEntryDate] = useState(localDateToday);
   const [editDate, setEditDate] = useState('');
+  // Reveal state for the compact "Date · <value>" secondary row (#764). Each
+  // context (new entry vs. edit) collapses independently, and both close on
+  // cancel/submit so the full date control never lingers past the action it
+  // was opened for.
+  const [newDateFieldOpen, setNewDateFieldOpen] = useState(false);
+  const [editDateFieldOpen, setEditDateFieldOpen] = useState(false);
   const [goalHistoryCollapsed, setGoalHistoryCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
@@ -299,6 +328,7 @@ export function WeightScreen({
     setWeightValue(formatBodyweightValue(entry.weight_value, unit));
     setWeightNote(entry.note || '');
     setEditDate(entry.date);
+    setEditDateFieldOpen(false);
     scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
   }, [unit, setWeightValue, setWeightNote]);
 
@@ -308,6 +338,7 @@ export function WeightScreen({
     setWeightValue('');
     setWeightNote('');
     setEditDate('');
+    setEditDateFieldOpen(false);
   }, [setWeightValue, setWeightNote]);
 
   const handleDelete = useCallback((id) => {
@@ -349,7 +380,7 @@ export function WeightScreen({
         }
         let ok;
         try {
-          ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, weightDateEditEnabled ? editDate : undefined);
+          ok = await update(editingId, parsed.weight_value, weightNote.trim() || undefined, editDate);
         } catch {
           ok = false;
         }
@@ -361,9 +392,11 @@ export function WeightScreen({
           setLocalError('Could not update weight entry. Please try again.');
         }
       } else {
-        const date = weightDateEditEnabled ? newEntryDate : undefined;
-        const ok = await onSaveWeight(date);
-        if (ok && weightDateEditEnabled) setNewEntryDate(localDateToday());
+        const ok = await onSaveWeight(newEntryDate);
+        if (ok) {
+          setNewEntryDate(localDateToday());
+          setNewDateFieldOpen(false);
+        }
       }
     } finally {
       submittingRef.current = false;
@@ -431,25 +464,65 @@ export function WeightScreen({
           placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
-        {weightDateEditEnabled && !editingId && (
-          <DateEntryField
-            value={newEntryDate}
-            onChangeDate={setNewEntryDate}
-            a11yLabel="Weigh-in date"
-          />
-        )}
-        {weightDateEditEnabled && editingId && (
-          <DateEntryField
-            value={editDate}
-            onChangeDate={setEditDate}
-            a11yLabel="Entry date"
-          />
-        )}
         <Button
           onPress={handleSubmit}
           title={editingId ? "Update entry" : "Save weigh-in"}
           disabled={saving}
         />
+        {!editingId && (
+          <>
+            <DateDisclosureRow
+              testID="weight-new-date-toggle"
+              value={newEntryDate}
+              open={newDateFieldOpen}
+              onToggle={() => setNewDateFieldOpen(o => !o)}
+              label="Weigh-in date"
+            />
+            {newDateFieldOpen && (
+              <>
+                <DateEntryField
+                  value={newEntryDate}
+                  onChangeDate={setNewEntryDate}
+                  a11yLabel="Weigh-in date"
+                />
+                <Pressable
+                  onPress={() => setNewDateFieldOpen(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done changing weigh-in date"
+                >
+                  <Text style={styles.cancelText}>Done</Text>
+                </Pressable>
+              </>
+            )}
+          </>
+        )}
+        {editingId && (
+          <>
+            <DateDisclosureRow
+              testID="weight-edit-date-toggle"
+              value={editDate}
+              open={editDateFieldOpen}
+              onToggle={() => setEditDateFieldOpen(o => !o)}
+              label="Entry date"
+            />
+            {editDateFieldOpen && (
+              <>
+                <DateEntryField
+                  value={editDate}
+                  onChangeDate={setEditDate}
+                  a11yLabel="Entry date"
+                />
+                <Pressable
+                  onPress={() => setEditDateFieldOpen(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done changing entry date"
+                >
+                  <Text style={styles.cancelText}>Done</Text>
+                </Pressable>
+              </>
+            )}
+          </>
+        )}
       </Card>
 
       {isHistoryFirstLoad ? <WeightSkeleton /> : historyUnavailable ? null : (
@@ -711,6 +784,19 @@ const createStyles = (colors) => StyleSheet.create({
   pickerText: {
     fontSize: 16,
     color: colors.text,
+  },
+  // Compact secondary disclosure row (#764): sits below the primary Save/
+  // Update action, minHeight 44 for the touch target, no card/border so it
+  // reads as secondary rather than competing with the primary action.
+  dateDisclosureRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  dateDisclosureText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   trendsCardMerged: {
     padding: 0,

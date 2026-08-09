@@ -529,7 +529,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -605,7 +604,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload,
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: true,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -667,7 +665,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -745,7 +742,10 @@ describe('Log deload date web fallback renders a DOM date input (#314)', () => {
   });
 
   test('branches the deload date control on Platform.OS === "web"', () => {
-    expect(editorSrc).toMatch(/Platform\.OS\s*===\s*'web'\s*&&\s*editingDeloadHasLinkedRecord/);
+    // The web/native branch renders only once the linked-record safety
+    // boundary (editingDeloadHasLinkedRecord) has already gated the reveal
+    // (#764: the compact "Date · <value>" row).
+    expect(editorSrc).toMatch(/editingDeloadHasLinkedRecord\s*&&\s*dateFieldOpen[\s\S]{0,400}Platform\.OS\s*===\s*'web'/);
   });
 
   test('web path renders a real <input type="date"> via WebDateInput', () => {
@@ -764,7 +764,7 @@ describe('Log deload date web fallback renders a DOM date input (#314)', () => {
   });
 
   test('native Android path keeps the Pressable + DateTimePicker modal', () => {
-    expect(editorSrc).toMatch(/onPress=\{editingDeloadHasLinkedRecord\s*\?\s*\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
+    expect(editorSrc).toMatch(/onPress=\{\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
     expect(editorSrc).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
   });
 });
@@ -865,7 +865,6 @@ function ControlledLogScreen(props) {
       isCollapsed={false}
       toggleCollapsed={jest.fn()}
       onSaveWorkout={jest.fn()}
-      deloadDateEditEnabled={true}
       onCheckInPrompt={jest.fn()}
       {...props}
     />
@@ -1049,9 +1048,8 @@ describe('Undo escape hatch: integration tests', () => {
           onImport={jest.fn()}
           fatigueMultiplier={1}
           onUpdateFatigueMultiplier={jest.fn()}
-          weightDateEditEnabled={true}
+         
           onUpdateWeightDateEditEnabled={jest.fn()}
-          deloadDateEditEnabled={true}
           onUpdateDeloadDateEditEnabled={jest.fn()}
         />
       );
@@ -1320,6 +1318,14 @@ describe('Undo escape hatch: integration tests', () => {
       editBtn.props.onPress();
     });
 
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
+    });
+
     // Find the session number input and change its value to 10
     const textInputs = root.findAllByType('TextInput');
     const ordinalInput = textInputs.find(ti => ti.props.placeholder === 'Session number');
@@ -1415,6 +1421,14 @@ describe('Undo escape hatch: integration tests', () => {
     expect(editBtn).toBeTruthy();
     render.act(() => {
       editBtn.props.onPress();
+    });
+
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
     });
 
     // Find session number input and clear it
@@ -2038,7 +2052,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2106,7 +2119,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent,
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2322,7 +2334,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent,
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2381,7 +2392,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -4527,7 +4537,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4566,7 +4575,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test Routine"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4605,7 +4613,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4649,7 +4656,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={true}
           workoutNoteTitle="Test"
           editingTitle="Deload: 2026-07-23"
-          deloadDateEditEnabled={true}
           editingDeloadHasLinkedRecord={true}
           deloadEditDate="2026-07-23"
           deloadEditOrdinal="5"
@@ -4663,6 +4669,15 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
       );
     });
     const root = component.root;
+
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
+    });
+
     const textInputs = root.findAllByType('TextInput');
 
     // Find the session number input
@@ -4709,7 +4724,6 @@ describe('LogScreenEditorCard workout syntax help button', () => {
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -5073,9 +5087,8 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
           onImport={jest.fn()}
           fatigueMultiplier={1}
           onUpdateFatigueMultiplier={jest.fn()}
-          weightDateEditEnabled={true}
+         
           onUpdateWeightDateEditEnabled={jest.fn()}
-          deloadDateEditEnabled={true}
           onUpdateDeloadDateEditEnabled={jest.fn()}
         />
       );

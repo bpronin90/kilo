@@ -239,16 +239,20 @@ describe('WeightScreen edit and delete correction flows', () => {
       await updateBtn.props.onPress();
     });
 
-    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    // The date field defaults to today (unchanged) — an edit that never opens
+    // the compact "Date · <value>" row still threads the entry's own date.
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', '2026-05-24');
     // cancelEdit() triggers re-renders that pick up the updated entries
     expect(hasText(root, 'Editing entry')).toBe(false);
     expect(hasText(root, '190')).toBe(true);
     expect(hasText(root, '185 lb')).toBe(false);
   });
 
-  // Issue #312: with date editing enabled, an edit threads the corrected date
-  // through to update() and the refreshed row reflects the new date.
-  test('edit submit threads corrected date through update when date editing is enabled', async () => {
+  // Issue #312 (relocated to a compact secondary row by #764): an edit threads
+  // the corrected date through to update() and the refreshed row reflects the
+  // new date. The full date control is absent from the default layout — the
+  // compact "Date · <value>" row must be tapped first to reveal it.
+  test('edit submit threads corrected date through update after revealing the compact date row', async () => {
     let component;
     render.act(() => {
       component = render.create(
@@ -256,7 +260,6 @@ describe('WeightScreen edit and delete correction flows', () => {
           onSaveWeight={jest.fn()}
           errorMessage=""
           saving={false}
-          weightDateEditEnabled={true}
         />
       );
     });
@@ -266,6 +269,15 @@ describe('WeightScreen edit and delete correction flows', () => {
     const rowPressable = findPressableByText(root, '185');
     render.act(() => {
       rowPressable.props.onPress();
+    });
+
+    // The full date control is not on screen until the compact row is tapped.
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBe(0);
+
+    const toggle = root.findAllByProps({ testID: 'weight-edit-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => {
+      toggle.props.onPress();
     });
 
     // Open the edit date picker and choose an earlier, valid date
@@ -285,6 +297,42 @@ describe('WeightScreen edit and delete correction flows', () => {
 
     expect(mockUpdate).toHaveBeenCalledWith('e1', 185, 'morning', '2026-05-20');
     expect(hasText(root, 'Editing entry')).toBe(false);
+  });
+
+  // #764: tapping the compact "Date · <value>" row reveals the full date
+  // control, and tapping "Done" (or the row again) collapses it safely
+  // without discarding the weight/note the user already entered.
+  test('the compact date row reveals and collapses the full date control without losing other edits', () => {
+    let component;
+    render.act(() => {
+      component = render.create(
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
+      );
+    });
+    const root = component.root;
+
+    const rowPressable = findPressableByText(root, '185');
+    render.act(() => {
+      rowPressable.props.onPress();
+    });
+
+    const inputs = root.findAll(n => n.type === 'TextInput');
+    render.act(() => {
+      inputs[0].props.onChangeText('190');
+    });
+
+    const toggle = root.findAllByProps({ testID: 'weight-edit-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBeGreaterThan(0);
+
+    const doneBtn = root.findByProps({ accessibilityLabel: 'Done changing entry date' });
+    render.act(() => { doneBtn.props.onPress(); });
+    expect(root.findAll(n => n.props && n.props.accessibilityLabel === 'Entry date').length).toBe(0);
+
+    // The weight edit made while the date row was open is preserved.
+    const inputsAfter = root.findAll(n => n.type === 'TextInput');
+    expect(inputsAfter[0].props.value).toBe('190');
   });
 
   // Issue #596 (review follow-up): a rapid double-press on "Save weigh-in"
@@ -388,7 +436,7 @@ describe('WeightScreen edit and delete correction flows', () => {
       await updateBtn.props.onPress();
     });
 
-    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', '2026-05-24');
     expect(hasText(root, 'Editing entry')).toBe(true);
     const inputsAfter = root.findAll(n => n.type === 'TextInput');
     expect(inputsAfter[0].props.value).toBe('190');
@@ -425,7 +473,7 @@ describe('WeightScreen edit and delete correction flows', () => {
       await updateBtn.props.onPress();
     });
 
-    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', undefined);
+    expect(mockUpdate).toHaveBeenCalledWith('e1', 190, 'morning', '2026-05-24');
     expect(hasText(root, 'Editing entry')).toBe(true);
     const inputsAfter = root.findAll(n => n.type === 'TextInput');
     expect(inputsAfter[0].props.value).toBe('190');
@@ -663,12 +711,16 @@ describe('WeightScreen DateTimePicker onChange callbacks', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
 
-    // Open date picker
+    // Reveal the full date control from the compact "Date · <value>" row,
+    // then open the date picker.
+    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
     const dateBtn = root.findByProps({ accessibilityLabel: 'Weigh-in date' });
     render.act(() => {
       dateBtn.props.onPress();
@@ -1084,14 +1136,24 @@ describe('WeightScreen web date fallback (#314)', () => {
     useEntries.useWeightGoal.mockReturnValue({ goal: null, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
   });
 
-  test('renders a DOM date input instead of the native picker for new entries', () => {
+  test('renders a DOM date input instead of the native picker for new entries, once the compact date row is revealed', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
+    // The full date control (and its DOM input) is absent from the default
+    // high-frequency layout until the compact "Date · <value>" row is tapped.
+    expect(root.findAll(
+      n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
+    ).length).toBe(0);
+
+    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
+
     // Match the new-entry input specifically by its aria-label; the goal form
     // also renders a web date input ("Goal target date") when no goal is set.
     const dateInputs = root.findAll(
@@ -1106,10 +1168,13 @@ describe('WeightScreen web date fallback (#314)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={true} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
+    const toggle = root.findAllByProps({ testID: 'weight-new-date-toggle' })
+      .find(t => typeof t.props.onPress === 'function');
+    render.act(() => { toggle.props.onPress(); });
     const dateInput = root.find(
       n => n.type === 'input' && n.props.type === 'date' && n.props['aria-label'] === 'Weigh-in date'
     );
@@ -1156,8 +1221,7 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        // weightDateEditEnabled=false so the only date input on screen is the goal one.
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
@@ -1171,7 +1235,7 @@ describe('WeightGoalCard goal date web fallback (#404)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
@@ -1203,7 +1267,7 @@ describe('WeightHistoryList date filter chip touch targets (#404)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const root = component.root;
@@ -1232,7 +1296,7 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
@@ -1243,7 +1307,7 @@ describe('WeightHistoryList disclosure triangle convention (#393)', () => {
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const toggleBtn = component.root.findByProps({ accessibilityLabel: 'Collapse history' });
@@ -1268,7 +1332,7 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const filterBtn1 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });
@@ -1287,7 +1351,7 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const filterBtn2 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });
@@ -1306,7 +1370,7 @@ describe('WeightHistoryList date range cancel does not commit sentinel date (#39
     let component;
     render.act(() => {
       component = render.create(
-        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} weightDateEditEnabled={false} />
+        <ControlledWeightScreen onSaveWeight={jest.fn()} errorMessage="" saving={false} />
       );
     });
     const filterBtn3 = component.root.findByProps({ accessibilityLabel: 'Filter by date range' });

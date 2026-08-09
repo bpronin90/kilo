@@ -352,12 +352,13 @@ The real native app path now has a modular React Native shell:
   deloads expand inline in place like saved routines, expose inline edit/delete
   affordances, and delete from both stores together, while pre-#257
   history-only deloads remain visible as read-only inline expandable cards with
-  history-only delete. A persisted `Edit deload dates` toggle under More >
-  Settings optionally exposes a date picker while editing note-backed past
-  deloads; when enabled, changing the date now updates both the workout-note
-  `saved_at` date and the linked deload-history `completed_at` date so the
-  editor and analytics stay in sync, while legacy note-backed deloads without a
-  linked history row keep the date field read-only. The edit path still
+  history-only delete. A compact "Date · <value>" secondary row while editing
+  note-backed past deloads reveals the platform date picker on tap (#764,
+  replacing the removed `Edit deload dates` Settings toggle); changing the date
+  updates both the workout-note `saved_at` date and the linked deload-history
+  `completed_at` date so the editor and analytics stay in sync, while legacy
+  note-backed deloads without a linked history row keep the row shown but
+  disabled/unavailable rather than removed. The edit path still
   preserves the `Deload · ` title prefix invariant so deload records cannot
   silently reclassify into normal routines.
   Deleting any past deload recomputes the sessions-since-deload clock off the
@@ -549,11 +550,12 @@ The real native app path now has a modular React Native shell:
   `ErrorBanner` above the read view instead of a silent empty screen, and a
   successful Retry clears the banner.
 - `mobile/screens/WeightScreen.js` renders native weight/note inputs plus
-  direct history edit/delete controls for saved weight entries, including a
-  persisted opt-in date-edit path controlled from More > Settings: when the
-  `Edit weigh-in dates` toggle is on, both the new-entry form and the
-  existing-entry edit form expose an inline date picker capped at the local
-  calendar day, and those native picker changes now apply correctly on
+  direct history edit/delete controls for saved weight entries, including an
+  always-available date-edit path surfaced through a compact "Date · <value>"
+  secondary row below the Save/Update action (#764, replacing the removed
+  `Edit weigh-in dates` Settings toggle): tapping it reveals an inline date
+  picker capped at the local calendar day for both the new-entry form and the
+  existing-entry edit form, and those native picker changes apply correctly on
   physical devices through the canonical `DateTimePicker` `onChange`
   callback; new entries splice the chosen date onto the current
   time-of-day, and edited entries preserve their original time-of-day while
@@ -671,8 +673,11 @@ The real native app path now has a modular React Native shell:
   `Settings & Data` (`Settings`, `Data & Backup`), and `Help & Support`
   (`App Guide`, `About Kilo`). Redundant Log Workout and Log Weight quick actions
   are no longer shown there. The Settings screen groups its
-  controls into `Features`, `Reminders`, `Appearance`, `Units`, `Date Editing`,
-  and `Advanced`:
+  controls into `Features`, `Reminders`, `Appearance`, `Units`,
+  and `Advanced` (the `Date Editing` section and its `Edit weigh-in dates` /
+  `Edit deload dates` toggles were removed by #764 in favor of the always-
+  available, contextual "Date · <value>" rows on the Weight and Log/Deload
+  editors themselves):
   persisted `Fatigue tracking` and `Deload mode` switches let users disable
   those optional workout-side flows without deleting their saved check-ins,
   deload note, or deload history; `Daily weigh-in reminder` and `Workout day
@@ -685,10 +690,10 @@ The real native app path now has a modular React Native shell:
   persists locally, and repaints the whole app immediately (see the appearance
   entry below); the `Weight unit` selector defaults to lb and lets
   users opt into kg display and entry while leaving stored values and workout
-  note text lb-canonical; `Edit weigh-in dates` governs whether the Weight tab
-  exposes date controls for new and existing weigh-ins; `Edit deload dates`
-  governs whether past deload records expose the opt-in date picker on the Log
-  tab, with those date edits now applying correctly on physical devices; and
+  note text lb-canonical; date edits for new/existing weigh-ins and for
+  past deload records are always reachable through their own compact
+  "Date · <value>" rows on the Weight and Log/Deload editors (#764), with
+  those date edits applying correctly on physical devices; and
   the same screen keeps a persisted fatigue-multiplier stepper plus reset
   control. The
   `User Profile` sub-screen lets users optionally save or later clear the

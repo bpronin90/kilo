@@ -15,7 +15,7 @@ const APPEARANCE_OPTIONS = [
   { value: 'system', label: 'System', a11yLabel: 'Follow the device appearance' },
 ];
 
-export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEnabled, onUpdateWeightDateEditEnabled, deloadDateEditEnabled, onUpdateDeloadDateEditEnabled }) {
+export function SettingsScreen({ onBack, multiplier, onUpdate }) {
   const styles = useThemedStyles(createStyles);
   const { preference: appearance, setPreference: setAppearance } = useTheme();
   const { fatigueTrackingEnabled, deloadModeEnabled, setFatigueTrackingEnabled, setDeloadModeEnabled } = useFeatureToggles();
@@ -133,34 +133,6 @@ export function SettingsScreen({ onBack, multiplier, onUpdate, weightDateEditEna
               <Text style={[styles.unitTabText, weightUnit === 'kg' && styles.unitTabTextActive]}>kg</Text>
             </Pressable>
           </View>
-        </View>
-      </Card>
-
-      <SectionTitle>Date Editing</SectionTitle>
-      <Card>
-        <View style={styles.settingRow}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit weigh-in dates</Text>
-            <Text style={styles.settingHelp}>Choose a custom date when logging or editing weight entries</Text>
-          </View>
-          <Switch
-            value={!!weightDateEditEnabled}
-            onValueChange={onUpdateWeightDateEditEnabled}
-            accessibilityLabel="Edit weigh-in dates"
-            accessibilityRole="switch"
-          />
-        </View>
-        <View style={[styles.settingRow, { marginBottom: 0 }]}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Edit deload dates</Text>
-            <Text style={styles.settingHelp}>Change the date on past deload records</Text>
-          </View>
-          <Switch
-            value={!!deloadDateEditEnabled}
-            onValueChange={onUpdateDeloadDateEditEnabled}
-            accessibilityLabel="Edit deload dates"
-            accessibilityRole="switch"
-          />
         </View>
       </Card>
 

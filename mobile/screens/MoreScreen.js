@@ -32,10 +32,6 @@ export function MoreScreen({
   onImport,
   fatigueMultiplier,
   onUpdateFatigueMultiplier,
-  weightDateEditEnabled,
-  onUpdateWeightDateEditEnabled,
-  deloadDateEditEnabled,
-  onUpdateDeloadDateEditEnabled,
   navSubviewView = null,
   navSubviewAnchor = null,
   navSubviewKey = 0,
@@ -127,10 +123,6 @@ export function MoreScreen({
         onBack={() => setActiveView('menu')}
         multiplier={fatigueMultiplier}
         onUpdate={onUpdateFatigueMultiplier}
-        weightDateEditEnabled={weightDateEditEnabled}
-        onUpdateWeightDateEditEnabled={onUpdateWeightDateEditEnabled}
-        deloadDateEditEnabled={deloadDateEditEnabled}
-        onUpdateDeloadDateEditEnabled={onUpdateDeloadDateEditEnabled}
       />
     );
   }

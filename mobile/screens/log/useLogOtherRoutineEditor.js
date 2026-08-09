@@ -48,7 +48,6 @@ export function useLogOtherRoutineEditor({
   selectCurrent,
   updateDeload,
   deleteDeloadNote,
-  deloadDateEditEnabled,
   autosaveCurrentTimerRef,
   handleSave,
   currentEditorMode,
@@ -183,10 +182,10 @@ export function useLogOtherRoutineEditor({
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingFullText.trim() !== '';
     if (!editingNote) return false;
     const textChanged = editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text;
-    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
+    const dateChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
-    const ordinalChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
+    const ordinalChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
       ? (() => {
           const r = deloadHistory.find(h => h.note_id === editingNoteId);
           const orig = r?.deload_session_ordinal != null ? String(r.deload_session_ordinal) : '';
@@ -194,7 +193,7 @@ export function useLogOtherRoutineEditor({
         })()
       : false;
     return textChanged || dateChanged || ordinalChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
+  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
   const viewingNote = useMemo(() =>
     viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
@@ -384,7 +383,7 @@ export function useLogOtherRoutineEditor({
             // stale selection so it can never leak into a future A/B note.
             patch.activeWeek = null;
           }
-          if (isEditingDeloadNote && deloadDateEditEnabled) {
+          if (isEditingDeloadNote) {
             const histRecord = editingDeloadHasLinkedRecord
               ? deloadHistory.find(r => r.note_id === editingNoteId)
               : null;
@@ -522,7 +521,7 @@ export function useLogOtherRoutineEditor({
       if (isValidActiveWeek(originalNoteState.activeWeek)) {
         patch.activeWeek = originalNoteState.activeWeek;
       }
-      if (isEditingDeloadNote && deloadDateEditEnabled) {
+      if (isEditingDeloadNote) {
         const histRecord = editingDeloadHasLinkedRecord
           ? deloadHistory.find(r => r.note_id === editingNoteId)
           : null;
@@ -575,7 +574,7 @@ export function useLogOtherRoutineEditor({
       setEditingTitle(originalNoteState.title);
       setEditingFullText(originalNoteState.text);
       setEditingActiveWeek(originalNoteState.activeWeek ?? null);
-      if (isEditingDeloadNote && deloadDateEditEnabled) {
+      if (isEditingDeloadNote) {
         setDeloadEditDate(originalNoteState.date);
         setDeloadEditOrdinal(originalNoteState.ordinal);
       }
