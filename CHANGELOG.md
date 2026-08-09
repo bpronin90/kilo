@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.104.0 - 2026-08-09
+
+- Issue #756: Added a routine to the Log screen without expanding routine management first, and set any listed routine as current with one tap right from its row.
+- Issue #757: Home now shows a compact recovery card while a recovery block is active — the current week, the routine it was baselined from, whether it counts toward your normal analytics, and a tap through to Analytics. When recovery data cannot be read, Home says the status is unknown and offers Retry recovery instead of implying nothing is recovering. The long explanation under "Include recovery notes in normal analytics" moved behind an info button on Log and Analytics.
+- Issue #758: Recovery analytics now opens on a week-aware summary — how many baseline exercises you have met — with the per-exercise evidence collapsed behind an "Exercise details" disclosure and filterable by week and status. "Volume" is now "Total work" and is explained as load × reps across completed working sets, and Load is explained as the heaviest completed working set that week.
+- Issue #763: Home's 1K Progress card now shares its progress bar track color, unit suffix, and per-lift value/label typography with the Analytics owner card, so the two surfaces read as the same family. Home keeps its smaller compact summary hero, and Analytics keeps its chart, Big 3 mapping, calculation explanation, and plate calculator.
+- Issue #764: Removed the Settings "Date Editing" toggles; editing a weigh-in, weight-entry, or linked deload date is now always reachable through a compact "Date · <value>" row on the Weight and Log/Deload editors themselves.
+
 ## 0.103.0 - 2026-08-07
 
 - Issue #736: Collapsed Deload cards no longer expose Edit or Delete; those actions now live in the expanded card body, matching the Log surface's progressive disclosure.
