@@ -335,6 +335,46 @@ specific label (`Loading your dashboard`, `Loading your workout notes`,
 `Loading your weight history`), so a screen reader announces a load in progress
 rather than reading a stack of empty containers.
 
+### Recovery Status Card (#757)
+
+Sits directly under the Weekly Summary hero, inside the populated-dashboard
+branch only — it explains what that hero's week label and classification counts
+currently mean, so it belongs to them rather than to a topic of its own.
+
+Rendering is decided by the AUTHORITATIVE recovery state
+(`useRecoveryBlockState`, via `useHomeRecoverySummary`), not by the
+ordinary-analytics boundary Home already gates its body on. The two are
+different reads and only the first can say whether a block is active:
+
+| Recovery state | Home renders |
+|---|---|
+| Verified, active block | Week line + baseline + inclusion context, and the `Recovery` handoff |
+| Verified, no active block | **Nothing.** Silence is a claim, and here a verified read supports it |
+| Verified but stale | The last-known-good summary above, plus `RECOVERY_STALE_MESSAGE` and `Retry recovery` |
+| First read in flight | `RECOVERY_LOADING_MESSAGE`, and **no** retry — nothing has failed |
+| First read failed | `RECOVERY_UNVERIFIED_MESSAGE` and `Retry recovery` — never silence |
+
+Copy for the three non-ready conditions is the recovery state contract's own
+(`hooks/entries/recoveryBlockHooks.js`), so Home, Log, and Analytics cannot
+describe the same condition differently, and `Retry recovery` is the exact
+control name that copy tells the user to tap (ui-design-rules §12).
+
+| Element | Property | Value |
+|---|---|---|
+| Card | padding / gap | `24` / `8` |
+| `Recovery` label | fontSize / fontWeight | `12` / `700` |
+| | textTransform / letterSpacing | `uppercase` / `0.5` |
+| | color | `colors.text` |
+| Week line | fontSize / fontWeight / color | `16` / `700` / `colors.text` |
+| Detail + status lines | fontSize / color | `13` / `colors.textMuted` (no fixed `lineHeight`) |
+| `Retry recovery` | minHeight | `44` (no fixed `height`) |
+| | label fontSize / fontWeight / color | `13` / `700` / `colors.accent` |
+
+The header handoff reuses the shared `sectionHeaderAction` treatment (label plus
+the plain SVG chevron) already used by `Exercise Progress` and `1K Progress`, and
+targets the Analytics tab with no section id: section-level targeting exists for
+`weight` and `strength` only, and that vocabulary is owned by `App.js`.
+
 ### Weekly Summary Hero Card
 
 | Element | Property | Value | Line |
@@ -657,6 +697,18 @@ Consequences to preserve:
   section on Log. A cold first read stays neutral (renders nothing) so a
   non-adopter never sees a Recovery card flash; a terminal first-read failure
   still shows the unknown state with `Retry recovery`.
+- `RecoveryInclusionToggle` (hosted by the active card on Log and by every
+  completed-block row on Analytics) states `Include recovery notes in normal
+  analytics` and nothing else by default. The explanation moved behind an
+  `info-outline` info button beside the label (#757): 16dp glyph with
+  `hitSlop: 14` for a 44dp target, `accessibilityState={{ expanded }}`, and an
+  accessible name that names the block so one row's button is distinguishable
+  from the next. The disclosed paragraph describes what turning the switch ON
+  does, names every surface it changes, and closes the two questions the
+  always-visible copy existed to answer (the notes stay in Recovery Analytics,
+  and stay editable). Disclosure state is per mounted control and is not
+  persisted. Switch behavior, accessible names, and the error banner are
+  unchanged.
 - Relocated controls keep their existing style objects — the pill
   (`inlineSwitchButton`, `minHeight: 44`) and the shared `Button` variants
   (`switchButton` / `deleteButton`) are unchanged.

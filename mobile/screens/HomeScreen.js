@@ -5,7 +5,12 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary } from '../hooks/useEntries';
-import { deriveHomeDashboardData, useHomeNormalNotes } from './home/homeDashboardData';
+import {
+  deriveHomeDashboardData,
+  useHomeNormalNotes,
+  useHomeRecoverySummary,
+  HOME_RECOVERY_STATUS,
+} from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
@@ -200,6 +205,122 @@ function HomeSkeleton() {
   );
 }
 
+// Active-recovery status on Home (#757).
+//
+// Home's aggregates already change meaning when a recovery block is running —
+// the classification counts and the 1K total are derived from a population that
+// may be withholding that block's sessions — but the screen said nothing about
+// it, so the user had to open Analytics to find out why the numbers moved.
+//
+// Three renderings, one per status, and the difference between them is the
+// whole point (see `useHomeRecoverySummary`):
+//
+//   - verified with an active block → the compact summary and the handoff;
+//   - verified with none            → NOTHING. Silence is a claim, and here it
+//                                     is a claim a verified read supports;
+//   - loading / unverified          → the state contract's own message, plus
+//                                     `Retry recovery` for the failure. Never
+//                                     silence: an unread snapshot is empty for
+//                                     the same reason a recovery-free account
+//                                     is, and only one of those means "no
+//                                     recovery".
+//
+// The handoff is `onNavigate('Analytics')` — the Analytics tab, where the
+// Recovery section lives. Section-level targeting exists for `weight` and
+// `strength` only, and its vocabulary is owned by App.js/AnalyticsScreen.js,
+// both outside this issue's scope.
+export function HomeRecoverySummary({ summary, onNavigate }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+
+  if (!summary) return null;
+  const { status, stale, message, active, title, weekNumber, weekComplete, includedInNormalAnalytics } = summary;
+
+  // Verified, and nothing is running. This is the one state where rendering
+  // nothing is true.
+  if (status === HOME_RECOVERY_STATUS.READY && !active) return null;
+
+  const isLoadingStatus = status === HOME_RECOVERY_STATUS.LOADING;
+  // Retry belongs to the two conditions whose message names it, and to neither
+  // a clean read nor a load still in flight.
+  const canRetry = !!summary.retry && !!message && !isLoadingStatus;
+
+  const weekLine = weekNumber === null
+    ? 'No weeks logged yet'
+    : weekComplete
+      ? `Week ${weekNumber} complete`
+      : `Week ${weekNumber} in progress`;
+  const baselineLine = `Baselined from ${title}`;
+  const inclusionLine = includedInNormalAnalytics
+    ? 'Counted in your normal analytics.'
+    : 'Not counted in your normal analytics.';
+
+  return (
+    // Wrapped rather than testID'd directly: Card takes only children/style/
+    // tone/onPress and would swallow the prop.
+    <View testID="home-recovery-summary">
+      <Card style={styles.recoveryCard}>
+        {active ? (
+          <>
+            <Pressable
+              testID="home-recovery-link"
+              onPress={() => onNavigate('Analytics')}
+              style={[styles.sectionHeaderAction, styles.sectionHeaderActionStart]}
+              hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityLabel="Recovery"
+              accessibilityHint="Opens the Analytics tab, where the Recovery details live"
+            >
+              <Text style={[styles.recoveryLabel, styles.sectionHeaderLabel]}>Recovery</Text>
+              <View style={styles.sectionHeaderChevron}>
+                <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" accessible={false}><Path d="M9 5l7 7-7 7" /></Svg>
+              </View>
+            </Pressable>
+            {/* One announcement for the whole summary: three separate nodes
+                read as three unrelated fragments. */}
+            <View
+              accessible
+              accessibilityLabel={`${weekLine}. ${baselineLine}. ${inclusionLine}`}
+            >
+              <Text style={styles.recoveryWeekLine}>{weekLine}</Text>
+              <Text style={styles.recoveryDetailLine}>{baselineLine}</Text>
+              <Text style={styles.recoveryDetailLine}>{inclusionLine}</Text>
+            </View>
+          </>
+        ) : (
+          <View
+            accessible
+            accessibilityRole={isLoadingStatus ? 'progressbar' : 'alert'}
+            accessibilityLabel={`Recovery. ${message}`}
+          >
+            <Text style={styles.recoveryLabel}>Recovery</Text>
+            <Text style={styles.recoveryStatusLine}>{message}</Text>
+          </View>
+        )}
+        {/* The stale case keeps the last-known-good summary above and adds the
+            reason it may be behind, rather than replacing it. */}
+        {active && message ? (
+          <Text style={styles.recoveryStatusLine} accessibilityLiveRegion="polite">{message}</Text>
+        ) : null}
+        {canRetry ? (
+          <Pressable
+            testID="home-recovery-retry"
+            onPress={() => summary.retry()}
+            style={styles.recoveryAction}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Retry recovery"
+          >
+            {/* Exactly the name every recovery message tells the user to tap
+                (ui-design-rules §12). */}
+            <Text style={styles.recoveryActionText}>Retry recovery</Text>
+          </Pressable>
+        ) : null}
+      </Card>
+    </View>
+  );
+}
+
 export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, onNavigate, loading, loadError = false, onRetryLoad }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -227,6 +348,13 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
   // the current-routine card is about — is deliberately untouched: an excluded
   // recovery week stays visible and editable.
   const { normalNotes, recoveryBoundaryReady } = useHomeNormalNotes(notes);
+
+  // Recovery STATUS is a separate question from the analytics boundary above
+  // (#757). It is deliberately not folded into `isLoading`: the authoritative
+  // read can fail terminally while the boundary read succeeded, and holding the
+  // whole dashboard on it would leave Home permanently blank over a condition
+  // this card can state honestly on its own.
+  const recoverySummary = useHomeRecoverySummary();
 
   const noteSectionsList = useMemo(
     () => normalNotes.map(n => getNoteSections(n)),
@@ -500,6 +628,11 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
               </Pressable>
             </View>
           </Card>
+
+          {/* ══ TIER 1b: Recovery status ══ */}
+          {/* Directly under the hero because it is what the hero's week label
+              and classification counts mean right now, not a separate topic. */}
+          <HomeRecoverySummary summary={recoverySummary} onNavigate={onNavigate} />
 
           {/* ══ TIER 2: Weight Goal ══ */}
           {dashboardData.goalInfo ? (() => {
@@ -893,6 +1026,45 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+  // Recovery status card (#757). Same padding as the other tiers; the label
+  // reuses the uppercase section treatment already used by the Exercise
+  // Progress and 1K headers, so the handoff reads as one of that family.
+  recoveryCard: {
+    padding: 24,
+    gap: 8,
+  },
+  recoveryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recoveryWeekLine: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  recoveryDetailLine: {
+    fontSize: 13,
+    color: colors.textMuted,
+    // No fixed lineHeight: an enlarged line must grow its own box.
+    marginTop: 2,
+  },
+  recoveryStatusLine: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  recoveryAction: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  recoveryActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
   },
   goalCard: {
     padding: 24,

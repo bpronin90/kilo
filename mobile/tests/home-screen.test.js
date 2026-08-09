@@ -1295,3 +1295,388 @@ describe('Home local read failures (#737 review)', () => {
     })).not.toThrow();
   });
 });
+
+// ── Home recovery summary and the compact inclusion help (#757) ───────────────
+//
+// Two halves of one question: what Home is allowed to SAY about recovery, and
+// how much of that explanation has to sit on screen permanently.
+//
+// The Home half is a truthfulness contract before it is a layout one. Rendering
+// nothing means "no recovery block is active", and an unread snapshot is empty
+// for exactly the same reason a recovery-free account is — so silence is only
+// permitted once a read has actually verified it.
+describe('Home recovery summary (#757)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const { HomeScreen } = require('../screens/HomeScreen');
+  const useEntriesModule = require('../hooks/useEntries');
+  const hooks = require('../hooks/entries/recoveryBlockHooks');
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  const BLOCKS_KEY = 'kilo_recovery_blocks';
+  const WEEKS_KEY = 'kilo_recovery_block_weeks';
+  const JOURNAL_KEY = 'kilo_recovery_operation_journal_v1';
+
+  const NOTE = {
+    id: 'n1',
+    title: 'Routine A',
+    raw_text: 'Monday\n+Lifting\n-Bench\n135 5,5,5',
+    saved_at: '2026-06-01T12:00:00.000Z',
+  };
+  const WEEK_NOTE = {
+    id: 'nr1',
+    title: 'Recovery Week 1',
+    raw_text: 'Monday\n+Lifting\n-Bench\n45 5',
+    saved_at: '2026-06-08T12:00:00.000Z',
+  };
+
+  const block = (over = {}) => ({
+    id: 'rb1',
+    baseline_note_id: NOTE.id,
+    baseline_note_title: 'Routine A',
+    baseline: { version: 1, exercises: [] },
+    include_in_normal_analytics: false,
+    started_at: '2026-06-08T12:00:00.000Z',
+    completed_at: null,
+    updated_at: '2026-06-08T12:00:00.000Z',
+    deleted_at: null,
+    ...over,
+  });
+  const week = (over = {}) => ({
+    id: 'rw1',
+    block_id: 'rb1',
+    note_id: WEEK_NOTE.id,
+    week_number: 1,
+    completed_at: null,
+    updated_at: '2026-06-08T12:00:00.000Z',
+    deleted_at: null,
+    ...over,
+  });
+
+  // Records readable; everything else absent. `null` for the operation journal
+  // is an empty journal, so reconciliation is a clean no-op.
+  const storageWith = ({ blocks = [], weeks = [], fail = null } = {}) => async (key) => {
+    if (fail && fail.includes(key)) throw new Error('storage unavailable');
+    if (key === BLOCKS_KEY) return JSON.stringify(blocks);
+    if (key === WEEKS_KEY) return JSON.stringify(weeks);
+    return null;
+  };
+
+  const props = (over = {}) => ({
+    weightEntries: [],
+    workoutNote: NOTE,
+    notes: [NOTE, WEEK_NOTE],
+    successMessage: '',
+    onNavigate: jest.fn(),
+    loading: false,
+    ...over,
+  });
+
+  const texts = (component) => component.root.findAll(n => n.type === 'Text')
+    .map(n => (Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? '')));
+  const hasText = (component, needle) => texts(component).some(t => t.includes(needle));
+  const has = (component, testID) => component.root.findAllByProps({ testID }).length > 0;
+
+  let mounted;
+  const mount = async (over) => {
+    let component;
+    await render.act(async () => { component = render.create(<HomeScreen {...props(over)} />); });
+    mounted = component;
+    return component;
+  };
+
+  // Home paints its dashboard once the ordinary-analytics BOUNDARY is verified
+  // (#699), which is a different read from the AUTHORITATIVE recovery state
+  // this card reports: the boundary read asks storage for the records, while
+  // the authoritative pass reconciles the recovery operation journal first. An
+  // unreadable journal separates the two exactly as the shipped code does —
+  // dashboard populated, recovery status genuinely unknown — which is the
+  // situation the loading and unknown renderings exist for.
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    hooks._resetRecoveryAnalyticsFilterCache();
+    useEntriesModule.useWeightGoal.mockReturnValue({ goal: null, loading: false, save: jest.fn(), clear: jest.fn(), archiveGoal: jest.fn() });
+    useEntriesModule.useTrackedLifts.mockReturnValue({ trackedLifts: {}, loading: false, save: jest.fn(), toggle: jest.fn() });
+  });
+
+  afterEach(async () => {
+    if (mounted) await render.act(async () => { mounted.unmount(); });
+    mounted = null;
+    AsyncStorage.getItem.mockReset();
+    hooks._resetRecoveryAnalyticsFilterCache();
+  });
+
+  test('an active block gives Home a compact summary with the current week and its context', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount();
+
+    expect(has(component, 'home-recovery-summary')).toBe(true);
+    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, 'Baselined from Routine A')).toBe(true);
+    // The inclusion state is context, not decoration: Home's own classification
+    // counts and 1K total are derived from a population this preference decides.
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(true);
+  });
+
+  test('the summary follows the block’s own week and inclusion state', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ include_in_normal_analytics: true })],
+      weeks: [
+        week(),
+        week({ id: 'rw2', note_id: 'nr2', week_number: 2, completed_at: '2026-06-22T12:00:00.000Z' }),
+      ],
+    }));
+    const component = await mount();
+
+    expect(hasText(component, 'Week 2 complete')).toBe(true);
+    expect(hasText(component, 'Counted in your normal analytics.')).toBe(true);
+    expect(hasText(component, 'Not counted in your normal analytics.')).toBe(false);
+  });
+
+  test('the summary routes to the Analytics tab, where Recovery detail lives', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const onNavigate = jest.fn();
+    const component = await mount({ onNavigate });
+
+    const link = component.root.findByProps({ testID: 'home-recovery-link' });
+    expect(link.props.accessibilityRole).toBe('button');
+    expect(link.props.accessibilityLabel).toBe('Recovery');
+    render.act(() => { link.props.onPress(); });
+    expect(onNavigate).toHaveBeenCalledWith('Analytics');
+  });
+
+  test('a completed block is not an active one, and Home says nothing at all', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block({ completed_at: '2026-07-01T12:00:00.000Z' })],
+      weeks: [week({ completed_at: '2026-07-01T12:00:00.000Z' })],
+    }));
+    const component = await mount();
+
+    // Verified read, nothing running: silence is the true answer here, and the
+    // only state in which it is.
+    expect(has(component, 'home-recovery-summary')).toBe(false);
+  });
+
+  test('a verified account with no recovery records shows no recovery surface', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({}));
+    const component = await mount();
+
+    expect(has(component, 'home-recovery-summary')).toBe(false);
+  });
+
+  test('an unreadable recovery journal is reported as unknown, never as "no recovery"', async () => {
+    // The authoritative read fails while the rest of Home loads normally, so
+    // the dashboard still paints — and the one thing it cannot honestly claim
+    // is that nothing is recovering.
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()], weeks: [week()], fail: [JOURNAL_KEY],
+    }));
+    const component = await mount();
+
+    expect(has(component, 'home-recovery-summary')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(true);
+    expect(hasText(component, 'Week 1 in progress')).toBe(false);
+  });
+
+  test('the unknown state offers exactly the control its message names', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({
+      blocks: [block()], weeks: [week()], fail: [JOURNAL_KEY],
+    }));
+    const component = await mount();
+
+    const retry = component.root.findByProps({ testID: 'home-recovery-retry' });
+    // ui-design-rules §12: the copy says "Tap Retry recovery", so a control
+    // with that exact accessible name has to exist.
+    expect(hooks.RECOVERY_UNVERIFIED_MESSAGE).toContain('Retry recovery');
+    expect(retry.props.accessibilityRole).toBe('button');
+    expect(retry.props.accessibilityLabel).toBe('Retry recovery');
+
+    // And it re-runs the read rather than being decorative: with storage
+    // healthy again, the same press resolves the unknown state.
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    await render.act(async () => { retry.props.onPress(); });
+
+    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_UNVERIFIED_MESSAGE)).toBe(false);
+  });
+
+  test('a failed refresh keeps the last verified summary and says why it may be behind', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount();
+    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+
+    AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+    await render.act(async () => { await hooks.refreshRecoveryState(); });
+
+    // Stale, not blank and not terminal: last-known-good stays on screen under
+    // the reason the newest read did not land.
+    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
+    expect(has(component, 'home-recovery-retry')).toBe(true);
+  });
+
+  test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {
+    let releaseRecoveryRead;
+    const gate = new Promise(resolve => { releaseRecoveryRead = resolve; });
+    AsyncStorage.getItem.mockImplementation(async (key) => {
+      if (key === JOURNAL_KEY) await gate;
+      if (key === BLOCKS_KEY) return JSON.stringify([block()]);
+      if (key === WEEKS_KEY) return JSON.stringify([week()]);
+      return null;
+    });
+
+    const component = await mount({ loading: false });
+    expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(true);
+    expect(has(component, 'home-recovery-retry')).toBe(false);
+
+    await render.act(async () => { releaseRecoveryRead(); await gate; });
+    expect(hasText(component, 'Week 1 in progress')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_LOADING_MESSAGE)).toBe(false);
+  });
+
+  test('the summary declares no fixed height or line box that enlarged text could overflow', async () => {
+    AsyncStorage.getItem.mockImplementation(storageWith({ blocks: [block()], weeks: [week()] }));
+    const component = await mount();
+
+    const flat = (style) => (Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : (style || {}));
+    const card = component.root.findByProps({ testID: 'home-recovery-summary' });
+    for (const node of card.findAll(n => n.type === 'Text' || n.type === 'View')) {
+      const style = flat(node.props.style);
+      expect(style.height).toBeUndefined();
+      if (node.type === 'Text') expect(style.lineHeight).toBeUndefined();
+    }
+    // The one press target inside the card meets the touch minimum.
+    const link = component.root.findByProps({ testID: 'home-recovery-link' });
+    expect(flat(link.props.style).minHeight).toBeGreaterThanOrEqual(44);
+  });
+});
+
+// The inclusion control's explanation moved behind an info disclosure (#757).
+// Rendered directly: the same control is hosted by the active card on Log and
+// by every completed-block row on Analytics, and the behavior under test
+// belongs to the control, not to either host.
+describe('Recovery inclusion help disclosure (#757)', () => {
+  const React = require('react');
+  const render = require('react-test-renderer');
+  const {
+    RecoveryInclusionToggle,
+    RECOVERY_INCLUSION_LABEL,
+    RECOVERY_INCLUSION_HELP,
+  } = require('../components/RecoveryInclusionToggle');
+
+  const BLOCK = {
+    id: 'rb1',
+    baseline_note_title: 'Routine A',
+    include_in_normal_analytics: false,
+  };
+
+  const mount = async (over = {}) => {
+    let component;
+    await render.act(async () => {
+      component = render.create(
+        <RecoveryInclusionToggle block={BLOCK} onToggle={jest.fn()} {...over} />
+      );
+    });
+    return component;
+  };
+
+  const helpText = (component) => component.root.findAll(
+    n => typeof n.type === 'string' && n.props.testID === 'recovery-inclusion-help-text-rb1'
+  );
+
+  test('the explanation is not on screen until it is asked for', async () => {
+    const component = await mount();
+
+    expect(helpText(component).length).toBe(0);
+    // The control itself is unchanged — only the paragraph under it moved.
+    const label = component.root.findAll(n => n.type === 'Text'
+      && String(n.props.children ?? '') === RECOVERY_INCLUSION_LABEL);
+    expect(label.length).toBe(1);
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('the disclosure opens and closes, and announces its state both ways', async () => {
+    const component = await mount();
+    const toggle = () => component.root.findByProps({ testID: 'recovery-inclusion-help-rb1' });
+
+    expect(toggle().props.accessibilityRole).toBe('button');
+    expect(toggle().props.accessibilityState).toEqual({ expanded: false });
+    // The block title disambiguates one row's help button from the next on
+    // Analytics, where a row exists per completed block.
+    expect(toggle().props.accessibilityLabel).toContain('Routine A');
+    expect(toggle().props.accessibilityLabel).toContain('Show');
+
+    await render.act(async () => { toggle().props.onPress(); });
+    expect(helpText(component).length).toBe(1);
+    expect(toggle().props.accessibilityState).toEqual({ expanded: true });
+    expect(toggle().props.accessibilityLabel).toContain('Hide');
+
+    await render.act(async () => { toggle().props.onPress(); });
+    expect(helpText(component).length).toBe(0);
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('the explanation states what turning it on does, and what it does not do', async () => {
+    const component = await mount();
+    await render.act(async () => {
+      component.root.findByProps({ testID: 'recovery-inclusion-help-rb1' }).props.onPress();
+    });
+
+    const shown = String(helpText(component)[0].props.children);
+    expect(shown).toBe(RECOVERY_INCLUSION_HELP);
+    for (const surface of [
+      'normal analytics',
+      'classifications',
+      'overload signals',
+      'Kilo Max',
+      '1K',
+      'Home summaries',
+    ]) {
+      expect(shown).toContain(surface);
+    }
+    // The two questions the paragraph exists to close: the notes are not taken
+    // out of Recovery, and they stay editable either way.
+    expect(shown).toContain('Recovery Analytics');
+    expect(shown).toContain('editable');
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('inclusion behavior, accessible names, and the error state are untouched', async () => {
+    const onToggle = jest.fn();
+    const component = await mount({
+      block: { ...BLOCK, include_in_normal_analytics: true },
+      busy: true,
+      error: 'Could not change this block’s analytics setting.',
+      onToggle,
+    });
+
+    const sw = component.root.findByProps({ testID: 'recovery-inclusion-switch-rb1' });
+    expect(sw.props.accessibilityLabel).toBe(`${RECOVERY_INCLUSION_LABEL}: Routine A`);
+    expect(sw.props.accessibilityState).toEqual({ checked: true, disabled: false });
+    expect(sw.props.accessibilityHint).toContain('Saving.');
+    expect(sw.props.value).toBe(true);
+
+    render.act(() => { sw.props.onValueChange(false); });
+    expect(onToggle).toHaveBeenCalledWith({ ...BLOCK, include_in_normal_analytics: true }, false);
+
+    const errors = component.root.findAll(n => n.type === 'Text'
+      && String(n.props.children ?? '').includes('Could not change this block'));
+    expect(errors.length).toBe(1);
+
+    await render.act(async () => { component.unmount(); });
+  });
+
+  test('the help button carries a 44dp target without forcing a 44dp row', async () => {
+    const component = await mount();
+    const toggle = component.root.findByProps({ testID: 'recovery-inclusion-help-rb1' });
+
+    // 16dp glyph + 14dp hitSlop on each side = 44dp.
+    expect(toggle.props.hitSlop).toBe(14);
+
+    await render.act(async () => { component.unmount(); });
+  });
+});
