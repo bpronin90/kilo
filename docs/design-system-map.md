@@ -349,8 +349,8 @@ different reads and only the first can say whether a block is active:
 | Recovery state | Home renders |
 |---|---|
 | Verified, active block | Week line + baseline + inclusion context, and the `Recovery` handoff |
-| Verified, no active block | **Nothing.** Silence is a claim, and here a verified read supports it |
-| Verified but stale | The last-known-good summary above, plus `RECOVERY_STALE_MESSAGE` and `Retry recovery` |
+| Verified and current, no active block | **Nothing.** Silence is a claim, and here a verified *current* read supports it |
+| Verified but stale | `RECOVERY_STALE_MESSAGE` and `Retry recovery` — over the last-known-good summary when one was cached, and on its own when none was. A stale snapshot that happened to cache no active block is still one whose newest refresh failed |
 | First read in flight | `RECOVERY_LOADING_MESSAGE`, and **no** retry — nothing has failed |
 | First read failed | `RECOVERY_UNVERIFIED_MESSAGE` and `Retry recovery` — never silence |
 
@@ -700,9 +700,11 @@ Consequences to preserve:
 - `RecoveryInclusionToggle` (hosted by the active card on Log and by every
   completed-block row on Analytics) states `Include recovery notes in normal
   analytics` and nothing else by default. The explanation moved behind an
-  `info-outline` info button beside the label (#757): 16dp glyph with
-  `hitSlop: 14` for a 44dp target, `accessibilityState={{ expanded }}`, and an
-  accessible name that names the block so one row's button is distinguishable
+  `info-outline` info button beside the label (#757): a 16dp glyph centered in
+  a real `44 x 44` Pressable box — **not** a `hitSlop`, which React Native
+  clips at the parent's bounds and which would therefore claim a target this
+  one-text-line-tall row never had — plus `accessibilityState={{ expanded }}`
+  and an accessible name that names the block so one row's button is distinguishable
   from the next. The disclosed paragraph describes what turning the switch ON
   does, names every surface it changes, and closes the two questions the
   always-visible copy existed to answer (the notes stay in Recovery Analytics,

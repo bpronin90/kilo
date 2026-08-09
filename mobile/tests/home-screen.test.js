@@ -1516,6 +1516,22 @@ describe('Home recovery summary (#757)', () => {
     expect(has(component, 'home-recovery-retry')).toBe(true);
   });
 
+  test('a failed refresh still warns when the cached snapshot held no active block', async () => {
+    // The subtle one: `ready` stays true and `stale` is set, so a card that
+    // keyed silence on "verified and nothing active" alone would drop the
+    // warning AND the retry, presenting last-known-good as a fresh result.
+    AsyncStorage.getItem.mockImplementation(storageWith({}));
+    const component = await mount();
+    expect(has(component, 'home-recovery-summary')).toBe(false);
+
+    AsyncStorage.getItem.mockImplementation(storageWith({ fail: [BLOCKS_KEY, WEEKS_KEY] }));
+    await render.act(async () => { await hooks.refreshRecoveryState(); });
+
+    expect(has(component, 'home-recovery-summary')).toBe(true);
+    expect(hasText(component, hooks.RECOVERY_STALE_MESSAGE)).toBe(true);
+    expect(has(component, 'home-recovery-retry')).toBe(true);
+  });
+
   test('a still-unresolved read reports loading, and offers no retry for a read that has not failed', async () => {
     let releaseRecoveryRead;
     const gate = new Promise(resolve => { releaseRecoveryRead = resolve; });
@@ -1670,12 +1686,17 @@ describe('Recovery inclusion help disclosure (#757)', () => {
     await render.act(async () => { component.unmount(); });
   });
 
-  test('the help button carries a 44dp target without forcing a 44dp row', async () => {
+  test('the help button’s 44dp target is its own box, not a hit slop', async () => {
     const component = await mount();
     const toggle = component.root.findByProps({ testID: 'recovery-inclusion-help-rb1' });
 
-    // 16dp glyph + 14dp hitSlop on each side = 44dp.
-    expect(toggle.props.hitSlop).toBe(14);
+    // A hit slop is clipped at the parent's bounds, and this parent is one text
+    // line tall in the common case — so the target has to be real geometry.
+    const style = [].concat(toggle.props.style ?? []).reduce(
+      (acc, s) => (s ? Object.assign(acc, s) : acc), {}
+    );
+    expect(style.minWidth).toBeGreaterThanOrEqual(44);
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
 
     await render.act(async () => { component.unmount(); });
   });

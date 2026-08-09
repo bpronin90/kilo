@@ -5,12 +5,7 @@ import { ScreenShell } from '../components/ScreenShell';
 import { Card, HeroMetric, LineChart, getSessionTone, Button, ErrorBanner } from '../components/UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { CLOUD_SYNC_NOTICE, useWeightGoal, useTrackedLifts, getNoteSections, useCloudSyncSummary } from '../hooks/useEntries';
-import {
-  deriveHomeDashboardData,
-  useHomeNormalNotes,
-  useHomeRecoverySummary,
-  HOME_RECOVERY_STATUS,
-} from './home/homeDashboardData';
+import { deriveHomeDashboardData, useHomeNormalNotes, useHomeRecoverySummary, HOME_RECOVERY_STATUS } from './home/homeDashboardData';
 import { useWeightUnit } from '../lib/unitPreference';
 import { displayWeight, formatBodyweightValue, displayChartSeries } from '../lib/units';
 
@@ -236,9 +231,13 @@ export function HomeRecoverySummary({ summary, onNavigate }) {
   if (!summary) return null;
   const { status, stale, message, active, title, weekNumber, weekComplete, includedInNormalAnalytics } = summary;
 
-  // Verified, and nothing is running. This is the one state where rendering
-  // nothing is true.
-  if (status === HOME_RECOVERY_STATUS.READY && !active) return null;
+  // Verified, nothing is running, and the answer is CURRENT. This is the one
+  // state where rendering nothing is true. `!stale` is load-bearing: a stale
+  // snapshot that happened to cache no active block is still a snapshot whose
+  // newest refresh failed, and silently dropping the card there would present
+  // a last-known-good "nothing is recovering" as a fresh verified one — and
+  // take the retry that resolves it down with the message.
+  if (status === HOME_RECOVERY_STATUS.READY && !active && !stale) return null;
 
   const isLoadingStatus = status === HOME_RECOVERY_STATUS.LOADING;
   // Retry belongs to the two conditions whose message names it, and to neither

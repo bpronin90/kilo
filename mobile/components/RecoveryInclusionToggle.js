@@ -47,12 +47,13 @@ export function RecoveryInclusionToggle({ block, disabled, busy, error, onToggle
             <Text style={styles.inclusionLabel}>{RECOVERY_INCLUSION_LABEL}</Text>
             {/* Icon-only, so the accessible name carries the whole meaning and
                 the block title disambiguates one row from the next on
-                Analytics. `hitSlop` supplies the 44dp target the 16dp glyph
-                cannot, without adding a 44dp row to every block. */}
+                Analytics. The 44dp target is the Pressable's OWN box, not
+                `hitSlop`: a touch slop is clipped at the parent's bounds, and
+                this parent is one text line tall in the common case, so slop
+                alone would have claimed a target the control never had. */}
             <Pressable
               testID={`recovery-inclusion-help-${block.id}`}
               onPress={() => setHelpShown(shown => !shown)}
-              hitSlop={14}
               style={styles.inclusionHelpToggle}
               accessibilityRole="button"
               accessibilityState={{ expanded: helpShown }}
@@ -113,7 +114,8 @@ const createStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    columnGap: 6,
+    // No column gap: the info button's 44dp box already centers its 16dp glyph,
+    // so it carries 14dp of its own separation from the label.
     rowGap: 2,
   },
   inclusionLabel: {
@@ -124,6 +126,13 @@ const createStyles = (colors) => StyleSheet.create({
   },
   inclusionHelpToggle: {
     flexShrink: 0,
+    // A real box, not a hit slop. Losing the paragraph under every row frees
+    // far more vertical space than this reclaims, so the control row is still
+    // markedly shorter than it was.
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inclusionHelp: {
     fontSize: 12,
