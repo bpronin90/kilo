@@ -48,7 +48,6 @@ export function useLogOtherRoutineEditor({
   selectCurrent,
   updateDeload,
   deleteDeloadNote,
-  deloadDateEditEnabled,
   autosaveCurrentTimerRef,
   handleSave,
   currentEditorMode,
@@ -74,6 +73,12 @@ export function useLogOtherRoutineEditor({
   // one note's selection into another's.
   const [viewingActiveWeek, setViewingActiveWeek] = useState(null);
   const [deloadEditDate, setDeloadEditDate] = useState('');
+  // Tracks whether the user actually interacted with the compact "Date ·
+  // <value>" disclosure (#764 feedback). deloadEditDate is seeded from the
+  // note's existing saved_at on open, so a title- or text-only edit must not
+  // fall into the date-handling branch below and stamp saved_at to noon —
+  // only an explicit user change should touch it.
+  const [deloadEditDateTouched, setDeloadEditDateTouched] = useState(false);
   const [showDeloadDatePicker, setShowDeloadDatePicker] = useState(false);
   const [deloadEditOrdinal, setDeloadEditOrdinal] = useState('');
 
@@ -183,10 +188,10 @@ export function useLogOtherRoutineEditor({
     if (editingNoteId === 'new') return editingTitle.trim() !== '' || editingFullText.trim() !== '';
     if (!editingNote) return false;
     const textChanged = editingTitle !== (editingNote.title || '') || editingFullText !== editingNote.raw_text;
-    const dateChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
+    const dateChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
       ? deloadEditDate !== (editingNote.saved_at?.slice(0, 10) ?? '')
       : false;
-    const ordinalChanged = isEditingDeloadNote && deloadDateEditEnabled && editingDeloadHasLinkedRecord
+    const ordinalChanged = isEditingDeloadNote && editingDeloadHasLinkedRecord
       ? (() => {
           const r = deloadHistory.find(h => h.note_id === editingNoteId);
           const orig = r?.deload_session_ordinal != null ? String(r.deload_session_ordinal) : '';
@@ -194,7 +199,7 @@ export function useLogOtherRoutineEditor({
         })()
       : false;
     return textChanged || dateChanged || ordinalChanged;
-  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadDateEditEnabled, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
+  }, [editingNoteId, editingNote, editingTitle, editingFullText, isEditingDeloadNote, deloadEditDate, deloadEditOrdinal, editingDeloadHasLinkedRecord, deloadHistory]);
 
   const viewingNote = useMemo(() =>
     viewingNoteId ? notes.find(n => n.id === viewingNoteId) : null
@@ -297,6 +302,7 @@ export function useLogOtherRoutineEditor({
     // editor never silently switches weeks on entry.
     setEditingActiveWeek(viewingHasABWeeks ? viewingEffectiveWeek : null);
     setDeloadEditDate(viewingNote.saved_at ? viewingNote.saved_at.slice(0, 10) : '');
+    setDeloadEditDateTouched(false);
     const _histRec = deloadHistory.find(r => r.note_id === viewingNote.id);
     const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
     setDeloadEditOrdinal(initialOrdinal);
@@ -320,6 +326,7 @@ export function useLogOtherRoutineEditor({
     const _persistedWeek = isValidActiveWeek(other.activeWeek) ? other.activeWeek : null;
     setEditingActiveWeek(_persistedWeek);
     setDeloadEditDate(other.saved_at ? other.saved_at.slice(0, 10) : '');
+    setDeloadEditDateTouched(false);
     const _histRec = deloadHistory.find(r => r.note_id === other.id);
     const initialOrdinal = _histRec?.deload_session_ordinal != null ? String(_histRec.deload_session_ordinal) : '';
     setDeloadEditOrdinal(initialOrdinal);
@@ -384,20 +391,22 @@ export function useLogOtherRoutineEditor({
             // stale selection so it can never leak into a future A/B note.
             patch.activeWeek = null;
           }
-          if (isEditingDeloadNote && deloadDateEditEnabled) {
+          if (isEditingDeloadNote) {
             const histRecord = editingDeloadHasLinkedRecord
               ? deloadHistory.find(r => r.note_id === editingNoteId)
               : null;
             const deloadPatch = {};
-            if (deloadEditDate) {
+            if (deloadEditDateTouched && deloadEditDate) {
               const newDate = deloadEditDate;
               const savedDate = editingNote?.saved_at?.slice(0, 10) ?? '';
-              if (newDate !== savedDate) {
-                if (histRecord) {
-                  deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
-                  patch.saved_at = `${newDate}T12:00:00.000Z`;
-                }
-              } else {
+              // The correctness property is a VALUE change, not mere
+              // interaction: `deloadEditDateTouched` only gates entry to this
+              // block, so opening the picker and restoring the original date
+              // before saving must still leave saved_at untouched (#764
+              // feedback, finding 2 follow-up) — there is deliberately no
+              // `else` branch here anymore.
+              if (newDate !== savedDate && histRecord) {
+                deloadPatch.completed_at = `${newDate}T12:00:00.000Z`;
                 patch.saved_at = `${newDate}T12:00:00.000Z`;
               }
             }
@@ -522,7 +531,7 @@ export function useLogOtherRoutineEditor({
       if (isValidActiveWeek(originalNoteState.activeWeek)) {
         patch.activeWeek = originalNoteState.activeWeek;
       }
-      if (isEditingDeloadNote && deloadDateEditEnabled) {
+      if (isEditingDeloadNote) {
         const histRecord = editingDeloadHasLinkedRecord
           ? deloadHistory.find(r => r.note_id === editingNoteId)
           : null;
@@ -575,7 +584,7 @@ export function useLogOtherRoutineEditor({
       setEditingTitle(originalNoteState.title);
       setEditingFullText(originalNoteState.text);
       setEditingActiveWeek(originalNoteState.activeWeek ?? null);
-      if (isEditingDeloadNote && deloadDateEditEnabled) {
+      if (isEditingDeloadNote) {
         setDeloadEditDate(originalNoteState.date);
         setDeloadEditOrdinal(originalNoteState.ordinal);
       }
@@ -879,7 +888,14 @@ export function useLogOtherRoutineEditor({
     viewingNoteId,
     setViewingNoteId,
     deloadEditDate,
-    setDeloadEditDate,
+    // Wrapped so any UI-driven change marks the date as explicitly touched
+    // (#764 feedback fix 2) — a title-/text-only edit must never fall into
+    // the date-handling save branch just because deloadEditDate is seeded
+    // from the note's existing saved_at.
+    setDeloadEditDate: (d) => {
+      setDeloadEditDate(d);
+      setDeloadEditDateTouched(true);
+    },
     showDeloadDatePicker,
     setShowDeloadDatePicker,
     deloadEditOrdinal,

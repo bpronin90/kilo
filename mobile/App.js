@@ -44,7 +44,7 @@ import { parseWeightEntry, buildSessionsFromNote } from './lib/parser';
 import { PRODUCT_MEASUREMENT_EVENTS, recordProductMeasurement } from './lib/productMeasurement';
 import { makeWeightEntry } from './lib/data';
 import { reconcileWorkoutReminder, installForegroundHandler } from './lib/reminderScheduler';
-import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed, loadWeightDateEditEnabled, saveWeightDateEditEnabled, loadDeloadDateEditEnabled, saveDeloadDateEditEnabled } from './storage/entries';
+import { buildCloudExport, importBackup, getStorageMode, loadFatigueMultiplier, saveFatigueMultiplier, loadWorkoutCollapsed, saveWorkoutCollapsed } from './storage/entries';
 
 const TABS = ['Home', 'Log', 'Weight', 'Analytics', 'More'];
 const ZERO_SAFE_AREA_METRICS = {
@@ -317,14 +317,10 @@ function AppShell() {
   const [workoutNoteTitle, setWorkoutNoteTitle] = useState('');
   const [isWorkoutCollapsed, setIsWorkoutCollapsed] = useState(false);
   const [fatigueMultiplier, setFatigueMultiplier] = useState(1.07);
-  const [weightDateEditEnabled, setWeightDateEditEnabled] = useState(false);
-  const [deloadDateEditEnabled, setDeloadDateEditEnabled] = useState(false);
 
   React.useEffect(() => {
     loadFatigueMultiplier().then(setFatigueMultiplier);
     loadWorkoutCollapsed().then(setIsWorkoutCollapsed);
-    loadWeightDateEditEnabled().then(setWeightDateEditEnabled);
-    loadDeloadDateEditEnabled().then(setDeloadDateEditEnabled);
   }, []);
 
   // Reconcile the workout reminder once at app startup (#590): the active
@@ -692,16 +688,6 @@ function AppShell() {
     await saveFatigueMultiplier(val);
   }, []);
 
-  const handleUpdateWeightDateEditEnabled = useCallback(async (val) => {
-    setWeightDateEditEnabled(val);
-    await saveWeightDateEditEnabled(val);
-  }, []);
-
-  const handleUpdateDeloadDateEditEnabled = useCallback(async (val) => {
-    setDeloadDateEditEnabled(val);
-    await saveDeloadDateEditEnabled(val);
-  }, []);
-
   // Home renders off the shell's own weight/note hooks, so it cannot see their
   // failures on its own (#737). A failed read leaves both hooks with `loading`
   // false and an empty collection, which is indistinguishable from a genuinely
@@ -749,7 +735,6 @@ function AppShell() {
             isCollapsed={isWorkoutCollapsed}
             toggleCollapsed={toggleWorkoutCollapsed}
             onSaveWorkout={saveWorkout}
-            deloadDateEditEnabled={deloadDateEditEnabled}
             isActive={activeTab === 'Log'}
             registerBackConsumer={registerBackConsumer}
             // Flattened to primitives, not the target object (#718): a fresh
@@ -773,7 +758,6 @@ function AppShell() {
             onSaveWeight={saveWeight}
             errorMessage={saveError}
             saving={weightSaving}
-            weightDateEditEnabled={weightDateEditEnabled}
             isActive={activeTab === 'Weight'}
             onNavigate={handleTabPress}
             registerBackConsumer={registerBackConsumer}
@@ -811,10 +795,6 @@ function AppShell() {
             onImport={handleImport}
             fatigueMultiplier={fatigueMultiplier}
             onUpdateFatigueMultiplier={handleUpdateFatigueMultiplier}
-            weightDateEditEnabled={weightDateEditEnabled}
-            onUpdateWeightDateEditEnabled={handleUpdateWeightDateEditEnabled}
-            deloadDateEditEnabled={deloadDateEditEnabled}
-            onUpdateDeloadDateEditEnabled={handleUpdateDeloadDateEditEnabled}
             // Flattened for the same memoization reason as MemoLogScreen above.
             navSubviewView={moreSubviewTarget ? moreSubviewTarget.view : null}
             navSubviewAnchor={moreSubviewTarget ? moreSubviewTarget.anchor : null}

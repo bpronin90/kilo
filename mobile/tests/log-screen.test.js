@@ -529,7 +529,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -605,7 +604,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload,
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: true,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -667,7 +665,6 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -697,6 +694,187 @@ describe('handleDoneOther flushes trailing edits when Done races an in-flight au
     // with the note still in edit (latest text retained for retry).
     expect(update).toHaveBeenLastCalledWith('n2', expect.objectContaining({ raw_text: 'B' }));
     expect(latest.hook.editingNoteId).not.toBe(null);
+  });
+
+  // Feedback follow-up on #764 (finding 2, P2): deloadEditDate is seeded from
+  // the note's existing saved_at when the editor opens, so a title-/text-only
+  // edit that never touches the compact date row must NOT fall into the
+  // date-handling save branch and re-stamp saved_at to noon — that would
+  // desync the note's saved_at from its linked history record's completed_at.
+  test('a text-only deload edit leaves saved_at untouched when the date row was never opened', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T09:47:00.000Z';
+    const note = {
+      id: 'd2',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h2', note_id: 'd2', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd2', title: note.title, raw_text: 'body edited', saved_at: originalSavedAt });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // Text-only edit; the compact "Date · <value>" row is never opened and
+    // setDeloadEditDate is never called.
+    render.act(() => { latest.hook.setEditingText('body edited'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    expect(update).toHaveBeenCalled();
+    const patch = update.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('saved_at');
+    expect(updateDeload).not.toHaveBeenCalled();
+  });
+
+  // Second follow-up on #764 finding 2: `deloadEditDateTouched` gates entry
+  // to the date-handling block, but the correctness property is a VALUE
+  // change, not mere interaction. Opening the date control and then
+  // restoring the original date before saving must still leave saved_at
+  // (and the linked record) untouched — this is the case that got through
+  // the first fix, where a stale `else` branch still wrote saved_at whenever
+  // newDate === savedDate.
+  test('opening the deload date row and restoring the original date leaves saved_at untouched', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T09:47:00.000Z';
+    const note = {
+      id: 'd4',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h4', note_id: 'd4', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd4', title: note.title, raw_text: 'body', saved_at: originalSavedAt });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // User opens the date control, picks a different date, then changes their
+    // mind and restores the original date before saving.
+    render.act(() => { latest.hook.setDeloadEditDate('2026-03-03'); });
+    render.act(() => { latest.hook.setDeloadEditDate('2026-01-01'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    expect(update).toHaveBeenCalled();
+    const patch = update.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('saved_at');
+    expect(updateDeload).not.toHaveBeenCalled();
+  });
+
+  // Companion case: once the user explicitly opens the row and picks a new
+  // date, the existing linked-record save semantics still apply.
+  test('an explicitly changed deload date still updates saved_at and the linked record', async () => {
+    const { DELOAD_NOTE_PREFIX } = require('../lib/LogScreenHelpers');
+    const originalSavedAt = '2026-01-01T12:00:00.000Z';
+    const note = {
+      id: 'd3',
+      title: `${DELOAD_NOTE_PREFIX}2026-01-01`,
+      raw_text: 'body',
+      saved_at: originalSavedAt,
+    };
+    const histRecord = {
+      id: 'h3', note_id: 'd3', deload_session_ordinal: 1, completed_at: originalSavedAt,
+    };
+
+    const update = jest.fn().mockResolvedValue({ id: 'd3', title: note.title, raw_text: 'body', saved_at: '2026-02-02T12:00:00.000Z' });
+    const updateDeload = jest.fn().mockResolvedValue(true);
+
+    let latest = null;
+    function Harness({ notes, deloadHistory }) {
+      const hook = useLogOtherRoutineEditor({
+        notes,
+        currentId: 'other',
+        currentNote: { id: 'other' },
+        deloadHistory,
+        update,
+        add: jest.fn(),
+        remove: jest.fn(),
+        selectCurrent: jest.fn(),
+        updateDeload,
+        deleteDeloadNote: jest.fn(),
+        autosaveCurrentTimerRef: { current: null },
+        handleSave: jest.fn(),
+        currentEditorMode: 'read',
+        hasUnsavedCurrent: false,
+        editorScrollRef: { current: { scrollTo: jest.fn() } },
+      });
+      latest = { hook };
+      return null;
+    }
+
+    render.act(() => { harnessRenderer = render.create(<Harness notes={[note]} deloadHistory={[histRecord]} />); });
+
+    render.act(() => { latest.hook.handleOpenOtherNote(note); });
+    // Explicit user change via the exported (wrapped) setDeloadEditDate.
+    render.act(() => { latest.hook.setDeloadEditDate('2026-02-02'); });
+
+    let savePromise;
+    render.act(() => { savePromise = latest.hook.handleSaveOtherNote(); });
+    await render.act(async () => { await savePromise; });
+
+    const patch = update.mock.calls[0][1];
+    expect(patch.saved_at).toBe('2026-02-02T12:00:00.000Z');
+    expect(updateDeload).toHaveBeenCalledWith('h3', expect.objectContaining({ completed_at: '2026-02-02T12:00:00.000Z' }));
   });
 });
 
@@ -745,7 +923,10 @@ describe('Log deload date web fallback renders a DOM date input (#314)', () => {
   });
 
   test('branches the deload date control on Platform.OS === "web"', () => {
-    expect(editorSrc).toMatch(/Platform\.OS\s*===\s*'web'\s*&&\s*editingDeloadHasLinkedRecord/);
+    // The web/native branch renders only once the linked-record safety
+    // boundary (editingDeloadHasLinkedRecord) has already gated the reveal
+    // (#764: the compact "Date · <value>" row).
+    expect(editorSrc).toMatch(/editingDeloadHasLinkedRecord\s*&&\s*dateFieldOpen[\s\S]{0,400}Platform\.OS\s*===\s*'web'/);
   });
 
   test('web path renders a real <input type="date"> via WebDateInput', () => {
@@ -764,7 +945,7 @@ describe('Log deload date web fallback renders a DOM date input (#314)', () => {
   });
 
   test('native Android path keeps the Pressable + DateTimePicker modal', () => {
-    expect(editorSrc).toMatch(/onPress=\{editingDeloadHasLinkedRecord\s*\?\s*\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
+    expect(editorSrc).toMatch(/onPress=\{\(\)\s*=>\s*setShowDeloadDatePicker\(true\)/);
     expect(editorSrc).toMatch(/<DateTimePicker[\s\S]*?onChange\s*=\s*\{/);
   });
 });
@@ -865,7 +1046,6 @@ function ControlledLogScreen(props) {
       isCollapsed={false}
       toggleCollapsed={jest.fn()}
       onSaveWorkout={jest.fn()}
-      deloadDateEditEnabled={true}
       onCheckInPrompt={jest.fn()}
       {...props}
     />
@@ -1049,9 +1229,8 @@ describe('Undo escape hatch: integration tests', () => {
           onImport={jest.fn()}
           fatigueMultiplier={1}
           onUpdateFatigueMultiplier={jest.fn()}
-          weightDateEditEnabled={true}
+         
           onUpdateWeightDateEditEnabled={jest.fn()}
-          deloadDateEditEnabled={true}
           onUpdateDeloadDateEditEnabled={jest.fn()}
         />
       );
@@ -1320,6 +1499,14 @@ describe('Undo escape hatch: integration tests', () => {
       editBtn.props.onPress();
     });
 
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
+    });
+
     // Find the session number input and change its value to 10
     const textInputs = root.findAllByType('TextInput');
     const ordinalInput = textInputs.find(ti => ti.props.placeholder === 'Session number');
@@ -1415,6 +1602,14 @@ describe('Undo escape hatch: integration tests', () => {
     expect(editBtn).toBeTruthy();
     render.act(() => {
       editBtn.props.onPress();
+    });
+
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
     });
 
     // Find session number input and clear it
@@ -2038,7 +2233,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2106,7 +2300,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent,
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2322,7 +2515,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent,
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -2381,7 +2573,6 @@ describe('A/B week for non-current routines: viewing projection and per-note per
         selectCurrent: jest.fn(),
         updateDeload: jest.fn(),
         deleteDeloadNote: jest.fn(),
-        deloadDateEditEnabled: false,
         autosaveCurrentTimerRef: { current: null },
         handleSave: jest.fn(),
         currentEditorMode: 'read',
@@ -4527,7 +4718,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4566,7 +4756,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test Routine"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4605,7 +4794,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -4649,7 +4837,6 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
           isEditingDeloadNote={true}
           workoutNoteTitle="Test"
           editingTitle="Deload: 2026-07-23"
-          deloadDateEditEnabled={true}
           editingDeloadHasLinkedRecord={true}
           deloadEditDate="2026-07-23"
           deloadEditOrdinal="5"
@@ -4663,6 +4850,15 @@ describe('LogScreenEditorCard syntax-sensitive inputs have autocorrect disabled'
       );
     });
     const root = component.root;
+
+    // Reveal the compact "Date · <value>" secondary row (#764) so the Session #
+    // field (shown alongside the date once revealed) is on screen.
+    const dateToggle = findPressableByText(root, 'Date ·');
+    expect(dateToggle).toBeTruthy();
+    render.act(() => {
+      dateToggle.props.onPress();
+    });
+
     const textInputs = root.findAllByType('TextInput');
 
     // Find the session number input
@@ -4709,7 +4905,6 @@ describe('LogScreenEditorCard workout syntax help button', () => {
           isEditingDeloadNote={false}
           workoutNoteTitle="Test"
           editingTitle=""
-          deloadDateEditEnabled={false}
           editingDeloadHasLinkedRecord={false}
           deloadEditDate=""
           deloadEditOrdinal=""
@@ -5073,9 +5268,8 @@ describe('#583: App Guide analytics copy matches shipped surfaces', () => {
           onImport={jest.fn()}
           fatigueMultiplier={1}
           onUpdateFatigueMultiplier={jest.fn()}
-          weightDateEditEnabled={true}
+         
           onUpdateWeightDateEditEnabled={jest.fn()}
-          deloadDateEditEnabled={true}
           onUpdateDeloadDateEditEnabled={jest.fn()}
         />
       );

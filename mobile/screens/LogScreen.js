@@ -100,7 +100,6 @@ export function LogScreen({
   isCollapsed,
   toggleCollapsed,
   onSaveWorkout,
-  deloadDateEditEnabled,
   onCheckInPrompt,
   isActive,
   registerBackConsumer,
@@ -268,7 +267,6 @@ export function LogScreen({
     selectCurrent,
     updateDeload,
     deleteDeloadNote,
-    deloadDateEditEnabled,
     autosaveCurrentTimerRef: currentEditor.autosaveCurrentTimerRef,
     handleSave: currentEditor.handleSave,
     currentEditorMode: currentEditor.mode,
@@ -997,7 +995,6 @@ export function LogScreen({
           setEditingTitle={otherEditor.setEditingTitle}
           workoutNoteTitle={workoutNoteTitle}
           setWorkoutNoteTitle={setWorkoutNoteTitle}
-          deloadDateEditEnabled={deloadDateEditEnabled}
           editingDeloadHasLinkedRecord={otherEditor.editingDeloadHasLinkedRecord}
           setShowDeloadDatePicker={otherEditor.setShowDeloadDatePicker}
           deloadEditDate={otherEditor.deloadEditDate}

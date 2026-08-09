@@ -4,6 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Card, Button } from './UI';
 import { useTheme, useThemedStyles } from '../theme/ThemeContext';
 import { DELOAD_NOTE_PREFIX } from '../lib/LogScreenHelpers';
+import { formatDate } from '../lib/format';
 import { WorkoutSyntaxModal } from './WorkoutSyntaxModal';
 import { SessionAutofillSheet } from './SessionAutofillSheet';
 
@@ -127,7 +128,6 @@ export function LogScreenEditorCard({
   setEditingTitle,
   workoutNoteTitle,
   setWorkoutNoteTitle,
-  deloadDateEditEnabled,
   editingDeloadHasLinkedRecord,
   setShowDeloadDatePicker,
   deloadEditDate,
@@ -159,6 +159,14 @@ export function LogScreenEditorCard({
   const styles = useThemedStyles(createStyles);
   const [syntaxHelpVisible, setSyntaxHelpVisible] = useState(false);
   const [autofillVisible, setAutofillVisible] = useState(false);
+  // Reveal state for the compact "Date · <value>" secondary row (#764),
+  // replacing the removed Settings "Edit deload dates" toggle. Collapses
+  // whenever a different note is opened so it never carries a stale reveal
+  // into an unrelated editor session.
+  const [dateFieldOpen, setDateFieldOpen] = useState(false);
+  useEffect(() => {
+    setDateFieldOpen(false);
+  }, [editingNoteId]);
 
   return (
     <View style={styles.editContainer}>
@@ -210,32 +218,49 @@ export function LogScreenEditorCard({
                 style={[styles.input, styles.titleInput]}
               />
             )}
-            {isEditingDeloadNote && deloadDateEditEnabled && (
+            {isEditingDeloadNote && (
               <>
-                <Text style={styles.inputLabel}>Date</Text>
-                {Platform.OS === 'web' && editingDeloadHasLinkedRecord ? (
-                  <View style={styles.dateInputWebWrap}>
-                    <WebDateInput
-                      value={deloadEditDate}
-                      onChangeDate={(newDateStr) => {
-                        setDeloadEditDate(newDateStr);
-                        setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
-                      }}
-                      accessibilityLabel="Deload date"
-                    />
-                  </View>
-                ) : (
-                  <Pressable
-                    style={[styles.input, styles.dateInput]}
-                    onPress={editingDeloadHasLinkedRecord ? () => setShowDeloadDatePicker(true) : undefined}
-                    accessibilityLabel="Deload date"
-                    accessibilityRole={editingDeloadHasLinkedRecord ? 'button' : 'text'}
-                  >
-                    <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
-                  </Pressable>
-                )}
-                {editingDeloadHasLinkedRecord && (
+                {/* Compact, discoverable "Date · <value>" secondary row (#764),
+                    replacing the removed Settings "Edit deload dates" toggle.
+                    The linked-record safety boundary is preserved: when there
+                    is no linked history record the row is shown but disabled,
+                    never removed, so its accessible state still communicates
+                    why the date can't be changed. */}
+                <Pressable
+                  style={styles.dateDisclosureRow}
+                  onPress={editingDeloadHasLinkedRecord ? () => setDateFieldOpen(o => !o) : undefined}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Date, ${deloadEditDate ? formatDate(deloadEditDate) : '—'}${editingDeloadHasLinkedRecord ? '' : '. Unavailable for this record'}`}
+                  accessibilityState={{ disabled: !editingDeloadHasLinkedRecord, expanded: dateFieldOpen }}
+                >
+                  <Text style={styles.dateDisclosureText}>
+                    {`Date · ${deloadEditDate ? formatDate(deloadEditDate) : '—'}`}
+                  </Text>
+                </Pressable>
+                {editingDeloadHasLinkedRecord && dateFieldOpen && (
                   <>
+                    <Text style={styles.inputLabel}>Date</Text>
+                    {Platform.OS === 'web' ? (
+                      <View style={styles.dateInputWebWrap}>
+                        <WebDateInput
+                          value={deloadEditDate}
+                          onChangeDate={(newDateStr) => {
+                            setDeloadEditDate(newDateStr);
+                            setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
+                          }}
+                          accessibilityLabel="Deload date"
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={[styles.input, styles.dateInput]}
+                        onPress={() => setShowDeloadDatePicker(true)}
+                        accessibilityLabel="Deload date"
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.dateInputText}>{deloadEditDate || '—'}</Text>
+                      </Pressable>
+                    )}
                     <Text style={styles.inputLabel}>Session #</Text>
                     <TextInput
                       style={styles.input}
@@ -249,33 +274,40 @@ export function LogScreenEditorCard({
                       spellCheck={false}
                       accessibilityLabel="Deload session number"
                     />
+                    <Pressable
+                      onPress={() => setDateFieldOpen(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Done changing deload date"
+                    >
+                      <Text style={styles.dateDisclosureDoneText}>Done</Text>
+                    </Pressable>
+                    {showDeloadDatePicker && (
+                      <DateTimePicker
+                        value={(() => {
+                          if (deloadEditDate) {
+                            const [y, m, d] = deloadEditDate.split('-').map(Number);
+                            return new Date(y, m - 1, d);
+                          }
+                          return new Date();
+                        })()}
+                        mode="date"
+                        display="default"
+                        maximumDate={new Date()}
+                        onChange={(event, selectedDate) => {
+                          setShowDeloadDatePicker(false);
+                          if (selectedDate) {
+                            const y = selectedDate.getFullYear();
+                            const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                            const dy = String(selectedDate.getDate()).padStart(2, '0');
+                            const newDateStr = `${y}-${mo}-${dy}`;
+                            setDeloadEditDate(newDateStr);
+                            setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
+                          }
+                        }}
+                        onDismiss={() => setShowDeloadDatePicker(false)}
+                      />
+                    )}
                   </>
-                )}
-                {editingDeloadHasLinkedRecord && showDeloadDatePicker && (
-                  <DateTimePicker
-                    value={(() => {
-                      if (deloadEditDate) {
-                        const [y, m, d] = deloadEditDate.split('-').map(Number);
-                        return new Date(y, m - 1, d);
-                      }
-                      return new Date();
-                    })()}
-                    mode="date"
-                    display="default"
-                    maximumDate={new Date()}
-                    onChange={(event, selectedDate) => {
-                      setShowDeloadDatePicker(false);
-                      if (selectedDate) {
-                        const y = selectedDate.getFullYear();
-                        const mo = String(selectedDate.getMonth() + 1).padStart(2, '0');
-                        const dy = String(selectedDate.getDate()).padStart(2, '0');
-                        const newDateStr = `${y}-${mo}-${dy}`;
-                        setDeloadEditDate(newDateStr);
-                        setEditingTitle(DELOAD_NOTE_PREFIX + newDateStr);
-                      }
-                    }}
-                    onDismiss={() => setShowDeloadDatePicker(false)}
-                  />
                 )}
               </>
             )}
@@ -518,5 +550,26 @@ const createStyles = (colors) => StyleSheet.create({
   dateInputText: {
     fontSize: 16,
     color: colors.text,
+  },
+  // Compact secondary "Date · <value>" disclosure row (#764), replacing the
+  // removed Settings "Edit deload dates" toggle. minHeight 44 for the touch
+  // target; disabled styling communicates the linked-record safety boundary
+  // without removing the row (accessibilityState carries the same fact for
+  // screen readers).
+  dateDisclosureRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  dateDisclosureText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  dateDisclosureDoneText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+    marginBottom: 8,
   },
 });
