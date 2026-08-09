@@ -840,7 +840,7 @@ family.
 | Card padding | `24` | `24` | normalized |
 | Progress bar background | `colors.divider` | `colors.divider` | normalized (#763; was `cardBorder` on Home) |
 | Progress bar borderRadius | `4` | `4` | normalized (#763; was `6` on Home) |
-| Unit suffix | literal leading space (`" {unit}"`) | `marginLeft: 4` on a nested `Text` | unchanged — both are a `Text` nested inside the value `Text`, where RN native treats the child as an inline attributed run, not a Yoga box, so `marginLeft` does not reliably create spacing (#763 review); Home uses a literal space to guarantee "1000 lb" renders correctly on iOS/Android |
+| Unit suffix | literal leading space (`" {unit}"`) | literal leading space (`" {unit}"`) | normalized (#763 review) — both are a `Text` nested inside the value `Text`, where native RN treats the child as an inline attributed run, not a Yoga box, so `marginLeft` on the nested `Text` did not reliably create spacing on either surface; both now use a literal leading space to guarantee "1000 lb" renders correctly on iOS/Android |
 | Breakdown value fontWeight | `700` | `700` | normalized (#763; was `800` on Home) |
 | Breakdown value fontSize | `16` | `18` | intentional (scales with hero size) |
 | Breakdown label | `11`, uppercase | `11`, uppercase | normalized (#763; Home was `12`, sentence case) |

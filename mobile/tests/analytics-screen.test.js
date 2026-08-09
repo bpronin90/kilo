@@ -450,6 +450,33 @@ describe('AnalyticsScreen 1K Progress Card', () => {
     expect(hasText(root, 'Deadlifts')).toBe(true);
   });
 
+  test('the 1K unit suffix uses a literal leading space, not marginLeft (#763)', () => {
+    // Nested Text is an inline attributed run on native RN, not a Yoga box, so
+    // marginLeft on it does not reliably create spacing. Matches the same
+    // fix on Home's 1K card — both surfaces must render "1000 lb", not
+    // "1000lb", on iOS/Android.
+    const oneK = { total: 1000, squat: 400, bench: 300, deadlift: 300 };
+
+    jest.spyOn(data, 'deriveWorkoutNoteAnalytics').mockReturnValue({
+      signals: [],
+      nameDisplayMap: new Map(),
+      repDropOffFlags: {},
+    });
+    jest.spyOn(data, 'derive1kTotalFromSectionsList').mockReturnValue(oneK);
+
+    const component = setup();
+    const root = component.root;
+
+    const text = (n) => (Array.isArray(n.props.children) ? n.props.children.join('') : String(n.props.children ?? ''));
+    const unitNodes = root.findAllByType('Text').filter(n => text(n).includes('lb'));
+    expect(unitNodes.length).toBeGreaterThan(0);
+    for (const node of unitNodes) {
+      expect(text(node)).toBe(' lb');
+      const flat = [].concat(node.props.style ?? []).reduce((acc, s) => ({ ...acc, ...s }), {});
+      expect(flat.marginLeft).toBeFalsy();
+    }
+  });
+
   test('exposes a discoverable explanation affordance that reveals the 1K calculation copy (#399)', () => {
     const oneK = { total: 1000, squat: 400, bench: 300, deadlift: 300 };
 
