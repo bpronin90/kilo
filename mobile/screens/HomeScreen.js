@@ -712,7 +712,7 @@ export function HomeScreen({ weightEntries, workoutNote, notes, successMessage, 
             </Pressable>
             <Text style={[styles.oneKHeroValue, { color: lerpColor(colors.accent, colors.success, Math.min(1, (dashboardData.oneK?.total || 0) / 1000)) }]}>
               {dashboardData.oneK?.total ? `${displayWeight(dashboardData.oneK.total, unit).toFixed(0)}` : '—'}
-              <Text style={styles.oneKHeroUnit}> {unit}</Text>
+              <Text style={styles.oneKHeroUnit}>{unit}</Text>
             </Text>
             <View style={styles.progressBarLarge}>
               <View
@@ -1139,19 +1139,24 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.textMuted,
+    marginLeft: 4,
   },
+  // Track color, radius, and vertical rhythm match the Analytics 1K progress
+  // bar (#763) — the bar reads as the same control on both surfaces even
+  // though Home's hero value stays smaller (compact-summary role, see
+  // design-system-map.md).
   progressBarLarge: {
     height: 8,
-    backgroundColor: colors.cardBorder,
-    borderRadius: 6,
+    backgroundColor: colors.divider,
+    borderRadius: 4,
     overflow: 'hidden',
-    marginBottom: 28,
+    marginBottom: 16,
     alignSelf: 'stretch',
   },
   progressFillLarge: {
     height: '100%',
     backgroundColor: colors.accent,
-    borderRadius: 6,
+    borderRadius: 4,
   },
   oneKGrid: {
     flexDirection: 'row',
@@ -1167,15 +1172,18 @@ const createStyles = (colors) => StyleSheet.create({
     borderRightWidth: 1,
     borderColor: colors.cardBorder,
   },
+  // Weight and case match the Analytics breakdown item (#763); fontSize
+  // stays smaller here because Home is the compact summary, not the owner.
   oneKGridValue: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.text,
   },
   oneKGridLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
+    textTransform: 'uppercase',
   },
   placeholderText: {
     fontSize: 48,

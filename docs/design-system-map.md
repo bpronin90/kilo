@@ -444,30 +444,43 @@ targets the Analytics tab with no section id: section-level targeting exists for
 | | color | `colors.textMuted` | `1021` |
 | Stats grid | gap | `40` | `998` |
 
-### 1K Club Card
+### 1K Club Card (Home)
+
+Home is the **compact-summary** treatment (#763): the header row is the tap
+target to Analytics strength, the hero total stays visually secondary to the
+Weekly hero above it, and the breakdown is plain data (no chart, mapping, or
+explanation — those stay Analytics-owned). Progress bar, unit suffix, and
+per-lift value/label typography are normalized against the Analytics owner
+card below; only the hero size/weight stay smaller as the intentional
+compact-vs-owner distinction.
 
 | Element | Property | Value | Line |
 |---|---|---|---|
-| Card padding | `24` | | `1024` |
-| Card borderRadius | `24` | | `1025` |
-| Hero total value | fontSize | `32` | `1032` |
-| | fontWeight | `800` | `1033` |
-| | color | `colors.accent` | `1034` |
-| Hero unit "lb" | fontSize | `14` | `1037` |
-| | color | `colors.textMuted` | `1038` |
-| Progress bar | height | `8` | `1041` |
-| | background | `colors.cardBorder` | `1042` |
-| | fill | `colors.accent` | `1049` |
-| | borderRadius | `6` | `1043` |
-| | marginBottom | `28` | `1045` |
-| Breakdown value | fontSize | `16` | `1066` |
-| | fontWeight | `800` | `1067` |
-| | color | `colors.text` | `1068` |
-| Breakdown label | fontSize | `12` | `1071` |
-| | fontWeight | `600` | `1072` |
-| | color | `colors.textMuted` | `1073` |
-| Breakdown dividers | borderWidth | `1` | `1061-1062` |
-| | color | `colors.cardBorder` | `1063` |
+| Card padding | `24` | | `1118` |
+| Card borderRadius | `24` | | `1118` |
+| Hero total value | fontSize | `32` | `1134` |
+| | fontWeight | `800` | `1134` |
+| | color | `colors.accent` | `713` |
+| Hero unit | fontSize | `16` | `1138` |
+| | color | `colors.textMuted` | `1138` |
+| Progress bar | height | `8` | `1148` |
+| | background | `colors.divider` | `1148` |
+| | fill | `colors.accent` | `1156` |
+| | borderRadius | `4` | `1148` |
+| | marginBottom | `16` | `1148` |
+| Breakdown value | fontSize | `16` | `1177` |
+| | fontWeight | `700` | `1177` |
+| | color | `colors.text` | `1177` |
+| Breakdown label | fontSize | `11`, uppercase | `1182` |
+| | fontWeight | `600` | `1182` |
+| | color | `colors.textMuted` | `1182` |
+| Breakdown dividers | borderWidth | `1` | `1170` |
+| | color | `colors.cardBorder` | `1170` |
+
+The vertical `borderLeft/Right` breakdown dividers (vs. Analytics' single
+`borderTop` above the whole row) stay an intentional structural deviation —
+Home's three-column grid reads at a glance, Analytics' row sits under its own
+divider ahead of the chart and info disclosure beneath it.
 
 ---
 
@@ -807,26 +820,41 @@ were out of the cleanup's scope) and still document real divergence.
 | Weight | Goal value | `24` | `900` | `accent` |
 | Weight | Trend value | `20` | `900` | `text` |
 
-Home uses `800` for bold metrics. Analytics and Weight use `900`. No clear system.
+Home uses `800` for bold metrics; Weight uses `900` with no shared system between
+those two screens. The Home/Analytics 1K pair is the one instance of this that
+is now an intentional, documented pattern rather than open drift — see below.
 
-### 1K Card: Home vs Analytics
+### 1K Card: Home vs Analytics (#763)
 
-| Property | Home | Analytics |
-|---|---|---|
-| Total fontSize | `32` | `48` |
-| Total fontWeight | `800` | `900` |
-| Breakdown value fontSize | `16` | `18` |
-| Breakdown label fontSize | `12` | `12` |
-| Breakdown divider | vertical `borderLeft/Right` between items | horizontal `borderTop` above row |
+Home is the compact-summary treatment; Analytics is the detail owner (chart,
+Big 3 mapping, calculation explanation, plate calculator). The hero total's
+size/weight difference is the deliberate signal of that hierarchy. Everything
+that plays the same supporting role — progress track, unit suffix, and
+per-lift breakdown typography — is normalized so the two surfaces read as one
+family.
 
-Home treats 1K as tertiary (smaller). Analytics treats it as a hero (larger). The structural difference (vertical vs horizontal dividers, centered vs grid) means the "same card" doesn't actually feel the same.
+| Property | Home | Analytics | Status |
+|---|---|---|---|
+| Total fontSize | `32` | `48` | intentional (compact summary vs owner hero) |
+| Total fontWeight | `800` | `900` | intentional |
+| Card padding | `24` | `24` | normalized |
+| Progress bar background | `colors.divider` | `colors.divider` | normalized (#763; was `cardBorder` on Home) |
+| Progress bar borderRadius | `4` | `4` | normalized (#763; was `6` on Home) |
+| Unit suffix | `marginLeft: 4`, no leading space | `marginLeft: 4`, no leading space | normalized (#763; Home used a leading space) |
+| Breakdown value fontWeight | `700` | `700` | normalized (#763; was `800` on Home) |
+| Breakdown value fontSize | `16` | `18` | intentional (scales with hero size) |
+| Breakdown label | `11`, uppercase | `11`, uppercase | normalized (#763; Home was `12`, sentence case) |
+| Breakdown divider | vertical `borderLeft/Right` between items | horizontal `borderTop` above row | intentional (Home's 3-column grid vs Analytics' row-then-chart layout) |
+
+The remaining differences (hero size/weight, divider orientation) are the
+owner-vs-compact-summary hierarchy working as intended, not unresolved drift.
 
 ### Support Label Patterns
 
 | Pattern | fontSize | Weight | Case | Screens |
 |---|---|---|---|---|
 | Uppercase micro-label | `10` | `700` | `uppercase` | Analytics (column headers, trend labels), Weight (trend labels) |
-| Uppercase small label | `11` | `600` | `uppercase` | Home (hero sublabels), Analytics (footer stat labels) |
+| Uppercase small label | `11` | `600` | `uppercase` | Home (hero sublabels, 1K breakdown labels — #763), Analytics (footer stat labels, 1K breakdown labels) |
 | Uppercase label | `12` | `700` | `uppercase` | Home (goal stat label), Analytics (weight label, 1K label, slot title), Weight (section titles, goal labels) |
 | Section title label | `14` | `700` | `uppercase` | Analytics (1K progress label) |
 
